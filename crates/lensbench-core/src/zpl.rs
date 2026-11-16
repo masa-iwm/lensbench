@@ -498,7 +498,11 @@ impl Program {
                                     return Err(err(line, "only one statement after THEN"));
                                 }
                                 push(&mut p, Op::JumpIfNot(c, at + 2));
-                                let op = sub.ops.into_iter().next().unwrap();
+                                let op = sub
+                                    .ops
+                                    .into_iter()
+                                    .next()
+                                    .expect("one statement checked above");
                                 if matches!(op, Op::JumpIfNot(..)) {
                                     return Err(unsupported(line, "IF after THEN"));
                                 }

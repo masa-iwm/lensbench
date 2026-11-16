@@ -57,11 +57,7 @@ fn field(f: FieldRef, s: &System) -> Result<FieldSel, String> {
 }
 
 fn wave(w: Option<usize>, s: &System) -> Result<Option<usize>, String> {
-    match w {
-        None => Ok(None),
-        Some(w) if w >= 1 && w <= s.wavelengths.len() => Ok(Some(w - 1)),
-        Some(w) => Err(format!("no wavelength {w} (1 to {})", s.wavelengths.len())),
-    }
+    lensbench_core::waves::index_opt(w, s.wavelengths.len()).map_err(String::from)
 }
 
 fn reference(r: Option<RefName>) -> RmsRef {

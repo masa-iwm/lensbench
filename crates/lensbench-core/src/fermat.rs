@@ -664,7 +664,7 @@ impl System {
                 let kout = rs.lmn[i];
                 // 入ってくる方向（この面の局所座標）
                 let kin = if k == 0 {
-                    mtv(&fr.surf[j].unwrap().r, kprev)
+                    mtv(&fr.surf[j].expect("frame of a traced surface").r, kprev)
                 } else {
                     match fr.rel[j] {
                         Some(q) if q.shift.is_none() => mv(&q.r, kprev),

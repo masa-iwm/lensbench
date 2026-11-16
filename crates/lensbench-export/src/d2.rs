@@ -332,7 +332,10 @@ fn aci(c: Rgb, layer: Layer) -> i32 {
         let f = |x: u8, y: u8| (x as i32 - y as i32).pow(2);
         f(a.0, b.0) + f(a.1, b.1) + f(a.2, b.2)
     };
-    t.iter().min_by_key(|(_, r)| d(c, *r)).unwrap().0
+    t.iter()
+        .min_by_key(|(_, r)| d(c, *r))
+        .expect("non-empty candidates")
+        .0
 }
 
 /// DXF（R12 の ASCII、単位 mm。レイヤー LENS・MIRROR・SURFACE・MECH・RAYS に分ける）

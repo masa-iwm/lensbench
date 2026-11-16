@@ -247,7 +247,7 @@ pub struct PsfParams {
     #[schemars(extend("x-min" = 1))]
     pub image: usize,
     /// Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)
-    pub delta: Option<f64>,
+    pub pixel: Option<f64>,
 }
 
 impl Default for PsfParams {
@@ -258,7 +258,7 @@ impl Default for PsfParams {
             huygens: false,
             pupil: None,
             image: 128,
-            delta: None,
+            pixel: None,
         }
     }
 }
@@ -298,7 +298,7 @@ pub struct PsfSampling {
     /// 格子の最大値（ストレール比の目安）
     pub peak: f64,
     /// 像の格子の間隔（x, y）
-    pub delta: [f64; 2],
+    pub pixel: [f64; 2],
 }
 
 /// PSF の結果
@@ -335,14 +335,14 @@ impl Analysis for Psf {
                 let o = HuygensOpts {
                     pupil: p.pupil,
                     image: p.image,
-                    delta: p.delta,
+                    pixel: p.pixel,
                 };
                 huygens::huygens_psf(s, FieldSel::Index(i), Waves::all_or(w), o)
             } else {
                 let o = PsfOpts {
                     pupil: p.pupil,
                     image: p.image,
-                    delta: p.delta,
+                    pixel: p.pixel,
                 };
                 psf::psf(s, FieldSel::Index(i), Waves::all_or(w), o)
             }?;
@@ -373,7 +373,7 @@ impl Analysis for Psf {
                 phase_step: r.phase_step,
                 enclosed: r.enclosed,
                 peak: r.peak,
-                delta: [r.delta.0, r.delta.1],
+                pixel: [r.pixel.0, r.pixel.1],
             });
         }
         Ok(PsfOut {

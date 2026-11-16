@@ -511,7 +511,7 @@ pub fn trace_jones(
             t0 = Some(t);
         }
     }
-    let t0 = t0.unwrap();
+    let t0 = t0.expect("first sample set above");
     // ファイバ端の方向余弦
     if !sys.infinite() {
         let of = sys.object_frame();

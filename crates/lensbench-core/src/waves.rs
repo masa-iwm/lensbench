@@ -32,3 +32,38 @@ impl Waves {
         Ok(self)
     }
 }
+
+/// 利用者の 1 始まりの番号 n（CLI・serve・Python・プラグイン・評価関数の項）を、波長が nw 個の系の 0 始まりの番号にする。
+/// 0・範囲外はどの口でも同じ誤り（XCT-18、docs/conventions.md）
+pub fn index(n: usize, nw: usize) -> crate::Result<usize> {
+    if n >= 1 && n <= nw {
+        return Ok(n - 1);
+    }
+    Err(crate::Error::Invalid(format!(
+        "no wavelength {n} (1 to {nw})"
+    )))
+}
+
+/// 1 始まりの番号（None は省いた）を 0 始まりにする
+pub fn index_opt(n: Option<usize>, nw: usize) -> crate::Result<Option<usize>> {
+    n.map(|n| index(n, nw)).transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wave_numbers_are_one_based() {
+        assert_eq!(index(1, 3).unwrap(), 0);
+        assert_eq!(index(3, 3).unwrap(), 2);
+        for n in [0, 4] {
+            let e = index(n, 3).unwrap_err();
+            assert_eq!(
+                e.message(),
+                Some(format!("no wavelength {n} (1 to 3)").as_str())
+            );
+        }
+        assert_eq!(index_opt(None, 1).unwrap(), None);
+    }
+}

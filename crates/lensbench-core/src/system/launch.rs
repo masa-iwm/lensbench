@@ -520,7 +520,7 @@ impl System {
                 let j1 = (1..fr.surf.len())
                     .find(|&j| fr.surf[j].is_some())
                     .unwrap_or(1);
-                let ob = fr.surf[j1].unwrap();
+                let ob = fr.surf[j1].expect("frame of the object surface");
                 Some((ob.o, col(&ob.r, 2), self.index_before(j1, w)))
             }
             _ => None,

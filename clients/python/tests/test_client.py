@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "clients" / "python"))
+# 元は wheel に入れる crates/lensbench-py/lensbench_client.py（CLI-22）
+sys.path.insert(0, str(ROOT / "crates" / "lensbench-py"))
 
 from lensbench_client import Client, RpcError  # noqa: E402
 

@@ -654,7 +654,7 @@ impl PupilInterp {
         let mut acc = 0.0;
         for (a, &cy) in wy.iter().enumerate() {
             let o = (iy + a) * self.m + ix;
-            let row: &[f64; LAG] = self.w[o..o + LAG].try_into().unwrap();
+            let row: &[f64; LAG] = self.w[o..o + LAG].try_into().expect("slice of LAG");
             let mut r = 0.0;
             for k in 0..LAG {
                 r += row[k] * wx[k];
@@ -779,7 +779,7 @@ impl PupilInterp {
             if fixed_x {
                 cj.extend((0..m).map(|iy| {
                     let o = iy * m + ic;
-                    let row: &[f64; LAG] = self.w[o..o + LAG].try_into().unwrap();
+                    let row: &[f64; LAG] = self.w[o..o + LAG].try_into().expect("slice of LAG");
                     let mut r = 0.0;
                     for k in 0..LAG {
                         r += row[k] * wc[k];
@@ -1308,7 +1308,7 @@ fn wave_otf(
         .as_ref()
         .is_some_and(|ip| ip.w.iter().all(|v| v.is_finite()));
     let (gls, nks, e0): (Vec<(usize, LensGl)>, Vec<usize>, f64) = if all_finite {
-        let ip = ip.as_ref().unwrap();
+        let ip = ip.as_ref().expect("pupil sampled above");
         let nks: Vec<usize> = jobs
             .iter()
             .map(|&j| {
@@ -1355,7 +1355,7 @@ fn wave_otf(
         } else {
             (1.0, 0.0)
         };
-        let gl = &gls.iter().find(|g| g.0 == nks[ji]).unwrap().1;
+        let gl = &gls.iter().find(|g| g.0 == nks[ji]).expect("listed glass").1;
         let scale = if all_finite { e0 / lens_area(gl) } else { 1.0 };
         if let Some(ip) = &ip {
             if ey == 0.0 || ex == 0.0 {

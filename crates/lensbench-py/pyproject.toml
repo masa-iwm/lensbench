@@ -12,3 +12,5 @@ dynamic = ["version"]
 
 [tool.maturin]
 module-name = "lensbench"
+# serve の Python クライアント（標準ライブラリだけの 1 ファイル、import lensbench_client）も同じ wheel に入れる（CLI-22）
+include = [{ path = "lensbench_client.py", format = "wheel" }]

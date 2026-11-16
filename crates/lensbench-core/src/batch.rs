@@ -202,12 +202,12 @@ impl<'a> Plan<'a> {
             // 座標系の無い面（無限遠の物体面）は通らない
             let Some(f) = fr.surf[j] else { continue };
             let grin = grin_from.take().map(|gj| {
-                let fg = fr.surf[gj].unwrap();
+                let fg = fr.surf[gj].expect("frame of a traced surface");
                 let rr = mm(&transpose(&f.r), &fg.r);
                 let tt = mtv(&f.r, sub(fg.o, f.o));
                 let pj = prev.unwrap_or(gj);
                 let back = (pj != gj).then(|| {
-                    let fp = fr.surf[pj].unwrap();
+                    let fp = fr.surf[pj].expect("frame of a traced surface");
                     (mm(&transpose(&fg.r), &fp.r), mtv(&fg.r, sub(fp.o, fg.o)))
                 });
                 GrinIn {
@@ -255,7 +255,7 @@ impl<'a> Plan<'a> {
                 fres_ref: fr.fres_ref.get(j).copied().unwrap_or([0.0; 2]),
             });
             // 座標ブレークの後ろも同じ GRIN の媒質
-            if let Some(g) = steps.last().unwrap().grin {
+            if let Some(g) = steps.last().expect("at least one step").grin {
                 if d.is_coord_break() {
                     grin_from = Some(g.gj);
                 }

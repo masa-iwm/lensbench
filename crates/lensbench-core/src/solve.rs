@@ -120,7 +120,7 @@ impl System {
                     .record()
                     .hxy((0.0, 0.0)),
             );
-            let at = |j: usize| -> &RecSurf { t.rec_at(j).unwrap() };
+            let at = |j: usize| -> &RecSurf { t.rec_at(j).expect("recorded surface") };
             let bad = t.rays[0].status.surf().is_some();
             let r = match prob.residual {
                 Residual::Position { surf, target } => {

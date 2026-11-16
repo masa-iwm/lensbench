@@ -30,7 +30,7 @@ fn main() {
             let o = HuygensOpts {
                 pupil: Some(pupil),
                 image,
-                delta: None,
+                pixel: None,
             };
             let p = huygens_psf(&s, FieldSel::Index(0), Waves::One(s.primary), o).unwrap();
             println!(

@@ -125,16 +125,16 @@ pub fn format_measured(entries: &[(&str, &Measured)]) -> String {
     use std::fmt::Write;
     let mut s = format!("{MEASURED_HEADER}\n");
     for (k, m) in entries {
-        writeln!(s, "KEY {k}").unwrap();
+        writeln!(s, "KEY {k}").expect("write to String");
         for (w, row) in m.wavelengths.iter().zip(&m.data) {
-            writeln!(s, "WAVE {w:?}").unwrap();
+            writeln!(s, "WAVE {w:?}").expect("write to String");
             for (a, v) in m.angles_deg.iter().zip(row) {
                 writeln!(
                     s,
                     "{a:?} {:?} {:?} {:?} {:?}",
                     v[0].re, v[0].im, v[1].re, v[1].im
                 )
-                .unwrap();
+                .expect("write to String");
             }
         }
     }

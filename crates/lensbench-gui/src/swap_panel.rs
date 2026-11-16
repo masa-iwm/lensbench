@@ -252,6 +252,15 @@ impl SwapPanel {
                 }
                 "vars" => {
                     for x in v.as_array().into_iter().flatten() {
+                        // オブジェクトの形 {name, min, max} も読む
+                        if x.is_object() {
+                            n.vars.push(VarRow {
+                                name: x["name"].as_str().unwrap_or_default().trim().into(),
+                                lo: num_text(&x["min"]),
+                                hi: num_text(&x["max"]),
+                            });
+                            continue;
+                        }
                         let s = x.as_str().unwrap_or_default();
                         let (name, r) = s.split_once('=').unwrap_or((s, ""));
                         let (lo, hi) = r.split_once(':').unwrap_or(("", ""));
@@ -288,7 +297,20 @@ impl SwapPanel {
                         .as_array()
                         .into_iter()
                         .flatten()
-                        .filter_map(Value::as_str)
+                        .filter_map(|x| match x {
+                            Value::String(s) => Some(s.clone()),
+                            // オブジェクトの形は短い形 "名前=下限:上限" にして欄に出す
+                            Value::Object(_) => {
+                                let name = x["name"].as_str()?.trim();
+                                let (lo, hi) = (num_text(&x["min"]), num_text(&x["max"]));
+                                Some(if lo.is_empty() && hi.is_empty() {
+                                    name.to_string()
+                                } else {
+                                    format!("{name}={lo}:{hi}")
+                                })
+                            }
+                            _ => None,
+                        })
                         .collect::<Vec<_>>()
                         .join(", ")
                 }

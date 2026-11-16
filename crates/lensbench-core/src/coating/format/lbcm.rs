@@ -251,14 +251,20 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                         let line = ln + 1;
                         invalid!("coating model line {line}: a mirror has β and 4 coefficients");
                     }
-                    c.r.last_mut().unwrap().1.push((b, [z(1), z(3)]));
+                    c.r.last_mut()
+                        .expect("block started above")
+                        .1
+                        .push((b, [z(1), z(3)]));
                 } else {
                     if v.len() != 19 {
                         let line = ln + 1;
                         invalid!("coating model line {line}: transmission has β and 18 columns");
                     }
                     let m = [[z(1), z(3), z(5), z(7)], [z(10), z(12), z(14), z(16)]];
-                    c.t.last_mut().unwrap().1.push((b, (m, [v[9], v[18]])));
+                    c.t.last_mut()
+                        .expect("block started above")
+                        .1
+                        .push((b, (m, [v[9], v[18]])));
                 }
             }
         }
@@ -275,34 +281,34 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
     use std::fmt::Write;
     let mut s = format!("{}\n", MODEL_HEADER);
     for (name, m) in entries {
-        writeln!(s, "COAT {name}").unwrap();
+        writeln!(s, "COAT {name}").expect("write to String");
         if !m.note.is_empty() {
-            writeln!(s, "NOTE {}", m.note.replace(['\n', '\r'], " ")).unwrap();
+            writeln!(s, "NOTE {}", m.note.replace(['\n', '\r'], " ")).expect("write to String");
         }
         if !m.kinks.is_empty() {
             let k: Vec<String> = m.kinks.iter().map(|k| format!("{k:?}")).collect();
-            writeln!(s, "KINKS {}", k.join(" ")).unwrap();
+            writeln!(s, "KINKS {}", k.join(" ")).expect("write to String");
         }
         if !m.wavelengths.is_empty() {
-            writeln!(s, "D {:?}\nBMAX {:?}", m.d, m.bmax).unwrap();
+            writeln!(s, "D {:?}\nBMAX {:?}", m.d, m.bmax).expect("write to String");
             for (iw, w) in m.wavelengths.iter().enumerate() {
-                writeln!(s, "WAVE {w:?}").unwrap();
+                writeln!(s, "WAVE {w:?}").expect("write to String");
                 for (j, b) in m.betas.iter().enumerate() {
-                    write!(s, "{b:?}").unwrap();
+                    write!(s, "{b:?}").expect("write to String");
                     for pol in 0..2 {
                         for z in m.m[iw][j][pol] {
-                            write!(s, " {:?} {:?}", z.re, z.im).unwrap();
+                            write!(s, " {:?} {:?}", z.re, z.im).expect("write to String");
                         }
-                        write!(s, " {:?}", m.psi[iw][j][pol]).unwrap();
+                        write!(s, " {:?}", m.psi[iw][j][pol]).expect("write to String");
                     }
                     s.push('\n');
                 }
             }
         }
         if let Some(r) = &m.mirror {
-            writeln!(s, "MIRROR {:?} {:?}", r.n_ref, r.d).unwrap();
+            writeln!(s, "MIRROR {:?} {:?}", r.n_ref, r.d).expect("write to String");
             for (iw, w) in r.wavelengths.iter().enumerate() {
-                writeln!(s, "WAVE {w:?}").unwrap();
+                writeln!(s, "WAVE {w:?}").expect("write to String");
                 for (j, b) in r.betas.iter().enumerate() {
                     let v = r.r[iw][j];
                     writeln!(
@@ -310,7 +316,7 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
                         "{b:?} {:?} {:?} {:?} {:?}",
                         v[0].re, v[0].im, v[1].re, v[1].im
                     )
-                    .unwrap();
+                    .expect("write to String");
                 }
             }
         }

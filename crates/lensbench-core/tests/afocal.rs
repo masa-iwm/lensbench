@@ -214,8 +214,8 @@ fn psf_is_per_angle() {
     let o = PsfOpts::default();
     let pa = psf::psf(&a, FieldSel::Index(1), Waves::All, o).unwrap();
     let pb = psf::psf(&b, FieldSel::Index(1), Waves::All, o).unwrap();
-    let r = (pa.delta.0 * F * 1e-3 - pb.delta.0) / pb.delta.0;
-    assert!(r.abs() < 2e-3, "間隔 {:?} {:?}", pa.delta, pb.delta);
+    let r = (pa.pixel.0 * F * 1e-3 - pb.pixel.0) / pb.pixel.0;
+    assert!(r.abs() < 2e-3, "間隔 {:?} {:?}", pa.pixel, pb.pixel);
     assert!(
         ((pa.center.1 * 1e-3).tan() * F - pb.center.1).abs() < 1e-9,
         "{:?} {:?}",
@@ -352,7 +352,7 @@ fn matches_opticstudio() {
         let po = PsfOpts {
             pupil: Some(128),
             image: 256,
-            delta: Some(0.0914374977),
+            pixel: Some(0.0914374977),
         };
         let p = psf::psf(&s, f, Waves::All, po).unwrap();
         assert!(

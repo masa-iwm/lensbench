@@ -98,7 +98,7 @@ fn perfect_lens_gives_diffraction_limit() {
     let o = HuygensOpts {
         pupil: Some(128),
         image: 256,
-        delta: None,
+        pixel: None,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     assert!((h.tan[0] - 1.0).abs() < 1e-12 && (h.sag[0] - 1.0).abs() < 1e-12);
@@ -118,13 +118,13 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     let f = FieldSel::Index(0);
     // 中心の行（x）は FFT PSF と同じ間隔、中心の列（y）は像面の Δ が垂直な面の Δ cos に当たる
     let fp = psf::psf(&s, f, Waves::One(s.primary), PsfOpts::default()).unwrap();
-    let d = fp.delta.0;
+    let d = fp.pixel.0;
     let fq = psf::psf(
         &s,
         f,
         Waves::One(s.primary),
         PsfOpts {
-            delta: Some(d * cs),
+            pixel: Some(d * cs),
             ..Default::default()
         },
     )
@@ -132,7 +132,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     let o = HuygensOpts {
         pupil: Some(64),
         image: 128,
-        delta: Some(d),
+        pixel: Some(d),
     };
     let hp = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let c0 = 64;
@@ -148,7 +148,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     let o = HuygensOpts {
         pupil: Some(128),
         image: 256,
-        delta: None,
+        pixel: None,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     for (k, &q) in fs.iter().enumerate() {
@@ -165,14 +165,14 @@ fn rejects_bad_grids() {
     let o = HuygensOpts {
         pupil: Some(2),
         image: 16,
-        delta: None,
+        pixel: None,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
     // 像の格子が瞳の標本の周期を超える
     let o = HuygensOpts {
         pupil: Some(16),
         image: 64,
-        delta: None,
+        pixel: None,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
 }
@@ -185,10 +185,10 @@ fn huygens_mtf_above_nyquist_is_nan() {
     let o = HuygensOpts {
         pupil: Some(64),
         image: 64,
-        delta: None,
+        pixel: None,
     };
     let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
-    let ny = 0.5 / p.delta.0;
+    let ny = 0.5 / p.pixel.0;
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &[0.5 * ny, 1.5 * ny]).unwrap();
     assert!(h.sag[0].is_finite() && h.tan[0].is_finite());
     assert!(h.sag[1].is_nan() && h.tan[1].is_nan(), "{:?}", h.sag);
@@ -202,11 +202,11 @@ fn huygens_points_outside_the_image_surface_are_nan() {
     let o = HuygensOpts {
         pupil: Some(64),
         image: 64,
-        delta: None,
+        pixel: None,
     };
     let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     // 半径が格子の幅の 1/4 の球面の像面: 格子の外側の点は球の外
-    let r = 16.0 * p0.delta.0;
+    let r = 16.0 * p0.pixel.0;
     let img = s.image();
     s.surfaces[img].c = 1.0 / r;
     s.changed().unwrap();
@@ -222,7 +222,7 @@ fn huygens_points_outside_the_image_surface_are_nan() {
     assert!(p.enclosed.is_finite());
     // その PSF の MTF はどの周波数も決まらない: 変換は全部 NaN（調和周波数の間も 0 にしない）、
     // huygens_mtf は理由つきの誤り
-    let ny = 0.5 / p.delta.0;
+    let ny = 0.5 / p.pixel.0;
     let fs = [0.0, 0.1 * ny, 0.37 * ny, 0.5 * ny];
     let m = lensbench_analysis::huygens::psf_mtf(&p, &fs);
     assert!(

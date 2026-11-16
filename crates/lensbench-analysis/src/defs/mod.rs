@@ -41,14 +41,7 @@ pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
 
 /// 波長の番号（1 始まり、None で多色）を 0 始まりにする
 pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
-    match w {
-        None => Ok(None),
-        Some(i) if i >= 1 && i <= s.wavelengths.len() => Ok(Some(i - 1)),
-        Some(i) => Err(Error::Invalid(format!(
-            "no wavelength {i} (1 to {})",
-            s.wavelengths.len()
-        ))),
-    }
+    lensbench_core::waves::index_opt(w, s.wavelengths.len())
 }
 
 /// スポット・PSF の位置の単位: mm、アフォーカル像空間では角度の単位（前は mm を "lens" と書いた、XCT-18）

@@ -602,7 +602,7 @@ pub fn write_gltf<W: Write>(
         "buffers": [{"byteLength": buf.len()}],
     });
     if glb {
-        let mut js = serde_json::to_vec(&doc).unwrap();
+        let mut js = serde_json::to_vec(&doc).expect("JSON of plain data");
         while !js.len().is_multiple_of(4) {
             js.push(b' ');
         }

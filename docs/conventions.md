@@ -12,6 +12,8 @@ CLI・serve・Python・GUI・プラグインで共通の約束。解析ごとの
 
 範囲の外の番号は「視野 9 はありません（1〜3）」の形の誤り（`data.kind = "invalid"`、Python は `lensbench.InvalidError`）。
 Rust の `lensbench_core` の中（`FieldSel::Index`・`Waves::One`・`System::fields` の添え字）だけは 0 始まり。
+利用者の波長の番号は `lensbench_core::waves::index`・`index_opt`（1 始まり → 0 始まり）を通し、どの口でも
+「波長 9 はありません（1〜3）」の同じ文にする。
 
 プラグインの `field` は、数 1 つなら視野の番号（1 始まり）、2 つの並びなら正規化視野 (hx, hy)。
 

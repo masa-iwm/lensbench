@@ -351,7 +351,7 @@ impl UserCatalog {
         serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}").into())
     }
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap()
+        serde_json::to_string_pretty(self).expect("JSON of plain data")
     }
     /// ファイルから読む。`.gz` は展開して読み、`x.json` が無くて `x.json.gz` があればそれを読む（[`read_text`]）
     pub fn load(path: &Path) -> lensbench_core::Result<UserCatalog> {

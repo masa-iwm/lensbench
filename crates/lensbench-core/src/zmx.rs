@@ -677,7 +677,7 @@ fn config_table(
                 if !varies {
                     continue;
                 }
-                let p = Param::new(surf.unwrap(), kind);
+                let p = Param::new(surf.expect("surface number checked above"), kind);
                 // 書いていない構成の値は今の系の値
                 let now = s.get_param(p).map_err(|e| e.to_string())?;
                 out.push(ConfigRow {
@@ -2063,7 +2063,7 @@ fn freeform_surface(
         }));
         d.grid_file = s.fimp.clone().unwrap_or_default();
     } else {
-        let z = d.zern.as_mut().map(Arc::make_mut).unwrap();
+        let z = d.zern.as_mut().map(Arc::make_mut).expect("Zernike data");
         z.dx = p(9);
         z.dy = p(10);
     }

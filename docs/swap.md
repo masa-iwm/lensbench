@@ -3,7 +3,8 @@
 - `swap`: `--spec` の JSON の `slots`（差し替える玉のブロックの `block` id と、候補 `parts` の並びか `filter`
   （`vendor`・`efl`・`diameter` の範囲）、`flip` で向きも両方）の候補で差し替えた組をすべて並列に回し、組ごとに `vars` を
   最適化して、評価関数の小さい順に `--top` 個を出す。`vars` は系のパラメータの書き方に加えて、id のある空気のブロックを
-  `id.t` で指せる（その空気が入る面の厚さ）。`efl` で系の焦点距離の目標も足せる（像だけの値は `image_merit`）。
+  `id.t` で指せる（その空気が入る面の厚さ）。範囲は `"d1.t=0.5:40"`（片側は空でよい）か、オブジェクトの形
+  `{"name": "d1.t", "min": 0.5, "max": 40}`（`min`・`max` は省ける。`state_vars` も同じ）。`efl` で系の焦点距離の目標も足せる（像だけの値は `image_merit`）。
   ほかに `merit`・`reference`・`rings`・`iters`・`state`・`max_count`（組の数の上限、既定 100000）。
 - `terms` で評価関数に項を足せる（`optimize --term` と同じ JSON の配列。焦点距離の下限 `{"type": "paraxial", "q": "efl", "min": 351}` など）。
   `starts` は出発点の並び（`[{"d12.t": 20}, {"d12.t": 150}]` のように変数の名前 → 初期値。書かない変数はプロジェクトの値）で、組ごとに

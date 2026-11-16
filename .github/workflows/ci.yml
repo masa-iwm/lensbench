@@ -300,6 +300,8 @@ jobs:
       - run: maturin build --locked --profile "$P" -m crates/lensbench-py/Cargo.toml -o dist
       - run: python -m pip install --no-index --find-links dist lensbench
       - run: python -m pytest -q crates/lensbench-py/tests
+      # serve のクライアントが wheel に入っているか（CLI-22）
+      - run: cd "$RUNNER_TEMP" && python -c "import lensbench_client"
       # 型スタブ: 実行時のモジュールとの照合と、例題の型検査
       - run: python -m mypy.stubtest lensbench --allowlist crates/lensbench-py/stubtest-allowlist.txt
       - run: python -m mypy --strict examples/python

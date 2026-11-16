@@ -153,10 +153,12 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             Ok(self.take(1)?[0])
         }
         fn u16(&mut self) -> Result<u16> {
-            Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
+            Ok(u16::from_le_bytes(
+                self.take(2)?.try_into().expect("2 bytes"),
+            ))
         }
         fn u32(&mut self) -> Result<usize> {
-            Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()) as usize)
+            Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("4 bytes")) as usize)
         }
         fn f64s(&mut self, n: usize) -> Result<Vec<f64>> {
             let (c, _) = self.take(8 * n)?.as_chunks::<8>();

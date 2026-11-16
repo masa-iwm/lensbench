@@ -93,7 +93,7 @@ fn real(v: f64) -> String {
         return "0.".into();
     }
     let s = format!("{:.15E}", v);
-    let (m, e) = s.split_once('E').unwrap();
+    let (m, e) = s.split_once('E').expect("formatted with {:E}");
     let m = m.trim_end_matches('0');
     if e == "0" {
         m.to_string()
@@ -212,7 +212,7 @@ fn interpolate_n(q: &[Vec<f64>]) -> (Vec<Vec<f64>>, Vec<f64>) {
     for c in 0..m {
         let piv = (c..m)
             .max_by(|&x, &y| a[x][c].abs().total_cmp(&a[y][c].abs()))
-            .unwrap();
+            .expect("non-empty range");
         a.swap(c, piv);
         b.swap(c, piv);
         for r in c + 1..m {

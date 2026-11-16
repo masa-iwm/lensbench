@@ -851,7 +851,7 @@ impl System {
             Kind::Dn => d.dn,
             Kind::Disp => d.disp,
             k => {
-                let i = k.tilt_index().unwrap();
+                let i = k.tilt_index().expect("tilt kind");
                 if d.is_coord_break() {
                     d.cb[i]
                 } else {
@@ -1128,7 +1128,7 @@ impl System {
                     d.asph[i] = v;
                 }
                 Kind::Zern(n) => {
-                    let z = std::sync::Arc::make_mut(d.zern.as_mut().unwrap());
+                    let z = std::sync::Arc::make_mut(d.zern.as_mut().expect("Zernike data"));
                     let i = n as usize - 1;
                     if z.coef.len() <= i {
                         z.coef.resize(i + 1, 0.0);
@@ -1146,7 +1146,7 @@ impl System {
                     index = true;
                 }
                 k => {
-                    let i = k.tilt_index().unwrap();
+                    let i = k.tilt_index().expect("tilt kind");
                     if d.is_coord_break() {
                         d.cb[i] = v;
                     } else {
@@ -1161,7 +1161,7 @@ impl System {
                                 d.after = After::Reverse;
                             }
                         }
-                        d.before.as_mut().unwrap().d[i] = v;
+                        d.before.as_mut().expect("coordinate break created above").d[i] = v;
                     }
                 }
             }
@@ -1754,7 +1754,7 @@ impl System {
             }
             _ => Some(self.paraxial_curv(q)?),
         };
-        let v = closed.unwrap();
+        let v = closed.expect("closed form exists");
         if !v.is_finite() {
             invalid!("surface {k}: solve {:?} can't be solved ({v})", q.kind);
         }

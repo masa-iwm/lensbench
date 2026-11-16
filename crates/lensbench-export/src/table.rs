@@ -93,13 +93,13 @@ impl Table {
         let mut z = Zip::default();
         for (k, v) in &self.meta {
             let c = match v {
-                Value::Number(n) if n.is_i64() => {
-                    Some(npy(&Col::I64(vec![n.as_i64().unwrap()]), true))
-                }
-                Value::Number(n) => Some(npy(&Col::F64(vec![n.as_f64().unwrap()]), true)),
+                Value::Number(n) => Some(match n.as_i64() {
+                    Some(i) => npy(&Col::I64(vec![i]), true),
+                    None => npy(&Col::F64(vec![n.as_f64().unwrap_or(f64::NAN)]), true),
+                }),
                 Value::String(s) => Some(npy(&Col::Str(vec![s.clone()]), true)),
                 Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_number) => Some(npy(
-                    &Col::F64(a.iter().map(|x| x.as_f64().unwrap()).collect()),
+                    &Col::F64(a.iter().map(|x| x.as_f64().unwrap_or(f64::NAN)).collect()),
                     false,
                 )),
                 _ => None,
@@ -330,11 +330,8 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
     if let Some(&i) = fields.iter().find(|&&i| i >= nf) {
         return Err(Error::Invalid(format!("no field {} (1 to {nf})", i + 1)));
     }
-    if let Some(&i) = waves.iter().find(|&&i| i >= nw) {
-        return Err(Error::Invalid(format!(
-            "no wavelength {} (1 to {nw})",
-            i + 1
-        )));
+    for &i in &waves {
+        lensbench_core::waves::index(i + 1, nw)?;
     }
     let img = s.image();
     let surfs: Vec<usize> = match &o.surfaces {
@@ -462,14 +459,13 @@ pub fn from_json(v: &Value) -> Table {
             .iter()
             .map(|r| r.iter().find(|(k, _)| *k == n).map(|x| &x.1))
             .collect();
-        let all_int = vals
-            .iter()
-            .all(|x| matches!(x, Some(Value::Number(q)) if q.is_i64()));
+        // 整数の列は取り出しと同じ式で判定する（XCT-21）
+        let ints: Option<Vec<i64>> = vals.iter().map(|x| x.and_then(Value::as_i64)).collect();
         let all_num = vals
             .iter()
             .all(|x| matches!(x, None | Some(Value::Number(_)) | Some(Value::Null)));
-        let col = if all_int {
-            Col::I64(vals.iter().map(|x| x.unwrap().as_i64().unwrap()).collect())
+        let col = if let Some(ints) = ints {
+            Col::I64(ints)
         } else if all_num {
             Col::F64(
                 vals.iter()

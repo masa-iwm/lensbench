@@ -23,12 +23,12 @@ use crate::{TanSag, Waves};
 #[derive(Debug, Clone)]
 pub struct Psf {
     /// 強度（行優先、行 = y）。収差のない同じ瞳（けられ込み）の多色 PSF の中心の値を 1 とする（ピークはストレール比）。
-    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、主光線に垂直な面の e1・e2 に沿う）は `i.x()[m] = (m − M/2)·delta.0`。
-    /// アフォーカル像空間では向きの角度 [System::afocal_unit]（atan(l/n)・atan(m/n) の主光線との差、center・delta も同じ）
+    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、主光線に垂直な面の e1・e2 に沿う）は `i.x()[m] = (m − M/2)·pixel.0`。
+    /// アフォーカル像空間では向きの角度 [System::afocal_unit]（atan(l/n)・atan(m/n) の主光線との差、center・pixel も同じ）
     pub i: Grid2,
     /// 主波長の主光線の像点（像面の局所座標）
     pub center: (f64, f64),
-    pub delta: (f64, f64),
+    pub pixel: (f64, f64),
     /// 格子の x・y の向き e1・e2（像空間の単位ベクトル、主波長の主光線に垂直）。像面上の点は
     /// v = x e1 + y e2 を主光線の向き k = e1 × e2 に沿って像面へ移した v − k v_z / k_z（アフォーカル像空間では使わない）
     pub axes: [[f64; 3]; 2],
@@ -127,7 +127,7 @@ pub struct PsfOpts {
     /// 像の格子の間隔 [レンズ単位]（None で 1 / (2 × 遮断周波数)、x・y 別、使う波長のうち最も短い波長で。
     /// 単色なら OpticStudio の FFT PSF で像の格子 = 瞳の格子 × 2 のときと同じ）。
     /// 像の格子の幅は瞳の標本の周期を超えられない（間隔が既定なら image ≤ 2 pupil）
-    pub delta: Option<f64>,
+    pub pixel: Option<f64>,
 }
 
 impl Default for PsfOpts {
@@ -135,7 +135,7 @@ impl Default for PsfOpts {
         PsfOpts {
             pupil: None,
             image: 128,
-            delta: None,
+            pixel: None,
         }
     }
 }
@@ -284,14 +284,14 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         cut.0 = cut.0.max(2.0 * (ga / lam).abs());
         cut.1 = cut.1.max(2.0 * (gb / lam).abs());
     }
-    let delta = match o.delta {
+    let pixel = match o.pixel {
         Some(d) if d > 0.0 => (d, d),
         Some(d) => invalid!("PSF image grid spacing {d}"),
         None => (0.5 / cut.0, 0.5 / cut.1),
     };
     let half = (ni / 2) as f64;
-    let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.0).collect();
-    let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.1).collect();
+    let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * pixel.0).collect();
+    let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * pixel.1).collect();
     let np = match o.pupil {
         Some(n) => n,
         None => {
@@ -301,7 +301,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
                 .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
                 .collect();
             // 像の格子の幅が瞳の標本の周期を超えない大きさ（ni·Δ·|a|·h ≤ 1、h = 2/n）
-            let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
+            let need = (ni as f64 * (pixel.0 * cut.0).max(pixel.1 * cut.1)).ceil() as usize;
             auto_pupil(s, field, &ws, need, PSF_PUPIL_CAP)?
         }
     };
@@ -338,8 +338,8 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         let (a, b) = (ga / lam, gb / lam);
         // 瞳の標本の間隔 h で像の DFT は周期 1 / (a h) で繰り返すので、像の格子がそれを超えると重なる
         // （OpticStudio の FFT PSF で像の格子 = 瞳の格子 × 2 のときがちょうど 1 周期）
-        if ni as f64 * delta.0 * a.abs() * h > 1.0 + 1e-9
-            || ni as f64 * delta.1 * b.abs() * h > 1.0 + 1e-9
+        if ni as f64 * pixel.0 * a.abs() * h > 1.0 + 1e-9
+            || ni as f64 * pixel.1 * b.abs() * h > 1.0 + 1e-9
         {
             invalid!(
                 "PSF: the image grid is wider than the period of the pupil sampling (wavelength {}; add pupil grid points or reduce the image grid or spacing)",
@@ -427,7 +427,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
             }
         }
         // 格子に入った光量（格子の点の強度 × 1 点の面積）の全光量に対する割合
-        encl += k * iw.iter().flatten().sum::<f64>() * delta.0 * delta.1 / e_w;
+        encl += k * iw.iter().flatten().sum::<f64>() * pixel.0 * pixel.1 / e_w;
         norm += k * dl;
         wsum += k;
     }
@@ -444,7 +444,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     Ok(Psf {
         i: Grid2::from_rows(xs, ys, tot),
         center,
-        delta,
+        pixel,
         axes: [e1, e2],
         peak,
         pupil: np,

@@ -485,6 +485,32 @@ fn run_to_file_and_resume() {
 }
 
 #[test]
+fn var_object_form_matches_short_form() {
+    use lensbench_design::swap::VarSpec;
+    let a = SwapSpec::from_json(
+        r#"{"slots": [], "vars": ["gap.t=0.5:20", "bfl.t=:200", "x.t"], "state_vars": [{"name": "G2.shift", "min": -10}]}"#,
+    )
+    .unwrap();
+    let b = SwapSpec::from_json(
+        r#"{"slots": [], "vars": [{"name": "gap.t", "min": 0.5, "max": 20}, {"name": "bfl.t", "max": 200}, {"name": "x.t"}], "state_vars": ["G2.shift=-10:"]}"#,
+    )
+    .unwrap();
+    for (x, y) in a
+        .vars
+        .iter()
+        .zip(&b.vars)
+        .chain(a.state_vars.iter().zip(&b.state_vars))
+    {
+        assert_eq!(x.parts().unwrap(), y.parts().unwrap());
+    }
+    // 短い形はそのまま文字で書き戻す（結果のファイルの頭が前と同じ）
+    assert_eq!(serde_json::to_value(&a.vars).unwrap()[0], "gap.t=0.5:20");
+    assert_eq!(VarSpec::from("d1.t").name(), "d1.t");
+    assert!(SwapSpec::from_json(r#"{"slots": [], "vars": [{"min": 1}]}"#).is_err());
+    assert!(SwapSpec::from_json(r#"{"slots": [], "vars": [{"name": "x.t", "mn": 1}]}"#).is_err());
+}
+
+#[test]
 fn errors() {
     let (p, dir) = project();
     let c = cat();

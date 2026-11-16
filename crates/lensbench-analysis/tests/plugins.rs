@@ -144,7 +144,7 @@ fn mtf_and_psf_match_core() {
     let opts = PsfOpts {
         pupil: Some(32),
         image: 64,
-        delta: None,
+        pixel: None,
     };
     let r = psf::psf(&s, FieldSel::Index(0), Waves::All, opts).unwrap();
     assert_eq!(o["i"].shape, vec![64, 64]);
@@ -211,7 +211,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
     let ho = lensbench_analysis::huygens::HuygensOpts {
         pupil: Some(16),
         image: 16,
-        delta: None,
+        pixel: None,
     };
     let o = run("huygens_psf", cfg.clone(), &s, 2.0);
     let r = lensbench_analysis::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho)

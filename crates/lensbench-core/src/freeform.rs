@@ -194,7 +194,7 @@ impl ZernSag {
                 Some(k) => &mut g[k].2,
                 None => {
                     g.push((m, cs, Vec::new()));
-                    &mut g.last_mut().unwrap().2
+                    &mut g.last_mut().expect("row pushed above").2
                 }
             };
             if e.len() <= k {

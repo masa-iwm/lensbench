@@ -82,7 +82,7 @@ fn huygens_psf_matches_opticstudio() {
         let o = HuygensOpts {
             pupil: Some(pupil as usize),
             image: nx,
-            delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
+            pixel: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };
         let p = huygens_psf(
             &s,
@@ -126,7 +126,7 @@ fn huygens_mtf_matches_opticstudio() {
         let o = HuygensOpts {
             pupil: Some(it["pupil"].as_u64().unwrap() as usize),
             image: it["image"].as_u64().unwrap() as usize,
-            delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
+            pixel: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };
         let fs = nums(&it["freqs"]);
         let m = huygens_mtf(

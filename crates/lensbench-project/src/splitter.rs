@@ -558,7 +558,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             snap(ang[1], 1e-10),
             snap(ang[2], 1e-10),
         ];
-        self.sf.last_mut().unwrap().t += snap(dv[2], 1e-12);
+        self.sf.last_mut().expect("non-empty surfaces").t += snap(dv[2], 1e-12);
         if d.iter().any(|&v| v != 0.0) {
             self.put(crate::cb(d, 0, 0.0));
         }
@@ -695,7 +695,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
         if spec.has_branches() {
             self.traverse_branch(&key, out)?;
         } else {
-            self.split.info.get_mut(&key).unwrap().fwd = out;
+            self.split
+                .info
+                .get_mut(&key)
+                .expect("entry inserted above")
+                .fwd = out;
         }
         Ok(())
     }

@@ -427,12 +427,7 @@ fn rms_items<'py>(
 }
 
 pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
-    let n = s.wavelengths.len();
-    if w == 0 || w > n {
-        let e = format!("no wavelength {w} (1 to {n})");
-        return Err(index_err(e));
-    }
-    Ok(w - 1)
+    lensbench_core::waves::index(w, s.wavelengths.len()).map_err(|e| index_err(String::from(e)))
 }
 
 /// A list of changes: {"3.t": 1.0, ...} or [("3.t", 1.0), ...]
@@ -2583,10 +2578,10 @@ impl PySystem {
     /// Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
     /// of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates on the plane perpendicular to the chief ray, from the image point center
     /// of the chief ray at the primary wavelength [lens units] (as OpticStudio's FFT PSF; directions axes = [e1, e2], unit vectors in image space).
-    /// pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, delta the spacing
+    /// pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, pixel the spacing
     /// of the image grid (1 / (2 × cutoff frequency) if omitted). Also returns pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
     /// enclosed (fraction of the light inside the image grid) and warnings (notes such as undersampling)
-    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn psf<'py>(
         &self,
@@ -2595,7 +2590,7 @@ impl PySystem {
         wave: Option<usize>,
         pupil: Option<usize>,
         image: usize,
-        delta: Option<f64>,
+        pixel: Option<f64>,
         threads: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
@@ -2604,7 +2599,7 @@ impl PySystem {
         let o = psf::PsfOpts {
             pupil,
             image,
-            delta,
+            pixel,
         };
         let p = py
             .detach(|| with_threads(threads, || psf::psf(&s, f, w, o)))
@@ -2615,7 +2610,7 @@ impl PySystem {
         d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
         d.set_item("center", p.center)?;
         d.set_item("axes", p.axes)?;
-        d.set_item("delta", p.delta)?;
+        d.set_item("pixel", p.pixel)?;
         d.set_item("peak", p.peak)?;
         d.set_item("pupil", p.pupil)?;
         d.set_item("phase_step", p.phase_step)?;
@@ -2650,7 +2645,7 @@ impl PySystem {
 
     /// Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
     /// The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
-    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_psf<'py>(
         &self,
@@ -2659,7 +2654,7 @@ impl PySystem {
         wave: Option<usize>,
         pupil: Option<usize>,
         image: usize,
-        delta: Option<f64>,
+        pixel: Option<f64>,
         threads: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
@@ -2668,7 +2663,7 @@ impl PySystem {
         let o = huygens::HuygensOpts {
             pupil,
             image,
-            delta,
+            pixel,
         };
         let p = py
             .detach(|| with_threads(threads, || huygens::huygens_psf(&s, f, w, o)))
@@ -2679,7 +2674,7 @@ impl PySystem {
         d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
         d.set_item("center", p.center)?;
         d.set_item("axes", p.axes)?;
-        d.set_item("delta", p.delta)?;
+        d.set_item("pixel", p.pixel)?;
         d.set_item("peak", p.peak)?;
         d.set_item("pupil", p.pupil)?;
         d.set_item("phase_step", p.phase_step)?;
@@ -2689,7 +2684,7 @@ impl PySystem {
     }
 
     /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf
-    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
         &self,
@@ -2699,7 +2694,7 @@ impl PySystem {
         wave: Option<usize>,
         pupil: Option<usize>,
         image: usize,
-        delta: Option<f64>,
+        pixel: Option<f64>,
         threads: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
@@ -2709,7 +2704,7 @@ impl PySystem {
         let o = huygens::HuygensOpts {
             pupil,
             image,
-            delta,
+            pixel,
         };
         let m = py
             .detach(|| with_threads(threads, || huygens::huygens_mtf(&s, f, w, o, &fs)))

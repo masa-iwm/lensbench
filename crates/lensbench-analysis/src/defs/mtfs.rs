@@ -437,7 +437,7 @@ pub struct HuygensMtfParams {
     #[schemars(extend("x-min" = 1))]
     pub image: usize,
     /// Image grid spacing [mm] (1 / (2 × cutoff) if omitted)
-    pub delta: Option<f64>,
+    pub pixel: Option<f64>,
 }
 
 impl Default for HuygensMtfParams {
@@ -450,7 +450,7 @@ impl Default for HuygensMtfParams {
             freq_steps: 20,
             pupil: None,
             image: 128,
-            delta: None,
+            pixel: None,
         }
     }
 }
@@ -473,7 +473,7 @@ impl Analysis for HuygensMtf {
         let o = HuygensOpts {
             pupil: p.pupil,
             image: p.image,
-            delta: p.delta,
+            pixel: p.pixel,
         };
         let mut v = Vec::new();
         for i in fields(s, p.field)? {

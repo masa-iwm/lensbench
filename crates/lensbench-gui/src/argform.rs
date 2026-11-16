@@ -252,7 +252,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "huygens") => "Huygens PSF",
         (_, "pupil") => "Pupil grid",
         (_, "image") => "Image grid",
-        (_, "delta") => "Image grid spacing",
+        (_, "pixel") => "Image grid spacing",
         (_, "diff_limit") => "Apply diffraction limit",
         (_, "beam1") => "Beam 1 (sample)",
         (_, "beam2") => "Beam 2 (reference)",

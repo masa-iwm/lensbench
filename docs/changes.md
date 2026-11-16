@@ -17,6 +17,12 @@
   `x()`・`y()`、`n()` はメソッド）、`PolGrid` の格子点の値（`nx`・`ny` はメソッド、値は `values()`）。POP の `Beam` は伝搬の作業用の
   形のまま（`u`・`x0`・`dx`）で、座標つきの格子は `Beam::grid()`・`irradiance_grid()`。プラグインの配列は `plugin::Array::grid` で作る。
   Python・CLI・serve の出力は同じ。
+- PSF・Huygens PSF・Huygens MTF の像の格子の間隔 `delta` を `pixel` に改名した（XCT-18。干渉縞の位相差 `delta` と同じ名前で別の意味だった）:
+  CLI の `--delta` は `--pixel`、Python の `psf()`・`huygens_psf()`・`huygens_mtf()` の引数・結果の鍵、プラグインの設定・出力、Rust の
+  `PsfOpts::pixel`・`Psf::pixel`、保存した設定（GUI・serve の JSON）の鍵。旧名 `delta` は残さない（誤り）。
+- 差し替え探索の `vars`・`state_vars` にオブジェクトの形 `{"name": "d1.t", "min": 0.5, "max": 40}` を足した（PRJ-30。文字の形も前どおり）。
+  Rust の `SwapSpec::vars` は `Vec<VarSpec>`（`"d1.t".into()` で作れる）。
+- 波長の番号の誤りはどの口でも「no wavelength 9 (1 to 3)」（XCT-18、`lensbench_core::waves::index`）。
 - Rust のモジュールの置き場所を変えた（XCT-04）: `lensbench_core::zmx_write` は新しいクレートの `lensbench_formats::zmx_write`、
   `lensbench_core::{ghost, interference, polgrid}` は `lensbench_analysis::{ghost, interference, polgrid}`。中身・Python・CLI は同じ。
 - カタログ・STEP のクレートを分けた（PRJ-05/06/21・XCT-11）: `lensbench_project::catalog_fill` は `lensbench_catalog::fill`、

@@ -38,7 +38,7 @@ pub struct HuygensOpts {
     /// 像の格子の一辺
     pub image: usize,
     /// 像の格子の間隔 [レンズ単位]（像面の上で。None で FFT PSF の既定と同じ 1 / (2 × 遮断周波数)、x・y 別）
-    pub delta: Option<f64>,
+    pub pixel: Option<f64>,
 }
 
 impl Default for HuygensOpts {
@@ -46,7 +46,7 @@ impl Default for HuygensOpts {
         HuygensOpts {
             pupil: None,
             image: 128,
-            delta: None,
+            pixel: None,
         }
     }
 }
@@ -175,14 +175,14 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         cut.0 = cut.0.max(2.0 * (ga / lam).abs());
         cut.1 = cut.1.max(2.0 * (gb / lam).abs());
     }
-    let delta = match o.delta {
+    let pixel = match o.pixel {
         Some(d) if d > 0.0 => (d, d),
         Some(d) => invalid!("Huygens PSF image grid spacing {d}"),
         None => (0.5 / cut.0, 0.5 / cut.1),
     };
     let half = (ni / 2) as f64;
-    let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.0).collect();
-    let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.1).collect();
+    let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * pixel.0).collect();
+    let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * pixel.1).collect();
     let (cx, cy) = (pc[0], pc[1]);
     // 像面の上の格子の点（局所座標、z は像面の矢高）。矢高が求まらない点（像面の形の式の外）は z が NaN で、
     // 強度も NaN（平面として計算しない。ANA-24）
@@ -209,7 +209,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
                 .copied()
                 .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
                 .collect();
-            let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
+            let need = (ni as f64 * (pixel.0 * cut.0).max(pixel.1 * cut.1)).ceil() as usize;
             lensbench_core::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
         }
     };
@@ -239,8 +239,8 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         if !(kw > 0.0) {
             continue;
         }
-        if ni as f64 * delta.0 * a.abs() * h > 1.0 + 1e-9
-            || ni as f64 * delta.1 * b.abs() * h > 1.0 + 1e-9
+        if ni as f64 * pixel.0 * a.abs() * h > 1.0 + 1e-9
+            || ni as f64 * pixel.1 * b.abs() * h > 1.0 + 1e-9
         {
             invalid!(
                 "Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)",
@@ -375,7 +375,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         // 格子に入った光量の割合: 全光量は FFT PSF と同じく Σf / |a b h²|（主光線に垂直な面で）。像面の上の
         // 1 点の面積は垂直な面では |k_z| 倍
         let isum: f64 = iw.iter().filter(|v| v.is_finite()).sum();
-        encl += kw * isum * delta.0 * delta.1 * kc[2].abs() * (a * b * h * h).abs() / sa;
+        encl += kw * isum * pixel.0 * pixel.1 * kc[2].abs() * (a * b * h * h).abs() / sa;
         nrm += kw * g;
         wsum += kw;
     }
@@ -398,7 +398,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     Ok(Psf {
         i: lensbench_core::grid::Grid2::from_rows(xs, ys, i),
         center: (cx, cy),
-        delta,
+        pixel,
         axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         peak,
         pupil: np,
@@ -477,8 +477,8 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
             .collect()
     };
     TanSag {
-        tan: interp(&my, p.i.y(), p.delta.1),
-        sag: interp(&mx, p.i.x(), p.delta.0),
+        tan: interp(&my, p.i.y(), p.pixel.1),
+        sag: interp(&mx, p.i.x(), p.pixel.0),
     }
 }
 

@@ -91,7 +91,6 @@ tolerance set {n} (commercial, precision, high, none)	公差の組 {n}（commerc
 
 # export
 no field {} (1 to {nf})	視野 {} はありません（1〜{nf}）
-no wavelength {} (1 to {nw})	波長 {} はありません（1〜{nw}）
 an object at infinity can't be drawn from the object surface (draw from surface 1)	無限遠の物体は物体面から描けません（面 1 から）
 no configurations to overlay	重ねる構成がありません
 surface {j} can't be written (1 to {img})	面 {j} は書けません（1〜{img}）
@@ -201,7 +200,6 @@ Fringe has at most 37 terms	Fringe は 37 項まで
 field is not used with vs field	vs field では field は使いません
 wave is not used with vs wavelength	vs wavelength では wave は使いません
 no field {i} (1 to {})	視野 {i} はありません（1〜{}）
-no wavelength {i} (1 to {})	波長 {i} はありません（1〜{}）
 max_freq must be positive ({top})	max_freq は正の数（{top}）
 freq_steps must be 1 or more	freq_steps は 1 以上
 freqs and max_freq can't be used together	freqs と max_freq は一緒に使えません
@@ -603,7 +601,6 @@ dOPL/dp of rays through surface {j} ({:?})	面 {j}（{:?}）を通る光線の d
 fiber coupling needs a finite object	ファイバ結合は有限物体の系だけ
 grid must be an odd number 3 or more	grid は 3 以上の奇数
 NA must be positive	NA は正
-no wavelength {w}	波長 {w} がありません
 na_max must be between 0 and 1	na_max は 0 と 1 の間
 ghost: the first reflecting surface {a} is after the second one {b} (b < a)	ゴースト: 先に反射する面 {a} は後で反射する面 {b} より後ろ（b < a）
 ghost: a system with a GRIN medium (surface {j})	ゴースト: GRIN の媒質（面 {j}）を含む系
@@ -1200,7 +1197,6 @@ the list depths don't match	並びの深さがそろいません
 the list lengths don't match	並びの長さがそろいません
 not a list of numbers ({v})	数の並びではありません（{v}）
 term {}: {e}	項 {}: {e}
-no wavelength {w} (1 to {})	波長 {w} はありません（1〜{}）
 {k} must be a number ({v})	{k} は数（{v}）
 a term is an object {"type": ...} ({v})	項は {"type": ...} のオブジェクト（{v}）
 exactly one of target, min and max	target・min・max はどれか 1 つ
@@ -1490,7 +1486,6 @@ lensbench run: lensbench is not installed in this Python ({py}). Install the whe
 lensbench run: exit code {code} ({:.2} s)	lensbench run: 終了コード {code}（{:.2} s）
 user term {}: {e}	ユーザーの項 {}: {e}
 lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}	lensbench: {done}/{total} ({pc:.1}%) 経過 {el} 残り {eta}
-no wavelength {w} (1 to {n})	波長 {w} はありません（1〜{n}）
 vignetting factors are not used (ignored in a field sweep, as in OpticStudio)	ケラレ係数は使いません（視野の掃引では OpticStudio と同じく無視）
 removed the pickup of surface {} {:?} (from surface {} {:?})	面 {} の {:?} のピックアップ（元 面 {} の {:?}）を外しました
 removed the curvature solve of surface {} ({:?})	面 {} の曲率のソルブ（{:?}）を外しました
@@ -2048,3 +2043,4 @@ optimize: {e}	optimize: {e}
 zoom: {e}	zoom: {e}
 {what}: {e}	{what}: {e}
 no analysis {name} (lensbench.analyses() lists the names)	解析 {name} はありません（名前は lensbench.analyses() で見られます）
+no wavelength {n} (1 to {nw})	波長 {n} はありません（1〜{nw}）

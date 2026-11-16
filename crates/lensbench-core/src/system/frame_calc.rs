@@ -85,7 +85,7 @@ pub fn frames(s: &System) -> Frames {
         crate::units::apply_frames(&s.units, &raw.entry, &mut out);
     }
     let g = if glrs < out.len() && out[glrs].is_some() {
-        out[glrs].unwrap()
+        out[glrs].expect("frame computed above")
     } else {
         // 面 1 が無視（IGNR）なら、その次の有効な面を基準にする
         out.iter()

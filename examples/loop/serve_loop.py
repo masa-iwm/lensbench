@@ -15,7 +15,8 @@ import sys
 import time
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-sys.path.insert(0, os.path.join(ROOT, "clients", "python"))
+# pip で入れた lensbench の wheel に同梱。リポジトリから直に走らせるときは元のファイル
+sys.path.insert(0, os.path.join(ROOT, "crates", "lensbench-py"))
 
 from lensbench_client import Client, timed  # noqa: E402
 

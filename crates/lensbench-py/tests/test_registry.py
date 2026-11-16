@@ -18,9 +18,9 @@ def system():
 
 # Python の関数 → (登録簿の解析か "optimize"・"zoom", {Python の引数: 設定の鍵})
 SAME_DEFAULTS = {
-    lb.System.psf: ("psf", {"pupil": "pupil", "image": "image", "delta": "delta"}),
-    lb.System.huygens_psf: ("psf", {"pupil": "pupil", "image": "image", "delta": "delta"}),
-    lb.System.huygens_mtf: ("huygens-mtf", {"pupil": "pupil", "image": "image", "delta": "delta"}),
+    lb.System.psf: ("psf", {"pupil": "pupil", "image": "image", "pixel": "pixel"}),
+    lb.System.huygens_psf: ("psf", {"pupil": "pupil", "image": "image", "pixel": "pixel"}),
+    lb.System.huygens_mtf: ("huygens-mtf", {"pupil": "pupil", "image": "image", "pixel": "pixel"}),
     lb.System.geometric_mtf: ("geo-mtf", {"n": "n", "diff_limit": "diff_limit"}),
     lb.System.mtf: ("mtf", {"n": "n", "method": "method", "each_wave": "each_wave"}),
     lb.System.through_focus_mtf: ("mtf-focus", {"n": "n"}),

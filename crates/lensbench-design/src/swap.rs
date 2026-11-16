@@ -78,9 +78,9 @@ pub struct Slot {
 #[serde(deny_unknown_fields)]
 pub struct SwapSpec {
     pub slots: Vec<Slot>,
-    /// 組ごとに最適化する変数（"d1.t"・"d1.t=0.5:40"・"G2.shift"）
+    /// 組ごとに最適化する変数（"d1.t"・"d1.t=0.5:40"・"G2.shift"、または `{"name": "d1.t", "min": 0.5, "max": 40}`）
     #[serde(default)]
-    pub vars: Vec<String>,
+    pub vars: Vec<VarSpec>,
     /// 評価関数
     #[serde(default)]
     pub merit: SwapMerit,
@@ -117,7 +117,7 @@ pub struct SwapSpec {
     /// 状態ごとに別の値で解く変数（`states` のとき。群の移動 `G2.shift` など、書き方は `vars` と同じ）。
     /// `vars` は全状態で共通の 1 つの値
     #[serde(default)]
-    pub state_vars: Vec<String>,
+    pub state_vars: Vec<VarSpec>,
     /// 有効径の条件: 差し替える玉の各面で、各視野の瞳の縁の実光線（主波長、瞳の上下左右）が面の半径
     /// （カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）
     #[serde(default)]
@@ -205,6 +205,66 @@ impl SwapJac {
 
 /// 変数の範囲（下限, 上限）
 type Range = (f64, f64);
+
+/// 差し替え探索の変数: 文字の短い形 "d1.t"・"d1.t=下限:上限"（片側は空でよい）か、オブジェクトの形
+/// `{"name": "d1.t", "min": 0.5, "max": 40}`（min・max は省ける）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum VarSpec {
+    Short(String),
+    Full(VarRange),
+}
+
+/// 変数のオブジェクトの形（[`VarSpec::Full`]）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VarRange {
+    pub name: String,
+    /// 下限（省けば無し）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    /// 上限（省けば無し）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+}
+
+impl From<&str> for VarSpec {
+    fn from(s: &str) -> Self {
+        VarSpec::Short(s.to_string())
+    }
+}
+
+impl From<String> for VarSpec {
+    fn from(s: String) -> Self {
+        VarSpec::Short(s)
+    }
+}
+
+impl VarSpec {
+    /// (名前, 範囲)。範囲を書かなければ None
+    pub fn parts(&self) -> Result<(&str, Option<Range>), String> {
+        match self {
+            VarSpec::Short(s) => parse_var(s),
+            VarSpec::Full(VarRange { name, min, max }) => {
+                let range = (min.is_some() || max.is_some()).then(|| {
+                    (
+                        min.unwrap_or(f64::NEG_INFINITY),
+                        max.unwrap_or(f64::INFINITY),
+                    )
+                });
+                Ok((name.trim(), range))
+            }
+        }
+    }
+
+    /// 名前（書き方の誤りがあれば書いたまま）
+    pub fn name(&self) -> &str {
+        match self {
+            VarSpec::Short(s) => parse_var(s).map_or(s.trim(), |x| x.0),
+            VarSpec::Full(VarRange { name, .. }) => name.trim(),
+        }
+    }
+}
 
 /// 変数の書き方 "d1.t" か "d1.t=下限:上限"（片側は空でよい）を (名前, 範囲) に分ける
 fn parse_var(v: &str) -> Result<(&str, Option<Range>), String> {
@@ -423,7 +483,7 @@ impl<'a> SwapSearch<'a> {
         }
         // 変数の書き方の誤りは組ごとの失敗にせず、始める前に弾く
         for v in spec.vars.iter().chain(&spec.state_vars) {
-            parse_var(v)?;
+            v.parts()?;
         }
         if spec.states.is_empty() && !spec.state_vars.is_empty() {
             return Err("state_vars goes with states".into());
@@ -652,13 +712,13 @@ impl<'a> SwapSearch<'a> {
         let mut pr = Problem::new(systems.clone());
         pr.jac = self.spec.jac.core();
         // 共通の変数（全状態）と、状態ごとの変数（状態 k だけに効く）
-        let mut specs: Vec<(&String, Option<usize>)> =
+        let mut specs: Vec<(&VarSpec, Option<usize>)> =
             self.spec.vars.iter().map(|v| (v, None)).collect();
         for k in 0..self.spec.states.len() {
             specs.extend(self.spec.state_vars.iter().map(|v| (v, Some(k))));
         }
         for (v, cfg) in specs {
-            let (spec, range) = parse_var(v)?;
+            let (spec, range) = v.parts()?;
             let c = cfg.unwrap_or(0);
             let param = var_param(&systems[c], &gapss[c], spec)?;
             if cfg.is_none() {
@@ -880,7 +940,7 @@ impl<'a> SwapSearch<'a> {
         };
         // 出発点ごとに最適化して、評価関数の最も小さい解を採る
         // pr.vars と同じ順の (名前, 状態の番号)
-        let vname = |v: &String| parse_var(v).map_or(v.trim(), |x| x.0).to_string();
+        let vname = |v: &VarSpec| v.name().to_string();
         let mut names: Vec<(String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (vname(v), None)).collect();
         for k in 0..self.spec.states.len() {

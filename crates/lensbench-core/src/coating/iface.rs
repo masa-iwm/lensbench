@@ -178,8 +178,13 @@ impl Coatings {
                 Kind::Measured {
                     key: key.to_string(),
                     r,
-                    max_deg: *m.angles_deg.last().unwrap(),
-                    cmax: m.angles_deg.last().unwrap().to_radians().cos(),
+                    max_deg: *m.angles_deg.last().expect("angles checked when reading"),
+                    cmax: m
+                        .angles_deg
+                        .last()
+                        .expect("angles checked when reading")
+                        .to_radians()
+                        .cos(),
                     sp: Box::new(sp),
                 }
             }
@@ -465,9 +470,9 @@ pub(in crate::coating) fn prepare_model(
                 v.push(beta_spline(name, &b2, &ys)?);
             }
         }
-        sp.push(v.try_into().unwrap());
+        sp.push(v.try_into().expect("9 splines"));
     }
-    let [s0, s1]: [[Spline; 9]; 2] = sp.try_into().unwrap();
+    let [s0, s1]: [[Spline; 9]; 2] = sp.try_into().expect("2 sides");
     Ok(Kind::Model {
         name: name.to_string(),
         layer_phase: phase == PhaseConvention::OpticStudio,
@@ -643,7 +648,7 @@ impl Iface {
                 // 範囲の検査: 横軸 −cosθ が表の範囲の中なら角度も中（外れそうなときだけ角度にして調べる）
                 if !(x >= xc[0] && x <= xc[xc.len() - 1]) {
                     let deg = c0.clamp(-1.0, 1.0).acos().to_degrees();
-                    let (lo, hi) = (angs[0], *angs.last().unwrap());
+                    let (lo, hi) = (angs[0], *angs.last().expect("angles checked when reading"));
                     if deg.is_finite() && (deg > hi + 1e-9 || deg < lo - 1e-9) {
                         let what = if out.is_some() {
                             "exit refraction angle"

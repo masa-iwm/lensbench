@@ -68,7 +68,7 @@ pub fn system_data(s: &System) -> SystemData {
     let mut z = vec![0.0];
     for d in &s.surfaces[1..s.image()] {
         if !d.ignore {
-            z.push(z.last().unwrap() + d.t);
+            z.push(z.last().expect("starts with one entry") + d.t);
         }
     }
     let totr =

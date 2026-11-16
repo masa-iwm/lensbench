@@ -384,7 +384,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                 zmax = zmax.max(t);
             }
         }
-        let last = *group.last().unwrap();
+        let last = *group.last().expect("non-empty group");
         for &b in &group[1..] {
             if (parts[b].rod_spacing - parts[a].rod_spacing).abs() > 1e-9 {
                 out.push(FitIssue {

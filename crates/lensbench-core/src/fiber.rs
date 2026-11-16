@@ -222,9 +222,7 @@ pub fn fiber_coupling(
     if !(o.na_source > 0.0 && o.na_receiver > 0.0) {
         invalid!("NA must be positive");
     }
-    if w >= s.wavelengths.len() {
-        invalid!("no wavelength {w}");
-    }
+    crate::waves::index(w + 1, s.wavelengths.len())?;
     let n0 = s.surfaces[0].n[w];
     let n1 = s.image_index(w);
     let smax = o.na_max.unwrap_or((3.0 * o.na_source / n0).min(0.999));
@@ -360,7 +358,7 @@ pub fn fiber_coupling(
             if !inside[q] {
                 continue;
             }
-            let js = jac(&rl, &rm, &all, i, j).unwrap();
+            let js = jac(&rl, &rm, &all, i, j).expect("grid points inside");
             let a_s = (-(rl[q] * rl[q] + rm[q] * rm[q]) / (o.na_source * o.na_source)).exp();
             den += a_s * a_s * js;
             if !ok0[q] {

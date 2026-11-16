@@ -68,7 +68,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
     "_PsfResult": (
         "PSF (psf, huygens_psf). i is [y][x]; intensity is 1 at the center for the same pupil without aberrations",
         {"x": F64, "y": F64, "i": F64, "center": "tuple[float, float]", "axes": "list[list[float]]",
-         "delta": "tuple[float, float]", "peak": "float", "pupil": "int", "phase_step": "float",
+         "pixel": "tuple[float, float]", "peak": "float", "pupil": "int", "phase_step": "float",
          "enclosed": "float", "warnings": "list[str]"},
         {},
     ),

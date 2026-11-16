@@ -78,7 +78,10 @@ impl CoatingFile {
                             }
                             let k = if t.len() > 2 { num(t[2], name)? } else { 0.0 };
                             let row = [num(t[0], name)?, num(t[1], name)?, k];
-                            f.mate.get_mut(name.as_str()).unwrap().push(row);
+                            f.mate
+                                .get_mut(name.as_str())
+                                .expect("table created above")
+                                .push(row);
                         }
                         Cur::Coat(name) => {
                             if t.len() < 2 {
@@ -94,13 +97,17 @@ impl CoatingFile {
                                 d: num(t[1], name)?,
                                 absolute: flag == 1,
                             };
-                            f.coat.get_mut(name.as_str()).unwrap().push(l);
+                            f.coat
+                                .get_mut(name.as_str())
+                                .expect("table created above")
+                                .push(l);
                         }
                         Cur::Table(name, ang) => {
                             match t[0] {
                                 "ANGL" if t.len() >= 2 => {
                                     let a = num(t[1], name)?;
-                                    let v = tables.get_mut(name.as_str()).unwrap();
+                                    let v =
+                                        tables.get_mut(name.as_str()).expect("table created above");
                                     v.retain(|(b, _)| *b != a);
                                     v.push((a, Vec::new()));
                                     *ang = Some(a);
@@ -117,8 +124,13 @@ impl CoatingFile {
                                     for i in 0..(t.len() - 1).min(9) {
                                         row[i] = num(t[i + 1], name)?;
                                     }
-                                    let v = tables.get_mut(name.as_str()).unwrap();
-                                    v.iter_mut().find(|(b, _)| *b == a).unwrap().1.push(row);
+                                    let v =
+                                        tables.get_mut(name.as_str()).expect("table created above");
+                                    v.iter_mut()
+                                        .find(|(b, _)| *b == a)
+                                        .expect("row created above")
+                                        .1
+                                        .push(row);
                                 }
                                 _ => {}
                             }

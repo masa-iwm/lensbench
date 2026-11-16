@@ -121,7 +121,7 @@ class _PsfResult(TypedDict):
     i: NDArray[np.float64]
     center: tuple[float, float]
     axes: list[list[float]]
-    delta: tuple[float, float]
+    pixel: tuple[float, float]
     peak: float
     pupil: int
     phase_step: float
@@ -665,10 +665,10 @@ class System:
     def hash(self) -> str:
         """The hash of the system ("sha256:…", the same as the system file). Stamp it on analysis results to check later that the system is the same"""
 
-    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _MtfResult:
+    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _MtfResult:
         """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf"""
 
-    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _PsfResult:
+    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _PsfResult:
         """Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
         The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
         """
@@ -775,11 +775,11 @@ class System:
     def primary(self) -> int:
         """Primary wavelength number (from 1)"""
 
-    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _PsfResult:
+    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _PsfResult:
         """Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
         of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates on the plane perpendicular to the chief ray, from the image point center
         of the chief ray at the primary wavelength [lens units] (as OpticStudio's FFT PSF; directions axes = [e1, e2], unit vectors in image space).
-        pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, delta the spacing
+        pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, pixel the spacing
         of the image grid (1 / (2 × cutoff frequency) if omitted). Also returns pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
         enclosed (fraction of the light inside the image grid) and warnings (notes such as undersampling)
         """

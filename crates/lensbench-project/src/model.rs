@@ -918,7 +918,7 @@ impl Project {
         Ok(p)
     }
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap()
+        serde_json::to_string_pretty(self).expect("JSON of plain data")
     }
 
     pub fn state_names(&self) -> Vec<&str> {
@@ -947,7 +947,7 @@ impl Project {
         };
         let mut v = serde_json::to_value(self)
             .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
-        let root = v.as_object_mut().unwrap();
+        let root = v.as_object_mut().expect("project is an object");
         for (k, x) in &st.project {
             if k == "blocks"
                 || k == "states"
@@ -971,7 +971,10 @@ impl Project {
                 }
                 _ => return Err(format!("state {name}: two or more blocks with id {id}").into()),
             };
-            let obj = v.pointer_mut(&ptr).unwrap().as_object_mut().unwrap();
+            let obj = v
+                .pointer_mut(&ptr)
+                .and_then(Value::as_object_mut)
+                .expect("block found above is an object");
             for (k, x) in fields {
                 if ["type", "id", "blocks", "groups"].contains(&k.as_str()) || !obj.contains_key(k)
                 {

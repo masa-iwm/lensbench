@@ -154,12 +154,12 @@ fn undersampling_is_reported() {
     let fixed = |pupil| PsfOpts {
         pupil: Some(pupil),
         image: 2 * pupil,
-        delta: None,
+        pixel: None,
     };
     let hfixed = |pupil| HuygensOpts {
         pupil: Some(pupil),
         image: 32,
-        delta: None,
+        pixel: None,
     };
     let coarse = psf::psf(&s, f0, Waves::All, fixed(16)).unwrap();
     let hc = huygens_psf(&s, f0, Waves::All, hfixed(16)).unwrap();

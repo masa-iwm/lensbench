@@ -107,13 +107,8 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
     }
     let w = match opt_usize(p, "wave")? {
         None => s.primary,
-        Some(i) if i >= 1 && i <= s.wavelengths.len() => i - 1,
-        Some(i) => {
-            return Err(RpcErr::params(format!(
-                "no wavelength {i} (1 to {})",
-                s.wavelengths.len()
-            )))
-        }
+        Some(i) => lensbench_core::waves::index(i, s.wavelengths.len())
+            .map_err(|e| RpcErr::params(String::from(e)))?,
     };
     let (hx, hy) = match opt_usize(p, "field")? {
         Some(i) if i >= 1 && i <= s.fields.len() => s.hxhy(i - 1),

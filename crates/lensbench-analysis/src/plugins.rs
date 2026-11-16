@@ -11,10 +11,10 @@
 //! | `wavefront` | `wave`・`n`（64）・`ref_primary`（0） | `p`・`w`（(n, n)、外は NaN）・`pv`・`rms` |
 //! | `zernike` | `wave`・`kind`（standard）・`terms`（37）・`n`（64）・`ref_primary`（0） | `coef`・`pv`・`pv_centroid`・`rms_fit`・`max_fit`・`rms_chief`・`rms_centroid`・`variance`・`strehl` |
 //! | `mtf` | `wave`・`freqs`（省けば遮断周波数の 0〜0.95 を 21 点）・`n`・`method`（auto・interp・direct・fft） | `freqs`・`tan`・`sag`・`cutoff` |
-//! | `psf` | `wave`・`pupil`（自動）・`image`（128）・`delta` | `x`・`y`・`i`（(image, image)）・`center`・`delta`・`peak`・`pupil`・`phase_step`・`enclosed` |
+//! | `psf` | `wave`・`pupil`（自動）・`image`（128）・`pixel` | `x`・`y`・`i`（(image, image)）・`center`・`pixel`・`peak`・`pupil`・`phase_step`・`enclosed` |
 //! | `rms` | `wave`・`rings`（6）・`reference`（centroid・chief） | `spot`・`spot_x`・`spot_y`・`wfe`・`strehl` |
-//! | `huygens_psf` | `wave`・`pupil`（自動）・`image`（128）・`delta` | psf と同じ（x・y は像面の局所座標の中心からの差） |
-//! | `huygens_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`pupil`（自動）・`image`（128）・`delta` | `freqs`・`tan`・`sag`・`cutoff` |
+//! | `huygens_psf` | `wave`・`pupil`（自動）・`image`（128）・`pixel` | psf と同じ（x・y は像面の局所座標の中心からの差） |
+//! | `huygens_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`pupil`（自動）・`image`（128）・`pixel` | `freqs`・`tan`・`sag`・`cutoff` |
 //! | `geo_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`n`（128）・`diff_limit`（0） | `freqs`・`tan`・`sag`・`cutoff` |
 //! | `pop` | `surface`（必須）・`wave`・`dist` か `to`・`method`（auto・fresnel・angular・direct）・`rays`（65）・`n`（256）・`half`・`aperture`（1）・`out_n`・`out_half`・`out_center`（2 個） | 出力の場 `u`（complex (ny, nx)、パイロットを除く）・`dx`・`dy`・`center`・`pilot`（ax・ay・curv）・`power`・`peak`・`centroid`・`rms_width`・`distance`・`wavelength`・`index`・`kernel_step`・`fresnel_error`、入力の場 `input_u`・`input_dx`・`input_dy`・`input_center` |
 //! | `interferogram` | `wave`・`n`（64）・`beam1`（1）・`beam2`（2、0 で参照球）・`scale`（1）・`xtilt`・`ytilt`（0） | `p`・`delta`・`intensity`（(n, n)、外は NaN）・`pv`・`rms` |
@@ -228,7 +228,7 @@ impl Plugin for Analysis {
                     OutputSpec::from_doc("y", "(image,) [mm]"),
                     OutputSpec::from_doc("i", "1 at the center without aberrations (image, image)"),
                     OutputSpec::from_doc("center", "(2,) [mm]"),
-                    OutputSpec::from_doc("delta", "(2,) [mm]"),
+                    OutputSpec::from_doc("pixel", "(2,) [mm]"),
                     OutputSpec::from_doc("peak", "Maximum of the grid"),
                     OutputSpec::from_doc("pupil", "Side of the pupil grid used"),
                     OutputSpec::from_doc("phase_step", "Largest phase difference between neighboring pupil samples (undersampled above π/2) [rad]"),
@@ -261,7 +261,7 @@ impl Plugin for Analysis {
                     OutputSpec::from_doc("y", "local image y relative to center (image,) [mm]"),
                     OutputSpec::from_doc("i", "1 at the center without aberrations (image, image)"),
                     OutputSpec::from_doc("center", "(2,) [mm]"),
-                    OutputSpec::from_doc("delta", "(2,) [mm]"),
+                    OutputSpec::from_doc("pixel", "(2,) [mm]"),
                     OutputSpec::from_doc("peak", "Maximum of the grid"),
                     OutputSpec::from_doc("pupil", "Side of the pupil grid used"),
                     OutputSpec::from_doc("phase_step", "Largest phase difference between neighboring pupil samples (undersampled above π/2) [rad]"),
@@ -383,9 +383,9 @@ impl Plugin for Analysis {
             )
         };
         let image = || p("image", Count, n(128.0), "", "Side of the image grid");
-        let delta = || {
+        let pixel = || {
             p(
-                "delta",
+                "pixel",
                 Num,
                 None,
                 "mm",
@@ -435,7 +435,7 @@ impl Plugin for Analysis {
                     "Calculation method",
                 ),
             ],
-            Analysis::Psf | Analysis::HuygensPsf => vec![wave(), pupil(), image(), delta()],
+            Analysis::Psf | Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
             Analysis::Rms => vec![
                 wave(),
                 p(
@@ -465,7 +465,7 @@ impl Plugin for Analysis {
                     "Multiply by the diffraction limit",
                 ),
             ],
-            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), delta()],
+            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel()],
             Analysis::Pop => vec![
                 wave(),
                 p(
@@ -608,13 +608,13 @@ impl Plugin for Analysis {
             },
             Analysis::Psf => {
                 let d = PsfOpts::default();
-                let delta = r.opt_num("delta")?;
+                let pixel = r.opt_num("pixel")?;
                 Prepared::Psf {
                     wave,
                     opts: PsfOpts {
                         pupil: r.opt_count("pupil")?,
                         image: r.count("image", d.image)?,
-                        delta,
+                        pixel,
                     },
                 }
             }
@@ -642,11 +642,11 @@ impl Plugin for Analysis {
             },
             Analysis::HuygensPsf | Analysis::HuygensMtf => {
                 let d = HuygensOpts::default();
-                let delta = r.opt_num("delta")?;
+                let pixel = r.opt_num("pixel")?;
                 let opts = HuygensOpts {
                     pupil: r.opt_count("pupil")?,
                     image: r.count("image", d.image)?,
-                    delta,
+                    pixel,
                 };
                 if *self == Analysis::HuygensPsf {
                     Prepared::HuygensPsf { wave, opts }
@@ -849,7 +849,7 @@ impl Prepared {
                     ("y", v1(r.i.y().to_vec())?),
                     ("i", Array::grid(&r.i)),
                     ("center", v1(vec![r.center.0, r.center.1])?),
-                    ("delta", v1(vec![r.delta.0, r.delta.1])?),
+                    ("pixel", v1(vec![r.pixel.0, r.pixel.1])?),
                     ("peak", Array::scalar(r.peak)),
                     ("pupil", Array::scalar(r.pupil as f64)),
                     ("phase_step", Array::scalar(r.phase_step)),
@@ -888,7 +888,7 @@ impl Prepared {
                     ("y", v1(r.i.y().to_vec())?),
                     ("i", Array::grid(&r.i)),
                     ("center", v1(vec![r.center.0, r.center.1])?),
-                    ("delta", v1(vec![r.delta.0, r.delta.1])?),
+                    ("pixel", v1(vec![r.pixel.0, r.pixel.1])?),
                     ("peak", Array::scalar(r.peak)),
                     ("pupil", Array::scalar(r.pupil as f64)),
                     ("phase_step", Array::scalar(r.phase_step)),

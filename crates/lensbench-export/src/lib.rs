@@ -1,7 +1,8 @@
 //! lensbench の書き出し: レイアウト（2D: SVG・PNG・DXF、3D: glTF・OBJ・STL・STEP）と追跡結果（CSV・JSON・npz）。
 //!
 //! レイアウトは [`scene::build`] で系から場面（玉の立体・鏡・面・光線）を作り、各形式の書き手に渡す。
-
+// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
+#![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::panic))]
 // 添字で回す数値計算のループはそのままにする
 #![allow(clippy::needless_range_loop)]
 

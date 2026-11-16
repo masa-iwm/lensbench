@@ -198,6 +198,46 @@
           "type": "string"
         }
       ]
+    },
+    "VarRange": {
+      "additionalProperties": false,
+      "description": "変数のオブジェクトの形（[`VarSpec::Full`]）",
+      "properties": {
+        "max": {
+          "description": "上限（省けば無し）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min": {
+          "description": "下限（省けば無し）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "VarSpec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/VarRange"
+        }
+      ],
+      "description": "差し替え探索の変数: 文字の短い形 \"d1.t\"・\"d1.t=下限:上限\"（片側は空でよい）か、オブジェクトの形\n`{\"name\": \"d1.t\", \"min\": 0.5, \"max\": 40}`（min・max は省ける）"
     }
   },
   "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/swap.schema.json",
@@ -310,7 +350,7 @@
       "default": [],
       "description": "状態ごとに別の値で解く変数（`states` のとき。群の移動 `G2.shift` など、書き方は `vars` と同じ）。\n`vars` は全状態で共通の 1 つの値",
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/VarSpec"
       },
       "type": "array"
     },
@@ -330,9 +370,9 @@
     },
     "vars": {
       "default": [],
-      "description": "組ごとに最適化する変数（\"d1.t\"・\"d1.t=0.5:40\"・\"G2.shift\"）",
+      "description": "組ごとに最適化する変数（\"d1.t\"・\"d1.t=0.5:40\"・\"G2.shift\"、または `{\"name\": \"d1.t\", \"min\": 0.5, \"max\": 40}`）",
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/VarSpec"
       },
       "type": "array"
     }

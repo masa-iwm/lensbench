@@ -745,11 +745,8 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         None => vec![s.primary],
         Some(v) => v.clone(),
     };
-    if let Some(&i) = waves.iter().find(|&&i| i >= nw) {
-        return Err(Error::Invalid(format!(
-            "no wavelength {} (1 to {nw})",
-            i + 1
-        )));
+    for &i in &waves {
+        lensbench_core::waves::index(i + 1, nw)?;
     }
     let img = s.image();
     let last = opt.last.unwrap_or(img).min(img);
@@ -860,8 +857,8 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         }
         let (sa, sb) = (semi_of(a), semi_of(b));
         // ガラスの立体は前の面から出る区間で描く（BS の斜面で反射した後のキューブなど）
-        let fa = Face::from_surface(da, f_out(a).unwrap(), sa, a);
-        let fb = Face::from_surface(db, f_in(b).unwrap(), sb, b);
+        let fa = Face::from_surface(da, f_out(a).expect("frame of an active surface"), sa, a);
+        let fb = Face::from_surface(db, f_in(b).expect("frame of an active surface"), sb, b);
         let mut ka = key_of(&fa);
         let mut kb = key_of(&fb);
         if ka > kb {
@@ -907,7 +904,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         if semi <= 0.0 {
             continue;
         }
-        let f = Face::from_surface(d, f_in(j).unwrap(), semi, j);
+        let f = Face::from_surface(d, f_in(j).expect("frame of an active surface"), semi, j);
         let k = key_of(&f);
         if keys.contains(&k) {
             continue;
@@ -915,7 +912,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         keys.push(k);
         // 光の来た側: 直前の面の頂点から見た向き
         let from = if i > 0 {
-            f_out(active[i - 1]).unwrap().o
+            f_out(active[i - 1]).expect("frame of an active surface").o
         } else {
             sub(f.frame.o, f.axis())
         };
@@ -983,7 +980,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         }
         plates.push(Plate {
             kind,
-            face: Face::from_surface(d, f_in(j).unwrap(), semi, j),
+            face: Face::from_surface(d, f_in(j).expect("frame of an active surface"), semi, j),
             name: if kind == PlateKind::Image {
                 "IMA".into()
             } else {

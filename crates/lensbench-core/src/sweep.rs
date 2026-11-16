@@ -34,9 +34,9 @@ pub fn defocus(s: &System, dz: f64) -> Result<System> {
 /// [`defocus`] で、掃引の点で共有する光線の表 fb（[`crate::focus`]、使えない系は None）から追う系
 fn defocus_shared(s: &System, dz: f64, fb: Option<&Arc<FocusBase>>) -> Result<System> {
     let mut d = defocus(s, dz)?;
-    if let Some(z) = fb.and_then(|fb| fb.shift_of(&d)) {
+    if let Some((fb, z)) = fb.and_then(|fb| Some((fb, fb.shift_of(&d)?))) {
         d.set_focus(FocusShift {
-            base: fb.unwrap().clone(),
+            base: fb.clone(),
             z,
         });
     }
@@ -358,7 +358,7 @@ pub fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
     for c in 0..n {
         let p = (c..n)
             .max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))
-            .unwrap();
+            .expect("non-empty range");
         if !(a[p][c].abs() > 1e-14 * scale) {
             skip[c] = true;
             continue;

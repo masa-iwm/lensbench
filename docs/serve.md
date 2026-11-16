@@ -190,7 +190,8 @@ Rust から計算を直に呼ぶときの進み具合・中断の口は `lensben
 
 ### Python のクライアント
 
-`clients/python/lensbench_client.py`（標準ライブラリだけで動く。numpy があれば配列は numpy で返す）。
+`lensbench_client`（標準ライブラリだけで動く。numpy があれば配列は numpy で返す）。Python の `lensbench` の wheel に同梱で、
+`pip install` すれば `import lensbench_client` で使える（元は `crates/lensbench-py/lensbench_client.py`。wheel を入れずに 1 ファイルだけ写しても動く）。
 
 ```python
 from lensbench_client import Client

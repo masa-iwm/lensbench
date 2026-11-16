@@ -132,11 +132,11 @@ fn grin_lane<V: Lanes, const N: usize>(
     k0: &mut [Option<V3>; N],
     pe: Option<&mut PolSoa<V>>,
 ) -> Option<(V3, V3, f64, f64)> {
-    let g = st.grin.unwrap();
+    let g = st.grin.expect("GRIN step");
     let sys = plan.sys;
     let d = &sys.surfaces[st.j];
     let gs = &sys.surfaces[g.gj];
-    let gm = gs.grin.as_deref().unwrap();
+    let gm = gs.grin.as_deref().expect("GRIN data of a GRIN step");
     let lam = plan.lam;
     let (rr, tt) = (g.rr, g.tt);
     let mut loc = loc;
@@ -289,7 +289,13 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 }
             }
             if cry_any {
-                for c in pol.as_deref_mut().unwrap().cry.iter_mut().flatten() {
+                for c in pol
+                    .as_deref_mut()
+                    .expect("polarization state when tracing crystals")
+                    .cry
+                    .iter_mut()
+                    .flatten()
+                {
                     c.axis = match st.mv {
                         Move::Shift(_) => c.axis,
                         Move::Rel(q) => mv(&q.r, c.axis),
@@ -402,7 +408,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
         // 面の後ろの屈折率（GRIN の媒質へは交点の値で）
         let mut nn = V::splat(st.n_tab);
         if st.grin_eval {
-            let g = d.grin.as_deref().unwrap();
+            let g = d.grin.as_deref().expect("GRIN data of a GRIN step");
             for i in 0..N {
                 if err[i] == 0.0 {
                     match g.eval(plan.lam, get(&pl, i)) {

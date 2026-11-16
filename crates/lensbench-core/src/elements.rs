@@ -164,8 +164,8 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
             (Kind::Surface, j)
         };
         let mut v: Vec<Surface> = sf[j..=k].to_vec();
-        let gap = v.last().unwrap().t;
-        v.last_mut().unwrap().t = 0.0;
+        let gap = v.last().expect("non-empty element").t;
+        v.last_mut().expect("non-empty element").t = 0.0;
         out.push(Element {
             kind,
             from: j,
@@ -282,7 +282,7 @@ pub fn assemble(base: &System, els: &[Element]) -> Result<System> {
     for e in els {
         match e.kind {
             Kind::Air => {
-                let last = sf.last_mut().unwrap();
+                let last = sf.last_mut().expect("non-empty element");
                 last.t += e.t;
             }
             _ => sf.extend(e.surfaces.iter().cloned()),
