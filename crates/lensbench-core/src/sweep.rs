@@ -12,7 +12,7 @@ use crate::analysis::{self, mtf, pupil_gauss, Opd};
 use crate::error::Result;
 use crate::focus::{FocusBase, FocusShift};
 use crate::invalid;
-use crate::system::{FieldSel, FieldType, System, Trace};
+use crate::system::{Cols, FieldSel, FieldType, RayBuf, System, Trace};
 use crate::Waves;
 use std::sync::Arc;
 
@@ -297,7 +297,7 @@ fn wfe_var(
                     if s.afocal {
                         return (o.opd[i], px[i], py[i], wt[i] / sw);
                     }
-                    let k = o.trace.rays[i].lmn;
+                    let k = o.rays.lmn[i];
                     (o.opd[i], k[0] - lc, k[1] - mc, wt[i] / sw)
                 })
                 .collect(),
@@ -413,7 +413,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     let (px, py, wt) = pupil_gauss(o.rings, None);
     let poly = w.is_none();
     // OPD を求めた波長は Ok（OPD と参照の主光線）、重み 0 の波長は Err（スポット用の追跡だけ）
-    type Traced = std::result::Result<(Opd, Trace), Trace>;
+    type Traced = std::result::Result<(Opd, Trace), RayBuf>;
     let mut rs: Vec<(usize, Traced)> = Vec::with_capacity(ws.len());
     for &wi in &ws {
         rs.push(if ks.iter().any(|k| k.0 == wi) {
@@ -422,18 +422,17 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
                 Ok(analysis::opd_chief(s, field, &px, &py, Some(wi), poly)?),
             )
         } else {
-            (
-                wi,
-                Err(s.try_trace(field, &px, &py, Some(wi), None, false)?),
-            )
+            let mut b = RayBuf::with_cols(Cols::XYZ | Cols::LMN);
+            s.try_trace_into(field, &px, &py, Some(wi), None, &mut b)?;
+            (wi, Err(b))
         });
     }
     let os: Vec<&(Opd, Trace)> = rs.iter().filter_map(|(_, r)| r.as_ref().ok()).collect();
     // スポットの主光線は単色ならその波長、多色なら主波長（OPD の参照の主光線と同じ）
     let rc = &os[0].1;
-    let tr: Vec<(usize, &Trace)> = rs
+    let tr: Vec<(usize, &RayBuf)> = rs
         .iter()
-        .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.0.trace)))
+        .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.0.rays)))
         .collect();
     let sp = analysis::spot_of(s, &tr, &wt, rc);
     let (rx, ry) = match o.reference {

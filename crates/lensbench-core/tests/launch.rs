@@ -282,3 +282,47 @@ fn aim_failure_is_reported_and_nan() {
             .all(|q| q.xyz[1][0].is_nan() && q.opl[1].is_nan()));
     }
 }
+
+/// 列の入れ物への追跡（KRN-09）は Trace と同じビット。書かない列は空、入れ物は使い回せる
+#[test]
+fn trace_into_matches_trace() {
+    use lensbench_core::system::{Cols, RayBuf};
+    let (px, py) = grid();
+    let mut b = RayBuf {
+        cols: Cols::ALL,
+        ..Default::default()
+    };
+    let mut sp = RayBuf {
+        cols: Cols::SPOT,
+        ..Default::default()
+    };
+    for name in ["A0", "C0", "E1"] {
+        let s = load(name);
+        let f = FieldSel::Index(s.fields.len() - 1);
+        for batch in [true, false] {
+            let t = lensbench_core::par::with_batch(batch, || {
+                s.try_trace(f, &px, &py, None, None, false).unwrap()
+            });
+            lensbench_core::par::with_batch(batch, || {
+                s.try_trace_into(f, &px, &py, None, None, &mut b).unwrap();
+                s.try_trace_into(f, &px, &py, None, None, &mut sp).unwrap();
+            });
+            assert_eq!(b.len(), t.rays.len());
+            let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            for i in 0..t.rays.len() {
+                let r = &t.rays[i];
+                assert_eq!(r.status, b.status[i]);
+                assert_eq!(r.vig as u32, b.vig[i]);
+                let a = [r.xyz, r.lmn, r.p, r.k, t.p0[i], t.k0[i]].concat();
+                let c = [b.xyz[i], b.lmn[i], b.p[i], b.k[i], b.p0[i], b.k0[i]].concat();
+                assert_eq!(bits(&a), bits(&c), "{name} {i}");
+                let a = [r.opl, r.lens_opd, t.opl_os[i]];
+                let c = [b.opl[i], b.lens_opd[i], b.opl_os[i]];
+                assert_eq!(bits(&a), bits(&c), "{name} {i}");
+                assert_eq!(bits(&r.xyz), bits(&sp.xyz[i]));
+            }
+            assert!(sp.lmn.is_empty() && sp.opl.is_empty() && sp.p0.is_empty());
+            assert_eq!((b.parity, b.last, b.hx_hy), (t.parity, t.last, t.hx_hy));
+        }
+    }
+}

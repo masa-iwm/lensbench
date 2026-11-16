@@ -7,7 +7,7 @@
 use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
-use crate::system::{FieldSel, System, Trace};
+use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
 use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
 
 mod spot;
@@ -79,13 +79,14 @@ pub fn pupil_gauss(rings: usize, arms: Option<usize>) -> (Vec<f64>, Vec<f64>, Ve
 
 /// OPD [波] の結果（光線と一緒に）
 pub struct Opd {
-    pub trace: Trace,
+    /// 光線の列（位置・方向・光路長・理想レンズの位相と状態・けられ、[`Cols::WAVE`]）
+    pub rays: RayBuf,
     pub opd: Vec<f64>,
 }
 
 impl Opd {
     pub fn ok(&self, i: usize) -> bool {
-        self.trace.ok(i)
+        self.rays.ok(i)
     }
 }
 
@@ -148,7 +149,8 @@ pub(crate) fn opd_chief(
         );
     }
     let w = w.unwrap_or(s.primary);
-    let r = s.try_trace(field, px, py, Some(w), None, false)?;
+    let mut r = RayBuf::with_cols(Cols::WAVE);
+    s.try_trace_into(field, px, py, Some(w), None, &mut r)?;
     let rc = s.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
     let rp = if w == s.primary || !ref_primary {
         rc.clone()
@@ -170,12 +172,10 @@ pub(crate) fn opd_chief(
     let c = &rc.rays[0];
     let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
     let wl = s.wavelengths[w] * 1e-3;
-    let opd = r
-        .rays
-        .iter()
-        .map(|x| (lc - (to_ref(s, w, pc, kc, x.xyz, x.lmn, x.opl) + x.lens_opd)) / wl)
+    let opd = (0..r.len())
+        .map(|i| (lc - (to_ref(s, w, pc, kc, r.xyz[i], r.lmn[i], r.opl[i]) + r.lens_opd[i])) / wl)
         .collect();
-    Ok((Opd { trace: r, opd }, rp))
+    Ok((Opd { rays: r, opd }, rp))
 }
 
 /// 格子の一辺 n は 4 以上の偶数（中心の点 p = 0 を含み、端が瞳の縁になる）

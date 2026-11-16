@@ -20,7 +20,6 @@ use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -512,10 +511,13 @@ mod launch;
 mod near;
 mod paraxial;
 mod pol;
+mod raybuf;
 mod rays;
 mod types;
 use launch::StartGeom;
 use near::NearGrid;
+pub use raybuf::{Cols, RayBuf};
+use raybuf::{Done, Dst};
 pub use rays::*;
 pub use types::*;
 

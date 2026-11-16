@@ -787,7 +787,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         for i in 0..px.len() {
             let r = &t.rays[i];
             let mut pts = Vec::new();
-            if first == 0 {
+            if first == 0 && t.p0[i].iter().all(|v| v.is_finite()) {
                 pts.push(t.p0[i]);
             }
             for rs in &t.rec {

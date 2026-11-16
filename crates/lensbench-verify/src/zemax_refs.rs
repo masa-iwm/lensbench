@@ -165,7 +165,8 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
         let f = FieldSel::Norm(hxy[[i, 0]], hxy[[i, 1]]);
         for w in 0..nw {
             let r = analysis::opd(&s, f, &px, &py, Some(w), true).unwrap();
-            let t = &r.trace;
+            // 光線の全部の量は追跡で（opd と同じ光線、同じビット）
+            let t = &s.try_trace(f, &px, &py, Some(w), None, false).unwrap();
             let (mut dl, mut q) = (Vec::new(), Vec::new());
             for n in 0..px.len() {
                 let z = img.slice(ndarray::s![i, w, n, ..]);

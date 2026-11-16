@@ -2,7 +2,7 @@
 
 use super::pupil_gauss;
 use crate::error::Result;
-use crate::system::{FieldSel, System, Trace};
+use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
 use crate::Waves;
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,9 @@ pub fn spot_arms(
     };
     let mut rs = Vec::with_capacity(ws.len());
     for &wi in &ws {
-        rs.push((wi, s.try_trace(field, &px, &py, Some(wi), None, false)?));
+        let mut b = RayBuf::with_cols(Cols::XYZ | Cols::LMN);
+        s.try_trace_into(field, &px, &py, Some(wi), None, &mut b)?;
+        rs.push((wi, b));
     }
     let rc = s.try_trace(
         field,
@@ -53,17 +55,17 @@ pub fn spot_arms(
         None,
         false,
     )?;
-    let rs: Vec<(usize, &Trace)> = rs.iter().map(|(wi, r)| (*wi, r)).collect();
+    let rs: Vec<(usize, &RayBuf)> = rs.iter().map(|(wi, r)| (*wi, r)).collect();
     Ok(spot_of(s, &rs, &wts, &rc))
 }
 
 /// 波長ごとの追跡 rs（求積の点、重み wts）と主光線の追跡 rc からスポットを作る（2 波長以上なら波長の重みもかける）
-pub(crate) fn spot_of(s: &System, rs: &[(usize, &Trace)], wts: &[f64], rc: &Trace) -> Spot {
+pub(crate) fn spot_of(s: &System, rs: &[(usize, &RayBuf)], wts: &[f64], rc: &Trace) -> Spot {
     let (mut x, mut y, mut wt, mut wv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for &(wi, r) in rs {
         for (i, &wq) in wts.iter().enumerate() {
             if r.ok(i) {
-                let (a, b) = s.image_point(r.rays[i].xyz, r.rays[i].lmn);
+                let (a, b) = s.image_point(r.xyz[i], r.lmn[i]);
                 x.push(a);
                 y.push(b);
                 // 単色は重みによらない（重み 0 の波長でも求める）

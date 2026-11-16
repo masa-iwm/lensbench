@@ -257,8 +257,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
             if !(op.ok(i) && op.opd[i].is_finite()) {
                 continue;
             }
-            let r = &op.trace.rays[i];
-            let (q, k) = (r.xyz, r.lmn);
+            let (q, k) = (op.rays.xyz[i], op.rays.lmn[i]);
             let ph = -2.0 * PI * op.opd[i];
             let s1 = match sphere {
                 Some((c0, rr, sg)) => {

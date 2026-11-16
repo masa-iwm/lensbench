@@ -355,6 +355,83 @@ impl System {
         rec: RecSel<'_>,
         pol: Option<(&[[C64; 2]], &[PolSurf], bool)>,
     ) -> (Trace, Vec<Vec<CV3>>, Option<Error>) {
+        let mut dst = Dst::trace();
+        let (d, es, err) = self.trace_launch_core(l, w, last, rec, pol, &mut dst);
+        let Dst::Trace {
+            rays,
+            p0,
+            k0,
+            opl_os,
+        } = dst
+        else {
+            unreachable!()
+        };
+        let t = Trace {
+            rays,
+            parity: d.parity,
+            p0,
+            k0,
+            opl_os,
+            rec: d.rec,
+            last: d.last,
+            hx_hy: d.hx_hy,
+        };
+        (t, es, err)
+    }
+
+    /// 光線の始め方 l で追跡し、結果を buf の列（`buf.cols` の列と状態・けられ）に書く（KRN-09）。
+    /// 値は [`Self::trace_launch`] と同じビット。buf は呼び出しをまたいで使い回せる
+    pub fn trace_launch_into(&self, l: &Launch, w: usize, last: Option<usize>, buf: &mut RayBuf) {
+        let mut dst = Dst::Buf(buf);
+        let (d, _, _) = self.trace_launch_core(l, w, last, RecSel::Off, None, &mut dst);
+        buf.parity = d.parity;
+        buf.last = d.last;
+        buf.hx_hy = d.hx_hy;
+    }
+
+    /// 視野の光線を瞳座標で追跡し、結果を buf の列に書く（[`Self::try_trace`] の列版、記録なし）
+    pub fn try_trace_into(
+        &self,
+        field: FieldSel,
+        px: &[f64],
+        py: &[f64],
+        w: Option<usize>,
+        last: Option<usize>,
+        buf: &mut RayBuf,
+    ) -> Result<()> {
+        let w = w.unwrap_or(self.primary);
+        let (hx, hy) = self.field_sel_norm(field, w)?;
+        if let (Some(_), None) = (&self.cache.focus, last) {
+            // 焦点をずらした像面の追跡は Trace の経路で（列に写す）
+            let t = self.try_trace(field, px, py, Some(w), None, false)?;
+            buf.fill_from(&t);
+            return Ok(());
+        }
+        let spec = self.object_spec(hx, hy)?;
+        let vig = self.vig_factors(hx, hy)?;
+        let l = Launch::Pupil {
+            spec,
+            signed: false,
+            px,
+            py,
+            vig: Some(vig),
+            hxy: Some((hx, hy)),
+        };
+        self.trace_launch_into(&l, w, last, buf);
+        buf.hx_hy = (hx, hy);
+        Ok(())
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn trace_launch_core(
+        &self,
+        l: &Launch,
+        w: usize,
+        last: Option<usize>,
+        rec: RecSel<'_>,
+        pol: Option<(&[[C64; 2]], &[PolSurf], bool)>,
+        dst: &mut Dst,
+    ) -> (Done, Vec<Vec<CV3>>, Option<Error>) {
         let (starts, fail) = self.launch_starts(l, w);
         let n = starts.len();
         // エイミングに失敗した光線は NaN から出す（位置・方向・光路長・記録・電場がすべて NaN になる）
@@ -436,6 +513,19 @@ impl System {
         };
         // 面ごとの準備（光線によらない量）は 1 回だけ
         let plan = batch::Plan::new(self, fr, w, last, clip);
+        // 結果の書き先（無限遠物体の opl_os は面 1 の原点を通り軸に垂直な面から測る。面 1 が無視（IGNR）なら、
+        // その次の有効な面（大域座標の基準と同じ））
+        let os = match spec {
+            Some(ObjSpec::Dir(_)) => {
+                let j1 = (1..fr.surf.len())
+                    .find(|&j| fr.surf[j].is_some())
+                    .unwrap_or(1);
+                let ob = fr.surf[j1].unwrap();
+                Some((ob.o, col(&ob.r, 2), self.index_before(j1, w)))
+            }
+            _ => None,
+        };
+        let out = dst.prepare(n, os);
         let one = |i: usize| {
             let (p, k) = start_of(i);
             let mut row = SoaRow { out: &ptrs, i };
@@ -452,13 +542,13 @@ impl System {
             if fail[i] {
                 r.status = RayStatus::AimFailed { stop: st };
             }
+            out.put(i, &r, p, k);
             // 偏光なしの追跡で結果を大きくしないよう箱に入れる
-            let pe = pr.map(|mut pr| {
+            pr.map(|mut pr| {
                 put_phase(&mut pr.e, r.opl);
                 let [perr] = pr.err;
-                Box::new((pr.e, perr))
-            });
-            (r, p, k, pe)
+                Box::new((r.status.is_ok() && r.vig == 0, pr.e, perr))
+            })
         };
         // 光線は互いに独立なので、本数が多いときは並列に追う（結果の順序は入力のまま、
         // スレッド数によらず同じビット）。with_threads(Some(1), ..) の中では逐次
@@ -469,21 +559,20 @@ impl System {
             None => (wide, None),
             Some(_) => (None, wide),
         };
-        let mut rays: Vec<RayOut>;
-        let mut p0: Vec<V3>;
-        let mut k0: Vec<V3>;
         let mut es = Vec::new();
         let mut first_err = None;
+        // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
+        // ほかの光線は電場が NaN になるだけ
+        let mut take_err = |good: bool, perr: Option<Error>| {
+            if first_err.is_none() && good {
+                first_err = perr;
+            }
+        };
+        const L: usize = batch::L;
+        let ng = n.div_ceil(L);
         if let Some(plan) = plan {
-            // 結果の配列へ組ごとに直接書く（中間の配列を作らない）
-            // 結果の配列は初期化せずに確保し、組ごとに（並列に）全要素を書いてから長さを決める
-            // （大きな配列の初期化を 1 スレッドでしないため）
-            rays = Vec::with_capacity(n);
-            p0 = Vec::with_capacity(n);
-            k0 = Vec::with_capacity(n);
-            const L: usize = batch::L;
-            type Out<'a, T> = &'a mut [MaybeUninit<T>];
-            let group = |(b, ((ro, po), ko)): (usize, ((Out<RayOut>, Out<V3>), Out<V3>))| {
+            // 結果の列へ組ごとに（並列に）直接書く（中間の配列を作らない）
+            let group = |b: usize| {
                 // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
                 let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
                 let start = idx.map(start_of);
@@ -493,125 +582,87 @@ impl System {
                     base: b * L,
                 };
                 let r = batch::trace_lanes(plan, &p, &k, record.then_some(&mut sink));
-                for l in 0..ro.len() {
+                for l in 0..(n - b * L).min(L) {
                     let mut x = r[l];
                     if fail[idx[l]] {
                         x.status = RayStatus::AimFailed { stop: st };
                     }
-                    ro[l].write(x);
-                    po[l].write(p[l]);
-                    ko[l].write(k[l]);
+                    out.put(b * L + l, &x, p[l], k[l]);
                 }
             };
-            let (ru, pu, ku) = (
-                &mut rays.spare_capacity_mut()[..n],
-                &mut p0.spare_capacity_mut()[..n],
-                &mut k0.spare_capacity_mut()[..n],
-            );
             if par {
-                ru.par_chunks_mut(L)
-                    .zip(pu.par_chunks_mut(L))
-                    .zip(ku.par_chunks_mut(L))
-                    .enumerate()
+                (0..ng)
+                    .into_par_iter()
                     .with_min_len(PAR_CHUNK / L)
                     .for_each(scoped(group));
             } else {
-                ru.chunks_mut(L)
-                    .zip(pu.chunks_mut(L))
-                    .zip(ku.chunks_mut(L))
-                    .enumerate()
-                    .for_each(group);
+                (0..ng).for_each(group);
             }
-            // 安全: 上で 0..n の全要素を書いた（組 b は b·L から L 本、端の組は残りの本数を書く）
-            unsafe {
-                rays.set_len(n);
-                p0.set_len(n);
-                k0.set_len(n);
-            }
-            drop(ptrs);
-        } else {
-            rays = Vec::with_capacity(n);
-            p0 = Vec::with_capacity(n);
-            k0 = Vec::with_capacity(n);
-            // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
-            // ほかの光線は電場が NaN になるだけ
-            let mut take_err = |r: &RayOut, perr: Option<Error>| {
-                if first_err.is_none() && r.status.is_ok() && r.vig == 0 {
-                    first_err = perr;
+        } else if let (Some(plan), Some((inp, surf, _))) = (&pol_plan, pol) {
+            // 偏光あり: L 本ずつまとめて追う（電場も 1 本ずつと同じ演算）
+            let np = inp.len();
+            let group = |b: usize| {
+                let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
+                let start = idx.map(start_of);
+                let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
+                let mut e = Vec::with_capacity(L * np);
+                for kk in &k {
+                    e_start(inp, *kk, &mut e);
                 }
+                let mut pl = batch::PolLanes::<L>::new(e, np, surf);
+                let mut sink = SoaLanes {
+                    out: &ptrs,
+                    base: b * L,
+                };
+                let mut r =
+                    batch::trace_lanes_pol(plan, &p, &k, record.then_some(&mut sink), &mut pl);
+                let m = (n - b * L).min(L);
+                let mut good = [false; L];
+                for l in 0..m {
+                    if fail[idx[l]] {
+                        r[l].status = RayStatus::AimFailed { stop: st };
+                    }
+                    put_phase(&mut pl.e[l * np..(l + 1) * np], r[l].opl);
+                    out.put(b * L + l, &r[l], p[l], k[l]);
+                    good[l] = r[l].status.is_ok() && r[l].vig == 0;
+                }
+                (good, pl.e, pl.err, m)
             };
-            if let (Some(plan), Some((inp, surf, _))) = (&pol_plan, pol) {
-                // 偏光あり: L 本ずつまとめて追う（電場も 1 本ずつと同じ演算）
-                const L: usize = batch::L;
-                let np = inp.len();
-                let group = |b: usize| {
-                    let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
-                    let start = idx.map(start_of);
-                    let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
-                    let mut e = Vec::with_capacity(L * np);
-                    for kk in &k {
-                        e_start(inp, *kk, &mut e);
-                    }
-                    let mut pl = batch::PolLanes::<L>::new(e, np, surf);
-                    let mut sink = SoaLanes {
-                        out: &ptrs,
-                        base: b * L,
-                    };
-                    let mut r =
-                        batch::trace_lanes_pol(plan, &p, &k, record.then_some(&mut sink), &mut pl);
-                    let m = (n - b * L).min(L);
-                    for l in 0..m {
-                        if fail[idx[l]] {
-                            r[l].status = RayStatus::AimFailed { stop: st };
-                        }
-                        put_phase(&mut pl.e[l * np..(l + 1) * np], r[l].opl);
-                    }
-                    (r, p, k, pl.e, pl.err, m)
-                };
-                let ng = n.div_ceil(L);
-                let groups: Vec<_> = if par {
-                    (0..ng)
-                        .into_par_iter()
-                        .with_min_len(PAR_CHUNK / L)
-                        .map(scoped(group))
-                        .collect()
-                } else {
-                    (0..ng).map(group).collect()
-                };
-                drop(ptrs);
-                es.reserve(n);
-                for (r, p, k, e, mut perr, m) in groups {
-                    for l in 0..m {
-                        take_err(&r[l], perr[l].take());
-                        rays.push(r[l]);
-                        p0.push(p[l]);
-                        k0.push(k[l]);
-                        es.push(e[l * np..(l + 1) * np].to_vec());
-                    }
-                }
+            let groups: Vec<_> = if par {
+                (0..ng)
+                    .into_par_iter()
+                    .with_min_len(PAR_CHUNK / L)
+                    .map(scoped(group))
+                    .collect()
             } else {
-                let out: Vec<_> = if par {
-                    (0..n)
-                        .into_par_iter()
-                        .with_min_len(PAR_CHUNK)
-                        .map(scoped(one))
-                        .collect()
-                } else {
-                    (0..n).map(one).collect()
-                };
-                drop(ptrs);
-                for (r, p, k, pe) in out {
-                    if let Some(b) = pe {
-                        let (e, perr) = *b;
-                        es.push(e);
-                        take_err(&r, perr);
-                    }
-                    rays.push(r);
-                    p0.push(p);
-                    k0.push(k);
+                (0..ng).map(group).collect()
+            };
+            es.reserve(n);
+            for (good, e, mut perr, m) in groups {
+                for l in 0..m {
+                    take_err(good[l], perr[l].take());
+                    es.push(e[l * np..(l + 1) * np].to_vec());
                 }
+            }
+        } else {
+            let pes: Vec<_> = if par {
+                (0..n)
+                    .into_par_iter()
+                    .with_min_len(PAR_CHUNK)
+                    .map(scoped(one))
+                    .collect()
+            } else {
+                (0..n).map(one).collect()
+            };
+            for b in pes.into_iter().flatten() {
+                let (good, e, perr) = *b;
+                es.push(e);
+                take_err(good, perr);
             }
         }
+        drop(ptrs);
+        // 安全: 上のどの経路でも 0..n の全部の光線を out.put で書いた
+        unsafe { dst.finish(n) };
         let mut parity = 1.0;
         for j in 1..=last {
             let d = &self.surfaces[j];
@@ -619,35 +670,9 @@ impl System {
                 parity = -parity;
             }
         }
-        let opl_os = match spec {
-            Some(ObjSpec::Dir(_)) => {
-                // 面 1 が無視（IGNR）なら、その次の有効な面（大域座標の基準と同じ）
-                let j1 = (1..fr.surf.len())
-                    .find(|&j| fr.surf[j].is_some())
-                    .unwrap_or(1);
-                let ob = fr.surf[j1].unwrap();
-                let ax = col(&ob.r, 2);
-                let nb = self.index_before(j1, w);
-                let f = |i: usize| rays[i].opl - dot(sub(ob.o, p0[i]), ax) / dot(k0[i], ax) * nb;
-                if par {
-                    (0..n)
-                        .into_par_iter()
-                        .with_min_len(PAR_CHUNK)
-                        .map(scoped(f))
-                        .collect()
-                } else {
-                    (0..n).map(f).collect()
-                }
-            }
-            _ => rays.iter().map(|r| r.opl).collect(),
-        };
         (
-            Trace {
-                rays,
+            Done {
                 parity,
-                p0,
-                k0,
-                opl_os,
                 rec: rec_out,
                 last,
                 hx_hy: hxy.unwrap_or((0.0, 0.0)),
