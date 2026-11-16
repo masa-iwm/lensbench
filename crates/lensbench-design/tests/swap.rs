@@ -820,7 +820,7 @@ fn same_shaped_candidates_share_one_fit() {
     let (p, pdir) = project();
     let mut sl = slot("A");
     sl.flip = true;
-    sl.parts = ["PCX-100", "PCX-100B", "BCX-50"]
+    sl.parts = ["PCX-100", "PCX-100B", "BCX-50", "ACH-45"]
         .iter()
         .map(|q| PartRef {
             vendor: "LB".into(),
@@ -828,9 +828,11 @@ fn same_shaped_candidates_share_one_fit() {
         })
         .collect();
     let s = SwapSearch::new(&p, &env(pdir.clone()), &c, spec(vec![sl.clone()])).unwrap();
-    assert_eq!(s.count(), 6);
-    assert!(s.distinct_count() <= 4, "{}", s.distinct_count());
+    assert_eq!(s.count(), 8);
+    assert!(s.distinct_count() <= 6, "{}", s.distinct_count());
     let r = s.run(Some(2));
+    // 結果を覚えるのは仲間のいる代表の組だけ: PCX-100 と PCX-100B の向きごとの 2 つ（仲間のいない BCX-50・ACH-45 は覚えない）
+    assert_eq!(s.cached_fit_count(), 2);
     let fit = |part: &str, rev: bool| {
         r.iter()
             .find(|x| x.lenses[0].part == part && x.lenses[0].reversed == rev)
@@ -855,4 +857,68 @@ fn same_shaped_candidates_share_one_fit() {
         }
     }
     std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 近軸の前ふるい: 変数の範囲の角で焦点距離が目標に届かない組は最適化せずに誤り、届く組の結果は前ふるいなしと同じ
+#[test]
+fn paraxial_prescreen_drops_unreachable_combinations() {
+    let (p, dir) = project();
+    let c = cat();
+    let mk = |px: bool| {
+        let mut sp = spec(vec![slot("A")]);
+        sp.vars = vec!["gap.t=5:10".into(), "bfl.t=1:200".into()];
+        sp.efl = Some(32.0);
+        sp.iters = 20;
+        if px {
+            sp.paraxial = Some(lensbench_design::swap::Paraxial { efl_tol: Some(2.0) });
+        }
+        SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap()
+    };
+    let (s0, s1) = (mk(false), mk(true));
+    let n = s0.count();
+    let (mut dropped, mut kept) = (0, 0);
+    for i in 0..n {
+        let (a, b) = (s0.eval(i).to_value(), s1.eval(i).to_value());
+        match b["error"].as_str() {
+            Some(e) => {
+                assert!(e.contains("paraxial"), "{e}");
+                dropped += 1;
+                // 落ちた組は前ふるいなしでも目標から外れている
+                let efl = a["efl"].as_f64().unwrap();
+                assert!((efl - 32.0).abs() >= 2.0, "{a}");
+            }
+            None => {
+                kept += 1;
+                assert_eq!(a, b);
+            }
+        }
+    }
+    assert!(dropped > 0 && kept > 0, "dropped {dropped} kept {kept}");
+}
+
+#[test]
+fn paraxial_prescreen_errors() {
+    let (p, dir) = project();
+    let c = cat();
+    let e = env(dir);
+    let px = Some(lensbench_design::swap::Paraxial { efl_tol: None });
+    // efl の目標が要る
+    let mut sp = spec(vec![slot("A")]);
+    sp.vars = vec!["gap.t=0.5:40".into()];
+    sp.paraxial = px.clone();
+    assert!(SwapSearch::new(&p, &e, &c, sp.clone()).is_err());
+    // 範囲のない変数・厚さでない変数
+    sp.efl = Some(40.0);
+    assert!(SwapSearch::new(&p, &e, &c, sp.clone()).is_ok());
+    sp.vars = vec!["gap.t".into()];
+    assert!(SwapSearch::new(&p, &e, &c, sp.clone()).is_err());
+    sp.vars = vec!["A.c1=-0.1:0.1".into()];
+    assert!(SwapSearch::new(&p, &e, &c, sp.clone()).is_err());
+    // 負の許し
+    sp.vars = vec!["gap.t=0.5:40".into()];
+    sp.paraxial = Some(lensbench_design::swap::Paraxial {
+        efl_tol: Some(-1.0),
+    });
+    assert!(SwapSearch::new(&p, &e, &c, sp).is_err());
+    assert!(SwapSpec::from_json(r#"{"slots": [], "paraxial": {"tol": 1}}"#).is_err());
 }

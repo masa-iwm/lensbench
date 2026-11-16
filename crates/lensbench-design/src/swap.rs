@@ -137,6 +137,12 @@ pub struct SwapSpec {
     /// 総当たりの最良を見落とすことがある。`prescreen` とは同時に使えない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beam: Option<Beam>,
+    /// 近軸の前ふるい（省けばなし、`efl` があるときだけ）: 変数（範囲つきの厚さだけ）の範囲の角で系の屈折力を求め、
+    /// `efl` の目標に届かない組を光線を追わずに落とす（その組は誤り「…misses the target…」の結果になる）。
+    /// 屈折力は厚さのそれぞれについて 1 次なので、範囲の中の最大・最小は角にあり、落とした組はどの値でも目標に届かない。
+    /// ピックアップ・ソルブ・マクロのある状態や屈折率分布の媒質の厚さを動かす状態は 1 次とは限らないので確かめない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paraxial: Option<Paraxial>,
 }
 
 /// 評価関数（[`SwapSpec::merit`]）
@@ -298,6 +304,9 @@ pub struct Prescreen {
     pub keep: usize,
 }
 
+#[path = "swap_paraxial.rs"]
+mod paraxial;
+pub use paraxial::Paraxial;
 #[path = "swap_beam.rs"]
 mod beam;
 pub use beam::Beam;
@@ -473,7 +482,7 @@ pub struct SwapSearch<'a> {
     /// 所ごとの選び方の代表（PRJ-07）: 置いた玉の面が同じ（型番違いの同じ玉、対称な玉の向き違い）選び方は最初の
     /// 選び方の番号。同じ形の組は 1 回だけ最適化し、結果を使い回す
     same: Vec<Vec<usize>>,
-    /// 同じ形の組の最適化の結果（代表の選び方 → 結果）。同じ形の選び方が無ければ使わない
+    /// 同じ形の組の最適化の結果（代表の選び方 → 結果）。仲間のいる代表の組だけ覚える
     fits: std::sync::Mutex<HashMap<Vec<Option<usize>>, SharedFit>>,
 }
 
@@ -514,6 +523,7 @@ impl<'a> SwapSearch<'a> {
                 return Err("prescreen rings and keep must be 1 or more".into());
             }
         }
+        paraxial::check(&spec)?;
         if let Some(b) = &spec.beam {
             if spec.prescreen.is_some() {
                 return Err("beam and prescreen can't be used together".into());
@@ -899,6 +909,15 @@ impl<'a> SwapSearch<'a> {
             .enumerate()
             .map(|(k, c)| c.map(|c| self.same[k][c]))
             .collect();
+        // 仲間のいない組（所ごとの仲間の数の積が 1）は使い回さないので覚えない（覚えると組の数に比例してメモリを使う）
+        let mates: usize = canon
+            .iter()
+            .enumerate()
+            .map(|(k, c)| c.map_or(1, |r| self.same[k].iter().filter(|&&x| x == r).count()))
+            .product();
+        if mates < 2 {
+            return self.optimize_one(&canon);
+        }
         let cell = self
             .fits
             .lock_ok()
@@ -906,6 +925,12 @@ impl<'a> SwapSearch<'a> {
             .or_default()
             .clone();
         cell.get_or_init(|| self.optimize_one(&canon)).clone()
+    }
+
+    /// 覚えている最適化の結果の数（仲間のいる代表の組だけ。試験用）
+    #[doc(hidden)]
+    pub fn cached_fit_count(&self) -> usize {
+        self.fits.lock_ok().len()
     }
 
     /// 同じ形の組の数（代表の選び方の組の数。[`Self::count`] 以下）
@@ -918,6 +943,7 @@ impl<'a> SwapSearch<'a> {
 
     fn optimize_one(&self, a: &[Option<usize>]) -> lensbench_core::Result<SwapFit> {
         let (s, pr0, n_image) = self.problem_of(a, self.spec.rings)?;
+        self.efl_reachable(&pr0)?;
         let (start, pr, r, names) = self.best_start(pr0)?;
         self.report(&s, n_image, start, pr, r, names)
     }
@@ -925,6 +951,7 @@ impl<'a> SwapSearch<'a> {
     /// 粗いふるいの評価関数（リング数 `prescreen.rings` で最適化した値。評価できなければ None）
     fn coarse_merit(&self, i: usize, rings: usize) -> Option<f64> {
         let (_, pr0, _) = self.problem_of(&self.assign(i), rings).ok()?;
+        self.efl_reachable(&pr0).ok()?;
         let (_, _, r, _) = self.best_start(pr0).ok()?;
         r.merit.is_finite().then_some(r.merit)
     }
