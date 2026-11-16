@@ -273,13 +273,13 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
         r#"{{ {head} "blocks": [
             {{"type": "stop", "semi": 5}}, {{"type": "air", "t": 2}},
             {{"type": "lens", "id": "L1", "reversed": true, "decenter": [0.1, 0],
+              "surface_edits": [{{"surface": 1, "fields": {{"r": 70.0, "semi": 7.5}}}}],
               "source": {{"surfaces": [
                 {{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -80, "semi": 8}}]}}}},
             {{"type": "air", "t": 3}},
             {{"type": "lens", "id": "L2", "source": {{"surfaces": [
                 {{"radius": -40, "t": 2, "glass": "F2", "semi": 8}}, {{"radius": 200, "semi": 8}}]}}}},
-            {{"type": "air", "t": 50}}],
-          "surface_edits": [{{"block": "L1", "surface": 1, "fields": {{"r": 70.0, "semi": 7.5}}}}] }}"#
+            {{"type": "air", "t": 50}}] }}"#
     );
     let p = Project::from_json(&txt).unwrap();
     let dir = tmp("bake");
@@ -319,11 +319,8 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
     same_rays(&s1, &s0, 1e-12);
     // 玉でないブロックの変更は焼き込めない
     let mut q = p.clone();
-    q.blocks[0] =
-        serde_json::from_value(serde_json::json!({"type": "stop", "id": "S", "semi": 5})).unwrap();
-    q.surface_edits = serde_json::from_value(
-        serde_json::json!([{"block": "S", "surface": 0, "fields": {"semi": 4.0}}]),
-    )
+    q.blocks[0] = serde_json::from_value(serde_json::json!({"type": "stop", "id": "S", "semi": 5,
+        "surface_edits": [{"surface": 0, "fields": {"semi": 4.0}}]}))
     .unwrap();
     let e = blocks_item(&q, &env, &["S".into(), "L1".into()], "").unwrap_err();
     assert!(
@@ -339,7 +336,7 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     use lensbench_project::blocks_item;
     let head = HEAD.replace(r#""glass_catalogs": []"#, r#""glass_catalogs": ["SCHOTT"]"#);
     let proj = |edits: &str| {
-        format!(
+        let t = format!(
             r#"{{ {head} "blocks": [
             {{"type": "stop", "semi": 5}}, {{"type": "air", "t": 2}},
             {{"type": "lens", "id": "L1", "decenter": [0, 0.05], "source": {{"surfaces": [
@@ -347,14 +344,11 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
                   "aperture": {{"type": "circular", "max": 4.5}}}},
                 {{"coordbrk": [0, 0.02, 0.1, 0, 0]}},
                 {{"radius": -80, "semi": 8}}]}}}},
-            {{"type": "air", "t": 50}}],
-          "surface_edits": {edits} }}"#
-        )
+            {{"type": "air", "t": 50}}] }}"#
+        );
+        crate::put(&t, "surface_edits", &[("L1", edits)])
     };
-    let p = Project::from_json(&proj(
-        r#"[{"block": "L1", "surface": 1, "fields": {"r": -70.0}}]"#,
-    ))
-    .unwrap();
+    let p = Project::from_json(&proj(r#"[{"surface": 1, "fields": {"r": -70.0}}]"#)).unwrap();
     let dir = tmp("bake2");
     let env = env_at(&dir);
     let s0 = expand(&p, &env, &ExpandOpts::default())
@@ -393,7 +387,7 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     assert_eq!(aps0, aps1);
     // 面の前後の傾き偏心は書けないので誤り
     let q = Project::from_json(&proj(
-        r#"[{"block": "L1", "surface": 0, "fields": {"before": {"d": [0.5, 0, 0, 0, 0], "order": 0}}}]"#,
+        r#"[{"surface": 0, "fields": {"before": {"d": [0.5, 0, 0, 0, 0], "order": 0}}}]"#,
     ))
     .unwrap();
     let e = blocks_item(&q, &env, &["L1".into()], "").unwrap_err();

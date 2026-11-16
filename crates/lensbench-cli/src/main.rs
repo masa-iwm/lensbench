@@ -243,7 +243,7 @@ enum Cmd {
         /// Lens number (from 1, counting only lenses; the .zmx or project split in lens mode)
         #[arg(long)]
         lens: Option<usize>,
-        /// Project block ids (two give the range between them in the top-level list; surface table changes in surface_edits are baked in)
+        /// Project block ids (two give the range between them in the top-level list; surface table changes in the blocks' surface_edits are baked in)
         #[arg(long, num_args = 1)]
         block: Vec<String>,
         /// Folders to search for glass catalogs (more than one allowed)

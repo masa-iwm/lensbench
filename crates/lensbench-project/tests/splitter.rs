@@ -702,3 +702,25 @@ fn split_coating_reflection_matches_opticstudio() {
     eprintln!("R {wr:.1e}, 位相 {wph:.1e} deg");
     assert!(wr < 1e-6 && wph < 1e-3, "R {wr:.1e} 位相 {wph:.1e}");
 }
+
+/// BS の腕の中のブロック（id 無し）も面の上書き・操作を持て、その腕を通る経路だけに当たる（PRJ-04）
+#[test]
+fn faces_of_blocks_in_arms() {
+    let lens = r#"{"type": "lens", "source": {"surfaces": [
+        {"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]},
+        "surface_edits": [{"surface": 1, "fields": {"semi": 3.5}}],
+        "surface_ops": [{"op": "add_solve", "surface": 1, "kind": "marginal_height", "value": 0}]}"#;
+    let blocks = format!(
+        r#"[{{"type": "stop", "semi": 3}}, {{"type": "air", "t": 10}},
+           {{"type": "splitter", "id": "BS", "form": "ideal", "angle": [45, 0],
+             "t": [{{"type": "air", "t": 5}}, {lens}, {{"type": "air", "t": 20}}],
+             "r": [{{"type": "air", "t": 25}}]}}]"#
+    );
+    let t = sys(&blocks, Some("T"));
+    let j = t.surfaces.iter().position(|s| s.semi == 3.5).unwrap();
+    assert_eq!(t.surfaces[j].c, -1.0 / 60.0);
+    assert_eq!(t.solves.iter().map(|q| q.surf).collect::<Vec<_>>(), [j]);
+    let r = sys(&blocks, Some("R"));
+    assert!(r.surfaces.iter().all(|s| s.semi != 3.5));
+    assert!(r.solves.is_empty());
+}

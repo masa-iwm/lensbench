@@ -347,13 +347,9 @@ impl Combo {
         ids
     }
 
-    /// 要素のブロックの並び（分岐は BS のブロックの t・r・d に）と面の上書き
+    /// 要素のブロックの並び（分岐は BS のブロックの t・r・d に。面の上書き・操作は各ブロックに）。
     /// 木のブロックを blocks へ。群のブロックにした名前を返す
-    pub(crate) fn blocks(
-        &self,
-        blocks: &mut Vec<Value>,
-        edits: &mut Vec<Value>,
-    ) -> std::collections::BTreeSet<String> {
+    pub(crate) fn blocks(&self, blocks: &mut Vec<Value>) -> std::collections::BTreeSet<String> {
         let ids = self.ids_all();
         let names: Vec<String> = ids.iter().map(|x| x.1.clone()).collect();
         let map: std::collections::BTreeMap<Loc, String> = ids.into_iter().collect();
@@ -364,7 +360,7 @@ impl Combo {
             names: &names,
             groups: &self.groups,
         };
-        go(&self.picks, &[], &cx, &mut used, blocks, edits);
+        go(&self.picks, &[], &cx, &mut used, blocks);
         used
     }
 
@@ -642,7 +638,6 @@ fn go(
     cx: &Cx,
     used: &mut std::collections::BTreeSet<String>,
     out: &mut Vec<Value>,
-    edits: &mut Vec<Value>,
 ) {
     // 要素ごとに（群の名前、ブロック、後の空気）
     let mut parts: Vec<(String, Value, Option<Value>)> = Vec::new();
@@ -651,15 +646,30 @@ fn go(
         loc.push(i);
         let id = (cx.id_of)(&loc);
         let mut b = p.block(&id);
-        for e in &p.edits {
-            edits.push(json!({ "block": id, "surface": e.surface, "fields": { e.field.clone(): e.value } }));
+        // 面の上書き・操作（面はこの要素の面）。持てないブロック（BS など）には書かない
+        let has_faces = matches!(
+            b["type"].as_str(),
+            Some("lens" | "stop" | "mirror" | "surfaces" | "zmx" | "user" | "group")
+        );
+        if has_faces && !p.edits.is_empty() {
+            b["surface_edits"] = Value::Array(
+                p.edits
+                    .iter()
+                    .map(
+                        |e| json!({ "surface": e.surface, "fields": { e.field.clone(): e.value } }),
+                    )
+                    .collect(),
+            );
+        }
+        if has_faces && !p.ops.is_empty() {
+            b["surface_ops"] = serde_json::to_value(&p.ops).unwrap_or_default();
         }
         if p.is_branched() {
             for (k, key) in ["t", "r", "d"].into_iter().enumerate() {
                 let mut sub = loc.clone();
                 sub.push(k);
                 let mut v = vec![json!({ "type": "air", "t": p.ports[k].air })];
-                go(&p.ports[k].picks, &sub, cx, used, &mut v, edits);
+                go(&p.ports[k].picks, &sub, cx, used, &mut v);
                 b[key] = Value::Array(v);
             }
             // 分岐のある BS は並びの最後

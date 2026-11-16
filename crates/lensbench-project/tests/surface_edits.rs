@@ -1,4 +1,4 @@
-//! ブロックの面の値の上書き（surface_edits の GUI の面の表）
+//! ブロックの面の値の上書き（ブロックの surface_edits。GUI の面の表）
 
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
@@ -23,16 +23,16 @@ fn project(place: &str, edits: &str) -> lensbench_core::Result<lensbench_core::S
         "blocks": [{{"type": "stop", "semi": 2.5}}, {{"type": "air", "t": 2}},
           {{"type": "lens", "id": "L1", {place} "source": {{"surfaces": [
             {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}}, {{"radius": -50, "semi": 10}}]}}}},
-          {{"type": "air", "t": 30}}],
-        "surface_edits": {edits} }}"#
+          {{"type": "air", "t": 30}}] }}"#
     );
+    let txt = crate::put(&txt, "surface_edits", &[("L1", edits)]);
     expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default()).map(|x| x.system)
 }
 
 #[test]
 fn edits_count_surfaces_without_coordinate_breaks() {
-    let edits = r#"[{"block": "L1", "surface": 1, "fields": {"r": -40, "semi": 8}},
-                    {"block": "L1", "surface": 0, "fields": {"material": "F2"}}]"#;
+    let edits = r#"[{"surface": 1, "fields": {"r": -40, "semi": 8}},
+                    {"surface": 0, "fields": {"material": "F2"}}]"#;
     for place in ["", r#""decenter": [0, 0.5],"#] {
         let s = project(place, edits).unwrap();
         let lens: Vec<usize> = (0..s.surfaces.len())
@@ -51,13 +51,9 @@ fn edits_count_surfaces_without_coordinate_breaks() {
 
 #[test]
 fn bad_edits_are_errors() {
-    let e = project("", r#"[{"block": "L1", "surface": 2, "fields": {"r": 1}}]"#).unwrap_err();
+    let e = project("", r#"[{"surface": 2, "fields": {"r": 1}}]"#).unwrap_err();
     assert!(e.message().unwrap_or_default().contains("surface 2"), "{e}");
-    let e = project(
-        "",
-        r#"[{"block": "L1", "surface": 0, "fields": {"zz": 1}}]"#,
-    )
-    .unwrap_err();
+    let e = project("", r#"[{"surface": 0, "fields": {"zz": 1}}]"#).unwrap_err();
     assert!(e.message().unwrap_or_default().contains("zz"), "{e}");
 }
 
@@ -65,16 +61,14 @@ fn bad_edits_are_errors() {
 #[test]
 fn edits_apply_to_both_passes() {
     let txt = |edits: &str| {
-        format!(
-            r#"{{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{{"um": 0.5875618}}],
-            "aperture": {{"type": "epd", "value": 5}},
-            "blocks": [{{"type": "stop", "semi": 2.5}}, {{"type": "air", "t": 2}},
-              {{"type": "lens", "id": "L1", "source": {{"surfaces": [
-                {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}}, {{"radius": -30, "t": 2, "glass": "F2", "semi": 9}},
-                {{"radius": -80, "semi": 8}}]}}}},
-              {{"type": "air", "t": 10}}, {{"type": "mirror", "id": "M1", "back": true, "semi": 12}}, {{"type": "air", "t": 20}}],
-            "surface_edits": {edits} }}"#
-        )
+        let t = r#"{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.5875618}],
+            "aperture": {"type": "epd", "value": 5},
+            "blocks": [{"type": "stop", "semi": 2.5}, {"type": "air", "t": 2},
+              {"type": "lens", "id": "L1", "source": {"surfaces": [
+                {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}, {"radius": -30, "t": 2, "glass": "F2", "semi": 9},
+                {"radius": -80, "semi": 8}]}},
+              {"type": "air", "t": 10}, {"type": "mirror", "id": "M1", "back": true, "semi": 12}, {"type": "air", "t": 20}] }"#;
+        crate::put(t, "surface_edits", &[("L1", edits)])
     };
     let run = |edits: &str| {
         expand(
@@ -87,10 +81,8 @@ fn edits_apply_to_both_passes() {
     let a = run("[]").unwrap();
     // 往路 2 3 4、鏡 5、復路 6 7 8（4 3 2 の順）
     assert_eq!(a.surfaces[7].c, a.surfaces[3].c);
-    let s = run(
-        r#"[{"block": "L1", "surface": 1, "fields": {"r": -25, "semi": 7}},
-            {"block": "L1", "surface": 0, "fields": {"t": 5, "material": "F2"}}]"#,
-    )
+    let s = run(r#"[{"surface": 1, "fields": {"r": -25, "semi": 7}},
+            {"surface": 0, "fields": {"t": 5, "material": "F2"}}]"#)
     .unwrap();
     for j in [3, 7] {
         assert!((s.surfaces[j].c + 1.0 / 25.0).abs() < 1e-15, "面 {j}");
@@ -106,13 +98,13 @@ fn edits_apply_to_both_passes() {
         assert_eq!(s.surfaces[f].semi, s.surfaces[b].semi, "{f} {b}");
     }
     // 最後の面の後はブロックの外
-    let e = run(r#"[{"block": "L1", "surface": 2, "fields": {"t": 3}}]"#).unwrap_err();
+    let e = run(r#"[{"surface": 2, "fields": {"t": 3}}]"#).unwrap_err();
     assert!(
         e.message().unwrap_or_default().contains("air block after"),
         "{e}"
     );
     // 面の前後の傾き偏心は復路で前後・向きが変わるので断る
-    let e = run(r#"[{"block": "L1", "surface": 0, "fields": {"before": {"d": [0, 0.1, 0, 0, 0], "order": 0}}}]"#)
+    let e = run(r#"[{"surface": 0, "fields": {"before": {"d": [0, 0.1, 0, 0, 0], "order": 0}}}]"#)
         .unwrap_err();
     assert!(
         e.message()
@@ -121,7 +113,7 @@ fn edits_apply_to_both_passes() {
         "{e}"
     );
     // 面の値だけなら最後の面も変えられる
-    let s = run(r#"[{"block": "L1", "surface": 2, "fields": {"semi": 6}}]"#).unwrap();
+    let s = run(r#"[{"surface": 2, "fields": {"semi": 6}}]"#).unwrap();
     assert_eq!((s.surfaces[4].semi, s.surfaces[6].semi), (6.0, 6.0));
 }
 
@@ -130,7 +122,7 @@ fn edits_apply_to_both_passes() {
 fn data_fields_are_applied() {
     let s = project(
         "",
-        r#"[{"block": "L1", "surface": 0, "fields": {"type": "EVENASPH", "asph": [0, 1e-5], "ap": {"Circular": {"min": 0, "max": 6, "dx": 0, "dy": 0}}}}]"#,
+        r#"[{"surface": 0, "fields": {"type": "EVENASPH", "asph": [0, 1e-5], "ap": {"Circular": {"min": 0, "max": 6, "dx": 0, "dy": 0}}}}]"#,
     )
     .unwrap();
     let j = s.surfaces.iter().position(|d| d.mat == "N-BK7").unwrap();
@@ -139,55 +131,29 @@ fn data_fields_are_applied() {
         s.surfaces[j].ap,
         lensbench_core::surface::Aperture::Circular { max, .. } if max == 6.0
     ));
-    let e = project(
-        "",
-        r#"[{"block": "L1", "surface": 0, "fields": {"stop": true}}]"#,
-    )
-    .unwrap_err();
+    let e = project("", r#"[{"surface": 0, "fields": {"stop": true}}]"#).unwrap_err();
     assert!(e.message().unwrap_or_default().contains("stop"), "{e}");
 }
 
-/// 系に無いブロック（OFF の群の中・状態で外したもの）への上書きは、surface_ops と同じく当てずに注意を出す
-#[test]
-fn edits_to_missing_blocks_warn() {
-    let txt = r#"{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.5875618}],
-        "aperture": {"type": "epd", "value": 5},
-        "blocks": [{"type": "stop", "semi": 2.5}, {"type": "air", "t": 2},
-          {"type": "lens", "id": "L1", "source": {"surfaces": [
-            {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}, {"radius": -50, "semi": 10}]}},
-          {"type": "air", "t": 30}],
-        "surface_edits": [{"block": "X", "surface": 0, "fields": {"r": 1}}] }"#;
-    let (s, warn) = expand(
-        &Project::from_json(txt).unwrap(),
-        &env(),
-        &ExpandOpts::default(),
-    )
-    .map(|x| (x.system, x.notes))
-    .unwrap();
-    assert!(warn.iter().any(|w| w.contains("X")), "{warn:?}");
-    assert!(s.surfaces.iter().all(|d| d.c != 1.0));
-}
-
-/// OFF・空気で残す群の中の id は、後ろの別のブロックの面を指さない（範囲の記録を巻き戻す）
+/// OFF・空気で残す群の中のブロックの上書きは、後ろの別のブロックの面に当たらない（範囲の記録を巻き戻す）。
+/// 系に無いブロックの上書きは当てず、注意も出さない
 #[test]
 fn off_air_group_does_not_leak_spans() {
     let txt = |edits: &str| {
-        format!(
-            r#"{{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{{"um": 0.5875618}}],
-            "aperture": {{"type": "epd", "value": 5}},
-            "blocks": [{{"type": "stop", "semi": 2.5}}, {{"type": "air", "t": 10}},
-              {{"type": "group", "id": "G", "on": false, "off": "air", "blocks": [
-                {{"type": "lens", "id": "L1", "source": {{"surfaces": [
-                  {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -50, "semi": 6}}]}}}},
-                {{"type": "air", "id": "d1", "t": 3}},
-                {{"type": "lens", "id": "L1b", "source": {{"surfaces": [
-                  {{"radius": 40, "t": 3, "glass": "N-BK7", "semi": 6}}, {{"radius": -40, "semi": 6}}]}}}}]}},
-              {{"type": "air", "t": 5}},
-              {{"type": "lens", "id": "L2", "source": {{"surfaces": [
-                {{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -60, "semi": 6}}]}}}},
-              {{"type": "air", "t": 60}}],
-            "surface_edits": {edits} }}"#
-        )
+        let t = r#"{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.5875618}],
+            "aperture": {"type": "epd", "value": 5},
+            "blocks": [{"type": "stop", "semi": 2.5}, {"type": "air", "t": 10},
+              {"type": "group", "id": "G", "on": false, "off": "air", "blocks": [
+                {"type": "lens", "id": "L1", "source": {"surfaces": [
+                  {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}, {"radius": -50, "semi": 6}]}},
+                {"type": "air", "id": "d1", "t": 3},
+                {"type": "lens", "id": "L1b", "source": {"surfaces": [
+                  {"radius": 40, "t": 3, "glass": "N-BK7", "semi": 6}, {"radius": -40, "semi": 6}]}}]},
+              {"type": "air", "t": 5},
+              {"type": "lens", "id": "L2", "source": {"surfaces": [
+                {"radius": 60, "t": 4, "glass": "N-BK7", "semi": 6}, {"radius": -60, "semi": 6}]}},
+              {"type": "air", "t": 60}] }"#;
+        crate::put(t, "surface_edits", &[("L1", edits)])
     };
     let run = |e: &str| {
         expand(
@@ -199,18 +165,16 @@ fn off_air_group_does_not_leak_spans() {
         .unwrap()
     };
     let (a, _) = run("[]");
-    let (b, warn) = run(r#"[{"block": "L1", "surface": 0, "fields": {"semi": 2.5}}]"#);
+    let (b, warn) = run(r#"[{"surface": 0, "fields": {"semi": 2.5}}]"#);
     assert_eq!(a.surfaces.len(), b.surfaces.len());
     for (x, y) in a.surfaces.iter().zip(&b.surfaces) {
         assert_eq!(x.semi, y.semi);
     }
-    assert!(warn.iter().any(|w| w.contains("L1")), "{warn:?}");
+    assert!(warn.is_empty(), "{warn:?}");
     // 群の長さ（4 + 3 + 3 = 10）は空気で残る: L2 の前面は 10 + 10 + 5 = 25 の位置
     let z: f64 = a.surfaces[1..a.surfaces.len() - 3]
         .iter()
         .map(|d| d.t)
         .sum();
     assert!((z - 25.0).abs() < 1e-12, "{z}");
-    // 関係のない注意（L1b の範囲）を出さない
-    assert!(!warn.iter().any(|w| w.contains("L1b")), "{warn:?}");
 }

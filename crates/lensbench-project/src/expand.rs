@@ -279,6 +279,8 @@ pub struct SurfOrigin {
     pub flip: Option<usize>,
     /// .zmx の取り込みの番号と、元の .zmx の面番号（ピックアップを付け替える）
     pub(crate) zmx: Option<(usize, usize)>,
+    /// 面を足した、面の上書き・操作を持つブロック・群（[`Ctx::sites`] の番号）
+    pub(crate) mods: Vec<usize>,
 }
 
 impl SurfOrigin {
@@ -291,10 +293,22 @@ impl SurfOrigin {
 /// id のブロック・群の面の範囲（系の面の番号 [最初, 最後]）。続けて同じ向きにたどった範囲ごとに、たどった順。
 /// back が Some なら往路（false）か復路（true）の範囲だけ
 pub fn block_runs(map: &[SurfOrigin], id: &str, back: Option<bool>) -> Vec<[usize; 2]> {
+    if id.is_empty() {
+        return Vec::new();
+    }
+    runs_where(map, |o| o.is_in(id), back)
+}
+
+/// [`block_runs`] と同じ。面が入るかを f で決める
+pub(crate) fn runs_where(
+    map: &[SurfOrigin],
+    f: impl Fn(&SurfOrigin) -> bool,
+    back: Option<bool>,
+) -> Vec<[usize; 2]> {
     let mut out: Vec<[usize; 2]> = Vec::new();
     let mut prev: Option<(usize, bool)> = None;
     for (j, o) in map.iter().enumerate() {
-        if id.is_empty() || !o.is_in(id) {
+        if !f(o) {
             prev = None;
             continue;
         }
@@ -428,6 +442,17 @@ pub(crate) fn expand_inner(
         ))
         .with_code(code::GLASS_NOT_FOUND));
     }
+    // 面の上書き・操作を持つブロックに番号を付けた写し（無ければそのまま）
+    let keyed;
+    let p = match number_sites(p) {
+        Some(q) => {
+            keyed = q;
+            &keyed
+        }
+        None => p,
+    };
+    let mut sites = Vec::new();
+    face_sites(&p.blocks, &mut sites);
     let mut c = Ctx {
         env,
         cache,
@@ -475,10 +500,11 @@ pub(crate) fn expand_inner(
         .into());
     }
     // 絞りを面に置く操作（surface_ops の set_stop）があれば、ブロックの絞りは無くてよい
-    let stop_op = p
-        .surface_ops
-        .iter()
-        .any(|o| matches!(o, SurfaceOp::SetStop(_)));
+    let stop_op = sites.iter().any(|(_, f)| {
+        f.surface_ops
+            .iter()
+            .any(|o| matches!(o, SurfaceOp::SetStop(_)))
+    });
     if c.nstop > 1 || (c.nstop == 0 && !stop_op) {
         return Err(format!("{} stops (exactly one is needed)", c.nstop).into());
     }
@@ -709,8 +735,8 @@ pub(crate) fn expand_inner(
         }
         Ok(())
     })?;
-    warn.extend(apply_surface_edits(&mut s, &p.surface_edits, &map)?);
-    let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &map)?;
+    apply_surface_edits(&mut s, &sites, &map)?;
+    let (w, stopped) = apply_surface_ops(&mut s, &sites, &map)?;
     if c.nstop == 0 && !stopped {
         // 仮の絞りのまま（set_stop のブロックが無い）にはしない
         return Err("0 stops (no set_stop block in surface_ops; exactly one is needed)".into());
@@ -993,242 +1019,6 @@ pub(crate) fn place_frames(
         out.push(part);
     }
     out
-}
-
-/// ブロック block の面 i（座標ブレークを除いた番号、往路）の系の面の番号。ブロックが無ければ None
-pub(crate) fn block_face(
-    s: &System,
-    block: &str,
-    i: usize,
-    map: &[SurfOrigin],
-) -> lensbench_core::Result<Option<usize>> {
-    let Some(x) = fwd_run(map, block) else {
-        return Ok(None);
-    };
-    let faces: Vec<usize> = (x[0]..=x[1])
-        .filter(|&j| !s.surfaces[j].is_coord_break())
-        .collect();
-    faces
-        .get(i)
-        .copied()
-        .map(Some)
-        .ok_or(format!("block {block} surface {i} ({} surfaces)", faces.len()).into())
-}
-
-/// 面の絞り・ソルブ・ピックアップを当てる（[`Project::surface_ops`]）。当てなかった操作の注意と、set_stop を
-/// 当てたかを返す
-pub(crate) fn apply_surface_ops(
-    s: &mut System,
-    ops: &[SurfaceOp],
-    map: &[SurfOrigin],
-) -> lensbench_core::Result<(Vec<String>, bool)> {
-    let mut warn = Vec::new();
-    let mut out = Vec::new();
-    let mut stopped = false;
-    // ためた操作をまとめて当てる
-    // 誤りの文の番号は surface_ops の何番目か
-    let flush = |s: &mut System,
-                 out: &mut Vec<(usize, EditOp)>,
-                 warn: &mut Vec<String>,
-                 stopped: &mut bool|
-     -> lensbench_core::Result<()> {
-        if !out.is_empty() {
-            *stopped |= out.iter().any(|o| matches!(o.1, EditOp::SetStop(_)));
-            let ops: Vec<(usize, &EditOp)> = out.iter().map(|(k, o)| (*k, o)).collect();
-            warn.extend(edit_ops::apply_labeled(s, &ops, true)?);
-            out.clear();
-        }
-        Ok(())
-    };
-    // 外す操作の面に、外すソルブ・ピックアップがあるか（名前で書いた面・読めない量は当てて誤りにする）
-    let has_target = |s: &System, e: &EditOp| match e {
-        EditOp::RemoveSolve {
-            surface: Ref::Index(j),
-            what,
-        } => {
-            let c = *what == crate::edit_spec::SolveWhat::C;
-            s.solves
-                .iter()
-                .any(|q| q.surf == *j && q.kind.is_curv() == c)
-        }
-        EditOp::RemovePickup {
-            dst: Ref::Index(j),
-            what,
-        } => match lensbench_core::pickup::pick_kind_parse(what) {
-            Ok(w) => s.pickups.iter().any(|p| p.dst == *j && p.what == w),
-            Err(_) => true,
-        },
-        _ => true,
-    };
-    for (k, op) in ops.iter().enumerate() {
-        let mut missing = None;
-        let e = op.to_edit(|r| match r {
-            BlockRef::Sys(r) => Ok::<_, String>(Some(r)),
-            BlockRef::Block(f) => match block_face(s, &f.block, f.surface, map)
-                .map_err(|x| format!("surface_ops {}: {x}", k + 1))?
-            {
-                Some(j) => Ok(Some(Ref::Index(j))),
-                None => {
-                    missing = Some(f.block);
-                    Ok(None)
-                }
-            },
-        })?;
-        match e {
-            // 外す操作: 前の操作を当ててから、外すものが無ければ当てずに注意（ブロックの元が変わったなど）
-            Some(e @ (EditOp::RemoveSolve { .. } | EditOp::RemovePickup { .. })) => {
-                flush(s, &mut out, &mut warn, &mut stopped)?;
-                if has_target(s, &e) {
-                    flush(s, &mut vec![(k + 1, e)], &mut warn, &mut stopped)?;
-                } else {
-                    warn.push(format!(
-                        "surface_ops {}: nothing to remove, so {} is not applied",
-                        k + 1,
-                        op.name()
-                    ));
-                }
-            }
-            Some(e) => out.push((k + 1, e)),
-            None => warn.push(format!(
-                "surface_ops {}: block {} not found, so {} is not applied",
-                k + 1,
-                missing.unwrap_or_default(),
-                op.name()
-            )),
-        }
-    }
-    flush(s, &mut out, &mut warn, &mut stopped)?;
-    Ok((warn, stopped))
-}
-
-/// 面の値の上書きを当てる（ブロック id の面のうち座標ブレークを除いた番号）。
-/// ブロックが系に無い（状態で外した・OFF の群の中など）上書きは `surface_ops` と同じく当てずに注意を返す
-pub(crate) fn apply_surface_edits(
-    s: &mut System,
-    edits: &[SurfaceEdit],
-    map: &[SurfOrigin],
-) -> lensbench_core::Result<Vec<String>> {
-    let mut warn = Vec::new();
-    // 範囲の面（座標ブレークを除く）
-    let faces = |s: &System, r: [usize; 2]| -> Vec<usize> {
-        (r[0]..=r[1])
-            .filter(|&j| !s.surfaces[j].is_coord_break())
-            .collect()
-    };
-    for e in edits {
-        let err = |why: lensbench_core::Error| {
-            why.map_message(|why| {
-                format!(
-                    "surface_edits: block {} surface {}: {why}",
-                    e.block, e.surface
-                )
-            })
-        };
-        // 往路（と、同じ向きに通るほかの範囲）・復路
-        let fwd: Vec<Vec<usize>> = block_runs(map, &e.block, Some(false))
-            .into_iter()
-            .map(|r| faces(s, r))
-            .collect();
-        let back: Vec<Vec<usize>> = block_runs(map, &e.block, Some(true))
-            .into_iter()
-            .map(|r| faces(s, r))
-            .collect();
-        let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
-            warn.push(format!(
-                "surface_edits: block {} not found, so the override of surface {} is not applied",
-                e.block, e.surface
-            ));
-            continue;
-        };
-        let i = e.surface;
-        if i >= n {
-            return Err(format!(
-                "surface_edits: block {} surface {} ({n} surfaces)",
-                e.block, e.surface
-            )
-            .into());
-        }
-        // 面の値の名前（SURF_FIELDS）と、それ以外の面のデータの項目（set_surface_data）
-        let (named, data): (Map<String, Value>, Map<String, Value>) = e
-            .fields
-            .clone()
-            .into_iter()
-            .partition(|(k, _)| lensbench_core::edit::SURF_FIELDS.contains(&k.as_str()));
-        let has_data = !data.is_empty();
-        let f = edit_ops::surf_fields(&Value::Object(named))
-            .map_err(|x| format!("surface_edits: {x}"))?;
-        for v in &fwd {
-            let j = *v.get(i).ok_or_else(|| {
-                err("the ranges in the same direction have different numbers of surfaces".into())
-            })?;
-            if !f.is_empty() {
-                s.set_surface_fields(j, &f).map_err(err)?;
-            }
-            if has_data {
-                edit_ops::set_surface_data(s, j, &data).map_err(err)?;
-            }
-        }
-        if has_data && !back.is_empty() {
-            if ["t", "mat", "dn", "disp"]
-                .iter()
-                .any(|k| data.get(*k).is_some())
-            {
-                return Err(err(
-                    "change the thickness and material of a round-trip block with the names t and material".into(),
-                ));
-            }
-            // 復路では面の前後が入れ替わり向きも逆になるので、前後の傾き偏心はそのまま当てられない
-            if ["before", "after"].iter().any(|k| data.get(*k).is_some()) {
-                return Err(err(
-                    "tilts and decenters before or after surfaces of a round-trip block can't be changed (use the block decenter and tilt)"
-                        .into(),
-                ));
-            }
-            for v in &back {
-                if v.len() == n {
-                    edit_ops::set_surface_data(s, v[n - 1 - i], &data).map_err(err)?;
-                }
-            }
-        }
-        // 復路は逆の順にたどる: 面の値（曲率・コーニック・半径など）は同じ面 n−1−i に同じ値、面の後の媒質の値
-        // （厚さ・材料）は n−2−i に（厚さは符号が逆）。往路の最後の面の後はブロックの外（後の空気）なので、往復する
-        // ブロックでは変えない
-        for v in &back {
-            if v.len() != n {
-                return Err(err(format!(
-                    "{} surfaces on the return path ({n} on the way out)",
-                    v.len()
-                )
-                .into()));
-            }
-            let (face, gap): (Vec<_>, Vec<_>) = f
-                .iter()
-                .cloned()
-                .partition(|(k, _)| !matches!(k.as_str(), "t" | "material" | "dn" | "disp"));
-            if !face.is_empty() {
-                s.set_surface_fields(v[n - 1 - i], &face).map_err(err)?;
-            }
-            if !gap.is_empty() {
-                if i + 1 == n {
-                    return Err(err(
-                        "change the thickness and material of the last surface of a round-trip block in the air block after it"
-                            .into(),
-                    ));
-                }
-                let gap: Vec<_> = gap
-                    .into_iter()
-                    .map(|(k, x)| match (k.as_str(), x) {
-                        ("t", lensbench_core::edit::SurfValue::Num(t)) => {
-                            (k, lensbench_core::edit::SurfValue::Num(-t))
-                        }
-                        (_, x) => (k, x),
-                    })
-                    .collect();
-                s.set_surface_fields(v[n - 2 - i], &gap).map_err(err)?;
-            }
-        }
-    }
-    Ok(warn)
 }
 
 /// id の群（ブロックの群・.zmx の取り込みの中の群）の移動

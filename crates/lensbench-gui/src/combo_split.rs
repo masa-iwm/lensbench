@@ -53,7 +53,7 @@ fn radius_of(c: f64) -> Option<f64> {
     None
 }
 
-/// blocks・surface_ops・glrs を要素で書いたプロジェクト
+/// blocks（面の絞り・ソルブ・ピックアップはブロックの surface_ops）・glrs を要素で書いたプロジェクト
 fn split_project(s: &System, p: &Value) -> Option<Value> {
     if !s.macros.is_empty() || !s.macro_parms.is_empty() || s.surfaces.len() < 3 {
         return None;
@@ -150,11 +150,23 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         }
         ops.push(o);
     }
+    // 操作は当てる面（surface・dst）のブロックに、面はそのブロックの面の番号で
+    for mut o in ops {
+        let key = if o.get("dst").is_some() {
+            "dst"
+        } else {
+            "surface"
+        };
+        let b = o[key]["block"].as_str()?.to_string();
+        o[key] = o[key]["surface"].clone();
+        let blk = blocks.iter_mut().find(|x| x["id"] == b.as_str())?;
+        match blk["surface_ops"].as_array_mut() {
+            Some(a) => a.push(o),
+            None => blk["surface_ops"] = json!([o]),
+        }
+    }
     let mut v = p.clone();
     v["blocks"] = json!(blocks);
-    if !ops.is_empty() {
-        v["surface_ops"] = json!(ops);
-    }
     if let Some(o) = v.as_object_mut() {
         o.remove("glrs");
     }

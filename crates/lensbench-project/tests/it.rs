@@ -47,3 +47,31 @@ fn every_test_file_is_listed() {
     }
 }
 mod zmx_wrap;
+
+/// プロジェクトの JSON の id のブロック（群・BS の腕・.zmx の取り込みの群の中も）に、項目 key の値（JSON）を入れる。
+/// ブロックの面の上書き・操作（surface_edits・surface_ops）の試験で使う。id が無ければ panic
+pub fn put(txt: &str, key: &str, by_id: &[(&str, &str)]) -> String {
+    fn walk(v: &mut serde_json::Value, id: &str, key: &str, x: &serde_json::Value) -> bool {
+        match v {
+            serde_json::Value::Object(m) => {
+                if m.get("id").and_then(|i| i.as_str()) == Some(id)
+                    && (m.contains_key("type") || m.contains_key("from"))
+                {
+                    m.insert(key.into(), x.clone());
+                    return true;
+                }
+                m.iter_mut()
+                    .filter(|(k, _)| !matches!(k.as_str(), "states" | "surfaces"))
+                    .any(|(_, w)| walk(w, id, key, x))
+            }
+            serde_json::Value::Array(a) => a.iter_mut().any(|w| walk(w, id, key, x)),
+            _ => false,
+        }
+    }
+    let mut v: serde_json::Value = serde_json::from_str(txt).unwrap();
+    for (id, x) in by_id {
+        let x: serde_json::Value = serde_json::from_str(x).unwrap();
+        assert!(walk(&mut v, id, key, &x), "no block {id}");
+    }
+    v.to_string()
+}

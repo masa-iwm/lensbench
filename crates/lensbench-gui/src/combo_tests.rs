@@ -134,20 +134,29 @@ fn surface_edits_follow_the_element() {
     a.set_edit(1, "r", json!(-30.0));
     a.set_edit(0, "semi", json!(8.0));
     c.picks = vec![Pick::new(ElemKind::Lens), a];
+    // 要素のブロックの surface_edits に
+    let edits_of = |v: &Value, id: &str| {
+        v["blocks"]
+            .as_array()
+            .and_then(|a| a.iter().find(|b| b["id"] == id))
+            .map(|b| b["surface_edits"].clone())
+            .unwrap_or_default()
+    };
     let v = c.project();
     assert_eq!(
-        v["surface_edits"],
+        edits_of(&v, "L2"),
         json!([
-            {"block": "L2", "surface": 1, "fields": {"r": -30.0}},
-            {"block": "L2", "surface": 0, "fields": {"semi": 8.0}},
+            {"surface": 1, "fields": {"r": -30.0}},
+            {"surface": 0, "fields": {"semi": 8.0}},
         ])
     );
+    assert_eq!(edits_of(&v, "L1"), Value::Null);
     // 前に要素を足して id が変わっても、上書きは同じ要素に付いて行く
     c.picks.insert(0, Pick::new(ElemKind::Lens));
-    assert_eq!(c.project()["surface_edits"][0]["block"], "L3");
+    assert_eq!(edits_of(&c.project(), "L3")[0]["surface"], 1);
     // 上書きが無ければ書かない
     c.picks[2].edits.clear();
-    assert!(c.project().get("surface_edits").is_none());
+    assert_eq!(edits_of(&c.project(), "L3"), Value::Null);
 }
 /// 面の数・順・元が変わったら、面番号の上書き（edits・ops）を外す。値だけの変更では残す（GPN-02）
 #[test]
@@ -201,16 +210,25 @@ fn surface_ops_follow_the_element() {
     assert_eq!(c.stop_face(), Some((vec![0], 1)));
     let v = c.project();
     assert_eq!(v["blocks"][0]["type"], "lens");
+    // 当てる面はブロックの面の番号、ほかの要素の面は id で
     assert_eq!(
-        v["surface_ops"],
+        v["blocks"][0]["surface_ops"],
+        json!([{"op": "set_stop", "surface": 1}])
+    );
+    assert_eq!(
+        v["blocks"][2]["surface_ops"],
         json!([
-            {"op": "set_stop", "surface": {"block": "L1", "surface": 1}},
-            {"op": "add_pickup", "dst": {"block": "L2", "surface": 1}, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1.0},
+            {"op": "add_pickup", "dst": 1, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1.0},
         ])
     );
     c.set_stop_face(None);
     assert!(c.lead_stop());
-    assert_eq!(c.project()["surface_ops"].as_array().map(Vec::len), Some(1));
+    let v = c.project();
+    assert!(v["blocks"][2].get("surface_ops").is_none());
+    assert_eq!(
+        v["blocks"][4]["surface_ops"].as_array().map(Vec::len),
+        Some(1)
+    );
 }
 /// ON/OFF・往路を戻る・状態
 #[test]

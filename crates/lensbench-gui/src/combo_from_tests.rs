@@ -137,18 +137,14 @@ fn refuses_what_it_cannot_write() {
     )
     .unwrap_err()
     .contains("two or more"));
-    assert!(two(
-        "surface_edits",
-        json!([{ "block": "A", "surface": 0, "fields": { "conic": -1 } }])
-    )
-    .unwrap_err()
-    .contains("two or more"));
-    assert!(two(
-        "surface_ops",
-        json!([{ "op": "set_stop", "surface": { "block": "A", "surface": 0 } }])
-    )
-    .unwrap_err()
-    .contains("two or more"));
+    // ほかのブロックの面を指す面の操作
+    let mut picked = lens.clone();
+    picked["id"] = json!("B");
+    picked["surface_ops"] = json!([{ "op": "add_pickup", "dst": 0,
+        "src": { "block": "A", "surface": 1 }, "what": "c", "scale": -1 }]);
+    assert!(with(json!([stop, air, lens, air, lens, air, picked, air]))
+        .unwrap_err()
+        .contains("two or more"));
 }
 
 /// 組合せにした examples は、元のファイルと同じ図（面の並び・光線）になる。.zmx・カタログの相対パスも読める

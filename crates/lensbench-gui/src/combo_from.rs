@@ -14,7 +14,6 @@ use crate::combo::{
 };
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt};
 use lensbench_core::system::ApertureKind;
-use lensbench_project::edit_ops::{BlockRef, Ref, SurfaceOp};
 use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
@@ -100,8 +99,6 @@ impl Combo {
         c.picks = list(rest, false, &mut c.groups)?;
         refs_unique(&c, &v)?;
         states(&mut c, &p)?;
-        edits(&mut c, &v)?;
-        ops(&mut c, &v)?;
         mechanics(&mut c, &v)?;
         // 作り直したプロジェクトが元と同じか
         let a = canon(&v)?;
@@ -425,6 +422,30 @@ pub(crate) fn is_branched_bs(b: &Value) -> bool {
 
 /// 要素のブロック 1 つ。組合せの欄で同じブロックを書けなければ、ブロックをそのまま持つ要素に
 fn elem_or_raw(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
+    // 面の上書き・操作は要素の edits・ops に（ブロックの中身と分けて持つ）
+    let mut b = b.clone();
+    let (es, os) = match b.as_object_mut() {
+        Some(o) => (o.remove("surface_edits"), o.remove("surface_ops")),
+        None => (None, None),
+    };
+    let mut p = elem_or_raw_inner(&b, groups)?;
+    for e in es.as_ref().and_then(Value::as_array).into_iter().flatten() {
+        let surface = e["surface"].as_u64().unwrap_or(0) as usize;
+        for (k, x) in e["fields"].as_object().into_iter().flatten() {
+            p.edits.push(SurfEdit {
+                surface,
+                field: k.clone(),
+                value: x.clone(),
+            });
+        }
+    }
+    if let Some(x) = os {
+        p.ops = serde_json::from_value(x).map_err(|e| e.to_string())?;
+    }
+    Ok(p)
+}
+
+fn elem_or_raw_inner(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
     let same = |p: &Pick| -> bool {
         let one = |v: Value| -> Option<Value> {
             let mut v = v;
@@ -671,9 +692,6 @@ fn refs_unique(c: &Combo, v: &Value) -> R<()> {
                 .map(|(k, _)| k.clone()),
         );
     }
-    for e in v["surface_edits"].as_array().into_iter().flatten() {
-        used.push(s(&e["block"]));
-    }
     fn blocks_in(x: &Value, out: &mut Vec<String>) {
         match x {
             Value::Object(o) => {
@@ -686,7 +704,8 @@ fn refs_unique(c: &Combo, v: &Value) -> R<()> {
             _ => {}
         }
     }
-    blocks_in(&v["surface_ops"], &mut used);
+    // ブロックの surface_ops のほかのブロックの面
+    blocks_in(&v["blocks"], &mut used);
     for m in v["mechanics"].as_array().into_iter().flatten() {
         blocks_in(&m["at"], &mut used);
         used.extend(m["holds"].as_array().into_iter().flatten().map(s));
@@ -842,43 +861,6 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
     Ok(())
 }
 
-/// 面の上書き（要素の edits）
-fn edits(c: &mut Combo, v: &Value) -> R<()> {
-    for e in v["surface_edits"].as_array().into_iter().flatten() {
-        let id = s(&e["block"]);
-        let q = find(&mut c.picks, &id).ok_or_else(|| format!("surface_edits: no {id}"))?;
-        let surface = e["surface"].as_u64().unwrap_or(0) as usize;
-        for (k, x) in e["fields"].as_object().into_iter().flatten() {
-            q.edits.push(SurfEdit {
-                surface,
-                field: k.clone(),
-                value: x.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-/// 面の絞り・ソルブ・ピックアップ（要素の ops。この要素の面は要素の面の番号に）
-fn ops(c: &mut Combo, v: &Value) -> R<()> {
-    let Some(x) = v.get("surface_ops") else {
-        return Ok(());
-    };
-    let list: Vec<SurfaceOp> = serde_json::from_value(x.clone()).map_err(|e| e.to_string())?;
-    for mut o in list {
-        let r = o.target_mut();
-        let BlockRef::Block(face) = r.clone() else {
-            return Err("surface_ops on a system surface".into());
-        };
-        *r = BlockRef::Sys(Ref::Index(face.surface));
-        find(&mut c.picks, &face.block)
-            .ok_or_else(|| format!("surface_ops: no {}", face.block))?
-            .ops
-            .push(o);
-    }
-    Ok(())
-}
-
 fn mechanics(c: &mut Combo, v: &Value) -> R<()> {
     for m in v["mechanics"].as_array().into_iter().flatten() {
         if m.get("mech").is_some() {
@@ -957,26 +939,37 @@ fn canon(v: &Value) -> R<Value> {
             vg.clear();
         }
     }
-    // 面の上書きは 1 項目ずつ、ブロック・面・項目の順に（同じ項目の順は残す）
-    if let Some(es) = v["surface_edits"].as_array() {
-        let mut one: Vec<Value> = es
-            .iter()
-            .flat_map(|e| {
-                e["fields"].as_object().into_iter().flatten().map(|(k, x)| {
-                    json!({ "block": e["block"], "surface": e["surface"], "fields": { k.clone(): x } })
-                })
-            })
-            .collect();
-        one.sort_by_key(|e| {
-            (
-                s(&e["block"]),
-                e["surface"].as_u64(),
-                e["fields"]
-                    .as_object()
-                    .and_then(|m| m.keys().next().cloned()),
-            )
-        });
-        v["surface_edits"] = Value::Array(one);
+    // ブロックの面の上書きは 1 項目ずつ、面・項目の順に（同じ項目の順は残す）
+    fn one_by_one(bs: &mut Value) {
+        for b in bs.as_array_mut().into_iter().flatten() {
+            if let Some(es) = b["surface_edits"].as_array() {
+                let mut one: Vec<Value> = es
+                    .iter()
+                    .flat_map(|e| {
+                        e["fields"].as_object().into_iter().flatten().map(
+                            |(k, x)| json!({ "surface": e["surface"], "fields": { k.clone(): x } }),
+                        )
+                    })
+                    .collect();
+                one.sort_by_key(|e| {
+                    (
+                        e["surface"].as_u64(),
+                        e["fields"]
+                            .as_object()
+                            .and_then(|m| m.keys().next().cloned()),
+                    )
+                });
+                b["surface_edits"] = Value::Array(one);
+            }
+            for k in ["blocks", "t", "r", "d"] {
+                if b.get(k).is_some_and(Value::is_array) {
+                    one_by_one(&mut b[k]);
+                }
+            }
+        }
+    }
+    if let Some(bs) = v.get_mut("blocks") {
+        one_by_one(bs);
     }
     norm(&mut v);
     // 状態の系の値で基本と同じものは書かないのと同じ

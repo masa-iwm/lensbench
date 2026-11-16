@@ -61,12 +61,14 @@ mod back;
 mod blocks;
 mod catalog;
 mod expand;
+mod faces;
 mod model;
 mod zmx_wrap;
 pub use back::*;
 pub use blocks::*;
 pub use catalog::*;
 pub use expand::*;
+use faces::*;
 pub use model::*;
 pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};
 

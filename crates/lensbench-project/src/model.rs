@@ -530,6 +530,8 @@ pub enum Block {
         stop: bool,
         #[serde(flatten)]
         place: Place,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     Air {
         #[serde(default)]
@@ -542,6 +544,8 @@ pub enum Block {
         id: String,
         #[serde(default)]
         semi: f64,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     Mirror {
         #[serde(default)]
@@ -567,6 +571,8 @@ pub enum Block {
         /// 往路を戻る: 同じ並び（群）で鏡より前のブロックを、逆の順・逆の向きにたどる
         #[serde(default)]
         back: bool,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     /// 空気中の面の並び（玉に分けない）
     Surfaces {
@@ -575,6 +581,8 @@ pub enum Block {
         surfaces: Vec<SurfSpec>,
         #[serde(flatten)]
         place: Place,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     /// .zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）。`path` は lensbench の系
     /// （系ファイル・プロジェクトの .json、構成は 1 だけ）でもよい
@@ -597,6 +605,8 @@ pub enum Block {
         groups: Vec<ZmxGroup>,
         #[serde(flatten)]
         place: Place,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     /// ユーザーカタログの項目（群と同じに入れる）
     User {
@@ -607,6 +617,8 @@ pub enum Block {
         item: String,
         #[serde(flatten)]
         place: Place,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     /// ビームスプリッター（[`SplitterSpec`]）。id が要る
     Splitter {
@@ -630,6 +642,8 @@ pub enum Block {
         blocks: Vec<Block>,
         #[serde(flatten)]
         place: Place,
+        #[serde(flatten)]
+        faces: FaceMods,
     },
     /// 検出器（登録した種類、[`DetectorBlock`]）。`"type"` は種類の名前（このクレートの組み込みの名前でないもの）。
     /// 読み書きは下の Deserialize・Serialize の実装で、スキーマは [`crate::schema`] が足す
@@ -743,6 +757,8 @@ pub struct ZmxGroup {
     pub shift: f64,
     #[serde(flatten)]
     pub place: Place,
+    #[serde(flatten)]
+    pub faces: FaceMods,
 }
 
 /// 状態（多重構成に当たる）: 値の変更の組
@@ -793,15 +809,6 @@ pub struct Project {
     /// ビームスプリッターの経路（BS を通る順の T・R）。省略で各 BS の arm。状態の project でも変えられる
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    /// ブロックの面の値の上書き（GUI の面の表で変えた値）。展開の最後に当てる
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub surface_edits: Vec<SurfaceEdit>,
-    /// 面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、
-    /// 面（`surface`・`dst`・`src`・`other`）は `{"block": id, "surface": i}`（[`SurfaceEdit`] と同じ数え方）か系の面の番号・名前。
-    /// 展開の最後（`surface_edits` の後）に当てる。ブロックが無い（状態で外したなど）操作は当てずに注意を出す。
-    /// 往復するブロックは往路の面を指す
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub surface_ops: Vec<SurfaceOp>,
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
@@ -854,12 +861,72 @@ impl Environment {
     }
 }
 
-/// ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた
+/// ブロックの面の上書き・絞り・ソルブ・ピックアップ（GUI の面の表で変えたもの）。ブロックと .zmx の取り込みの群が持ち、
+/// 展開の最後に当てる（上書きの後に操作）。状態で外したブロックのものは当てない
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct FaceMods {
+    /// 面の値の上書き
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surface_edits: Vec<SurfaceEdit>,
+    /// 面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
+    /// `remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。
+    /// `src`・`other` はほかのブロックの面 `{"block": id, "surface": i}` か系の面の番号・名前。
+    /// 往復するブロックは往路の面を指す
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surface_ops: Vec<SurfaceOp>,
+    /// 展開の中での番号（1 始まり、0 は無し。[`SurfOrigin::mods`]）。展開がプロジェクトの写しに付ける
+    /// （BS の腕などブロックを写して進んでも同じブロックとわかるように）。読み書きしない
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub(crate) site: usize,
+}
+
+impl PartialEq for FaceMods {
+    fn eq(&self, o: &Self) -> bool {
+        self.surface_edits == o.surface_edits && self.surface_ops == o.surface_ops
+    }
+}
+
+impl FaceMods {
+    pub fn is_empty(&self) -> bool {
+        self.surface_edits.is_empty() && self.surface_ops.is_empty()
+    }
+}
+
+impl Block {
+    /// ブロックの面の上書き・操作（持てる種類だけ）
+    pub fn faces(&self) -> Option<&FaceMods> {
+        match self {
+            Block::Lens { faces, .. }
+            | Block::Stop { faces, .. }
+            | Block::Mirror { faces, .. }
+            | Block::Surfaces { faces, .. }
+            | Block::Zmx { faces, .. }
+            | Block::User { faces, .. }
+            | Block::Group { faces, .. } => Some(faces),
+            _ => None,
+        }
+    }
+    pub fn faces_mut(&mut self) -> Option<&mut FaceMods> {
+        match self {
+            Block::Lens { faces, .. }
+            | Block::Stop { faces, .. }
+            | Block::Mirror { faces, .. }
+            | Block::Surfaces { faces, .. }
+            | Block::Zmx { faces, .. }
+            | Block::User { faces, .. }
+            | Block::Group { faces, .. } => Some(faces),
+            _ => None,
+        }
+    }
+}
+
+/// ブロックの面の値の上書き（[`FaceMods::surface_edits`]）。面はブロックの面のうち座標ブレークを除いて数えた
 /// 番号（0 始まり。偏心・傾きの座標ブレークの有無で番号が変わらないように）。値は系の面の値（順次の面の値。
 /// 鏡の後は厚さ・曲率の符号が逆）で、名前は [`lensbench_core::edit::SURF_FIELDS`]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SurfaceEdit {
-    pub block: String,
     pub surface: usize,
     pub fields: Map<String, Value>,
 }

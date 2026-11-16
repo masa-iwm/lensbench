@@ -1,5 +1,5 @@
 //! 系の編集の操作の JSON の型（PRJ-11）。`op` で操作を選び、操作ごとに使えるキーだけを受ける（知らないキーは誤り）。
-//! serve の `edit` の `ops`（[`EditOp`]）と、プロジェクトの `surface_ops`（[`SurfaceOp`]、面をブロックの面でも指せる
+//! serve の `edit` の `ops`（[`EditOp`]）と、ブロックの `surface_ops`（[`SurfaceOp`]、面をブロックの面でも指せる
 //! 絞り・ソルブ・ピックアップだけ）。当て方は [`crate::edit_ops`]。`docs/schema/edit-ops.schema.json` はこの型から作る。
 //!
 //! 面の値・面のデータ・系の設定・機構部品の書き換え（`fields`・`data`・`part`）は、系ファイルの同じ名前の項目と同じ形の
@@ -102,7 +102,7 @@ pub struct BlockFace {
     pub surface: usize,
 }
 
-/// プロジェクトの `surface_ops` の面: ブロックの面 `{"block": id, "surface": i}` か、展開した系の面の番号か名前
+/// ブロックの `surface_ops` の面: ブロックの面 `{"block": id, "surface": i}` か、展開した系の面の番号か名前
 #[derive(Serialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum BlockRef {
@@ -411,8 +411,9 @@ impl EditOp {
     }
 }
 
-/// プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
-/// `remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{"block": id, "surface": i}` でも指せる。
+/// ブロックの `surface_ops` の操作（[`crate::FaceMods`]）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
+/// `remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{"block": id, "surface": i}` でも指せる
+/// （当てる面 `surface`・`dst` の番号はそのブロックの面）。
 /// `remove_*` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す（無ければ当てずに注意）
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -461,21 +462,6 @@ impl SurfaceOp {
             SurfaceOp::RemoveSolve { surface, .. } => surface,
             SurfaceOp::RemovePickup { dst, .. } => dst,
         }
-    }
-
-    /// 番号で書いた面（`surface`・`dst`。`src`・`other` はそのまま）をブロック id の面にする（GUI の組合せの要素の面）
-    pub fn in_block(&self, id: &str) -> SurfaceOp {
-        let f = |r: &mut BlockRef| {
-            if let BlockRef::Sys(Ref::Index(i)) = *r {
-                *r = BlockRef::Block(BlockFace {
-                    block: id.to_string(),
-                    surface: i,
-                });
-            }
-        };
-        let mut o = self.clone();
-        f(o.target_mut());
-        o
     }
 
     /// 番号で書いた面の `set_stop` の面の番号

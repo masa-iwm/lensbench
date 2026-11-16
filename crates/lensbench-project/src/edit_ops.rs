@@ -539,22 +539,22 @@ pub fn apply_json(s: &mut System, ops: &Value) -> lensbench_core::Result<Vec<Str
 /// 操作の列を順に当てる（どれかが失敗すれば系は変えない）。面を消したときなどの説明を返す
 pub fn apply(s: &mut System, ops: &[EditOp]) -> lensbench_core::Result<Vec<String>> {
     let ops: Vec<(usize, &EditOp)> = ops.iter().enumerate().map(|(i, o)| (i + 1, o)).collect();
-    apply_labeled(s, &ops, false)
+    apply_labeled(s, &ops, None)
 }
 
-/// [`apply`] の誤りの文で、操作を番号で示す（番号は呼ぶ側の数え方。surface_ops なら `surface_ops N` で、その何番目か）
+/// [`apply`] の誤りの文で、操作を番号で示す（番号は呼ぶ側の数え方。ブロックの surface_ops なら `block id surface_ops N` で、その何番目か）
 pub(crate) fn apply_labeled(
     s: &mut System,
     ops: &[(usize, &EditOp)],
-    surface_ops: bool,
+    block: Option<&str>,
 ) -> lensbench_core::Result<Vec<String>> {
     let mut t = s.clone();
     let mut notes = Vec::new();
     for &(i, op) in ops {
         let at = |e: lensbench_core::Error| {
             e.map_message(|e| {
-                if surface_ops {
-                    format!("surface_ops {}: {e}", i)
+                if let Some(b) = block {
+                    format!("block {} surface_ops {}: {e}", b, i)
                 } else {
                     format!("operation {}: {e}", i)
                 }

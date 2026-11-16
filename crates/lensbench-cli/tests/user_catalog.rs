@@ -31,9 +31,9 @@ fn save_list_rename_delete() {
                     {"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -80, "semi": 8}]}},
                 {"type": "air", "t": 3},
                 {"type": "lens", "id": "L2", "source": {"surfaces": [
-                    {"radius": -40, "t": 2, "glass": "F2", "semi": 8}, {"radius": 200, "semi": 8}]}},
-                {"type": "air", "t": 50}],
-            "surface_edits": [{"block": "L2", "surface": 0, "fields": {"r": -45.0}}]
+                    {"radius": -40, "t": 2, "glass": "F2", "semi": 8}, {"radius": 200, "semi": 8}]},
+                 "surface_edits": [{"surface": 0, "fields": {"r": -45.0}}]},
+                {"type": "air", "t": 50}]
         })
         .to_string(),
     )

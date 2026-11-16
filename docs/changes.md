@@ -25,6 +25,14 @@
 - Python の `System.from_json` に `glass_dirs=` を、pickle にカタログのフォルダを足した（古い pickle も読める）。Rust は
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
+### プロジェクトの面の上書き・操作
+- プロジェクトの直下の `surface_edits`・`surface_ops` をやめ、各ブロック（玉・絞り・鏡・面の並び・zmx・user・群と zmx の取り込みの群）が
+  持つようにした（PRJ-04）。`surface_edits` の項目は `block` を書かず `{"surface": i, "fields": {…}}`、`surface_ops` の当てる面
+  （`surface`・`dst`）はそのブロックの面の番号（参照する `src`・`other` は前どおり `{"block": id, "surface": i}` か系の面）。
+  直下に書いた前のファイルは「unknown key」の誤りになるので、項目をそのブロックへ移す。状態で外したブロックの上書き・操作は
+  注意なしで当てない（前は「block … not found」の注意）。surface_ops の誤りの文は `block L2 surface_ops 3: …` のようにブロックを示す。
+  Rust は `Project::surface_edits`・`surface_ops` をやめ、`Block::faces()`・`ZmxGroup::faces`（`FaceMods`）、`SurfaceEdit` から `block` を外した。
+
 ### 名前・設定の書き方
 - 解析のサブコマンドに `--params-file`（設定を JSON のファイルで渡す。コマンド行で明示した旗が優先、[CLI](cli.md)）。
 - 開口の種類・視野の正規化・エイミング・無限焦点の単位・ケラレの補間を、core・プロジェクト・系ファイルで同じ列挙にした（XCT-09）。

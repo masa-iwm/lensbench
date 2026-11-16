@@ -325,7 +325,7 @@ pub struct Pick {
     /// 開口・遮蔽の形と寸法（開口の要素だけが持つ。[`ApData`]）。円・遮蔽の外径は semi、偏心は decenter
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ap: Option<Box<ApData>>,
-    /// 面の表で変えた面の値（プロジェクトの surface_edits になる）
+    /// 面の表で変えた面の値（ブロックの surface_edits になる）
     pub edits: Vec<SurfEdit>,
     /// 玉の前面を絞りにする（カタログの玉・自作の玉・平板・.zmx の玉）
     pub stop_front: bool,
@@ -335,7 +335,7 @@ pub struct Pick {
     pub surfs: Vec<SurfRow>,
     /// .zmx の取り込み: 面 from〜to（0 は既定: 面 1〜像面の手前）
     pub range: [usize; 2],
-    /// 面の絞り・ソルブ・ピックアップ（プロジェクトの surface_ops になる）。この要素の面（surface・dst）は要素の面の
+    /// 面の絞り・ソルブ・ピックアップ（ブロックの surface_ops になる）。この要素の面（surface・dst）は要素の面の
     /// 番号（座標ブレークを除く、`BlockRef::Sys(Ref::Index(i))`）、ほかの要素の面（src・other）は {"block": id, "surface": i}
     pub ops: Vec<SurfaceOp>,
     /// ON/OFF（OFF の要素は系に入らない）。状態ごとの値は state_on
@@ -1091,16 +1091,14 @@ impl Combo {
     /// プロジェクトファイル（JSON）にする
     pub fn project(&self) -> Value {
         let mut blocks = Vec::new();
-        let mut edits = Vec::new();
-        let mut ops = Vec::new();
         if self.lead_stop() {
             blocks.push(json!({ "type": "stop", "semi": self.epd / 2.0 }));
             blocks.push(json!({ "type": "air", "t": self.stop_gap }));
         } else if let Some(t) = self.lead_air {
             blocks.push(json!({ "type": "air", "t": t }));
         }
-        let grouped = self.blocks(&mut blocks, &mut edits);
-        // 面の絞り・ソルブ・ピックアップと状態
+        let grouped = self.blocks(&mut blocks);
+        // 状態
         let mut states: Vec<(String, serde_json::Map<String, Value>)> = self
             .states
             .iter()
@@ -1108,7 +1106,6 @@ impl Combo {
             .collect();
         for (loc, id) in self.ids_all() {
             let Some(p) = self.get(&loc) else { continue };
-            ops.extend(p.ops.iter().map(|o| o.in_block(&id)));
             for (n, set) in states.iter_mut() {
                 if let Some(&on) = p.state_on.get(n).filter(|_| p.kind.has_on()) {
                     set.insert(id.clone(), json!({ "on": on }));
@@ -1164,12 +1161,6 @@ impl Combo {
             .collect();
         if !path.is_empty() {
             v["path"] = json!(path);
-        }
-        if !edits.is_empty() {
-            v["surface_edits"] = Value::Array(edits);
-        }
-        if !ops.is_empty() {
-            v["surface_ops"] = serde_json::to_value(&ops).unwrap_or_default();
         }
         if !self.mechanics.is_empty() {
             v["mechanics"] = Value::Array(self.mechanics.iter().map(MechPick::json).collect());

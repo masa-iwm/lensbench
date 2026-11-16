@@ -164,6 +164,20 @@
               "description": "玉の前面を絞りにする",
               "type": "boolean"
             },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
+            },
             "tilt": {
               "default": [
                 0.0,
@@ -223,6 +237,20 @@
               "format": "double",
               "type": "number"
             },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
+            },
             "type": {
               "const": "stop",
               "type": "string"
@@ -234,6 +262,7 @@
           "type": "object"
         },
         {
+          "description": "ブロックの面の上書き・絞り・ソルブ・ピックアップ（GUI の面の表で変えたもの）。ブロックと .zmx の取り込みの群が持ち、\n展開の最後に当てる（上書きの後に操作）。状態で外したブロックのものは当てない",
           "properties": {
             "aperture": {
               "anyOf": [
@@ -281,6 +310,20 @@
               "default": 0.0,
               "format": "double",
               "type": "number"
+            },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
             },
             "tilt": {
               "default": [
@@ -334,6 +377,20 @@
             "on": {
               "default": true,
               "type": "boolean"
+            },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
             },
             "surfaces": {
               "items": {
@@ -428,6 +485,20 @@
               "description": ".zmx の絞りを系の絞りにする（false なら取り込んだ面の絞りを外す。系の絞りはほかのブロックで）",
               "type": "boolean"
             },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
+            },
             "tilt": {
               "default": [
                 0.0,
@@ -498,6 +569,20 @@
             "on": {
               "default": true,
               "type": "boolean"
+            },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
             },
             "tilt": {
               "default": [
@@ -756,6 +841,20 @@
               "format": "double",
               "type": "number"
             },
+            "surface_edits": {
+              "description": "面の値の上書き",
+              "items": {
+                "$ref": "#/$defs/SurfaceEdit"
+              },
+              "type": "array"
+            },
+            "surface_ops": {
+              "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+              "items": {
+                "$ref": "#/$defs/SurfaceOp"
+              },
+              "type": "array"
+            },
             "tilt": {
               "default": [
                 0.0,
@@ -845,7 +944,7 @@
           "description": "展開した系の面"
         }
       ],
-      "description": "プロジェクトの `surface_ops` の面: ブロックの面 `{\"block\": id, \"surface\": i}` か、展開した系の面の番号か名前"
+      "description": "ブロックの `surface_ops` の面: ブロックの面 `{\"block\": id, \"surface\": i}` か、展開した系の面の番号か名前"
     },
     "BoreSpec": {
       "description": "機構部品の穴（部品の基準面からの z の範囲と内径）",
@@ -2198,11 +2297,9 @@
       "type": "object"
     },
     "SurfaceEdit": {
-      "description": "ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた\n番号（0 始まり。偏心・傾きの座標ブレークの有無で番号が変わらないように）。値は系の面の値（順次の面の値。\n鏡の後は厚さ・曲率の符号が逆）で、名前は [`lensbench_core::edit::SURF_FIELDS`]",
+      "additionalProperties": false,
+      "description": "ブロックの面の値の上書き（[`FaceMods::surface_edits`]）。面はブロックの面のうち座標ブレークを除いて数えた\n番号（0 始まり。偏心・傾きの座標ブレークの有無で番号が変わらないように）。値は系の面の値（順次の面の値。\n鏡の後は厚さ・曲率の符号が逆）で、名前は [`lensbench_core::edit::SURF_FIELDS`]",
       "properties": {
-        "block": {
-          "type": "string"
-        },
         "fields": {
           "additionalProperties": true,
           "type": "object"
@@ -2214,14 +2311,13 @@
         }
       },
       "required": [
-        "block",
         "surface",
         "fields"
       ],
       "type": "object"
     },
     "SurfaceOp": {
-      "description": "プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{\"block\": id, \"surface\": i}` でも指せる。\n`remove_*` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す（無ければ当てずに注意）",
+      "description": "ブロックの `surface_ops` の操作（[`crate::FaceMods`]）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{\"block\": id, \"surface\": i}` でも指せる\n（当てる面 `surface`・`dst` の番号はそのブロックの面）。\n`remove_*` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す（無ければ当てずに注意）",
       "oneOf": [
         {
           "additionalProperties": false,
@@ -2563,6 +2659,20 @@
           "format": "double",
           "type": "number"
         },
+        "surface_edits": {
+          "description": "面の値の上書き",
+          "items": {
+            "$ref": "#/$defs/SurfaceEdit"
+          },
+          "type": "array"
+        },
+        "surface_ops": {
+          "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、`surface`・`dst` の番号はこのブロックの面（[`SurfaceEdit`] と同じ数え方）。\n`src`・`other` はほかのブロックの面 `{\"block\": id, \"surface\": i}` か系の面の番号・名前。\n往復するブロックは往路の面を指す",
+          "items": {
+            "$ref": "#/$defs/SurfaceOp"
+          },
+          "type": "array"
+        },
         "tilt": {
           "default": [
             0.0,
@@ -2707,20 +2817,6 @@
       "default": [],
       "items": {
         "$ref": "#/$defs/State"
-      },
-      "type": "array"
-    },
-    "surface_edits": {
-      "description": "ブロックの面の値の上書き（GUI の面の表で変えた値）。展開の最後に当てる",
-      "items": {
-        "$ref": "#/$defs/SurfaceEdit"
-      },
-      "type": "array"
-    },
-    "surface_ops": {
-      "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、\n面（`surface`・`dst`・`src`・`other`）は `{\"block\": id, \"surface\": i}`（[`SurfaceEdit`] と同じ数え方）か系の面の番号・名前。\n展開の最後（`surface_edits` の後）に当てる。ブロックが無い（状態で外したなど）操作は当てずに注意を出す。\n往復するブロックは往路の面を指す",
-      "items": {
-        "$ref": "#/$defs/SurfaceOp"
       },
       "type": "array"
     },

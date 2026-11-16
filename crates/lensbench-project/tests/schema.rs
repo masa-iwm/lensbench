@@ -191,9 +191,9 @@ fn unknown_keys_are_errors() {
     );
     // 既定値をわざわざ書いたもの（書き戻しでは省かれる）は通す
     lensbench_project::Project::from_json(&base(
-        r#""telecentric": false, "surface_edits": [], "path": null,
+        r#""telecentric": false, "path": null,
             "environment": {"temperature_c": 20, "pressure_atm": 1, "adjust_index": false},"#,
-        r#""reversed": false, "on": true, "decenter": [0, 0],"#,
+        r#""reversed": false, "on": true, "decenter": [0, 0], "surface_edits": [],"#,
     ))
     .unwrap();
 }

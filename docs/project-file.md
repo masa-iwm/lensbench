@@ -21,21 +21,25 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand` に `ExpandOpts { state, .. }` を渡す。
 - 自動の半径: 面の `semi` を `"auto"` にすると、半径を光線から求める（OpticStudio の Automatic と同じ決め方: 全視野・全波長の
   瞳の縁の光線の高さの最大。回転対称な系は視野の値 (x, y) の向きの上下 2 本、そうでない系は縁の 8 本）。系やパラメータを変えるたびに求め直し、
-  描画・機構部品の検査・書き出し・Floating 開口に使う。`surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi": "auto"`、
+  描画・機構部品の検査・書き出し・Floating 開口に使う。ブロックの `surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi": "auto"`、
   .zmx の `DIAM 値 0`（自動）も同じ。カタログの玉の半径はファイルの値で固定
-- 面の値の上書き（`surface_edits`）: `[{"block": "L1", "surface": 1, "fields": {"r": -40, "semi": 8}}]` のように、ブロック `id` の
+- 面の値の上書き（ブロックの `surface_edits`）: 玉・絞り・鏡・面の並び・zmx・user・群のブロックと、zmx の取り込みの群
+  （`groups` の項目）に `"surface_edits": [{"surface": 1, "fields": {"r": -40, "semi": 8}}]` のように書き、そのブロックの
   面の値を展開の最後に変える。`surface` はそのブロックの面のうち座標ブレークを除いて数えた番号（0 始まり。偏心・傾きを付け外ししても
   変わらない）、`fields` は serve の `edit` の `set_surface` と同じ名前と、展開した系の値（鏡の後は厚さ・曲率の符号が逆）。
   鏡の `back` で往復するブロックでは、番号は往路の面で数え、復路の同じ面にも当てる（逆の順にたどるので、厚さ・材料は 1 つずれた面に、
   厚さは符号を逆に）。往路の最後の面の厚さ・材料はブロックの外（後の空気のブロック）なので変えられない。
   `fields` の名前が面の値の名前に無ければ、serve の `set_surface_data` と同じ面のデータの項目（`ap`・`before`・`zern` など）として当てる。
-  GUI の面の表で組合せの玉の面を変えると、これで保存される
-- 面の絞り・ソルブ・ピックアップ（`surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・`remove_pickup` と同じ形で、面を
-  `{"block": "L2", "surface": 1}`（`surface_edits` と同じ数え方。往復するブロックは往路の面）か、展開した系の面の番号・名前で書く。ほかの操作・知らないキーは読むときに誤り。例:
-  `[{"op": "set_stop", "surface": {"block": "L1", "surface": 1}}, {"op": "add_solve", "surface": {"block": "L2", "surface": 1}, "kind": "marginal_height"},
-  {"op": "add_pickup", "dst": {"block": "L2", "surface": 1}, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1}]`。
-  `surface_edits` の後に当てる。`set_stop` があれば絞りのブロックは無くてよい（あれば絞りは面に移る）。ブロックの順を変えても id で付いて行き、
-  状態で外したブロックの操作は当てずに注意を出す。`remove_solve`・`remove_pickup` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す
+  カタログの玉は型番のまま上書きを持てる。id の無いブロックにも書ける。GUI の面の表で組合せの玉の面を変えると、これで保存される
+- 面の絞り・ソルブ・ピックアップ（ブロックの `surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
+  `remove_pickup` と同じ形で、当てる面（`surface`・`dst`）はそのブロックの面の番号（`surface_edits` と同じ数え方。往復するブロックは
+  往路の面）。参照する面（`src`・`other`）は、ほかのブロックの面 `{"block": "L1", "surface": 0}` か、展開した系の面の番号・名前。
+  ほかの操作・知らないキーは読むときに誤り。例（id L2 の玉に）:
+  `"surface_ops": [{"op": "add_solve", "surface": 1, "kind": "marginal_height"},
+  {"op": "add_pickup", "dst": 1, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1}]`。
+  `surface_edits` の後に、ブロックの順に当てる。`set_stop` があれば絞りのブロックは無くてよい（あれば絞りは面に移る）。
+  状態で外したブロック・通らない経路のブロックの上書き・操作は当てない。参照するほかのブロックが無ければ当てずに注意を出す。
+  `remove_solve`・`remove_pickup` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す
   （値はそのまま残る。外すものが無ければ当てずに注意）。GUI の面の表で組合せの玉の元のソルブを外すと、これで保存される
 
 - 視野の種類（`fields.type`）は `angle`・`object_height`・`paraxial_image_height`・`real_image_height` と、条件で定める視野 `solve`。
@@ -83,7 +87,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   のブロックで他のプロジェクトから使う（群と同じに入り、偏心・傾き・ON/OFF・状態も使える）。.zmx の玉は面を直接書いた玉に、.zmx の取り込みと
   ユーザーカタログの参照のパスは絶対パスにして保存する。メーカーのレンズカタログの玉（`vendor`・`part`）は参照のまま保存するので、使う側でも
   同じレンズカタログが要る（CLI は `--lens-catalog`、ライブラリは `Env::catalog`）。玉のガラスのカタログは項目に記録し、使うときに足す。
-  項目が自分自身を（間接にも）参照するとエラー。CLI は `catalog-add`（`--from` の .zmx・.json の `--lens k`、または .json の `--block id`。`--block` を 2 つ渡すと最上位の並びのその間の範囲、面の表の変更 `surface_edits` は玉の面に焼き込む）と `catalog-list`。GUI の組合せからも保存できる。
+  項目が自分自身を（間接にも）参照するとエラー。CLI は `catalog-add`（`--from` の .zmx・.json の `--lens k`、または .json の `--block id`。`--block` を 2 つ渡すと最上位の並びのその間の範囲、ブロックの `surface_edits`（面の表の変更）は玉の面に焼き込む）と `catalog-list`。GUI の組合せからも保存できる。
 - レンズカタログの束（.lbcat）: メーカーのカタログを取り込みのときに 1 回だけ変換した、玉の .zmx の束。zlib で圧縮した UTF-8 の文で、1 行目が
   `LBCAT 1<TAB>メーカー<TAB>変換元`、続いて玉ごとに `型番<TAB>焦点距離<TAB>.zmx のバイト数` の行と .zmx の本文（`lensbench_core::catalog::encode_lbcat`）。
   レンズカタログのフォルダに置くと .zmx の玉と同じに並ぶ（メーカーは束の値、無ければファイル名）。

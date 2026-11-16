@@ -1578,10 +1578,11 @@ block {id}: only lenses can bake in values changed in the surface table (undo th
 {tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match	{tag}: {prev_name} の後ろの端（{why}）と、{name} の前の端（{hint}）のねじが合いません
 {tag}: no block {b} for holds	{tag}: holds のブロック {b} がありません
 {name} mount	{name} のマウント
-surface_ops {}: block {} not found, so {} is not applied	surface_ops {}: ブロック {} が無いので {} を当てません
-surface_ops {}: nothing to remove, so {} is not applied	surface_ops {}: 外すものが無いので {} を当てません
-surface_ops {}: {e}	surface_ops {}: {e}
-surface_edits: block {} not found, so the override of surface {} is not applied	surface_edits: ブロック {} が無いので面 {} の上書きを当てません
+block {} surface_ops {}: {e}	ブロック {} の surface_ops {}: {e}
+block {} not found, so {} is not applied	ブロック {} が無いので {} を当てません
+nothing to remove, so {} is not applied	外すものが無いので {} を当てません
+surface {} ({} surfaces in the block)	面 {}（ブロックの面は {} 枚）
+a block without an id can't bake in values changed in the surface table	id の無いブロックには面の表の変更を焼き込めません
 {path}: surface {} {:?} is a pickup from surface {} outside the range (fixed to the value)	{path}: 面 {} の {:?} は範囲の外の面 {} からのピックアップ（値で固定）
 {path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended	{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めました（倍率 {}・ずれ {}）。意図どおりか確認します
 {path}: the value relation of surface {} {:?} (from surface {}) changed in the expansion (fixed to the value)	{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わりました（値で固定）
@@ -1669,7 +1670,7 @@ Item name	項目の名前
 Name of the item	製品の名前
 A .zmx or project file to take the lens from (with --lens), or a project file (with --block)	レンズを取る .zmx かプロジェクトファイル（--lens と）、またはプロジェクトファイル（--block と）
 Lens number (from 1, counting only lenses; the .zmx or project split in lens mode)	レンズの番号（1 始まり、レンズだけを数える。.zmx・プロジェクトをレンズモードで分けたもの）
-Project block ids (two give the range between them in the top-level list; surface table changes in surface_edits are baked in)	プロジェクトのブロックの id（2 つ渡すと最上位の並びのその間の範囲。面の表の変更 surface_edits は焼き込む）
+Project block ids (two give the range between them in the top-level list; surface table changes in the blocks' surface_edits are baked in)	プロジェクトのブロックの id（2 つ渡すと最上位の並びのその間の範囲。ブロックの surface_edits（面の表の変更）は焼き込む）
 Lens catalogs to search for the project's catalog lenses (same as info, etc.)	プロジェクトのカタログレンズを探すレンズカタログ（info などと同じ）
 .zmx multi-configuration number	.zmx の多重構成の番号
 Replace an item of the same name	同じ名前の項目を置き換える

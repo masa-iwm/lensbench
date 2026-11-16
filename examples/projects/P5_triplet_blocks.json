@@ -64,7 +64,15 @@
     "zmx": "../../tests/refs/A0/system.zmx",
     "lens": 2
    },
-   "id": "L2"
+   "id": "L2",
+   "surface_edits": [
+    {
+     "surface": 0,
+     "fields": {
+      "semi": 5.2
+     }
+    }
+   ]
   },
   {
    "type": "air",
@@ -88,15 +96,6 @@
   {
    "type": "air",
    "t": 45
-  }
- ],
- "surface_edits": [
-  {
-   "block": "L2",
-   "surface": 0,
-   "fields": {
-    "semi": 5.2
-   }
   }
  ]
 }

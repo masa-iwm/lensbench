@@ -448,8 +448,17 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
     }
 
-    /// id のあるブロックが sf の start から足した面を、玉・群の範囲として覚える
-    pub(crate) fn note(&mut self, id: &str, start: usize) {
+    /// id のあるブロックが sf の start から足した面を、玉・群の範囲として覚える。faces に展開の番号
+    /// （[`FaceMods::site`]）があれば、その番号も残す
+    pub(crate) fn note(&mut self, id: &str, faces: Option<&FaceMods>, start: usize) {
+        if let Some(k) = faces.map(|f| f.site).filter(|&k| k > 0) {
+            let k = k - 1;
+            for o in &mut self.map[start..] {
+                if !o.mods.contains(&k) {
+                    o.mods.push(k);
+                }
+            }
+        }
         if !id.is_empty() && self.sf.len() > start {
             for o in &mut self.map[start..] {
                 if !o.blocks.iter().any(|b| b == id) {
@@ -466,7 +475,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn back_block(&mut self, b: &Block) -> lensbench_core::Result<()> {
         let start = self.sf.len();
         self.back_block_inner(b)?;
-        self.note(block_id(b), start);
+        self.note(block_id(b), b.faces(), start);
         for o in &mut self.map[start..] {
             o.back = true;
         }
@@ -709,6 +718,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             catalog,
             item,
             place,
+            ..
         } = b
         else {
             unreachable!()
@@ -766,6 +776,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 shift: 0.0,
                 blocks: it.blocks.clone(),
                 place: place.clone(),
+                // 項目のブロックの面の上書き・操作は当てない（User のブロックのものは User のブロックで当てる）
+                faces: FaceMods::default(),
             },
             dir,
             key,
@@ -877,7 +889,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         self.block_inner(b, siblings, idx)?;
         // 鏡は鏡の面だけ（往路を戻る面は除く）。中で覚える
         if !matches!(b, Block::Mirror { .. } | Block::Splitter { .. }) {
-            self.note(block_id(b), start);
+            self.note(block_id(b), b.faces(), start);
         }
         Ok(())
     }
@@ -956,6 +968,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 coat,
                 on,
                 back,
+                faces,
             } => {
                 if !on {
                     return Ok(());
@@ -990,7 +1003,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     // R₂ = Ry(ty)·Rx(tx)、つまり同じ角で回す順を逆にした座標ブレーク（順序 1）。1 軸の傾きでは順序によらない
                     self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 1, 0.0));
                 }
-                self.note(id, start);
+                self.note(id, Some(faces), start);
                 if back {
                     // 前のブロックを戻る。BS で A 以外の口へ出たら止まり、並びの初めまで戻れば（BS の分岐なら）BS を通る
                     self.split.stopped = false;
@@ -1075,7 +1088,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                             }
                             Ok(())
                         })?;
-                        c.note(&gr.id, start);
+                        c.note(&gr.id, Some(&gr.faces), start);
                         if gr.shift != 0.0 && c.has_mirror_since(start) {
                             return Err(
                                 "a group with a mirror can't be moved (set shift to 0)".into()

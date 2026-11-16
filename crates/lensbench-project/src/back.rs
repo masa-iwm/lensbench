@@ -32,6 +32,7 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
         reversed: false,
         stop: false,
         place: Place::default(),
+        faces: FaceMods::default(),
     })
 }
 
@@ -131,7 +132,7 @@ pub fn block_item(
 
 /// プロジェクトの最上位の並びの、id `ids[0]` から `ids[last]` までのブロック（間の空気も含む）をユーザーカタログの
 /// 項目にする（GUI の組合せの要素・範囲の保存）。`ids` が 1 つなら [`block_item`] と同じ（入れ子も探す）。
-/// 面の表で変えた値（[`Project::surface_edits`]）は中身に焼き込む: 変えた玉は展開した系の面を直接書いた玉にする
+/// ブロックの面の表で変えた値（[`FaceMods::surface_edits`]）は中身に焼き込む: 変えた玉は展開した系の面を直接書いた玉にする
 /// （玉のほかのブロックの変更は焼き込めないので誤り）
 pub fn blocks_item(
     p: &Project,
@@ -190,27 +191,40 @@ pub fn blocks_item(
             ..Default::default()
         }
     };
-    // 面の表の変更を焼き込む
-    let edited: Vec<&str> = p
-        .surface_edits
-        .iter()
-        .map(|e| e.block.as_str())
-        .filter(|b| item_has_id(&item.blocks, b))
-        .collect();
+    // 面の表の変更を焼き込む（操作は持ち出さない）
+    let mut edited = Vec::new();
+    take_faces(&mut item.blocks, &mut edited)?;
     if edited.is_empty() {
         return Ok(item);
     }
     let s = expand(p, env, &ExpandOpts::default())?.system;
     for id in edited {
-        bake_lens(&s, &mut item, id)?;
+        bake_lens(&s, &mut item, &id)?;
     }
     Ok(item)
 }
 
-pub(crate) fn item_has_id(blocks: &[Block], id: &str) -> bool {
-    blocks.iter().any(|b| {
-        block_id(b) == id || matches!(b, Block::Group { blocks, .. } if item_has_id(blocks, id))
-    })
+/// 項目のブロックの面の上書き・操作を外し、上書きのあったブロックの id を集める
+fn take_faces(blocks: &mut [Block], edited: &mut Vec<String>) -> lensbench_core::Result<()> {
+    for b in blocks {
+        let id = block_id(b).to_string();
+        if let Some(f) = b.faces_mut() {
+            if !f.surface_edits.is_empty() {
+                if id.is_empty() {
+                    return Err(
+                        "a block without an id can't bake in values changed in the surface table"
+                            .into(),
+                    );
+                }
+                edited.push(id);
+            }
+            *f = FaceMods::default();
+        }
+        if let Block::Group { blocks, .. } = b {
+            take_faces(blocks, edited)?;
+        }
+    }
+    Ok(())
 }
 
 /// 展開した系 s の玉 id の面（面の表の変更を当てた後）で、項目の玉 id を面を直接書いた玉にする
@@ -511,6 +525,7 @@ pub(crate) fn portable(
             reversed,
             stop,
             place,
+            faces,
         } => {
             let e = c.lens_element(&source)?;
             for d in &e.surfaces {
@@ -529,6 +544,7 @@ pub(crate) fn portable(
                 reversed,
                 stop,
                 place,
+                faces,
             }
         }
         Block::Zmx {
@@ -540,6 +556,7 @@ pub(crate) fn portable(
             stop,
             groups,
             place,
+            faces,
         } => Block::Zmx {
             id,
             path: abs(c, &path),
@@ -549,17 +566,20 @@ pub(crate) fn portable(
             stop,
             groups,
             place,
+            faces,
         },
         Block::User {
             id,
             catalog,
             item,
             place,
+            faces,
         } => Block::User {
             id,
             catalog: abs(c, &catalog),
             item,
             place,
+            faces,
         },
         Block::Group {
             id,
@@ -568,6 +588,7 @@ pub(crate) fn portable(
             shift,
             blocks,
             place,
+            faces,
         } => Block::Group {
             id,
             name,
@@ -578,6 +599,7 @@ pub(crate) fn portable(
                 .map(|x| portable(c, x, cats))
                 .collect::<Result<_, _>>()?,
             place,
+            faces,
         },
         Block::Splitter { id, spec, place } => {
             let mut spec = spec;
