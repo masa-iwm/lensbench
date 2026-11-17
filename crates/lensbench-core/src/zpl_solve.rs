@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
+use crate::param::Kind;
 use crate::trace::RayStatus;
 use crate::zpl::{Flow, Host, Program, Value};
 use crate::{RwLockExt, System};
@@ -425,52 +426,21 @@ impl Host for SysHost<'_> {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MacroParm {
     pub surf: usize,
-    /// パラメータの番号（.zmx の PARM の番号。col が Parm のときだけ使う）
-    pub parm: u8,
     /// [`System::macros`] の番号
     pub id: u16,
-    /// 列（既定はパラメータ）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "MacroCol::is_parm")
-    )]
-    pub col: MacroCol,
+    /// マクロの値を入れる量: 面タイプのパラメータ（PZPL、[`Kind::Parm`]）・円錐係数（KZPL、[`Kind::Conic`]）・
+    /// 半直径（DIAM 値 4 0 0 1 "名前"、[`Kind::Semi`]）
+    pub what: Kind,
 }
 
-/// マクロのソルブを付ける列
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-pub enum MacroCol {
-    /// 面タイプのパラメータ（PZPL）
-    #[default]
-    Parm,
-    /// 円錐係数（KZPL）
-    Conic,
-    /// 半直径（DIAM 値 4 0 0 1 "名前"）
-    Semi,
-}
-
-impl MacroCol {
-    pub fn is_parm(&self) -> bool {
-        *self == MacroCol::Parm
-    }
-    /// 値を読み書きする量
-    pub(crate) fn pick(self, parm: u8) -> crate::pickup::PickKind {
-        use crate::pickup::PickKind;
-        match self {
-            MacroCol::Parm => PickKind::Parm(parm),
-            MacroCol::Conic => PickKind::Conic,
-            MacroCol::Semi => PickKind::Semi,
-        }
-    }
-    /// 列の名前（警告用）
-    pub fn label(self, parm: u8) -> String {
-        match self {
-            MacroCol::Parm => format!("parameter {parm}"),
-            MacroCol::Conic => "conic".into(),
-            MacroCol::Semi => "semi-diameter".into(),
+impl MacroParm {
+    /// 量の名前（警告用）
+    pub fn label(&self) -> String {
+        match self.what {
+            Kind::Parm(i) => format!("parameter {i}"),
+            Kind::Conic => "conic".into(),
+            Kind::Semi => "semi-diameter".into(),
+            k => k.name(),
         }
     }
 }
@@ -503,17 +473,17 @@ impl System {
                 continue;
             };
             // 負の半直径は絶対値にする（OpticStudio 26.1.1 で実測）
-            if q.col == MacroCol::Semi {
+            if q.what == Kind::Semi {
                 v = v.abs();
             }
-            let what = q.col.pick(q.parm);
+            let what = q.what;
             let old = crate::pickup::pick_get(&self.surfaces[q.surf], what);
             if old != Some(v) {
                 if !crate::pickup::pick_set(&mut self.rx_mut().surfaces[q.surf], what, v) {
                     crate::notimpl!(
                         "putting a macro value into surface {} {}",
                         q.surf,
-                        q.col.label(q.parm)
+                        q.label()
                     );
                 }
                 if !self.pickups.is_empty() {
@@ -603,7 +573,7 @@ pub(crate) fn resolve_on_load(s: &mut System) {
                                 "removed the {what} macro solve {} of surface {} and fixed the saved value: can't solve it again ({e})",
                                 before.macros[q.id as usize].name,
                                 q.surf,
-                                what = q.col.label(q.parm)
+                                what = q.label()
                             ));
                         }
                     }
@@ -638,7 +608,7 @@ pub(crate) fn resolve_on_load(s: &mut System) {
                 r.macro_notes.push(format!(
                     "removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
                     q.surf,
-                    what = q.col.label(q.parm)
+                    what = q.label()
                 ));
             }
             r.macro_parms.clear();

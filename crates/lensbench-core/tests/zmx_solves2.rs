@@ -2,7 +2,7 @@
 //! .zmx の書き方と読込で解き直すことは OpticStudio 2026 R1.01 で実測した（123 ケースで一致を確認）。
 //! ここでは定義どおりに解けること、保存値が古くても解き直すこと、書き出し・読み戻し・パラメータの変更を確かめる。
 
-use lensbench_core::pickup::PickKind;
+use lensbench_core::param::Kind;
 use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::After;
 use lensbench_core::system::{FieldSel, System};
@@ -252,16 +252,16 @@ fn pickups_from_other_columns() {
     assert_eq!(sf[4].t, 2.0 * 23.6 + 0.5);
     assert_eq!(sf[3].k, 2.0 * 23.6);
     assert_eq!(sf[2].semi, 2.0 * 3.5);
-    let from = |d: usize, w: PickKind| {
+    let from = |d: usize, w: Kind| {
         s.pickups
             .iter()
             .find(|q| q.dst == d && q.what == w)
             .unwrap()
             .from
     };
-    assert_eq!(from(6, PickKind::Curv), Some(PickKind::Thick));
-    assert_eq!(from(4, PickKind::Thick), Some(PickKind::Radius));
-    assert_eq!(from(2, PickKind::Semi), Some(PickKind::Thick));
+    assert_eq!(from(6, Kind::Curv), Some(Kind::Thick));
+    assert_eq!(from(4, Kind::Thick), Some(Kind::Radius));
+    assert_eq!(from(2, Kind::Semi), Some(Kind::Thick));
     // 元を変えると追従し、同じ値で読み直した系と同じ
     let c = s
         .with_params(&[

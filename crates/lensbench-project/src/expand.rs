@@ -1231,7 +1231,7 @@ pub(crate) fn keep_pickups(
             // 鏡のあと（向きが逆、sign = −1）で取り込むと、曲率・厚さの符号が変わる。先 dst' = σd·dst、元 src' = σs·src
             // （σ は量の符号が変われば sign、変わらなければ 1）なら、dst = a·src + b は dst' = (σd·σs·a)·src' + σd·b。
             // 向きから決めた組を先に試し、合わなければ（面タイプのパラメータの意味は型で違う）ほかの符号の組を試す
-            use lensbench_core::pickup::PickKind as Pk;
+            use lensbench_core::param::Kind as Pk;
             let flips = |k: Pk| matches!(k, Pk::Curv | Pk::Thick | Pk::Radius);
             let sd = if flips(q.what) { z.sign } else { 1.0 };
             let ss = if flips(q.from.unwrap_or(q.what)) {

@@ -5,6 +5,11 @@
 ## 次の版（v0.4.0 の後）
 
 ### システムファイル
+- 面の量の型を 1 つにした（IOO-08）。ピックアップの量 `lensbench_core::pickup::PickKind` をやめ、パラメータの種類 `lensbench_core::param::Kind` に
+  `Semi`・`Parm(番号)`・`Before(i)`・`After(i)`・`Coating` を足した（これらはピックアップ・マクロのソルブだけの量で、パラメータには使えない。
+  `Kind::is_pick`・`is_pick_only`）。名前（`Kind::parse`・`name`）も 1 つで、`pick_kind_parse`・`pick_kind_name` はそれを引く。
+  マクロのソルブ `MacroParm` は `parm`・`col`（`MacroCol`）をやめて量 `what`（`Parm(番号)`・`Conic`・`Semi`）を持つ。システムファイル版 2 の
+  `macro_parms` は `{"surf": 3, "id": 0, "what": {"Parm": 2}}` の形。
 - パラメータ（`lensbench_core::param::Param`）の `surf` をやめ、付く先 `target`（`Target::Surf(面)`・`Target::Unit(玉・群)`・`Target::System`）にした
   （IOO-08。番号の意味が種類で変わらない）。システムファイル版 2 の多重構成の表の行の `param` は `{"target": {"surf": 3}, "kind": "Thick"}` の形。
   Rust は `Param::new(番号, 種類)`（付く先は種類から）・`Param::unit`・`Param::system` で作り、番号は `surface()`・`unit_index()`・`index()`。

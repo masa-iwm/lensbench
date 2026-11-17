@@ -1,7 +1,6 @@
 //! ピックアップの追従: 元の面のパラメータを変えると、ピックアップ先も解決し直す。
 use lensbench_core::elements;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::pickup::PickKind;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
@@ -174,7 +173,7 @@ fn cycle_is_error() {
 #[test]
 fn kinds() {
     let s = build(&text());
-    let k: Vec<PickKind> = s.pickups.iter().map(|q| q.what).collect();
-    assert!(k.contains(&PickKind::Parm(4)));
+    let k: Vec<Kind> = s.pickups.iter().map(|q| q.what).collect();
+    assert!(k.contains(&Kind::Parm(4)));
     assert_eq!(Param::new(6, Kind::Ty), p(&s, "6.ty"));
 }

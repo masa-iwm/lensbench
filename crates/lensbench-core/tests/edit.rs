@@ -3,7 +3,7 @@
 use crate::common::root;
 use lensbench_core::edit::surf_type_parse;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::pickup::{PickKind, Pickup};
+use lensbench_core::pickup::Pickup;
 use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{Aperture, SurfType, Surface};
 use lensbench_core::system::{Aiming, ApertureKind, Field, FieldNorm, FieldSel, FieldType};
@@ -226,7 +226,7 @@ fn pickups_follow_and_renumber() {
     a.mat = "1.5,0".into();
     s.insert_surface(2, a).unwrap();
     s.insert_surface(3, surf(40.0)).unwrap();
-    s.add_pickup(Pickup::new(3, 2, PickKind::Curv, -1.0, 0.0))
+    s.add_pickup(Pickup::new(3, 2, Kind::Curv, -1.0, 0.0))
         .unwrap();
     assert_eq!(s.surfaces[3].c, -0.02);
     s.set_param(Param::new(2, Kind::Curv), 0.03).unwrap();
@@ -237,11 +237,11 @@ fn pickups_follow_and_renumber() {
     s.set_param(Param::new(3, Kind::Curv), 0.01).unwrap();
     assert_eq!(s.surfaces[4].c, -0.01);
     // 外すと値は残り、もう追従しない
-    s.remove_pickup(4, PickKind::Curv).unwrap();
+    s.remove_pickup(4, Kind::Curv).unwrap();
     s.set_param(Param::new(3, Kind::Curv), 0.02).unwrap();
     assert_eq!(s.surfaces[4].c, -0.01);
     // 付け直して元を消す
-    s.add_pickup(Pickup::new(4, 3, PickKind::Curv, 1.0, 0.0))
+    s.add_pickup(Pickup::new(4, 3, Kind::Curv, 1.0, 0.0))
         .unwrap();
     let notes = s.delete_surface(3).unwrap();
     assert_eq!(notes.len(), 1, "{notes:?}");
@@ -261,7 +261,7 @@ fn pickup_before_tilt() {
     s.insert_surface(3, surf(40.0)).unwrap();
     // 元に値がないうちは先に作らない
     for i in 0..5u8 {
-        s.add_pickup(Pickup::new(3, 2, PickKind::Before(i), -1.0, 0.0))
+        s.add_pickup(Pickup::new(3, 2, Kind::Before(i), -1.0, 0.0))
             .unwrap();
     }
     assert!(s.surfaces[3].before.is_none());
@@ -287,8 +287,8 @@ fn pickup_before_tilt() {
     // 後の傾き偏心（after）も先にできる（面 4 の後 = 面 2 の前）
     s.insert_surface(4, surf(10.0)).unwrap();
     s.add_pickup(Pickup {
-        from: Some(PickKind::Before(0)),
-        ..Pickup::new(4, 2, PickKind::After(0), 1.0, 0.0)
+        from: Some(Kind::Before(0)),
+        ..Pickup::new(4, 2, Kind::After(0), 1.0, 0.0)
     })
     .unwrap();
     s.set_param(Param::new(2, Kind::Dx), 0.03).unwrap();
@@ -318,9 +318,9 @@ fn pickup_before_and_after_together() {
         Ok(())
     })
     .unwrap();
-    s.add_pickup(Pickup::new(3, 2, PickKind::Before(0), 1.0, 0.0))
+    s.add_pickup(Pickup::new(3, 2, Kind::Before(0), 1.0, 0.0))
         .unwrap();
-    s.add_pickup(Pickup::new(3, 2, PickKind::After(0), 1.0, 0.0))
+    s.add_pickup(Pickup::new(3, 2, Kind::After(0), 1.0, 0.0))
         .unwrap();
     s.set_param(Param::new(2, Kind::Dx), 0.01).unwrap();
     assert_eq!(s.surfaces[3].before.unwrap().d[0], 0.01);
@@ -437,11 +437,11 @@ fn surface_fields_by_name() {
     assert!(s
         .set_surface_fields(2, &[("nope".into(), Num(1.0))])
         .is_err());
-    s.add_pickup(Pickup::new(3, 2, PickKind::Curv, -1.0, 0.0))
+    s.add_pickup(Pickup::new(3, 2, Kind::Curv, -1.0, 0.0))
         .unwrap();
     assert!(s.set_surface_fields(3, &[("c".into(), Num(0.1))]).is_err());
     // dn・semi・面タイプのパラメータもピックアップ先なら拒む
-    s.add_pickup(Pickup::new(3, 2, PickKind::Semi, 1.0, 0.0))
+    s.add_pickup(Pickup::new(3, 2, Kind::Semi, 1.0, 0.0))
         .unwrap();
     assert!(s
         .set_surface_fields(3, &[("semi".into(), Num(4.0))])
@@ -465,7 +465,7 @@ fn surface_fields_by_name() {
 #[test]
 fn pickup_must_be_finite() {
     let mut s = empty();
-    let p = Pickup::new(1, 0, PickKind::Thick, 0.0, 2.0);
+    let p = Pickup::new(1, 0, Kind::Thick, 0.0, 2.0);
     assert!(s.add_pickup(p).is_err());
     assert!(s.pickups.is_empty());
 }

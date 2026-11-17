@@ -5,7 +5,8 @@
 
 use crate::error::{Error, Result};
 use crate::glass::{self, Glass};
-use crate::pickup::{surf_parm, PickKind, Pickup};
+use crate::param::Kind;
+use crate::pickup::{surf_parm, Pickup};
 use crate::solves::{Solve, SolveKind};
 use crate::surface::{After, Aperture, SurfType, Surface, Tilt};
 use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, System};
@@ -38,7 +39,7 @@ pub struct RawSurf {
     pub glas_pickup: Option<usize>,
     pub curv: Option<f64>,
     /// 曲率のピックアップ（元の面, 倍率, 元の列。None は同じ列）
-    pub curv_pickup: Option<(usize, f64, Option<PickKind>)>,
+    pub curv_pickup: Option<(usize, f64, Option<Kind>)>,
     pub coni: Option<f64>,
     pub disz: Option<f64>,
     pub diam: Option<f64>,
@@ -49,8 +50,8 @@ pub struct RawSurf {
     pub comment: String,
     pub parm: BTreeMap<i64, f64>,
     /// ピックアップ（元の面, 倍率, オフセット, 元の列。None は同じ列）
-    pub ppar: BTreeMap<i64, (usize, f64, f64, Option<PickKind>)>,
-    pub pzup: Option<(usize, f64, f64, Option<PickKind>)>,
+    pub ppar: BTreeMap<i64, (usize, f64, f64, Option<Kind>)>,
+    pub pzup: Option<(usize, f64, f64, Option<Kind>)>,
     /// 厚さのソルブ（種類, 値）。DISZ の次の行（MAZH・CHZH・EDGE・TOLE・TCOM・TCOC・TPUP）
     pub tsolve: Option<(SolveKind, f64)>,
     /// 曲率のソルブ（種類, 値）。CURV の 3 番目の欄（2・3・5〜11）
@@ -66,9 +67,9 @@ pub struct RawSurf {
     /// パラメータの ZPL マクロのソルブ（番号, 名前）。PZPL 番号 "名前"
     pub pmacros: Vec<(u8, String)>,
     /// 円錐係数のピックアップ（元の面, 倍率, オフセット（常に 0）, 元の列）
-    pub pkup: Option<(usize, f64, f64, Option<PickKind>)>,
+    pub pkup: Option<(usize, f64, f64, Option<Kind>)>,
     /// 半直径のピックアップ（元の面, 倍率, 元の列）
-    pub diam_pickup: Option<(usize, f64, Option<PickKind>)>,
+    pub diam_pickup: Option<(usize, f64, Option<Kind>)>,
     /// 拡張データ（番号 → 値）
     pub xdat: BTreeMap<i64, f64>,
     /// Grid Sag の格子の頭（GDAT nx ny dx dy xdec ydec unit …）と点（GARR 番号 z zx zy zxy nodata）、.DAT の名前（FIMP）
@@ -193,18 +194,18 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 s.parm.insert(num(1)? as i64, num(2)?);
             }
             // ピックアップ: PPAR 番号 元の面 倍率 オフセット 列、PZUP 元の面 倍率 オフセット 列、
-            // PKUP 元の面 倍率 列（円錐係数はオフセットなし）。列は [`PickKind::from_column`]（OpticStudio 2026 R1.01 で実測）
+            // PKUP 元の面 倍率 列（円錐係数はオフセットなし）。列は [`Kind::from_column`]（OpticStudio 2026 R1.01 で実測）
             // 元の面が負（OpticStudio 2026 R1 の座標ブレークの主光線のソルブがこう保存される）は、保存された値で固定する
             // （PARM は解いた値。付属のサンプルで OpticStudio と光線が一致）
             "PPAR" if num(2)? < 0.0 => {}
             "PPAR" => {
                 let i = num(1)? as i64;
-                let from = pick_col(s.n, "PPAR", num(5)?, PickKind::Parm(i.clamp(0, 255) as u8))?;
+                let from = pick_col(s.n, "PPAR", num(5)?, Kind::Parm(i.clamp(0, 255) as u8))?;
                 s.ppar
                     .insert(i, (surf_no(num(2)?)?, num(3)?, num(4)?, from));
             }
             "PZUP" => {
-                let from = pick_col(s.n, "PZUP", num(4)?, PickKind::Thick)?;
+                let from = pick_col(s.n, "PZUP", num(4)?, Kind::Thick)?;
                 s.pzup = Some((surf_no(num(1)?)?, num(2)?, num(3)?, from));
             }
             // 厚さのソルブ（OpticStudio 2026 R1.01 で実測）。OPDZ OPD 帯
@@ -267,7 +268,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 ))
             }
             "PKUP" => {
-                let from = pick_col(s.n, "PKUP", num(3)?, PickKind::Conic)?;
+                let from = pick_col(s.n, "PKUP", num(3)?, Kind::Conic)?;
                 s.pkup = Some((surf_no(num(1)?)?, num(2)?, 0.0, from));
             }
             "XDAT" => {
@@ -311,7 +312,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 s.csolve = match t.get(2).copied().unwrap_or("0") {
                     "0" | "1" => None,
                     "4" => {
-                        let from = pick_col(s.n, "CURV", num(5)?, PickKind::Curv)?;
+                        let from = pick_col(s.n, "CURV", num(5)?, Kind::Curv)?;
                         s.curv_pickup = Some((surf_no(p1)?, num(4)?, from));
                         None
                     }
@@ -365,7 +366,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                     s.smacro = Some(macro_name(s.n, line)?);
                 }
                 if t.get(2) == Some(&"2") {
-                    let from = pick_col(s.n, "DIAM", num(4)?, PickKind::Semi)?;
+                    let from = pick_col(s.n, "DIAM", num(4)?, Kind::Semi)?;
                     s.diam_pickup = Some((surf_no(num(3)?)?, num(5)?, from));
                 }
             }
@@ -640,7 +641,7 @@ fn config_table(
             ("CONN", Some(_)) => Some(Kind::Conic),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
             ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
-                crate::pickup::kind_of_pick(&s.surfaces[k], crate::pickup::PickKind::Parm(i))
+                crate::pickup::kind_of_pick(&s.surfaces[k], crate::param::Kind::Parm(i))
             }),
             _ => None,
         };
@@ -716,8 +717,8 @@ fn surf_no(v: f64) -> Result<usize> {
 }
 
 /// ピックアップの列のコードから元の量（同じ列なら None）
-fn pick_col(n: i64, key: &str, col: f64, dst: PickKind) -> Result<Option<PickKind>> {
-    match PickKind::from_column(col as i64, dst).filter(|_| col.fract() == 0.0) {
+fn pick_col(n: i64, key: &str, col: f64, dst: Kind) -> Result<Option<Kind>> {
+    match Kind::from_column(col as i64, dst).filter(|_| col.fract() == 0.0) {
         Some(f) => Ok(f),
         None => notimpl!("zmx surface {n}: pickup column {col} of {key}"),
     }
@@ -1392,53 +1393,45 @@ pub fn build(
     // 元か先の面タイプにそのパラメータがなければ、読込の値だけにする
     let mut pickups: Vec<Pickup> = Vec::new();
     for (k, r) in raw.surfs.iter().enumerate() {
-        let mut add =
-            |src: usize, what: PickKind, scale: f64, offset: f64, from: Option<PickKind>| {
-                pickups.push(Pickup {
-                    from,
-                    ..Pickup::new(k, src, what, scale, offset)
-                })
-            };
+        let mut add = |src: usize, what: Kind, scale: f64, offset: f64, from: Option<Kind>| {
+            pickups.push(Pickup {
+                from,
+                ..Pickup::new(k, src, what, scale, offset)
+            })
+        };
         if let Some((src, sc, off, from)) = r.pzup {
-            add(src, PickKind::Thick, sc, off, from);
+            add(src, Kind::Thick, sc, off, from);
         }
         if let Some((src, sc, off, from)) = r.pkup {
-            add(src, PickKind::Conic, sc, off, from);
+            add(src, Kind::Conic, sc, off, from);
         }
         if let Some((src, sc, from)) = r.curv_pickup {
-            add(src, PickKind::Curv, sc, 0.0, from);
+            add(src, Kind::Curv, sc, 0.0, from);
         }
         if let Some((src, sc, from)) = r.diam_pickup {
-            add(src, PickKind::Semi, sc, 0.0, from);
+            add(src, Kind::Semi, sc, 0.0, from);
         }
         if let Some(src) = r.glas_pickup {
             // 材料は読込で元の面のものにした。屈折率のずれ（dn・disp）も元の面に追従させる
-            add(src, PickKind::Dn, 1.0, 0.0, None);
-            add(src, PickKind::Disp, 1.0, 0.0, None);
+            add(src, Kind::Dn, 1.0, 0.0, None);
+            add(src, Kind::Disp, 1.0, 0.0, None);
         }
         for (&p, &(src, sc, off, from)) in &r.ppar {
             let Ok(i) = u8::try_from(p) else { continue };
-            let has = |j: usize, w: PickKind| match w {
-                PickKind::Parm(i) => surf_parm(&sf[j], i).is_some(),
+            let has = |j: usize, w: Kind| match w {
+                Kind::Parm(i) => surf_parm(&sf[j], i).is_some(),
                 _ => true,
             };
-            if src < ns && has(k, PickKind::Parm(i)) && has(src, from.unwrap_or(PickKind::Parm(i)))
-            {
-                add(src, PickKind::Parm(i), sc, off, from);
+            if src < ns && has(k, Kind::Parm(i)) && has(src, from.unwrap_or(Kind::Parm(i))) {
+                add(src, Kind::Parm(i), sc, off, from);
             }
         }
         if let Some((src, rev)) = after_picks[k] {
             // 面の後の傾き偏心 = 元の面の前の傾き偏心（反転は値の符号と順序が逆）
             for i in 0..5u8 {
                 pickups.push(Pickup {
-                    from: Some(PickKind::Before(i)),
-                    ..Pickup::new(
-                        k,
-                        src,
-                        PickKind::After(i),
-                        if rev { -1.0 } else { 1.0 },
-                        0.0,
-                    )
+                    from: Some(Kind::Before(i)),
+                    ..Pickup::new(k, src, Kind::After(i), if rev { -1.0 } else { 1.0 }, 0.0)
                 });
             }
         }
@@ -1636,32 +1629,44 @@ pub fn build(
 fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Path>) {
     let dirs = crate::zpl_solve::macro_dirs(&opt.macro_dirs, base);
     for (k, r) in raw.surfs.iter().enumerate() {
-        use crate::zpl_solve::MacroCol;
         // 曲率・厚さはソルブ（Solve）、ほかの列は MacroParm
         enum T {
             Curv,
             Thick,
-            Col(MacroCol, u8),
+            Col(crate::param::Kind),
         }
         let mut todo: Vec<(T, &String)> = Vec::new();
         todo.extend(r.cmacro.iter().map(|n| (T::Curv, n)));
         todo.extend(r.tmacro.iter().map(|n| (T::Thick, n)));
-        todo.extend(r.kmacro.iter().map(|n| (T::Col(MacroCol::Conic, 0), n)));
-        todo.extend(r.smacro.iter().map(|n| (T::Col(MacroCol::Semi, 0), n)));
+        todo.extend(
+            r.kmacro
+                .iter()
+                .map(|n| (T::Col(crate::param::Kind::Conic), n)),
+        );
+        todo.extend(
+            r.smacro
+                .iter()
+                .map(|n| (T::Col(crate::param::Kind::Semi), n)),
+        );
         todo.extend(
             r.pmacros
                 .iter()
-                .map(|(p, n)| (T::Col(MacroCol::Parm, *p), n)),
+                .map(|(p, n)| (T::Col(crate::param::Kind::Parm(*p)), n)),
         );
         for (t, name) in todo {
             let what = match &t {
                 T::Curv => "curvature".to_string(),
                 T::Thick => "thickness".to_string(),
-                T::Col(c, p) => c.label(*p),
+                T::Col(c) => crate::zpl_solve::MacroParm {
+                    surf: k,
+                    id: 0,
+                    what: *c,
+                }
+                .label(),
             };
             let got = crate::zpl_solve::find_macro(name, &dirs).and_then(|m| {
-                if let T::Col(c, p) = &t {
-                    if crate::pickup::pick_get(&s.surfaces[k], c.pick(*p)).is_none() {
+                if let T::Col(c) = &t {
+                    if crate::pickup::pick_get(&s.surfaces[k], *c).is_none() {
                         notimpl!("surface type {:?} {what}", s.surfaces[k].typ);
                     }
                 }
@@ -1701,11 +1706,10 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                                 SolveKind::MacroThick { index: id }
                             },
                         }),
-                        T::Col(col, parm) => s.rx_mut().macro_parms.push(crate::zpl_solve::MacroParm {
+                        T::Col(what) => s.rx_mut().macro_parms.push(crate::zpl_solve::MacroParm {
                             surf: k,
-                            parm,
                             id,
-                            col,
+                            what,
                         }),
                     }
                 }

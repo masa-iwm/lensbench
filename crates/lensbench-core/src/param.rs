@@ -66,8 +66,20 @@ pub enum Kind {
     /// 系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる
     /// （光源の波長のずれの公差用。最適化の変数・多重構成の行には使えない）
     Wave(u8),
-    /// 玉・群のパラメータ（[`Param::surf`] は玉・群の番号）
+    /// 玉・群のパラメータ（付く先は [`Target::Unit`]）
     Unit(UnitKind),
+    /// 半直径（semi-diameter）。ピックアップ・マクロのソルブの量（パラメータには使えない）
+    Semi,
+    /// 面タイプのパラメータ（.zmx の PARM の番号、1 から）。ピックアップ・マクロのソルブの量（パラメータは
+    /// [`Kind::Asph`] などの意味のある名前で）
+    Parm(u8),
+    /// 面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。ピックアップの量（座標ブレークの面は [`Kind::Parm`]、
+    /// パラメータは [`Kind::Dx`] など）
+    Before(u8),
+    /// 面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`Kind::Before`]、反転は倍率 −1）
+    After(u8),
+    /// 膜の名前（ピックアップだけ。倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）
+    Coating,
 }
 
 impl Kind {
@@ -87,7 +99,19 @@ impl Kind {
             "disp" => Kind::Disp,
             "objx" => Kind::ObjX,
             "objy" => Kind::ObjY,
+            "semi" => Kind::Semi,
+            "coating" | "coat" => Kind::Coating,
             _ => {
+                let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
+                if let Some(i) = num("before").filter(|&i| i < 5) {
+                    return Ok(Kind::Before(i));
+                }
+                if let Some(i) = num("after").filter(|&i| i < 5) {
+                    return Ok(Kind::After(i));
+                }
+                if let Some(i) = num("parm").or_else(|| num("p")) {
+                    return Ok(Kind::Parm(i));
+                }
                 if let Some(n) = l.strip_prefix("wave").and_then(|v| v.parse::<u16>().ok()) {
                     if (1..=256).contains(&n) {
                         return Ok(Kind::Wave((n - 1) as u8));
@@ -103,7 +127,7 @@ impl Kind {
                         return Ok(Kind::Asph(n / 2 - 1));
                     }
                 }
-                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1..)")
+                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.., for pickups also semi p1.. before0..4 after0..4 coating)")
             }
         })
     }
@@ -127,7 +151,38 @@ impl Kind {
             Kind::ObjY => "objy".into(),
             Kind::Wave(i) => format!("wave{}", *i as usize + 1),
             Kind::Unit(u) => u.name().into(),
+            Kind::Semi => "semi".into(),
+            Kind::Parm(i) => format!("p{i}"),
+            Kind::Before(i) => format!("before{i}"),
+            Kind::After(i) => format!("after{i}"),
+            Kind::Coating => "coating".into(),
         }
+    }
+
+    /// ピックアップの量（[`crate::pickup::Pickup::what`] と元）になる種類
+    pub fn is_pick(&self) -> bool {
+        matches!(
+            self,
+            Kind::Curv
+                | Kind::Radius
+                | Kind::Conic
+                | Kind::Thick
+                | Kind::Dn
+                | Kind::Disp
+                | Kind::Semi
+                | Kind::Parm(_)
+                | Kind::Before(_)
+                | Kind::After(_)
+                | Kind::Coating
+        )
+    }
+
+    /// ピックアップ・マクロのソルブだけの量（パラメータには使えない）
+    pub fn is_pick_only(&self) -> bool {
+        matches!(
+            self,
+            Kind::Semi | Kind::Parm(_) | Kind::Before(_) | Kind::After(_) | Kind::Coating
+        )
     }
 
     /// 傾き偏心の値の位置（dx dy tx ty tz）
@@ -317,6 +372,9 @@ impl System {
         // 付く先は種類から決まる（読んだ JSON の食い違いを断る）
         if Param::new(p.index(), p.kind) != p {
             invalid!("parameter {}: the target doesn't match the kind", p.name());
+        }
+        if p.kind.is_pick_only() {
+            invalid!("{} is a pickup quantity, not a parameter", p.kind.name());
         }
         if p.kind.is_object() {
             return Ok(());

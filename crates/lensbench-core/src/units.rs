@@ -504,7 +504,7 @@ impl System {
                     }
                 }
                 for p in s.rx_mut().pickups.iter_mut() {
-                    use crate::pickup::PickKind::Thick;
+                    use crate::param::Kind::Thick;
                     if p.src == b && p.source() == Thick {
                         p.src = to;
                     }

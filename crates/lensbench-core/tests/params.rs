@@ -322,4 +322,8 @@ fn params_carry_their_target() {
         kind: Kind::Thick,
     };
     assert!(s.check_param(bad).is_err());
+    // ピックアップ・マクロのソルブだけの量（半直径・PARM の番号・前後の傾き偏心・膜）はパラメータにならない
+    for n in ["2.semi", "2.p1", "2.before0", "2.coating"] {
+        assert!(s.param(n).is_err(), "{n}");
+    }
 }

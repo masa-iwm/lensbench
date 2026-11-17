@@ -1,7 +1,7 @@
 //! 材料のピックアップ（.zmx の GLAS 名前 2 元の面 …）。Ghost Focus Generator が保存するゴーストの系は戻りの面の
 //! 材料をこの形で書く（名前と nd・vd は保存時のもので、使わない）。
 
-use lensbench_core::pickup::PickKind;
+use lensbench_core::param::Kind;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
@@ -74,14 +74,14 @@ fn resolves_to_source_material() {
     assert_eq!(s.n(4), vec![1.0, 1.0]);
     assert_eq!(s.n(6), vec![1.0, 1.0]);
     assert_eq!(bits(&s), bits(&e));
-    let k = |d: usize| -> Vec<PickKind> {
+    let k = |d: usize| -> Vec<Kind> {
         s.pickups
             .iter()
             .filter(|q| q.dst == d)
             .map(|q| q.what)
             .collect()
     };
-    assert_eq!(k(5), vec![PickKind::Dn, PickKind::Disp]);
+    assert_eq!(k(5), vec![Kind::Dn, Kind::Disp]);
 }
 
 /// 元の面の屈折率のずれ（dn・disp）に追従し、ピックアップ先そのものは変えられない
@@ -167,7 +167,7 @@ fn coating_pickup_copies_name() {
     use lensbench_core::pickup::Pickup;
     let mut s = build(&explicit());
     s.set_coating(1, "AR").unwrap();
-    s.add_pickup(Pickup::new(2, 1, PickKind::Coating, 1.0, 0.0))
+    s.add_pickup(Pickup::new(2, 1, Kind::Coating, 1.0, 0.0))
         .unwrap();
     assert_eq!(s.surfaces[2].coat, "AR");
     s.set_coating(1, "HR").unwrap();

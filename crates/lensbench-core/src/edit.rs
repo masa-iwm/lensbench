@@ -14,7 +14,7 @@
 use crate::error::Result;
 use crate::glass::{self, Glass};
 use crate::param::{Kind, Param, Target};
-use crate::pickup::{PickKind, Pickup};
+use crate::pickup::Pickup;
 use crate::solves::{solve_kind_of, Solve};
 use crate::surface::{After, Aperture, Material, SurfType, Surface};
 use crate::system::Prescription;
@@ -132,22 +132,22 @@ pub const SURF_FIELDS: &[&str] = &[
 ];
 
 /// 面の値の名前が表す 1 つの量（c r t k dn disp semi coating）。"r" は曲率（ピックアップ・ソルブの先は曲率）
-fn field_qty(name: &str) -> Option<PickKind> {
+fn field_qty(name: &str) -> Option<Kind> {
     match name {
-        "r" => Some(PickKind::Curv),
-        "semi" => Some(PickKind::Semi),
-        "coating" => Some(PickKind::Coating),
-        _ => Kind::parse(name).ok().and_then(PickKind::plain),
+        "r" => Some(Kind::Curv),
+        "semi" => Some(Kind::Semi),
+        "coating" => Some(Kind::Coating),
+        _ => Kind::parse(name).ok().filter(|k| k.is_pick()),
     }
 }
 
 /// 面の値の名前 name を変えると、ピックアップの量 w の先も変わるか（面の値の名前とピックアップの量の対応はここだけ）
-fn field_takes(name: &str, w: PickKind) -> bool {
+fn field_takes(name: &str, w: Kind) -> bool {
     match name {
         // 材料は媒質のずれのピックアップ（材料のピックアップ）と一緒に動く
-        "material" => w == PickKind::Dn,
+        "material" => w == Kind::Dn,
         // 面タイプのパラメータに入る値
-        "asph" | "cb" | "cx" | "focal" | "jones" => matches!(w, PickKind::Parm(_)),
+        "asph" | "cb" | "cx" | "focal" | "jones" => matches!(w, Kind::Parm(_)),
         _ => field_qty(name) == Some(w),
     }
 }
@@ -345,13 +345,8 @@ impl System {
                 invalid!("surface {j} {name} is a pickup from surface {}", pk.src);
             }
             // 曲率・厚さ・円錐係数のソルブ（"r" は曲率のソルブ）
-            let kind = match field_qty(name) {
-                Some(PickKind::Curv) => Some(Kind::Curv),
-                Some(w) => w
-                    .plain_kind()
-                    .filter(|k| matches!(k, Kind::Thick | Kind::Conic)),
-                None => None,
-            };
+            let kind =
+                field_qty(name).filter(|k| matches!(k, Kind::Curv | Kind::Thick | Kind::Conic));
             if let Some(k) = kind {
                 if self
                     .solves
@@ -648,7 +643,7 @@ impl System {
     }
 
     /// 面 dst の量 what のピックアップを外す（値は今の値のまま残る）。無ければエラー
-    pub fn remove_pickup(&mut self, dst: usize, what: crate::pickup::PickKind) -> Result<()> {
+    pub fn remove_pickup(&mut self, dst: usize, what: crate::param::Kind) -> Result<()> {
         if !self.pickups.iter().any(|q| q.dst == dst && q.what == what) {
             invalid!("no pickup of {what:?} on surface {dst}");
         }

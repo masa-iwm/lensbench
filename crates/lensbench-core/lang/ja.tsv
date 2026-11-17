@@ -344,7 +344,7 @@ solve {n} needs another surface (other)	ソルブ {n} には別の面（other）
 macro number {param}	マクロの番号 {param}
 solve type {name} ({})	ソルブの種類 {name}（{}）
 pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)	ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）
-parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1..)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜）
+parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.., for pickups also semi p1.. before0..4 after0..4 coating)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜、ピックアップでは semi p1〜 before0〜4 after0〜4 coating も）
 no surface named {t}	名前 {t} の面がありません
 several surfaces are named {t} ({hits:?}); use the number	名前 {t} の面が複数あります（{hits:?}）。番号で指定してください
 parameter {s} (write surface.type, e.g. 3.t)	パラメータ {s}（面.種類 の形で、例 3.t）
@@ -2142,3 +2142,4 @@ the block is not in the project	ブロックがプロジェクトにありませ
 this kind of block can't hold surface edits	この種類のブロックは面の上書きを持てません
 parameter {}: the target doesn't match the kind	パラメータ {}: 付く先が種類と合いません
 parameter {} is not on a surface	パラメータ {} は面のパラメータではありません
+{} is a pickup quantity, not a parameter	{} はピックアップの量で、パラメータではありません

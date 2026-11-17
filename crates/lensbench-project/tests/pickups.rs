@@ -105,7 +105,7 @@ fn out_of_range_is_fixed_with_a_warning() {
     let q = s
         .pickups
         .iter()
-        .find(|q| q.what == lensbench_core::pickup::PickKind::Parm(1))
+        .find(|q| q.what == lensbench_core::param::Kind::Parm(1))
         .unwrap();
     let s2 = s
         .with_params(&[(s.param(&format!("{}.dx", q.src)).unwrap(), -0.4)])
@@ -124,7 +124,7 @@ fn after_a_mirror_the_offset_flips() {
     let th = s
         .pickups
         .iter()
-        .find(|q| q.what == lensbench_core::pickup::PickKind::Thick)
+        .find(|q| q.what == lensbench_core::param::Kind::Thick)
         .unwrap();
     assert_eq!((th.scale, th.offset), (0.5, -1.0));
     let t4 = s.surfaces[th.src].t;
@@ -165,18 +165,18 @@ fn after_a_tilted_return_mirror() {
         "{warn:?}"
     );
     assert_eq!(s.pickups.len(), 3, "{:?}", s.pickups);
-    use lensbench_core::pickup::PickKind;
+    use lensbench_core::param::Kind;
     use lensbench_core::surface::SurfType;
     for q in &s.pickups {
         assert!(q.holds(&s));
         // 座標ブレーク 6 ← 3 と、厚さ 5 ← 4（玉の後ろの面 ← 玉の前の面）
         match q.what {
-            PickKind::Parm(_) => {
+            Kind::Parm(_) => {
                 assert_eq!(s.surfaces[q.src].typ, SurfType::CoordBrk);
                 assert_eq!(s.surfaces[q.dst].typ, SurfType::CoordBrk);
                 assert_eq!(q.dst, q.src + 3);
             }
-            PickKind::Thick => assert_eq!(q.dst, q.src + 1),
+            Kind::Thick => assert_eq!(q.dst, q.src + 1),
             w => panic!("{w:?}"),
         }
     }
@@ -225,7 +225,7 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     let k = s
         .pickups
         .iter()
-        .find(|q| q.what == lensbench_core::pickup::PickKind::Conic)
+        .find(|q| q.what == lensbench_core::param::Kind::Conic)
         .unwrap_or_else(|| panic!("円錐のピックアップが残らない: {warn:?}"));
     assert_eq!(k.scale, -0.1);
     let t = s.surfaces[k.src].t;

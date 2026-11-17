@@ -1709,7 +1709,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "玉・群のパラメータ（[`Param::surf`] は玉・群の番号）",
+          "description": "玉・群のパラメータ（付く先は [`Target::Unit`]）",
           "properties": {
             "Unit": {
               "$ref": "#/$defs/UnitKind"
@@ -1719,6 +1719,64 @@
             "Unit"
           ],
           "type": "object"
+        },
+        {
+          "const": "Semi",
+          "description": "半直径（semi-diameter）。ピックアップ・マクロのソルブの量（パラメータには使えない）",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面タイプのパラメータ（.zmx の PARM の番号、1 から）。ピックアップ・マクロのソルブの量（パラメータは\n[`Kind::Asph`] などの意味のある名前で）",
+          "properties": {
+            "Parm": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "Parm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。ピックアップの量（座標ブレークの面は [`Kind::Parm`]、\nパラメータは [`Kind::Dx`] など）",
+          "properties": {
+            "Before": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "Before"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`Kind::Before`]、反転は倍率 −1）",
+          "properties": {
+            "After": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "After"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "Coating",
+          "description": "膜の名前（ピックアップだけ。倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）",
+          "type": "string"
         }
       ]
     },
@@ -1740,33 +1798,9 @@
       ],
       "type": "object"
     },
-    "MacroCol": {
-      "description": "マクロのソルブを付ける列",
-      "oneOf": [
-        {
-          "const": "parm",
-          "description": "面タイプのパラメータ（PZPL）",
-          "type": "string"
-        },
-        {
-          "const": "conic",
-          "description": "円錐係数（KZPL）",
-          "type": "string"
-        },
-        {
-          "const": "semi",
-          "description": "半直径（DIAM 値 4 0 0 1 \"名前\"）",
-          "type": "string"
-        }
-      ]
-    },
     "MacroParm": {
       "description": "曲率・厚さ以外の列の ZPL マクロのソルブ（.zmx の PZPL 番号 \"名前\"・KZPL \"名前\"・DIAM 値 4 0 0 1 \"名前\"）",
       "properties": {
-        "col": {
-          "$ref": "#/$defs/MacroCol",
-          "description": "列（既定はパラメータ）"
-        },
         "id": {
           "description": "[`System::macros`] の番号",
           "format": "uint16",
@@ -1774,23 +1808,20 @@
           "minimum": 0,
           "type": "integer"
         },
-        "parm": {
-          "description": "パラメータの番号（.zmx の PARM の番号。col が Parm のときだけ使う）",
-          "format": "uint8",
-          "maximum": 255,
-          "minimum": 0,
-          "type": "integer"
-        },
         "surf": {
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "what": {
+          "$ref": "#/$defs/Kind",
+          "description": "マクロの値を入れる量: 面タイプのパラメータ（PZPL、[`Kind::Parm`]）・円錐係数（KZPL、[`Kind::Conic`]）・\n半直径（DIAM 値 4 0 0 1 \"名前\"、[`Kind::Semi`]）"
         }
       },
       "required": [
         "surf",
-        "parm",
-        "id"
+        "id",
+        "what"
       ],
       "type": "object"
     },
@@ -2050,99 +2081,6 @@
       ],
       "type": "object"
     },
-    "PickKind": {
-      "description": "ピックアップする量",
-      "oneOf": [
-        {
-          "const": "Curv",
-          "description": "曲率 c（倍率・オフセットは曲率にかかる）",
-          "type": "string"
-        },
-        {
-          "const": "Thick",
-          "description": "次の面までの厚さ",
-          "type": "string"
-        },
-        {
-          "const": "Conic",
-          "description": "円錐係数",
-          "type": "string"
-        },
-        {
-          "additionalProperties": false,
-          "description": "面タイプのパラメータ（.zmx の PARM の番号、1 から）",
-          "properties": {
-            "Parm": {
-              "format": "uint8",
-              "maximum": 255,
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "Parm"
-          ],
-          "type": "object"
-        },
-        {
-          "const": "Dn",
-          "description": "媒質の屈折率のずれ dn（材料のピックアップで、元の面の材料と一緒に追従する）",
-          "type": "string"
-        },
-        {
-          "const": "Disp",
-          "description": "媒質の分散の相対変化 disp（材料のピックアップ）",
-          "type": "string"
-        },
-        {
-          "const": "Radius",
-          "description": "曲率半径 R = 1/c（平面は無限大）。別の列からのピックアップの元としてだけ使う（先は [`PickKind::Curv`]）",
-          "type": "string"
-        },
-        {
-          "const": "Semi",
-          "description": "半直径（semi-diameter）",
-          "type": "string"
-        },
-        {
-          "additionalProperties": false,
-          "description": "面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。ピックアップの元にも先にもなる（座標ブレークの面は [`PickKind::Parm`]）",
-          "properties": {
-            "Before": {
-              "format": "uint8",
-              "maximum": 255,
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "Before"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`PickKind::Before`]、反転は倍率 −1）",
-          "properties": {
-            "After": {
-              "format": "uint8",
-              "maximum": 255,
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "After"
-          ],
-          "type": "object"
-        },
-        {
-          "const": "Coating",
-          "description": "膜の名前（倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）",
-          "type": "string"
-        }
-      ]
-    },
     "Pickup": {
       "description": "ピックアップ: 面 dst の量 what = scale × 面 src の量 from（None なら what）+ offset。\n\n曲率は OpticStudio と同じく特別で（2026 R1.01 で実測）、同じ列（曲率・半径）からなら c = scale × c元、\n別の列の値 v からなら元の値を半径とみなして c = scale / v（オフセットなし）。ほかの量が半径の列から取るときは\n半径の値 R を使う（v = scale × R + offset）",
       "properties": {
@@ -2154,7 +2092,7 @@
         "from": {
           "anyOf": [
             {
-              "$ref": "#/$defs/PickKind"
+              "$ref": "#/$defs/Kind"
             },
             {
               "type": "null"
@@ -2191,7 +2129,7 @@
           "type": "integer"
         },
         "what": {
-          "$ref": "#/$defs/PickKind"
+          "$ref": "#/$defs/Kind"
         }
       },
       "required": [

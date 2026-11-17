@@ -2,7 +2,7 @@
 //! 書き直した文字列も同じになる。hash は同じ系で同じ。版 1 も読める。
 
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::pickup::{PickKind, Pickup};
+use lensbench_core::pickup::Pickup;
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
@@ -413,7 +413,7 @@ fn edited_system_roundtrip() {
     s.set_param(Param::new(2, Kind::Dn), 1e-4).unwrap();
     s.insert_surface(1, lensbench_core::surface::Surface::default())
         .unwrap();
-    s.add_pickup(Pickup::new(1, 3, PickKind::Thick, 0.5, 0.0))
+    s.add_pickup(Pickup::new(1, 3, Kind::Thick, 0.5, 0.0))
         .unwrap();
     let k = s.image() - 1;
     s.add_solve(lensbench_core::solves::Solve {

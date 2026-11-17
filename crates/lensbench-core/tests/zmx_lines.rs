@@ -681,7 +681,8 @@ fn multi_config_table_roundtrip() {
 /// .zmx に書けないもの（曲率半径のピックアップ等）は注意として返し、書けるものだけの系では空
 #[test]
 fn write_notes_list_dropped_items() {
-    use lensbench_core::pickup::{PickKind, Pickup};
+    use lensbench_core::param::Kind;
+    use lensbench_core::pickup::Pickup;
     let (txt, opt) = a0_text();
     let mut s = zmx::build(
         &zmx::parse_text(&txt).unwrap(),
@@ -692,8 +693,7 @@ fn write_notes_list_dropped_items() {
     .unwrap();
     assert!(zmx_write::write_notes(&s).is_empty());
     s.edit_raw(|p| {
-        p.pickups
-            .push(Pickup::new(3, 1, PickKind::Radius, 1.0, 0.0));
+        p.pickups.push(Pickup::new(3, 1, Kind::Radius, 1.0, 0.0));
         Ok(())
     })
     .unwrap();

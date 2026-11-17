@@ -7,11 +7,10 @@ use std::path::Path;
 
 use lensbench_core::error::{Error, Result};
 use lensbench_core::notimpl;
-use lensbench_core::pickup::PickKind;
+use lensbench_core::param::Kind;
 use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{After, Aperture, Bire, Material, SurfType, Tilt};
 use lensbench_core::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
-use lensbench_core::zpl_solve::MacroCol;
 
 /// 数値を読み戻しで同じ値になる表記で（Rust の最短表記）
 fn f(v: f64) -> String {
@@ -265,7 +264,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         match s
             .pickups
             .iter()
-            .find(|q| q.dst == k && q.what == PickKind::Curv)
+            .find(|q| q.dst == k && q.what == Kind::Curv)
         {
             Some(q) => w(
                 &mut o,
@@ -518,16 +517,16 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         }
         for q in s.pickups.iter().filter(|q| q.dst == k) {
             match q.what {
-                PickKind::Thick => w(
+                Kind::Thick => w(
                     &mut o,
                     format!("  PZUP {} {} {} {}", q.src, f(q.scale), f(q.offset), col(q)),
                 ),
                 // 円錐係数・曲率のピックアップにオフセットはない（読込で 0）
-                PickKind::Conic => w(
+                Kind::Conic => w(
                     &mut o,
                     format!("  PKUP {} {} {}", q.src, f(q.scale), col(q)),
                 ),
-                PickKind::Parm(i) => w(
+                Kind::Parm(i) => w(
                     &mut o,
                     format!(
                         "  PPAR {i} {} {} {} {}",
@@ -538,24 +537,26 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     ),
                 ),
                 // 曲率は CURV、材料（dn・disp）は GLAS、半直径は DIAM、面の後の傾き偏心は SCBD の行に書く
-                PickKind::Curv
-                | PickKind::Dn
-                | PickKind::Disp
-                | PickKind::Semi
-                | PickKind::After(_)
-                | PickKind::Radius
-                | PickKind::Before(_)
-                | PickKind::Coating => {}
+                Kind::Curv
+                | Kind::Dn
+                | Kind::Disp
+                | Kind::Semi
+                | Kind::After(_)
+                | Kind::Radius
+                | Kind::Before(_)
+                | Kind::Coating => {}
+                // ピックアップの量でない種類（Pickup::what に入らない）
+                _ => {}
             }
         }
         // パラメータ・円錐係数の ZPL マクロのソルブ: PZPL 番号 "名前"・KZPL "名前"（OpticStudio 26.1.1 の書き方）。
         // 半直径は DIAM の行に書く
         for q in s.macro_parms.iter().filter(|q| q.surf == k) {
             let name = macro_name(s, q.id);
-            match q.col {
-                MacroCol::Parm => w(&mut o, format!("  PZPL {} \"{name}\"", q.parm)),
-                MacroCol::Conic => w(&mut o, format!("  KZPL \"{name}\"")),
-                MacroCol::Semi => {}
+            match q.what {
+                Kind::Parm(i) => w(&mut o, format!("  PZPL {i} \"{name}\"")),
+                Kind::Conic => w(&mut o, format!("  KZPL \"{name}\"")),
+                _ => {}
             }
         }
         w(&mut o, format!("  DISZ {}", f(d.t)));
@@ -585,10 +586,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             };
             w(&mut o, line);
         }
-        let mat_pick = s
-            .pickups
-            .iter()
-            .find(|q| q.dst == k && q.what == PickKind::Dn);
+        let mat_pick = s.pickups.iter().find(|q| q.dst == k && q.what == Kind::Dn);
         if d.is_mirror() {
             w(&mut o, "  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0".into());
         } else if let (Some(q), false) = (mat_pick, d.typ == SurfType::CoordBrk) {
@@ -633,7 +631,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         match s
             .pickups
             .iter()
-            .find(|q| q.dst == k && q.what == PickKind::Semi)
+            .find(|q| q.dst == k && q.what == Kind::Semi)
         {
             // DIAM 値 2 元の面 列 倍率（OpticStudio 2026 R1.01 の書き方）
             Some(q) => w(
@@ -649,7 +647,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             None => match s
                 .macro_parms
                 .iter()
-                .find(|q| q.surf == k && q.col == MacroCol::Semi)
+                .find(|q| q.surf == k && q.what == Kind::Semi)
             {
                 // 半直径のマクロのソルブ: DIAM 値 4 0 0 1 "名前"（OpticStudio 26.1.1 の書き方）
                 Some(q) => w(
@@ -707,7 +705,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         let after_pick = s
             .pickups
             .iter()
-            .find(|q| q.dst == k && matches!(q.what, PickKind::After(_)));
+            .find(|q| q.dst == k && matches!(q.what, Kind::After(_)));
         match (&d.after, &d.before) {
             // 面の後の傾き偏心のピックアップ: モード 2·(この面 − 元の面) + 1、反転は + 2
             (a, _) if after_pick.is_some() => {
@@ -836,9 +834,9 @@ pub fn write_notes(s: &System) -> Vec<String> {
     }
     for q in &s.pickups {
         let what = match q.what {
-            PickKind::Before(_) => "tilt and decenter before the surface",
-            PickKind::Coating => "coating",
-            PickKind::Radius => "radius of curvature",
+            Kind::Before(_) => "tilt and decenter before the surface",
+            Kind::Coating => "coating",
+            Kind::Radius => "radius of curvature",
             _ => continue,
         };
         out.push(format!(

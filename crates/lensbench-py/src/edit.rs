@@ -2,7 +2,7 @@
 
 use crate::errors::value_err;
 use lensbench_core::edit::SurfValue;
-use lensbench_core::pickup::PickKind;
+use lensbench_core::param::Kind;
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::FieldCond;
 use lensbench_core::System;
@@ -170,11 +170,11 @@ pub(crate) fn fields_dict<'py>(
 }
 
 /// Pickup quantities: c (curvature), t (thickness), k (conic), p1… (parameters of the surface type), dn, disp, semi
-pub(crate) fn pick_kind(s: &str) -> PyResult<PickKind> {
+pub(crate) fn pick_kind(s: &str) -> PyResult<Kind> {
     lensbench_core::pickup::pick_kind_parse(s).map_err(|e| value_err(e.to_string()))
 }
 
-pub(crate) fn pick_name(k: PickKind) -> String {
+pub(crate) fn pick_name(k: Kind) -> String {
     lensbench_core::pickup::pick_kind_name(k)
 }
 

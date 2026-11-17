@@ -3,7 +3,6 @@
 use crate::error::Result;
 use crate::linalg::Lu;
 use crate::param::{Kind, Param};
-use crate::pickup::PickKind;
 use crate::surface::{After, SurfType};
 use crate::system::{Keep, System};
 use crate::{invalid, notimpl};
@@ -171,9 +170,9 @@ impl System {
         let ns = self.surfaces.len();
         for q in &self.solves {
             let what = if q.kind.is_curv() {
-                PickKind::Curv
+                Kind::Curv
             } else {
-                PickKind::Thick
+                Kind::Thick
             };
             if q.surf == 0 || q.surf + 1 >= ns {
                 let surf = q.surf;
@@ -856,11 +855,11 @@ impl System {
 const OPD_SOLVE_TOL: f64 = 1e-9;
 
 /// ピックアップの量がソルブの決める量（厚さ・曲率）に当たるならその種類
-pub(crate) fn solve_kind_of(w: crate::pickup::PickKind) -> Option<Kind> {
-    use crate::pickup::PickKind;
+pub(crate) fn solve_kind_of(w: crate::param::Kind) -> Option<Kind> {
+    use crate::param::Kind;
     match w {
-        PickKind::Thick => Some(Kind::Thick),
-        PickKind::Curv => Some(Kind::Curv),
+        Kind::Thick => Some(Kind::Thick),
+        Kind::Curv => Some(Kind::Curv),
         _ => None,
     }
 }

@@ -220,8 +220,8 @@ impl System {
             }
         }
         for p in params {
-            if sf
-                .get(p.index())
+            if p.surface()
+                .and_then(|j| sf.get(j))
                 .is_some_and(|d| d.typ == SurfType::Toroidal)
                 && matches!(
                     p.kind,
@@ -230,7 +230,7 @@ impl System {
             {
                 notimpl!(
                     "landing derivatives of the shape parameters of a toroidal surface (surface {})",
-                    p.index()
+                    p.surface().unwrap_or_default()
                 );
             }
         }

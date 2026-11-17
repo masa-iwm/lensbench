@@ -70,8 +70,9 @@ impl SwapSearch<'_> {
             // その状態は確かめない（落とさない）
             if !(sys.pickups.is_empty() && sys.solves.is_empty() && sys.macros.is_empty())
                 || vs.iter().any(|v| {
-                    sys.surfaces
-                        .get(v.param.index())
+                    v.param
+                        .surface()
+                        .and_then(|j| sys.surfaces.get(j))
                         .is_none_or(|s| s.grin.is_some())
                 })
             {
