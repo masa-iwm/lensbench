@@ -53,14 +53,8 @@ pub(crate) const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
 
 /// [`write`] で、系に書いた膜の表を `coat_file` の名前の膜ファイルに書く前提で COFN を書く（膜ファイルの中身は
 /// [`coating_dat`]）。表を使う面がなければ `coat_file` は使わない
-pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
-    if s.units.iter().any(|u| u.moved()) {
-        // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
-        // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）
-        let mut f = s.flatten_units()?.into_prescription();
-        f.configs = None;
-        return write_as(&f.build_raw()?, coat_file);
-    }
+/// 面の前の行（系の値: 版・名前・単位・開口・視野・波長・膜ファイルなど）。系の値が同じかを面を書かずに比べるのにも使う
+fn write_header(s: &System, coat_file: &str) -> Result<String> {
     let mut o = String::new();
     let w = |o: &mut String, l: String| {
         o.push_str(&l);
@@ -196,6 +190,22 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         }
         (None, None) => {}
     }
+    Ok(o)
+}
+
+pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
+    if s.units.iter().any(|u| u.moved()) {
+        // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
+        // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）
+        let mut f = s.flatten_units()?.into_prescription();
+        f.configs = None;
+        return write_as(&f.build_raw()?, coat_file);
+    }
+    let mut o = write_header(s, coat_file)?;
+    let w = |o: &mut String, l: String| {
+        o.push_str(&l);
+        o.push('\n');
+    };
     for (k, d) in s.surfaces.iter().enumerate() {
         if d.dn != 0.0 || d.disp != 0.0 {
             notimpl!(
@@ -997,10 +1007,8 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     let head = |s: &System| -> Result<Vec<String>> {
         let mut t = s.prescription().clone();
         t.name = String::new();
-        let txt = write(&t.build_raw()?)?;
-        Ok(txt
-            .split("\r\n")
-            .take_while(|l| !l.starts_with("SURF "))
+        Ok(write_header(&t.build_raw()?, coat_file)?
+            .lines()
             .filter(|l| !l.starts_with("GCAT") && !l.starts_with("NAME"))
             .map(|l| l.to_string())
             .collect())
@@ -1022,7 +1030,6 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         }
     }
     // 同じ先頭の面（物体面から、どの系でも像面の手前まで）。厚さだけの違いは多重構成の THIC にする
-    let key = |d: &lensbench_core::surface::Surface| format!("{d:?}");
     let key_t = |d: &lensbench_core::surface::Surface| {
         let mut d = d.clone();
         d.t = 0.0;
@@ -1033,7 +1040,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
                 *semi = 0.0;
             }
         }
-        key(&d)
+        d
     };
     let min_img = ss
         .iter()
@@ -1065,7 +1072,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     let img_key = |s: &System| {
         let mut d = s.surfaces[s.image()].clone();
         d.semi = 0.0;
-        key(&d)
+        d
     };
     if ss.iter().any(|s| img_key(s) != img_key(&ss[0])) {
         notimpl!("the image surface (other than its radius) differs between configurations");

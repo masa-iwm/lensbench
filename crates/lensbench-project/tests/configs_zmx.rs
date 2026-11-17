@@ -286,3 +286,25 @@ fn mce_rows_have_opticstudio_layout() {
         );
     }
 }
+
+/// 面の同じさは値で比べる（Debug の文字列でなく）: 曲率の −0 と 0 は同じ面で、構成ごとの面に分かれない
+#[test]
+fn negative_zero_is_the_same_surface() {
+    let p = project("P6_states_focus_group.json");
+    let names: Vec<String> = p.state_names().iter().map(|x| x.to_string()).collect();
+    let mk = |n: &str| {
+        expand(&p.with_state(n).unwrap(), &env(), &ExpandOpts::default())
+            .unwrap()
+            .system
+    };
+    let a = mk(&names[0]);
+    let mut b = a.clone();
+    let j = (1..b.image()).find(|&j| b.surfaces[j].c == 0.0).unwrap();
+    use lensbench_core::param::{Kind, Param};
+    b.set_param(Param::new(j, Kind::Curv), -0.0).unwrap();
+    assert!(b.surfaces[j].c.is_sign_negative());
+    let one = zmx_write::write(&a).unwrap();
+    let two = zmx_write::write_configs(&[a, b]).unwrap();
+    let surfs = |t: &str| t.lines().filter(|l| l.starts_with("SURF ")).count();
+    assert_eq!(surfs(&one), surfs(&two), "同じ面の並びのまま");
+}

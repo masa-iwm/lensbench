@@ -155,7 +155,8 @@ pub enum Aperture {
     },
 }
 
-#[derive(Debug, Clone)]
+/// 面の値（処方）。`==` は値の比較（NaN は等しくない、−0 と 0 は等しい）
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Surface {

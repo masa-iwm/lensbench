@@ -909,7 +909,8 @@ pub fn build(
         vals.entry((
             op.clone(),
             *p1,
-            rest.iter().skip(2).take(1).cloned().collect(),
+            // 2 番目の番号（PRAM の PARM の番号など、多重構成の表の config_table と同じ位置）
+            rest.iter().skip(1).take(1).cloned().collect(),
         ))
         .or_default()
         .insert(v.clone());
@@ -1310,7 +1311,7 @@ pub fn build(
             }
         }
         after_picks.push(tilts(s, &mut d, k)?);
-        aperture(s, &mut d, &ops);
+        aperture(s, k, &mut d, &ops);
         let n = if d.is_mirror() || typ == SurfType::CoordBrk {
             nprev.clone()
         } else if let Some(g) = &d.grin {
@@ -1852,13 +1853,14 @@ fn tilts(s: &RawSurf, d: &mut Surface, k: usize) -> Result<Option<(usize, bool)>
     Ok(pick)
 }
 
-fn aperture(s: &RawSurf, d: &mut Surface, ops: &HashMap<(String, i64), String>) {
+/// k は面の並びの添字（多重構成の行の面の番号。SURF の行の番号 s.n ではない）
+fn aperture(s: &RawSurf, k: usize, d: &mut Surface, ops: &HashMap<(String, i64), String>) {
     let dec = s.obdc.clone().unwrap_or_default();
     let (dx, dy) = (
         dec.first().copied().unwrap_or(0.0),
         dec.get(1).copied().unwrap_or(0.0),
     );
-    let k = s.n;
+    let k = k as i64;
     let g = |v: &Vec<f64>, i: usize| v.get(i).copied().unwrap_or(0.0);
     d.ap = if let Some(c) = &s.clap {
         let max = ops

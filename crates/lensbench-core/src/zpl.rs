@@ -818,7 +818,11 @@ impl Program {
                     let Op::ForInit(v, ..) = &self.ops[body - 1] else {
                         unreachable!()
                     };
-                    let x = vars.get_num(v) + inc;
+                    // 変数の名前は読むときに大文字にしてある（get_num のように毎回直さない）
+                    let x = match vars.0.get(v) {
+                        Some(Value::Num(x)) => *x,
+                        _ => 0.0,
+                    } + inc;
                     vars.0.insert(v.clone(), Value::Num(x));
                     let again = match dir {
                         1 => x <= stop,
