@@ -49,27 +49,89 @@ pub fn sub_seed(seed: u64, i: usize) -> u64 {
 #[derive(Debug, Clone)]
 pub struct Rng(u64);
 
+/// Ziggurat 法の層の数
+const ZIG_N: usize = 256;
+/// 一番下の層の右端（裾の始まり）と、各層の面積（Marsaglia–Tsang 2000、256 層）
+const ZIG_R: f64 = 3.654_152_885_361_009;
+const ZIG_V: f64 = 0.004_928_673_233_99;
+
+/// Ziggurat 法の表: 層の右端 x[i]（x[0] は一番下の層を同じ面積の長方形とみたときの幅、x[ZIG_N] = 0）と f(x[i]) = exp(−x²/2)
+struct ZigTables {
+    x: [f64; ZIG_N + 1],
+    f: [f64; ZIG_N + 1],
+}
+
+fn zig_tables() -> &'static ZigTables {
+    static T: std::sync::OnceLock<ZigTables> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let pdf = |x: f64| (-0.5 * x * x).exp();
+        let mut x = [0.0; ZIG_N + 1];
+        x[0] = ZIG_V / pdf(ZIG_R);
+        x[1] = ZIG_R;
+        for i in 1..ZIG_N - 1 {
+            x[i + 1] = (-2.0 * (ZIG_V / x[i] + pdf(x[i])).ln()).sqrt();
+        }
+        x[ZIG_N] = 0.0;
+        let f = x.map(pdf);
+        ZigTables { x, f }
+    })
+}
+
 impl Rng {
     pub fn new(seed: u64, i: usize) -> Rng {
         Rng(mix(mix(seed).wrapping_add(i as u64)))
     }
+    #[inline]
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         mix(self.0.wrapping_sub(0x9E37_79B9_7F4A_7C15))
     }
     /// (0, 1) の一様乱数（0 と 1 は出ない）
+    #[inline]
     pub fn uniform(&mut self) -> f64 {
         ((self.next_u64() >> 11) as f64 + 0.5) / (1u64 << 53) as f64
     }
     /// 標準正規乱数（Box–Muller、1 回に 2 つ作って 1 つ使う。列が番号で決まれば値も決まる）
+    #[inline]
     pub fn normal(&mut self) -> f64 {
         let (u, v) = (self.uniform(), self.uniform());
         (-2.0 * u.ln()).sqrt() * (2.0 * std::f64::consts::PI * v).cos()
+    }
+    /// 標準正規乱数（Ziggurat 法、Marsaglia–Tsang 2000 の 256 層。分布は厳密）。ほとんどの値は 64 ビットの乱数 1 つと
+    /// 表の比較だけで決まり、[`Self::normal`]（Box–Muller）の数分の 1 の手間。検出器の露光（[`SensorNoise::expose`]）で使う
+    #[inline]
+    pub fn normal_fast(&mut self) -> f64 {
+        let t = zig_tables();
+        loop {
+            let u = self.next_u64();
+            // 下の 8 ビットで層、上の 53 ビットで (−1, 1) の一様乱数（ビットは重ならない）
+            let i = (u & 0xff) as usize;
+            let s = ((u >> 11) as f64 + 0.5) / (1u64 << 52) as f64 - 1.0;
+            let x = s * t.x[i];
+            if x.abs() < t.x[i + 1] {
+                return x;
+            }
+            if i == 0 {
+                // 裾（|x| > r）: Marsaglia の方法
+                loop {
+                    let a = -self.uniform().ln() / ZIG_R;
+                    let b = -self.uniform().ln();
+                    if 2.0 * b >= a * a {
+                        return if s < 0.0 { -(ZIG_R + a) } else { ZIG_R + a };
+                    }
+                }
+            }
+            // 楔: 層の中で曲線の下にあるか
+            if t.f[i + 1] + (t.f[i] - t.f[i + 1]) * self.uniform() < (-0.5 * x * x).exp() {
+                return x;
+            }
+        }
     }
 }
 
 impl Rng {
     /// Poisson 乱数（平均 30 未満は積の方法で厳密、以上は正規分布で近似して丸める）。平均が正でなければ 0
+    #[inline]
     pub fn poisson(&mut self, lam: f64) -> f64 {
         if !(lam > 0.0) {
             return 0.0;
@@ -86,6 +148,15 @@ impl Rng {
             }
         }
         (lam + lam.sqrt() * self.normal()).round().max(0.0)
+    }
+    /// [`Self::poisson`] の正規近似（平均 30 以上）に [`Self::normal_fast`] を使う形
+    #[inline]
+    pub fn poisson_fast(&mut self, lam: f64) -> f64 {
+        if lam >= 30.0 {
+            (lam + lam.sqrt() * self.normal_fast()).round().max(0.0)
+        } else {
+            self.poisson(lam)
+        }
     }
 }
 
@@ -128,18 +199,20 @@ impl SensorNoise {
     }
 
     /// 1 画素の露光。`mu` は平均の電子数（背景を含む）。ショット雑音は Poisson（[`Rng::poisson`]）、読み出し雑音は
-    /// 正規分布。bits > 0 なら刻み q = full_well / 2^bits で round(e/q)（四捨五入）を 0〜2^bits − 1 に切って q 倍、
+    /// 正規分布（どちらも Ziggurat 法の正規乱数、[`Rng::normal_fast`]）。bits > 0 なら刻み q = full_well / 2^bits で round(e/q)（四捨五入）を 0〜2^bits − 1 に切って q 倍、
     /// bits = 0 で full_well > 0 なら 0〜full_well に切る。値でない `mu` はそのまま返す（乱数は使わない）
+    #[inline]
     pub fn expose(&self, mu: f64, rng: &mut Rng) -> f64 {
         if !mu.is_finite() {
             return mu;
         }
-        let mut e = if self.shot { rng.poisson(mu) } else { mu };
+        let mut e = if self.shot { rng.poisson_fast(mu) } else { mu };
         if self.read > 0.0 {
-            e += self.read * rng.normal();
+            e += self.read * rng.normal_fast();
         }
         if self.bits > 0 {
-            let levels = 2f64.powi(self.bits as i32);
+            // 2^bits（bits ≤ 32 は check で確かめる）。powi と同じ値で、画素ごとの関数呼び出しが要らない
+            let levels = (1u64 << self.bits.min(63)) as f64;
             let q = self.full_well / levels;
             (e / q).round().clamp(0.0, levels - 1.0) * q
         } else if self.full_well > 0.0 {
@@ -147,6 +220,51 @@ impl SensorNoise {
         } else {
             e
         }
+    }
+}
+
+impl SensorNoise {
+    /// 同じ平均 `mu` の画素を `n` 枚露光した平均を、まとめて 1 回で引く（[`Self::expose`] を n 回して平均する代わり）。
+    /// ショット雑音の和は Poisson(n·mu)、読み出し雑音の和は分散 n·read² の正規分布で、どちらも厳密。AD の丸めだけは
+    /// 1 枚ごとの誤差を一様分布（分散 q²/12）とみて和を正規分布で近似する。近似が成り立たない画素（1 枚の雑音の標準偏差が
+    /// 刻み q より小さい、平均 ± 5σ が 0〜飽和の外に出る）は None（1 枚ずつ露光する）。丸めがあってショット雑音ありで
+    /// 読み出し雑音が 0.5 e⁻ 未満のときも None: 電子数が整数に近いまま刻み q で丸めると、整数と刻みのうなりで丸めの誤差が
+    /// 平均 0 にならない（読み出し雑音 0・平均 30 e⁻ で平均が 20 枚平均の σ の 14 % ずれる）。値でない `mu` はそのまま返す
+    #[inline]
+    pub fn expose_mean_merged(&self, mu: f64, n: usize, rng: &mut Rng) -> Option<f64> {
+        if !mu.is_finite() {
+            return Some(mu);
+        }
+        let nf = n as f64;
+        let var1 = if self.shot { mu.max(0.0) } else { 0.0 } + self.read * self.read;
+        let sd1 = var1.sqrt();
+        let top = if self.bits > 0 {
+            // 2^bits − 1 段目の上端
+            let levels = (1u64 << self.bits.min(63)) as f64;
+            let q = self.full_well / levels;
+            if sd1 < q || (self.shot && self.read < 0.5) {
+                return None;
+            }
+            Some((q, (levels - 1.0) * q))
+        } else {
+            None
+        };
+        let hi = top.map_or(self.full_well, |t| t.1);
+        if hi > 0.0 && (mu - 5.0 * sd1 < 0.0 || mu + 5.0 * sd1 > hi) {
+            return None;
+        }
+        let mut e = if self.shot {
+            rng.poisson_fast(nf * mu)
+        } else {
+            nf * mu
+        };
+        if self.read > 0.0 {
+            e += self.read * nf.sqrt() * rng.normal_fast();
+        }
+        if let Some((q, _)) = top {
+            e += q * (nf / 12.0).sqrt() * rng.normal_fast();
+        }
+        Some(e / nf)
     }
 }
 
@@ -873,6 +991,95 @@ mod noise_tests {
         assert_eq!(h, "{\"a\":1}");
         assert_eq!(rows, vec![(0, 4, "1".into()), (1, 5, "2".into())]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ziggurat 法の正規乱数: 平均・分散・4 次の積率と、累積分布（裾を含む）が標準正規分布に合う
+    #[test]
+    fn fast_normal_matches_the_standard_normal() {
+        let mut r = Rng::new(11, 0);
+        let n = 400_000;
+        let edges = [-4.0, -3.0, -2.0, -1.0, -0.3, 0.0, 0.7, 1.5, 2.5, 3.66, 4.5];
+        let mut below = [0usize; 11];
+        let (mut s1, mut s2, mut s4) = (0.0, 0.0, 0.0);
+        for _ in 0..n {
+            let v = r.normal_fast();
+            s1 += v;
+            s2 += v * v;
+            s4 += v * v * v * v;
+            for (k, e) in edges.iter().enumerate() {
+                below[k] += (v < *e) as usize;
+            }
+        }
+        let nf = n as f64;
+        assert!((s1 / nf).abs() < 0.006, "{}", s1 / nf);
+        assert!((s2 / nf - 1.0).abs() < 0.01, "{}", s2 / nf);
+        assert!((s4 / nf - 3.0).abs() < 0.06, "{}", s4 / nf);
+        for (k, e) in edges.iter().enumerate() {
+            let p = norm_cdf(*e);
+            let sd = (p * (1.0 - p) / nf).sqrt();
+            let got = below[k] as f64 / nf;
+            assert!((got - p).abs() < 5.0 * sd + 1e-6, "x {e}: {got} vs {p}");
+        }
+        let mut r = Rng::new(3, 0);
+        for _ in 0..1000 {
+            let v = r.poisson_fast(400.0);
+            assert!(v == v.round() && v >= 0.0);
+        }
+    }
+
+    /// 枚数をまとめて引いた平均は、1 枚ずつ露光した平均と平均・分散が合う。近似が成り立たない画素は None
+    #[test]
+    fn merged_frames_match_the_frame_by_frame_mean() {
+        let nz = SensorNoise {
+            shot: true,
+            read: 10.0,
+            full_well: 10300.0,
+            bits: 12,
+        };
+        let (n, m) = (20, 40_000);
+        for &mu in &[200.0, 3000.0, 8000.0] {
+            let (mut r1, mut r2) = (Rng::new(5, 0), Rng::new(6, 0));
+            let (mut a1, mut a2, mut b1, mut b2) = (0.0, 0.0, 0.0, 0.0);
+            for _ in 0..m {
+                let x = (0..n).map(|_| nz.expose(mu, &mut r1)).sum::<f64>() / n as f64;
+                let y = nz.expose_mean_merged(mu, n, &mut r2).unwrap();
+                a1 += x;
+                a2 += x * x;
+                b1 += y;
+                b2 += y * y;
+            }
+            let mf = m as f64;
+            let (ma, mb) = (a1 / mf, b1 / mf);
+            let (va, vb) = (a2 / mf - ma * ma, b2 / mf - mb * mb);
+            let se = (va / mf).sqrt();
+            assert!((ma - mb).abs() < 5.0 * se, "mu {mu}: mean {ma} vs {mb}");
+            assert!((va / vb - 1.0).abs() < 0.04, "mu {mu}: var {va} vs {vb}");
+        }
+        let mut r = Rng::new(1, 0);
+        // 飽和の近く・0 の近く・刻みより小さい雑音は 1 枚ずつ
+        assert!(nz.expose_mean_merged(10000.0, n, &mut r).is_none());
+        assert!(nz.expose_mean_merged(1.0, n, &mut r).is_none());
+        let quiet = SensorNoise {
+            shot: false,
+            read: 1.0,
+            ..nz
+        };
+        assert!(quiet.expose_mean_merged(5000.0, n, &mut r).is_none());
+        // 丸めありで読み出し雑音が小さい（電子数が整数のまま丸める）と 1 枚ずつ
+        let no_read = SensorNoise { read: 0.2, ..nz };
+        assert!(no_read.expose_mean_merged(3000.0, n, &mut r).is_none());
+        assert!(SensorNoise { read: 0.5, ..nz }
+            .expose_mean_merged(3000.0, n, &mut r)
+            .is_some());
+        assert!(nz.expose_mean_merged(f64::NAN, n, &mut r).unwrap().is_nan());
+        // 丸め・飽和が無ければいつでもまとめる
+        let raw = SensorNoise {
+            shot: true,
+            read: 3.0,
+            full_well: 0.0,
+            bits: 0,
+        };
+        assert!(raw.expose_mean_merged(0.5, n, &mut r).is_some());
     }
 
     #[test]

@@ -302,6 +302,9 @@
 - 物体が無限遠のときの理想レンズ（`PARAXIAL`・`ideal_mapping`）の OPD: 光が −z へ進むとき（ミラーの後）、入ってくる平行光の
   面内の位相の符号が逆だった（OPD に視野の角に比例する傾きが残った）のを直した。+z へ進む光は変わらない（ビット同じ）。
 ### Rust API
+- 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
+  分布は厳密に同じで手間はおよそ 1/6、同じ種でも雑音の値は前と違う。`Rng::normal`・`Rng::poisson` はそのまま
+  （公差のモンテカルロなどの値は変わらない）。
 - 利用者定義の面のモデル `SurfaceModel` に裏返しの口 `flip(config, how) -> Result<Option<Config>>` を足した（既定は None で
   「対応しない」）。`how` は `usersurf::Flip::Z`（z → −z）・`Flip::X`（x → −x）。約束は 2 回で元の設定に戻ること、裏返した面の
   `deflect` が元の面を映したものと合うこと、`paraxial_power` が同じこと。約束は `usersurf::check_flip(model, config)` で確かめられる。
