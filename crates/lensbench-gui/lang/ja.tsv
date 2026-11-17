@@ -485,6 +485,7 @@ Reference power	参照の強度の倍率
 Reference delay	参照の光路長
 Polarized overlap	偏光追跡で重ねる
 Use polarization	偏光・コーティングを入れる
+Tangential direction	タンジェンシャルの向き
 Sample input polarization	試料の入射偏光
 Reference input polarization	参照の入射偏光
 Output file	出力ファイル

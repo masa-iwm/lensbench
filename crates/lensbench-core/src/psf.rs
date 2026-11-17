@@ -12,7 +12,7 @@
 //! 幾何 MTF は像面に届いた光線の位置の分布の特性関数 |Σ w exp(2πi ν x)| / Σ w（瞳の重なり求積と同じ
 //! Gauss-Legendre の求積で光線を選ぶ）。球欠は x、子午は y の周波数。
 
-use crate::analysis::{lens_quad, mtf_cutoff, pupil_jacobian, LensGl};
+use crate::analysis::{lens_quad, mtf_cutoff_axes, pupil_jacobian, LensGl, MtfAxes};
 use crate::coating::C64;
 use crate::error::Result;
 use crate::grid::Grid2;
@@ -581,7 +581,23 @@ pub fn geometric_mtf(
     freqs: &[f64],
     diff_limit: bool,
 ) -> Result<Mtf> {
+    geometric_mtf_axes(s, field, w, n, freqs, diff_limit, MtfAxes::default())
+}
+
+/// [`geometric_mtf`] で、子午・球欠の向きを axes で（[`MtfAxes`]）
+#[allow(clippy::too_many_arguments)]
+pub fn geometric_mtf_axes(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    n: usize,
+    freqs: &[f64],
+    diff_limit: bool,
+    axes: MtfAxes,
+) -> Result<Mtf> {
     let w = w.one();
+    // 子午の向き t（像面の上）。球欠は (t.y, −t.x)。None なら y・x
+    let tdir = crate::analysis::mtf_tangential(s, field, axes)?;
     if n < 4 {
         invalid!("geometric MTF needs 4 or more quadrature points ({n})");
     }
@@ -606,6 +622,11 @@ pub fn geometric_mtf(
             .filter(|&i| r.ok(i))
             .map(|i| {
                 let (x, y) = s.image_point(r.rays[i].xyz, r.rays[i].lmn);
+                // 球欠・子午の向きの座標
+                let (x, y) = match tdir {
+                    None => (x, y),
+                    Some(t) => (x * t[1] - y * t[0], x * t[0] + y * t[1]),
+                };
                 (x, y, wa[i])
             })
             .collect();
@@ -614,7 +635,7 @@ pub fn geometric_mtf(
             invalid!("geometric MTF: no valid rays (all vignetted)");
         }
         let cut = if diff_limit {
-            mtf_cutoff(s, field, wi)?
+            mtf_cutoff_axes(s, field, wi, axes)?
         } else {
             TanSag::new(f64::INFINITY, f64::INFINITY)
         };
@@ -666,7 +687,7 @@ pub fn geometric_mtf(
         freqs: freqs.to_vec(),
         tan,
         sag,
-        cutoff: mtf_cutoff(s, field, w.unwrap_or(s.primary))?,
+        cutoff: mtf_cutoff_axes(s, field, w.unwrap_or(s.primary), axes)?,
     })
 }
 

@@ -225,6 +225,15 @@
   強度 A²（OpticStudio のガウス求積の RSCE・RWCE・CENY・GMTT・スポット図の RMS と同じ）。Zernike の当てはめには入れない
   （OpticStudio も同じ）。一様なら値は変わらない。一様でない GFAC を読んだときの注意（回折の解析にだけ入る）は出さない。
   Rust は `lensbench_core::analysis::apodized`（求積の重みに A² を掛ける）。
+- MTF の子午・球欠の向きを、既定で視野の向きにした（ANA-11）: 子午は視野の座標 (x, y)（角度の視野は (tan θx, tan θy)）の向き、
+  球欠はそれに直交する向きの周波数。回転対称なシステムでは、視野の方位によらず同じ MTF になる。前は（OpticStudio の FFT MTF と同じく）
+  子午がいつも瞳の py の向きだったので、x だけの視野では子午と球欠が入れ替わり、x・y の両方に角度がある視野では子午面の向きでなかった。
+  軸上と y だけの視野の結果はビット単位で同じ。回折 MTF（補間・FFT・けられの求積）・スルーフォーカス・フィールド MTF・幾何 MTF・
+  Huygens MTF・最適化の MTF の項が対象。前の向きは設定 `axes` の `pupil` で選べる（CLI・serve・GUI の各 MTF の解析、Python の
+  `mtf`・`mtf_focus`・`mtf_field`・`geo_mtf`・`huygens_mtf` の `axes="pupil"`）。`mtf-field` の `axis` が x のときは、既定の子午・球欠が
+  前と入れ替わる。Rust は `lensbench_core::analysis::MtfAxes`、`mtf_amp`・`mtf_waves_amp`・`sweep::through_focus_mtf`・`field_mtf` に
+  引数 `axes` を足し、`psf::geometric_mtf_axes`・`huygens::huygens_mtf_axes`・`huygens::psf_mtf_dir`・`analysis::mtf_cutoff_axes`・
+  `mtf_tangential` を足した。
 - 形のパラメータの微分（光路長の微分 `opl_grad`・着地点の微分 `land_grad`、それを使う最適化・公差）を、面の形どおりに求める（KRN-32）。
   以前は `asph` をどの型でも偶数次非球面の係数とみていた。Odd Asphere の `a2`, `a4`, … は β1 r, β2 r², …、Tilted の `a2`・`a4` は
   tan α・tan β（z = x tan α + y tan β）、Irregular の `a2`〜`a16` は偏心 x・y、傾き x・y、Zs・Za・Zc、角度で、偏心・傾けた面の c・k の

@@ -295,6 +295,7 @@ SURF 3\n  TYPE STANDARD\n";
         MtfMethod::Auto,
         None,
         Some(&pa),
+        Default::default(),
     )
     .unwrap();
     assert!(m0

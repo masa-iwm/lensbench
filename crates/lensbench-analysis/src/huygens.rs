@@ -20,7 +20,7 @@
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
-use lensbench_core::analysis::{mtf_cutoff, pupil_jacobian, Mtf};
+use lensbench_core::analysis::{mtf_cutoff_axes, mtf_tangential, pupil_jacobian, Mtf, MtfAxes};
 use lensbench_core::coating::C64;
 use lensbench_core::error::Result;
 use lensbench_core::math::*;
@@ -425,6 +425,36 @@ fn huygens_once(
 /// 直接変換すると、格子の端の打ち切りの影響が残る。OpticStudio の Huygens MTF も PSF の FFT）。
 /// 格子の間隔 Δ のナイキスト 1/(2Δ) を超える周波数は NaN
 pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
+    psf_mtf_dir(p, freqs, None)
+}
+
+/// PSF の向き e（格子の x・y の単位ベクトル）の周波数の MTF: |Σ I exp(−2πi f (x, y)·e)| / Σ I
+fn dir_mtf(p: &Psf, freqs: &[f64], e: [f64; 2]) -> Vec<f64> {
+    let (xs, ys) = (p.i.x(), p.i.y());
+    let tot: f64 = p.i.rows().flatten().sum();
+    freqs
+        .iter()
+        .map(|&f| {
+            let ny = |c: f64, d: f64| (f * c).abs() <= 0.5 / d * (1.0 + 1e-12);
+            if !(ny(e[0], p.pixel.0) && ny(e[1], p.pixel.1)) {
+                return f64::NAN;
+            }
+            let mut u = C64::new(0.0, 0.0);
+            for (row, &y) in p.i.rows().zip(ys) {
+                for (v, &x) in row.iter().zip(xs) {
+                    let (sn, cs) = (-2.0 * PI * f * (x * e[0] + y * e[1])).sin_cos();
+                    u += C64::new(cs, sn) * *v;
+                }
+            }
+            u.norm() / tot
+        })
+        .collect()
+}
+
+/// [`psf_mtf`] で、子午の向きを t（格子の x・y の単位ベクトル。球欠は (t.y, −t.x)）にする。None なら子午は y、
+/// 球欠は x（格子の周辺分布の変換）。t のときは強度の 2 次元の和を向きに沿って直接変換する。ナイキストは向きの
+/// 成分ごと（|f t.x| ≤ 1/(2Δx) かつ |f t.y| ≤ 1/(2Δy)）
+pub fn psf_mtf_dir(p: &Psf, freqs: &[f64], t: Option<[f64; 2]>) -> TanSag<Vec<f64>> {
     // 強度が NaN の点（像面の形の外など）を含む PSF からは、どの周波数の値も決まらない（変換も規格化の全光量も
     // 格子の全点の和）。全部 NaN にする（下の補間の max(0) で NaN が 0 に化けないよう、先に返す）
     if p.i.rows().flatten().any(|v| v.is_nan()) {
@@ -432,6 +462,12 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
         return TanSag {
             tan: nan.clone(),
             sag: nan,
+        };
+    }
+    if let Some(t) = t {
+        return TanSag {
+            tan: dir_mtf(p, freqs, t),
+            sag: dir_mtf(p, freqs, [t[1], -t[0]]),
         };
     }
     // 周辺分布（x・y への射影）
@@ -489,7 +525,8 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
     }
 }
 
-/// Huygens MTF（OpticStudio の Huygens MTF 相当）。周波数 [cycles/レンズ単位] は像面の上の x（球欠）・y（子午）
+/// Huygens MTF（OpticStudio の Huygens MTF 相当）。周波数 [cycles/レンズ単位] は像面の上。子午・球欠の向きは既定の
+/// [`MtfAxes::Field`]（y だけの視野なら子午が y、球欠が x）
 pub fn huygens_mtf(
     s: &System,
     field: FieldSel,
@@ -509,6 +546,19 @@ pub fn huygens_mtf_with(
     freqs: &[f64],
     extra: Option<&dyn PupilAmp>,
 ) -> Result<Mtf> {
+    huygens_mtf_axes(s, field, w, o, freqs, extra, MtfAxes::default())
+}
+
+/// [`huygens_mtf_with`] で、子午・球欠の向きを axes で（[`MtfAxes`]）
+pub fn huygens_mtf_axes(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    o: HuygensOpts,
+    freqs: &[f64],
+    extra: Option<&dyn PupilAmp>,
+    axes: MtfAxes,
+) -> Result<Mtf> {
     let w = w.one();
     let p = huygens_psf_with(s, field, Waves::all_or(w), o, extra)?;
     // 像の格子の一部で強度が決まらない（像面の矢高が求まらない点）PSF の MTF は、どの周波数も決まらない。
@@ -517,11 +567,11 @@ pub fn huygens_mtf_with(
     if off > 0 {
         invalid!("Huygens MTF: the PSF intensity is undefined at {off} image grid points (the image surface sag can't be found there); reduce the image grid or spacing");
     }
-    let TanSag { tan, sag } = psf_mtf(&p, freqs);
+    let TanSag { tan, sag } = psf_mtf_dir(&p, freqs, mtf_tangential(s, field, axes)?);
     Ok(Mtf {
         freqs: freqs.to_vec(),
         tan,
         sag,
-        cutoff: mtf_cutoff(s, field, w.unwrap_or(s.primary))?,
+        cutoff: mtf_cutoff_axes(s, field, w.unwrap_or(s.primary), axes)?,
     })
 }

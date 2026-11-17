@@ -1,7 +1,7 @@
 //! Huygens PSF・Huygens MTFの性質: 軸上・斜めの視野で FFT PSF（像面の上）と一致、収差のない系で回折限界、傾いた像面で
 //! 像面の上の座標（主光線に垂直な面の 1/cos 倍に伸びる）になること。OpticStudio との照合は huygens_refs.rs。
 
-use lensbench_analysis::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
+use lensbench_analysis::huygens::{huygens_mtf, huygens_mtf_axes, huygens_psf, HuygensOpts};
 use lensbench_core::analysis;
 use lensbench_core::grid::Grid2;
 use lensbench_core::psf::{self, diffraction_limit, PsfOpts};
@@ -320,5 +320,61 @@ fn skew_fields_match_huygens() {
         let h = huygens_psf(&s, FieldSel::Index(fi), Waves::All, HuygensOpts::default()).unwrap();
         let d = max_abs_diff(&f.i, &h.i);
         assert!(d < 2e-3, "D1 視野 {}: {d:.2e}", fi + 1);
+    }
+}
+
+/// 子午・球欠の向き: 既定（視野の向き）では、回転対称な系の Huygens MTF は視野の方位によらず、回折 MTF との
+/// 差も y の視野と同じ（斜めの視野でも）
+#[test]
+fn huygens_mtf_follows_the_field_direction() {
+    let mut s = load("A0");
+    let h: f64 = 14.0;
+    let d = (h.to_radians().tan() / 2f64.sqrt()).atan().to_degrees();
+    s.edit_raw(|rx| {
+        let f0 = rx.fields[0];
+        rx.fields = [(0.0, h), (d, d), (h, 0.0)]
+            .iter()
+            .map(|&(x, y)| {
+                let mut f = f0;
+                (f.x, f.y) = (x, y);
+                f
+            })
+            .collect();
+        Ok(())
+    })
+    .unwrap();
+    let fr = [10.0, 30.0, 60.0];
+    let o = HuygensOpts {
+        image: 256,
+        ..Default::default()
+    };
+    let hm = |i: usize| {
+        let f = FieldSel::Index(i);
+        huygens_mtf_axes(&s, f, Waves::All, o, &fr, None, Default::default()).unwrap()
+    };
+    // 回折 MTF との差（像の格子の大きさ・像面の上か瞳の座標かの違い。y の視野でも 5e-3 ほど）も方位によらない
+    let dm = |i: usize| analysis::mtf(&s, FieldSel::Index(i), Waves::All, None, &fr).unwrap();
+    let (y, dy) = (hm(0), dm(0));
+    for i in 1..3 {
+        let (m, d) = (hm(i), dm(i));
+        for k in 0..fr.len() {
+            let e = [m.tan[k] - y.tan[k], m.sag[k] - y.sag[k]];
+            assert!(
+                e[0].abs() < 3e-3 && e[1].abs() < 3e-3,
+                "field {} {}: {e:?}",
+                i + 1,
+                fr[k]
+            );
+            let e = [
+                (m.tan[k] - d.tan[k]) - (y.tan[k] - dy.tan[k]),
+                (m.sag[k] - d.sag[k]) - (y.sag[k] - dy.sag[k]),
+            ];
+            assert!(
+                e[0].abs() < 1.5e-3 && e[1].abs() < 1.5e-3,
+                "field {} {}: {e:?}",
+                i + 1,
+                fr[k]
+            );
+        }
     }
 }

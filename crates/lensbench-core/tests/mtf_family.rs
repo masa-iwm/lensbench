@@ -39,7 +39,15 @@ fn through_focus_at_zero_is_the_mtf() {
         let s = load(name);
         let f = FieldSel::Index(s.fields.len() - 1);
         let m = analysis::mtf(&s, f, Waves::All, None, &FREQS).unwrap();
-        let t = sweep::through_focus_mtf(&s, f, Waves::All, None, &FREQS, &[-0.01, 0.0, 0.01]);
+        let t = sweep::through_focus_mtf(
+            &s,
+            f,
+            Waves::All,
+            None,
+            &FREQS,
+            &[-0.01, 0.0, 0.01],
+            Default::default(),
+        );
         assert!(t.warnings.is_empty(), "{name}: {:?}", t.warnings);
         for k in 0..FREQS.len() {
             assert_eq!(t.tan[k][1], m.tan[k], "{name}");
@@ -74,7 +82,15 @@ fn field_mtf_at_defined_fields_is_the_mtf() {
             continue;
         }
         let h: Vec<f64> = (0..s.fields.len()).map(|i| s.hxhy(i).1).collect();
-        let fm = sweep::field_mtf(&s, sweep::FieldAxis::Y, &h, Waves::All, None, &FREQS);
+        let fm = sweep::field_mtf(
+            &s,
+            sweep::FieldAxis::Y,
+            &h,
+            Waves::All,
+            None,
+            &FREQS,
+            Default::default(),
+        );
         for (i, &hi) in h.iter().enumerate() {
             match analysis::mtf(&s, FieldSel::Index(i), Waves::All, None, &FREQS) {
                 Ok(m) => {
@@ -241,7 +257,8 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
         )
         .unwrap();
         let fr = [10.0, 30.0, 60.0];
-        let m = analysis::mtf(&s, f, Waves::One(w), None, &fr).unwrap();
+        let (pupil, am) = (analysis::MtfAxes::Pupil, analysis::MtfMethod::Auto);
+        let m = analysis::mtf_amp(&s, f, Waves::One(w), None, &fr, am, None, None, pupil).unwrap();
         let tot: f64 = p.i.data().iter().sum();
         // 子午の MTF は瞳を py の向きに δ = λν / J11 ずらす（OpticStudio の FFT MTF と同じ、J の非対角は使わない）。
         // 像面の上の周波数では J (0, δ) / λ = ν (J01 / J11, 1) なので、PSF をその向きにフーリエ変換して比べる
@@ -260,6 +277,39 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
             }
             let t = re.hypot(im) / tot;
             assert!((t - m.tan[k]).abs() < 3e-3, "{name} {nu}: {t} {}", m.tan[k]);
+        }
+        // 既定（視野の向き）: 子午は瞳を視野の向き t に δ = λν / J'11 ずらす（J' = Rᵀ J R、R の列は
+        // 球欠 s = (t.y, −t.x) と t）。像面の上の周波数は ν (J'01 / J'11 s + t)
+        let mf = analysis::mtf(&s, f, Waves::One(w), None, &fr).unwrap();
+        let tv = analysis::mtf_tangential(&s, f, Default::default())
+            .unwrap()
+            .unwrap_or([0.0, 1.0]);
+        let sv = [tv[1], -tv[0]];
+        let jv = |c: [f64; 2]| {
+            [
+                jm[0][0] * c[0] + jm[0][1] * c[1],
+                jm[1][0] * c[0] + jm[1][1] * c[1],
+            ]
+        };
+        let dot = |a: [f64; 2], b: [f64; 2]| a[0] * b[0] + a[1] * b[1];
+        let a = dot(sv, jv(tv)) / dot(tv, jv(tv));
+        let dir = [a * sv[0] + tv[0], a * sv[1] + tv[1]];
+        for (k, &nu) in fr.iter().enumerate() {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (iy, row) in p.i.rows().enumerate() {
+                for (ix, v) in row.iter().enumerate() {
+                    let (x, y) = img(&p, p.i.x()[ix], p.i.y()[iy]);
+                    let ph = -2.0 * std::f64::consts::PI * nu * (dir[0] * x + dir[1] * y);
+                    re += v * ph.cos();
+                    im += v * ph.sin();
+                }
+            }
+            let t = re.hypot(im) / tot;
+            assert!(
+                (t - mf.tan[k]).abs() < 3e-3,
+                "{name} {nu}: {t} {}",
+                mf.tan[k]
+            );
         }
     }
 }
@@ -509,6 +559,7 @@ fn polychromatic_weights_include_the_transmitted_power() {
         analysis::MtfMethod::Auto,
         None,
         Some(&amp),
+        Default::default(),
     )
     .unwrap();
     let m1 = analysis::mtf_amp(
@@ -520,6 +571,7 @@ fn polychromatic_weights_include_the_transmitted_power() {
         analysis::MtfMethod::Auto,
         None,
         Some(&one),
+        Default::default(),
     )
     .unwrap();
     let m0 = analysis::mtf_amp(
@@ -531,6 +583,7 @@ fn polychromatic_weights_include_the_transmitted_power() {
         analysis::MtfMethod::Auto,
         None,
         Some(&one),
+        Default::default(),
     )
     .unwrap();
     let mut differs = false;
@@ -539,8 +592,16 @@ fn polychromatic_weights_include_the_transmitted_power() {
         differs |= (m.tan[k] - m0.tan[k]).abs() > 1e-6;
     }
     assert!(differs, "the weights must change the polychromatic MTF");
-    let mw =
-        analysis::mtf_waves_amp(&s, f, None, &fr, analysis::MtfMethod::Auto, Some(&amp)).unwrap();
+    let mw = analysis::mtf_waves_amp(
+        &s,
+        f,
+        None,
+        &fr,
+        analysis::MtfMethod::Auto,
+        Some(&amp),
+        Default::default(),
+    )
+    .unwrap();
     for k in 0..fr.len() {
         assert!((mw.poly.tan[k] - m1.tan[k]).abs() < 1e-12);
     }

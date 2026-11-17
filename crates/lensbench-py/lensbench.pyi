@@ -638,9 +638,9 @@ class System:
           fixed at their values and reported in warnings
         """
 
-    def geo_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None) -> _MtfResult:
+    def geo_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None, axes: str = "field") -> _MtfResult:
         """Geometric MTF: from the distribution of ray positions. n is a guide for the number of pupil quadrature points; diff_limit applies the diffraction-limited MTF.
-        The returned dict has the same form as mtf
+        The returned dict has the same form as mtf. axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
         """
 
     def get_param(self, spec: str) -> float:
@@ -663,8 +663,10 @@ class System:
     def hash(self) -> str:
         """The hash of the system ("sha256:…", the same as the system file). Stamp it on analysis results to check later that the system is the same"""
 
-    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _MtfResult:
-        """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf"""
+    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, axes: str = "field") -> _MtfResult:
+        """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
+        axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+        """
 
     def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _PsfResult:
         """Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
@@ -732,24 +734,26 @@ class System:
         (terms of the default merit, then terms in order), each multiplied by the square root of its weight
         """
 
-    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "auto", each_wave: bool = False) -> _MtfResult:
+    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "auto", each_wave: bool = False, axes: str = "field") -> _MtfResult:
         """Diffraction MTF (the same as the CLI's mtf). field is a number (from 1) or a normalized field (hx, hy), wave a wavelength number (polychromatic
         if omitted), n a guide for the number of quadrature points of the pupil overlap (automatic if omitted). method is "auto" (default; "interp", or "fft" when n is omitted,
         the quadrature has more than 1024 points and there are 8 or more frequencies), "interp" (interpolated quadrature), "fft" (autocorrelation of the pupil function by FFT, all frequencies at once;
         fast with many frequencies, about 1e-4 from the quadrature) or "direct" (for checking).
         Returned dict: freqs, tangential, sagittal (numpy), cutoff (tangential and sagittal cutoff frequencies [cycles/mm] at the calculated wavelength; the primary wavelength for polychromatic).
-        each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave)
+        each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave).
+        axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
         """
 
-    def mtf_field(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None) -> _FieldMtf:
+    def mtf_field(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None, axes: str = "field") -> _FieldMtf:
         """Field MTF: the diffraction MTF for each normalized field h (0 to 1, in the direction axis "y" or "x").
-        tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
+        tangential and sagittal are (frequency, h) arrays, field_value the field values (system units).
+        axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
         """
 
-    def mtf_focus(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None) -> _ThroughFocusMtf:
+    def mtf_focus(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, axes: str = "field") -> _ThroughFocusMtf:
         """Through-focus MTF: the diffraction MTF with the image surface shifted by dz [lens units] (changes the thickness before the image surface;
         thickness solves are not solved again). tangential and sagittal are (frequency, dz) arrays. Points that can't be calculated are NaN, with
-        the reasons in warnings
+        the reasons in warnings. axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
         """
 
     @property

@@ -8,7 +8,7 @@
 //! 横軸のある点で計算できない（瞳の縁がけられる・光線が届かないなど）ときは、その点を NaN にして warnings に
 //! 理由を残し、ほかの点は続ける。
 
-use crate::analysis::{self, mtf};
+use crate::analysis::{self, MtfAxes};
 use crate::error::Result;
 use crate::focus::{FocusBase, FocusShift};
 use crate::invalid;
@@ -136,7 +136,7 @@ fn mtf_sweep(
 }
 
 /// スルーフォーカス MTF（OpticStudio の FFT Through Focus MTF 相当）: 像面を dz ずつずらした回折 MTF。
-/// w None なら多色、n は [`analysis::mtf`] の求積の点の数（None で自動）
+/// w None なら多色、n は [`analysis::mtf`] の求積の点の数（None で自動）、axes は子午・球欠の向き
 pub fn through_focus_mtf(
     s: &System,
     field: FieldSel,
@@ -144,6 +144,7 @@ pub fn through_focus_mtf(
     n: Option<usize>,
     freqs: &[f64],
     dz: &[f64],
+    axes: MtfAxes,
 ) -> MtfSweep {
     let w = w.one();
     let fb = FocusBase::new(s);
@@ -153,9 +154,21 @@ pub fn through_focus_mtf(
         |z| format!("shift {z}"),
         |z| {
             let d = defocus_shared(s, z, fb.as_ref())?;
-            mtf(&d, field, Waves::all_or(w), n, freqs)
+            mtf_axes(&d, field, Waves::all_or(w), n, freqs, axes)
         },
     )
+}
+
+/// 子午・球欠の向き axes の回折 MTF（既定の求め方、膜・偏光なし）
+fn mtf_axes(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    n: Option<usize>,
+    freqs: &[f64],
+    axes: MtfAxes,
+) -> Result<analysis::Mtf> {
+    analysis::mtf_amp(s, field, w, n, freqs, Default::default(), None, None, axes)
 }
 
 /// 視野の掃引用: ケラレ係数を 0 にした系（OpticStudio の MTF vs Field・RMS vs Field は定義済みの視野の点でも
@@ -188,6 +201,7 @@ pub fn field_mtf(
     w: Waves,
     n: Option<usize>,
     freqs: &[f64],
+    axes: MtfAxes,
 ) -> MtfSweep {
     let w = w.one();
     let (s, warn) = without_vig(s);
@@ -195,7 +209,7 @@ pub fn field_mtf(
         h,
         freqs,
         |h| format!("field {h}"),
-        |h| mtf(&s, axis.sel(h), Waves::all_or(w), n, freqs),
+        |h| mtf_axes(&s, axis.sel(h), Waves::all_or(w), n, freqs, axes),
     );
     r.warnings.splice(0..0, warn);
     r

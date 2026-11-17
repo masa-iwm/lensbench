@@ -11,8 +11,11 @@ use crate::pupil::{PupilAmp, PupilFunction, PupilGrid, Rim, WaveAmp};
 use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
 use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
 
+mod mtf_frame;
 mod spot;
 mod zernike;
+pub use mtf_frame::MtfAxes;
+use mtf_frame::MtfFrame;
 pub(crate) use spot::spot_of;
 pub use spot::{apodized, spot, spot_arms, Spot};
 pub use zernike::*;
@@ -182,7 +185,8 @@ pub fn wavefront(
 }
 
 // ------------------------------------------------------------------------------------------ MTF
-/// MTF（変調度）。freqs [cycles/mm] ごとに子午（像面の y 方向の周波数）と球欠（x 方向）
+/// MTF（変調度）。freqs [cycles/mm] ごとに子午と球欠（向きは [`MtfAxes`]。既定は子午が視野の向き、y だけの視野では
+/// 子午が像面の y・球欠が x の向きの周波数）
 #[derive(Debug, Clone)]
 pub struct Mtf {
     pub freqs: Vec<f64>,
@@ -1098,8 +1102,9 @@ fn wave_otf_fft(
     n: Option<usize>,
     freqs: &[f64],
     amp: Option<&WaveAmp>,
+    fr: &MtfFrame,
 ) -> Result<WaveOtf> {
-    let jm = pupil_jacobian(s, field, wi)?;
+    let jm = fr.jacobian(s, field, wi)?;
     let n = match n {
         Some(n) => n,
         None => mtf_points(opd_slope_max(s, field, wi)?),
@@ -1118,9 +1123,18 @@ fn wave_otf_fft(
         let (x, y) = (cx[i % ns], cx[i / ns]);
         x * x + y * y <= 1.0
     };
+    // 標本 i の正規化瞳の座標（行は球欠 s の向き、列は子午 t の向き。恒等なら行が x）
+    let pt = |i: usize| fr.pupil_xy(cx[i % ns], cx[i / ns]);
     // 各行の OPD（行ごとに補間、補間できない点は直接追跡）
     let mut wv = vec![f64::NAN; ns * ns];
-    {
+    if !fr.is_identity() {
+        let pts: Vec<(f64, f64)> = (0..ns * ns).filter(|&i| inside(i)).map(pt).collect();
+        let (px, py): (Vec<f64>, Vec<f64>) = pts.into_iter().unzip();
+        let o = opd_at(s, field, wi, Some(&ip), &px, &py)?;
+        for (i, v) in (0..ns * ns).filter(|&i| inside(i)).zip(o) {
+            wv[i] = v;
+        }
+    } else {
         use rayon::prelude::*;
         let f = |(iy, row): (usize, &mut [f64])| {
             let mut tmp = vec![f64::NAN; ns];
@@ -1137,8 +1151,8 @@ fn wave_otf_fft(
         .filter(|&i| wv[i].is_nan() && inside(i))
         .collect();
     if !need.is_empty() {
-        let mx: Vec<f64> = need.iter().map(|&i| cx[i % ns]).collect();
-        let my: Vec<f64> = need.iter().map(|&i| cx[i / ns]).collect();
+        let mx: Vec<f64> = need.iter().map(|&i| pt(i).0).collect();
+        let my: Vec<f64> = need.iter().map(|&i| pt(i).1).collect();
         let mut v = vec![f64::NAN; need.len()];
         fill_direct(s, field, wi, &mx, &my, &mut v)?;
         for (k, &i) in need.iter().enumerate() {
@@ -1148,7 +1162,12 @@ fn wave_otf_fft(
     let zero = C64::new(0.0, 0.0);
     let ok = |i: usize| inside(i) && wv[i].is_finite();
     // 振幅（一様なら 1 で、光量は標本の数）
-    let am = |i: usize| amp.map_or(1.0, |a| a.at(cx[i % ns], cx[i / ns]));
+    let am = |i: usize| {
+        amp.map_or(1.0, |a| {
+            let (x, y) = pt(i);
+            a.at(x, y)
+        })
+    };
     let e0 = match amp {
         None => (0..ns * ns).filter(|&i| ok(i)).count() as f64,
         Some(_) => (0..ns * ns).filter(|&i| ok(i)).map(|i| am(i).powi(2)).sum(),
@@ -1163,7 +1182,7 @@ fn wave_otf_fft(
         (true, Some(_)) => phasor(wv[i]) * am(i),
     };
     let l = (2 * ns).next_power_of_two();
-    // 球欠: 行（x の向き）の自己相関、子午: 列（y の向き）
+    // 球欠: 行（s の向き）の自己相関、子午: 列（t の向き）
     let rs = row_autocorr(ns, l, |iy, b| {
         for (ix, v) in b.iter_mut().enumerate() {
             *v = at(iy * ns + ix);
@@ -1222,12 +1241,13 @@ fn wave_otf(
     method: MtfMethod,
     only: Option<usize>,
     extra: Option<&dyn PupilAmp>,
+    fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     // 瞳の振幅（アポダイゼーション・膜・偏光）。どこでも 1 なら None（前と同じ計算）
     let wa = WaveAmp::new(s, field, wi, extra)?;
     let amp = (!wa.is_uniform()).then_some(&wa);
     if method == MtfMethod::Fft && !freqs.is_empty() {
-        return wave_otf_fft(s, field, wi, n, freqs, amp);
+        return wave_otf_fft(s, field, wi, n, freqs, amp, fr);
     }
     let auto = n.is_none();
     let n = match n {
@@ -1235,9 +1255,9 @@ fn wave_otf(
         None => mtf_points(opd_slope_max(s, field, wi)?),
     };
     if method == MtfMethod::Auto && auto && n > AUTO_FFT_N && freqs.len() >= AUTO_FFT_FREQS {
-        return wave_otf_fft(s, field, wi, Some(n), freqs, amp);
+        return wave_otf_fft(s, field, wi, Some(n), freqs, amp, fr);
     }
-    let jm = pupil_jacobian(s, field, wi)?;
+    let jm = fr.jacobian(s, field, wi)?;
     let lam = s.wavelengths[wi] * 1e-3;
     // 補間の格子: 求積の点数と同じくらいの細かさ（6 点補間の誤差は h^6 で小さい）
     let ip = match method {
@@ -1259,10 +1279,10 @@ fn wave_otf(
     let jobs: Vec<(usize, usize)> = (0..freqs.len())
         .flat_map(|k| dirs.iter().map(move |&d| (k, d)))
         .collect();
-    // 正規化瞳でのずれ（dir 0: 像面の x、1: y の周波数）
+    // 正規化瞳でのずれ（dir 0: 球欠、1: 子午の周波数。恒等なら像面の x・y）
     let shift = |(k, dir): (usize, usize)| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
-        (sx * freqs[k], sy * freqs[k])
+        fr.pupil_xy(sx * freqs[k], sy * freqs[k])
     };
     // 補間の格子がすべて有限なら、単位円の中の点はどれも補間できて有限（けられなし）。このときは
     // - 瞳の光量を点ごとの OPD から数えなくてよい（E0・E1 の軸外で 1 波長 0.4〜0.7 s かかっていた）
@@ -1306,7 +1326,7 @@ fn wave_otf(
         }
         // 瞳が開口・遮蔽で切れている（けられた点がある）なら縁に合わせた求積にする
         if o0.iter().any(|v| !v.is_finite()) {
-            return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym, amp);
+            return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym, amp, fr);
         }
         (vec![(n, gl)], vec![n; jobs.len()], e0)
     };
@@ -1392,8 +1412,9 @@ fn pupil_segments(
     dir: usize,
     vs: &[f64],
     fine: &[bool],
+    fr: &MtfFrame,
 ) -> Result<Vec<Vec<(f64, f64)>>> {
-    let xy = |a: f64, v: f64| if dir == 0 { (a, v) } else { (v, a) };
+    let xy = |a: f64, v: f64| fr.xy(dir, a, v);
     let valid = |pts: &[(f64, f64)]| -> Result<Vec<bool>> {
         let (px, py): (Vec<f64>, Vec<f64>) = pts.iter().copied().unzip();
         let o = opd(s, field, &px, &py, Some(wi), true)?;
@@ -1485,9 +1506,10 @@ fn line_nodes(
     wi: usize,
     dir: usize,
     n: usize,
+    fr: &MtfFrame,
 ) -> Result<(Vec<f64>, Vec<f64>, Vec<bool>)> {
     use std::f64::consts::{FRAC_PI_2, PI};
-    let xy = |a: f64, v: f64| if dir == 0 { (a, v) } else { (v, a) };
+    let xy = |a: f64, v: f64| fr.xy(dir, a, v);
     // θ の線ごとの、通る区間の数（弦の COUNT_SCAN 点の走査で数える。小さい区間が見える所まで
     // 変わり目がずれないよう、区間を求める走査より細かい）
     let counts = |th: &[f64]| -> Result<Vec<usize>> {
@@ -1605,6 +1627,7 @@ fn clipped_otf(
     freqs: &[f64],
     sym: bool,
     amp: Option<&WaveAmp>,
+    fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     let (gz, gw) = gauss_legendre(n.max(8));
     let dirs: &[usize] = if sym { &[0] } else { &[0, 1] };
@@ -1612,8 +1635,8 @@ fn clipped_otf(
     let mut lines = [(Vec::new(), Vec::new()), (Vec::new(), Vec::new())];
     let mut e0 = [0.0; 2];
     for &dir in dirs {
-        let (vs, wv, near) = line_nodes(s, field, wi, dir, n.max(LINES_MIN))?;
-        segs[dir] = pupil_segments(s, field, wi, dir, &vs, &near)?;
+        let (vs, wv, near) = line_nodes(s, field, wi, dir, n.max(LINES_MIN), fr)?;
+        segs[dir] = pupil_segments(s, field, wi, dir, &vs, &near, fr)?;
         lines[dir] = (vs, wv);
         let (vs, wv) = &lines[dir];
         e0[dir] = match amp {
@@ -1624,7 +1647,7 @@ fn clipped_otf(
                 .sum(),
             // 振幅つき: 区間ごとに振幅の 2 乗を Gauss-Legendre で
             Some(am) => {
-                let xy = |a: f64, v: f64| if dir == 0 { (a, v) } else { (v, a) };
+                let xy = |a: f64, v: f64| fr.xy(dir, a, v);
                 let mut e = 0.0;
                 for (i, sg) in segs[dir].iter().enumerate() {
                     for &(a, b) in sg {
@@ -1651,7 +1674,7 @@ fn clipped_otf(
         let (sx, sy) = pupil_shift(jm, lam, dir);
         let dl = if dir == 0 { sx } else { sy } * freqs[k];
         let h = 0.5 * dl.abs();
-        let xy = |a: f64, v: f64| if dir == 0 { (a, v) } else { (v, a) };
+        let xy = |a: f64, v: f64| fr.xy(dir, a, v);
         let (vs, wv) = &lines[dir];
         let (mut xa, mut ya, mut xb, mut yb, mut w) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -1711,7 +1734,30 @@ fn clipped_otf(
 
 /// 波長 wave の回折限界の遮断周波数 [cycles/mm]（瞳を 2 だけずらす周波数。向き 0 が球欠 = x、1 が子午 = y）
 pub fn mtf_cutoff(s: &System, field: FieldSel, wave: usize) -> Result<TanSag<f64>> {
-    let jm = pupil_jacobian(s, field, wave)?;
+    let fr = MtfFrame::new(s, field, wave, MtfAxes::default())?;
+    mtf_cutoff_in(s, field, wave, &fr)
+}
+
+/// [`mtf_cutoff`] で、子午・球欠の向きを axes で
+pub fn mtf_cutoff_axes(
+    s: &System,
+    field: FieldSel,
+    wave: usize,
+    axes: MtfAxes,
+) -> Result<TanSag<f64>> {
+    let fr = MtfFrame::new(s, field, wave, axes)?;
+    mtf_cutoff_in(s, field, wave, &fr)
+}
+
+/// 視野 field の MTF の子午の向き（像面の上の単位ベクトル (x, y)。球欠はそれを −90° 回した (y, −x)）。
+/// y の向き（[`MtfAxes::Pupil`]・軸上・x = 0 の視野）なら None
+pub fn mtf_tangential(s: &System, field: FieldSel, axes: MtfAxes) -> Result<Option<[f64; 2]>> {
+    Ok(MtfFrame::new(s, field, s.primary, axes)?.tangential())
+}
+
+/// [`mtf_cutoff`] で、子午・球欠の向きを fr で
+fn mtf_cutoff_in(s: &System, field: FieldSel, wave: usize, fr: &MtfFrame) -> Result<TanSag<f64>> {
+    let jm = fr.jacobian(s, field, wave)?;
     let lam = s.wavelengths[wave] * 1e-3;
     let cut = |dir: usize| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
@@ -1774,12 +1820,22 @@ pub fn mtf_only(
     method: MtfMethod,
     only: Option<usize>,
 ) -> Result<Mtf> {
-    mtf_amp(s, field, w, n, freqs, method, only, None)
+    mtf_amp(
+        s,
+        field,
+        w,
+        n,
+        freqs,
+        method,
+        only,
+        None,
+        MtfAxes::default(),
+    )
 }
 
 /// [`mtf_only`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す。
 /// 系のアポダイゼーション（[`System::apodization`]）はどの MTF にも入る。多色の波長の重みには透過した光量の割合を
-/// 掛ける（[`crate::pupil::wave_weight`]）
+/// 掛ける（[`crate::pupil::wave_weight`]）。axes は子午・球欠の向き（[`MtfAxes`]）
 #[allow(clippy::too_many_arguments)]
 pub fn mtf_amp(
     s: &System,
@@ -1790,22 +1846,27 @@ pub fn mtf_amp(
     method: MtfMethod,
     only: Option<usize>,
     extra: Option<&dyn PupilAmp>,
+    axes: MtfAxes,
 ) -> Result<Mtf> {
     let w = w.one();
     check_n(n)?;
+    let fr = MtfFrame::new(s, field, w.unwrap_or(s.primary), axes)?;
     let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
     let mut otfs = Vec::new();
     for &wi in &ws {
         let wt = crate::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if wt > 0.0 {
-            otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only, extra)?));
+            otfs.push((
+                wt,
+                wave_otf(s, field, wi, n, freqs, method, only, extra, &fr)?,
+            ));
         }
     }
     if otfs.is_empty() {
         crate::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
-    let cut = mtf_cutoff(s, field, w.unwrap_or(s.primary))?;
+    let cut = mtf_cutoff_in(s, field, w.unwrap_or(s.primary), &fr)?;
     Ok(mtf_sum(freqs, &refs, cut))
 }
 
@@ -1826,10 +1887,10 @@ pub fn mtf_waves(
     freqs: &[f64],
     method: MtfMethod,
 ) -> Result<MtfWaves> {
-    mtf_waves_amp(s, field, n, freqs, method, None)
+    mtf_waves_amp(s, field, n, freqs, method, None, MtfAxes::default())
 }
 
-/// [`mtf_waves`] に膜・偏光の振幅 extra を足す（[`mtf_amp`]）
+/// [`mtf_waves`] に膜・偏光の振幅 extra と子午・球欠の向き axes を足す（[`mtf_amp`]）
 pub fn mtf_waves_amp(
     s: &System,
     field: FieldSel,
@@ -1837,12 +1898,14 @@ pub fn mtf_waves_amp(
     freqs: &[f64],
     method: MtfMethod,
     extra: Option<&dyn PupilAmp>,
+    axes: MtfAxes,
 ) -> Result<MtfWaves> {
     check_n(n)?;
+    let fr = MtfFrame::new(s, field, s.primary, axes)?;
     let (mut otfs, mut cuts) = (Vec::new(), Vec::new());
     for wi in 0..s.wavelengths.len() {
-        otfs.push(wave_otf(s, field, wi, n, freqs, method, None, extra)?);
-        cuts.push(mtf_cutoff(s, field, wi)?);
+        otfs.push(wave_otf(s, field, wi, n, freqs, method, None, extra, &fr)?);
+        cuts.push(mtf_cutoff_in(s, field, wi, &fr)?);
     }
     let multi = otfs.len() > 1;
     let mut poly: Vec<(f64, &_)> = Vec::new();

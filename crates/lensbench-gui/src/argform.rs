@@ -270,6 +270,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "delay") => "Reference delay",
         (_, "polarized") => "Polarized overlap",
         (_, "polarization") => "Use polarization",
+        (_, "axes") => "Tangential direction",
         (_, "sample_input") => "Sample input polarization",
         (_, "reference_input") => "Reference input polarization",
         (_, "quantity") => "Quantity",

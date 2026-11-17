@@ -24,6 +24,8 @@
 
 ### 変更履歴
 
+- **2.1**: MTF の `mtf`・`mtf_focus`・`mtf_field`・`geo_mtf`・`huygens_mtf` に子午・球欠の向き `axes`（`"field"` が既定で子午が視野の向き、
+  `"pupil"` は前と同じく子午が瞳の y の向き）を足した。既定の値は x の成分がある視野で前と変わる。
 - **2.0**: 引数の名前を CLI・serve とそろえた（用語の表は下の「引数の名前」）。互換を壊す変更で、旧名は受けない
   （全コードの見直しの破壊的変更として、非推奨の期間を置かずに変えた）:
   `load`・`from_project` の `split_path` → `beam_path`、`System.split_paths` → `System.beam_paths`、

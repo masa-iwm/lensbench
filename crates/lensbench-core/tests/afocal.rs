@@ -328,7 +328,10 @@ fn matches_opticstudio() {
             k + 2,
             sp.chief
         );
-        let m = analysis::mtf(&s, f, Waves::All, None, &OS_FREQS).unwrap();
+        // OpticStudio と同じ瞳の向き
+        let pupil = analysis::MtfAxes::Pupil;
+        let (fr, am) = (&OS_FREQS, analysis::MtfMethod::Auto);
+        let m = analysis::mtf_amp(&s, f, Waves::All, None, fr, am, None, None, pupil).unwrap();
         for (i, &nu) in OS_FREQS.iter().enumerate() {
             let tol = if nu == 0.5 { 1e-2 } else { 4e-3 };
             assert!(
@@ -342,7 +345,8 @@ fn matches_opticstudio() {
                 o.sag[i]
             );
         }
-        let g = psf::geometric_mtf(&s, f, Waves::All, 64, &OS_FREQS[..3], false).unwrap();
+        let g =
+            psf::geometric_mtf_axes(&s, f, Waves::All, 64, &OS_FREQS[..3], false, pupil).unwrap();
         for i in 0..3 {
             assert!(
                 (g.tan[i] - o.geo_tan[i]).abs() < 1.5e-3

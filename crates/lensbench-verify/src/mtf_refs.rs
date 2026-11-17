@@ -42,6 +42,7 @@
 //!   口径食の係数をすべて 0 にした A6v で照合する（RMS vs 視野は A6 でも合う）。
 #![allow(clippy::unwrap_used, clippy::panic, clippy::neg_cmp_op_on_partial_ord)] // 試験から呼ぶ照合の中身。NaN も不合格にする
 
+use lensbench_core::analysis::MtfAxes;
 use lensbench_core::psf;
 use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};
 use lensbench_core::system::{FieldSel, System};
@@ -136,12 +137,17 @@ fn mtf_worst(s: &lensbench_core::system::System, r: &Value) -> f64 {
         if skip.contains(&fi) {
             continue;
         }
-        let m = analysis::mtf(
+        // OpticStudio と同じ瞳の向き
+        let m = analysis::mtf_amp(
             s,
             FieldSel::Index(fi as usize - 1),
             Waves::All,
             None,
             &freqs,
+            Default::default(),
+            None,
+            None,
+            MtfAxes::Pupil,
         )
         .unwrap();
         for (got, want) in [(&m.tan, all_nums(&f["T"])), (&m.sag, all_nums(&f["S"]))] {
@@ -242,6 +248,7 @@ pub fn through_focus(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<
                 None,
                 &[fr[k - 1]],
                 &dz,
+                MtfAxes::Pupil,
             );
             let e = max_diff(&m.tan[0], &nums(&it["T"])).max(max_diff(&m.sag[0], &nums(&it["S"])));
             worst = worst.max(e);
@@ -309,6 +316,7 @@ pub fn mtf_vs_field(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<S
                 Waves::all_or(wave(&it["wave"])),
                 None,
                 &[f],
+                MtfAxes::Pupil,
             );
             let h = nums(&it["h"]);
             for (g, key) in [(&m.tan[0], "T"), (&m.sag[0], "S")] {
@@ -441,13 +449,14 @@ pub fn geometric_mtf(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<
             }
             let freqs = nums(&it["freqs"]);
             let dl = it["diff_limit"].as_bool().unwrap();
-            let m = psf::geometric_mtf(
+            let m = psf::geometric_mtf_axes(
                 &s,
                 FieldSel::Index(field - 1),
                 Waves::all_or(wave(&it["wave"])),
                 128,
                 &freqs,
                 dl,
+                MtfAxes::Pupil,
             )
             .unwrap();
             let e = max_diff(&m.tan, &nums(&it["T"])).max(max_diff(&m.sag, &nums(&it["S"])));

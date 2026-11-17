@@ -70,6 +70,21 @@ def test_mtf_each_wave_and_fft(b0):
         b0.mtf(2, f, method="x")
 
 
+def test_mtf_axes(b0):
+    # 子午・球欠の向き: x の視野では既定（視野の向き）と瞳の向き（OpticStudio と同じ）で子午と球欠が入れ替わる
+    f = [20.0, 50.0]
+    y = b0.mtf((0.0, 1.0), f)
+    assert np.array_equal(b0.mtf((0.0, 1.0), f, axes="pupil")["tangential"], y["tangential"])
+    x = b0.mtf((1.0, 0.0), f)
+    xp = b0.mtf((1.0, 0.0), f, axes="pupil")
+    assert np.allclose(xp["tangential"], x["sagittal"], atol=1e-9)
+    assert np.allclose(xp["sagittal"], x["tangential"], atol=1e-9)
+    g = b0.geo_mtf((1.0, 0.0), f, axes="pupil")
+    assert np.allclose(g["tangential"], b0.geo_mtf((1.0, 0.0), f)["sagittal"], atol=1e-12)
+    with pytest.raises(ValueError):
+        b0.mtf(2, f, axes="x")
+
+
 def test_mtf_field(b0):
     h = np.linspace(0, 1, 3)
     m = b0.mtf_field([50.0], h)

@@ -16,6 +16,8 @@ mod edit;
 mod errors;
 pub mod ext;
 mod interference;
+mod mtfs;
+use mtfs::{field_axis, mtf_dict, sweep_dict};
 mod names;
 use crate::errors::{index_err, runtime_err, type_err, value_err};
 use names::warn_all;
@@ -43,7 +45,7 @@ use lensbench_core::{param::Param, RwLockExt, Waves};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
+use pyo3::types::{PyBytes, PyDict, PyTuple};
 use {lensbench_analysis::huygens, lensbench_optim as optim};
 
 /// Coating tables and models used when coatings= is omitted: the environment variable LENSBENCH_COATINGS (OS path separator, `lensbench run --coatings`)
@@ -379,39 +381,6 @@ pub fn field_sel(s: &System, f: FieldArg) -> PyResult<FieldSel> {
         }
         FieldArg::Norm((x, y)) => Ok(FieldSel::Norm(x, y)),
     }
-}
-
-fn field_axis(a: &str) -> PyResult<sweep::FieldAxis> {
-    match a {
-        "x" => Ok(sweep::FieldAxis::X),
-        "y" => Ok(sweep::FieldAxis::Y),
-        _ => Err(value_err(format!("axis must be \"x\" or \"y\" ({a})"))),
-    }
-}
-
-fn mtf_dict<'py>(py: Python<'py>, m: &analysis::Mtf) -> PyResult<Bound<'py, PyDict>> {
-    let d = PyDict::new(py);
-    d.set_item("freqs", m.freqs.clone().into_pyarray(py))?;
-    d.set_item("tangential", m.tan.clone().into_pyarray(py))?;
-    d.set_item("sagittal", m.sag.clone().into_pyarray(py))?;
-    let c = [("tangential", m.cutoff.tan), ("sagittal", m.cutoff.sag)];
-    d.set_item("cutoff", c.into_py_dict(py)?)?;
-    Ok(d)
-}
-
-fn sweep_dict<'py>(
-    py: Python<'py>,
-    xname: &str,
-    m: &sweep::MtfSweep,
-) -> PyResult<Bound<'py, PyDict>> {
-    let d = PyDict::new(py);
-    d.set_item("freqs", m.freqs().to_vec().into_pyarray(py))?;
-    d.set_item(xname, m.x().to_vec().into_pyarray(py))?;
-    let g = |g: &lensbench_core::grid::Grid2| interference::grid_array(g.clone()).into_pyarray(py);
-    d.set_item("tangential", g(&m.tan))?;
-    d.set_item("sagittal", g(&m.sag))?;
-    d.set_item("warnings", m.warnings.clone())?;
-    Ok(d)
 }
 
 /// The RMS values into a dict (lists of values; Python values are made by put)
@@ -2209,8 +2178,9 @@ impl PySystem {
     /// the quadrature has more than 1024 points and there are 8 or more frequencies), "interp" (interpolated quadrature), "fft" (autocorrelation of the pupil function by FFT, all frequencies at once;
     /// fast with many frequencies, about 1e-4 from the quadrature) or "direct" (for checking).
     /// Returned dict: freqs, tangential, sagittal (numpy), cutoff (tangential and sagittal cutoff frequencies [cycles/mm] at the calculated wavelength; the primary wavelength for polychromatic).
-    /// each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave)
-    #[pyo3(signature = (field, freqs, wave=None, n=None, threads=None, method="auto", each_wave=false))]
+    /// each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave).
+    /// axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+    #[pyo3(signature = (field, freqs, wave=None, n=None, threads=None, method="auto", each_wave=false, axes="field"))]
     #[allow(clippy::too_many_arguments)]
     fn mtf<'py>(
         &self,
@@ -2222,28 +2192,23 @@ impl PySystem {
         threads: Option<usize>,
         method: &str,
         each_wave: bool,
+        axes: &str,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
-        let method = match method {
-            "auto" => analysis::MtfMethod::Auto,
-            "interp" => analysis::MtfMethod::Interp,
-            "fft" => analysis::MtfMethod::Fft,
-            "direct" => analysis::MtfMethod::Direct,
-            m => {
-                return Err(value_err(format!(
-                    "method must be \"auto\", \"interp\", \"fft\" or \"direct\" ({m})"
-                )))
-            }
-        };
+        let (method, axes) = (mtfs::method(method)?, mtfs::axes(axes)?);
         if each_wave {
             if w != Waves::All {
                 return Err(value_err("each_wave can't be used with wave"));
             }
             let mw = py
-                .detach(|| with_threads(threads, || analysis::mtf_waves(&s, f, n, &fs, method)))
+                .detach(|| {
+                    with_threads(threads, || {
+                        analysis::mtf_waves_amp(&s, f, n, &fs, method, None, axes)
+                    })
+                })
                 .map_err(err)?;
             let d = mtf_dict(py, &mw.poly)?;
             let waves = mw
@@ -2255,15 +2220,19 @@ impl PySystem {
             return Ok(d);
         }
         let m = py
-            .detach(|| with_threads(threads, || analysis::mtf_with(&s, f, w, n, &fs, method)))
+            .detach(|| {
+                with_threads(threads, || {
+                    analysis::mtf_amp(&s, f, w, n, &fs, method, None, None, axes)
+                })
+            })
             .map_err(err)?;
         mtf_dict(py, &m)
     }
 
     /// Through-focus MTF: the diffraction MTF with the image surface shifted by dz [lens units] (changes the thickness before the image surface;
     /// thickness solves are not solved again). tangential and sagittal are (frequency, dz) arrays. Points that can't be calculated are NaN, with
-    /// the reasons in warnings
-    #[pyo3(signature = (field, freqs, dz, wave=None, n=None, threads=None))]
+    /// the reasons in warnings. axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+    #[pyo3(signature = (field, freqs, dz, wave=None, n=None, threads=None, axes="field"))]
     #[allow(clippy::too_many_arguments)]
     fn mtf_focus<'py>(
         &self,
@@ -2274,19 +2243,24 @@ impl PySystem {
         wave: Option<usize>,
         n: Option<usize>,
         threads: Option<usize>,
+        axes: &str,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.sys();
+        let (s, ax) = (self.sys(), mtfs::axes(axes)?);
         let f = field_sel(&s, field)?;
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?).weighted(&s);
         let (w, fs, z) = (w.map_err(err)?, floats(&freqs), floats(&dz));
-        let m =
-            py.detach(|| with_threads(threads, || sweep::through_focus_mtf(&s, f, w, n, &fs, &z)));
+        let m = py.detach(|| {
+            with_threads(threads, || {
+                sweep::through_focus_mtf(&s, f, w, n, &fs, &z, ax)
+            })
+        });
         sweep_dict(py, "dz", &m)
     }
 
     /// Field MTF: the diffraction MTF for each normalized field h (0 to 1, in the direction axis "y" or "x").
-    /// tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
-    #[pyo3(signature = (freqs, h, axis="y", wave=None, n=None, threads=None))]
+    /// tangential and sagittal are (frequency, h) arrays, field_value the field values (system units).
+    /// axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+    #[pyo3(signature = (freqs, h, axis="y", wave=None, n=None, threads=None, axes="field"))]
     #[allow(clippy::too_many_arguments)]
     fn mtf_field<'py>(
         &self,
@@ -2297,12 +2271,14 @@ impl PySystem {
         wave: Option<usize>,
         n: Option<usize>,
         threads: Option<usize>,
+        axes: &str,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.sys();
+        let (s, dirs) = (self.sys(), mtfs::axes(axes)?);
         let ax = field_axis(axis)?;
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?).weighted(&s);
         let (w, fs, hs) = (w.map_err(err)?, floats(&freqs), floats(&h));
-        let m = py.detach(|| with_threads(threads, || sweep::field_mtf(&s, ax, &hs, w, n, &fs)));
+        let m =
+            py.detach(|| with_threads(threads, || sweep::field_mtf(&s, ax, &hs, w, n, &fs, dirs)));
         let d = sweep_dict(py, "h", &m)?;
         let fv: Vec<f64> = hs.iter().map(|&x| ax.value(&s, x)).collect();
         d.set_item("field_value", fv.into_pyarray(py))?;
@@ -2646,8 +2622,8 @@ impl PySystem {
     }
 
     /// Geometric MTF: from the distribution of ray positions. n is a guide for the number of pupil quadrature points; diff_limit applies the diffraction-limited MTF.
-    /// The returned dict has the same form as mtf
-    #[pyo3(signature = (field, freqs, wave=None, n=128, diff_limit=false, threads=None))]
+    /// The returned dict has the same form as mtf. axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+    #[pyo3(signature = (field, freqs, wave=None, n=128, diff_limit=false, threads=None, axes="field"))]
     #[allow(clippy::too_many_arguments)]
     fn geo_mtf<'py>(
         &self,
@@ -2658,13 +2634,18 @@ impl PySystem {
         n: usize,
         diff_limit: bool,
         threads: Option<usize>,
+        axes: &str,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.sys();
+        let (s, ax) = (self.sys(), mtfs::axes(axes)?);
         let f = field_sel(&s, field)?;
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
         let m = py
-            .detach(|| with_threads(threads, || psf::geometric_mtf(&s, f, w, n, &fs, diff_limit)))
+            .detach(|| {
+                with_threads(threads, || {
+                    psf::geometric_mtf_axes(&s, f, w, n, &fs, diff_limit, ax)
+                })
+            })
             .map_err(err)?;
         mtf_dict(py, &m)
     }
@@ -2697,8 +2678,9 @@ impl PySystem {
         interference::psf_dict(py, p)
     }
 
-    /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf
-    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None))]
+    /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
+    /// axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None, axes="field"))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
         &self,
@@ -2710,8 +2692,9 @@ impl PySystem {
         image: usize,
         pixel: Option<f64>,
         threads: Option<usize>,
+        axes: &str,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.sys();
+        let (s, ax) = (self.sys(), mtfs::axes(axes)?);
         let f = field_sel(&s, field)?;
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
@@ -2721,7 +2704,11 @@ impl PySystem {
             pixel,
         };
         let m = py
-            .detach(|| with_threads(threads, || huygens::huygens_mtf(&s, f, w, o, &fs)))
+            .detach(|| {
+                with_threads(threads, || {
+                    huygens::huygens_mtf_axes(&s, f, w, o, &fs, None, ax)
+                })
+            })
             .map_err(err)?;
         mtf_dict(py, &m)
     }
@@ -2854,7 +2841,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 0);
+pub const API_VERSION: (u32, u32) = (2, 1);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

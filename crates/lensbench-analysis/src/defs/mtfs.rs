@@ -7,7 +7,7 @@ use lensbench_core::{psf, sweep, Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfRow, WaveMtf};
+use super::{fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfDirs, MtfRow, WaveMtf};
 use crate::registry::{Analysis, Cx, Meta};
 use lensbench_core::pupil::PupilAmp;
 
@@ -51,6 +51,8 @@ pub(super) struct MtfParams {
     pub each_wave: bool,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
+    /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
+    pub axes: MtfDirs,
 }
 
 impl Default for MtfParams {
@@ -65,6 +67,7 @@ impl Default for MtfParams {
             method: MtfHow::Auto,
             each_wave: false,
             polarization: false,
+            axes: MtfDirs::Field,
         }
     }
 }
@@ -110,7 +113,7 @@ impl Analysis for Mtf {
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
             let row = if p.each_wave {
-                let mw = analysis::mtf_waves_amp(s, f, p.n, &fs, method, pa)?;
+                let mw = analysis::mtf_waves_amp(s, f, p.n, &fs, method, pa, p.axes.core())?;
                 let mut r = MtfRow::of(i, mw.poly);
                 r.waves = Some(
                     mw.waves
@@ -127,7 +130,17 @@ impl Analysis for Mtf {
             } else {
                 MtfRow::of(
                     i,
-                    analysis::mtf_amp(s, f, Waves::all_or(w), p.n, &fs, method, None, pa)?,
+                    analysis::mtf_amp(
+                        s,
+                        f,
+                        Waves::all_or(w),
+                        p.n,
+                        &fs,
+                        method,
+                        None,
+                        pa,
+                        p.axes.core(),
+                    )?,
                 )
             };
             v.push(row);
@@ -159,6 +172,8 @@ pub(super) struct MtfFocusParams {
     pub points: usize,
     /// Approximate number of quadrature points for the pupil overlap (as in mtf; automatic if omitted)
     pub n: Option<usize>,
+    /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
+    pub axes: MtfDirs,
 }
 
 impl Default for MtfFocusParams {
@@ -170,6 +185,7 @@ impl Default for MtfFocusParams {
             range: 0.1,
             points: 11,
             n: None,
+            axes: MtfDirs::Field,
         }
     }
 }
@@ -221,6 +237,7 @@ impl Analysis for MtfFocus {
                 p.n,
                 &p.freqs,
                 &dz,
+                p.axes.core(),
             );
             for (k, &f) in p.freqs.iter().enumerate() {
                 for (j, &z) in dz.iter().enumerate() {
@@ -264,6 +281,8 @@ pub(super) struct MtfFieldParams {
     pub axis: Axis,
     /// Approximate number of quadrature points for the pupil overlap (as in mtf; automatic if omitted)
     pub n: Option<usize>,
+    /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
+    pub axes: MtfDirs,
 }
 
 impl Default for MtfFieldParams {
@@ -274,6 +293,7 @@ impl Default for MtfFieldParams {
             points: 11,
             axis: Axis::Y,
             n: None,
+            axes: MtfDirs::Field,
         }
     }
 }
@@ -319,7 +339,8 @@ impl Analysis for MtfField {
         let w = wave(s, p.wave)?;
         let ax = p.axis.core();
         let h = sweep::steps01(p.points);
-        let m = sweep::field_mtf(s, ax, &h, Waves::all_or(w).weighted(s)?, p.n, &p.freqs);
+        let ws = Waves::all_or(w).weighted(s)?;
+        let m = sweep::field_mtf(s, ax, &h, ws, p.n, &p.freqs, p.axes.core());
         let mut v = Vec::new();
         for (k, &f) in p.freqs.iter().enumerate() {
             for (j, &hh) in h.iter().enumerate() {
@@ -362,6 +383,8 @@ pub(super) struct GeoMtfParams {
     pub n: usize,
     /// Multiply by the diffraction-limited MTF
     pub diff_limit: bool,
+    /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
+    pub axes: MtfDirs,
 }
 
 impl Default for GeoMtfParams {
@@ -374,6 +397,7 @@ impl Default for GeoMtfParams {
             freq_steps: 20,
             n: 128,
             diff_limit: false,
+            axes: MtfDirs::Field,
         }
     }
 }
@@ -403,13 +427,14 @@ impl Analysis for GeoMtf {
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
-            let m = psf::geometric_mtf(
+            let m = psf::geometric_mtf_axes(
                 s,
                 FieldSel::Index(i),
                 Waves::all_or(w),
                 p.n,
                 &fs,
                 p.diff_limit,
+                p.axes.core(),
             )?;
             v.push(MtfRow::of(i, m));
         }
@@ -446,6 +471,8 @@ pub(super) struct HuygensMtfParams {
     pub pixel: Option<f64>,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
+    /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
+    pub axes: MtfDirs,
 }
 
 impl Default for HuygensMtfParams {
@@ -460,6 +487,7 @@ impl Default for HuygensMtfParams {
             image: 128,
             pixel: None,
             polarization: false,
+            axes: MtfDirs::Field,
         }
     }
 }
@@ -492,7 +520,7 @@ impl Analysis for HuygensMtf {
             let f = FieldSel::Index(i);
             v.push(MtfRow::of(
                 i,
-                huygens::huygens_mtf_with(s, f, Waves::all_or(w), o, &fs, pa)?,
+                huygens::huygens_mtf_axes(s, f, Waves::all_or(w), o, &fs, pa, p.axes.core())?,
             ));
         }
         Ok(MtfOut {

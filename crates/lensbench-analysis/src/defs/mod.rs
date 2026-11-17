@@ -108,6 +108,26 @@ fn freqs_for(
     auto_freqs(top, freq_steps)
 }
 
+/// MTF の子午・球欠の向き（core の [`lensbench_core::analysis::MtfAxes`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MtfDirs {
+    /// 子午は視野の向き（物理的な子午面）、球欠はそれに直交
+    #[default]
+    Field,
+    /// 子午は瞳の y、球欠は x の向き（OpticStudio の FFT MTF と同じ）
+    Pupil,
+}
+
+impl MtfDirs {
+    pub(super) fn core(self) -> lensbench_core::analysis::MtfAxes {
+        match self {
+            MtfDirs::Field => lensbench_core::analysis::MtfAxes::Field,
+            MtfDirs::Pupil => lensbench_core::analysis::MtfAxes::Pupil,
+        }
+    }
+}
+
 /// 視野を振る向き
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
