@@ -220,11 +220,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
     let mut nv = Vec::with_capacity(n);
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
-        s.c = -s.c;
-        if let Some(cx) = s.cx_mut() {
-            *cx = -*cx;
-        }
-        s.negate_asph();
+        s.flip_z();
         if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
         }

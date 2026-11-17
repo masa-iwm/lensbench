@@ -55,11 +55,7 @@ pub(crate) fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
     (0..n)
         .map(|i| {
             let mut s = v[n - 1 - i].clone();
-            s.c = -s.c;
-            if let Some(cx) = s.cx_mut() {
-                *cx = -*cx;
-            }
-            s.negate_asph();
+            s.flip_z();
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;
             s

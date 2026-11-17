@@ -809,3 +809,25 @@ fn polarized_trace_matches_the_plain_trace_bitwise() {
         assert_eq!(format!("{t:?}"), format!("{:?}", p.trace));
     }
 }
+
+/// 曲率の残った Jones の面は誤り（交点・法線が決まらない）。値をそのまま置く編集でも系を作るときに止める
+#[test]
+fn a_curved_jones_surface_is_an_error() {
+    let mut s = load("A0");
+    let img = s.image();
+    let e = s
+        .edit_raw(|p| {
+            p.surfaces[img].set_type(SurfType::Jones);
+            p.surfaces[img].c = 0.01;
+            Ok(())
+        })
+        .unwrap_err();
+    assert!(e.to_string().contains("curved surface"), "{e}");
+    // 平らなら作れる
+    s.edit_raw(|p| {
+        p.surfaces[img].set_type(SurfType::Jones);
+        p.surfaces[img].c = 0.0;
+        Ok(())
+    })
+    .unwrap();
+}

@@ -415,12 +415,26 @@ impl Surface {
         }
     }
 
-    /// 非球面の係数の並びの値の符号を全部変える（面を z について裏返すとき。Tilted の tan も。Irregular は従来どおり
-    /// 8 つの値を全部変える）
-    pub fn negate_asph(&mut self) {
+    /// 面を z について裏返す（z → −z、x・y はそのまま）: 曲率 c・cx と矢高の係数の符号を変える。Tilted は tan、
+    /// Irregular は傾きと Zs・Za・Zc の符号を変え、偏心と項の角度はそのまま（偏心は面内、角度は z 軸まわり）。
+    /// 厚さは変えない
+    pub fn flip_z(&mut self) {
+        self.c = -self.c;
+        match &mut self.form {
+            Form::Toroidal { cx, .. } => *cx = -*cx,
+            Form::Irregular { p } => {
+                for v in &mut p[2..7] {
+                    *v = -*v;
+                }
+                return;
+            }
+            Form::TiltSurf { tan } => {
+                tan.iter_mut().for_each(|a| *a = -*a);
+                return;
+            }
+            _ => {}
+        }
         if let Some(a) = self.asph_mut() {
-            a.iter_mut().for_each(|a| *a = -*a);
-        } else if let Some(a) = self.asph_fixed_mut() {
             a.iter_mut().for_each(|a| *a = -*a);
         }
     }

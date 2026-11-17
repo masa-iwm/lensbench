@@ -8,8 +8,7 @@
 //! 追跡の内側（[`crate::batch`]）は面ごとに [`SurfKind`] を前計算し、回転対称の面は光線の組のまま、
 //! それ以外は光線ごとに [`Shape::isect`]・[`Shape::sag`] を呼ぶ（どれも enum の静的な分岐）。
 //!
-//! 結果は面の種類ごとに書いていた以前の計算と同じビットにしている。そのため、形に効かない残りの値で求め方が
-//! 変わる従来の扱い（[`Shape::isect_kind`] の `filled`、[`Shape::Tilted`] の `c`・`k`）もそのまま残す。
+//! 交点の求め方は形の値だけで決める（形に効かない値は求め方を変えない）。
 //! Grid Sag から種類を変えた面に残っていた格子は、種類ごとの値を [`crate::surface::Form`] に移して無くなった
 
 use crate::action::Action;
@@ -557,23 +556,22 @@ impl Shape<'_> {
         }
     }
 
-    /// 交点の求め方。`filled` は面の `asph`・`cx` に値が入っているか（0 でも）で、従来どおり、入っていれば
-    /// c = 0 の回転対称の面でも [`Isect::Std`] で求める（[`Isect::Plane`] と違うのは 0 の符号だけ）
-    pub(crate) fn isect_kind(&self, filled: bool) -> Isect {
+    /// 交点の求め方。形が平面になる面（曲率・係数がどれも 0）は頂点の平面で求める
+    pub(crate) fn isect_kind(&self) -> Isect {
         if let Some(c) = self.untilted_c() {
-            return Shape::Conic { c, k: 0.0 }.isect_kind(filled);
+            return Shape::Conic { c, k: 0.0 }.isect_kind();
         }
         match *self {
             Shape::Plane => Isect::Plane,
             Shape::Conic { c, .. } => {
-                if c != 0.0 || filled {
+                if c != 0.0 {
                     Isect::Std { asph: false }
                 } else {
                     Isect::Plane
                 }
             }
             Shape::EvenAsphere(b) => {
-                if b.c != 0.0 || filled {
+                if b.c != 0.0 || b.has_terms() {
                     Isect::Std {
                         asph: b.has_terms(),
                     }
@@ -581,8 +579,8 @@ impl Shape<'_> {
                     Isect::Plane
                 }
             }
-            Shape::Toroid { c, .. } => {
-                if c != 0.0 || filled {
+            Shape::Toroid { c, a, cx, .. } => {
+                if c != 0.0 || cx != 0.0 || a.iter().any(|&v| v != 0.0) {
                     Isect::Newton
                 } else {
                     Isect::Plane
@@ -656,14 +654,13 @@ impl Shape<'_> {
     pub(crate) fn isect(&self, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
         match *self {
             Shape::Toroid { c, k, a, cx } => toroidal_isect(c, k, a, cx, pl, kl, sig),
-            // 基板は y だけの関数なので初期値は頂点の平面
-            Shape::Cylinder(_) | Shape::Plane => {
+            // 基板は y だけの関数・傾いた平面なので、初期値は頂点の平面
+            Shape::Cylinder(_) | Shape::Plane | Shape::Tilted { .. } => {
                 isect_with(0.0, 0.0, pl, kl, sig, |x, y| self.sag(x, y))
             }
             Shape::Conic { c, k }
             | Shape::ConicTilted { c, k, .. }
             | Shape::OddAsphere { c, k, .. }
-            | Shape::Tilted { c, k, .. }
             | Shape::EvenAsphere(Base { c, k, .. })
             | Shape::Zernike {
                 base: Base { c, k, .. },
@@ -718,12 +715,9 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     let shape = d.shape();
     let action = d.action();
     let fresnel = matches!(action, Action::Fresnel(_));
-    let isect = shape.isect_kind(!d.asph().is_empty() || d.cx() != 0.0);
+    let isect = shape.isect_kind();
     let norm = if fresnel {
         Norm::Fresnel
-    } else if matches!(action, Action::Jones(_)) && d.c != 0.0 {
-        // 従来どおり、曲率の残った Jones の面（.zmx の読込では誤り）は交点を頂点の平面で、法線を曲率で求める
-        Norm::Conic
     } else {
         shape.norm_kind()
     };

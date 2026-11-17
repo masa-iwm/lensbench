@@ -1060,3 +1060,54 @@ fn a_tilted_row_after_a_mirror_flips_its_tan() {
     ));
     assert_eq!(back, vec![vec![0.0, -0.02]]);
 }
+
+/// 鏡の後のトロイダル面は c と同じく cx の符号も変える（光の進む向きで書いた形を今の向きに）
+#[test]
+fn a_toroidal_surface_after_a_mirror_flips_its_cx() {
+    let row = r#"{"type": "surfaces", "surfaces": [{"shape": "toroidal", "radius": 50, "radius_x": 80, "t": 5}]}"#;
+    let curv = |blocks: &str| -> Vec<(f64, f64)> {
+        let s = project(blocks);
+        (0..s.surfaces.len())
+            .filter(|&j| s.surfaces[j].typ() == lensbench_core::surface::SurfType::Toroidal)
+            .map(|j| (s.surfaces[j].c, s.surfaces[j].cx()))
+            .collect()
+    };
+    let fwd = curv(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(fwd, vec![(0.02, 0.0125)]);
+    let back = curv(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {{"type": "mirror"}}, {{"type": "air", "t": 10}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(back, vec![(-0.02, -0.0125)]);
+}
+
+/// 鏡の後の Irregular は傾きと Zs・Za・Zc の符号を変え、偏心と項の角度はそのまま
+#[test]
+fn an_irregular_row_after_a_mirror_flips_only_its_tilt_and_terms() {
+    let row = r#"{"type": "surfaces", "surfaces": [{"row": {"t": 5, "semi": 4, "shape": {"irregular": {"c": 0.01, "decenter": [0.1, 0.2], "tilt": [1, 2], "zs": 0.001, "za": 0.002, "zc": 0.003, "angle": 30}}}}]}"#;
+    let vals = |blocks: &str| -> Vec<(f64, Vec<f64>)> {
+        let s = project(blocks);
+        (0..s.surfaces.len())
+            .filter(|&j| s.surfaces[j].typ() == lensbench_core::surface::SurfType::Irregular)
+            .map(|j| (s.surfaces[j].c, s.surfaces[j].asph().to_vec()))
+            .collect()
+    };
+    let fwd = vals(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(
+        fwd,
+        vec![(0.01, vec![0.1, 0.2, 1.0, 2.0, 0.001, 0.002, 0.003, 30.0])]
+    );
+    let back = vals(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {{"type": "mirror"}}, {{"type": "air", "t": 10}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(
+        back,
+        vec![(
+            -0.01,
+            vec![0.1, 0.2, -1.0, -2.0, -0.001, -0.002, -0.003, 30.0]
+        )]
+    );
+}

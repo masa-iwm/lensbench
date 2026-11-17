@@ -284,6 +284,14 @@
 
 - `spot` の各視野に `rays`（追跡した本数 `total` と、除いた光線の理由ごとの本数 `vignetted`・`missed`・`tir`・`aim_failed`。
   波長の分を足し、主光線は数えない）を足した（KRN-09）。Rust は `analysis::Spot::rays`（`trace::RayCounts`）、`RayBuf::counts`・`Trace::counts`。
+- 鏡の後ろの面（KRN-05 の 3 段目）: プロジェクトで鏡の後に置いたトロイダル面・逆向きのレンズのトロイダル面は、c と同じく x 方向の
+  曲率 cx の符号も変える（前は c だけ変えて形が違った）。鏡の後の Irregular は傾きと Zs・Za・Zc の符号だけを変え、偏心と項の角度は
+  そのままにする（前は 8 つの値を全部変えた）。どちらも結果が変わる。鏡の後にこれらの面が無いシステムは変わらない。
+- 曲率の残った Jones の面は、値をそのまま置く作り方（`edit_raw`・`build_raw`・Python の系の組み立て）でもエラーにした（前は交点を頂点の
+  平面で、法線を曲率で求めていた）。.zmx の読込・`edit` は前からエラー。
+- 形に効かない値で交点の求め方を変えない（KRN-05 の 3 段目）: c = 0 で非球面の係数・cx も 0 の面は、残った並び（0 の係数）があっても
+  平面として交点を求める。Tilted の交点のニュートン法の初期値は頂点の平面（前は c・k の二次曲面。Tilted の形は c・k を使わない）。
+  結果は丸めの範囲で変わる。
 ### Rust API
 - 非球面の係数の並び（`Surface::asph`）も種類の枝に移した（KRN-05 の 2 段目）。`s.asph` は `s.asph()`（読む、係数を持たない種類は空）、
   書くのは `s.asph_mut()`（長さを変えられる種類）・`s.set_asph(v)`・`s.set_asph_at(i, x)`。Tilted は `Form::TiltSurf { tan }`、Irregular は

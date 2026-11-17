@@ -517,6 +517,13 @@ impl System {
         if self.telecentric && !matches!(self.aperture.0, ApertureKind::Na | ApertureKind::Cone) {
             invalid!("object-space telecentric needs an object-space NA or cone angle aperture");
         }
+        // Jones の面は頂点の平面だけ（曲率の残った面の交点・法線は決まらない）
+        if let Some(j) = sf
+            .iter()
+            .position(|d| d.typ() == crate::surface::SurfType::Jones && d.c != 0.0)
+        {
+            notimpl!("Jones matrix surface {j} on a curved surface");
+        }
         let st = self.stop();
         if st == 0 || st >= sf.len() - 1 {
             invalid!("stop surface {st}");

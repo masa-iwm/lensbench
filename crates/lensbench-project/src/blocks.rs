@@ -366,8 +366,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// 光の進む向きで書いた面を、今の向きに直して足す（厚さ・曲率・非球面）
     pub(crate) fn push(&mut self, mut s: Surface) {
         if self.parity < 0.0 {
-            s.c = -s.c;
-            s.negate_asph();
+            s.flip_z();
             s.t = -s.t;
         }
         if s.stop {
@@ -462,8 +461,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         for (i, s) in e.surfaces.iter().enumerate() {
             let mut s = s.clone();
             if sign < 0.0 {
-                s.c = -s.c;
-                s.negate_asph();
+                s.flip_z();
                 s.t = -s.t;
             }
             if s.is_mirror() {

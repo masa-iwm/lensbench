@@ -262,9 +262,6 @@ impl System {
             if d.typ() == SurfType::CoordBrk && !no_material(&d.mat) {
                 invalid!("surface {j}: material {} on a coordinate break", d.mat);
             }
-            if d.typ() == SurfType::Jones && d.c != 0.0 {
-                notimpl!("Jones matrix surface {j} on a curved surface");
-            }
             if j > 0 && !d.t.is_finite() {
                 invalid!("surface {j} thickness {}", d.t);
             }
