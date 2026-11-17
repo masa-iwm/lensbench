@@ -14,7 +14,7 @@ use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
 mod spot;
 mod zernike;
 pub(crate) use spot::spot_of;
-pub use spot::{spot, spot_arms, Spot};
+pub use spot::{apodized, spot, spot_arms, Spot};
 pub use zernike::*;
 
 /// n×n の格子のうち単位円内の点（[`PupilGrid::Linear`] の [`Rim::Padded`]）

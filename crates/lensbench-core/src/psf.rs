@@ -591,6 +591,8 @@ pub fn geometric_mtf(
     };
     let gl = LensGl::new(n);
     let (t, u, wq) = lens_quad(0.0, &gl);
+    // 求積の重みにアポダイゼーションの強度 A² を掛ける（ANA-33、OpticStudio の GMTT と同じ）。瞳の点は (x, y) = (u, t)
+    let wa = crate::analysis::apodized(s, field, &u, &t, &wq)?;
     // 波長ごとの (重み / 有効な光線の重みの和, 光線の位置と求積の重み, 遮断周波数)
     let mut sets = Vec::new();
     for &wi in &ws {
@@ -604,7 +606,7 @@ pub fn geometric_mtf(
             .filter(|&i| r.ok(i))
             .map(|i| {
                 let (x, y) = s.image_point(r.rays[i].xyz, r.rays[i].lmn);
-                (x, y, wq[i])
+                (x, y, wa[i])
             })
             .collect();
         let e: f64 = pts.iter().map(|p| p.2).sum();

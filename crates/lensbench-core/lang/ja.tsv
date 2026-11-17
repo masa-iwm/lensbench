@@ -1543,7 +1543,6 @@ removed multi-configuration row {}	多重構成の行 {} を外しました
 removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外しました（置く面 {j} を削除しました）
 the global coordinate reference surface {j} was deleted, so it is now surface 1	グローバル座標の基準面 {j} を削除したので面 1 にしました
 .zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses	.zmx のシステムの行 GFAC {}（瞳のアポダイゼーション）はカタログのレンズとして読むので使いません
-.zmx system line GFAC {} (pupil apodization) is used only by the diffraction analyses (FFT PSF, Huygens PSF/MTF, diffraction MTF); spot, RMS wavefront, Zernike and geometric MTF do not weight the pupil	.zmx のシステムの行 GFAC {}（瞳のアポダイゼーション）は回折の解析（FFT PSF・Huygens PSF/MTF・回折 MTF）にだけ入ります。スポット・RMS 波面・Zernike・幾何 MTF は瞳にウェイトをつけません
 .zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx のシステムの行 {k} {}（デフォルト {d} と違いますが、lensbench は読みません）
 .zmx system line {k} {} was skipped	.zmx のシステムの行 {k} {} を読まずに飛ばしました
 zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばしました（字下げのない古い .zmx）

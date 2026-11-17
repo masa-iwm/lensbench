@@ -1,5 +1,5 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
-use crate::pupil::pupil_gauss_shared;
+use crate::pupil::{apodized_gauss, pupil_gauss_shared};
 use lensbench_core::analysis::{mtf_only, to_ref, MtfMethod, ZernKind};
 use lensbench_core::error::{Error, Result};
 use lensbench_core::fiber::FiberOpts;
@@ -1136,8 +1136,8 @@ fn spot_term(
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let pg = pupil_gauss_shared(rings);
-    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
+    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();
@@ -1247,8 +1247,8 @@ fn centroid_term(
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let pg = pupil_gauss_shared(rings);
-    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
+    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
     let np = ps.map_or(0, |p| p.len());
@@ -1365,8 +1365,8 @@ fn wfe_term(
     pc: Option<&PupilCache>,
     keep: bool,
 ) -> Result<TermOut> {
-    let pg = pupil_gauss_shared(rings);
-    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
+    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();

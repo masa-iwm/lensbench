@@ -394,3 +394,73 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
     assert!(s.exit_pupil().is_nan());
     assert!(e1.is_some() && e1 == e2, "{e1:?} {e2:?}");
 }
+
+/// ANA-33: アポダイゼーションの強度は幾何の解析の光線の重みにも入る（OpticStudio の RSCE・CENY・RWCE・GMTT と同じ）。
+/// 焦点から 1 mm ずらした理想レンズ（F/50）の光線の着地点は瞳の座標に比例するので、ガウスの瞳（係数 G = 8、縁で
+/// 強度 e^{−16}）のスポットは標準偏差 σ = c / (2√G) のガウス（c は瞳の縁の高さ）: RMS 半径 c / √(2G)、幾何 MTF は
+/// exp(−2π² σ² ν²)。波面 W = W_d ρ² の RMS は W_d / (2G)（一様なら W_d / √12）。c と W_d は一様の値から求める。
+/// 一様なら重みを入れる前とビット単位で同じ（Uniform と Gaussian(0) が同じ）
+#[test]
+fn apodization_weights_the_geometric_analyses() {
+    let base = |extra: &str| {
+        let t = format!(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 2\nFTYP 0 0 1 1 0 0 0\n{extra}\
+YFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 101\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        );
+        zmx::build(
+            &zmx::parse_text(&t).unwrap(),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .unwrap()
+    };
+    let (u, g) = (base(""), base("GFAC 8 1\n"));
+    assert_eq!(g.apodization, Apodization::Gaussian(8.0));
+    let f = FieldSel::Index(0);
+    let o = lensbench_core::sweep::RmsOpts {
+        rings: 20,
+        ..Default::default()
+    };
+    let (ru, rg) = (
+        lensbench_core::sweep::rms(&u, f, Waves::One(0), o).unwrap(),
+        lensbench_core::sweep::rms(&g, f, Waves::One(0), o).unwrap(),
+    );
+    let c = ru.spot * 2f64.sqrt();
+    let gg = 8.0f64;
+    let want = c / (2.0 * gg).sqrt();
+    println!(
+        "RMS spot: uniform {} gauss {} want {want}",
+        ru.spot, rg.spot
+    );
+    assert!((rg.spot / want - 1.0).abs() < 1e-3, "{} {want}", rg.spot);
+    let wd = ru.wfe * 12f64.sqrt();
+    let want_w = wd / (2.0 * gg);
+    println!(
+        "RMS wavefront: uniform {} gauss {} want {want_w}",
+        ru.wfe, rg.wfe
+    );
+    assert!((rg.wfe / want_w - 1.0).abs() < 2e-3, "{} {want_w}", rg.wfe);
+    // スポットの解析も同じ重み
+    let sp = analysis::spot(&g, f, Waves::One(0), 20).unwrap();
+    assert!((sp.rms_centroid / rg.spot - 1.0).abs() < 1e-12);
+    // 幾何 MTF
+    let sigma = c / (2.0 * gg.sqrt());
+    let freqs = [50.0, 100.0, 200.0];
+    let m = psf::geometric_mtf(&g, f, Waves::One(0), 64, &freqs, false).unwrap();
+    for (i, &nu) in freqs.iter().enumerate() {
+        let want = (-2.0 * PI * PI * sigma * sigma * nu * nu).exp();
+        println!("geometric MTF {nu}: {} {} want {want}", m.tan[i], m.sag[i]);
+        assert!((m.tan[i] - want).abs() < 2e-3 && (m.sag[i] - want).abs() < 2e-3);
+    }
+    // 一様（Gaussian(0)）はビット単位で同じ
+    let z = base("GFAC 0 1\n");
+    let rz = lensbench_core::sweep::rms(&z, f, Waves::One(0), o).unwrap();
+    assert_eq!(rz.spot.to_bits(), ru.spot.to_bits());
+    assert_eq!(rz.wfe.to_bits(), ru.wfe.to_bits());
+    let mu = psf::geometric_mtf(&u, f, Waves::One(0), 64, &freqs, false).unwrap();
+    let mz = psf::geometric_mtf(&z, f, Waves::One(0), 64, &freqs, false).unwrap();
+    assert_eq!(mu.tan, mz.tan);
+}

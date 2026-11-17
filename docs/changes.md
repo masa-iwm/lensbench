@@ -220,6 +220,11 @@
 - 膜・偏光の振幅（`--polarization`、`PolAmp`）を入れた多色の PSF・Huygens PSF・MTF は、波長の重みに瞳の上で平均した光量の
   透過率を掛けて足す（ANA-34）。前は波長ごとに光量を 1 に揃えてから重みで足したので、膜の透過率が波長で違うと像面に届く光量の比と
   違った。振幅なし・一色の結果は変わらない。重みは `lensbench_core::pupil::wave_weight`。
+- 瞳のアポダイゼーション（.zmx の GFAC）を、回折の解析に加えて幾何の解析の光線の重みにも入れる（ANA-33）: スポットの重心・
+  RMS 半径（`spot`・`rms` とその掃引）、RMS 波面・ストレール比、幾何 MTF、最適化の RMS スポット・RMS 波面・重心の項。重みは
+  強度 A²（OpticStudio のガウス求積の RSCE・RWCE・CENY・GMTT・スポット図の RMS と同じ）。Zernike の当てはめには入れない
+  （OpticStudio も同じ）。一様なら値は変わらない。一様でない GFAC を読んだときの注意（回折の解析にだけ入る）は出さない。
+  Rust は `lensbench_core::analysis::apodized`（求積の重みに A² を掛ける）。
 - 形のパラメータの微分（光路長の微分 `opl_grad`・着地点の微分 `land_grad`、それを使う最適化・公差）を、面の形どおりに求める（KRN-32）。
   以前は `asph` をどの型でも偶数次非球面の係数とみていた。Odd Asphere の `a2`, `a4`, … は β1 r, β2 r², …、Tilted の `a2`・`a4` は
   tan α・tan β（z = x tan α + y tan β）、Irregular の `a2`〜`a16` は偏心 x・y、傾き x・y、Zs・Za・Zc、角度で、偏心・傾けた面の c・k の

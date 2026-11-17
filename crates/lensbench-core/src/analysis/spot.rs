@@ -19,7 +19,8 @@ pub struct Spot {
 }
 
 /// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
-/// 腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
+/// 系のアポダイゼーション（[`System::apodization`]）の強度を光線の重みに掛ける（重心・RMS。OpticStudio の RSCE・CENY・
+/// スポット図の RMS と同じ、ANA-33）。腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
 pub fn spot(s: &System, field: FieldSel, w: Waves, rings: usize) -> Result<Spot> {
     let w = w.one();
     spot_arms(s, field, Waves::all_or(w), rings, None)
@@ -56,10 +57,31 @@ pub fn spot_arms(
         false,
     )?;
     let rs: Vec<(usize, &RayBuf)> = rs.iter().map(|(wi, r)| (*wi, r)).collect();
+    let wts = apodized(s, field, &px, &py, &wts)?;
     Ok(spot_of(s, &rs, &wts, &rc))
 }
 
-/// 波長ごとの追跡 rs（求積の点、重み wts）と主光線の追跡 rc からスポットを作る（2 波長以上なら波長の重みもかける）
+/// 求積の重み wts に、系のアポダイゼーションの強度 A(px, py)² を掛ける（一様なら wts のまま。ANA-33）
+pub fn apodized(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    wts: &[f64],
+) -> Result<Vec<f64>> {
+    let a = crate::pupil::ApodMap::new(s, field)?;
+    if a.is_uniform() {
+        return Ok(wts.to_vec());
+    }
+    Ok(wts
+        .iter()
+        .zip(px.iter().zip(py))
+        .map(|(&w, (&x, &y))| w * a.amp(x, y).powi(2))
+        .collect())
+}
+
+/// 波長ごとの追跡 rs（求積の点、重み wts。アポダイゼーションの強度は呼ぶ側で掛ける）と主光線の追跡 rc からスポットを作る
+/// （2 波長以上なら波長の重みもかける）
 pub(crate) fn spot_of(s: &System, rs: &[(usize, &RayBuf)], wts: &[f64], rc: &Trace) -> Spot {
     let (mut x, mut y, mut wt, mut wv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for &(wi, r) in rs {

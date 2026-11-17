@@ -624,9 +624,8 @@ fn unread_lines_are_reported() {
         g.apodization,
         lensbench_core::pupil::Apodization::Gaussian(3.0)
     );
-    // 回折の解析にだけ入ることの注意
-    assert_eq!(g.import_notes.len(), 1, "{:?}", g.import_notes);
-    assert!(g.import_notes[0].contains("diffraction analyses"));
+    // 幾何の解析の重みにも入るので注意は出さない（ANA-33）
+    assert!(g.import_notes.is_empty(), "{:?}", g.import_notes);
     assert!(load(&txt.replacen("GFAC 0 0", "GFAC 0 5", 1)).is_err());
     // 種類が一様なら係数が残っていても一様（OpticStudio は種類を変えても係数を残す）
     let u = load(&txt.replacen("GFAC 0 0", "GFAC 2.25 0", 1)).unwrap();

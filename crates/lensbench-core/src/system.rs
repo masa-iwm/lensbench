@@ -77,7 +77,8 @@ pub struct Prescription {
     pub pressure: f64,
     pub glrs: usize,
     pub ropd: i64,
-    /// 瞳のアポダイゼーション（.zmx の GFAC。PSF・MTF の瞳関数の振幅、[`crate::pupil::Apodization`]）
+    /// 瞳のアポダイゼーション（.zmx の GFAC。PSF・MTF の瞳関数の振幅と、スポット・重心・RMS 波面・幾何 MTF・最適化の
+    /// RMS の項の光線の重み（強度）。Zernike の当てはめには入れない。[`crate::pupil::Apodization`]）
     #[cfg_attr(
         feature = "serde",
         serde(default, skip_serializing_if = "crate::pupil::Apodization::is_uniform")

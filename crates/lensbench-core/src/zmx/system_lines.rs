@@ -54,12 +54,6 @@ impl Raw {
                         ".zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses",
                         joined.join(" / ")
                     ));
-                } else if !catalog && !apodization(self, false)?.is_uniform() {
-                    // 振幅は回折の解析（FFT PSF・Huygens・回折 MTF）にだけ入る（ANA-05）
-                    out.push(format!(
-                        ".zmx system line GFAC {} (pupil apodization) is used only by the diffraction analyses (FFT PSF, Huygens PSF/MTF, diffraction MTF); spot, RMS wavefront, Zernike and geometric MTF do not weight the pupil",
-                        joined.join(" / ")
-                    ));
                 }
                 continue;
             }

@@ -270,11 +270,15 @@ impl Rms {
 /// 返すのは波長ごとの分散（os の順）
 fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
     let nw = os.len();
-    // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは波長の中で和 1）
+    // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは求積の重み × アポダイゼーションの強度 A²（ANA-33、OpticStudio の
+    // RWCE と同じ）で、波長の中で和 1）
     let mut rows: Vec<Vec<(f64, f64, f64, f64)>> = Vec::with_capacity(nw);
     for &o in os {
         let c = &o.chief;
-        let (px, py, wt) = (&o.samples.px, &o.samples.py, &o.samples.wt);
+        let (px, py) = (&o.samples.px, &o.samples.py);
+        let wt: Vec<f64> = (0..o.len())
+            .map(|i| o.samples.wt[i] * o.amp[i] * o.amp[i])
+            .collect();
         if !c.traced(0) {
             invalid!("the chief ray doesn't reach the image");
         }
@@ -388,7 +392,9 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
         .iter()
         .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.rays)))
         .collect();
-    let sp = analysis::spot_of(s, &tr, wt, rc);
+    // スポットの重みにもアポダイゼーションの強度（ANA-33、波面は wfe_var が瞳関数の振幅で掛ける）
+    let wt = analysis::apodized(s, field, px, py, wt)?;
+    let sp = analysis::spot_of(s, &tr, &wt, rc);
     let (rx, ry) = match o.reference {
         RmsRef::Chief => sp.chief,
         RmsRef::Centroid => sp.centroid,
