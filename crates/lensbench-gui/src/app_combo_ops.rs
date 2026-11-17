@@ -2,9 +2,8 @@
 //! （app.rs から分けた）
 
 use super::*;
-use lensbench_project::edit_ops::{
-    BlockFace, BlockRef, EditOp, PickupOp, Ref, SolveOp, SolveWhat, SurfaceOp,
-};
+use lensbench_project::edit_ops::{BlockFace, BlockRef, EditOp, PickupOp, Ref, SolveOp};
+use lensbench_project::surface_ops;
 
 impl Core {
     /// 組合せの系の絞り・ソルブ・ピックアップ: serve の edit の操作を組合せの要素の surface_ops にする
@@ -203,19 +202,19 @@ impl Core {
                         value: o.value,
                         param: o.param,
                     };
-                    self.doc
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .put_solve(o, shown);
+                    surface_ops::put_solve(
+                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
+                        o,
+                        shown,
+                    );
                 }
                 EditOp::RemoveSolve { surface, what } => {
                     let (k, i) = face(&surface)?;
-                    self.doc
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .drop_solve(i, what);
+                    surface_ops::drop_solve(
+                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
+                        i,
+                        what,
+                    );
                 }
                 EditOp::AddPickup(o) => {
                     let (k, i) = face(&o.dst)?;
@@ -228,19 +227,19 @@ impl Core {
                         offset: o.offset,
                         from: o.from,
                     };
-                    self.doc
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .put_pickup(o, shown);
+                    surface_ops::put_pickup(
+                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
+                        o,
+                        shown,
+                    );
                 }
                 EditOp::RemovePickup { dst, what } => {
                     let (k, i) = face(&dst)?;
-                    self.doc
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .drop_pickup(i, what);
+                    surface_ops::drop_pickup(
+                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
+                        i,
+                        what,
+                    );
                 }
                 _ => return Err(trf("{} is not available in a combination", &[&name])),
             }
@@ -249,90 +248,10 @@ impl Core {
     }
 }
 
-impl combo::Pick {
-    /// 面にソルブを置く。shown は面の表にそのソルブが出ていたか。要素で置いたものでなければ元（.zmx など）の
-    /// ソルブなので、外す操作も置く（置いたソルブを外したとき、元のソルブに戻らない）
-    pub(crate) fn put_solve(&mut self, o: SolveOp<BlockRef>, shown: bool) {
-        let (at, c) = (o.surface.clone(), o.is_curv());
-        let own = |q: &SurfaceOp| matches!(q, SurfaceOp::AddSolve(q) if q.surface == at && q.is_curv() == c);
-        let from_source = shown && !self.ops.iter().any(own);
-        self.ops.retain(|q| !own(q));
-        let removed = self.ops.iter().any(|q| solve_of(q, &at, c));
-        if from_source && !removed {
-            let what = if c { SolveWhat::C } else { SolveWhat::T };
-            self.ops.push(SurfaceOp::RemoveSolve { surface: at, what });
-        }
-        self.ops.push(SurfaceOp::AddSolve(o));
-    }
-
-    /// 面にピックアップを置く（[`Self::put_solve`] と同じく、元のピックアップなら外す操作も置く）
-    pub(crate) fn put_pickup(&mut self, o: PickupOp<BlockRef>, shown: bool) {
-        let at = o.dst.clone();
-        let what = o.what.clone();
-        let own =
-            |q: &SurfaceOp| matches!(q, SurfaceOp::AddPickup(q) if q.dst == at && q.what == what);
-        let from_source = shown && !self.ops.iter().any(own);
-        self.ops.retain(|q| !own(q));
-        let removed = self.ops.iter().any(|q| pickup_of(q, &at, &what));
-        if from_source && !removed {
-            self.ops.push(SurfaceOp::RemovePickup { dst: at, what });
-        }
-        self.ops.push(SurfaceOp::AddPickup(o));
-    }
-
-    /// 面 i のソルブを外す: 要素で置いたソルブなら外し、無ければ要素の元（.zmx など）のソルブを外す操作を置く
-    pub(crate) fn drop_solve(&mut self, i: usize, what: SolveWhat) {
-        let here = BlockRef::Sys(Ref::Index(i));
-        let c = what == SolveWhat::C;
-        let own = |q: &SurfaceOp| matches!(q, SurfaceOp::AddSolve(q) if q.surface == here && q.is_curv() == c);
-        if self.ops.iter().any(own) {
-            self.ops.retain(|q| !own(q));
-        } else {
-            self.ops.retain(|q| !solve_of(q, &here, c));
-            self.ops.push(SurfaceOp::RemoveSolve {
-                surface: here,
-                what,
-            });
-        }
-    }
-
-    /// 面 i のピックアップ what を外す（ソルブと同じく、要素で置いたものが無ければ要素の元のものを外す）
-    pub(crate) fn drop_pickup(&mut self, i: usize, what: String) {
-        let here = BlockRef::Sys(Ref::Index(i));
-        let own =
-            |q: &SurfaceOp| matches!(q, SurfaceOp::AddPickup(q) if q.dst == here && q.what == what);
-        if self.ops.iter().any(own) {
-            self.ops.retain(|q| !own(q));
-        } else {
-            self.ops.retain(|q| !pickup_of(q, &here, &what));
-            self.ops.push(SurfaceOp::RemovePickup { dst: here, what });
-        }
-    }
-}
-
-/// 面 at の量（曲率か厚さ）のソルブを置く・外す操作か
-fn solve_of(q: &SurfaceOp, at: &BlockRef, curv: bool) -> bool {
-    match q {
-        SurfaceOp::AddSolve(q) => q.surface == *at && q.is_curv() == curv,
-        SurfaceOp::RemoveSolve { surface, what } => {
-            surface == at && (*what == SolveWhat::C) == curv
-        }
-        _ => false,
-    }
-}
-
-/// 面 at の量 what のピックアップを置く・外す操作か
-fn pickup_of(q: &SurfaceOp, at: &BlockRef, what: &str) -> bool {
-    match q {
-        SurfaceOp::AddPickup(q) => q.dst == *at && q.what == what,
-        SurfaceOp::RemovePickup { dst, what: w } => dst == at && w == what,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lensbench_project::edit_ops::SolveWhat;
 
     /// .zmx を取り込んだ要素（A0）の、元の .zmx にある最後の厚さのソルブを外せる。置き直したソルブを外しても
     /// 元のソルブには戻らない（1 回で外れる）。保存して開き直しても同じ
@@ -360,7 +279,7 @@ mod tests {
         };
         assert_eq!(solves(&c), [7]);
         // 面 7 は要素の面 6
-        c.picks[0].drop_solve(6, SolveWhat::T);
+        surface_ops::drop_solve(&mut c.picks[0].ops, 6, SolveWhat::T);
         assert_eq!(solves(&c), Vec::<usize>::new());
         let back = combo::Combo::from_project(&c.project(), &root).unwrap();
         assert_eq!(back.picks[0].ops, c.picks[0].ops);
@@ -373,20 +292,20 @@ mod tests {
             param: None,
         };
         let mut d = combo::Combo::from_project(&p, &root).unwrap();
-        d.picks[0].put_solve(add(), true);
+        surface_ops::put_solve(&mut d.picks[0].ops, add(), true);
         assert_eq!(d.picks[0].ops.len(), 2);
         assert_eq!(solves(&d), [7]);
-        d.picks[0].drop_solve(6, SolveWhat::T);
+        surface_ops::drop_solve(&mut d.picks[0].ops, 6, SolveWhat::T);
         assert_eq!(solves(&d), Vec::<usize>::new());
         // 外したあとに置いて外しても同じ
-        c.picks[0].put_solve(add(), false);
+        surface_ops::put_solve(&mut c.picks[0].ops, add(), false);
         assert_eq!(solves(&c), [7]);
-        c.picks[0].drop_solve(6, SolveWhat::T);
+        surface_ops::drop_solve(&mut c.picks[0].ops, 6, SolveWhat::T);
         assert_eq!(solves(&c), Vec::<usize>::new());
         assert_eq!(c.picks[0].ops.len(), 1);
         // 外したあとにピックアップも外す操作を置ける（同じ面・量の操作は 1 つ）
-        c.picks[0].drop_pickup(6, "t".into());
-        c.picks[0].drop_pickup(6, "t".into());
+        surface_ops::drop_pickup(&mut c.picks[0].ops, 6, "t".into());
+        surface_ops::drop_pickup(&mut c.picks[0].ops, 6, "t".into());
         assert_eq!(c.picks[0].ops.len(), 2);
     }
 }

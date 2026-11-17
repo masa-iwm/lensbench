@@ -209,7 +209,11 @@ mod tests {
         );
         // 外すと要素の操作が消える（上書きにならない）
         let mut c = c;
-        c.picks[3].drop_solve(1, lensbench_project::edit_ops::SolveWhat::T);
+        lensbench_project::surface_ops::drop_solve(
+            &mut c.picks[3].ops,
+            1,
+            lensbench_project::edit_ops::SolveWhat::T,
+        );
         assert!(c.picks[3].ops.is_empty());
     }
 

@@ -31,6 +31,7 @@ pub mod open;
 pub mod retarget;
 pub mod schema;
 mod splitter;
+pub mod surface_ops;
 pub mod sysfile;
 pub mod sysfile_v2;
 pub mod writeback;
