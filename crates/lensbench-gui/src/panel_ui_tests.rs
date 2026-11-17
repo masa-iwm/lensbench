@@ -350,3 +350,109 @@ fn config_insert_row() {
         [serde_json::json!({ "op": "add_config_row", "param": "4.t" })]
     );
 }
+
+fn zoom(
+    p: crate::zoom_panel::ZoomPanel,
+    cands: Vec<crate::zoom_panel::Cand>,
+) -> Harness<'static, St<crate::zoom_panel::ZoomPanel, Value>> {
+    let s = sys();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(900.0, 1400.0))
+        .build_ui_state(
+            move |ui, st: &mut St<crate::zoom_panel::ZoomPanel, Value>| {
+                let a = crate::zoom_panel::ui(ui, &mut st.p, &cands, &s);
+                st.acts.extend(a);
+            },
+            St {
+                p,
+                acts: Vec::new(),
+            },
+        );
+    h.run_steps(4);
+    h
+}
+
+/// 状態の無い系では案内が出て、「Solve track」を押しても走らずに理由が出る
+#[test]
+fn zoom_without_states() {
+    let _g = serial();
+    let mut h = zoom(Default::default(), vec![]);
+    h.get_by_label(
+        "Open a system with states (project states or .zmx configurations) to solve each state.",
+    );
+    h.get_by_label("Solve track").click();
+    h.run_steps(4);
+    assert!(h.state().acts.is_empty());
+    h.get_by_label("Select at least one state");
+}
+
+/// 状態の目標を打ち、群の移動を足して「Solve track」を押すと serve の zoom の params が返る。走っている間は
+/// ボタンが消えて「Solving…」になる
+#[test]
+fn zoom_solve_returns_params() {
+    let _g = serial();
+    let cands = vec![(true, "1".to_string()), (true, "2".to_string())];
+    let mut h = zoom(Default::default(), cands);
+    // 変数が無い間は理由が出て走らない
+    h.get_by_label("Solve track").click();
+    h.run_steps(4);
+    assert!(h.state().acts.is_empty());
+    h.get_by_label("Add parameters to solve (G2.shift, 7.t, etc.)");
+    // 群の移動のメニューから足す
+    h.get_by_label("Add group shift").click();
+    h.run_steps(4);
+    h.get_by_label("L1.shift").click();
+    h.run_steps(4);
+    assert_eq!(h.state().p.vars.len(), 1);
+    assert_eq!(h.state().p.vars[0].name, "L1.shift");
+    // 1 つ目の状態の目標を打つ（2 つ目は空のまま = 像だけ解く）
+    let t = h.get_all(
+        by().role(egui::accesskit::Role::TextInput)
+            .label("No target"),
+    );
+    let first = t.into_iter().next().expect("目標の欄");
+    first.focus();
+    first.type_text("50");
+    h.run_steps(4);
+    h.get_by_label("Solve track").click();
+    h.run_steps(4);
+    assert_eq!(h.state().acts.len(), 1);
+    let v = &h.state().acts[0];
+    assert_eq!(v["configs"], serde_json::json!([1, 2]));
+    assert_eq!(v["efl"], serde_json::json!([50.0, null]));
+    assert_eq!(v["vars"][0]["name"], "L1.shift");
+    // 走っている間
+    h.state_mut().p.running = true;
+    h.run_steps(4);
+    assert!(h.query_by_label("Solve track").is_none());
+    h.get_by_label("Solving…");
+}
+
+/// 状態の印を外すと、その状態は解かない。全部外すと走らない
+#[test]
+fn zoom_unchecked_state_is_skipped() {
+    let _g = serial();
+    let mut p = crate::zoom_panel::ZoomPanel::default();
+    p.vars.push(crate::zoom_panel::VarRow {
+        name: "3.t".into(),
+        ..Default::default()
+    });
+    let cands = vec![(false, "wide".to_string()), (false, "tele".to_string())];
+    let mut h = zoom(p, cands);
+    h.get_by_label("wide").click();
+    h.run_steps(4);
+    h.get_by_label("Solve track").click();
+    h.run_steps(4);
+    assert_eq!(h.state().acts.len(), 1);
+    assert_eq!(h.state().acts[0]["configs"], serde_json::json!(["tele"]));
+    assert!(
+        h.state().acts[0].get("efl").is_none(),
+        "目標が全部空なら efl を付けない"
+    );
+    h.get_by_label("tele").click();
+    h.run_steps(4);
+    h.get_by_label("Solve track").click();
+    h.run_steps(4);
+    assert_eq!(h.state().acts.len(), 1);
+    h.get_by_label("Select at least one state");
+}

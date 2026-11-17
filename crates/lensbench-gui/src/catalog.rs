@@ -1225,11 +1225,12 @@ impl Browser {
         ui.horizontal(|ui| {
             ui.label(tr("Search"));
             let w = (ui.available_width() - 2.0 * ui.spacing().button_padding.x).max(60.0);
-            ui.add(
+            let r = ui.add(
                 egui::TextEdit::singleline(&mut q.text)
                     .hint_text(tr("Part, vendor, glass"))
                     .desired_width(w.min(260.0)),
             );
+            crate::widgets::name_field(&r, tr("Part, vendor, glass"), &q.text);
         });
         // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
         ui.horizontal_wrapped(|ui| {
@@ -1266,12 +1267,13 @@ impl Browser {
             range_ui(ui, tr("Diameter [mm]"), &mut q.diameter, (5.0, 25.4), 0.5);
             ui.separator();
             ui.label(tr("Specs"));
-            ui.add(
+            let r = ui.add(
                 egui::TextEdit::singleline(&mut q.spec)
                     .hint_text(tr("e.g. wavelength_nm=633"))
                     .desired_width(160.0),
-            )
-            .on_hover_text(tr(
+            );
+            crate::widgets::name_field(&r, tr("e.g. wavelength_nm=633"), &q.spec);
+            r.on_hover_text(tr(
                 "Spec conditions (space separated, all must hold): name (present), name=value (numbers equal, range specs contain, strings contain), name=a..b, name>=value, <=, >, <. efl, diameter and thickness also compare the list values. Example: wavelength_nm=633 extinction_ratio>=1000",
             ));
             if let Err(e) = parse_spec_filters(&q.spec) {
@@ -2885,3 +2887,5 @@ mod tests {
 mod preview_tilt_tests;
 #[cfg(test)]
 mod sel_tests;
+#[cfg(test)]
+mod ui_tests;

@@ -165,31 +165,38 @@ impl From<bool> for RecSel<'_> {
 }
 
 /// 記録の配列（面ごと）の書き口。追跡の並列化で、光線 i は各配列の i 番目だけに書く（[`ColOut`]）
-pub(super) struct SoaPtrs {
+pub(super) struct SoaPtrs<'a> {
     /// 記録の番号（無視しない面の順）→ 出力の面の番号（記録しない面は usize::MAX）
     slot: Vec<usize>,
-    xyz: Vec<ColOut<V3>>,
-    lmn: Vec<ColOut<V3>>,
-    opl: Vec<ColOut<f64>>,
-    p: Vec<ColOut<V3>>,
+    xyz: Vec<ColOut<'a, V3>>,
+    lmn: Vec<ColOut<'a, V3>>,
+    opl: Vec<ColOut<'a, f64>>,
+    p: Vec<ColOut<'a, V3>>,
     pub(super) n: usize,
 }
 
-impl SoaPtrs {
-    pub(super) fn new(r: &mut [RecSurf], slot: Vec<usize>, n: usize) -> SoaPtrs {
+impl<'a> SoaPtrs<'a> {
+    pub(super) fn new(r: &'a mut [RecSurf], slot: Vec<usize>, n: usize) -> SoaPtrs<'a> {
+        let (mut xyz, mut lmn, mut opl, mut p) = (vec![], vec![], vec![], vec![]);
+        for x in r {
+            xyz.push(ColOut::over(&mut x.xyz));
+            lmn.push(ColOut::over(&mut x.lmn));
+            opl.push(ColOut::over(&mut x.opl));
+            p.push(ColOut::over(&mut x.p));
+        }
         SoaPtrs {
             slot,
-            xyz: r.iter_mut().map(|x| ColOut::over(&mut x.xyz)).collect(),
-            lmn: r.iter_mut().map(|x| ColOut::over(&mut x.lmn)).collect(),
-            opl: r.iter_mut().map(|x| ColOut::over(&mut x.opl)).collect(),
-            p: r.iter_mut().map(|x| ColOut::over(&mut x.p)).collect(),
+            xyz,
+            lmn,
+            opl,
+            p,
             n,
         }
     }
 }
 
 pub(super) struct SoaRow<'a> {
-    pub(super) out: &'a SoaPtrs,
+    pub(super) out: &'a SoaPtrs<'a>,
     pub(super) i: usize,
 }
 
@@ -215,7 +222,7 @@ impl trace::RecSink for SoaRow<'_> {
 
 /// まとめて追う光線の組の記録（組の l 番目は光線 base + l。端の組の余りは書かない）
 pub(super) struct SoaLanes<'a> {
-    pub(super) out: &'a SoaPtrs,
+    pub(super) out: &'a SoaPtrs<'a>,
     pub(super) base: usize,
 }
 

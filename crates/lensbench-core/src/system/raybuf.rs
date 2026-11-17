@@ -156,25 +156,28 @@ pub(super) struct Done {
 
 /// 列の書き口: 光線 i は i 番目だけに書く（追跡の並列化で、各添字は 1 つのスレッドだけが書く）。生のポインタへの
 /// 書き込みはここの 1 か所だけで、添字の範囲はいつも確かめる。使わない列（[`ColOut::off`]）には書かない
-pub(super) struct ColOut<T: Copy> {
+pub(super) struct ColOut<'a, T: Copy> {
     p: *mut T,
     n: usize,
+    /// 元の列を書き終えるまで借りておく（列が動いたり読まれたりしないことを型で守る）
+    _col: std::marker::PhantomData<&'a mut [T]>,
 }
 // 安全: 書く位置は添字ごとに別（各添字は 1 つのスレッドだけが書く）で、列は書き終えるまで動かさない・読まない
-unsafe impl<T: Copy + Send> Sync for ColOut<T> {}
-unsafe impl<T: Copy + Send> Send for ColOut<T> {}
+unsafe impl<T: Copy + Send> Sync for ColOut<'_, T> {}
+unsafe impl<T: Copy + Send> Send for ColOut<'_, T> {}
 
-impl<T: Copy> ColOut<T> {
+impl<'a, T: Copy> ColOut<'a, T> {
     pub(super) fn off() -> Self {
         ColOut {
             p: std::ptr::null_mut(),
             n: 0,
+            _col: std::marker::PhantomData,
         }
     }
 
     /// v を空にして n 個ぶん確保した領域（中身は未初期化）。v の長さは書き終えてから決める（[`Dst::finish`]）。
     /// on でなければ v を空にするだけで書かない
-    fn spare(v: &mut Vec<T>, on: bool, n: usize) -> Self {
+    fn spare(v: &'a mut Vec<T>, on: bool, n: usize) -> Self {
         v.clear();
         if !on {
             return ColOut::off();
@@ -183,14 +186,16 @@ impl<T: Copy> ColOut<T> {
         ColOut {
             p: v.spare_capacity_mut()[..n].as_mut_ptr() as *mut T,
             n,
+            _col: std::marker::PhantomData,
         }
     }
 
     /// v の今の中身に上書きする
-    pub(super) fn over(v: &mut [T]) -> Self {
+    pub(super) fn over(v: &'a mut [T]) -> Self {
         ColOut {
             p: v.as_mut_ptr(),
             n: v.len(),
+            _col: std::marker::PhantomData,
         }
     }
 
@@ -211,24 +216,24 @@ impl<T: Copy> ColOut<T> {
 }
 
 /// 光線ごとの結果の書き先（書かない列は [`ColOut::off`]）。光線 i は各列の i 番目だけに書く
-pub(super) struct OutPtrs {
-    ray: ColOut<RayOut>,
-    status: ColOut<RayStatus>,
-    vig: ColOut<u32>,
-    xyz: ColOut<V3>,
-    lmn: ColOut<V3>,
-    opl: ColOut<f64>,
-    p: ColOut<V3>,
-    k: ColOut<V3>,
-    p0: ColOut<V3>,
-    k0: ColOut<V3>,
-    opl_os: ColOut<f64>,
-    lens_opd: ColOut<f64>,
+pub(super) struct OutPtrs<'a> {
+    ray: ColOut<'a, RayOut>,
+    status: ColOut<'a, RayStatus>,
+    vig: ColOut<'a, u32>,
+    xyz: ColOut<'a, V3>,
+    lmn: ColOut<'a, V3>,
+    opl: ColOut<'a, f64>,
+    p: ColOut<'a, V3>,
+    k: ColOut<'a, V3>,
+    p0: ColOut<'a, V3>,
+    k0: ColOut<'a, V3>,
+    opl_os: ColOut<'a, f64>,
+    lens_opd: ColOut<'a, f64>,
     /// 無限遠物体の opl_os の基準（面 1 の原点・軸・その前の屈折率）
     os: Option<(V3, V3, f64)>,
 }
 
-impl OutPtrs {
+impl OutPtrs<'_> {
     #[inline(always)]
     pub(super) fn put(&self, i: usize, r: &RayOut, p0: V3, k0: V3) {
         self.ray.put(i, *r);
@@ -274,7 +279,7 @@ impl Dst<'_> {
     }
 
     /// n 本ぶんの書き先を用意する
-    pub(super) fn prepare(&mut self, n: usize, os: Option<(V3, V3, f64)>) -> OutPtrs {
+    pub(super) fn prepare(&mut self, n: usize, os: Option<(V3, V3, f64)>) -> OutPtrs<'_> {
         match self {
             Dst::Trace {
                 rays,
