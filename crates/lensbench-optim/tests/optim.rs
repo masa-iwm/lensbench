@@ -2,6 +2,7 @@
 //! ずらした系が元の性能まで戻ること。
 
 use crate::common::root;
+use lensbench_core::pupil::Apodization;
 use lensbench_core::sweep::{rms, RmsOpts, RmsRef};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
@@ -55,8 +56,15 @@ const SYSTEMS: [&str; 6] = ["A0", "A3", "B0", "B2", "C0", "E0"];
 
 #[test]
 fn merit_matches_rms() {
-    for name in SYSTEMS {
-        let s = load(name);
+    // 系のアポダイゼーション（ガウス）も解析と同じ重みになる（ANA-33）
+    let apods = [Apodization::Uniform, Apodization::Gaussian(1.5)];
+    for (name, apod) in SYSTEMS.iter().flat_map(|n| apods.map(|a| (*n, a))) {
+        let mut s = load(name);
+        s.edit_raw(|rx| {
+            rx.apodization = apod;
+            Ok(())
+        })
+        .unwrap();
         for reference in [RmsRef::Centroid, RmsRef::Chief] {
             for fi in 0..s.fields.len() {
                 for wave in [None, Some(s.primary)] {
@@ -96,7 +104,7 @@ fn merit_matches_rms() {
                         let m = p.merit(&[]).unwrap();
                         assert!(
                             (m - v).abs() <= 1e-12 * v.max(1e-9),
-                            "{name} 視野 {fi} {wave:?} {reference:?} {kind:?}: {m} {v}"
+                            "{name} {apod:?} 視野 {fi} {wave:?} {reference:?} {kind:?}: {m} {v}"
                         );
                     }
                 }
@@ -169,7 +177,15 @@ fn check_jac(name: &str, s: &System, kind: TermKind) {
 #[test]
 fn analytic_jacobian_matches_fd() {
     for name in SYSTEMS {
-        let s = load(name);
+        let mut s = load(name);
+        // 重みがアポダイゼーションで変わっても解析的な微分は合う（ANA-33。一部の系だけ）
+        if matches!(name, "A3" | "C0") {
+            s.edit_raw(|rx| {
+                rx.apodization = Apodization::Gaussian(1.5);
+                Ok(())
+            })
+            .unwrap();
+        }
         let last = s.fields.len() - 1;
         for reference in [RmsRef::Centroid, RmsRef::Chief] {
             for wave in [None, Some(0)] {
