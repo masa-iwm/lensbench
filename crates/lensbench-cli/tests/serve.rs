@@ -1516,3 +1516,108 @@ fn edits_follow_the_surface_into_other_states() {
     sv.stop();
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// save_project: 読み込んだ後の面の変更をブロックへ書き戻して保存すると、保存したプロジェクトを読んだ系が
+/// 変更した系と同じ（PRJ-04）
+#[test]
+fn save_project_writes_surface_edits_to_blocks() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-saveproj-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let lens = |id: &str| {
+        format!(
+            r#"{{"type": "lens", "id": "{id}", "source": {{"surfaces": [{{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}}"#
+        )
+    };
+    let txt = format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 6}},
+        "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}}, {a}, {{"type": "air", "t": 5}}, {b}, {{"type": "air", "t": 30}}]}}"#,
+        a = lens("A"),
+        b = lens("B"),
+    );
+    let f = dir.join("p.json");
+    std::fs::write(&f, txt).unwrap();
+    let load = |f: &Path| {
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        })
+    };
+    let mut sv = Server::start(&[]);
+    sv.call("load", load(&f));
+    // 面 2・3 は A、面 4・5 は B
+    sv.call("set", json!({ "values": { "2.c": 0.02 } }));
+    sv.call(
+        "edit",
+        json!({ "ops": [
+            { "op": "set_surface", "surface": 4, "fields": { "r": 45.0 } },
+            { "op": "add_pickup", "dst": 5, "src": 3, "what": "c" },
+            { "op": "set_surface", "surface": 5, "fields": { "t": 25.0 } },
+        ] }),
+    );
+    let out = dir.join("saved.json");
+    let r = sv.call("save_project", json!({ "path": out.display().to_string() }));
+    let notes = r["notes"].to_string();
+    assert!(notes.contains("edit 4") && notes.contains("air"), "{notes}");
+    let edited = sv.call("surface", json!({}));
+    let mut sv2 = Server::start(&[]);
+    sv2.call("load", load(&out));
+    let again = sv2.call("surface", json!({}));
+    sv2.stop();
+    sv.stop();
+    // 書き戻せなかった最後の面の厚さだけが違う
+    let s = |v: &Value| v["surfaces"].as_array().unwrap().clone();
+    let (a, b) = (s(&edited), s(&again));
+    assert_eq!(a.len(), b.len());
+    for j in 0..a.len() {
+        if j != 5 {
+            assert_eq!(a[j], b[j], "surface {j}");
+        }
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 展開で断る上書き（往復するブロックの面の前後の偏心、鏡のブロックの面の dn）は書き戻さずに notes。保存した
+/// プロジェクトは必ず読める（PRJ-04）
+#[test]
+fn save_project_keeps_the_project_expandable() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-saveproj2-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let txt = r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 6},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5},
+          {"type": "lens", "id": "L", "source": {"surfaces": [{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}},
+          {"type": "air", "t": 20}, {"type": "mirror", "id": "M", "back": true}]}"#;
+    let f = dir.join("p.json");
+    std::fs::write(&f, txt).unwrap();
+    let load = |f: &Path| {
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        })
+    };
+    let mut sv = Server::start(&[]);
+    sv.call("load", load(&f));
+    // 面 2・3 は L の往路、面 4 は鏡
+    sv.call(
+        "edit",
+        json!({ "ops": [
+            { "op": "set_surface_data", "surface": 2, "data": { "before": { "d": [0.1, 0.0, 0.0, 0.0, 0.0], "order": 0 } } },
+            { "op": "set_surface_data", "surface": 4, "data": { "dn": 0.001 } },
+            { "op": "set_surface", "surface": 2, "fields": { "r": 50.0 } },
+        ] }),
+    );
+    let out = dir.join("saved.json");
+    let r = sv.call("save_project", json!({ "path": out.display().to_string() }));
+    sv.stop();
+    let notes: Vec<String> = serde_json::from_value(r["notes"].clone()).unwrap();
+    let has = |k: &str, w: &str| notes.iter().any(|n| n.contains(k) && n.contains(w));
+    assert!(has("edit 1", "would not expand"), "{notes:?}");
+    assert!(has("edit 2", "would not expand"), "{notes:?}");
+    assert!(has("edit 3", "return path"), "{notes:?}");
+    let mut sv2 = Server::start(&[]);
+    sv2.call("load", load(&out));
+    let again = sv2.call("surface", json!({}));
+    sv2.stop();
+    let c = again["surfaces"][2]["c"].as_f64().unwrap();
+    assert!((c - 0.02).abs() < 1e-12, "{c}");
+    std::fs::remove_dir_all(&dir).ok();
+}

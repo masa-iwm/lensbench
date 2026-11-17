@@ -25,6 +25,7 @@ pub const METHODS: &[&str] = &[
     "config_table",
     "config_diff",
     "save",
+    "save_project",
     "save_range",
     "analyze",
     "glasses",

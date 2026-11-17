@@ -2123,3 +2123,20 @@ surface {i} is not in this system	面 {i} はこのシステムにありませ�
 surfaces {a} to {b} are not in the same order in this system	面 {a}〜{b} はこのシステムで同じ並びではありません
 a surface deleted by name can't be found in this system	名前で消した面はこのシステムで探せません
 holds must be surface numbers	holds は面の番号にしてください
+save_project needs path	save_project には path が要ります
+save_project is only for project files (use save for a system file)	save_project はプロジェクトファイルだけです（システムファイルは save で）
+the project is written to another folder; relative paths in it are kept as written	プロジェクトを別のフォルダに書きました。中の相対パスは書いたままです
+edit {}: {} and the later edits are not written back (surfaces of blocks can't be inserted or deleted here)	変更 {}: {} とその後の変更はブロックへ書き戻しません（ここではブロックの面を入れる・消すことはできません）
+edit {}: {} is not written back ({e})	変更 {}: {} はブロックへ書き戻しません（{e}）
+surface {j} is not a surface of a block	面 {j} はブロックの面ではありません
+surface {j} is a coordinate break of a block (use the block decenter and tilt)	面 {j} はブロックの座標ブレークです（ブロックの偏心・チルトで変えてください）
+surface {j} is on a later pass of a block (edit the surface on its first forward pass)	面 {j} はブロックの 2 回目以降・復路の面です（往路の 1 回目の面で変えてください）
+surface {} is in a block without an id (give the block an id to refer to it)	面 {} は id の無いブロックの面です（参照するにはブロックに id を付けてください）
+only surface edits can be written back to blocks	ブロックへ書き戻せるのは面の変更だけです
+the thickness after the last surface of a block includes the following air (change the air block)	ブロックの最後の面の厚みには後ろの空気が入っています（空気のブロックで変えてください）
+edit {}: {} also changes the return path of the round-trip block	変更 {}: {} は往復するブロックの復路も変えます
+the medium after the last surface of a round-trip block is the following air (change the air block)	往復するブロックの最後の面の後の媒質は後ろの空気です（空気のブロックで変えてください）
+parameter {param} can't be written back to blocks (only c, r, k and t of surfaces)	パラメータ {param} はブロックへ書き戻せません（面の c・r・k・t だけ）
+the project would not expand: {e}	書き戻すとプロジェクトが展開できません: {e}
+the block is not in the project	ブロックがプロジェクトにありません
+this kind of block can't hold surface edits	この種類のブロックは面の上書きを持てません

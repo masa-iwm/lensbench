@@ -663,3 +663,110 @@ fn retarget_keeps_cbs_and_skips_resized_blocks() {
     let l2 = (0..a.map.len()).find(|&j| a.map[j].is_in("L2")).unwrap();
     assert!(r.op(&set(l2)).is_err(), "L2 は面の数が違う");
 }
+
+/// 展開した系にした面の編集をブロックへ書き戻すと、書き戻したプロジェクトの展開が編集した系と同じ（PRJ-04）。
+/// 書き戻せない編集（ブロックの最後の面の厚さ・座標ブレーク・面を入れる）は注意
+#[test]
+fn surface_edits_write_back_to_blocks() {
+    use lensbench_project::edit_spec::EditOp;
+    let lens = |id: &str, extra: &str| {
+        format!(
+            r#"{{"type": "lens", "id": "{id}"{extra}, "source": {{"surfaces": [{{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}}"#
+        )
+    };
+    let mut p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 4}},
+        "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}}, {a}, {{"type": "air", "t": 5}},
+          {{"type": "group", "id": "G", "blocks": [{b}]}}, {{"type": "air", "t": 30}}]}}"#,
+        a = lens("A", r#", "decenter": [0.1, 0]"#),
+        b = lens("B", ""),
+    ))
+    .unwrap();
+    let x = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let j = |id: &str, k: usize| -> usize {
+        (0..x.map.len())
+            .filter(|&j| x.map[j].is_in(id) && !x.system.surfaces[j].is_coord_break())
+            .nth(k)
+            .unwrap()
+    };
+    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
+        { "op": "set_surface", "surface": j("A", 0), "fields": { "r": 50.0, "t": 5.0 } },
+        { "op": "set_material", "surface": j("B", 0), "material": "F2" },
+        { "op": "add_pickup", "dst": j("B", 1), "src": j("A", 1), "what": "c", "scale": -1.0 },
+        { "op": "set_surface", "surface": j("B", 1), "fields": { "t": 20.0 } },
+        { "op": "set_surface", "surface": j("A", 0) - 1, "fields": { "c": 0.0 } },
+        { "op": "insert_surface", "at": 2 },
+    ]))
+    .unwrap();
+    let mut s = x.system.clone();
+    lensbench_project::edit_ops::apply(&mut s, &ops[..3]).unwrap();
+    let faces: Vec<_> = x.map.iter().map(|o| o.face.clone()).collect();
+    let ed = lensbench_project::writeback::Edited {
+        system: &x.system,
+        faces: &faces,
+    };
+    let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
+    assert_eq!(notes.len(), 3, "{notes:?}");
+    assert!(
+        notes[0].contains("edit 4") && notes[0].contains("air"),
+        "{notes:?}"
+    );
+    assert!(notes[1].contains("edit 5") && notes[1].contains("coordinate break"));
+    assert!(notes[2].contains("edit 6") && notes[2].contains("insert_surface"));
+    let y = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    assert_eq!(
+        format!("{:?}", y.system.surfaces),
+        format!("{:?}", s.surfaces)
+    );
+    assert_eq!(y.system.pickups, s.pickups);
+}
+
+/// 往復するブロックの書き戻し: 最後の面の厚み・材料は書かない（後ろが戻しの座標ブレークでも）、面の値は復路にも
+/// 当たるので注意を出す（PRJ-04）
+#[test]
+fn round_trip_blocks_write_back_with_notes() {
+    use lensbench_project::edit_spec::EditOp;
+    let mut p = Project::from_json(
+        r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 4},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5},
+          {"type": "lens", "id": "L", "decenter": [0.2, 0], "source": {"surfaces": [{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}},
+          {"type": "air", "t": 20}, {"type": "mirror", "back": true}]}"#,
+    )
+    .unwrap();
+    let x = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let j: Vec<usize> = (0..x.map.len())
+        .filter(|&j| x.map[j].is_in("L") && !x.map[j].back)
+        .filter(|&j| !x.system.surfaces[j].is_coord_break())
+        .collect();
+    assert_eq!(j.len(), 2);
+    assert!(
+        x.system.surfaces[j[1] + 1].is_coord_break(),
+        "最後の面の後ろは戻しの座標ブレーク"
+    );
+    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
+        { "op": "set_surface", "surface": j[1], "fields": { "t": 1.0 } },
+        { "op": "set_material", "surface": j[1], "material": "F2" },
+        { "op": "set_surface", "surface": j[0], "fields": { "r": 50.0 } },
+    ]))
+    .unwrap();
+    let faces: Vec<_> = x.map.iter().map(|o| o.face.clone()).collect();
+    let ed = lensbench_project::writeback::Edited {
+        system: &x.system,
+        faces: &faces,
+    };
+    let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
+    assert_eq!(notes.len(), 3, "{notes:?}");
+    assert!(notes[0].contains("edit 1") && notes[0].contains("air"));
+    assert!(notes[1].contains("edit 2") && notes[1].contains("air"));
+    assert!(notes[2].contains("edit 3") && notes[2].contains("return path"));
+    let y = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let r: Vec<f64> = (0..y.map.len())
+        .filter(|&k| y.map[k].is_in("L") && !y.system.surfaces[k].is_coord_break())
+        .map(|k| y.system.surfaces[k].c)
+        .collect();
+    assert_eq!(r.len(), 4);
+    assert!(
+        (r[0] - 1.0 / 50.0).abs() < 1e-12 && (r[3] - 1.0 / 50.0).abs() < 1e-12,
+        "{r:?}"
+    );
+}

@@ -359,6 +359,7 @@ mod layout;
 mod optim;
 mod proto;
 mod replay;
+mod save_project;
 mod trace;
 pub mod views;
 use args::{known_keys, opt_f64, opt_usize, str_list};
@@ -1161,6 +1162,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             Ok((v, Vec::new()))
         }
         // 系ファイルに保存する（編集・set の後の系をそのまま）
+        "save_project" => save_project::save_project(sess, p),
         "save" => {
             let (s, _) = sess.current()?;
             let path = p["path"]

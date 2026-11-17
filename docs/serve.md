@@ -78,6 +78,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
 | `write` | `path` | 今のシステムを .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意） |
 | `save` | `path` | 今のシステム（`set`・`edit` の後）をシステムファイル（.json）に書く。`written`・`system_hash`・`notes`（値が同じカタログのファイルが見つからず hash を書けないカタログ） |
+| `save_project` | `path` | 読み込んだプロジェクト（.json）に、読み込んだ後の面の変更（`set` の面の値 `3.t`・`3.c`・`3.radius`・`3.thickness` など、`edit` の `set_surface`・`set_surface_data`・`set_material`・`set_stop`・`add_solve`・`add_pickup`・`remove_solve`・`remove_pickup`）を、面を足したブロックの `surface_edits`・`surface_ops` として書き足して書く。面はどのブロックの何番目の面かで戻す。書き戻せない変更（面を入れる・消す `edit` とその後の変更、座標ブレーク・復路の面、ブロックの最後の面の厚み（後ろの空気のブロックで変える）、往復するブロックの最後の面の材料（同じ）、ピックアップの元・ソルブの参照が id の無いブロックの面、玉・群・系の設定、`set` の c・r・k・t 以外、書き足すと今の状態・経路でプロジェクトが展開できなくなる上書き（往復するブロックの面の前後の偏心、鏡の面の dn など））は書かずに `notes`。書いたプロジェクトは必ず読める。往復するブロックの面の値は復路の面にも当たる（編集した系では往路の面だけ）ので `notes` で知らせる。`written`・`notes` |
 | `save_range` | `path`・`from`・`to` | 今のシステムの面 from〜to と物体面・像面だけをシステムファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces`・`notes`（`save` と同じ） |
 | `edit` | `ops`: 操作の並び（下） | システムを編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すればシステムは変えない |
 | `surface` | `surface`（番号か名前、省くと全部） | 面の値（`fields`、全部なら `surfaces` の並びと、玉・群の面の範囲 `units`（name・spans・auto、偏心・傾き `motion`（dx dy tx ty tz）・移動 `shift`・媒質の `dn`・`disp`（面ごとに違えば null））） |
