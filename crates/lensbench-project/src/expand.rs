@@ -729,7 +729,24 @@ pub(crate) fn expand_inner(
     map.append(&mut c.map);
     map.push(SurfOrigin::default());
     let zpicks = std::mem::take(&mut c.zpicks);
-    sf.push(Surface::default());
+    sf.push(match &p.image {
+        None => Surface::default(),
+        Some(r) => {
+            if r.stop
+                || r.object
+                || r.t != 0.0
+                || r.medium.is_some()
+                || r.coordinate_break.is_some()
+            {
+                return Err(
+                    "image: stop, object, t, medium and coordinate_break can't be written".into(),
+                );
+            }
+            let mut r = (**r).clone();
+            r.image = false;
+            crate::sysfile_v2::read::surface(r).map_err(|e| format!("image: {e}"))?
+        }
+    });
     name_faces(&mut map, &sf, &c.nodes);
     // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
     let envr = p.environment;

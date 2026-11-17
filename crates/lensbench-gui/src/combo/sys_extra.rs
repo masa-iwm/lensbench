@@ -1,5 +1,5 @@
 //! 組合せの系の設定のうち、開いたファイル（.zmx・プロジェクト）から来ることが多いもの
-//! （視野の正規化・大域座標の基準の面・温度と気圧）。正規化と温度・気圧は設定の欄で変えられ、基準の面は持つだけ。ケラレ係数は視野の点（[`crate::sysset::FieldPt`]）が持つ
+//! （視野の正規化・大域座標の基準の面・温度と気圧・像面の形と傾き）。正規化と温度・気圧は設定の欄で変えられ、基準の面は持つだけ。ケラレ係数は視野の点（[`crate::sysset::FieldPt`]）が持つ
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -18,6 +18,9 @@ pub struct SysExtra {
     /// 温度・気圧（プロジェクトの environment）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub environment: Option<Environment>,
+    /// 像面の形・傾き（プロジェクトの image をそのまま）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<Value>,
 }
 
 impl SysExtra {
@@ -36,6 +39,7 @@ impl SysExtra {
             field_rect: v.pointer("/fields/norm").and_then(Value::as_str) == Some("rect"),
             glrs: v.get("glrs").filter(|g| !g.is_null()).cloned(),
             environment,
+            image: v.get("image").filter(|g| !g.is_null()).cloned(),
         })
     }
 
@@ -49,6 +53,9 @@ impl SysExtra {
         }
         if let Some(e) = &self.environment {
             v["environment"] = json!(e);
+        }
+        if let Some(g) = &self.image {
+            v["image"] = g.clone();
         }
     }
 }

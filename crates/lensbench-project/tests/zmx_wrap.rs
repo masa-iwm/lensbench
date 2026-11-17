@@ -37,14 +37,9 @@ fn zmx_projects_rebuild_the_same_system() {
             Err(e) => differ.push(format!("{name}: {e}")),
         }
     }
-    // 像面を傾けた C0・C1 だけはプロジェクトで書けない（像面はブロックでない）
-    assert_eq!(differ.len(), 2, "{differ:?}");
-    assert!(
-        differ
-            .iter()
-            .all(|d| (d.starts_with("C0") || d.starts_with("C1")) && d.contains("before")),
-        "{differ:?}"
-    );
+    // 像面を傾けた C0・C1 も、プロジェクトの像面（image）で書ける
+    assert!(differ.is_empty(), "{differ:?}");
+    assert!(same.iter().any(|s| s == "C0"), "{same:?}");
     assert!(same.len() >= 30, "{same:?}");
     // GLRS・矩形の視野・ケラレ係数・環境を書いたもの
     for n in ["A0", "A6", "F2"] {

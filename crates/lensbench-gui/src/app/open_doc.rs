@@ -10,15 +10,12 @@ impl Core {
     pub(super) fn open_doc(&mut self, p: &Path) {
         self.combo_census = None;
         self.push_recent(&p.display().to_string());
-        let is_json = p
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("json"));
-        // 続きは答え（{gui, blocks}。.zmx は組合せにできたら combo）を受けて [`Self::open_doc_peeked`]
-        let mut q = json!({ "file": p.display().to_string() });
-        if !is_json {
-            q["glass_dirs"] = dirs(&self.s.glass_dirs);
-            q["lens_catalogs"] = dirs(&self.s.lens_dirs);
-        }
+        // 続きは答え（{gui, blocks}。.zmx・系ファイルは組合せにできたら combo）を受けて [`Self::open_doc_peeked`]
+        let q = json!({
+            "file": p.display().to_string(),
+            "glass_dirs": dirs(&self.s.glass_dirs),
+            "lens_catalogs": dirs(&self.s.lens_dirs),
+        });
         self.preview.send(Tag::OpenDoc, "doc_peek", q);
     }
 
@@ -46,7 +43,7 @@ impl Core {
             // 別の組合せ: 元に戻す段は空から
             self.combo_hist = Default::default();
             self.p.combo_view = combo::View::default();
-            // .zmx から作った組合せは .zmx に上書きしない（保存でプロジェクトの書き先を選ばせる）
+            // .zmx・系ファイルから作った組合せは元のファイルに上書きしない（保存でプロジェクトの書き先を選ばせる）
             let from_zmx = v.is_some_and(|v| v["zmx"] == json!(true));
             self.loc.doc_path = (!from_zmx).then(|| p.to_path_buf());
             self.loc.doc_from = from_zmx.then(|| p.to_path_buf());

@@ -971,3 +971,18 @@ fn the_expansion_maps_each_surface_to_its_blocks() {
     assert!(u.flipped, "{:?}", u.spans);
     assert!(!s.units.iter().find(|u| u.name == "G").unwrap().flipped);
 }
+
+/// 復路の面の並び（空気中）に理想レンズを置ける。往路と復路で同じ焦点距離の理想レンズを 2 回通る
+#[test]
+fn a_paraxial_surface_works_on_the_return_path() {
+    let pl = r#"{"type": "surfaces", "surfaces": [{"row": {"t": 10, "action": {"paraxial": {"f": 50}}}}]}"#;
+    let s = project(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {pl}, {{"type": "air", "t": 30}}, {{"type": "mirror", "back": true}}]"#
+    ));
+    let par: Vec<usize> = (0..s.surfaces.len())
+        .filter(|&j| s.surfaces[j].typ == lensbench_core::surface::SurfType::Paraxial)
+        .collect();
+    assert_eq!(par.len(), 2, "往路と復路の 1 つずつ");
+    let (a, b) = (&s.surfaces[par[0]], &s.surfaces[par[1]]);
+    assert_eq!((a.focal, b.focal), (50.0, 50.0));
+}

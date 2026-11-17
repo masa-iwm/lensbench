@@ -2151,3 +2151,4 @@ a loop of imports: {}	インポートが循環しています: {}
 this surface can't be written as a row	この面は行で書けません
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
 row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）
+image: stop, object, t, medium and coordinate_break can't be written	image には stop・object・t・medium・coordinate_break を書けません

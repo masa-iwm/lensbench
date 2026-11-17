@@ -313,12 +313,9 @@ fn zmx_files_become_combos() {
     // A0 の GLRS 8 は要素の面で持つ（前に要素を足しても同じ面）。分けた A0 では像の前のダミー面
     let c = Combo::from_zmx(Path::new("../../tests/refs/A0/system.zmx"), &gd, &[]).unwrap();
     assert_eq!(c.extra.glrs, Some(json!({ "block": "S2", "surface": 0 })));
-    assert!(
-        no.iter()
-            .all(|e| e.starts_with("C0") || e.starts_with("C1")),
-        "{no:?}"
-    );
-    for n in ["A0", "A6", "F2"] {
+    // 像面を傾けた C0・C1 もプロジェクトの像面で書けるので、どの .zmx も組合せになる
+    assert!(no.is_empty(), "{no:?}");
+    for n in ["A0", "A6", "F2", "C0"] {
         assert!(ok.iter().chain(&split).any(|x| x == n), "{n}: {no:?}");
     }
 }

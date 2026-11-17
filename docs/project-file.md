@@ -55,6 +55,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `[VDX, VDY, VCX, VCY, VAN]`（VAN は度、省略した視野は 0。.zmx の VDXN〜VANN と同じ）。
 - 大域座標の基準の面（.zmx の GLRS、書き出し・3D の座標の原点）は `"glrs"`。ブロックの面 `{"block": "L1", "surface": 0}`（数え方は
   `surface_edits` と同じ）か、展開したシステムの面の番号か名前。省略で面 1
+- 像面の形・傾きは `"image"`（省略は平面で傾きなし）。面の並びの `row` と同じシステムファイル（版 2）の面の行で、
+  `shape`（曲がった像面など）・`before`（像面の傾き偏心）・`aperture` などを書く。`t`・`medium`・`stop`・`coordinate_break` は書けない。
+  GUI が像面を傾けた .zmx を組合せで開くときもこれで書く。
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - クリア半径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。

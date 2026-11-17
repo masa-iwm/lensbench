@@ -832,6 +832,10 @@ pub struct Project {
     /// 温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし
     #[serde(default, skip_serializing_if = "Environment::is_default")]
     pub environment: Environment,
+    /// 像面（省略は平面で傾きなし）。システムファイル（版 2）の面の行で、形・面の前の傾き偏心・開口などを書く。
+    /// 厚さ・媒質・絞りの印は書けない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<Box<crate::sysfile_v2::Row>>,
     /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gui: Option<Value>,

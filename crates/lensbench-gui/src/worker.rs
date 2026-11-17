@@ -19,6 +19,9 @@ use serde_json::Value;
 
 pub use lensbench_engine::Arrays;
 
+mod doc_peek;
+use doc_peek::doc_peek;
+
 /// 要求の目的（結果をどこに入れるか）。u64 はパネルの番号
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tag {
@@ -385,87 +388,6 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
         "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())).map_err(Into::into),
         _ => Err(format!("{m} is not available for drafts").into()),
     }
-}
-
-/// 下書きの Worker の `doc_peek` {file}: プロジェクトの .json の `gui`（組合せ・パネルの設定）と、ブロックで
-/// 書いたか（`blocks`）。組合せを同梱していないブロックのプロジェクトで、組合せで同じ系を書ければその組合せ（`combo`）
-fn doc_peek(p: &Value) -> Result<Value, String> {
-    let f = p["file"].as_str().ok_or("doc_peek needs file")?;
-    // .zmx は組合せで同じ系を書ければ組合せにする（文書モデル 2 段目）。書けなければ今までどおり系として開く
-    if !lensbench_project::open::is_json(std::path::Path::new(f)) {
-        let list = |k: &str| -> Vec<std::path::PathBuf> {
-            p[k].as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(Into::into)
-                .collect()
-        };
-        let mut out = serde_json::json!({ "gui": Value::Null, "blocks": false, "zmx": true });
-        match crate::combo::Combo::from_zmx(
-            std::path::Path::new(f),
-            &list("glass_dirs"),
-            &list("lens_catalogs"),
-        ) {
-            Ok(c) => out["combo"] = serde_json::to_value(c).map_err(|e| e.to_string())?,
-            Err(e) => out["why"] = Value::from(e),
-        }
-        return Ok(out);
-    }
-    let b = lensbench_core::vfs::read(f).map_err(|e| format!("{f}: {e}"))?;
-    let v: Value = serde_json::from_slice(&b).map_err(|e| format!("{f}: {e}"))?;
-    let mut out = serde_json::json!({
-        "gui": v.get("gui").cloned().unwrap_or(Value::Null),
-        "blocks": v.get("blocks").is_some(),
-    });
-    // ブロックのプロジェクトは、組合せで書ければ組合せにする（文書モデル 1 段目・4 段目。ブロックが元）
-    if v.get("blocks").is_some() {
-        let abs = crate::combo_from::absolute(std::path::Path::new(f));
-        let base = abs.parent().unwrap_or(std::path::Path::new(""));
-        if let Ok(c) = crate::combo::Combo::from_project(&v, base) {
-            out["combo"] = serde_json::to_value(c).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(out)
-}
-
-#[test]
-fn doc_peek_reads_gui_and_blocks() {
-    let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui-doc-peek");
-    lensbench_core::vfs::create_dir_all(&dir).unwrap();
-    let f = dir.join("p.json");
-    lensbench_core::vfs::write(&f, r#"{"blocks": [], "gui": {"view": {"state": "x"}}}"#).unwrap();
-    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
-    assert_eq!(
-        v,
-        serde_json::json!({ "gui": { "view": { "state": "x" } }, "blocks": true })
-    );
-    // ブロックのプロジェクト: 組合せで書ければ combo
-    let ex = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects");
-    let peek = |n: &str| {
-        let f = ex.join(n).display().to_string();
-        doc_peek(&serde_json::json!({ "file": f })).unwrap()
-    };
-    assert_eq!(
-        peek("P8_catalog_two.json")["combo"]["picks"][0]["part"],
-        "PCX-100"
-    );
-    // 組合せで書けない（入れ子の群）なら combo は無い
-    lensbench_core::vfs::write(&f, r#"{"wavelengths": [{"um": 0.55}], "aperture": {"type": "epd", "value": 2},
-        "blocks": [{"type": "group", "id": "A", "blocks": [{"type": "group", "id": "B", "blocks": [
-            {"type": "lens", "stop": true, "source": {"surfaces": [{"radius": 20, "t": 3, "glass": "N-BK7"}, {"radius": -20}]}}]}]},
-            {"type": "air", "t": 9}]}"#)
-    .unwrap();
-    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
-    assert!(v.get("combo").is_none());
-    lensbench_core::vfs::write(&f, r#"{"surfaces": []}"#).unwrap();
-    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
-    assert_eq!(v, serde_json::json!({ "gui": null, "blocks": false }));
-    assert!(
-        doc_peek(&serde_json::json!({ "file": dir.join("none.json").display().to_string() }))
-            .is_err()
-    );
-    lensbench_core::vfs::remove_file(&f).ok();
 }
 
 /// `folders` {glass_dirs, lens_dirs}: {agf: ガラスのフォルダの AGF の名前, missing: 見つからないフォルダ}

@@ -51,6 +51,7 @@
   Rust は `Project::surface_edits`・`surface_ops` をやめ、`Block::faces()`・`ZmxGroup::faces`（`FaceMods`）、`SurfaceEdit` から `block` を外した。
 - 面の並び・自作の玉の面に `row`（システムファイル版 2 の面の行）を書けるようにした。Zernike・Grid Sag・Irregular・Tilted・Binary 2・
   理想レンズ・GRIN の媒質・無視する面なども、プロジェクトのブロックで書ける。GUI は鏡・座標ブレークの無い .zmx を、これで要素に分けて開く。
+- プロジェクトに像面の `image`（版 2 の面の行: 曲がった像面・傾き偏心など）を足した。像面を傾けた .zmx も組合せで開ける。
 
 ### 名前・設定の書き方
 - ズーム軌跡（CLI `zoom`・serve `zoom`・Python `zoom`）の目標の満たし方の既定を拡大ラグランジュ法 `lagrange` にした（IOO-27、前は `penalty`）。

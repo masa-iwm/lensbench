@@ -90,6 +90,15 @@ pub fn zmx_project(s: &System, path: &str) -> lensbench_core::Result<Value> {
             "adjust_index": s.adjust_index,
         });
     }
+    // 像面の形・傾き（平面で傾きなしなら書かない。半直径は描画にだけ使うので書かない）
+    if let Some(img) = s.surfaces.last().filter(|_| image > 0) {
+        let mut r = crate::sysfile_v2::write::surface_row(img, false)?;
+        r.semi = None;
+        r.stop = false;
+        if r != crate::sysfile_v2::Row::default() {
+            p["image"] = serde_json::to_value(&r).map_err(|e| e.to_string())?;
+        }
+    }
     // 書いた形を読めるか（知らないキー・型の違いがないか）
     Project::from_json(&p.to_string())?;
     Ok(p)
