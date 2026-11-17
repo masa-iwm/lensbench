@@ -177,8 +177,9 @@ def test_interference_over_serve(tmp_path):
         f = lb.interference(n=16)
         assert f["nx"] == 16 and f["pv_waves"] > 0 and f["notes"] == []
         lb.set({"1.t": 100.5})  # 構成 1 だけの値
-        f = lb.interference(n=16)
-        assert len(f["notes"]) == 1
+        # 構成 2 は読み込んだ系の多重構成の表から作るので、当て直しの注意は出ない（CLI-21）
+        g = lb.interference(n=16)
+        assert g["notes"] == [] and g["pv_waves"] != f["pv_waves"]
 
 
 @pytest.mark.parametrize("pipe", [False, True])

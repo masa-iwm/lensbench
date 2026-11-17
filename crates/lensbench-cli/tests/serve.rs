@@ -1395,7 +1395,11 @@ fn project_states_come_from_the_loaded_file() {
         Path::new(ROOT).join("examples/projects/P6_states_focus_group.json"),
     )
     .unwrap()
-    .replace("../../tests/refs/A0/system.zmx", zmx.to_str().unwrap());
+    // JSON の文字列として入れる（Windows のパスの \ を逃がす）
+    .replace(
+        "\"../../tests/refs/A0/system.zmx\"",
+        &serde_json::to_string(zmx.to_str().unwrap()).unwrap(),
+    );
     let f = dir.join("p6.json");
     std::fs::write(&f, &txt).unwrap();
     let mut sv = Server::start(&[]);
