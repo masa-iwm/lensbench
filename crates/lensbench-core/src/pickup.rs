@@ -148,7 +148,7 @@ pub fn surf_parm(d: &Surface, i: u8) -> Option<f64> {
     match d.typ() {
         SurfType::Toroidal if i == 1 => Some(if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() }),
         t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
-            at(&d.asph, i - asph_parm_base(t).unwrap_or(1))
+            at(d.asph(), i - asph_parm_base(t).unwrap_or(1))
         }
         SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb()[i - 1]),
         SurfType::CoordBrk if i == 6 => Some(d.cb_order() as f64),
@@ -176,19 +176,15 @@ pub fn surf_parm(d: &Surface, i: u8) -> Option<f64> {
 /// 面タイプのパラメータ i を書く。値を持たない番号なら false
 pub(crate) fn set_surf_parm(d: &mut Surface, i: u8, v: f64) -> bool {
     let i = i as usize;
-    let put = |a: &mut Vec<f64>, j: usize, n: usize| {
-        if a.len() < n {
-            a.resize(n, 0.0);
-        }
-        a[j] = v;
-    };
     let t = d.typ();
     if let Some(b) = asph_parm_base(t).filter(|b| (*b..=8).contains(&i)) {
-        put(&mut d.asph, i - b, 9 - b);
-        return true;
+        if let Some(a) = d.asph_mut().filter(|a| a.len() < 9 - b) {
+            a.resize(9 - b, 0.0);
+        }
+        return d.set_asph_at(i - b, v);
     }
     match (&mut d.form, i) {
-        (Form::Toroidal { cx }, 1) => *cx = if v == 0.0 { 0.0 } else { 1.0 / v },
+        (Form::Toroidal { cx, .. }, 1) => *cx = if v == 0.0 { 0.0 } else { 1.0 / v },
         (Form::CoordBrk { cb, .. }, 1..=5) => cb[i - 1] = v,
         (Form::CoordBrk { order, .. }, 6) => *order = v as u8,
         (Form::Paraxial { focal, .. }, 1) => *focal = v,
@@ -560,21 +556,23 @@ mod tests {
         ] {
             let mut d = Surface {
                 form: crate::form::Form::of(typ),
-                asph: vec![0.1, 0.2, 0.3],
                 ..Default::default()
             };
+            d.set_asph(vec![0.1, 0.2, 0.3]);
             assert!(takes_asph(&d), "{typ:?}");
             let w = pick_kind(&d, Kind::Asph(1)).unwrap();
             assert_eq!(w, Kind::Parm(base + 1), "{typ:?}");
             assert_eq!(kind_of_pick(&d, w), Some(Kind::Asph(1)), "{typ:?}");
             assert_eq!(pick_get(&d, w), Some(0.2), "{typ:?}");
             assert!(pick_set(&mut d, w, 0.5));
-            assert_eq!(d.asph[1], 0.5);
+            assert_eq!(d.asph()[1], 0.5);
         }
         // トロイダル: PARM 1 は回転半径、係数は PARM 2 から。a2 などのパラメータは持たない
         let d = Surface {
-            form: crate::form::Form::Toroidal { cx: 0.02 },
-            asph: vec![0.1, 0.2],
+            form: crate::form::Form::Toroidal {
+                cx: 0.02,
+                asph: vec![0.1, 0.2],
+            },
             ..Default::default()
         };
         assert_eq!(surf_parm(&d, 1), Some(50.0));
@@ -584,8 +582,7 @@ mod tests {
         assert_eq!(pick_kind(&d, Kind::Asph(0)), None);
         // フレネルは PARM 1〜8 が係数（パラメータ a2 は持たない）
         let d = Surface {
-            form: crate::form::Form::Fresnel,
-            asph: vec![0.4],
+            form: crate::form::Form::Fresnel { asph: vec![0.4] },
             ..Default::default()
         };
         assert_eq!(surf_parm(&d, 1), Some(0.4));

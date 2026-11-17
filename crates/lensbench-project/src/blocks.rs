@@ -367,7 +367,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn push(&mut self, mut s: Surface) {
         if self.parity < 0.0 {
             s.c = -s.c;
-            s.asph.iter_mut().for_each(|a| *a = -*a);
+            s.negate_asph();
             s.t = -s.t;
         }
         if s.stop {
@@ -463,7 +463,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             let mut s = s.clone();
             if sign < 0.0 {
                 s.c = -s.c;
-                s.asph.iter_mut().for_each(|a| *a = -*a);
+                s.negate_asph();
                 s.t = -s.t;
             }
             if s.is_mirror() {

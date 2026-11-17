@@ -520,7 +520,7 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
         asph: if matches!(f.typ(), SurfType::Standard | SurfType::Jones) {
             Vec::new()
         } else {
-            f.asph.clone()
+            f.asph().to_vec()
         },
         shape,
         radius_x: (f.cx() != 0.0).then(|| 1.0 / f.cx()),

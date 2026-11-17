@@ -199,7 +199,7 @@ fn apertures_and_toroidal_match_scalar() {
     let d = &mut rx.surfaces[1];
     d.set_type(SurfType::Toroidal);
     *d.cx_mut().unwrap() = d.c * 0.7;
-    d.asph = vec![1e-5, -2e-7];
+    d.set_asph(vec![1e-5, -2e-7]);
     let s = rx.build_raw().unwrap();
     check("A0+トロイダル", &s, &px, &py);
 

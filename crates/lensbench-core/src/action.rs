@@ -106,7 +106,7 @@ impl Surface {
             SurfType::Fresnel => Action::Fresnel(FresnelBend::Radial {
                 c: self.c,
                 k: self.k,
-                a: &self.asph,
+                a: self.asph(),
             }),
             SurfType::CylFresnel => Action::Fresnel(FresnelBend::Cyl(self.cylf())),
             SurfType::CoordBrk => Action::Refract,

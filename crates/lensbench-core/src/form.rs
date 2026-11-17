@@ -1,8 +1,10 @@
 //! 面の種類と、種類ごとの値（[`Form`]）。
 //!
 //! 種類にしか意味の無い値（座標ブレークのずらし・理想レンズの焦点距離・Jones 行列・Zernike の項・格子・
-//! 屈折率分布・利用者定義の面など）は種類の枝の中に持つ。曲率・円錐係数・非球面の係数（`asph`）のように多くの
-//! 種類が共通に使う値は [`crate::Surface`] に残し、種類ごとの意味は形の見方 [`crate::Surface::shape`] で分ける。
+//! 屈折率分布・利用者定義の面、非球面の係数・Tilted の傾き・Irregular の値）は種類の枝の中に持つ。曲率・円錐係数の
+//! ように多くの種類が共通に使う値は [`crate::Surface`] に残し、種類ごとの意味は形の見方 [`crate::Surface::shape`] で
+//! 分ける。非球面の係数の並びは [`crate::Surface::asph`] で、どの種類でも同じ形で読み書きできる（Tilted・Irregular は
+//! 決まった数の値の並び）。
 //! 種類だけを比べるときは [`crate::Surface::typ`]（[`SurfType`]）
 
 use crate::freeform::{GridSag, ZernSag};
@@ -16,71 +18,66 @@ pub const JONES_IDENTITY: [f64; 8] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
 
 /// 面の種類と、種類ごとの値。組み込みの種類を足しても外のクレートが壊れないよう `non_exhaustive`
 ///
-/// serde では面の表の中に平たく（`typ` と、どの種類でも全部の値の欄。種類に無い値は既定）書く
+/// serde では面の表の中に平たく（`typ` と、どの種類でも全部の値の欄。種類に無い値は既定）書く。読むときは
+/// 種類に無い欄に既定でない値があれば誤り
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(into = "FormFlat", from = "FormFlat"))]
+#[cfg_attr(feature = "serde", serde(into = "FormFlat", try_from = "FormFlat"))]
 #[non_exhaustive]
 pub enum Form {
     #[default]
     Standard,
-    EvenAsph,
+    /// 偶数次非球面: 係数 r², r⁴, …
+    EvenAsph { asph: Vec<f64> },
     /// 座標ブレーク: [偏心 x, 偏心 y, 傾き x°, 傾き y°, 傾き z°] と順序（0 は偏心してから傾け、1 は逆）
-    CoordBrk {
-        cb: [f64; 5],
-        order: u8,
-    },
+    CoordBrk { cb: [f64; 5], order: u8 },
     /// Jones 面: 行列（実部・虚部の順に Jxx Jxy Jyx Jyy）
-    Jones {
-        jones: [f64; 8],
-    },
+    Jones { jones: [f64; 8] },
     /// 理想レンズ: 焦点距離 [mm] と OPD の扱い（.zmx の PARM 2）
-    Paraxial {
-        focal: f64,
-        opd_mode: i32,
-    },
-    /// トロイダル面: 回転の曲率（1 / 回転半径、0 は円柱面）
-    Toroidal {
-        cx: f64,
-    },
-    /// Zernike Standard Sag の項
+    Paraxial { focal: f64, opd_mode: i32 },
+    /// トロイダル面: 回転の曲率（1 / 回転半径、0 は円柱面）と YZ 面の曲線の係数 y², y⁴, …
+    Toroidal { cx: f64, asph: Vec<f64> },
+    /// Zernike Standard Sag: 土台の偶数次非球面の係数と Zernike の項
     ZernikeStd {
+        asph: Vec<f64>,
         zern: Option<Arc<ZernSag>>,
     },
-    /// Zernike Fringe Sag の項
+    /// Zernike Fringe Sag: 土台の偶数次非球面の係数と Zernike の項
     ZernikeFringe {
+        asph: Vec<f64>,
         zern: Option<Arc<ZernSag>>,
     },
-    /// Grid Sag の格子と、その .DAT のファイル名（書き出し用）、足す Zernike（Standard）の項
+    /// Grid Sag: 土台の偶数次非球面の係数、格子と、その .DAT のファイル名（書き出し用）、足す Zernike（Standard）の項
     GridSag {
+        asph: Vec<f64>,
         grid: Option<Arc<GridSag>>,
         grid_file: String,
         zern: Option<Arc<ZernSag>>,
     },
-    Fresnel,
-    /// Cylinder Fresnel の屈折の面
+    /// Fresnel: 屈折の傾きを決める偶数次非球面の係数
+    Fresnel { asph: Vec<f64> },
+    /// Cylinder Fresnel: 基板の係数（y だけ）と屈折の面
     CylFresnel {
+        asph: Vec<f64>,
         cylf: Option<Arc<CylFresnel>>,
     },
-    /// Binary 2 の位相
+    /// Binary 2: 形の偶数次非球面の係数と位相
     Binary2 {
+        asph: Vec<f64>,
         bin2: Option<Arc<Binary2>>,
     },
     /// Gradium: 面の後ろの屈折率分布（`n` は頂点の屈折率）
-    Gradium {
-        grin: Option<Arc<Grin>>,
-    },
+    Gradium { grin: Option<Arc<Grin>> },
     /// Gradient 9: 面の後ろの屈折率分布
-    Gradient9 {
-        grin: Option<Arc<Grin>>,
-    },
-    OddAsph,
-    TiltSurf,
-    Irregular,
+    Gradient9 { grin: Option<Arc<Grin>> },
+    /// Odd Asphere: β_1..β_8（Σ β_i r^i）
+    OddAsph { asph: Vec<f64> },
+    /// Tilted: [tan α, tan β]（z = x tan α + y tan β）
+    TiltSurf { tan: [f64; 2] },
+    /// Irregular: [偏心 x, 偏心 y, 傾き x°, 傾き y°, Zs, Za, Zc, 角度°]（[`crate::shape::Irregular`]）
+    Irregular { p: [f64; 8] },
     /// 利用者定義の面のモデルと設定
-    User {
-        user: Option<UserSurf>,
-    },
+    User { user: Option<UserSurf> },
 }
 
 impl Form {
@@ -88,7 +85,7 @@ impl Form {
     pub fn of(t: SurfType) -> Form {
         match t {
             SurfType::Standard => Form::Standard,
-            SurfType::EvenAsph => Form::EvenAsph,
+            SurfType::EvenAsph => Form::EvenAsph { asph: Vec::new() },
             SurfType::CoordBrk => Form::CoordBrk {
                 cb: [0.0; 5],
                 order: 0,
@@ -100,22 +97,38 @@ impl Form {
                 focal: 0.0,
                 opd_mode: 0,
             },
-            SurfType::Toroidal => Form::Toroidal { cx: 0.0 },
-            SurfType::ZernikeStd => Form::ZernikeStd { zern: None },
-            SurfType::ZernikeFringe => Form::ZernikeFringe { zern: None },
+            SurfType::Toroidal => Form::Toroidal {
+                cx: 0.0,
+                asph: Vec::new(),
+            },
+            SurfType::ZernikeStd => Form::ZernikeStd {
+                asph: Vec::new(),
+                zern: None,
+            },
+            SurfType::ZernikeFringe => Form::ZernikeFringe {
+                asph: Vec::new(),
+                zern: None,
+            },
             SurfType::GridSag => Form::GridSag {
+                asph: Vec::new(),
                 grid: None,
                 grid_file: String::new(),
                 zern: None,
             },
-            SurfType::Fresnel => Form::Fresnel,
-            SurfType::CylFresnel => Form::CylFresnel { cylf: None },
-            SurfType::Binary2 => Form::Binary2 { bin2: None },
+            SurfType::Fresnel => Form::Fresnel { asph: Vec::new() },
+            SurfType::CylFresnel => Form::CylFresnel {
+                asph: Vec::new(),
+                cylf: None,
+            },
+            SurfType::Binary2 => Form::Binary2 {
+                asph: Vec::new(),
+                bin2: None,
+            },
             SurfType::Gradium => Form::Gradium { grin: None },
             SurfType::Gradient9 => Form::Gradient9 { grin: None },
-            SurfType::OddAsph => Form::OddAsph,
-            SurfType::TiltSurf => Form::TiltSurf,
-            SurfType::Irregular => Form::Irregular,
+            SurfType::OddAsph => Form::OddAsph { asph: Vec::new() },
+            SurfType::TiltSurf => Form::TiltSurf { tan: [0.0; 2] },
+            SurfType::Irregular => Form::Irregular { p: [0.0; 8] },
             SurfType::User => Form::User { user: None },
         }
     }
@@ -124,7 +137,7 @@ impl Form {
     pub fn typ(&self) -> SurfType {
         match self {
             Form::Standard => SurfType::Standard,
-            Form::EvenAsph => SurfType::EvenAsph,
+            Form::EvenAsph { .. } => SurfType::EvenAsph,
             Form::CoordBrk { .. } => SurfType::CoordBrk,
             Form::Jones { .. } => SurfType::Jones,
             Form::Paraxial { .. } => SurfType::Paraxial,
@@ -132,14 +145,14 @@ impl Form {
             Form::ZernikeStd { .. } => SurfType::ZernikeStd,
             Form::ZernikeFringe { .. } => SurfType::ZernikeFringe,
             Form::GridSag { .. } => SurfType::GridSag,
-            Form::Fresnel => SurfType::Fresnel,
+            Form::Fresnel { .. } => SurfType::Fresnel,
             Form::CylFresnel { .. } => SurfType::CylFresnel,
             Form::Binary2 { .. } => SurfType::Binary2,
             Form::Gradium { .. } => SurfType::Gradium,
             Form::Gradient9 { .. } => SurfType::Gradient9,
-            Form::OddAsph => SurfType::OddAsph,
-            Form::TiltSurf => SurfType::TiltSurf,
-            Form::Irregular => SurfType::Irregular,
+            Form::OddAsph { .. } => SurfType::OddAsph,
+            Form::TiltSurf { .. } => SurfType::TiltSurf,
+            Form::Irregular { .. } => SurfType::Irregular,
             Form::User { .. } => SurfType::User,
         }
     }
@@ -151,15 +164,15 @@ impl Surface {
         self.form.typ()
     }
 
-    /// 種類を t に変える。同じ種類なら何もしない。持ち越せる値（Zernike の項・屈折率分布）は持ち越し、
-    /// ほかの種類ごとの値は既定に戻す
+    /// 種類を t に変える。同じ種類なら何もしない。持ち越せる値（Zernike の項・屈折率分布・非球面の係数の並び）は
+    /// 持ち越し（係数を持たない種類では捨てる）、ほかの種類ごとの値は既定に戻す
     pub fn set_type(&mut self, t: SurfType) {
         if self.typ() == t {
             return;
         }
         let zern = match &self.form {
-            Form::ZernikeStd { zern }
-            | Form::ZernikeFringe { zern }
+            Form::ZernikeStd { zern, .. }
+            | Form::ZernikeFringe { zern, .. }
             | Form::GridSag { zern, .. } => zern.clone(),
             _ => None,
         };
@@ -167,10 +180,12 @@ impl Surface {
             Form::Gradium { grin } | Form::Gradient9 { grin } => grin.clone(),
             _ => None,
         };
+        let asph = self.asph().to_vec();
         self.form = Form::of(t);
+        self.set_asph(asph);
         match &mut self.form {
-            Form::ZernikeStd { zern: z }
-            | Form::ZernikeFringe { zern: z }
+            Form::ZernikeStd { zern: z, .. }
+            | Form::ZernikeFringe { zern: z, .. }
             | Form::GridSag { zern: z, .. } => *z = zern,
             Form::Gradium { grin: g } | Form::Gradient9 { grin: g } => *g = grin,
             _ => {}
@@ -180,7 +195,7 @@ impl Surface {
     /// トロイダル面の回転の曲率（ほかの種類は 0）
     pub fn cx(&self) -> f64 {
         match self.form {
-            Form::Toroidal { cx } => cx,
+            Form::Toroidal { cx, .. } => cx,
             _ => 0.0,
         }
     }
@@ -188,8 +203,8 @@ impl Surface {
     /// Zernike の項（Zernike Sag・Grid Sag）
     pub fn zern(&self) -> Option<&ZernSag> {
         match &self.form {
-            Form::ZernikeStd { zern }
-            | Form::ZernikeFringe { zern }
+            Form::ZernikeStd { zern, .. }
+            | Form::ZernikeFringe { zern, .. }
             | Form::GridSag { zern, .. } => zern.as_deref(),
             _ => None,
         }
@@ -198,8 +213,8 @@ impl Surface {
     /// Zernike の項の置き場（Zernike Sag・Grid Sag の面だけ）
     pub fn zern_mut(&mut self) -> Option<&mut Option<Arc<ZernSag>>> {
         match &mut self.form {
-            Form::ZernikeStd { zern }
-            | Form::ZernikeFringe { zern }
+            Form::ZernikeStd { zern, .. }
+            | Form::ZernikeFringe { zern, .. }
             | Form::GridSag { zern, .. } => Some(zern),
             _ => None,
         }
@@ -224,7 +239,7 @@ impl Surface {
     /// Binary 2 の位相
     pub fn bin2(&self) -> Option<&Binary2> {
         match &self.form {
-            Form::Binary2 { bin2 } => bin2.as_deref(),
+            Form::Binary2 { bin2, .. } => bin2.as_deref(),
             _ => None,
         }
     }
@@ -232,7 +247,7 @@ impl Surface {
     /// Cylinder Fresnel の屈折の面
     pub fn cylf(&self) -> Option<&CylFresnel> {
         match &self.form {
-            Form::CylFresnel { cylf } => cylf.as_deref(),
+            Form::CylFresnel { cylf, .. } => cylf.as_deref(),
             _ => None,
         }
     }
@@ -320,7 +335,7 @@ impl Surface {
     /// トロイダル面の回転の曲率の置き場（トロイダル面だけ）
     pub fn cx_mut(&mut self) -> Option<&mut f64> {
         match &mut self.form {
-            Form::Toroidal { cx } => Some(cx),
+            Form::Toroidal { cx, .. } => Some(cx),
             _ => None,
         }
     }
@@ -336,7 +351,7 @@ impl Surface {
     /// Binary 2 の位相の置き場（Binary 2 だけ）
     pub fn bin2_mut(&mut self) -> Option<&mut Option<Arc<Binary2>>> {
         match &mut self.form {
-            Form::Binary2 { bin2 } => Some(bin2),
+            Form::Binary2 { bin2, .. } => Some(bin2),
             _ => None,
         }
     }
@@ -344,7 +359,7 @@ impl Surface {
     /// Cylinder Fresnel の屈折の面の置き場（Cylinder Fresnel だけ）
     pub fn cylf_mut(&mut self) -> Option<&mut Option<Arc<CylFresnel>>> {
         match &mut self.form {
-            Form::CylFresnel { cylf } => Some(cylf),
+            Form::CylFresnel { cylf, .. } => Some(cylf),
             _ => None,
         }
     }
@@ -364,6 +379,95 @@ impl Surface {
             _ => None,
         }
     }
+
+    /// 非球面の係数の並び（偶数次非球面・トロイダル・Zernike・Grid Sag・Fresnel・Cylinder Fresnel・Binary 2 は
+    /// 偶数次の係数、Odd Asphere は β、Tilted は [tan α, tan β]、Irregular はその 8 つの値。ほかの種類は空）
+    pub fn asph(&self) -> &[f64] {
+        match &self.form {
+            Form::EvenAsph { asph }
+            | Form::Toroidal { asph, .. }
+            | Form::ZernikeStd { asph, .. }
+            | Form::ZernikeFringe { asph, .. }
+            | Form::GridSag { asph, .. }
+            | Form::Fresnel { asph }
+            | Form::CylFresnel { asph, .. }
+            | Form::Binary2 { asph, .. }
+            | Form::OddAsph { asph } => asph,
+            Form::TiltSurf { tan } => tan,
+            Form::Irregular { p } => p,
+            _ => &[],
+        }
+    }
+
+    /// 非球面の係数の並びの置き場（長さを変えられる種類だけ。Tilted・Irregular は [`Surface::asph_fixed_mut`]）
+    pub fn asph_mut(&mut self) -> Option<&mut Vec<f64>> {
+        match &mut self.form {
+            Form::EvenAsph { asph }
+            | Form::Toroidal { asph, .. }
+            | Form::ZernikeStd { asph, .. }
+            | Form::ZernikeFringe { asph, .. }
+            | Form::GridSag { asph, .. }
+            | Form::Fresnel { asph }
+            | Form::CylFresnel { asph, .. }
+            | Form::Binary2 { asph, .. }
+            | Form::OddAsph { asph } => Some(asph),
+            _ => None,
+        }
+    }
+
+    /// 非球面の係数の並びの値の符号を全部変える（面を z について裏返すとき。Tilted の tan も。Irregular は従来どおり
+    /// 8 つの値を全部変える）
+    pub fn negate_asph(&mut self) {
+        if let Some(a) = self.asph_mut() {
+            a.iter_mut().for_each(|a| *a = -*a);
+        } else if let Some(a) = self.asph_fixed_mut() {
+            a.iter_mut().for_each(|a| *a = -*a);
+        }
+    }
+
+    /// Tilted・Irregular の決まった数の値の置き場
+    pub fn asph_fixed_mut(&mut self) -> Option<&mut [f64]> {
+        match &mut self.form {
+            Form::TiltSurf { tan } => Some(tan),
+            Form::Irregular { p } => Some(p),
+            _ => None,
+        }
+    }
+
+    /// 非球面の係数の並びを v にする。Tilted・Irregular は先頭から決まった数だけ取り（足りなければ 0）、
+    /// 係数を持たない種類は何もしない。v のうち置けなかった値に 0 でないものがあれば false
+    pub fn set_asph(&mut self, v: Vec<f64>) -> bool {
+        if let Some(a) = self.asph_mut() {
+            *a = v;
+            return true;
+        }
+        let fixed = self.asph_fixed_mut();
+        let n = fixed.as_ref().map_or(0, |f| f.len());
+        if let Some(f) = fixed {
+            for (i, x) in f.iter_mut().enumerate() {
+                *x = v.get(i).copied().unwrap_or(0.0);
+            }
+        }
+        v.iter().skip(n).all(|&x| x == 0.0)
+    }
+
+    /// 非球面の係数 i を x にする（長さを変えられる種類は足りなければ 0 で伸ばす）。置けなければ false
+    pub fn set_asph_at(&mut self, i: usize, x: f64) -> bool {
+        if let Some(a) = self.asph_mut() {
+            if a.len() <= i {
+                a.resize(i + 1, 0.0);
+            }
+            a[i] = x;
+            return true;
+        }
+        match self.asph_fixed_mut().and_then(|f| f.get_mut(i)) {
+            Some(v) => {
+                *v = x;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// serde での [`Form`] の平たい形（面の表の中の `typ` と種類ごとの値の欄）
@@ -372,6 +476,7 @@ impl Surface {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 struct FormFlat {
     typ: SurfType,
+    asph: Vec<f64>,
     cx: f64,
     zern: Option<Arc<ZernSag>>,
     grid: Option<Arc<GridSag>>,
@@ -397,6 +502,7 @@ impl From<Form> for FormFlat {
         };
         FormFlat {
             typ: s.typ(),
+            asph: s.asph().to_vec(),
             cx: s.cx(),
             zern: s.zern_mut().and_then(|z| z.take()),
             grid: s.grid_mut().and_then(|g| g.take()),
@@ -415,34 +521,71 @@ impl From<Form> for FormFlat {
 }
 
 #[cfg(feature = "serde")]
-impl From<FormFlat> for Form {
-    /// 種類の枝を作り、その種類の値だけを取る（ほかの欄は捨てる）
-    fn from(v: FormFlat) -> Form {
-        match v.typ {
-            SurfType::CoordBrk => Form::CoordBrk {
-                cb: v.cb,
-                order: v.cb_order,
-            },
-            SurfType::Jones => Form::Jones { jones: v.jones },
-            SurfType::Paraxial => Form::Paraxial {
-                focal: v.focal,
-                opd_mode: v.opd_mode,
-            },
-            SurfType::Toroidal => Form::Toroidal { cx: v.cx },
-            SurfType::ZernikeStd => Form::ZernikeStd { zern: v.zern },
-            SurfType::ZernikeFringe => Form::ZernikeFringe { zern: v.zern },
-            SurfType::GridSag => Form::GridSag {
-                grid: v.grid,
-                grid_file: v.grid_file,
-                zern: v.zern,
-            },
-            SurfType::CylFresnel => Form::CylFresnel { cylf: v.cylf },
-            SurfType::Binary2 => Form::Binary2 { bin2: v.bin2 },
-            SurfType::Gradium => Form::Gradium { grin: v.grin },
-            SurfType::Gradient9 => Form::Gradient9 { grin: v.grin },
-            SurfType::User => Form::User { user: v.user },
-            t => Form::of(t),
+impl TryFrom<FormFlat> for Form {
+    type Error = String;
+
+    /// 種類の枝を作り、その種類の値を取る。種類に無い欄に既定でない値があれば誤り
+    fn try_from(v: FormFlat) -> Result<Form, String> {
+        let typ = v.typ;
+        let mut s = Surface {
+            form: Form::of(typ),
+            ..Default::default()
+        };
+        let mut unused = Vec::new();
+        if !s.set_asph(v.asph) {
+            unused.push("asph");
         }
+        macro_rules! put {
+            ($name:literal, $slot:expr, $val:expr, $default:expr) => {
+                match $slot {
+                    Some(x) => *x = $val,
+                    None if $val != $default => unused.push($name),
+                    None => {}
+                }
+            };
+        }
+        put!("cx", s.cx_mut(), v.cx, 0.0);
+        put!("zern", s.zern_mut(), v.zern, None);
+        put!("grid", s.grid_mut(), v.grid, None);
+        put!("bin2", s.bin2_mut(), v.bin2, None);
+        put!("cylf", s.cylf_mut(), v.cylf, None);
+        put!("grin", s.grin_mut(), v.grin, None);
+        put!("jones", s.jones_mut(), v.jones, JONES_IDENTITY);
+        put!("user", s.user_mut(), v.user, None);
+        match &mut s.form {
+            Form::GridSag { grid_file, .. } => *grid_file = v.grid_file,
+            _ if !v.grid_file.is_empty() => unused.push("grid_file"),
+            _ => {}
+        }
+        match s.cb_mut() {
+            Some((cb, order)) => (*cb, *order) = (v.cb, v.cb_order),
+            None => {
+                if v.cb != [0.0; 5] {
+                    unused.push("cb");
+                }
+                if v.cb_order != 0 {
+                    unused.push("cb_order");
+                }
+            }
+        }
+        match s.paraxial_mut() {
+            Some((focal, mode)) => (*focal, *mode) = (v.focal, v.opd_mode),
+            None => {
+                if v.focal != 0.0 {
+                    unused.push("focal");
+                }
+                if v.opd_mode != 0 {
+                    unused.push("opd_mode");
+                }
+            }
+        }
+        if !unused.is_empty() {
+            let names = unused.join(", ");
+            return Err(format!(
+                "{names} not used by a {typ:?} surface (remove the values or change typ)"
+            ));
+        }
+        Ok(s.form)
     }
 }
 

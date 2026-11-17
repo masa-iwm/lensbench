@@ -496,7 +496,7 @@ impl System {
                 }
             }
             Kind::Conic => d.k,
-            Kind::Asph(i) => d.asph.get(i as usize).copied().unwrap_or(0.0),
+            Kind::Asph(i) => d.asph().get(i as usize).copied().unwrap_or(0.0),
             Kind::Zern(n) => d
                 .zern()
                 .as_ref()
@@ -781,10 +781,10 @@ impl System {
                 Kind::Conic => d.k = v,
                 Kind::Asph(i) => {
                     let i = i as usize;
-                    if d.asph.len() <= i {
-                        d.asph.resize(8, 0.0);
+                    if let Some(a) = d.asph_mut().filter(|a| a.len() <= i) {
+                        a.resize(8, 0.0);
                     }
-                    d.asph[i] = v;
+                    d.set_asph_at(i, v);
                 }
                 Kind::Zern(n) => {
                     let z = std::sync::Arc::make_mut(

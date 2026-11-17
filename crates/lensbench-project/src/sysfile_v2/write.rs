@@ -102,7 +102,7 @@ fn tilt(t: &cs::Tilt) -> Tilt {
 
 /// asph の i 番目（無ければ 0）
 fn p(d: &Surface, i: usize) -> f64 {
-    d.asph.get(i).copied().unwrap_or(0.0)
+    d.asph().get(i).copied().unwrap_or(0.0)
 }
 
 fn row(s: &System, j: usize) -> Result<Row, String> {
@@ -184,7 +184,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::EvenAsphere {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
             }),
             plain_action()?,
         ),
@@ -192,7 +192,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::Toroid {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
                 cx: d.cx(),
             }),
             plain_action()?,
@@ -201,7 +201,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             let z = ZernikeShape {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
                 terms: d.zern().cloned(),
             };
             (
@@ -217,7 +217,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::GridSag {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
                 terms: d.zern().cloned(),
                 grid: d.grid().cloned(),
                 grid_file: d.grid_file().to_string(),
@@ -228,7 +228,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::OddAsphere {
                 c,
                 k,
-                b: d.asph.clone(),
+                b: d.asph().to_vec(),
             }),
             plain_action()?,
         ),
@@ -257,7 +257,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::EvenAsphere {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
             }),
             own_action(Action::Binary2 {
                 phase: d.bin2().cloned(),
@@ -269,7 +269,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             own_action(Action::Fresnel {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
                 mirror,
             })?,
         ),
@@ -277,7 +277,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             Some(Shape::Cylinder {
                 c,
                 k,
-                a: d.asph.clone(),
+                a: d.asph().to_vec(),
             }),
             own_action(Action::CylinderFresnel {
                 bend: d.cylf().cloned(),

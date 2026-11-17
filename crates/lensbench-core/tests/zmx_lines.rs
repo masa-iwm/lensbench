@@ -435,7 +435,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
                 a.t,
                 b.t
             );
-            for (x, y) in a.asph.iter().zip(&b.asph) {
+            for (x, y) in a.asph().iter().zip(b.asph()) {
                 assert!(close(*x, *y), "{unit}: asph {x} {y}");
             }
         }

@@ -467,8 +467,8 @@ fn fresnel_and_binary_faces() {
         let z = dot(sub(b.point(x, y), b.frame.o), b.axis());
         let want = match name {
             "F1" => 0.0,
-            "C2" => lensbench_core::trace::sag(d.c, d.k, &d.asph, y * y).0,
-            _ => lensbench_core::trace::sag(d.c, d.k, &d.asph, x * x + y * y).0,
+            "C2" => lensbench_core::trace::sag(d.c, d.k, d.asph(), y * y).0,
+            _ => lensbench_core::trace::sag(d.c, d.k, d.asph(), x * x + y * y).0,
         };
         assert!((z - want).abs() < 1e-12, "{name}: {z} {want}");
         assert_eq!(b.toroidal, name == "C2", "{name}");

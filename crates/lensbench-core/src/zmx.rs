@@ -1243,6 +1243,7 @@ pub fn build(
                     .map(|j| s.xdat.get(&(j + 3)).copied().unwrap_or(0.0))
                     .collect();
                 d.form = Form::Binary2 {
+                    asph: Vec::new(),
                     bin2: Some(std::sync::Arc::new(crate::surface::Binary2 {
                         order: p(0),
                         norm,
@@ -1283,6 +1284,7 @@ pub fn build(
                     .map(|j| s.xdat.get(&(j + 4)).copied().unwrap_or(0.0))
                     .collect();
                 d.form = Form::CylFresnel {
+                    asph: Vec::new(),
                     cylf: Some(std::sync::Arc::new(crate::surface::CylFresnel {
                         c: s.xdat.get(&2).copied().unwrap_or(0.0),
                         k: s.xdat.get(&3).copied().unwrap_or(0.0),
@@ -1317,14 +1319,15 @@ pub fn build(
                 SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2
             ) || crate::freeform::is_freeform(typ)
             {
-                d.asph = (1..=8).map(p).collect();
+                // Tilted・Irregular は先頭の決まった数だけ（.zmx の残りのパラメータは使わない）
+                d.set_asph((1..=8).map(p).collect());
             } else if typ == SurfType::Toroidal {
                 // パラメータ 1 は回転半径（0 は無限 = 円柱面）、2〜8 は y^2〜y^14 の係数
                 let r = p(1);
                 d.form = Form::Toroidal {
                     cx: if r == 0.0 { 0.0 } else { 1.0 / r },
+                    asph: (2..=8).map(p).collect(),
                 };
-                d.asph = (2..=8).map(p).collect();
                 let nz = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nz != 0.0 {
                     notimpl!("surface {k}: Zernike terms on a toroidal surface ({nz} terms)");
@@ -2044,6 +2047,7 @@ fn freeform_surface(
         }));
         let zern = d.zern_mut().and_then(|z| z.take());
         d.form = Form::GridSag {
+            asph: d.asph().to_vec(),
             grid,
             grid_file: s.fimp.clone().unwrap_or_default(),
             zern,

@@ -128,7 +128,7 @@ fn data_fields_are_applied() {
     )
     .unwrap();
     let j = s.surfaces.iter().position(|d| d.mat == "N-BK7").unwrap();
-    assert_eq!(s.surfaces[j].asph, vec![0.0, 1e-5]);
+    assert_eq!(s.surfaces[j].asph(), vec![0.0, 1e-5]);
     assert!(matches!(
         s.surfaces[j].ap,
         lensbench_core::surface::Aperture::Circular { max, .. } if max == 6.0

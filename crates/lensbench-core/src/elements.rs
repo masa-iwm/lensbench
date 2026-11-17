@@ -224,7 +224,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
         if let Some(cx) = s.cx_mut() {
             *cx = -*cx;
         }
-        s.asph.iter_mut().for_each(|a| *a = -*a);
+        s.negate_asph();
         if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
         }

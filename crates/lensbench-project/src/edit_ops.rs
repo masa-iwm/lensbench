@@ -37,7 +37,7 @@ use lensbench_core::param::Kind;
 use lensbench_core::pickup::pick_kind_parse;
 use lensbench_core::pickup::Pickup;
 use lensbench_core::solves::Solve;
-use lensbench_core::surface::{Aperture, Surface};
+use lensbench_core::surface::{Aperture, SurfType, Surface};
 use lensbench_core::System;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -382,7 +382,14 @@ pub(crate) fn set_surface_data(
     j: usize,
     m: &Map<String, Value>,
 ) -> lensbench_core::Result<()> {
-    let cur = t.surfaces[j].clone();
+    let mut cur = t.surfaces[j].clone();
+    // 種類を変えるときは、書いていない種類ごとの値を新しい種類に合わせる（持ち越せない値は既定に）
+    if let Some(typ) = m
+        .get("typ")
+        .and_then(|v| serde_json::from_value::<SurfType>(v.clone()).ok())
+    {
+        cur.set_type(typ);
+    }
     let c = ciborium::value::Value::serialized(&cur)
         .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = crate::sysfile::to_json(c)?;

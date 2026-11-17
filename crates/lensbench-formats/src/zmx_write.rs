@@ -337,7 +337,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             | SurfType::OddAsph
             | SurfType::TiltSurf
             | SurfType::Irregular => {
-                for (i, a) in d.asph.iter().enumerate() {
+                for (i, a) in d.asph().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
                 }
             }
@@ -347,7 +347,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     notimpl!("surface {k}: no Binary 2 phase");
                 };
                 w(&mut o, format!("  PARM 0 {}", f(b.order)));
-                for (i, a) in d.asph.iter().enumerate() {
+                for (i, a) in d.asph().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
                 }
                 w(&mut o, format!("  XDAT 1 {} 0 0 1 0 0 \"\"", b.coef.len()));
@@ -361,7 +361,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 let Some(cf) = &d.cylf() else {
                     notimpl!("surface {k}: no Cylinder Fresnel surface");
                 };
-                for (i, a) in d.asph.iter().enumerate() {
+                for (i, a) in d.asph().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
                 }
                 w(&mut o, format!("  XDAT 1 {} 0 0 1 0 0 \"\"", cf.coef.len()));
@@ -419,7 +419,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::Toroidal => {
                 let r = if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() };
                 w(&mut o, format!("  PARM 1 {}", f(r)));
-                for (i, a) in d.asph.iter().enumerate() {
+                for (i, a) in d.asph().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 2, f(*a)));
                 }
                 // Zernike の項の数 0、正規化半径
@@ -450,7 +450,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 if d.typ() == SurfType::GridSag && z.is_some_and(|z| !z.extrapolate) {
                     notimpl!("surface {k}: the Grid Sag Zernike terms can only be extrapolated");
                 }
-                if d.asph.len() > 8 {
+                if d.asph().len() > 8 {
                     notimpl!("surface {k}: terms of r^18 or higher");
                 }
                 w(&mut o, format!("  PARM 0 {}", f(p0)));
@@ -460,7 +460,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                         format!(
                             "  PARM {} {}",
                             i + 1,
-                            f(d.asph.get(i).copied().unwrap_or(0.0))
+                            f(d.asph().get(i).copied().unwrap_or(0.0))
                         ),
                     );
                 }

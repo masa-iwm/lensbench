@@ -59,7 +59,7 @@ pub(crate) fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
             if let Some(cx) = s.cx_mut() {
                 *cx = -*cx;
             }
-            s.asph.iter_mut().for_each(|a| *a = -*a);
+            s.negate_asph();
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;
             s
@@ -118,17 +118,23 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     }
     let mut s = Surface {
         form: match q.shape {
-            SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => Form::EvenAsph,
+            SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => Form::EvenAsph {
+                asph: q.asph.clone(),
+            },
             SurfShape::Standard => Form::Standard,
-            SurfShape::OddAsph => Form::OddAsph,
+            SurfShape::OddAsph => Form::OddAsph {
+                asph: q.asph.clone(),
+            },
             SurfShape::Toroidal => Form::Toroidal {
                 cx: curv(q.radius_x),
+                asph: q.asph.clone(),
             },
-            SurfShape::Fresnel => Form::Fresnel,
+            SurfShape::Fresnel => Form::Fresnel {
+                asph: q.asph.clone(),
+            },
         },
         c: curv(q.radius),
         k: q.conic,
-        asph: q.asph.clone(),
         t: q.t,
         semi: q.semi.value(),
         semi_auto: q.semi.is_auto(),

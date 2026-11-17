@@ -178,8 +178,6 @@ pub struct Surface {
     pub semi_auto: bool,
     pub c: f64,
     pub k: f64,
-    /// 偶数次非球面の係数 r^2, r^4, …（トロイダル面では y^2, y^4, …）
-    pub asph: Vec<f64>,
     pub before: Option<Tilt>,
     pub after: After,
     pub ap: Aperture,
@@ -432,7 +430,6 @@ impl Default for Surface {
             semi_auto: false,
             c: 0.0,
             k: 0.0,
-            asph: Vec::new(),
             before: None,
             after: After::None,
             ap: Aperture::None,
@@ -452,6 +449,6 @@ impl Surface {
     }
 
     pub fn has_asph(&self) -> bool {
-        self.asph.iter().any(|&a| a != 0.0)
+        self.asph().iter().any(|&a| a != 0.0)
     }
 }

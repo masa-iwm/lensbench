@@ -825,7 +825,7 @@ fn flat_image(s: &System) -> bool {
     let d = &s.surfaces[s.image()];
     matches!(d.typ(), SurfType::Standard | SurfType::EvenAsph)
         && d.c == 0.0
-        && d.asph.iter().all(|&a| a == 0.0)
+        && d.asph().iter().all(|&a| a == 0.0)
 }
 
 fn supports_analytic(s: &System, k: &TermKind) -> bool {

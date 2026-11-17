@@ -93,7 +93,7 @@ impl System {
             let same_shape = e.typ() == d.typ()
                 && e.c == d.c
                 && e.k == d.k
-                && e.asph == d.asph
+                && e.asph() == d.asph()
                 && e.cx() == d.cx()
                 && d.zern().is_none()
                 && d.grid().is_none()

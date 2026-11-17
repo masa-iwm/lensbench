@@ -81,8 +81,8 @@ fn whole_zmx_keeps_pickups() {
         for j in 0..sa.surfaces.len() {
             let (x, y) = (&sa.surfaces[j], &zb.surfaces[j]);
             assert_eq!(
-                (x.c, x.k, x.t, &x.asph, x.cb()),
-                (y.c, y.k, y.t, &y.asph, y.cb()),
+                (x.c, x.k, x.t, x.asph(), x.cb()),
+                (y.c, y.k, y.t, y.asph(), y.cb()),
                 "面 {j}"
             );
         }

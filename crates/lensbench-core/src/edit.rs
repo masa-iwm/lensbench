@@ -406,7 +406,15 @@ impl System {
                         };
                     }
                     "k" => d.k = v.num(name)?,
-                    "asph" => d.asph = v.nums(name, None)?,
+                    "asph" => {
+                        let a = v.nums(name, None)?;
+                        if !d.set_asph(a) {
+                            invalid!(
+                                "surface {j} ({:?}) can't hold these asphere coefficients (asph)",
+                                d.typ()
+                            );
+                        }
+                    }
                     "cx" => {
                         let x = v.num(name)?;
                         match d.cx_mut() {
@@ -506,7 +514,7 @@ impl System {
             ("c", Num(d.c)),
             ("r", Num(if d.c == 0.0 { f64::INFINITY } else { 1.0 / d.c })),
             ("k", Num(d.k)),
-            ("asph", Nums(d.asph.clone())),
+            ("asph", Nums(d.asph().to_vec())),
             ("cx", Num(d.cx())),
             ("material", Text(d.mat.name())),
             ("mirror", Bool(d.is_mirror())),
@@ -894,7 +902,6 @@ fn set_type(d: &mut Surface, typ: SurfType) {
     if typ == SurfType::CoordBrk {
         d.c = 0.0;
         d.k = 0.0;
-        d.asph.clear();
         d.mat = Material::Air;
         d.before = None;
         d.after = After::None;
@@ -906,13 +913,6 @@ fn set_type(d: &mut Surface, typ: SurfType) {
     if typ == SurfType::Jones {
         d.c = 0.0;
         d.k = 0.0;
-        d.asph.clear();
-    }
-    if matches!(
-        typ,
-        SurfType::Standard | SurfType::CoordBrk | SurfType::Jones
-    ) {
-        d.asph.clear();
     }
 }
 

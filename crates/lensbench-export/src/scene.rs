@@ -234,7 +234,7 @@ impl Face {
                     sh,
                     Shape::EvenAsphere(_) | Shape::Toroid { .. } | Shape::Cylinder(_)
                 ) {
-                d.asph.clone()
+                d.asph().to_vec()
             } else {
                 Vec::new()
             },

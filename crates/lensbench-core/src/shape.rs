@@ -1,8 +1,8 @@
 //! 面の形（[`Shape`]）: 矢高と勾配、法線、交点の求め方、近軸の曲率。
 //!
-//! 形に依る計算はここに集める。[`Surface::shape`] は今の平たい [`Surface`] の値から形を借りて作る見方で、
-//! 面の種類ごとに `asph` などの値の意味（偶数次非球面の係数、Odd Asphere の β、Tilted の tan、Irregular の偏心・
-//! 傾き・Zernike 風の項）をここで分ける。面の働き（屈折・反射・理想レンズ・Jones など）は [`crate::action`]。
+//! 形に依る計算はここに集める。[`Surface::shape`] は面の値（[`crate::surface::Form`] の枝と曲率・円錐係数）から
+//! 形を借りて作る見方で、面の種類ごとの値の意味（偶数次非球面の係数、Odd Asphere の β、Tilted の tan、Irregular の
+//! 偏心・傾き・Zernike 風の項）をここで名前の付いた形にする。面の働き（屈折・反射・理想レンズ・Jones など）は [`crate::action`]。
 //! 形のパラメータによる矢高と勾配の微分（[`Shape::dsag`]・[`Shape::takes`]）は shape_param.rs。
 //!
 //! 追跡の内側（[`crate::batch`]）は面ごとに [`SurfKind`] を前計算し、回転対称の面は光線の組のまま、
@@ -115,16 +115,16 @@ impl Surface {
         let base = Base {
             c,
             k,
-            a: &self.asph,
+            a: self.asph(),
         };
-        let p = |i: usize| self.asph.get(i).copied().unwrap_or(0.0);
+        let p = |i: usize| self.asph().get(i).copied().unwrap_or(0.0);
         match self.typ() {
             SurfType::Standard | SurfType::Gradium => Shape::Conic { c, k },
             SurfType::EvenAsph | SurfType::Binary2 => Shape::EvenAsphere(base),
             SurfType::Toroidal => Shape::Toroid {
                 c,
                 k,
-                a: &self.asph,
+                a: self.asph(),
                 cx: self.cx(),
             },
             SurfType::ZernikeStd | SurfType::ZernikeFringe => Shape::Zernike {
@@ -139,7 +139,7 @@ impl Surface {
             SurfType::OddAsph => Shape::OddAsphere {
                 c,
                 k,
-                b: &self.asph,
+                b: self.asph(),
             },
             SurfType::TiltSurf => Shape::Tilted {
                 tan: [p(0), p(1)],
@@ -718,7 +718,7 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     let shape = d.shape();
     let action = d.action();
     let fresnel = matches!(action, Action::Fresnel(_));
-    let isect = shape.isect_kind(!d.asph.is_empty() || d.cx() != 0.0);
+    let isect = shape.isect_kind(!d.asph().is_empty() || d.cx() != 0.0);
     let norm = if fresnel {
         Norm::Fresnel
     } else if matches!(action, Action::Jones(_)) && d.c != 0.0 {

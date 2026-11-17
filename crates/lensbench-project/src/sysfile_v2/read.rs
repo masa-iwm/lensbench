@@ -222,21 +222,25 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
     }
     // 形
     let mut cyl = false;
+    // 円柱の形の係数（Cylinder Fresnel の働きの面が持つ）
+    let mut cyl_a = Vec::new();
     let shaped = r.shape.is_some();
     match r.shape {
         None => {}
         Some(Shape::Conic { c, k }) => (d.c, d.k) = (c, k),
         Some(Shape::EvenAsphere { c, k, a }) => {
             d.set_type(SurfType::EvenAsph);
-            (d.c, d.k, d.asph) = (c, k, a);
+            (d.c, d.k) = (c, k);
+            d.set_asph(a);
         }
         Some(Shape::OddAsphere { c, k, b }) => {
             d.set_type(SurfType::OddAsph);
-            (d.c, d.k, d.asph) = (c, k, b);
+            (d.c, d.k) = (c, k);
+            d.set_asph(b);
         }
         Some(Shape::Toroid { c, k, a, cx }) => {
-            d.form = Form::Toroidal { cx };
-            (d.c, d.k, d.asph) = (c, k, a);
+            d.form = Form::Toroidal { cx, asph: a };
+            (d.c, d.k) = (c, k);
         }
         Some(Shape::ZernikeStandard(z)) => {
             d.form = zernike(&mut d, z, SurfType::ZernikeStd);
@@ -252,8 +256,9 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             grid,
             grid_file,
         }) => {
-            (d.c, d.k, d.asph) = (c, k, a);
+            (d.c, d.k) = (c, k);
             d.form = Form::GridSag {
+                asph: a,
                 grid: grid.map(Arc::new),
                 grid_file,
                 zern: terms.map(Arc::new),
@@ -262,7 +267,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         Some(Shape::Tilted { tan, c, k }) => {
             d.set_type(SurfType::TiltSurf);
             (d.c, d.k) = (c, k);
-            d.asph = named(&tan);
+            d.set_asph(named(&tan));
         }
         Some(Shape::Irregular {
             c,
@@ -276,7 +281,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         }) => {
             d.set_type(SurfType::Irregular);
             (d.c, d.k) = (c, k);
-            d.asph = named(&[
+            d.set_asph(named(&[
                 decenter[0],
                 decenter[1],
                 tilt[0],
@@ -285,11 +290,12 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
                 za,
                 zc,
                 angle,
-            ]);
+            ]));
         }
         Some(Shape::Cylinder { c, k, a }) => {
             cyl = true;
-            (d.c, d.k, d.asph) = (c, k, a);
+            (d.c, d.k) = (c, k);
+            cyl_a = a;
         }
     }
     let shape_typ = d.typ();
@@ -357,6 +363,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
                 return Err("Binary 2 takes an even asphere shape".into());
             }
             d.form = Form::Binary2 {
+                asph: d.asph().to_vec(),
                 bin2: phase.map(Arc::new),
             };
             is_mirror = mirror;
@@ -368,13 +375,15 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
                 );
             }
             d.set_type(SurfType::Fresnel);
-            (d.c, d.k, d.asph, is_mirror) = (c, k, a, mirror);
+            (d.c, d.k, is_mirror) = (c, k, mirror);
+            d.set_asph(a);
         }
         Some(Action::CylinderFresnel { bend, mirror }) => {
             if shaped && !cyl {
                 return Err("a cylinder Fresnel surface takes a cylinder shape".into());
             }
             d.form = Form::CylFresnel {
+                asph: std::mem::take(&mut cyl_a),
                 cylf: bend.map(Arc::new),
             };
             is_mirror = mirror;
@@ -463,10 +472,10 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
 
 /// Zernike Sag の面（種類 t）の値を置き、種類の枝を返す
 fn zernike(d: &mut Surface, z: ZernikeShape, t: SurfType) -> Form {
-    (d.c, d.k, d.asph) = (z.c, z.k, z.a);
-    let zern = z.terms.map(Arc::new);
+    (d.c, d.k) = (z.c, z.k);
+    let (asph, zern) = (z.a, z.terms.map(Arc::new));
     match t {
-        SurfType::ZernikeFringe => Form::ZernikeFringe { zern },
-        _ => Form::ZernikeStd { zern },
+        SurfType::ZernikeFringe => Form::ZernikeFringe { asph, zern },
+        _ => Form::ZernikeStd { asph, zern },
     }
 }

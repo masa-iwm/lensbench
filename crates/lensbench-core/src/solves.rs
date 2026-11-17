@@ -453,7 +453,7 @@ impl System {
                 // Odd Asphere は回転対称なので y 軸の上の矢高で測る
                 let sag_r = |x: &crate::surface::Surface| match x.typ() {
                     SurfType::OddAsph => crate::freeform::sag_xy(x, 0.0, r).0,
-                    _ => crate::trace::sag(x.c, x.k, &x.asph, r2).0,
+                    _ => crate::trace::sag(x.c, x.k, x.asph(), r2).0,
                 };
                 let z1 = sag_r(d);
                 let z2 = sag_r(n);

@@ -711,7 +711,8 @@ ray aiming with object-space telecentric	物体側テレセントリックで光
 object height field with an object at infinity	無限遠物体で物体高の視野
 object-space telecentric needs an object-space NA or cone angle aperture	物体側テレセントリックには物体側 NA かコーン角の絞りが必要です
 stop surface {st}	絞り面 {st}
-surface {j} ({typ:?}) has asphere coefficients (use a type such as even asphere, or remove them)	面 {j}（{typ:?}）に非球面の係数があります（偶数次非球面などの型にするか、係数を削除）
+surface {j} ({:?}) can't hold these asphere coefficients (asph)	面 {j}（{:?}）はこの非球面の係数を持てません（asph）
+{names} not used by a {typ:?} surface (remove the values or change typ)	{names} は {typ:?} の面では使いません（値を消すか typ を変える）
 surface {k} ({typ:?}) after the GRIN medium of surface {j}	面 {j} の GRIN の媒質の次の面 {k}（{typ:?}）
 wavelength number {wn} ({nw} in all)	波長の番号 {wn}（全 {nw}）
 field number {} ({} in all)	視野の番号 {}（全 {}）

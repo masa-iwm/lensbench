@@ -119,7 +119,7 @@ fn on_axis_only_field() {
     );
 }
 
-/// 非球面の項を使わない型（標準面）に係数が残っていれば誤り
+/// 非球面の項を使わない型（標準面）は係数を持てない
 #[test]
 fn standard_with_asph_is_error() {
     let mut s = load("A0");
@@ -129,11 +129,17 @@ fn standard_with_asph_is_error() {
                 && s.surfaces[j].c != 0.0
         })
         .unwrap();
+    assert!(!s.surfaces[j].clone().set_asph(vec![0.0, 2e-5]));
+    assert!(s.surfaces[j].clone().set_asph(vec![0.0, 0.0]));
+    assert!(s.surfaces[j].asph().is_empty());
     assert!(s
-        .edit_raw(|p| {
-            p.surfaces[j].asph = vec![0.0, 2e-5];
-            Ok(())
-        })
+        .set_surface_fields(
+            j,
+            &[(
+                "asph".into(),
+                lensbench_core::edit::SurfValue::Nums(vec![0.0, 2e-5])
+            )]
+        )
         .is_err());
 }
 

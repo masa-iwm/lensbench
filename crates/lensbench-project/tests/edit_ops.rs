@@ -146,14 +146,21 @@ fn surface_data_roundtrip() {
     let d2 = &s.surfaces[2];
     assert_eq!(d2.typ(), lensbench_core::surface::SurfType::EvenAsph);
     assert_eq!((d2.k, d2.semi), (-0.5, 9.5));
-    assert_eq!(d2.asph, vec![0.0, 1e-6]);
+    assert_eq!(d2.asph(), vec![0.0, 1e-6]);
     assert_eq!(d2.mat, mat.as_str());
     assert!(!s.n(2).is_empty());
     let v = edit_ops::surface_data(&s, 2).unwrap();
     assert_eq!(v["solves"][0]["kind"], "marginal_height");
     assert_eq!(v["solves"][0]["what"], "t");
     // 変えない項目・無い項目は断る（系はそのまま）
-    for bad in [json!({"stop": true}), json!({"zz": 1}), json!({"k": "x"})] {
+    // 種類に無い欄に書いた既定でない値（偶数次非球面の cb、標準面の係数）も断る
+    for bad in [
+        json!({"stop": true}),
+        json!({"zz": 1}),
+        json!({"k": "x"}),
+        json!({"cb": [0.0, 0.1, 0.0, 0.0, 0.0]}),
+        json!({"typ": "Standard", "asph": [0.0, 1e-6]}),
+    ] {
         let e = edit_ops::apply_json(
             &mut s,
             &json!([{"op": "set_surface_data", "surface": 2, "data": bad}]),

@@ -519,17 +519,6 @@ impl System {
         if st == 0 || st >= sf.len() - 1 {
             invalid!("stop surface {st}");
         }
-        // 非球面の項を使わない面タイプに項が残っていれば誤り（交点・法線・近軸で解釈が食い違う）
-        for (j, d) in sf.iter().enumerate() {
-            if matches!(
-                d.shape(),
-                crate::shape::Shape::Conic { .. } | crate::shape::Shape::ConicTilted { .. }
-            ) && d.has_asph()
-            {
-                let typ = d.typ();
-                invalid!("surface {j} ({typ:?}) has asphere coefficients (use a type such as even asphere, or remove them)");
-            }
-        }
         // GRIN の媒質の次の面（座標ブレークは通して、その次）は交点を求められる面タイプに限る
         for (j, d) in sf.iter().enumerate() {
             if d.ignore || d.is_mirror() || d.grin().is_none() {

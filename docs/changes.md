@@ -283,6 +283,13 @@
 - `spot` の各視野に `rays`（追跡した本数 `total` と、除いた光線の理由ごとの本数 `vignetted`・`missed`・`tir`・`aim_failed`。
   波長の分を足し、主光線は数えない）を足した（KRN-09）。Rust は `analysis::Spot::rays`（`trace::RayCounts`）、`RayBuf::counts`・`Trace::counts`。
 ### Rust API
+- 非球面の係数の並び（`Surface::asph`）も種類の枝に移した（KRN-05 の 2 段目）。`s.asph` は `s.asph()`（読む、係数を持たない種類は空）、
+  書くのは `s.asph_mut()`（長さを変えられる種類）・`s.set_asph(v)`・`s.set_asph_at(i, x)`。Tilted は `Form::TiltSurf { tan }`、Irregular は
+  `Form::Irregular { p }`（決まった数の値、`asph()` では前と同じ並び）。標準面・Gradium・Gradient 9・Jones・理想レンズ・利用者定義の面・
+  座標ブレークは係数を持てない（`set_type` で捨て、`edit` で置くと誤り）。serde の形（`asph` の欄）は同じ。
+- 面のデータを serde で読むとき（serve の `set_surface_data`・系ファイル版 1・pickle）、種類に無い欄（標準面の `cb`・`focal`・0 でない
+  `asph` など）に既定でない値があれば誤りにした（前は黙って捨てた）。`set_surface_data` で `typ` を変えるときは、書いていない種類ごとの
+  値は新しい種類に合わせる（持ち越せない値は既定に）。
 - 面の種類ごとの値を種類の枝にまとめた（KRN-05 の 1 段目）: `Surface` の `typ`・`cx`・`zern`・`grid`・`grid_file`・`bin2`・`cylf`・`grin`・
   `cb`・`cb_order`・`focal`・`opd_mode`・`jones`・`user` をやめ、`form`（`lensbench_core::surface::Form`、`#[non_exhaustive]`）が種類と
   その種類にしか意味の無い値を持つ（例 `Form::CoordBrk { cb, order }`・`Form::Paraxial { focal, opd_mode }`）。曲率・円錐係数・`asph` は

@@ -1039,3 +1039,24 @@ fn a_paraxial_surface_works_on_the_return_path() {
     let (a, b) = (&s.surfaces[par[0]], &s.surfaces[par[1]]);
     assert_eq!((a.focal(), b.focal()), (50.0, 50.0));
 }
+
+/// 鏡の後（向きが逆の所）に置いた面の行の Tilted は、tan の符号も変えて今の向きに直す
+#[test]
+fn a_tilted_row_after_a_mirror_flips_its_tan() {
+    let row = r#"{"type": "surfaces", "surfaces": [{"row": {"t": 5, "shape": {"tilted": {"tan": [0, 0.02]}}}}]}"#;
+    let tans = |blocks: &str| -> Vec<Vec<f64>> {
+        let s = project(blocks);
+        (0..s.surfaces.len())
+            .filter(|&j| s.surfaces[j].typ() == lensbench_core::surface::SurfType::TiltSurf)
+            .map(|j| s.surfaces[j].asph().to_vec())
+            .collect()
+    };
+    let fwd = tans(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(fwd, vec![vec![0.0, 0.02]]);
+    let back = tans(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {{"type": "mirror"}}, {{"type": "air", "t": 10}}, {row}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(back, vec![vec![0.0, -0.02]]);
+}

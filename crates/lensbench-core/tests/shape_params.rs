@@ -84,7 +84,7 @@ fn a0_mixed() -> System {
     let d = &mut rx.surfaces[2];
     d.set_type(SurfType::EvenAsph);
     d.k = 0.3;
-    d.asph = vec![1e-5, -2e-7, 3e-10];
+    d.set_asph(vec![1e-5, -2e-7, 3e-10]);
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
@@ -94,7 +94,6 @@ fn a0_mixed() -> System {
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[4];
     d.set_type(SurfType::Standard);
-    d.asph.clear();
     rx.build_raw().unwrap()
 }
 
@@ -129,7 +128,7 @@ fn a0_with(name: &str) -> System {
     d.set_type(src.typ());
     d.c = src.c;
     d.k = src.k;
-    d.asph = src.asph;
+    d.set_asph(src.asph().to_vec());
     rx.build_raw().unwrap()
 }
 
@@ -188,10 +187,8 @@ fn nudge(s: &System, j: usize, kind: Kind, d: f64) -> lensbench_core::Prescripti
         Kind::Conic => f.k += d,
         Kind::Asph(i) => {
             let i = i as usize;
-            if f.asph.len() <= i {
-                f.asph.resize(i + 1, 0.0);
-            }
-            f.asph[i] += d;
+            let v = f.asph().get(i).copied().unwrap_or(0.0) + d;
+            f.set_asph_at(i, v);
         }
         Kind::Zern(n) => {
             let mut z = f
@@ -353,7 +350,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     let s = zmx::build(&raw, &Default::default(), &[], None).unwrap();
     let um = &s.paraxial().marginal.1;
     let d = &s.surfaces[2];
-    assert_eq!(d.asph.first().copied(), Some(4e-3));
+    assert_eq!(d.asph().first().copied(), Some(4e-3));
     // 以前の規則（y² の項を引かない c = 目標の近軸の曲率）の系
     let mut old = s.clone();
     old.edit_raw(|p| {

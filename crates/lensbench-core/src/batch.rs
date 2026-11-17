@@ -67,7 +67,7 @@ impl Sag {
             c: d.c,
             kcc: (1.0 + d.k) * d.c * d.c,
             terms: d
-                .asph
+                .asph()
                 .iter()
                 .enumerate()
                 .filter(|(_, &a)| a != 0.0)

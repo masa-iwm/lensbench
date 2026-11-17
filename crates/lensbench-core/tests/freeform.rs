@@ -93,7 +93,7 @@ fn write_roundtrip() {
             assert_eq!(x.typ(), y.typ(), "{n} 面 {j}");
             assert_eq!(x.zern(), y.zern(), "{n} 面 {j}");
             assert_eq!(x.grid(), y.grid(), "{n} 面 {j}");
-            assert_eq!(x.asph, y.asph, "{n} 面 {j}");
+            assert_eq!(x.asph(), y.asph(), "{n} 面 {j}");
             assert_eq!(x.t.to_bits(), y.t.to_bits(), "{n} 面 {j}");
         }
         let px = [0.0, 0.3, -0.7, 0.5];
@@ -166,7 +166,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
             // 以前の求め方（c・k・asph の偶数次非球面）との差
             let r2 = q[0] * q[0] + q[1] * q[1];
             let old = d.c * r2 / (1.0 + (1.0 - (1.0 + d.k) * d.c * d.c * r2).sqrt())
-                + d.asph
+                + d.asph()
                     .iter()
                     .enumerate()
                     .map(|(j, a)| a * r2.powi(j as i32 + 1))

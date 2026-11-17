@@ -166,7 +166,7 @@ pub(crate) fn check(
                     let d = &s.surfaces[last];
                     let x = r.xyz;
                     let (_, z1) =
-                        lensbench_core::trace::sag(d.c, d.k, &d.asph, x[0] * x[0] + x[1] * x[1]);
+                        lensbench_core::trace::sag(d.c, d.k, d.asph(), x[0] * x[0] + x[1] * x[1]);
                     [
                         r.lmn[0] + r.lmn[2] * 2.0 * z1 * x[0],
                         r.lmn[1] + r.lmn[2] * 2.0 * z1 * x[1],
@@ -276,7 +276,7 @@ fn aspheric_and_toroidal() {
     let d = &mut rx.surfaces[1];
     d.set_type(SurfType::Toroidal);
     *d.cx_mut().unwrap() = d.c * 0.7;
-    d.asph = vec![1e-5, -2e-7];
+    d.set_asph(vec![1e-5, -2e-7]);
     // 面を直接書き換えたので、像面の厚さのソルブ（面 7）を解き直す（with_params の系と揃える）
     let mut s = rx.build_raw().unwrap();
     s.resolve_links().unwrap();
