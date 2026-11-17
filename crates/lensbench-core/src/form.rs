@@ -340,6 +340,14 @@ impl Surface {
         }
     }
 
+    /// Grid Sag の .DAT のファイル名の置き場（Grid Sag だけ）
+    pub fn grid_file_mut(&mut self) -> Option<&mut String> {
+        match &mut self.form {
+            Form::GridSag { grid_file, .. } => Some(grid_file),
+            _ => None,
+        }
+    }
+
     /// Grid Sag の格子の置き場（Grid Sag だけ）
     pub fn grid_mut(&mut self) -> Option<&mut Option<Arc<GridSag>>> {
         match &mut self.form {
@@ -415,27 +423,82 @@ impl Surface {
         }
     }
 
-    /// 面を z について裏返す（z → −z、x・y はそのまま）: 曲率 c・cx と矢高の係数の符号を変える。Tilted は tan、
-    /// Irregular は傾きと Zs・Za・Zc の符号を変え、偏心と項の角度はそのまま（偏心は面内、角度は z 軸まわり）。
-    /// 厚さは変えない
+    /// 面を z について裏返す（矢高 z(x, y) → −z(x, y)）: 曲率・トロイダル面の回転の曲率・非球面の係数・Zernike の項・
+    /// 格子・Tilted の傾き・Cylinder Fresnel の屈折の面の符号を変える。Irregular は傾きと Zs・Za・Zc の符号を変え、
+    /// 偏心と項の角度はそのまま（P = d + Rx(tx) Ry(ty) Q を z について映すと Rx・Ry の角度の符号が変わる）。
+    /// 鏡の後の座標で面を書くときと、面の並びの復路に使う
     pub fn flip_z(&mut self) {
         self.c = -self.c;
         match &mut self.form {
-            Form::Toroidal { cx, .. } => *cx = -*cx,
-            Form::Irregular { p } => {
-                for v in &mut p[2..7] {
-                    *v = -*v;
-                }
-                return;
+            Form::Toroidal { cx, asph } => {
+                *cx = -*cx;
+                asph.iter_mut().for_each(|a| *a = -*a);
             }
-            Form::TiltSurf { tan } => {
-                tan.iter_mut().for_each(|a| *a = -*a);
-                return;
+            Form::ZernikeStd { asph, zern } | Form::ZernikeFringe { asph, zern } => {
+                asph.iter_mut().for_each(|a| *a = -*a);
+                if let Some(z) = zern {
+                    Arc::make_mut(z).negate();
+                }
+            }
+            Form::GridSag {
+                asph, grid, zern, ..
+            } => {
+                asph.iter_mut().for_each(|a| *a = -*a);
+                if let Some(g) = grid {
+                    Arc::make_mut(g).negate();
+                }
+                if let Some(z) = zern {
+                    Arc::make_mut(z).negate();
+                }
+            }
+            Form::CylFresnel { asph, cylf } => {
+                asph.iter_mut().for_each(|a| *a = -*a);
+                if let Some(f) = cylf {
+                    let f = Arc::make_mut(f);
+                    f.c = -f.c;
+                    f.coef.iter_mut().for_each(|a| *a = -*a);
+                }
+            }
+            Form::TiltSurf { tan } => tan.iter_mut().for_each(|a| *a = -*a),
+            Form::Irregular { p } => {
+                for i in 2..7 {
+                    p[i] = -p[i];
+                }
+            }
+            _ => {
+                if let Some(a) = self.asph_mut() {
+                    a.iter_mut().for_each(|a| *a = -*a);
+                }
+            }
+        }
+    }
+
+    /// 面を x について裏返す（矢高 z(x, y) → z(−x, y)）: Zernike の項・格子・Tilted の x の傾きを映し、Irregular は
+    /// 偏心 x・傾き y・項の角度の符号を変える（Rx はそのまま、Ry・Rz は角度の符号が変わる）。開口はそのまま。
+    /// [`Surface::flip_z`] と合わせて y 軸のまわりに 180° 回した向き（玉の反転）になる。回転対称な形と、x について
+    /// 対称な形（トロイダル面・Cylinder Fresnel）は何も変わらない
+    pub fn mirror_x(&mut self) {
+        match &mut self.form {
+            Form::ZernikeStd { zern, .. } | Form::ZernikeFringe { zern, .. } => {
+                if let Some(z) = zern {
+                    Arc::make_mut(z).mirror_x();
+                }
+            }
+            Form::GridSag { grid, zern, .. } => {
+                if let Some(g) = grid {
+                    Arc::make_mut(g).mirror_x();
+                }
+                if let Some(z) = zern {
+                    Arc::make_mut(z).mirror_x();
+                }
+            }
+            Form::TiltSurf { tan } => tan[0] = -tan[0],
+            Form::Irregular { p } => {
+                p[0] = -p[0];
+                p[3] = -p[3];
+                p[7] = -p[7];
             }
             _ => {}
-        }
-        if let Some(a) = self.asph_mut() {
-            a.iter_mut().for_each(|a| *a = -*a);
         }
     }
 

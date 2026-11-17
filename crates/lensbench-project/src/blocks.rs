@@ -544,7 +544,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     }
                     return Ok(());
                 }
-                let mut r = elements::reverse(&e)?;
+                let mut r = elements::reverse_folded(&e)?;
                 r.surfaces.iter_mut().for_each(|s| s.stop = false);
                 self.back_placed(place, len, &r.surfaces)?;
             }
@@ -564,7 +564,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     !lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial
                 }) {
                     return Err(
-                        "only standard, even and odd asphere, toroidal, Fresnel, Binary 2 and paraxial surfaces can be in a surface list on the return path".into(),
+                        "GRIN and user-defined surfaces are not supported in a surface list on the return path".into(),
                     );
                 }
                 if !place.on {

@@ -186,20 +186,42 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
     Ok(out)
 }
 
-/// 面を前後反転できるか（曲率・非球面の係数の符号を変えるだけで済む形: 標準面・偶数次・奇数次非球面・トロイダル面・
-/// Fresnel・Binary 2（位相は ρ だけの関数で、薄い位相の板の遅れは光の向きによらないので係数はそのまま）、GRIN でない媒質）。理想レンズは前後の媒質で
-/// 屈折力が変わるので、玉の中にあれば反転しない（空気中の面の並びの復路では使える）。Zernike・Grid Sag・Irregular・Tilted・Cylinder Fresnel などは、反転に形ごとの
-/// 変換が要るので反転しない
+/// 面を前後反転できるか（[`Surface::flip_z`] と [`Surface::mirror_x`] で形を y 軸のまわりに 180° 回せる種類: 理想レンズ・
+/// GRIN・Jones・座標ブレーク・利用者定義の面のほか全部）。Binary 2 の位相は ρ だけの関数で、薄い位相の板の遅れは光の向きに
+/// よらないので係数はそのまま。理想レンズは前後の媒質で屈折力が変わるので、玉の中にあれば反転しない（空気中の面の並びの
+/// 復路では使える）
 pub fn reversible(s: &Surface) -> bool {
     use crate::surface::SurfType as T;
     matches!(
         s.typ(),
-        T::Standard | T::EvenAsph | T::OddAsph | T::Toroidal | T::Fresnel | T::Binary2
+        T::Standard
+            | T::EvenAsph
+            | T::OddAsph
+            | T::Toroidal
+            | T::Fresnel
+            | T::Binary2
+            | T::ZernikeStd
+            | T::ZernikeFringe
+            | T::GridSag
+            | T::CylFresnel
+            | T::TiltSurf
+            | T::Irregular
     ) && s.grin().is_none()
 }
 
-/// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 曲率・非球面・x の偏心の符号が反転）
+/// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 形は [`Surface::flip_z`] と [`Surface::mirror_x`]、開口の
+/// x の偏心の符号が反転）
 pub fn reverse(e: &Element) -> Result<Element> {
+    reverse_with(e, true)
+}
+
+/// 同じ玉を鏡の後の座標（z を逆に向けた座標、厚さが負）で、光が戻る順に書く（復路）: 面の順を逆にし、形は
+/// [`Surface::flip_z`] だけ（x はそのまま、開口も動かさない）。鏡の後に面を足すときの裏返しと合わせて、往路と同じ形になる
+pub fn reverse_folded(e: &Element) -> Result<Element> {
+    reverse_with(e, false)
+}
+
+fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
     if e.kind != Kind::Lens {
         invalid!("only a lens can be reversed");
     }
@@ -221,58 +243,69 @@ pub fn reverse(e: &Element) -> Result<Element> {
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
         s.flip_z();
+        if mirror {
+            s.mirror_x();
+            // 格子は映したので、元の .DAT とは違う
+            if let Some(f) = s.grid_file_mut() {
+                f.clear();
+            }
+        }
         if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
         }
         if !reversible(&s) {
-            invalid!("a lens with a Zernike, grid sag, tilted, irregular, cylinder Fresnel or paraxial surface or a GRIN medium is not reversed");
+            invalid!(
+                "a lens with a paraxial or user-defined surface or a GRIN medium is not reversed"
+            );
         }
-        s.ap = match s.ap {
-            Aperture::Circular { min, max, dx, dy } => Aperture::Circular {
-                min,
-                max,
-                dx: -dx,
-                dy,
-            },
-            Aperture::Rect { hx, hy, dx, dy } => Aperture::Rect {
-                hx,
-                hy,
-                dx: -dx,
-                dy,
-            },
-            Aperture::Ellipse { hx, hy, dx, dy } => Aperture::Ellipse {
-                hx,
-                hy,
-                dx: -dx,
-                dy,
-            },
-            Aperture::Obsc { min, max, dx, dy } => Aperture::Obsc {
-                min,
-                max,
-                dx: -dx,
-                dy,
-            },
-            // x を反転すると腕の向き θ は π − θ になる。偶数本なら同じ並び、奇数本は最初の腕が −x になり表せない
-            Aperture::Spider {
-                width,
-                arms,
-                dx,
-                dy,
-            } => {
-                if arms % 2 == 1 {
-                    invalid!(
-                        "a lens with a spider aperture of an odd number of arms is not reversed"
-                    );
-                }
+        if mirror {
+            s.ap = match s.ap {
+                Aperture::Circular { min, max, dx, dy } => Aperture::Circular {
+                    min,
+                    max,
+                    dx: -dx,
+                    dy,
+                },
+                Aperture::Rect { hx, hy, dx, dy } => Aperture::Rect {
+                    hx,
+                    hy,
+                    dx: -dx,
+                    dy,
+                },
+                Aperture::Ellipse { hx, hy, dx, dy } => Aperture::Ellipse {
+                    hx,
+                    hy,
+                    dx: -dx,
+                    dy,
+                },
+                Aperture::Obsc { min, max, dx, dy } => Aperture::Obsc {
+                    min,
+                    max,
+                    dx: -dx,
+                    dy,
+                },
+                // x を反転すると腕の向き θ は π − θ になる。偶数本なら同じ並び、奇数本は最初の腕が −x になり表せない
                 Aperture::Spider {
                     width,
                     arms,
-                    dx: -dx,
+                    dx,
                     dy,
+                } => {
+                    if arms % 2 == 1 {
+                        invalid!(
+                        "a lens with a spider aperture of an odd number of arms is not reversed"
+                    );
+                    }
+                    Aperture::Spider {
+                        width,
+                        arms,
+                        dx: -dx,
+                        dy,
+                    }
                 }
-            }
-            a => a,
-        };
+                a => a,
+            };
+        }
         // 面の後の媒質と厚さは、反転前の 1 つ前の面の後のもの
         if i + 1 < n {
             let q = &e.surfaces[n - 2 - i];
@@ -399,9 +432,168 @@ mod tests {
             opd_mode: 0,
         };
         assert!(reverse(&q).is_err());
-        let mut z = e[0].clone();
-        z.surfaces[0].set_type(crate::surface::SurfType::ZernikeStd);
-        assert!(reverse(&z).is_err());
+        // GRIN の媒質のある玉も反転しない（光の向きで屈折率分布の向きが変わる）
+        let mut g = e[0].clone();
+        g.surfaces[0].set_type(crate::surface::SurfType::Gradium);
+        assert!(reverse(&g).is_err());
+    }
+
+    /// 形の違う面の例（Zernike Standard・Fringe・Grid Sag・Tilted・Irregular・Cylinder Fresnel）。どれも x について
+    /// 対称でない
+    fn freeform_surfaces() -> Vec<Surface> {
+        use crate::freeform::{GridSag, ZernSag};
+        use crate::surface::SurfType as T;
+        use std::sync::Arc;
+        let zern = |fringe: bool| {
+            let coef: Vec<f64> = (1..=28)
+                .map(|j| 1e-3 * ((j * 7 % 11) as f64 - 5.0))
+                .collect();
+            let mut z = ZernSag::new(fringe, 8.0, coef, true);
+            z.dx = 0.7;
+            z.dy = -0.4;
+            z.rebuild();
+            Arc::new(z)
+        };
+        let mut v = Vec::new();
+        for (t, fringe) in [(T::ZernikeStd, false), (T::ZernikeFringe, true)] {
+            let mut s = Surface {
+                c: 0.02,
+                k: -0.5,
+                semi: 6.0,
+                ..Default::default()
+            };
+            s.set_type(t);
+            s.set_asph(vec![0.0, 1e-5, -2e-7]);
+            *s.zern_mut().unwrap() = Some(zern(fringe));
+            v.push(s);
+        }
+        // 格子: 双三次（微分も使う）、z = 0.01 x + 0.002 x y + 0.001 x² y の値と微分。値のない点は無し
+        let (nx, ny, d) = (9usize, 7usize, 1.5);
+        let mut g = GridSag {
+            nx,
+            ny,
+            dx: d,
+            dy: d,
+            xdec: 0.4,
+            ydec: -0.3,
+            z: Vec::new(),
+            nodata: vec![false; nx * ny],
+            linear: false,
+        };
+        for iy in 0..ny {
+            for ix in 0..nx {
+                let x = (ix as f64 - (nx - 1) as f64 / 2.0) * d;
+                let y = (iy as f64 - (ny - 1) as f64 / 2.0) * d;
+                g.z.push([
+                    0.01 * x + 0.002 * x * y + 0.001 * x * x * y,
+                    0.01 + 0.002 * y + 0.002 * x * y,
+                    0.002 * x + 0.001 * x * x,
+                    0.002 + 0.002 * x,
+                ]);
+            }
+        }
+        let mut s = Surface {
+            c: -0.01,
+            semi: 5.0,
+            ..Default::default()
+        };
+        s.set_type(T::GridSag);
+        s.set_asph(vec![0.0, 2e-5]);
+        *s.grid_mut().unwrap() = Some(Arc::new(g));
+        *s.grid_file_mut().unwrap() = "a.dat".into();
+        *s.zern_mut().unwrap() = Some(zern(false));
+        v.push(s);
+        let mut s = Surface::default();
+        s.set_type(T::TiltSurf);
+        s.set_asph(vec![0.03, -0.02]);
+        v.push(s);
+        let mut s = Surface {
+            c: 0.015,
+            k: 0.3,
+            semi: 7.0,
+            ..Default::default()
+        };
+        s.set_type(T::Irregular);
+        s.set_asph(vec![0.3, -0.2, 1.5, -2.5, 0.02, -0.03, 0.015, 25.0]);
+        v.push(s);
+        let mut s = Surface {
+            c: 0.01,
+            semi: 6.0,
+            ..Default::default()
+        };
+        s.set_type(T::CylFresnel);
+        s.set_asph(vec![1e-4, 1e-6]);
+        *s.cylf_mut().unwrap() = Some(Arc::new(crate::surface::CylFresnel {
+            c: 0.03,
+            k: -1.0,
+            coef: vec![1e-5],
+        }));
+        v.push(s);
+        v
+    }
+
+    #[test]
+    fn freeform_surfaces_turn_around_the_y_axis() {
+        use crate::freeform::sag_xy;
+        for s in freeform_surfaces() {
+            assert!(reversible(&s), "{:?}", s.typ());
+            let mut r = s.clone();
+            r.flip_z();
+            r.mirror_x();
+            let mut f = s.clone();
+            f.flip_z();
+            for &(x, y) in &[(1.3, 0.7), (-2.1, 1.9), (0.4, -3.2), (-3.3, -1.1)] {
+                let (z, zx, zy) = sag_xy(&s, -x, y);
+                let (zr, zrx, zry) = sag_xy(&r, x, y);
+                let tol = 1e-12 * (1.0 + z.abs());
+                // 回した形 z'(x, y) = −z(−x, y)
+                assert!((zr + z).abs() < tol, "{:?} {zr} {z}", s.typ());
+                assert!((zrx - zx).abs() < 1e-9, "{:?} {zrx} {zx}", s.typ());
+                assert!((zry + zy).abs() < 1e-9, "{:?} {zry} {zy}", s.typ());
+                // z について裏返した形 z'(x, y) = −z(x, y)
+                let (z, zx, zy) = sag_xy(&s, x, y);
+                let (zf, zfx, zfy) = sag_xy(&f, x, y);
+                assert!((zf + z).abs() < tol && (zfx + zx).abs() < 1e-9 && (zfy + zy).abs() < 1e-9);
+            }
+            if let Some(c) = s.cylf() {
+                let rc = r.cylf().unwrap();
+                assert_eq!((rc.c, rc.coef[0]), (-c.c, -c.coef[0]));
+            }
+            // 2 回で元に戻る
+            r.flip_z();
+            r.mirror_x();
+            assert_eq!(r, s);
+        }
+    }
+
+    #[test]
+    fn a_freeform_lens_is_reversed_and_folded_back() {
+        let s = two_lenses();
+        let e = split(&s).unwrap();
+        for f in freeform_surfaces() {
+            let mut l = e[0].clone();
+            let (t, mat) = (l.surfaces[0].t, l.surfaces[0].mat.clone());
+            l.surfaces[0] = Surface {
+                t,
+                mat,
+                ..f.clone()
+            };
+            let r = reverse(&l).unwrap();
+            // 格子は映したので .DAT の名前は消す
+            assert_eq!(r.surfaces[1].grid_file(), "");
+            assert_eq!(r.surfaces[1].typ(), f.typ());
+            let rr = reverse(&r).unwrap();
+            assert_eq!(rr.surfaces[0].zern(), l.surfaces[0].zern());
+            assert_eq!(rr.surfaces[0].grid(), l.surfaces[0].grid());
+            assert_eq!(rr.surfaces[0].asph(), l.surfaces[0].asph());
+            // 復路: z について裏返すだけ。鏡の後の裏返しをもう一度掛けると往路と同じ形
+            let mut b = reverse_folded(&l).unwrap();
+            b.surfaces[1].flip_z();
+            assert_eq!(b.surfaces[1].zern(), l.surfaces[0].zern());
+            assert_eq!(b.surfaces[1].grid(), l.surfaces[0].grid());
+            assert_eq!(b.surfaces[1].asph(), l.surfaces[0].asph());
+            assert_eq!(b.surfaces[1].grid_file(), l.surfaces[0].grid_file());
+        }
     }
 
     #[test]

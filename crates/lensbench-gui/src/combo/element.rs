@@ -162,8 +162,8 @@ pub(super) fn element_settings(
 mod tests {
     use super::*;
 
-    /// 自作の玉は、Zernike など符号だけで反転できない面があれば反転を出さない（反転したものは戻せる）。
-    /// Binary 2 は反転できる
+    /// 自作の玉は、理想レンズの面など反転できない面があれば反転を出さない（反転したものは戻せる）。
+    /// Zernike・Binary 2 は反転できる
     #[test]
     fn lens_with_special_faces_reverses_only_when_it_can() {
         let mut p = Pick::new(ElemKind::Lens);
@@ -191,6 +191,16 @@ mod tests {
             "row".into(),
             row(json!({ "zernike_standard": { "c": -0.02 } }), None),
         );
+        assert!(p.can_reverse());
+        p.surfs[1].more.insert(
+            "row".into(),
+            row(
+                json!({ "conic": { "c": -0.02 } }),
+                Some(json!({ "paraxial": { "f": 50.0 } })),
+            ),
+        );
+        // 読める面で、理想レンズの面だから反転しない
+        assert!(serde_json::from_value::<lensbench_project::SurfSpec>(p.surfs[1].json()).is_ok());
         assert!(!p.can_reverse());
         p.reversed = true;
         assert!(p.can_reverse());

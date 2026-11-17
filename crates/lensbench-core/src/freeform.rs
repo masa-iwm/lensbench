@@ -266,6 +266,25 @@ impl ZernSag {
         eval_groups(&g, m, self.norm, self.extrapolate, x - self.dx, y - self.dy)
     }
 
+    /// 面を z について裏返す（z → −z）: 項の係数の符号を全部変える
+    pub fn negate(&mut self) {
+        self.coef.iter_mut().for_each(|a| *a = -*a);
+        self.rebuild();
+    }
+
+    /// 面を x について裏返す（z(x, y) → z(−x, y)）: φ → π − φ で cos mφ は (−1)^m 倍、sin mφ は −(−1)^m 倍。
+    /// 項の中心の偏心 x も符号を変える
+    pub fn mirror_x(&mut self) {
+        for (i, a) in self.coef.iter_mut().enumerate() {
+            let (_, m, cs) = zern_nm(i + 1, self.fringe);
+            if (m % 2 == 1) == cs {
+                *a = -*a;
+            }
+        }
+        self.dx = -self.dx;
+        self.rebuild();
+    }
+
     /// 項の数の上限（Standard 231、Fringe 37。OpticStudio と同じ）
     pub fn max_terms(fringe: bool) -> usize {
         if fringe {
@@ -358,6 +377,31 @@ pub struct GridSag {
 }
 
 impl GridSag {
+    /// 面を z について裏返す（z → −z）: 値と微分の符号を全部変える
+    pub fn negate(&mut self) {
+        for p in &mut self.z {
+            p.iter_mut().for_each(|a| *a = -*a);
+        }
+    }
+
+    /// 面を x について裏返す（z(x, y) → z(−x, y)）: 各行の点の並びを逆にし、∂z/∂x・∂²z/∂x∂y の符号を変える。
+    /// 中心の偏心 x も符号を変える
+    pub fn mirror_x(&mut self) {
+        let nx = self.nx;
+        if nx > 0 {
+            for row in self.z.chunks_mut(nx) {
+                row.reverse();
+                for p in row {
+                    p[1] = -p[1];
+                    p[3] = -p[3];
+                }
+            }
+            for row in self.nodata.chunks_mut(nx) {
+                row.reverse();
+            }
+        }
+        self.xdec = -self.xdec;
+    }
     /// 格子の値と (∂/∂x, ∂/∂y)。格子の外は 0（OpticStudio と同じ）、値のない点に掛かる升目は None
     pub fn eval(&self, x: f64, y: f64) -> Option<(f64, f64, f64)> {
         let (nx, ny) = (self.nx, self.ny);
