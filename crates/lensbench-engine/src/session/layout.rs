@@ -110,18 +110,19 @@ pub(super) fn layout_scene(
     let (systems, mut notes) =
         crate::load::overlay_in(spec, &sel, loaded.map(|c| (&*c.src, &*c.sys)))?;
     let log = loaded.map_or(&[][..], |c| &c.log[..]);
+    let from = loaded.map_or(&[][..], |c| &c.faces[..]);
     let systems = systems
         .into_iter()
-        .map(|(name, sy, edited)| {
-            if edited {
-                return Ok((name, sy));
+        .map(|o| {
+            if o.edited {
+                return Ok((o.name, o.sys));
             }
-            let label = if name.is_empty() {
+            let label = if o.name.is_empty() {
                 "configuration".to_string()
             } else {
-                name.clone()
+                o.name.clone()
             };
-            replay(sy, log, &label, &mut notes).map(|sy| (name, sy))
+            replay(o.sys, log, (from, &o.faces), &label, &mut notes).map(|sy| (o.name, sy))
         })
         .collect::<lensbench_core::Result<Vec<_>>>()
         .map_err(RpcErr::app)?;

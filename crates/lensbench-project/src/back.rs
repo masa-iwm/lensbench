@@ -119,6 +119,8 @@ pub fn block_item(
         split: SplitState::default(),
         frames: Vec::new(),
         zenv: Vec::new(),
+        nodes: HashMap::new(),
+        leaf: Vec::new(),
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;

@@ -118,7 +118,7 @@ pub(super) fn config_system(
     cur: &Arc<System>,
     spec: &LoadSpec,
     src: &Source,
-    log: &[Change],
+    (log, faces): (&[Change], &[Option<FaceId>]),
     notes: &mut Vec<String>,
 ) -> Result<System, RpcErr> {
     let mut sp = spec.clone();
@@ -145,13 +145,13 @@ pub(super) fn config_system(
         }
         sp.cfg = c;
     }
-    let s = crate::load::load_source(src, &sp)?;
+    let (s, _, to) = crate::load::load_source_faces(src, &sp)?;
     let beam = if is_project(&spec.file) {
         format!("state {b}")
     } else {
         format!("configuration {b}")
     };
-    Ok(replay(s, log, &beam, notes)?)
+    Ok(replay(s, log, (faces, &to), &beam, notes)?)
 }
 
 /// 最適化。params は [`lensbench_design::dls_spec::OptimizeParams`]（CLI の optimize・Python の optimize と同じ設定の型）:
@@ -167,6 +167,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         sys: cur,
         spec,
         src,
+        faces,
         log,
     } = sess.current_full()?;
     let mut notes = Vec::new();
@@ -186,7 +187,14 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             if same && cur_idx.is_none() {
                 cur_idx = Some(v.len());
             }
-            v.push(config_system(b, &cur, &spec, &src, &log, &mut notes)?);
+            v.push(config_system(
+                b,
+                &cur,
+                &spec,
+                &src,
+                (&log, &faces),
+                &mut notes,
+            )?);
         }
         (v, cur_idx)
     };
@@ -309,13 +317,14 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         sys: cur,
         spec,
         src,
+        faces,
         log,
     } = sess.current_full()?;
     let mut notes = Vec::new();
     let systems = match p.get("configs").and_then(Value::as_array) {
         Some(bs) if !bs.is_empty() => bs
             .iter()
-            .map(|b| config_system(b, &cur, &spec, &src, &log, &mut notes))
+            .map(|b| config_system(b, &cur, &spec, &src, (&log, &faces), &mut notes))
             .collect::<Result<Vec<_>, _>>()?,
         _ => vec![(*cur).clone()],
     };
@@ -362,6 +371,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         sys: cur,
         spec,
         src,
+        faces,
         log,
     } = sess.current_full()?;
     let mut notes = Vec::new();
@@ -378,7 +388,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     };
     let systems = cfgs
         .iter()
-        .map(|b| config_system(b, &cur, &spec, &src, &log, &mut notes))
+        .map(|b| config_system(b, &cur, &spec, &src, (&log, &faces), &mut notes))
         .collect::<Result<Vec<_>, _>>()?;
     let names: Vec<String> = cfgs
         .iter()

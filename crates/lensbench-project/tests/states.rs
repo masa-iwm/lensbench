@@ -537,3 +537,129 @@ fn states_change_values_that_are_left_out_when_default() {
     let e = p.with_state("bad_root").unwrap_err().to_string();
     assert!(e.contains("system value nope"), "{e}");
 }
+
+/// 面の名前（FaceId）: 状態で玉を外しても、ほかのブロックの面は同じ名前で見つかる。復路の面は back、
+/// 偏心の座標ブレークは番号なし（PRJ-04・CLI-21）
+#[test]
+fn faces_keep_their_names_across_states() {
+    let lens = |id: &str, extra: &str| {
+        format!(
+            r#"{{"type": "lens", "id": "{id}"{extra}, "source": {{"surfaces": [{{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}}"#
+        )
+    };
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 4}},
+        "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}}, {l1}, {{"type": "air", "t": 5}},
+          {{"type": "group", "id": "G", "blocks": [{l2}, {{"type": "air", "t": 3}}, {l3}]}},
+          {{"type": "air", "t": 20}}, {{"type": "mirror", "back": true}}],
+        "states": [{{"name": "no L2", "set": {{"L2": {{"on": false, "off": "air"}}}}}}]}}"#,
+        l1 = lens("L1", r#", "decenter": [0.2, 0]"#),
+        l2 = lens("L2", ""),
+        l3 = lens("L3", ""),
+    ))
+    .unwrap();
+    let all = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let st = ExpandOpts {
+        state: Some("no L2"),
+        ..Default::default()
+    };
+    let no2 = expand(&p, &env(), &st).unwrap();
+    assert_eq!(
+        all.map.len(),
+        no2.map.len() + 4,
+        "L2 の往路・復路の 2 面ずつ"
+    );
+    let n = all.map.len();
+    assert!(all.map[0].face.is_none() && all.map[n - 1].face.is_none());
+    let mut found = 0;
+    for (j, o) in all.map.iter().enumerate().take(n - 1).skip(1) {
+        let f = o.face.as_ref().expect("面の名前");
+        let cb = all.system.surfaces[j].is_coord_break();
+        assert_eq!(f.cb, cb, "surface {j}");
+        match no2.find_face(f) {
+            Some(k) => {
+                found += 1;
+                assert!(!o.is_in("L2"), "surface {j}");
+                let (a, b) = (&all.system.surfaces[j], &no2.system.surfaces[k]);
+                assert_eq!(
+                    (a.c, a.mat.name(), o.back),
+                    (b.c, b.mat.name(), no2.map[k].back)
+                );
+            }
+            None => assert!(o.is_in("L2"), "surface {j}"),
+        }
+    }
+    assert_eq!(found, n - 2 - 4);
+    // 往路と復路の L3 の面は別の名前、復路の範囲は 1 回目
+    let l3: Vec<&lensbench_project::FaceId> = all
+        .map
+        .iter()
+        .filter(|o| o.is_in("L3"))
+        .filter_map(|o| o.face.as_ref())
+        .collect();
+    assert_eq!(l3.len(), 4);
+    assert!(!l3[0].back && l3[3].back && l3[3].pass == 0);
+    assert_eq!(l3[0].node, l3[3].node);
+    assert_ne!(l3[0], l3[3]);
+    // 偏心した L1 の前後の座標ブレークは別の名前
+    let cbs: Vec<&lensbench_project::FaceId> = all
+        .map
+        .iter()
+        .filter(|o| o.is_in("L1"))
+        .filter_map(|o| o.face.as_ref())
+        .filter(|f| f.cb && !f.back)
+        .collect();
+    assert_eq!(cbs.len(), 2);
+    assert_ne!(cbs[0], cbs[1]);
+}
+
+/// 当て直し（Retarget）: 前の座標ブレークは別の状態でも前の座標ブレークへ。状態がブロックの中身を替えて面の数が
+/// 変わったら、そのブロックの面は「無い」（同じ番号の別の面に当てない）
+#[test]
+fn retarget_keeps_cbs_and_skips_resized_blocks() {
+    use lensbench_project::edit_spec::{EditOp, Ref};
+    use lensbench_project::retarget::Retarget;
+    let two =
+        r#"[{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]"#;
+    let three = r#"[{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -40, "t": 2, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]"#;
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 4}},
+        "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}},
+          {{"type": "lens", "id": "L0", "source": {{"surfaces": {two}}}}}, {{"type": "air", "t": 5}},
+          {{"type": "lens", "id": "L1", "decenter": [0.2, 0], "source": {{"surfaces": {two}}}}}, {{"type": "air", "t": 5}},
+          {{"type": "lens", "id": "L2", "source": {{"surfaces": {two}}}}}, {{"type": "air", "t": 20}}],
+        "states": [{{"name": "s", "set": {{"L0": {{"on": false, "off": "air"}}, "L2": {{"source": {{"surfaces": {three}}}}}}}}}]}}"#
+    ))
+    .unwrap();
+    let a = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let st = ExpandOpts {
+        state: Some("s"),
+        ..Default::default()
+    };
+    let b = expand(&p, &env(), &st).unwrap();
+    let faces = |x: &lensbench_project::Expansion| -> Vec<Option<lensbench_project::FaceId>> {
+        x.map.iter().map(|o| o.face.clone()).collect()
+    };
+    let mut r = Retarget::new(&faces(&a), &faces(&b));
+    let set = |j: usize| EditOp::SetSurface {
+        surface: Ref::Index(j),
+        fields: Default::default(),
+    };
+    let cb = |x: &lensbench_project::Expansion| -> Vec<usize> {
+        (0..x.map.len())
+            .filter(|&j| x.map[j].is_in("L1") && x.system.surfaces[j].is_coord_break())
+            .collect()
+    };
+    let (ca, cb_) = (cb(&a), cb(&b));
+    for k in 0..2 {
+        match r.op(&set(ca[k])).unwrap() {
+            EditOp::SetSurface {
+                surface: Ref::Index(j),
+                ..
+            } => assert_eq!(j, cb_[k]),
+            o => panic!("{o:?}"),
+        }
+    }
+    let l2 = (0..a.map.len()).find(|&j| a.map[j].is_in("L2")).unwrap();
+    assert!(r.op(&set(l2)).is_err(), "L2 は面の数が違う");
+}

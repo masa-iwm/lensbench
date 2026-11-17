@@ -20,9 +20,10 @@ use lensbench_export::d2::Plane;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
-use crate::load::{load_file, read_file_notes, ReadFile, SysSpec as LoadSpec};
+use crate::load::{load_file, read_file_notes, Faces, ReadFile, SysSpec as LoadSpec};
 use lensbench_project::open::Source;
-use lensbench_project::BlockSpans;
+use lensbench_project::retarget::Retarget;
+use lensbench_project::{BlockSpans, FaceId};
 
 /// 要求で与えたパスの扱い
 pub enum Files {
@@ -127,6 +128,8 @@ struct Served {
     src: Arc<Source>,
     /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（読んだときのもの。面を足す・消す edit の後は空）
     blocks: Arc<Vec<BlockSpans>>,
+    /// プロジェクトの読んだときの系の面ごとの名前（変更の記録 log はこの系からの変更。別の状態・経路へ当て直す）
+    faces: Arc<Faces>,
     /// 読んだときの注意（load・reload の返事の notes。CLI-10）
     notes: Vec<String>,
     log: Vec<Change>,
@@ -143,6 +146,8 @@ pub(crate) struct Current {
     spec: LoadSpec,
     /// 読んだときのファイル
     src: Arc<Source>,
+    /// 読んだときの系の面ごとの名前
+    faces: Arc<Faces>,
     /// 読み込んだ後の変更
     log: Vec<Change>,
 }
@@ -159,6 +164,7 @@ struct Snap {
     spec: LoadSpec,
     src: Arc<Source>,
     blocks: Arc<Vec<BlockSpans>>,
+    faces: Arc<Faces>,
     notes: Vec<String>,
     log: Vec<Change>,
 }
@@ -259,6 +265,7 @@ impl Session {
                 sys: x.sys.clone(),
                 spec: x.spec.clone(),
                 src: x.src.clone(),
+                faces: x.faces.clone(),
                 log: x.log.clone(),
             })
             .ok_or_else(|| RpcErr::app("no system (load first)"))
@@ -279,6 +286,7 @@ fn store(sess: &Session, r: ReadFile, spec: LoadSpec) {
         spec,
         src: Arc::new(r.src),
         blocks: Arc::new(r.blocks),
+        faces: Arc::new(r.faces),
         notes: r.notes,
         log: Vec::new(),
         hist: History::default(),
@@ -335,6 +343,7 @@ fn store_loaded(sess: &Session, r: ReadFile, spec: LoadSpec, h: LoadHistory, rel
     x.spec = spec;
     x.src = Arc::new(r.src);
     x.blocks = Arc::new(r.blocks);
+    x.faces = Arc::new(r.faces);
     x.notes = r.notes;
     x.log = Vec::new();
     x.last_set = None;
@@ -349,6 +358,7 @@ mod catalog;
 mod layout;
 mod optim;
 mod proto;
+mod replay;
 mod trace;
 pub mod views;
 use args::{known_keys, opt_f64, opt_usize, str_list};
@@ -362,6 +372,7 @@ pub use optim::{
     tolerance_progress,
 };
 pub use proto::{Access, METHODS, PROTOCOL};
+use replay::replay;
 use trace::{plugin, trace};
 
 /// 今の系の写し
@@ -371,6 +382,7 @@ fn snap(x: &Served) -> Snap {
         spec: x.spec.clone(),
         src: x.src.clone(),
         blocks: x.blocks.clone(),
+        faces: x.faces.clone(),
         notes: x.notes.clone(),
         log: x.log.clone(),
     }
@@ -434,6 +446,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     x.sys = snap.sys;
     x.src = snap.src;
     x.blocks = snap.blocks;
+    x.faces = snap.faces;
     x.notes = snap.notes;
     x.log = snap.log;
     x.last_set = None;
@@ -483,47 +496,6 @@ fn step_history_n(sess: &Session, back: bool, p: &Value) -> Result<Value, RpcErr
         }
     }
     Ok(v)
-}
-
-/// 別に読んだ光束の系に、読み込んだ後の変更（set・edit）を順に当てる。set のパラメータの値が、読み込んだ系で
-/// 変える前の値と違うもの（構成・状態で値が違うもの）は当てずに notes に書く
-fn replay(
-    mut s: System,
-    log: &[Change],
-    beam: &str,
-    notes: &mut Vec<String>,
-) -> lensbench_core::Result<System> {
-    let e = |e: lensbench_core::Error| e.at(beam);
-    for c in log {
-        match c {
-            Change::Set(v) => {
-                let mut ch = Vec::with_capacity(v.len());
-                for (name, before, value) in v {
-                    let q = s.param(name).map_err(e)?;
-                    let now = s.get_param(q).map_err(e)?;
-                    if now == *before {
-                        ch.push((q, *value));
-                    } else {
-                        let n = format!(
-                            "{what}: {name} differs from the loaded system ({now}, loaded system {before}), so set is not applied",
-                            what = beam
-                        );
-                        if !notes.contains(&n) {
-                            notes.push(n);
-                        }
-                    }
-                }
-                if !ch.is_empty() {
-                    s = s.with_params(&ch).map_err(e)?;
-                }
-            }
-            Change::Edit(ops) => {
-                lensbench_project::edit_ops::apply(&mut s, ops)
-                    .map_err(|x| format!("{beam}: {x}"))?;
-            }
-        }
-    }
-    Ok(s)
 }
 
 /// JSON-RPC のエラー
@@ -1353,9 +1325,12 @@ pub(crate) fn with_source<R>(
         sys,
         spec,
         src,
+        faces,
         log,
     } = sess.current_full()?;
-    let r = |s: System, l: &str, n: &mut Vec<String>| replay(s, &log, l, n);
+    let r = |s: System, to: &[Option<FaceId>], l: &str, n: &mut Vec<String>| {
+        replay(s, &log, (&faces, to), l, n)
+    };
     Ok(f(&crate::source::FileSource::loaded(&spec, src, &sys, &r)))
 }
 

@@ -129,6 +129,10 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) frames: Vec<(String, MechSpec)>,
     /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
     pub(crate) zenv: Vec<(String, f64, f64, bool)>,
+    /// プロジェクトの木のブロック（アドレス）とその位置（[`node_paths`]）。木の外（ユーザーカタログの品の中、写した BS の腕）は無い
+    pub(crate) nodes: HashMap<usize, NodePath>,
+    /// たどっている木のブロック（外から内へ。アドレス）。足した面の出どころ [`SurfOrigin::leaf`] は最後のもの
+    pub(crate) leaf: Vec<usize>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -308,7 +312,29 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// 面をそのまま足す（出どころなし）
     pub(crate) fn put(&mut self, s: Surface) {
         self.sf.push(s);
-        self.map.push(SurfOrigin::default());
+        self.map.push(SurfOrigin {
+            leaf: self.cur_leaf(),
+            ..Default::default()
+        });
+    }
+
+    /// 今たどっている木のいちばん内のブロック（アドレス、無ければ 0）
+    pub(crate) fn cur_leaf(&self) -> usize {
+        self.leaf.last().copied().unwrap_or(0)
+    }
+
+    /// b が木のブロックなら、たどっている間は面の出どころにする（f の後に外す）
+    pub(crate) fn in_node<R>(&mut self, b: &Block, f: impl FnOnce(&mut Self) -> R) -> R {
+        let k = b as *const Block as usize;
+        let on = self.nodes.contains_key(&k);
+        if on {
+            self.leaf.push(k);
+        }
+        let r = f(self);
+        if on {
+            self.leaf.pop();
+        }
+        r
     }
 
     /// id の空気が入る面（gap の前に呼ぶ）
@@ -437,6 +463,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             self.sf.push(s);
             self.map.push(SurfOrigin {
                 zmx: inst.map(|k| (k, e.from + i)),
+                leaf: self.cur_leaf(),
                 ..Default::default()
             });
         }
@@ -468,7 +495,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// 往路のブロックを復路でたどる（鏡のあと）
     pub(crate) fn back_block(&mut self, b: &Block) -> lensbench_core::Result<()> {
         let start = self.sf.len();
-        self.back_block_inner(b)?;
+        self.in_node(b, |c| c.back_block_inner(b))?;
         self.note(block_id(b), b.faces(), start);
         for o in &mut self.map[start..] {
             o.back = true;
@@ -880,7 +907,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         idx: usize,
     ) -> lensbench_core::Result<()> {
         let start = self.sf.len();
-        self.block_inner(b, siblings, idx)?;
+        self.in_node(b, |c| c.block_inner(b, siblings, idx))?;
         // 鏡は鏡の面だけ（往路を戻る面は除く）。中で覚える
         if !matches!(b, Block::Mirror { .. } | Block::Splitter { .. }) {
             self.note(block_id(b), b.faces(), start);

@@ -2118,3 +2118,9 @@ a frame without surfaces (blocks)	面（blocks）の無い枠
 --params-file {} must be a JSON object	--params-file {} は JSON のオブジェクトにしてください
 --params-file {} can't be read: {e}	--params-file {} が読めません: {e}
 --params-file {} JSON can't be read: {e}	--params-file {} の JSON が読めません: {e}
+{what}: {op} is not applied ({why})	{what}: {op} を当てません（{why}）
+an earlier change that inserted or deleted surfaces was not applied	前の、面を入れる・消す変更を当てられませんでした
+surface {i} is not in this system	面 {i} はこのシステムにありません
+surfaces {a} to {b} are not in the same order in this system	面 {a}〜{b} はこのシステムで同じ並びではありません
+a surface deleted by name can't be found in this system	名前で消した面はこのシステムで探せません
+holds must be surface numbers	holds は面の番号にしてください

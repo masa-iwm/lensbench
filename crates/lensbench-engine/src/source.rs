@@ -6,9 +6,14 @@ use crate::load::SysSpec;
 use lensbench_project::open::Source;
 use std::sync::Arc;
 
-/// 読み込んだ後の変更（serve の set・edit）を別に読んだ系に当てる口（系, 説明に付ける名前, 当てなかった変更）
-pub(crate) type Replay<'a> =
-    &'a dyn Fn(System, &str, &mut Vec<String>) -> lensbench_core::Result<System>;
+/// 読み込んだ後の変更（serve の set・edit）を別に読んだ系に当てる口（系, 系の面の名前（プロジェクトでなければ空）,
+/// 説明に付ける名前, 当てなかった変更）
+pub(crate) type Replay<'a> = &'a dyn Fn(
+    System,
+    &[Option<lensbench_project::FaceId>],
+    &str,
+    &mut Vec<String>,
+) -> lensbench_core::Result<System>;
 
 /// 系のファイルの読み方。ファイルは初めに要るときに 1 回だけ読み（[`lensbench_project::open::Source`]）、状態・経路・
 /// プロジェクトの文字列・別の状態の系はそこから引く（CLI-13）
@@ -122,9 +127,14 @@ impl lensbench_analysis::Source for FileSource<'_> {
             state,
             ..self.c.clone()
         };
+        let mut faces = Vec::new();
         let (s, n) = match &v.wavelengths {
             None if c.cfg == 0 => crate::load::load_file_notes(&c)?,
-            None => crate::load::load_source_notes(self.src()?, &c)?,
+            None => {
+                let (s, n, f) = crate::load::load_source_faces(self.src()?, &c)?;
+                faces = f;
+                (s, n)
+            }
             Some(wl) => {
                 let zmx = c
                     .file
@@ -156,7 +166,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     None if project => format!("state {}", c.state.as_deref().unwrap_or("default")),
                     None => format!("configuration {cfg}"),
                 };
-                r(s, &label, notes)
+                r(s, &faces, &label, notes)
             }
         }
     }

@@ -69,7 +69,12 @@ pub struct ReadFile {
     pub notes: Vec<String>,
     /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（プロジェクトでなければ空）
     pub blocks: Vec<lensbench_project::BlockSpans>,
+    /// プロジェクトの展開した系の面ごとの名前（[`lensbench_project::open::Opened::faces`]。プロジェクトでなければ空）
+    pub faces: Faces,
 }
+
+/// 展開した系の面ごとの名前（[`lensbench_project::SurfOrigin::face`]）
+pub type Faces = Vec<Option<lensbench_project::FaceId>>;
 
 /// [`load_file_notes`] で、読んだファイルとブロックの面の範囲も返す
 pub fn read_file_notes(c: &SysSpec) -> Result<ReadFile, lensbench_core::Error> {
@@ -80,12 +85,13 @@ pub fn read_file_notes(c: &SysSpec) -> Result<ReadFile, lensbench_core::Error> {
         )));
     }
     let src = Source::read(&c.file)?;
-    let (sys, notes, blocks) = open_source(&src, c)?;
+    let o = open_source(&src, c)?;
     Ok(ReadFile {
         src,
-        sys,
-        notes,
-        blocks,
+        sys: o.system,
+        notes: o.warnings,
+        blocks: o.blocks,
+        faces: o.faces,
     })
 }
 
@@ -100,19 +106,30 @@ pub fn load_source(src: &Source, c: &SysSpec) -> Result<System, lensbench_core::
     Ok(load_source_notes(src, c)?.0)
 }
 
+/// [`load_source`] で、展開した系の面ごとの名前も返す（別の状態・経路へ変更を当て直す）
+pub(crate) fn load_source_faces(
+    src: &Source,
+    c: &SysSpec,
+) -> Result<(System, Vec<String>, Faces), lensbench_core::Error> {
+    let o = open_source(src, c)?;
+    Ok((o.system, o.warnings, o.faces))
+}
+
 /// 読んだファイル src から、c の構成・状態・経路の系を読む。注意（プロジェクトの展開・分散式・マクロ・
 /// 取り込み）は返す（CLI は標準エラーへ、serve は load の返事と解析の notes へ、GUI は履歴へ。CLI-10）
 pub fn load_source_notes(
     src: &Source,
     c: &SysSpec,
 ) -> Result<(System, Vec<String>), lensbench_core::Error> {
-    let (s, notes, _) = open_source(src, c)?;
-    Ok((s, notes))
+    let o = open_source(src, c)?;
+    Ok((o.system, o.warnings))
 }
 
-/// [`load_source_notes`] で、ブロックの面の範囲も返す
-type Opened = (System, Vec<String>, Vec<lensbench_project::BlockSpans>);
-fn open_source(src: &Source, c: &SysSpec) -> Result<Opened, lensbench_core::Error> {
+/// [`load_source_notes`] で、ブロックの面の範囲・面の名前も返す（warnings に系そのものの注意も足す）
+fn open_source(
+    src: &Source,
+    c: &SysSpec,
+) -> Result<lensbench_project::open::Opened, lensbench_core::Error> {
     let o = src.open(&c.open_spec())?;
     if c.strict_macros {
         // 注意の文は 1 つずつ訳せるよう、最初の 1 つだけを {e} に入れる（数は前に）
@@ -126,9 +143,10 @@ fn open_source(src: &Source, c: &SysSpec) -> Result<Opened, lensbench_core::Erro
             }));
         }
     }
-    let mut notes = o.warnings;
-    notes.extend(system_notes(&o.system));
-    Ok((o.system, notes, o.blocks))
+    let mut o = o;
+    let n = system_notes(&o.system);
+    o.warnings.extend(n);
+    Ok(o)
 }
 
 /// 系そのものが持つ注意: 分散式・マクロ・取り込み（.zmx の読めなかった行・同梱のカタログなど）
@@ -228,11 +246,32 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
         return Ok((vec![(String::new(), s)], notes));
     }
     let (v, notes) = overlay_in(c, l, None)?;
-    Ok((v.into_iter().map(|(n, s, _)| (n, s)).collect(), notes))
+    Ok((v.into_iter().map(|o| (o.name, o.sys)).collect(), notes))
 }
 
-/// [`overlay_in`] の系（名前・系・読み込んだ後の変更が入っているか）と、読んだときの注意
-pub(crate) type OverlaidIn = (Vec<(String, System, bool)>, Vec<String>);
+/// [`overlay_in`] の系と、読んだときの注意
+pub(crate) type OverlaidIn = (Vec<OverlaidSys>, Vec<String>);
+
+/// [`overlay_in`] の系 1 つ
+pub(crate) struct OverlaidSys {
+    pub name: String,
+    pub sys: System,
+    /// 読み込んだ後の変更がもう入っているか
+    pub edited: bool,
+    /// プロジェクトの展開した系の面ごとの名前（変更を当て直す。ほかは空）
+    pub faces: Faces,
+}
+
+impl OverlaidSys {
+    fn new(name: String, sys: System, edited: bool) -> Self {
+        OverlaidSys {
+            name,
+            sys,
+            edited,
+            faces: Vec::new(),
+        }
+    }
+}
 
 /// 読み込んだ系（serve）: 読んだときのファイル src と、読み込んだ後の変更の入った系 cur
 pub(crate) type Loaded<'a> = (&'a Source, &'a System);
@@ -259,7 +298,11 @@ pub(crate) fn overlay_in(
             let (cur, n) = t;
             let mut out = Vec::new();
             for k in index_list(v, n, "configuration")? {
-                out.push((format!("C{}", k + 1), cur.config(k + 1)?, true));
+                out.push(OverlaidSys::new(
+                    format!("C{}", k + 1),
+                    cur.config(k + 1)?,
+                    true,
+                ));
             }
             return Ok((out, Vec::new()));
         }
@@ -278,7 +321,7 @@ pub(crate) fn overlay_in(
             ks.iter()
                 .map(|k| format!("C{k}"))
                 .zip(ss)
-                .map(|(n, s)| (n, s, false))
+                .map(|(n, s)| OverlaidSys::new(n, s, false))
                 .collect(),
             Vec::new(),
         ));
@@ -356,10 +399,10 @@ pub(crate) fn overlay_in(
             }
             // 今の状態・経路は読み込んだ系そのもの
             if let Some((_, cur)) = loaded.filter(|_| *st == c.state && *pa == c.path) {
-                out.push((name.join("/"), cur.clone(), true));
+                out.push(OverlaidSys::new(name.join("/"), cur.clone(), true));
                 continue;
             }
-            let (s, warn) = lensbench_project::expand(
+            let (s, warn, map) = lensbench_project::expand(
                 &ps,
                 &env,
                 &lensbench_project::ExpandOpts {
@@ -368,7 +411,7 @@ pub(crate) fn overlay_in(
                     ..Default::default()
                 },
             )
-            .map(|x| (x.system, x.notes))
+            .map(|x| (x.system, x.notes, x.map))
             .map_err(|x| match pa {
                 Some(q) => format!("path {q}: {x}"),
                 None => x.to_string(),
@@ -379,7 +422,12 @@ pub(crate) fn overlay_in(
                     notes.push(w);
                 }
             }
-            out.push((name.join("/"), s, false));
+            out.push(OverlaidSys {
+                name: name.join("/"),
+                sys: s,
+                edited: false,
+                faces: map.into_iter().map(|o| o.face).collect(),
+            });
         }
     }
     Ok((out, notes))

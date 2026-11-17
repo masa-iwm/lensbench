@@ -131,6 +131,9 @@ pub struct Opened {
     pub coatings: Vec<PathBuf>,
     /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（[`crate::block_spans`]。プロジェクトでなければ空）
     pub blocks: Vec<crate::BlockSpans>,
+    /// プロジェクトの展開した系の面ごとの名前（[`crate::SurfOrigin::face`]。別の状態・経路へ編集を当て直す
+    /// [`crate::retarget::Retarget`]）。プロジェクトでなければ空
+    pub faces: Vec<Option<crate::FaceId>>,
 }
 
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む（[`Source::read`] と [`Source::open`]）。
@@ -310,6 +313,7 @@ impl Source {
                     warnings,
                     coatings: m.coatings,
                     blocks: Vec::new(),
+                    faces: Vec::new(),
                 })
             }
             Source::Project {
@@ -345,11 +349,13 @@ impl Source {
                 )
                 .map_err(at)?;
                 let blocks = x.block_spans();
+                let faces = x.map.into_iter().map(|o| o.face).collect();
                 Ok(Opened {
                     system: x.system,
                     warnings: x.notes,
                     coatings: Vec::new(),
                     blocks,
+                    faces,
                 })
             }
             Source::Zmx(path) => {
@@ -374,6 +380,7 @@ impl Source {
                     warnings: Vec::new(),
                     coatings: Vec::new(),
                     blocks: Vec::new(),
+                    faces: Vec::new(),
                 })
             }
         }

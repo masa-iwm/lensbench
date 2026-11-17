@@ -1445,3 +1445,74 @@ fn project_states_come_from_the_loaded_file() {
     assert!(now.as_array().unwrap().contains(&json!("close")), "{now}");
     sv.stop();
 }
+
+/// 別の状態の系へは、読み込んだ後の変更を面の名前で当て直す: 状態で前の玉を外して面の番号がずれても、変えた玉の
+/// 面に当たる。外した玉の面への変更は当てずに notes に出す（CLI-21）
+#[test]
+fn edits_follow_the_surface_into_other_states() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-retarget-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let project = |r2: f64| {
+        let lens = |id: &str, r: f64| {
+            format!(
+                r#"{{"type": "lens", "id": "{id}", "source": {{"surfaces": [{{"radius": {r}, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}}"#
+            )
+        };
+        format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 6}},
+            "fields": {{"points": [[0, 0], [0, 3]]}},
+            "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}}, {l1}, {{"type": "air", "t": 5}}, {l2}, {{"type": "air", "t": 30}}],
+            "states": [{{"name": "no L1", "set": {{"L1": {{"on": false, "off": "air"}}}}}}]}}"#,
+            l1 = lens("L1", 60.0),
+            l2 = lens("L2", r2),
+        )
+    };
+    let load = |f: &Path| {
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        })
+    };
+    let (fa, fb) = (dir.join("a.json"), dir.join("b.json"));
+    std::fs::write(&fa, project(60.0)).unwrap();
+    std::fs::write(&fb, project(40.0)).unwrap();
+    // 読み込んだ系（L1 あり）で L2 の前の面（面 4）を変える。L1 の無い状態では L2 の前の面は面 2
+    let mut sv = Server::start(&[]);
+    sv.call("load", load(&fa));
+    sv.call(
+        "edit",
+        json!({ "ops": [{ "op": "set_surface", "surface": 4, "fields": { "r": 40.0 } }] }),
+    );
+    let got = sv.call("layout", json!({ "rays": 3, "states": "all" }));
+    let mut want = Server::start(&[]);
+    want.call("load", load(&fb));
+    let exp = want.call("layout", json!({ "rays": 3, "states": "all" }));
+    want.stop();
+    assert_eq!(got["rays"], exp["rays"]);
+    assert!(got.get("notes").is_none(), "{}", got["notes"]);
+    // L1 の面を変えても、L1 の無い状態には当たらない（注意だけ）。set の名前の面の番号も読み替える
+    sv.call("set", json!({ "values": { "4.t": 6.0 } }));
+    sv.call(
+        "edit",
+        json!({ "ops": [{ "op": "set_surface", "surface": 2, "fields": { "r": 50.0 } }] }),
+    );
+    let got = sv.call("layout", json!({ "rays": 3, "states": "all" }));
+    let notes = got["notes"].to_string();
+    assert!(
+        notes.contains("no L1") && notes.contains("set_surface is not applied"),
+        "{notes}"
+    );
+    std::fs::write(
+        &fb,
+        project(40.0).replace(r#""radius": 40, "t": 4"#, r#""radius": 40, "t": 6"#),
+    )
+    .unwrap();
+    let mut want = Server::start(&[]);
+    want.call("load", load(&fb));
+    let exp = want.call("layout", json!({ "rays": 3, "states": "no L1" }));
+    want.stop();
+    let got1 = sv.call("layout", json!({ "rays": 3, "states": "no L1" }));
+    assert_eq!(got1["rays"], exp["rays"]);
+    sv.stop();
+    std::fs::remove_dir_all(&dir).ok();
+}

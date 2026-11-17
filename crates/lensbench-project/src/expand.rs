@@ -283,6 +283,111 @@ pub struct SurfOrigin {
     pub(crate) zmx: Option<(usize, usize)>,
     /// 面を足した、面の上書き・操作を持つブロック・群（[`Ctx::sites`] の番号）
     pub(crate) mods: Vec<usize>,
+    /// 面を足したプロジェクトの木のいちばん内のブロックと、その中の何番目の面か（[`FaceId`]。物体面・像面は None）。
+    /// 状態・経路の違う展開の間で同じ面を探す（[`Expansion::find_face`]）
+    pub face: Option<FaceId>,
+    /// 展開中だけ: 面を足した木のブロックのアドレス（[`Ctx::leaf`]）。展開の終わりに face にして 0 に戻す
+    pub(crate) leaf: usize,
+}
+
+/// プロジェクトのブロックの木の中の位置（上から順の段）
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct NodePath(pub Vec<NodeStep>);
+
+/// [`NodePath`] の段
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NodeStep {
+    /// 並び（最上位・群の中）の i 番目のブロック
+    Block(usize),
+    /// BS の腕（0 透過 t・1 反射 r・2 d）の i 番目のブロック
+    Arm(u8, usize),
+}
+
+/// 展開した系の面の、プロジェクトの中での名前（[`SurfOrigin::face`]）。ブロックの木が同じなら、状態・BS の経路が違う
+/// 展開でも同じ面は同じ名前になる
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FaceId {
+    /// 面を足したいちばん内のブロック（ユーザーカタログの品は品のブロック、BS の腕の中は BS）
+    pub node: NodePath,
+    /// 鏡の `back` で復路にたどった面
+    pub back: bool,
+    /// そのブロックを同じ向きで何回目にたどった範囲か（0 始まり）
+    pub pass: usize,
+    /// 座標ブレーク（偏心・傾き・折り曲げの座標の面）か
+    pub cb: bool,
+    /// 範囲の中の番号（0 始まり、たどった順）。座標ブレークとほかの面は別に数える（偏心の有無が状態で変わっても、
+    /// ほかの面の番号はずれない）
+    pub index: usize,
+}
+
+/// ブロックの木のブロック（アドレス）ごとの位置
+pub(crate) fn node_paths(blocks: &[Block]) -> HashMap<usize, NodePath> {
+    fn walk(
+        v: &[Block],
+        pre: &mut Vec<NodeStep>,
+        arm: Option<u8>,
+        out: &mut HashMap<usize, NodePath>,
+    ) {
+        for (i, b) in v.iter().enumerate() {
+            pre.push(match arm {
+                Some(a) => NodeStep::Arm(a, i),
+                None => NodeStep::Block(i),
+            });
+            out.insert(b as *const Block as usize, NodePath(pre.clone()));
+            match b {
+                Block::Group { blocks, .. } => walk(blocks, pre, None, out),
+                Block::Splitter { spec, .. } => {
+                    for (a, l) in [&spec.t, &spec.r, &spec.d].into_iter().enumerate() {
+                        walk(l, pre, Some(a as u8), out);
+                    }
+                }
+                _ => {}
+            }
+            pre.pop();
+        }
+    }
+    let mut out = HashMap::new();
+    walk(blocks, &mut Vec::new(), None, &mut out);
+    out
+}
+
+/// 展開中に覚えた木のブロックのアドレス（[`SurfOrigin::leaf`]）を、面の名前 [`FaceId`] にする
+fn name_faces(map: &mut [SurfOrigin], sf: &[Surface], nodes: &HashMap<usize, NodePath>) {
+    // (ブロック, 向き) ごとのたどった範囲の数
+    let mut passes: HashMap<(usize, bool), usize> = HashMap::new();
+    let mut prev: Option<(usize, bool)> = None;
+    // 範囲の中の面・座標ブレークの数
+    let mut k = [0usize; 2];
+    for (j, o) in map.iter_mut().enumerate() {
+        let leaf = std::mem::take(&mut o.leaf);
+        let Some(node) = nodes.get(&leaf) else {
+            prev = None;
+            continue;
+        };
+        let key = (leaf, o.back);
+        let n = passes.entry(key).or_insert(0);
+        if prev != Some(key) {
+            *n += 1;
+            k = [0, 0];
+        }
+        let cb = sf[j].is_coord_break();
+        o.face = Some(FaceId {
+            node: node.clone(),
+            back: o.back,
+            pass: *n - 1,
+            cb,
+            index: k[cb as usize],
+        });
+        k[cb as usize] += 1;
+        prev = Some(key);
+    }
+}
+
+impl Expansion {
+    /// 面の名前が id の面（[`SurfOrigin::face`]）。無ければ None
+    pub fn find_face(&self, id: &FaceId) -> Option<usize> {
+        self.map.iter().position(|o| o.face.as_ref() == Some(id))
+    }
 }
 
 impl SurfOrigin {
@@ -516,6 +621,8 @@ pub(crate) fn expand_inner(
         },
         frames: Vec::new(),
         zenv: Vec::new(),
+        nodes: node_paths(&p.blocks),
+        leaf: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -581,6 +688,7 @@ pub(crate) fn expand_inner(
     map.push(SurfOrigin::default());
     let zpicks = std::mem::take(&mut c.zpicks);
     sf.push(Surface::default());
+    name_faces(&mut map, &sf, &c.nodes);
     // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
     let envr = p.environment;
     for (j, d) in sf.iter_mut().enumerate() {
