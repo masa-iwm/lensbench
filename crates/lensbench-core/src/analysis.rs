@@ -1732,7 +1732,8 @@ fn clipped_otf(
     Ok((sag, tan, (e0[0], e0[1])))
 }
 
-/// 波長 wave の回折限界の遮断周波数 [cycles/mm]（瞳を 2 だけずらす周波数。向き 0 が球欠 = x、1 が子午 = y）
+/// 波長 wave の回折限界の遮断周波数 [cycles/mm]（瞳を 2 だけずらす周波数）。子午・球欠は既定の向き
+/// （[`MtfAxes::Field`]: 子午が視野の向き、球欠がそれに直交する向き）。瞳の向きは [`mtf_cutoff_axes`]
 pub fn mtf_cutoff(s: &System, field: FieldSel, wave: usize) -> Result<TanSag<f64>> {
     let fr = MtfFrame::new(s, field, wave, MtfAxes::default())?;
     mtf_cutoff_in(s, field, wave, &fr)

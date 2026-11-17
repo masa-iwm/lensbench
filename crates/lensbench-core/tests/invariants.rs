@@ -301,3 +301,49 @@ fn mtf_with_all_zero_weights_is_an_error() {
     assert!(lensbench_core::Waves::All.weighted(&s).is_err());
     assert!(lensbench_core::Waves::One(0).weighted(&s).is_ok());
 }
+
+/// スポットの光線の本数: 追跡した本数は求積の点 × 波長、届いた本数はスポットの点の数、除いた本数は理由ごとの和
+#[test]
+fn spot_ray_counts_add_up() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/refs");
+    let mut names: Vec<String> = std::fs::read_dir(&root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().join("system.zmx").exists())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    let (rings, arms) = (4, 4 * 4 + 2);
+    for name in names {
+        let s = load(&name);
+        let f = FieldSel::Index(s.fields.len() - 1);
+        let Ok(sp) = analysis::spot(&s, f, lensbench_core::Waves::All, rings) else {
+            continue;
+        };
+        let c = sp.rays;
+        assert_eq!(c.total, rings * arms * s.wavelengths.len(), "{name}");
+        assert_eq!(c.ok, sp.x.len(), "{name}");
+        assert_eq!(
+            c.lost(),
+            c.vignetted + c.missed + c.tir + c.aim_failed,
+            "{name}"
+        );
+    }
+    // 開口を絞った面でけられる光線は vignetted に数える
+    let mut s = load("A0");
+    let semi = s.surfaces[2].semi.max(1.0);
+    s.edit_raw(|p| {
+        p.surfaces[2].ap = lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 0.3 * semi,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
+    let sp = analysis::spot(&s, FieldSel::Index(0), lensbench_core::Waves::All, rings).unwrap();
+    let c = sp.rays;
+    assert!(c.vignetted > 0 && c.ok == sp.x.len(), "{c:?}");
+    assert_eq!(c.ok + c.vignetted, c.total, "{c:?}");
+}

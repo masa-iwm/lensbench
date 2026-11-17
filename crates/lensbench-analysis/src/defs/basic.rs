@@ -46,6 +46,35 @@ pub(super) struct SpotRow {
     pub geo: f64,
     pub centroid: [f64; 2],
     pub chief: [f64; 2],
+    /// Traced rays and why the excluded ones were dropped (summed over wavelengths, chief ray not counted)
+    pub rays: RayCountsOut,
+}
+
+/// 追跡した光線の本数と、除いた光線の理由ごとの本数
+#[derive(Debug, Serialize, JsonSchema)]
+pub(super) struct RayCountsOut {
+    /// Traced rays
+    pub total: usize,
+    /// Rays clipped by a surface aperture
+    pub vignetted: usize,
+    /// Rays that missed a surface
+    pub missed: usize,
+    /// Rays stopped by total internal reflection
+    pub tir: usize,
+    /// Rays whose aiming failed
+    pub aim_failed: usize,
+}
+
+impl From<lensbench_core::trace::RayCounts> for RayCountsOut {
+    fn from(c: lensbench_core::trace::RayCounts) -> Self {
+        RayCountsOut {
+            total: c.total,
+            vignetted: c.vignetted,
+            missed: c.missed,
+            tir: c.tir,
+            aim_failed: c.aim_failed,
+        }
+    }
 }
 
 /// スポットの結果
@@ -81,6 +110,7 @@ impl Analysis for Spot {
                 geo: sp.geo,
                 centroid: [sp.centroid.0, sp.centroid.1],
                 chief: [sp.chief.0, sp.chief.1],
+                rays: sp.rays.into(),
             });
         }
         Ok(SpotOut {

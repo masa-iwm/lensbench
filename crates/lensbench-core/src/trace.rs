@@ -373,6 +373,52 @@ impl RayStatus {
     }
 }
 
+/// 追跡した光線の本数を、届いたか・止まった理由で数えたもの（解析の結果で、何本がなぜ除かれたかを示す）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RayCounts {
+    /// 追跡した本数
+    pub total: usize,
+    /// 最後の面まで届き、けられなかった本数
+    pub ok: usize,
+    /// 面の開口でけられた本数
+    pub vignetted: usize,
+    /// 面に当たらなかった本数（[`RayStatus::Missed`]）
+    pub missed: usize,
+    /// 全反射した本数（[`RayStatus::Tir`]）
+    pub tir: usize,
+    /// エイミングに失敗した本数（[`RayStatus::AimFailed`]）
+    pub aim_failed: usize,
+}
+
+impl RayCounts {
+    /// 1 本を数える（vig はけられた面、0 ならけられていない）
+    pub fn add(&mut self, st: RayStatus, vig: usize) {
+        self.total += 1;
+        match st {
+            RayStatus::Ok if vig == 0 => self.ok += 1,
+            RayStatus::Ok => self.vignetted += 1,
+            RayStatus::Missed { .. } => self.missed += 1,
+            RayStatus::Tir { .. } => self.tir += 1,
+            RayStatus::AimFailed { .. } => self.aim_failed += 1,
+        }
+    }
+
+    /// 本数を足し合わせる
+    pub fn merge(&mut self, o: &RayCounts) {
+        self.total += o.total;
+        self.ok += o.ok;
+        self.vignetted += o.vignetted;
+        self.missed += o.missed;
+        self.tir += o.tir;
+        self.aim_failed += o.aim_failed;
+    }
+
+    /// 除かれた本数（届かなかった・けられた）
+    pub fn lost(&self) -> usize {
+        self.total - self.ok
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
     /// 最後の面の局所座標での位置・方向（方向は物理的な向き）

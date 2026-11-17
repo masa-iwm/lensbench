@@ -81,7 +81,8 @@ fn auto_freqs(top: f64, steps: usize) -> Result<Vec<f64>> {
     Ok((0..=steps).map(|k| top * k as f64 / steps as f64).collect())
 }
 
-/// 周波数の選び方（与えた並び、または 0 から上限までの等分。上限の既定は遮断周波数の 0.95 倍）
+/// 周波数の選び方（与えた並び、または 0 から上限までの等分。上限の既定は子午・球欠の向き axes の遮断周波数の
+/// 小さい方の 0.95 倍）
 fn freqs_for(
     s: &System,
     field: usize,
@@ -89,6 +90,7 @@ fn freqs_for(
     freqs: &Option<Vec<f64>>,
     max_freq: Option<f64>,
     freq_steps: usize,
+    axes: MtfDirs,
 ) -> Result<Vec<f64>> {
     if let Some(f) = freqs {
         if max_freq.is_some() {
@@ -102,7 +104,8 @@ fn freqs_for(
         Some(x) => x,
         None => {
             let f = lensbench_core::FieldSel::Index(field);
-            0.95 * lensbench_core::analysis::mtf_cutoff(s, f, w.unwrap_or(s.primary))?.min()
+            let w = w.unwrap_or(s.primary);
+            0.95 * lensbench_core::analysis::mtf_cutoff_axes(s, f, w, axes.core())?.min()
         }
     };
     auto_freqs(top, freq_steps)

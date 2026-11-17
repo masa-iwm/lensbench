@@ -248,6 +248,8 @@
 - 像面上の干渉縞（`interference` の検出面、偏光あり）で円偏光の入射（`+`・`-`）の回る向きが逆に追跡されていた（偏光追跡へ
   Jones ベクトルを約束を直さずに渡していた。ANA-13 で見つけた）。光線の格子と同じ向きに直した。直線偏光・偏光なしは変わらない。
 
+- `spot` の各視野に `rays`（追跡した本数 `total` と、除いた光線の理由ごとの本数 `vignetted`・`missed`・`tir`・`aim_failed`。
+  波長の分を足し、主光線は数えない）を足した（KRN-09）。Rust は `analysis::Spot::rays`（`trace::RayCounts`）、`RayBuf::counts`・`Trace::counts`。
 ### Rust API
 - OPD の基準の選び方を `lensbench_core::pupil::RefSurface::of` の 1 か所にした（XCT-19）: OPD の値（`analysis::to_ref`）・最適化の微分・
   Huygens PSF が同じ判定（`RefSurface::plane_for`・`pupil::exit_pupil_near`、閾値は `lensbench_core::tol`）を使う。値はビット単位で同じ。

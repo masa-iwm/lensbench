@@ -95,6 +95,14 @@ impl RayBuf {
     pub fn ok(&self, i: usize) -> bool {
         self.status[i].is_ok() && self.vig[i] == 0
     }
+    /// 届いた・止まった理由ごとの本数
+    pub fn counts(&self) -> crate::trace::RayCounts {
+        let mut c = crate::trace::RayCounts::default();
+        for (st, &v) in self.status.iter().zip(&self.vig) {
+            c.add(*st, v as usize);
+        }
+        c
+    }
 }
 
 impl RayBuf {

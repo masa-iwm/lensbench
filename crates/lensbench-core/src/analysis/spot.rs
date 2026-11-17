@@ -3,6 +3,7 @@
 use super::pupil_gauss;
 use crate::error::Result;
 use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
+use crate::trace::RayCounts;
 use crate::Waves;
 
 #[derive(Debug, Clone)]
@@ -16,6 +17,8 @@ pub struct Spot {
     pub rms_centroid: f64,
     pub rms_chief: f64,
     pub geo: f64,
+    /// 追跡した光線の本数と、除いた本数の理由（波長の分を足したもの。主光線は数えない）
+    pub rays: RayCounts,
 }
 
 /// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
@@ -84,7 +87,9 @@ pub fn apodized(
 /// （2 波長以上なら波長の重みもかける）
 pub(crate) fn spot_of(s: &System, rs: &[(usize, &RayBuf)], wts: &[f64], rc: &Trace) -> Spot {
     let (mut x, mut y, mut wt, mut wv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut rays = RayCounts::default();
     for &(wi, r) in rs {
+        rays.merge(&r.counts());
         for (i, &wq) in wts.iter().enumerate() {
             if r.ok(i) {
                 let (a, b) = s.image_point(r.xyz[i], r.lmn[i]);
@@ -113,6 +118,7 @@ pub(crate) fn spot_of(s: &System, rs: &[(usize, &RayBuf)], wts: &[f64], rc: &Tra
             rms_centroid: f64::NAN,
             rms_chief: f64::NAN,
             geo: f64::NAN,
+            rays,
         };
     }
     let avg = |v: &dyn Fn(usize) -> f64| (0..x.len()).map(|i| v(i) * wt[i]).sum::<f64>() / sw;
@@ -129,6 +135,7 @@ pub(crate) fn spot_of(s: &System, rs: &[(usize, &RayBuf)], wts: &[f64], rc: &Tra
         rms_centroid: rms_c,
         rms_chief: rms_h,
         geo,
+        rays,
         x,
         y,
         wave: wv,

@@ -10,7 +10,7 @@ use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{psf, Waves};
 
 /// A0（回転対称、角度の視野）の視野を、y の角度 h [°] と同じ向きの大きさ（tan の大きさ）で方位 0°（y）・90°（x）・
-/// 45°・135° の 4 つにした系
+/// 45°・135°・30°・−120° の 6 つにした系（45° の倍数でない方位では (θx, θy) と (tan θx, tan θy) の向きが違う）
 fn rotated_fields(h: f64) -> System {
     let opt = LoadOptions {
         cfg: 1,
@@ -19,9 +19,15 @@ fn rotated_fields(h: f64) -> System {
     };
     let mut s = zmx::load_with(&root().join("tests/refs/A0/system.zmx"), &opt).unwrap();
     let d = (h.to_radians().tan() / 2f64.sqrt()).atan().to_degrees();
+    // 方位 a [°]（y から x の向きに）の視野の角度 (θx, θy)
+    let az = |a: f64| {
+        let t = h.to_radians().tan();
+        let (sn, cs) = a.to_radians().sin_cos();
+        ((t * sn).atan().to_degrees(), (t * cs).atan().to_degrees())
+    };
     s.edit_raw(|rx| {
         let f0 = rx.fields[0];
-        rx.fields = [(0.0, h), (h, 0.0), (d, d), (-d, d)]
+        rx.fields = [(0.0, h), (h, 0.0), (d, d), (-d, d), az(30.0), az(-120.0)]
             .iter()
             .map(|&(x, y)| {
                 let mut f = f0;
@@ -57,7 +63,7 @@ fn field_axes_do_not_depend_on_the_field_azimuth() {
         (MtfMethod::Fft, 2e-4),
     ] {
         let y = mtf(&s, 0, method, MtfAxes::Field);
-        for i in 1..4 {
+        for i in 1..s.fields.len() {
             let m = mtf(&s, i, method, MtfAxes::Field);
             close(
                 &m.tan,
@@ -95,7 +101,7 @@ fn geometric_mtf_follows_the_field_direction() {
         psf::geometric_mtf_axes(&s, f, Waves::All, 64, &FREQS, false, axes).unwrap()
     };
     let y = g(0, MtfAxes::Field);
-    for i in 1..4 {
+    for i in 1..s.fields.len() {
         let m = g(i, MtfAxes::Field);
         close(
             &m.tan,
@@ -135,7 +141,7 @@ fn clipped_pupils_follow_the_field_direction() {
         (y.tan[1] - free.tan[1]).abs() > 1e-3,
         "the obscuration must clip the pupil"
     );
-    for i in 1..4 {
+    for i in 1..s.fields.len() {
         let m = mtf(&s, i, MtfMethod::Interp, MtfAxes::Field);
         close(&m.tan, &y.tan, 1e-4, &format!("clipped field {} T", i + 1));
         close(&m.sag, &y.sag, 1e-4, &format!("clipped field {} S", i + 1));

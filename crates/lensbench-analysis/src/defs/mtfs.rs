@@ -108,7 +108,7 @@ impl Analysis for Mtf {
         };
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
-            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
+            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let f = FieldSel::Index(i);
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
@@ -426,7 +426,7 @@ impl Analysis for GeoMtf {
         let w = wave(s, p.wave)?;
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
-            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
+            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let m = psf::geometric_mtf_axes(
                 s,
                 FieldSel::Index(i),
@@ -514,7 +514,7 @@ impl Analysis for HuygensMtf {
         };
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
-            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
+            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
             let f = FieldSel::Index(i);

@@ -73,6 +73,14 @@ impl Trace {
     pub fn ok(&self, i: usize) -> bool {
         self.rays[i].status.is_ok() && self.rays[i].vig == 0
     }
+    /// 届いた・止まった理由ごとの本数
+    pub fn counts(&self) -> crate::trace::RayCounts {
+        let mut c = crate::trace::RayCounts::default();
+        for r in &self.rays {
+            c.add(r.status, r.vig);
+        }
+        c
+    }
     /// 開口を無視して像面まで届いたか（けられても追跡は続く）。主光線などの基準の光線はこちらで見る
     /// （OpticStudio と同じく、基準の光線は開口・遮蔽を無視する。中心遮蔽の系など）
     pub fn traced(&self, i: usize) -> bool {
