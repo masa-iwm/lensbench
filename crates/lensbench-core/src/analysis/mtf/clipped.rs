@@ -2,8 +2,18 @@
 
 use super::*;
 
-/// 瞳を向き dir の線（dir 0: y = v の線で x の向き、1: x = v の線で y の向き）で切ったときの、光線が通る区間
-/// （線に沿う座標の昇順）。単位円の弦を等間隔の点（fine の線は [`Tuning::seg_scan_fine`]、他は [`Tuning::seg_scan`]）で
+/// 向き dir（0 球欠、1 子午）の線に沿う座標 a・線の位置 v の点の組の座標 (u, v)
+#[inline]
+fn line_xy(dir: usize, a: f64, v: f64) -> (f64, f64) {
+    if dir == 0 {
+        (a, v)
+    } else {
+        (v, a)
+    }
+}
+
+/// 瞳を向き dir の線（組の座標 (u, v) で、dir 0: v が一定の線で u（球欠）の向き、1: u が一定の線で v（子午）の
+/// 向き）で切ったときの、光線が通る区間（線に沿う座標の昇順）。単位円の弦を等間隔の点（fine の線は [`Tuning::seg_scan_fine`]、他は [`Tuning::seg_scan`]）で
 /// 走査し、通る・通らないが変わる所を二分法で詰める。走査の間隔より狭い穴・島は見落とす（区間は区間の数が
 /// 変わる所でだけ 0 に縮むので、その近くの線は細かく走査する）
 pub(super) fn pupil_segments(
@@ -15,10 +25,10 @@ pub(super) fn pupil_segments(
     fine: &[bool],
     fr: &MtfFrame,
 ) -> Result<Vec<Vec<(f64, f64)>>> {
-    let xy = |a: f64, v: f64| fr.xy(dir, a, v);
+    let xy = |a: f64, v: f64| line_xy(dir, a, v);
     let valid = |pts: &[(f64, f64)]| -> Result<Vec<bool>> {
         let (px, py): (Vec<f64>, Vec<f64>) = pts.iter().copied().unzip();
-        let o = opd(s, field, &px, &py, Some(wi), true)?;
+        let o = frame_opd(s, field, wi, fr, &px, &py)?;
         Ok((0..pts.len())
             .map(|k| o.ok(k) && o.opd[k].is_finite())
             .collect())
@@ -110,7 +120,7 @@ pub(super) fn line_nodes(
     fr: &MtfFrame,
 ) -> Result<(Vec<f64>, Vec<f64>, Vec<bool>)> {
     use std::f64::consts::{FRAC_PI_2, PI};
-    let xy = |a: f64, v: f64| fr.xy(dir, a, v);
+    let xy = |a: f64, v: f64| line_xy(dir, a, v);
     // θ の線ごとの、通る区間の数（弦の T.count_scan 点の走査で数える。小さい区間が見える所まで
     // 変わり目がずれないよう、区間を求める走査より細かい）
     let counts = |th: &[f64]| -> Result<Vec<usize>> {
@@ -124,7 +134,7 @@ pub(super) fn line_nodes(
                 py.push(y);
             }
         }
-        let o = opd(s, field, &px, &py, Some(wi), true)?;
+        let o = frame_opd(s, field, wi, fr, &px, &py)?;
         let ok = |k: usize| o.ok(k) && o.opd[k].is_finite();
         Ok((0..th.len())
             .map(|i| {
@@ -219,7 +229,7 @@ pub(super) fn clipped_otf(
     lam: f64,
     freqs: &[f64],
     sym: bool,
-    amp: Option<&WaveAmp>,
+    amp: Option<&FrameAmp>,
     fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     let (gz, gw) = gauss_legendre(n.max(8));
@@ -240,7 +250,7 @@ pub(super) fn clipped_otf(
                 .sum(),
             // 振幅つき: 区間ごとに振幅の 2 乗を Gauss-Legendre で
             Some(am) => {
-                let xy = |a: f64, v: f64| fr.xy(dir, a, v);
+                let xy = |a: f64, v: f64| line_xy(dir, a, v);
                 let mut e = 0.0;
                 for (i, sg) in segs[dir].iter().enumerate() {
                     for &(a, b) in sg {
@@ -267,7 +277,7 @@ pub(super) fn clipped_otf(
         let (sx, sy) = pupil_shift(jm, lam, dir);
         let dl = if dir == 0 { sx } else { sy } * freqs[k];
         let h = 0.5 * dl.abs();
-        let xy = |a: f64, v: f64| fr.xy(dir, a, v);
+        let xy = |a: f64, v: f64| line_xy(dir, a, v);
         let (vs, wv) = &lines[dir];
         let (mut xa, mut ya, mut xb, mut yb, mut w) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -294,8 +304,8 @@ pub(super) fn clipped_otf(
         if w.is_empty() {
             return Ok(acc);
         }
-        let oa = opd_at(s, field, wi, ip, &xa, &ya)?;
-        let ob = opd_at(s, field, wi, ip, &xb, &yb)?;
+        let oa = opd_at(s, field, wi, fr, ip, &xa, &ya)?;
+        let ob = opd_at(s, field, wi, fr, ip, &xb, &yb)?;
         weigh(amp, &mut w, &xa, &ya, &xb, &yb);
         acc += phasor_sum(&oa, &ob, &w);
         Ok(acc)

@@ -43,11 +43,17 @@ pub fn opd_slope_max(s: &System, field: FieldSel, w: usize) -> Result<f64> {
 /// 段差がある系）は、全区間の中点で確かめ、差がそれを超える区間の角の格子点を NaN にする。足にその点を
 /// 含む求積点は直接追跡になる。中点の標本（一辺およそ 16 点）の半分以上で超えるときは、格子をすべて NaN にして
 /// 全部直接追跡
-pub(super) fn mtf_interp(s: &System, field: FieldSel, wi: usize, n: usize) -> Result<PupilInterp> {
+pub(super) fn mtf_interp(
+    s: &System,
+    field: FieldSel,
+    wi: usize,
+    n: usize,
+    fr: &MtfFrame,
+) -> Result<PupilInterp> {
     let n = n.max(T.points_min);
     let mut g = n.min(T.interp_grid_start);
     loop {
-        let mut ip = PupilInterp::new(s, field, wi, g)?;
+        let mut ip = PupilInterp::new(s, field, wi, g, fr)?;
         let cells = ((2.0 / ip.h).round() as usize).max(1);
         if g < n {
             let e = interp_errors(s, field, wi, &ip, cells.div_ceil(48).max(1))?
@@ -101,7 +107,7 @@ pub(super) fn interp_errors(
             }
         }
     }
-    let o = opd(s, field, &px, &py, Some(wi), true)?;
+    let o = frame_opd(s, field, wi, &ip.fr, &px, &py)?;
     let mut out = Vec::new();
     for k in 0..px.len() {
         if let (Some(v), true) = (ip.eval(px[k], py[k]), o.ok(k) && o.opd[k].is_finite()) {
@@ -111,7 +117,25 @@ pub(super) fn interp_errors(
     Ok(out)
 }
 
-/// 正規化瞳の正方格子で追跡した OPD の補間（各軸 6 点の Lagrange、5 次）
+/// 組 fr の座標 (u, v)（u は球欠 s、v は子午 t の向き。[`MtfFrame::pupil_xy`]）の点の OPD。正規化瞳の座標に
+/// 直して追跡する（恒等なら直さない）
+pub(super) fn frame_opd(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    fr: &MtfFrame,
+    u: &[f64],
+    v: &[f64],
+) -> Result<crate::analysis::Opd> {
+    if fr.is_identity() {
+        return opd(s, field, u, v, Some(w), true);
+    }
+    let (px, py): (Vec<f64>, Vec<f64>) = u.iter().zip(v).map(|(&a, &b)| fr.pupil_xy(a, b)).unzip();
+    opd(s, field, &px, &py, Some(w), true)
+}
+
+/// 組 fr の座標 (u, v) の正方格子で追跡した OPD の補間（各軸 6 点の Lagrange、5 次）。格子が子午・球欠の向きに
+/// 沿うので、どちらかの向きにずらした点の列は格子の線に乗る（[`PupilInterp::eval_lines`]）
 pub(super) struct PupilInterp {
     /// 格子の点数（一辺）・間隔・始点
     m: usize,
@@ -119,13 +143,15 @@ pub(super) struct PupilInterp {
     x0: f64,
     /// OPD [波]（けられ・止まった点は NaN）、行優先 [iy][ix]
     pub(super) w: Vec<f64>,
+    /// 格子の向きの組
+    pub(super) fr: MtfFrame,
 }
 
 pub(super) const LAG: usize = 6;
 
 impl PupilInterp {
     /// 一辺 n 区間で [-1, 1] を覆い、補間の足が届くよう外側に 3 点ずつ足す
-    fn new(s: &System, field: FieldSel, w: usize, n: usize) -> Result<PupilInterp> {
+    fn new(s: &System, field: FieldSel, w: usize, n: usize, fr: &MtfFrame) -> Result<PupilInterp> {
         crate::par::check_cancel()?;
         let h = 2.0 / n as f64;
         let pad = LAG / 2;
@@ -138,7 +164,7 @@ impl PupilInterp {
                 py.push(x0 + iy as f64 * h);
             }
         }
-        let o = opd(s, field, &px, &py, Some(w), true)?;
+        let o = frame_opd(s, field, w, fr, &px, &py)?;
         let w = (0..m * m)
             .map(|i| {
                 if o.ok(i) && o.opd[i].is_finite() {
@@ -148,7 +174,13 @@ impl PupilInterp {
                 }
             })
             .collect();
-        Ok(PupilInterp { m, h, x0, w })
+        Ok(PupilInterp {
+            m,
+            h,
+            x0,
+            w,
+            fr: *fr,
+        })
     }
 
     /// 1 点の補間。足の 36 点のどれかが NaN（けられ）なら None
@@ -201,11 +233,12 @@ impl PupilInterp {
     }
 }
 
-/// 点 (x, y) の OPD [波]。補間できない点は直接追跡する。けられ・止まった点は NaN
+/// 組 fr の座標の点 (x, y) の OPD [波]。補間できない点は直接追跡する。けられ・止まった点は NaN
 pub(super) fn opd_at(
     s: &System,
     field: FieldSel,
     w: usize,
+    fr: &MtfFrame,
     ip: Option<&PupilInterp>,
     x: &[f64],
     y: &[f64],
@@ -236,7 +269,7 @@ pub(super) fn opd_at(
     if !miss.is_empty() {
         let mx: Vec<f64> = miss.iter().map(|&i| x[i]).collect();
         let my: Vec<f64> = miss.iter().map(|&i| y[i]).collect();
-        let o = opd(s, field, &mx, &my, Some(w), true)?;
+        let o = frame_opd(s, field, w, fr, &mx, &my)?;
         for (k, &i) in miss.iter().enumerate() {
             if o.ok(k) && o.opd[k].is_finite() {
                 out[i] = o.opd[k];
@@ -334,11 +367,12 @@ pub(super) fn axis_symmetric(jm: &[[f64; 2]; 2], ip: &PupilInterp) -> bool {
     (jm[0][0] - jm[1][1]).abs() <= a && jm[0][1].abs() <= a && jm[1][0].abs() <= a && ip.symmetric()
 }
 
-/// 直接追跡の点（補間できなかった点）を埋める
+/// 直接追跡の点（補間できなかった点、組 fr の座標）を埋める
 pub(super) fn fill_direct(
     s: &System,
     field: FieldSel,
     w: usize,
+    fr: &MtfFrame,
     x: &[f64],
     y: &[f64],
     out: &mut [f64],
@@ -347,7 +381,7 @@ pub(super) fn fill_direct(
     if !miss.is_empty() {
         let mx: Vec<f64> = miss.iter().map(|&i| x[i]).collect();
         let my: Vec<f64> = miss.iter().map(|&i| y[i]).collect();
-        let o = opd(s, field, &mx, &my, Some(w), true)?;
+        let o = frame_opd(s, field, w, fr, &mx, &my)?;
         for (k, &i) in miss.iter().enumerate() {
             if o.ok(k) && o.opd[k].is_finite() {
                 out[i] = o.opd[k];

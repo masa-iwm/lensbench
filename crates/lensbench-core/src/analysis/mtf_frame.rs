@@ -78,21 +78,6 @@ impl MtfFrame {
         (!self.id).then_some(self.t)
     }
 
-    /// 向き dir（0 球欠、1 子午）の線に沿う座標 a・線の位置 v の点（正規化瞳の座標）。dir 0 は s の向きの線、
-    /// 1 は t の向きの線
-    #[inline]
-    pub(crate) fn xy(&self, dir: usize, a: f64, v: f64) -> (f64, f64) {
-        if self.id {
-            return if dir == 0 { (a, v) } else { (v, a) };
-        }
-        let (e, f) = if dir == 0 {
-            (self.s, self.t)
-        } else {
-            (self.t, self.s)
-        };
-        (a * e[0] + v * f[0], a * e[1] + v * f[1])
-    }
-
     /// 組の座標 (u, v)（u は s、v は t の向き）を正規化瞳の座標に
     #[inline]
     pub(crate) fn pupil_xy(&self, u: f64, v: f64) -> (f64, f64) {
@@ -152,22 +137,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identity_and_rotated_points() {
-        let id = MtfFrame::IDENTITY;
-        assert_eq!(id.xy(0, 0.3, -0.2), (0.3, -0.2));
-        assert_eq!(id.xy(1, 0.3, -0.2), (-0.2, 0.3));
+    fn identity_and_rotated_pupil_points() {
+        assert_eq!(MtfFrame::IDENTITY.pupil_xy(0.3, -0.2), (0.3, -0.2));
         let t = [0.6, 0.8];
         let f = MtfFrame {
             s: [t[1], -t[0]],
             t,
             id: false,
         };
-        // 子午の線（t の向き）に沿う 1 は t
-        let (x, y) = f.xy(1, 1.0, 0.0);
-        assert!((x - 0.6).abs() < 1e-15 && (y - 0.8).abs() < 1e-15);
-        // 球欠の線に沿う 1 は s、線の位置は t の向き
-        let (x, y) = f.xy(0, 1.0, 0.5);
-        assert!((x - (0.8 + 0.3)).abs() < 1e-15 && (y - (-0.6 + 0.4)).abs() < 1e-15);
+        // 子午の 1 は t、球欠の 1 は s
         assert_eq!(f.pupil_xy(0.0, 1.0), (0.6, 0.8));
+        let (x, y) = f.pupil_xy(1.0, 0.5);
+        assert!((x - (0.8 + 0.3)).abs() < 1e-15 && (y - (-0.6 + 0.4)).abs() < 1e-15);
     }
 }

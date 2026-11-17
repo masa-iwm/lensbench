@@ -15,7 +15,7 @@ pub(super) fn shifted_rows(
     d: f64,
     (dx, dy): (f64, f64),
     (ex, ey): (f64, f64),
-    amp: Option<&WaveAmp>,
+    amp: Option<&FrameAmp>,
 ) -> Result<C64> {
     let a = 1.0 - 0.5 * d;
     let mut acc = C64::new(0.0, 0.0);
@@ -102,8 +102,8 @@ pub(super) fn shifted_rows(
         let mut vb: Vec<f64> = miss.iter().map(|m| m.6).collect();
         let (xa, ya): (Vec<f64>, Vec<f64>) = miss.iter().map(|m| (m.0, m.1)).unzip();
         let (xb, yb): (Vec<f64>, Vec<f64>) = miss.iter().map(|m| (m.2, m.3)).unzip();
-        fill_direct(s, field, wi, &xa, &ya, &mut va)?;
-        fill_direct(s, field, wi, &xb, &yb, &mut vb)?;
+        fill_direct(s, field, wi, &ip.fr, &xa, &ya, &mut va)?;
+        fill_direct(s, field, wi, &ip.fr, &xb, &yb, &mut vb)?;
         for (i, m) in miss.iter().enumerate() {
             if va[i].is_finite() && vb[i].is_finite() {
                 acc += phasor(va[i] - vb[i]) * m.4;
@@ -185,7 +185,7 @@ pub(super) fn wave_otf_fft(
     wi: usize,
     n: Option<usize>,
     freqs: &[f64],
-    amp: Option<&WaveAmp>,
+    amp: Option<&FrameAmp>,
     fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     let jm = fr.jacobian(s, field, wi)?;
@@ -194,7 +194,7 @@ pub(super) fn wave_otf_fft(
         None => mtf_points(opd_slope_max(s, field, wi)?),
     };
     let lam = s.wave(wi).mm();
-    let ip = mtf_interp(s, field, wi, n)?;
+    let ip = mtf_interp(s, field, wi, n, fr)?;
     // 瞳の標本（直径 ns 点、区間の中心）。円の縁は中心が内側かどうかで 0・1 にする（面積の割合を振幅にすると
     // 縁どうしの重なりが割合の積になって h に比例してずれる）。補間との差は ns² に反比例
     // する。標本は求積の点数の 2 倍にする（直径に 2n ≈ 6g 点で、OPD の 1 波あたり 3 点ほど）。
@@ -207,18 +207,12 @@ pub(super) fn wave_otf_fft(
         let (x, y) = (cx[i % ns], cx[i / ns]);
         x * x + y * y <= 1.0
     };
-    // 標本 i の正規化瞳の座標（行は球欠 s の向き、列は子午 t の向き。恒等なら行が x）
-    let pt = |i: usize| fr.pupil_xy(cx[i % ns], cx[i / ns]);
+    // 標本 i の組の座標（行は球欠 s の向き、列は子午 t の向き。恒等なら行が x）。補間の格子も組の座標なので
+    // 行は格子の線に乗る
+    let pt = |i: usize| (cx[i % ns], cx[i / ns]);
     // 各行の OPD（行ごとに補間、補間できない点は直接追跡）
     let mut wv = vec![f64::NAN; ns * ns];
-    if !fr.is_identity() {
-        let pts: Vec<(f64, f64)> = (0..ns * ns).filter(|&i| inside(i)).map(pt).collect();
-        let (px, py): (Vec<f64>, Vec<f64>) = pts.into_iter().unzip();
-        let o = opd_at(s, field, wi, Some(&ip), &px, &py)?;
-        for (i, v) in (0..ns * ns).filter(|&i| inside(i)).zip(o) {
-            wv[i] = v;
-        }
-    } else {
+    {
         use rayon::prelude::*;
         let f = |(iy, row): (usize, &mut [f64])| {
             let mut tmp = vec![f64::NAN; ns];
@@ -238,7 +232,7 @@ pub(super) fn wave_otf_fft(
         let mx: Vec<f64> = need.iter().map(|&i| pt(i).0).collect();
         let my: Vec<f64> = need.iter().map(|&i| pt(i).1).collect();
         let mut v = vec![f64::NAN; need.len()];
-        fill_direct(s, field, wi, &mx, &my, &mut v)?;
+        fill_direct(s, field, wi, fr, &mx, &my, &mut v)?;
         for (k, &i) in need.iter().enumerate() {
             wv[i] = v[k];
         }

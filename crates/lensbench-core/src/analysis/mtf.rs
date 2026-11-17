@@ -154,15 +154,34 @@ pub(crate) fn lens_quad(d: f64, gl: &LensGl) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
 
 /// [`lens_quad`] の d = 0（単位円）の重みの和（点を並べずに求める。単位円の面積 π の近似）
 /// 瞳の振幅 amp の 2 乗の、ずらさない瞳の [`lens_quad`] の求積（振幅つきの瞳の光量。一様なら [`lens_area`] の値に当たる）
-fn amp_area(gl: &LensGl, amp: &WaveAmp) -> f64 {
+fn amp_area(gl: &LensGl, amp: &FrameAmp) -> f64 {
     let (t, u, w) = lens_quad(0.0, gl);
     (0..t.len())
         .map(|i| w[i] * amp.at(u[i], t[i]).powi(2))
         .sum()
 }
 
+/// 組の座標 (u, v)（u は球欠 s、v は子午 t の向き。[`MtfFrame::pupil_xy`]）で引く瞳の振幅
+#[derive(Clone, Copy)]
+pub(super) struct FrameAmp<'a> {
+    a: WaveAmp<'a>,
+    fr: MtfFrame,
+}
+
+impl FrameAmp<'_> {
+    #[inline]
+    pub(super) fn at(&self, u: f64, v: f64) -> f64 {
+        let (x, y) = self.fr.pupil_xy(u, v);
+        self.a.at(x, y)
+    }
+
+    pub(super) fn rotationally_symmetric(&self) -> bool {
+        self.a.rotationally_symmetric()
+    }
+}
+
 /// 2 点 a・b の振幅の積を重みにかける（amp が None なら一様で何もしない）
-fn weigh(amp: Option<&WaveAmp>, w: &mut [f64], xa: &[f64], ya: &[f64], xb: &[f64], yb: &[f64]) {
+fn weigh(amp: Option<&FrameAmp>, w: &mut [f64], xa: &[f64], ya: &[f64], xb: &[f64], yb: &[f64]) {
     if let Some(a) = amp {
         for i in 0..w.len() {
             w[i] *= a.at(xa[i], ya[i]) * a.at(xb[i], yb[i]);
@@ -271,8 +290,11 @@ fn wave_otf(
     fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     // 瞳の振幅（アポダイゼーション・膜・偏光）。どこでも 1 なら None（前と同じ計算）
-    let wa = WaveAmp::new(s, field, wi, extra)?;
-    let amp = (!wa.is_uniform()).then_some(&wa);
+    let wa = FrameAmp {
+        a: WaveAmp::new(s, field, wi, extra)?,
+        fr: *fr,
+    };
+    let amp = (!wa.a.is_uniform()).then_some(&wa);
     if method == MtfMethod::Fft && !freqs.is_empty() {
         return wave_otf_fft(s, field, wi, n, freqs, amp, fr);
     }
@@ -289,7 +311,7 @@ fn wave_otf(
     // 補間の格子: 求積の点数と同じくらいの細かさ（6 点補間の誤差は h^6 で小さい）
     let ip = match method {
         MtfMethod::Auto | MtfMethod::Interp if !freqs.is_empty() => {
-            Some(mtf_interp(s, field, wi, n)?)
+            Some(mtf_interp(s, field, wi, n, fr)?)
         }
         _ => None,
     };
@@ -306,10 +328,12 @@ fn wave_otf(
     let jobs: Vec<(usize, usize)> = (0..freqs.len())
         .flat_map(|k| dirs.iter().map(move |&d| (k, d)))
         .collect();
-    // 正規化瞳でのずれ（dir 0: 球欠、1: 子午の周波数。恒等なら像面の x・y）
+    // 瞳の点・ずれ・補間の格子はどれも組の座標 (u, v)（u は球欠 s、v は子午 t の向き。恒等なら正規化瞳の
+    // x・y）。追跡と振幅だけが正規化瞳の座標に直す
+    // 組の座標でのずれ（dir 0: 球欠、1: 子午の周波数）
     let shift = |(k, dir): (usize, usize)| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
-        fr.pupil_xy(sx * freqs[k], sy * freqs[k])
+        (sx * freqs[k], sy * freqs[k])
     };
     // 補間の格子がすべて有限なら、単位円の中の点はどれも補間できて有限（けられなし）。このときは
     // - 瞳の光量を点ごとの OPD から数えなくてよい（収差の大きい系では、点ごとに数えると求積と同じくらいかかる）
@@ -343,7 +367,7 @@ fn wave_otf(
         // ずらさない瞳の光量（けられを含む）
         let gl = LensGl::new(n);
         let (t0, u0, w0) = lens_quad(0.0, &gl);
-        let o0 = opd_at(s, field, wi, ip.as_ref(), &u0, &t0)?;
+        let o0 = opd_at(s, field, wi, fr, ip.as_ref(), &u0, &t0)?;
         let e0: f64 = (0..t0.len())
             .filter(|&i| o0[i].is_finite())
             .map(|i| w0[i] * amp.map_or(1.0, |a| a.at(u0[i], t0[i]).powi(2)))
@@ -396,8 +420,8 @@ fn wave_otf(
             xb[i] = x - 0.5 * dx;
             yb[i] = y - 0.5 * dy;
         }
-        let a = opd_at(s, field, wi, ip.as_ref(), &xa, &ya)?;
-        let b = opd_at(s, field, wi, ip.as_ref(), &xb, &yb)?;
+        let a = opd_at(s, field, wi, fr, ip.as_ref(), &xa, &ya)?;
+        let b = opd_at(s, field, wi, fr, ip.as_ref(), &xb, &yb)?;
         weigh(amp, &mut w, &xa, &ya, &xb, &yb);
         acc += phasor_sum(&a, &b, &w);
         Ok(acc * scale)
