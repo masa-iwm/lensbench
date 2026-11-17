@@ -5,112 +5,160 @@
 //! その値を初期値に、その微分（逆ヤコビアンの近似）を固定した反復（1 回 1 本の追跡）で解く。
 //! 縮小が遅い・外れた光線は、差分のヤコビアンのニュートン法（1 回 3 本）に切り替える。
 
+use crate::newton2::{Diff, Line, Newton2};
+
 /// 反復の回数の上限
 pub(crate) const MAX_IT: usize = 40;
 
-/// 1 本の光線の反復の状態。スカラーとまとめ追跡の両方で同じ手順に使う（結果は同じビット）
+/// 1 本の光線の解き始め: 目標 tgt、初期値 v、固定の逆ヤコビアン dv/dq m（行優先。None ならはじめからニュートン法）、
+/// 当てはめの初期値で追跡できなかったときに戻る初期値 v0（近軸）
 #[derive(Clone, Copy)]
-pub(crate) struct AimLane {
+pub(crate) struct AimStart {
     pub tgt: [f64; 2],
     pub v: [f64; 2],
-    pub q: [f64; 2],
-    /// 固定の逆ヤコビアン dv/dq（行優先）。None ならはじめからニュートン法
-    m: Option<[f64; 4]>,
-    /// 当てはめの初期値で追跡できなかったときに戻る初期値（近軸）
-    v0: [f64; 2],
-    restart: bool,
-    newton: bool,
-    vp: [f64; 2],
-    qp: [f64; 2],
-    nep: f64,
-    e: [f64; 2],
-    it: usize,
+    pub m: Option<[f64; 4]>,
+    pub v0: [f64; 2],
 }
 
-impl AimLane {
+impl AimStart {
     pub(crate) fn new(tgt: [f64; 2], v: [f64; 2], m: Option<[f64; 4]>, v0: [f64; 2]) -> Self {
-        AimLane {
-            tgt,
-            v,
-            q: [f64::NAN; 2],
-            m,
-            v0,
-            restart: false,
-            newton: m.is_none(),
-            vp: v,
-            qp: [f64::NAN; 2],
-            nep: f64::INFINITY,
-            e: [0.0; 2],
-            it: 0,
-        }
+        AimStart { tgt, v, m, v0 }
     }
+}
 
-    /// q を求めた後に呼ぶ。終わりなら None、続けるなら差分のヤコビアン（v+h の追跡 2 本）が要るか
-    pub(crate) fn check(&mut self, lim: f64) -> Option<bool> {
-        if self.it >= MAX_IT {
-            return None;
-        }
-        let err = |q: [f64; 2]| [q[0] - self.tgt[0], q[1] - self.tgt[1]];
-        let mut e = err(self.q);
-        let mut ne = e[0].abs().max(e[1].abs());
-        if !self.newton && self.it == 0 && !ne.is_finite() {
-            // 当てはめの初期値で絞りまで届かない: 近軸の初期値からニュートン法で解き直す
-            self.newton = true;
-            self.restart = true;
-            self.v = self.v0;
-            return Some(false);
-        }
-        // 固定の行列での更新が半分以下に縮めなかった（外れた・NaN を含む）ら、前の点に戻してニュートン法へ
-        if !self.newton && self.it > 0 && !(ne <= 0.5 * self.nep) {
-            self.newton = true;
-            self.v = self.vp;
-            self.q = self.qp;
-            e = err(self.q);
-            ne = self.nep;
-        }
-        if !(ne > lim) {
-            return None;
-        }
-        self.e = e;
-        self.nep = ne;
-        Some(self.newton)
-    }
+/// 解いた結果: 入射瞳の座標 v と、その点の残差 r = q(v) − tgt
+#[derive(Clone, Copy)]
+pub(crate) struct AimSol {
+    pub v: [f64; 2],
+    pub r: [f64; 2],
+}
 
-    /// v を更新する（このあと q = q(v) を求め直す）。jac は check が true のときの (q(v+h,·), q(·,v+h))
-    pub(crate) fn update(&mut self, h: f64, jac: Option<([f64; 2], [f64; 2])>) {
-        self.it += 1;
-        if self.restart {
-            self.restart = false;
-            return;
-        }
-        let e = self.e;
-        let dv = match (jac, self.m) {
-            (Some((qx, qy)), _) => {
-                let q = self.q;
-                let (a, b, c, d) = (
-                    (qx[0] - q[0]) / h,
-                    (qx[1] - q[1]) / h,
-                    (qy[0] - q[0]) / h,
-                    (qy[1] - q[1]) / h,
-                );
-                // (a, b, c, d) は列の順なので行優先では [a, c, b, d]
-                crate::math::solve2([a, c, b, d], e)
-            }
-            (None, Some(m)) => [m[0] * e[0] + m[1] * e[1], m[2] * e[0] + m[3] * e[1]],
-            (None, None) => [f64::NAN; 2],
-        };
-        self.vp = self.v;
-        self.qp = self.q;
-        if dv[0].is_finite() && dv[1].is_finite() {
-            self.v = [self.v[0] - dv[0], self.v[1] - dv[1]];
-        }
-    }
-
+impl AimSol {
     /// 解けなかったか（残差が有限で fail_tol を超える。NaN は追跡の側で止まる）
     pub(crate) fn failed(&self, fail_tol: f64) -> bool {
-        let e = [self.q[0] - self.tgt[0], self.q[1] - self.tgt[1]];
+        let e = self.r;
         e[0].is_finite() && e[1].is_finite() && e[0].abs().max(e[1].abs()) > fail_tol
     }
+    /// 絞りまで届かなかったか
+    pub(crate) fn missed(&self) -> bool {
+        !(self.r[0].is_finite() && self.r[1].is_finite())
+    }
+}
+
+/// 光線の途中の状態（固定の行列の反復の間）
+#[derive(Clone, Copy)]
+enum Phase {
+    /// 固定の逆ヤコビアンの反復（it 回まで更新した）
+    Fixed,
+    /// ニュートン法へ（初めの点 v、その f の値 q（分からなければ None）、反復の残り）
+    Newton([f64; 2], Option<[f64; 2]>, usize),
+    Done,
+}
+
+/// N 本の光線を、入射瞳の座標 v から絞り面の局所座標 q = f(v) が目標になるように解く（f は N 本を 1 度に）。
+/// 固定の逆ヤコビアンがある光線は、まずそれで v ← v − m (q − tgt) を繰り返す（1 回 1 本の追跡）。初めの点で
+/// 届かなければ近軸の初期値 v0 から、縮みが半分に満たなければ前の点から、差分のヤコビアン（刻み h の前進差分）の
+/// ニュートン法（[`Newton2`]）に切り替える。収束は max(|q − tgt|) ≤ lim、反復は 2 つを合わせて [`MAX_IT`] 回まで。
+/// 光線ごとの手順・結果は N によらず同じビット
+pub(crate) fn aim_lanes<const N: usize>(
+    st: [AimStart; N],
+    mut f: impl FnMut(&[[f64; 2]; N]) -> [[f64; 2]; N],
+    lim: f64,
+    h: f64,
+) -> [AimSol; N] {
+    let mut v: [[f64; 2]; N] = st.map(|a| a.v);
+    let mut q = f(&v);
+    let mut ph: [Phase; N] = std::array::from_fn(|l| match st[l].m {
+        Some(_) => Phase::Fixed,
+        None => Phase::Newton(v[l], Some(q[l]), MAX_IT),
+    });
+    let (mut vp, mut qp) = (v, q);
+    let mut nep = [f64::INFINITY; N];
+    let mut it = [0usize; N];
+    loop {
+        for l in 0..N {
+            let Phase::Fixed = ph[l] else { continue };
+            if it[l] >= MAX_IT {
+                ph[l] = Phase::Done;
+                continue;
+            }
+            let e = [q[l][0] - st[l].tgt[0], q[l][1] - st[l].tgt[1]];
+            let ne = e[0].abs().max(e[1].abs());
+            if it[l] == 0 && !ne.is_finite() {
+                // 当てはめの初期値で絞りまで届かない: 近軸の初期値からニュートン法で解き直す
+                ph[l] = Phase::Newton(st[l].v0, None, MAX_IT - 1);
+                continue;
+            }
+            if it[l] > 0 && !(ne <= 0.5 * nep[l]) {
+                // 固定の行列での更新が半分以下に縮めなかった（外れた・NaN を含む）: 前の点からニュートン法へ
+                ph[l] = Phase::Newton(vp[l], Some(qp[l]), MAX_IT - it[l]);
+                continue;
+            }
+            if !(ne > lim) {
+                ph[l] = Phase::Done;
+                continue;
+            }
+            let m = st[l].m.expect("fixed phase has a matrix");
+            let dv = [m[0] * e[0] + m[1] * e[1], m[2] * e[0] + m[3] * e[1]];
+            nep[l] = ne;
+            vp[l] = v[l];
+            qp[l] = q[l];
+            if dv[0].is_finite() && dv[1].is_finite() {
+                v[l] = [v[l][0] - dv[0], v[l][1] - dv[1]];
+            }
+            it[l] += 1;
+        }
+        if !ph.iter().any(|p| matches!(p, Phase::Fixed)) {
+            break;
+        }
+        let qn = f(&v);
+        for l in 0..N {
+            if let Phase::Fixed = ph[l] {
+                q[l] = qn[l];
+            }
+        }
+    }
+    if !ph.iter().any(|p| matches!(p, Phase::Newton(..))) {
+        return std::array::from_fn(|l| AimSol {
+            v: v[l],
+            r: [q[l][0] - st[l].tgt[0], q[l][1] - st[l].tgt[1]],
+        });
+    }
+    // ニュートン法の光線を解く（終わった光線は今の点のまま、反復 0 回で止める）
+    let mut v1 = v;
+    let mut known = true;
+    let mut q1 = q;
+    let mut mx = [0usize; N];
+    for l in 0..N {
+        if let Phase::Newton(a, b, k) = ph[l] {
+            v1[l] = a;
+            mx[l] = k;
+            match b {
+                Some(b) => q1[l] = b,
+                None => known = false,
+            }
+        }
+    }
+    let q1 = if known {
+        q1
+    } else {
+        let qn = f(&v1);
+        std::array::from_fn(|l| match ph[l] {
+            Phase::Newton(_, None, _) => qn[l],
+            _ => q1[l],
+        })
+    };
+    let nw = Newton2 {
+        tol: lim,
+        max_it: MAX_IT,
+        diff: Diff::fwd(h),
+        line: Line::Full,
+    };
+    let s = nw.solve_lanes_from(f, v1, Some(q1), st.map(|a| a.tgt), [lim; N], mx);
+    std::array::from_fn(|l| AimSol {
+        v: s[l].v,
+        r: s[l].r,
+    })
 }
 
 /// 正規化した絞りの座標 (qx, qy) → 入射瞳の座標 v の多項式（チェビシェフ多項式の積、全次数 DEG 以下）

@@ -7,7 +7,7 @@
 //! - 瞳座標: エイミングなしは近軸入射瞳面、エイミングありは絞り面の (px, py)×絞り半径
 //! - 無限遠物体の光線は面 1 の頂点を通り視野方向に垂直な面から出る（光路長はそこから数える）
 
-use crate::aim::{AimFit, AimLane};
+use crate::aim::{aim_lanes, AimFit, AimSol, AimStart};
 use crate::batch;
 use crate::coating::{self, Coatings, C64};
 use crate::error::{Error, Result};

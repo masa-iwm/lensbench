@@ -181,19 +181,12 @@ impl System {
             let r = batch::trace_one_plain(&plan, p, k);
             [r.xyz[0], r.xyz[1]]
         };
-        // 1 本ずつの反復
-        let one = |mut a: AimLane| -> AimLane {
-            a.q = at_stop(a.v);
-            while let Some(j) = a.check(lim) {
-                let v = a.v;
-                let jac = j.then(|| (at_stop([v[0] + h, v[1]]), at_stop([v[0], v[1] + h])));
-                a.update(h, jac);
-                a.q = at_stop(a.v);
-            }
-            a
-        };
-        // L 本ずつまとめて同じ反復をする（光線ごとの手順・結果は上の one と同じビット。
+        // 1 本ずつの反復と、L 本ずつまとめた同じ反復（光線ごとの手順・結果は同じビット。
         // 収束した光線はそこで止め、残りの光線の反復だけを続ける）
+        let one = |a: AimStart| -> AimSol {
+            let [r] = aim_lanes([a], |v: &[[f64; 2]; 1]| [at_stop(v[0])], lim, h);
+            r
+        };
         const L: usize = batch::L;
         let at_stop_l = |v: &[[f64; 2]; L]| -> [[f64; 2]; L] {
             let st = v.map(|v| geom.ray(v[0], v[1]));
@@ -201,56 +194,11 @@ impl System {
                 batch::trace_lanes::<batch::NoRec>(&plan, &st.map(|s| s.0), &st.map(|s| s.1), None);
             std::array::from_fn(|l| [r[l].xyz[0], r[l].xyz[1]])
         };
-        let group = |a: &mut [AimLane; L]| {
-            let q = at_stop_l(&std::array::from_fn(|l| a[l].v));
-            for l in 0..L {
-                a[l].q = q[l];
-            }
-            let mut act = [true; L];
-            loop {
-                let mut need = [false; L];
-                for l in 0..L {
-                    if act[l] {
-                        match a[l].check(lim) {
-                            None => act[l] = false,
-                            Some(j) => need[l] = j,
-                        }
-                    }
-                }
-                if !act.iter().any(|&x| x) {
-                    break;
-                }
-                let jac = if need.iter().any(|&x| x) {
-                    let qx = at_stop_l(&std::array::from_fn(|l| [a[l].v[0] + h, a[l].v[1]]));
-                    let qy = at_stop_l(&std::array::from_fn(|l| [a[l].v[0], a[l].v[1] + h]));
-                    Some((qx, qy))
-                } else {
-                    None
-                };
-                for l in 0..L {
-                    if act[l] {
-                        a[l].update(h, jac.filter(|_| need[l]).map(|(qx, qy)| (qx[l], qy[l])));
-                    }
-                }
-                let qn = at_stop_l(&std::array::from_fn(|l| a[l].v));
-                for l in 0..L {
-                    if act[l] {
-                        a[l].q = qn[l];
-                    }
-                }
-            }
-        };
         // 光線は互いに独立なので、本数が多ければ並列に（組は入力の順に固定、スレッド数によらず同じビット）
-        // 光線 i の初期状態 init(i) から解き、(v, 解けなかったか) を返す
-        let res = |a: &AimLane| {
-            (
-                a.v,
-                a.failed(fail_tol),
-                !(a.q[0].is_finite() && a.q[1].is_finite()),
-            )
-        };
+        // 光線 i の初期状態 init(i) から解き、(v, 解けなかったか, 絞りに届かなかったか) を返す
+        let res = |a: &AimSol| (a.v, a.failed(fail_tol), a.missed());
         let solve = |n: usize,
-                     init: &(dyn Fn(usize) -> AimLane + Sync)|
+                     init: &(dyn Fn(usize) -> AimStart + Sync)|
          -> Vec<([f64; 2], bool, bool)> {
             let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
             if plan.is_empty() || !batch::use_for(n) {
@@ -268,9 +216,8 @@ impl System {
                 // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
                 let nb = n.div_ceil(L);
                 let grp = |b: usize| {
-                    let mut a: [AimLane; L] = std::array::from_fn(|l| init((b * L + l).min(n - 1)));
-                    group(&mut a);
-                    std::array::from_fn::<_, L, _>(|l| res(&a[l]))
+                    let a: [AimStart; L] = std::array::from_fn(|l| init((b * L + l).min(n - 1)));
+                    aim_lanes(a, at_stop_l, lim, h).map(|a| res(&a))
                 };
                 let g: Vec<_> = if par {
                     (0..nb)
@@ -309,7 +256,7 @@ impl System {
                 let init = |i: usize| {
                     let p = pts[i];
                     let v = [p[0] * epd / 2.0 + sh[0], p[1] * epd / 2.0 + sh[1]];
-                    AimLane::new(tgt(p), v, None, v)
+                    AimStart::new(tgt(p), v, None, v)
                 };
                 let v: Vec<_> = solve(pts.len(), &init)
                     .into_iter()
@@ -327,10 +274,10 @@ impl System {
                 let (v, d) = f.eval(q);
                 let m = [d[0] / rx, d[1] / ry, d[2] / rx, d[3] / ry];
                 if v.iter().chain(&m).all(|x| x.is_finite()) {
-                    return AimLane::new(tgt(q), v, Some(m), v0);
+                    return AimStart::new(tgt(q), v, Some(m), v0);
                 }
             }
-            AimLane::new(tgt(q), v0, None, v0)
+            AimStart::new(tgt(q), v0, None, v0)
         };
         let mut out = solve(n, &init);
         // 解けなかった光線（絞りまで届かなかったものも）は、解けた光線のうち瞳座標の最も近いものから、目標を少しずつ

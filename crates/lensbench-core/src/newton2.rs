@@ -111,21 +111,35 @@ impl Newton2 {
     /// tgt・tol は光線ごとの目標と収束の幅
     pub(crate) fn solve_lanes<const N: usize>(
         &self,
-        mut f: impl FnMut(&[[f64; 2]; N]) -> [[f64; 2]; N],
+        f: impl FnMut(&[[f64; 2]; N]) -> [[f64; 2]; N],
         v0: [[f64; 2]; N],
         tgt: [[f64; 2]; N],
         tol: [f64; N],
+    ) -> [Sol; N] {
+        self.solve_lanes_from(f, v0, None, tgt, tol, [self.max_it; N])
+    }
+
+    /// [`Newton2::solve_lanes`] で、初めの点の f の値 q0 が分かっていれば渡し（f を呼び直さない）、反復の上限
+    /// max_it を光線ごとに変える（self.max_it は使わない）
+    pub(crate) fn solve_lanes_from<const N: usize>(
+        &self,
+        mut f: impl FnMut(&[[f64; 2]; N]) -> [[f64; 2]; N],
+        v0: [[f64; 2]; N],
+        q0: Option<[[f64; 2]; N]>,
+        tgt: [[f64; 2]; N],
+        tol: [f64; N],
+        max_it: [usize; N],
     ) -> [Sol; N] {
         let res = |q: [[f64; 2]; N]| -> [[f64; 2]; N] {
             std::array::from_fn(|l| [q[l][0] - tgt[l][0], q[l][1] - tgt[l][1]])
         };
         let mut v = v0;
         // q は f の値、r は残差
-        let mut q = f(&v);
+        let mut q = q0.unwrap_or_else(|| f(&v));
         let mut r = res(q);
         let mut it = [0usize; N];
         let mut end: [Option<End>; N] = [None; N];
-        for _ in 0..self.max_it {
+        loop {
             for l in 0..N {
                 if end[l].is_some() {
                     continue;
@@ -134,6 +148,8 @@ impl Newton2 {
                     end[l] = Some(End::NotFinite);
                 } else if norm(r[l]) <= tol[l] {
                     end[l] = Some(End::Converged);
+                } else if it[l] >= max_it[l] {
+                    end[l] = Some(End::MaxIter);
                 }
             }
             if end.iter().all(|e| e.is_some()) {
@@ -294,6 +310,37 @@ mod tests {
             assert_eq!(all[l].v.map(f64::to_bits), one.v.map(f64::to_bits));
             assert_eq!(all[l].it, one.it);
         }
+    }
+
+    #[test]
+    fn known_start_value_and_per_lane_iteration_limits() {
+        let n = Newton2 {
+            tol: 1e-13,
+            max_it: 40,
+            diff: Diff::fwd(1e-7),
+            line: Line::Full,
+        };
+        let f = |v: [f64; 2]| [v[0] * v[0] - 2.0, v[0] * v[1] - 1.0];
+        let fl = |v: &[[f64; 2]; 2]| v.map(f);
+        let v0 = [[1.0, 1.0], [2.0, 0.3]];
+        let tgt = [[0.0; 2]; 2];
+        // 初めの値を渡しても同じビット
+        let a = n.solve_lanes(fl, v0, tgt, [n.tol; 2]);
+        let b = n.solve_lanes_from(fl, v0, Some(v0.map(f)), tgt, [n.tol; 2], [40; 2]);
+        for l in 0..2 {
+            assert_eq!(a[l].v.map(f64::to_bits), b[l].v.map(f64::to_bits));
+        }
+        // 光線ごとの上限: 2 回で止めた光線は、上限 2 の 1 本と同じ点で MaxIter、もう一方は収束する
+        let c = n.solve_lanes_from(fl, v0, None, tgt, [n.tol; 2], [2, 40]);
+        let two = Newton2 { max_it: 2, ..n }.solve(f, v0[0], [0.0; 2]);
+        assert_eq!(c[0].end, End::MaxIter);
+        assert_eq!((c[0].it, two.it), (2, 2));
+        assert_eq!(c[0].v.map(f64::to_bits), two.v.map(f64::to_bits));
+        assert!(c[1].ok(), "{:?}", c[1]);
+        // 上限 0 は初めの点のまま
+        let z = n.solve_lanes_from(fl, v0, None, tgt, [n.tol; 2], [0; 2]);
+        assert_eq!(z[0].v, v0[0]);
+        assert_eq!(z[0].end, End::MaxIter);
     }
 
     #[test]
