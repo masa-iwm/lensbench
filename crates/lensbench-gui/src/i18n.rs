@@ -112,21 +112,66 @@ pub fn tr(en: &'static str) -> &'static str {
         .unwrap_or(en)
 }
 
-/// 今の言語の文字列の `{}` を順に引数で埋める
+/// 今の言語の文字列の穴を引数で埋める。英語（鍵）は `{}` を順に、訳は `{}`（順に）か `{0}`・`{1}`…（引数の位置。
+/// 語順の違う言語で入れ替える、GPN-21）で書く
 pub fn trf(en: &'static str, args: &[&dyn std::fmt::Display]) -> String {
-    let t = tr(en);
+    fill(tr(en), args)
+}
+
+/// t の `{}`（順に）と `{N}`（N 番目の引数）を args で埋める。引数の無い穴は空、穴でない `{` はそのまま
+fn fill(t: &str, args: &[&dyn std::fmt::Display]) -> String {
     let mut out = String::with_capacity(t.len() + 16);
-    let mut it = args.iter();
+    let mut next = 0;
     let mut rest = t;
-    while let Some(i) = rest.find("{}") {
+    while let Some(i) = rest.find('{') {
         out.push_str(&rest[..i]);
-        if let Some(a) = it.next() {
-            out.push_str(&a.to_string());
+        let after = &rest[i + 1..];
+        let Some(close) = after.find('}') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let inner = &after[..close];
+        let k = if inner.is_empty() {
+            next += 1;
+            Some(next - 1)
+        } else {
+            inner.parse::<usize>().ok()
+        };
+        match k {
+            Some(k) => {
+                if let Some(a) = args.get(k) {
+                    out.push_str(&a.to_string());
+                }
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
         }
-        rest = &rest[i + 2..];
     }
     out.push_str(rest);
     out
+}
+
+/// 訳の穴: `{}` の数と、`{N}` の番号の並び
+#[cfg(test)]
+fn slots(t: &str) -> (usize, Vec<usize>) {
+    let mut seq = 0;
+    let mut pos = Vec::new();
+    let mut rest = t;
+    while let Some(i) = rest.find('{') {
+        let after = &rest[i + 1..];
+        let Some(close) = after.find('}') else { break };
+        let inner = &after[..close];
+        if inner.is_empty() {
+            seq += 1;
+        } else if let Ok(k) = inner.parse::<usize>() {
+            pos.push(k);
+        }
+        rest = &after[close + 1..];
+    }
+    (seq, pos)
 }
 
 #[cfg(test)]
@@ -262,9 +307,18 @@ mod tests {
                 "鍵が日本語: {k}"
             );
         }
-        // 表の訳の {} の数は英語と同じ
+        // 表の訳の穴は英語と同じ数。`{N}` で書くなら `{}` と混ぜず、0…n−1 を 1 つずつ
         for (k, v) in &t {
-            assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "{k}");
+            let n = k.matches("{}").count();
+            assert!(slots(k).1.is_empty(), "鍵は {{}} だけ: {k}");
+            match slots(v) {
+                (m, p) if p.is_empty() => assert_eq!(n, m, "{k}"),
+                (0, mut p) => {
+                    p.sort();
+                    assert_eq!(p, (0..n).collect::<Vec<_>>(), "{k}");
+                }
+                _ => panic!("訳で {{}} と {{N}} を混ぜている: {k}"),
+            }
         }
     }
 
@@ -275,5 +329,15 @@ mod tests {
         CURRENT.store(1, Ordering::Relaxed);
         assert_eq!(s, "3 / 5 枚");
         assert_eq!(trf("{} / {} lenses", &[&3, &5]), "3 / 5 lenses");
+    }
+
+    /// 訳は `{N}` で引数の順を入れ替えられる。穴でない波括弧はそのまま
+    #[test]
+    fn positional_slots() {
+        assert_eq!(fill("{1} の {0}", &[&"a", &"b"]), "b の a");
+        assert_eq!(fill("{} と {}", &[&1, &2]), "1 と 2");
+        assert_eq!(fill("{x} {", &[&1]), "{x} {");
+        assert_eq!(fill("{2}", &[&1]), "");
+        assert_eq!(slots("{1} の {0}"), (0, vec![1, 0]));
     }
 }
