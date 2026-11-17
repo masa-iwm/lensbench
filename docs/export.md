@@ -29,7 +29,7 @@
     違うので比べない）。多重構成の行は OpticStudio が書く形（値の後に `0 0 0 1 1 倍率 オフセット 0 "" 0`）。
     倍率を落とすと OpticStudio はエラーなしに値を読み違える
 - `rays`: 光線の面ごとの交点（局所・大域）・方向余弦・光路長・けられ（1 行 = 1 光線 × 1 面）。`--pupil 0,1,0.5,0`（px,py の組の並び）で
-  瞳座標を直接、`--surface` で面を選ぶ。`--all-waves` で全波長。`--save` の拡張子で csv・json・npz（csv・npz は表を全部メモリに作らずに、視野・波長の組ごとに書き足す。npz は書き出し先の隣に列ごとの一時ファイル `<名前>.part<k>` を作り、書き終えたら消す）
+  瞳座標を直接、`--surface` で面を選ぶ。`--all-waves` で全波長。`--save` の拡張子で csv・json・npz（csv・npz は表を全部メモリに作らずに、視野・波長の組ごとに書き足す。途中でエラーになると、csv は書き出し先を消す（前にあった中身も残らない）。npz は書き出し先の隣に列ごとの一時ファイル `<名前>.part<k>` を作り、書き終えたら消す。npz は光線を全部追ってから組むので、追跡中のエラーでは書き出し先を変えず、組む途中のエラーでは書き出し先を消す）
 - `--save`（info・spot・wavefront・zernike・mtf・mtf-focus・mtf-field・rms・psf・geo-mtf・elements・mech-check・layout。rays・pop は自分の形で）: 結果を `json`（そのまま）・`csv`・`npz`（表にし、配列は `coef_1`… の列に）で書き出す。
   npz は列ごとの 1 次元配列（`numpy.load` で読める）
 
