@@ -37,7 +37,7 @@ pub mod sysfile_v2;
 pub mod writeback;
 pub use edit_spec::SurfaceOp;
 use edit_spec::{BlockRef, EditOp, Ref};
-pub use splitter::{Arm, PbsSpec, SplitFace, SplitForm, SplitterSpec};
+pub use splitter::{paths, paths_cached, Arm, PbsSpec, SplitFace, SplitForm, SplitterSpec};
 use splitter::{Level, SplitState};
 
 use std::collections::{BTreeMap, HashMap};
@@ -73,7 +73,7 @@ pub use back::*;
 pub use blocks::*;
 pub use catalog::*;
 pub use expand::*;
-pub use expand_error::{BlockAt, ExpandError};
+pub use expand_error::{BlockAt, ExpandError, Note, NoteKind};
 use faces::*;
 pub use model::*;
 pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};

@@ -297,8 +297,8 @@ impl std::fmt::Display for Loading {
 pub struct Expansion {
     /// 順次の面の列の系
     pub system: System,
-    /// 展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の説明
-    pub notes: Vec<String>,
+    /// 展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の注意
+    pub notes: Vec<Note>,
     /// id のある空気のブロックが入る面（差し替え探索の間隔の変数、[`Gap`]）
     pub gaps: Vec<Gap>,
     /// 系の面ごとの出どころ（`system.surfaces` と同じ長さ。物体面・像面は既定値）
@@ -524,59 +524,20 @@ pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> Result<Expansion, Expan
         }
         None => p,
     };
-    Ok(expand_inner(
+    match expand_inner(
         p,
         env,
         o.path.or(p.path.as_deref()),
         false,
         o.cache,
         o.within,
-    )?
-    .ok_or(lensbench_core::Error::from(
-        "internal error: the BS path is short outside the path search",
-    ))?)
-}
-
-/// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
-/// 経路は BS ごとに透過・反射を選んで、BS を通らなくなるまで（像面まで）たどったもの
-pub fn paths(p: &Project, env: &Env) -> lensbench_core::Result<Vec<String>> {
-    paths_cached(p, env, &SourceCache::default())
-}
-
-/// [`paths`] で、ファイル・カタログから読んだものを cache で使い回す
-pub fn paths_cached(
-    p: &Project,
-    env: &Env,
-    cache: &SourceCache,
-) -> lensbench_core::Result<Vec<String>> {
-    let mut out = Vec::new();
-    let mut todo = vec![String::new()];
-    while let Some(q) = todo.pop() {
-        match expand_inner(p, env, Some(&q), true, Some(cache), &[])
-            .map_err(ExpandError::into_error)
-        {
-            Ok(Some(_)) => out.push(q),
-            Ok(None) => {
-                if out.len() + todo.len() > 1024 {
-                    return Err("more than 1024 paths".into());
-                }
-                todo.push(format!("{q}R"));
-                todo.push(format!("{q}T"));
-            }
-            Err(e) => {
-                return Err(if q.is_empty() {
-                    e
-                } else {
-                    format!("path {q}: {e}").into()
-                })
-            }
-        }
+    )? {
+        Walk::Done(x) => Ok(*x),
+        _ => Err(lensbench_core::Error::from(
+            "internal error: the BS path is short outside the path search",
+        )
+        .into()),
     }
-    if out == [""] {
-        out.clear();
-    }
-    out.sort_by(|a, b| a.len().cmp(&b.len()).then(b.cmp(a)));
-    Ok(out)
 }
 
 /// BS の id を集める（重なりを調べる）
@@ -595,16 +556,27 @@ pub(crate) fn splitter_ids<'x>(v: &'x [Block], out: &mut Vec<&'x str>) {
     }
 }
 
+/// 展開の行き着いた先
+pub(crate) enum Walk {
+    /// 経路の文字が足りない（経路を探すときだけ）
+    Need,
+    /// 経路を探すとき: ブロックを終わりまでたどれた（系は組まない）
+    Walked,
+    Done(Box<Expansion>),
+}
+
+/// 展開の本体。search（経路を探す）なら、経路の文字が足りなければ [`Walk::Need`]、ブロックを終わりまで
+/// たどれたら系を組まずに [`Walk::Walked`]
 pub(crate) fn expand_inner(
     p: &Project,
     env: &Env,
     path: Option<&str>,
-    strict: bool,
+    search: bool,
     cache: Option<&SourceCache>,
     within: &[Loading],
-) -> Result<Option<Expansion>, ExpandError> {
+) -> Result<Walk, ExpandError> {
     let mut failed = None;
-    expand_body(p, env, path, strict, cache, within, &mut failed).map_err(|error| ExpandError {
+    expand_body(p, env, path, search, cache, within, &mut failed).map_err(|error| ExpandError {
         error,
         block: failed.map(|n| BlockAt::new(&p.blocks, n)),
     })
@@ -614,11 +586,11 @@ fn expand_body(
     p: &Project,
     env: &Env,
     path: Option<&str>,
-    strict: bool,
+    search: bool,
     cache: Option<&SourceCache>,
     within: &[Loading],
     failed: &mut Option<NodePath>,
-) -> lensbench_core::Result<Option<Expansion>> {
+) -> lensbench_core::Result<Walk> {
     {
         let mut ids = Vec::new();
         splitter_ids(&p.blocks, &mut ids);
@@ -684,7 +656,7 @@ fn expand_body(
         gaps: Vec::new(),
         split: SplitState {
             path: splitter::parse_path(path.unwrap_or(""))?,
-            strict,
+            strict: search,
             ..Default::default()
         },
         frames: Vec::new(),
@@ -702,8 +674,8 @@ fn expand_body(
             continue;
         }
         match c.block(b, &p.blocks, i) {
-            // 経路の文字が足りない（strict のとき。paths が次の文字を試す）
-            Err(_) if c.split.need => return Ok(None),
+            // 経路の文字が足りない（経路を探すとき。paths が次の文字を試す）
+            Err(_) if c.split.need => return Ok(Walk::Need),
             Err(e) => {
                 *failed = c.failed.take();
                 return Err(e);
@@ -730,6 +702,9 @@ fn expand_body(
     });
     if c.nstop > 1 || (c.nstop == 0 && !stop_op) {
         return Err(format!("{} stops (exactly one is needed)", c.nstop).into());
+    }
+    if search {
+        return Ok(Walk::Walked);
     }
     if c.nstop == 0 {
         // 仮の絞り（set_stop で移す）
@@ -910,7 +885,7 @@ fn expand_body(
         return Err("fields solve only with type solve".into());
     }
     let mut s = s.build_raw()?;
-    let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
+    let mut warn = Note::all(NoteKind::Pickup, None, keep_pickups(&mut s, &org, &zpicks)?);
     for (path, t, pr, adj, _) in &c.zenv {
         let e = &p.environment;
         // どちらも補正しないなら温度・気圧は屈折率に効かない
@@ -923,10 +898,10 @@ fn expand_body(
             || (pr - e.pressure_atm).abs() > 1e-9
             || (off_ref && *adj != e.adjust_index)
         {
-            warn.push(format!(
+            warn.push(Note::new(NoteKind::Environment, None, format!(
                 "{path}: the .zmx environment ({t} °C, {pr} atm) differs from the project environment ({} °C, {} atm); indices are computed in the project environment (change it with environment)",
                 e.temperature_c, e.pressure_atm
-            ));
+            )));
         }
     }
     // 玉・群のパラメータ: 玉モードの玉 lens1 … と、id のあるブロック・群（同じ id の範囲は 1 つの玉・群）
@@ -938,12 +913,12 @@ fn expand_body(
     if let Some((_, f)) = cofs.next() {
         rx.coating_file = Some(f.clone());
         if let Some((path, g)) = cofs.find(|(_, g)| *g != f) {
-            warn.push(format!(
+            warn.push(Note::new(NoteKind::Coating, None, format!(
                 "{path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}",
                 g.display(),
                 f.display(),
                 f.display()
-            ));
+            )));
         }
     }
     let mut s = rx.build_raw()?;
@@ -960,8 +935,10 @@ fn expand_body(
                     Ok(())
                 })?
             }
-            Err(e) => warn.push(format!(
-                "block {id} is not made a lens or group parameter: {e}"
+            Err(e) => warn.push(Note::new(
+                NoteKind::Unit,
+                Some(id.to_string()),
+                format!("block {id} is not made a lens or group parameter: {e}"),
             )),
         }
     }
@@ -1002,9 +979,13 @@ fn expand_body(
                 let j =
                     block_face(&s, &f.block, f.surface, &map).map_err(|x| format!("glrs: {x}"))?;
                 if j.is_none() {
-                    warn.push(format!(
-                        "glrs: block {} not found, so the global reference stays at surface {}",
-                        f.block, s.glrs
+                    warn.push(Note::new(
+                        NoteKind::Glrs,
+                        Some(f.block.clone()),
+                        format!(
+                            "glrs: block {} not found, so the global reference stays at surface {}",
+                            f.block, s.glrs
+                        ),
                     ));
                 }
                 j
@@ -1023,19 +1004,21 @@ fn expand_body(
     }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
-    let mut mech = place_mechanics(&s, &p.mechanics, env, &map, &mut warn)?;
-    mech.extend(place_frames(&s, &c.frames, &map, &mut warn));
+    let mut mw = Vec::new();
+    let mut mech = place_mechanics(&s, &p.mechanics, env, &map, &mut mw)?;
+    mech.extend(place_frames(&s, &c.frames, &map, &mut mw));
+    warn.extend(Note::all(NoteKind::Mechanics, None, mw));
     s.edit_raw(|rx| {
         rx.mechanics = mech;
         Ok(())
     })?;
     s.validate()?;
-    Ok(Some(Expansion {
+    Ok(Walk::Done(Box::new(Expansion {
         system: s,
         notes: warn,
         gaps: c.gaps,
         map,
-    }))
+    })))
 }
 
 /// 機構部品を系の面に置く（[`Project::mechanics`]）。ブロックが無い（状態で外したなど）部品は置かずに注意を出す

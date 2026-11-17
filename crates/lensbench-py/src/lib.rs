@@ -1014,7 +1014,10 @@ impl PySystem {
                 ..Default::default()
             };
             let x = lensbench_project::expand(&p, &env, &o)?;
-            Ok((x.system, x.notes))
+            Ok((
+                x.system,
+                x.notes.into_iter().map(String::from).collect::<Vec<_>>(),
+            ))
         });
         let (mut sys, warn) = r.map_err(err)?;
         warn_all(py, &warn)?;

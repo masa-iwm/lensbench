@@ -425,7 +425,7 @@ pub(crate) fn overlay_in(
                 None => x.to_string(),
             })?;
             // 状態・経路ごとに同じ注意が出るので 1 度だけ
-            for w in warn {
+            for w in warn.into_iter().map(String::from) {
                 if !notes.contains(&w) {
                     notes.push(w);
                 }

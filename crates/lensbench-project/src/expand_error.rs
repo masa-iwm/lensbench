@@ -1,4 +1,4 @@
-//! 展開の誤り（[`ExpandError`]）と、誤りの起きたブロック（[`BlockAt`]）
+//! 展開の誤り（[`ExpandError`]）と、誤りの起きたブロック（[`BlockAt`]）、展開の注意（[`Note`]）
 
 use crate::{block_id, Block, NodePath, NodeStep};
 
@@ -101,5 +101,59 @@ impl From<ExpandError> for lensbench_core::Error {
 impl From<ExpandError> for String {
     fn from(e: ExpandError) -> Self {
         e.to_string()
+    }
+}
+
+/// 展開の注意（[`crate::Expansion::notes`]）: 展開で落とした・変えたもの
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Note {
+    pub kind: NoteKind,
+    /// 注意の元のブロック・群の id（ブロックに依らない注意・取り込んだ .zmx の注意は None）
+    pub block: Option<String>,
+    /// 注意の文（ブロックの名前・.zmx のパスも含む）
+    pub text: String,
+}
+
+/// 注意の種類
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum NoteKind {
+    /// 取り込んだ .zmx のピックアップ・ソルブを展開で保てなかった・符号を値で選んだ、ソルブで値を求め直した
+    Pickup,
+    /// 取り込んだ .zmx の温度・気圧がプロジェクトと違う
+    Environment,
+    /// 取り込んだ .zmx の膜ファイルが前の .zmx と違う
+    Coating,
+    /// id のブロック・群を玉・群のパラメータにできなかった
+    Unit,
+    /// 面の操作（`surface_ops`）を当てなかった・当てた操作の注意
+    SurfaceOp,
+    /// 全体の基準の面（`glrs`）のブロックが無い
+    Glrs,
+    /// 機構部品を置かなかった・ねじが合わない
+    Mechanics,
+}
+
+impl Note {
+    pub fn new(kind: NoteKind, block: Option<String>, text: String) -> Note {
+        Note { kind, block, text }
+    }
+
+    pub(crate) fn all(kind: NoteKind, block: Option<String>, v: Vec<String>) -> Vec<Note> {
+        v.into_iter()
+            .map(|t| Note::new(kind, block.clone(), t))
+            .collect()
+    }
+}
+
+impl From<Note> for String {
+    fn from(n: Note) -> String {
+        n.text
+    }
+}
+
+impl std::fmt::Display for Note {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
     }
 }

@@ -32,7 +32,7 @@ const HEAD: &str = r#""glass_catalogs": [],
   "aperture": {"type": "epd", "value": 8},
   "fields": {"type": "angle", "points": [[0, 0], [1, 2]]},"#;
 
-fn project(blocks: &str) -> (System, Vec<String>) {
+fn project(blocks: &str) -> (System, Vec<lensbench_project::Note>) {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
     let p = Project::from_json(&txt).unwrap();
     let env = Env {
@@ -99,7 +99,10 @@ fn out_of_range_is_fixed_with_a_warning() {
         r#"[{"type": "stop", "semi": 4}, {"type": "air", "t": 1}, {"type": "zmx", "path": "t.zmx", "from": 3, "to": 7}]"#,
     );
     assert_eq!(warn.len(), 4, "{warn:?}");
-    assert!(warn.iter().all(|w| w.contains("outside the range")));
+    assert!(warn
+        .iter()
+        .all(|w| w.kind == lensbench_project::NoteKind::Pickup
+            && w.text.contains("outside the range")));
     // 座標ブレーク 6 ← 3 と、厚さ 5 ← 4 は残り、追従する
     assert_eq!(s.pickups.len(), 3, "{:?}", s.pickups);
     let q = s
@@ -144,7 +147,7 @@ fn broken_relation_is_fixed() {
         r#"[{"type": "zmx", "path": "t.zmx", "groups": [{"name": "G", "from": 4, "to": 5, "shift": 0.7}]}]"#,
     );
     assert!(
-        warn.iter().any(|w| w.contains("value relation")),
+        warn.iter().any(|w| w.text.contains("value relation")),
         "{warn:?}"
     );
     for q in &s.pickups {
@@ -161,7 +164,7 @@ fn after_a_tilted_return_mirror() {
     );
     assert_eq!(warn.len(), 4, "{warn:?}");
     assert!(
-        warn.iter().all(|w| w.contains("outside the range")),
+        warn.iter().all(|w| w.text.contains("outside the range")),
         "{warn:?}"
     );
     assert_eq!(s.pickups.len(), 3, "{:?}", s.pickups);

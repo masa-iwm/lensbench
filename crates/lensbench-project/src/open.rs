@@ -385,7 +385,7 @@ impl Source {
                 let faces = x.map.into_iter().map(|o| o.face).collect();
                 Ok(Opened {
                     system: x.system,
-                    warnings: x.notes,
+                    warnings: x.notes.into_iter().map(String::from).collect(),
                     coatings: Vec::new(),
                     blocks,
                     faces,

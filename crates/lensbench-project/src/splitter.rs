@@ -774,3 +774,47 @@ impl<'a, 'b> Ctx<'a, 'b> {
         self.return_at(info.plevel.clone())
     }
 }
+
+/// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
+/// 経路は BS ごとに透過・反射を選んで、BS を通らなくなるまで（像面まで）たどったもの。経路ごとにブロックを
+/// たどって面を並べる（BS の復路でどの口へ出るかは面の位置で決まるので、面は作る）が、系を組んで確かめる・
+/// 自動の半直径を光線で求める・機構部品を置く段はしない（その段の誤りは、その経路を展開したときに出る）
+pub fn paths(p: &crate::Project, env: &crate::Env) -> lensbench_core::Result<Vec<String>> {
+    paths_cached(p, env, &crate::SourceCache::default())
+}
+
+/// [`paths`] で、ファイル・カタログから読んだものを cache で使い回す
+pub fn paths_cached(
+    p: &crate::Project,
+    env: &crate::Env,
+    cache: &crate::SourceCache,
+) -> lensbench_core::Result<Vec<String>> {
+    let mut out = Vec::new();
+    let mut todo = vec![String::new()];
+    while let Some(q) = todo.pop() {
+        match crate::expand::expand_inner(p, env, Some(&q), true, Some(cache), &[])
+            .map_err(crate::ExpandError::into_error)
+        {
+            Ok(crate::expand::Walk::Done(_) | crate::expand::Walk::Walked) => out.push(q),
+            Ok(crate::expand::Walk::Need) => {
+                if out.len() + todo.len() > 1024 {
+                    return Err("more than 1024 paths".into());
+                }
+                todo.push(format!("{q}R"));
+                todo.push(format!("{q}T"));
+            }
+            Err(e) => {
+                return Err(if q.is_empty() {
+                    e
+                } else {
+                    format!("path {q}: {e}").into()
+                })
+            }
+        }
+    }
+    if out == [""] {
+        out.clear();
+    }
+    out.sort_by(|a, b| a.len().cmp(&b.len()).then(b.cmp(a)));
+    Ok(out)
+}

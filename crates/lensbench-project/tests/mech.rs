@@ -440,7 +440,10 @@ fn after_chains_parts_with_threads() {
     assert!((m[1].offset[2] - 5.0).abs() < 1e-12, "{:?}", m[1].offset);
     // t3 の前はメスで t2 の後ろもメス: 合わないので突き当て（+ offset 1）
     assert!((m[2].offset[2] - 16.0).abs() < 1e-12, "{:?}", m[2].offset);
-    assert!(warn.iter().any(|w| w.contains("don't match")), "{warn:?}");
+    assert!(
+        warn.iter().any(|w| w.text.contains("don't match")),
+        "{warn:?}"
+    );
     // 前に無い部品・at との併用は誤り
     for bad in [
         tube("x", r#", "after": "nope""#, true),
@@ -494,7 +497,7 @@ fn reversed_tube_connects_to_cage_plate() {
     );
     // ケージ板はチューブの後ろのオス（3 mm）に重なる: 10 - 3
     assert!((m[1].offset[2] - 7.0).abs() < 1e-12, "{:?}", m[1].offset);
-    assert!(!warn.iter().any(|w| w.contains("threads")), "{warn:?}");
+    assert!(!warn.iter().any(|w| w.text.contains("threads")), "{warn:?}");
 }
 
 /// 簡易外形 `outline`: 角なら部品は正方形の柱（壁の中か は |x|・|y| の大きい方で見る）。省略は丸

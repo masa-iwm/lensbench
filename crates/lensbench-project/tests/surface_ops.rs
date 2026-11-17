@@ -20,7 +20,7 @@ fn env() -> Env<'static> {
 fn project(
     stop_block: bool,
     ops: &[(&str, &str)],
-) -> lensbench_core::Result<(lensbench_core::System, Vec<String>)> {
+) -> lensbench_core::Result<(lensbench_core::System, Vec<lensbench_project::Note>)> {
     let stop = if stop_block {
         r#"{"type": "stop", "semi": 2.5}, {"type": "air", "t": 2},"#
     } else {
@@ -80,7 +80,12 @@ fn missing_block_warns_and_bad_ops_fail() {
         )],
     )
     .unwrap();
-    assert!(warn.iter().any(|w| w.contains("X")), "{warn:?}");
+    assert!(
+        warn.iter().any(|w| w.text.contains("X")
+            && w.kind == lensbench_project::NoteKind::SurfaceOp
+            && w.block.as_deref() == Some("L2")),
+        "{warn:?}"
+    );
     let e = project(true, &[("L1", r#"[{"op": "set_stop", "surface": 5}]"#)]).unwrap_err();
     assert!(e.message().unwrap_or_default().contains("surface 5"), "{e}");
     let e = project(
@@ -241,7 +246,7 @@ fn remove_solve_of_block_source() {
         let (s, warn) = a0(ops);
         assert_eq!(s.solves.len(), 1, "{ops}");
         assert!(
-            warn.iter().any(|w| w.contains("nothing to remove")),
+            warn.iter().any(|w| w.text.contains("nothing to remove")),
             "{ops}: {warn:?}"
         );
     }

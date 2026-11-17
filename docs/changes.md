@@ -461,6 +461,13 @@
 - `LensCache` を `SourceCache` にした（PRJ-13）: カタログの玉に加えて、`.zmx`・システムファイルのブロックのシステムも覚える（ファイルの
   更新時刻と大きさが変われば読み直す）。`ExpandOpts::cache` に渡す。BS の経路の一覧を同じ使い回しで求めるのは
   `paths_cached`。`open::Source::Project` に欄 `cache` を足した（状態・経路ごとの展開で使い回す）。
+- 面の種類ごとのパラメータを番号で読み書きする `Surface::parm(i)`・`Surface::set_parm(i, v)` を足した（KRN-05。.zmx の PARM の番号、
+  置けない番号は None・false）。`pickup::surf_parm` はこれを使う。
+- 展開の注意 `Expansion::notes` を `Vec<String>` から `Vec<Note>` にした（PRJ-12）。`Note { kind, block, text }` は種類
+  （`NoteKind`: `Pickup`・`Environment`・`Coating`・`Unit`・`SurfaceOp`・`Glrs`・`Mechanics`）、元のブロック・群の id（分かるとき）、
+  文を持つ。文は前と同じ（`Display`・`String::from(note)`）。serve・CLI・Python の注意は今までどおり文。
+- BS の経路の一覧（`paths`・`paths_cached`）は、経路ごとにブロックをたどるだけにした（PRJ-12）。系を組んで確かめる・自動の
+  半直径を光線で求める・機構部品を置く段はしないので速い。その段の誤りは一覧では出ず、その経路を展開したときに出る。
 - メーカー名の比べ方を `lensbench_core::catalog::VendorKey` 1 つに（XCT-12・PRJ-17。英数字だけを大文字に）。同じメーカーかは鍵の一致、
   人が書いた名前での絞り込みは `VendorKey::matches`（鍵を含む）。`lensbench_catalog::spec::vendor_key` はなくした。
   `LensCatalog::load_registered` は `Arc<LensCatalog>` を返し、読んだファイルの更新時刻・大きさが変わらなければ読み直さない。

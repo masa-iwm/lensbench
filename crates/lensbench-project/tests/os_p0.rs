@@ -11,7 +11,7 @@ fn dir() -> PathBuf {
 }
 
 /// 展開した系（変える前）と、展開の注意
-fn expanded() -> (System, Vec<String>) {
+fn expanded() -> (System, Vec<lensbench_project::Note>) {
     let txt = std::fs::read_to_string(dir().join("project.json")).unwrap();
     let env = Env {
         step_files: None,
@@ -54,7 +54,7 @@ fn expansion_keeps_the_pickups_and_the_solve_inside_the_range() {
     // 面 3 の曲率（元は面 2）と面 4 の厚さ（元は面 1）は範囲の外からなので値で固定
     assert_eq!(
         warn.iter()
-            .filter(|w| w.contains("outside the range"))
+            .filter(|w| w.text.contains("outside the range"))
             .count(),
         2,
         "{warn:?}"

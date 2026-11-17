@@ -147,5 +147,5 @@ fn ids_that_cannot_be_units_are_warned() {
         .map(|x| (x.system, x.notes))
         .unwrap();
     assert!(s.find_unit("3").is_none());
-    assert!(warn.iter().any(|w| w.contains("block 3")), "{warn:?}");
+    assert!(warn.iter().any(|w| w.text.contains("block 3")), "{warn:?}");
 }

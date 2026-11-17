@@ -111,7 +111,7 @@ pub(crate) fn apply_surface_ops(
     s: &mut System,
     sites: &[(String, &FaceMods)],
     map: &[SurfOrigin],
-) -> lensbench_core::Result<(Vec<String>, bool)> {
+) -> lensbench_core::Result<(Vec<crate::Note>, bool)> {
     let mut warn = Vec::new();
     let mut stopped = false;
     // 外す操作の面に、外すソルブ・ピックアップがあるか（名前で書いた面・読めない量は当てて誤りにする）
@@ -149,13 +149,17 @@ pub(crate) fn apply_surface_ops(
         // ためた操作をまとめて当てる
         let flush = |s: &mut System,
                      out: &mut Vec<(usize, EditOp)>,
-                     warn: &mut Vec<String>,
+                     warn: &mut Vec<crate::Note>,
                      stopped: &mut bool|
          -> lensbench_core::Result<()> {
             if !out.is_empty() {
                 *stopped |= out.iter().any(|o| matches!(o.1, EditOp::SetStop(_)));
                 let ops: Vec<(usize, &EditOp)> = out.iter().map(|(k, o)| (*k, o)).collect();
-                warn.extend(edit_ops::apply_labeled(s, &ops, Some(label))?);
+                warn.extend(crate::Note::all(
+                    crate::NoteKind::SurfaceOp,
+                    Some(label.clone()),
+                    edit_ops::apply_labeled(s, &ops, Some(label))?,
+                ));
                 out.clear();
             }
             Ok(())
@@ -196,19 +200,27 @@ pub(crate) fn apply_surface_ops(
                     if has_target(s, &e) {
                         flush(s, &mut vec![(k, e)], &mut warn, &mut stopped)?;
                     } else {
-                        warn.push(at(
-                            k,
-                            format!("nothing to remove, so {} is not applied", op.name()),
+                        warn.push(crate::Note::new(
+                            crate::NoteKind::SurfaceOp,
+                            Some(label.clone()),
+                            at(
+                                k,
+                                format!("nothing to remove, so {} is not applied", op.name()),
+                            ),
                         ));
                     }
                 }
                 Some(e) => out.push((k, e)),
-                None => warn.push(at(
-                    k,
-                    format!(
-                        "block {} not found, so {} is not applied",
-                        missing.unwrap_or_default(),
-                        op.name()
+                None => warn.push(crate::Note::new(
+                    crate::NoteKind::SurfaceOp,
+                    Some(label.clone()),
+                    at(
+                        k,
+                        format!(
+                            "block {} not found, so {} is not applied",
+                            missing.unwrap_or_default(),
+                            op.name()
+                        ),
                     ),
                 )),
             }

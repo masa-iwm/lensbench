@@ -571,7 +571,7 @@ fn thickness_solves_follow_set_param() {
     .map(|x| (x.system, x.notes))
     .unwrap();
     assert!(s.solves.is_empty());
-    assert!(warn.iter().any(|w| w.contains("solve")), "{warn:?}");
+    assert!(warn.iter().any(|w| w.text.contains("solve")), "{warn:?}");
 }
 
 #[test]
@@ -876,12 +876,18 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     };
     // 既定の環境（20 °C）: 注意が出て、屈折率は .zmx を単体で読んだのと違う
     let (s, warn) = run("");
-    assert!(warn.iter().any(|w| w.contains("environment")), "{warn:?}");
+    assert!(
+        warn.iter().any(|w| w.text.contains("environment")),
+        "{warn:?}"
+    );
     assert!(s.n(1)[1] != z.n(1)[1]);
     // 同じ環境にすれば注意はなく、屈折率も同じ
     let (s, warn) =
         run(r#""environment": {"temperature_c": 40, "pressure_atm": 1.2, "adjust_index": true},"#);
-    assert!(!warn.iter().any(|w| w.contains("environment")), "{warn:?}");
+    assert!(
+        !warn.iter().any(|w| w.text.contains("environment")),
+        "{warn:?}"
+    );
     for j in 1..s.surfaces.len() {
         assert_eq!(s.n(j), z.n(j), "面 {j}");
     }
