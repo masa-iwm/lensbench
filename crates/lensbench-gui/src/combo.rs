@@ -36,7 +36,7 @@ use figure::figure;
 use figure::{cube_of_prism, inside};
 pub use mech::MechPick;
 pub use sys_extra::SysExtra;
-pub use zgroup::ZGroup;
+pub use zgroup::{ZGroup, ZmxSrc};
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -309,9 +309,8 @@ pub struct Pick {
     pub tilt: [f64; 3],
     /// BS: 反射側へ進む
     pub arm_r: bool,
-    /// .zmx の玉: ファイルと、何番目の玉か
+    /// .zmx の玉・取り込みのファイル、ユーザーカタログの項目の場所
     pub path: String,
-    pub lens: usize,
     /// ロック: 中身（種類ごとの欄・面・反転）を変えない。位置・後の空気は変えられる
     pub locked: bool,
     /// ロックしたとき、位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えない
@@ -329,12 +328,8 @@ pub struct Pick {
     pub edits: Vec<SurfEdit>,
     /// 玉の前面を絞りにする（カタログの玉・自作の玉・平板・.zmx の玉）
     pub stop_front: bool,
-    /// .zmx の玉・取り込み: マルチコンフィグの番号（1 始まり）
-    pub config: usize,
     /// 自作の玉（3 面以上・貼り合わせ）と面の並びの面。自作の玉は空なら r1・r2・t・glass の 2 面
     pub surfs: Vec<SurfRow>,
-    /// .zmx の取り込み: 面 from〜to（0 は既定: 面 1〜像面の手前）
-    pub range: [usize; 2],
     /// 面の絞り・ソルブ・ピックアップ（ブロックの surface_ops になる）。この要素の面（surface・dst）は要素の面の
     /// 番号（座標ブレークを除く、`BlockRef::Sys(Ref::Index(i))`）、ほかの要素の面（src・other）は {"block": id, "surface": i}
     pub ops: Vec<SurfaceOp>,
@@ -359,8 +354,9 @@ pub struct Pick {
     pub back: bool,
     /// 群の名前（続く同じ名前の要素を 1 つの群のブロックにする。空なら群に入れない）
     pub group: String,
-    /// .zmx の取り込み: 玉モードの群（面 from〜to、名前・役割）
-    pub zgroups: Vec<ZGroup>,
+    /// .zmx の玉・取り込みの番号・面の範囲・群（その種類だけが持つ。[`ZmxSrc`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zmx: Option<Box<ZmxSrc>>,
     /// edits・ops を付けたときの面の並びの印（[`Pick::surf_sig`]）。面の数・順・元が変わったら上書きを外す
     #[serde(skip_serializing_if = "String::is_empty")]
     pub edits_for: String,
@@ -397,7 +393,6 @@ impl Default for Pick {
             tilt: [0.0; 3],
             arm_r: false,
             path: String::new(),
-            lens: 1,
             locked: false,
             lock_place: false,
             conic: 0.0,
@@ -410,9 +405,7 @@ impl Default for Pick {
             ports: Default::default(),
             back: false,
             stop_front: false,
-            config: 1,
             surfs: Vec::new(),
-            range: [0, 0],
             ops: Vec::new(),
             on: true,
             off_air: false,
@@ -420,7 +413,7 @@ impl Default for Pick {
             state_air: BTreeMap::new(),
             state_place: BTreeMap::new(),
             group: String::new(),
-            zgroups: Vec::new(),
+            zmx: None,
             edits_for: String::new(),
             id: String::new(),
             air_id: String::new(),
@@ -439,9 +432,9 @@ impl Pick {
             self.vendor,
             self.part,
             self.path,
-            self.lens,
-            self.config,
-            self.range,
+            self.zmx().lens,
+            self.zmx().config,
+            self.zmx().range,
             self.reversed,
             self.bs().form,
             kinds
@@ -499,11 +492,12 @@ impl Pick {
         let Some((stop, image)) = zmx_stop_info(&self.path) else {
             return true;
         };
-        let a = if self.range[0] == 0 { 1 } else { self.range[0] };
-        let z = if self.range[1] == 0 {
+        let range = self.zmx().range;
+        let a = if range[0] == 0 { 1 } else { range[0] };
+        let z = if range[1] == 0 {
             image.saturating_sub(1)
         } else {
-            self.range[1]
+            range[1]
         };
         a <= stop && stop <= z
     }
@@ -561,7 +555,7 @@ impl Pick {
                     .file_name()
                     .map(|x| x.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                format!("{f} #{}", self.lens)
+                format!("{f} #{}", self.zmx().lens)
             }
             // カタログの鏡・BS は型番
             ElemKind::Mirror | ElemKind::Splitter if !self.part.is_empty() => {
@@ -574,7 +568,7 @@ impl Pick {
                     .file_name()
                     .map(|x| x.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                match self.range {
+                match self.zmx().range {
                     [0, 0] => f,
                     [a, b] => format!(
                         "{f} {}〜{}",
@@ -652,10 +646,10 @@ impl Pick {
             ElemKind::Zmx => {
                 let mut b = json!({
                     "type": "lens", "id": id,
-                    "source": { "zmx": self.path, "lens": self.lens.max(1) },
+                    "source": { "zmx": self.path, "lens": self.zmx().lens.max(1) },
                 });
-                if self.config > 1 {
-                    b["source"]["config"] = json!(self.config);
+                if self.zmx().config > 1 {
+                    b["source"]["config"] = json!(self.zmx().config);
                 }
                 b
             }
@@ -687,19 +681,19 @@ impl Pick {
             }),
             ElemKind::ZmxRange => {
                 let mut b = json!({ "type": "zmx", "id": id, "path": self.path });
-                if self.range[0] > 0 {
-                    b["from"] = json!(self.range[0]);
+                if self.zmx().range[0] > 0 {
+                    b["from"] = json!(self.zmx().range[0]);
                 }
-                if self.range[1] > 0 {
-                    b["to"] = json!(self.range[1]);
+                if self.zmx().range[1] > 0 {
+                    b["to"] = json!(self.zmx().range[1]);
                 }
-                if self.config > 1 {
-                    b["config"] = json!(self.config);
+                if self.zmx().config > 1 {
+                    b["config"] = json!(self.zmx().config);
                 }
                 if !self.is_stop() {
                     b["stop"] = json!(false);
                 }
-                let gs: Vec<Value> = self.zgroups.iter().filter_map(ZGroup::json).collect();
+                let gs: Vec<Value> = self.zmx().zgroups.iter().filter_map(ZGroup::json).collect();
                 if !gs.is_empty() {
                     b["groups"] = Value::Array(gs);
                 }
@@ -1128,7 +1122,7 @@ impl Combo {
             .all()
             .iter()
             .filter_map(|l| self.get(l))
-            .flat_map(|p| &p.zgroups)
+            .flat_map(|p| &p.zmx().zgroups)
         {
             for (n, set) in states.iter_mut() {
                 if let Some(m) = g.state_set(n) {
@@ -2231,7 +2225,8 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
         "Group .zmx surfaces from–to into one group (lens/group parameters). Without groups, one per lens automatically",
     ));
     let mut remove = None;
-    for (i, g) in p.zgroups.iter_mut().enumerate() {
+    let path = p.path.clone();
+    for (i, g) in p.zmx_mut().zgroups.iter_mut().enumerate() {
         ui.add(
             egui::DragValue::new(&mut g.from)
                 .range(1..=9999)
@@ -2244,17 +2239,21 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
                 .hint_text(tr("Name"))
                 .desired_width(50.0),
         );
-        role_combo(ui, ("zg_role", p.path.as_str(), i), &mut g.role);
+        role_combo(ui, ("zg_role", path.as_str(), i), &mut g.role);
         if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
             remove = Some(i);
         }
     }
     if let Some(i) = remove {
-        p.zgroups.remove(i);
+        p.zmx_mut().zgroups.remove(i);
     }
     if ui.small_button(tr("+ Group")).clicked() {
-        let from = p.zgroups.last().map_or(p.range[0].max(1), |g| g.to + 1);
-        p.zgroups.push(ZGroup {
+        let from = p
+            .zmx()
+            .zgroups
+            .last()
+            .map_or(p.zmx().range[0].max(1), |g| g.to + 1);
+        p.zmx_mut().zgroups.push(ZGroup {
             from,
             to: from,
             ..Default::default()
@@ -2580,13 +2579,13 @@ fn kind_fields(
         }
         ElemKind::ZmxRange => {
             ui.label(RichText::new(tr("Surface")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.range[0]).range(0..=9999))
+            ui.add(egui::DragValue::new(&mut p.zmx_mut().range[0]).range(0..=9999))
                 .on_hover_text(tr("First surface to import (0 is surface 1)"));
             ui.label("〜");
-            ui.add(egui::DragValue::new(&mut p.range[1]).range(0..=9999))
+            ui.add(egui::DragValue::new(&mut p.zmx_mut().range[1]).range(0..=9999))
                 .on_hover_text(tr("Last surface to import (0 is the one before the image)"));
             ui.label(RichText::new(tr("Config")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.config).range(1..=999))
+            ui.add(egui::DragValue::new(&mut p.zmx_mut().config).range(1..=999))
                 .on_hover_text(tr("Multi-configuration number of the .zmx"));
         }
         ElemKind::Plate => {
@@ -2734,9 +2733,9 @@ fn kind_fields(
         }
         ElemKind::Zmx => {
             ui.label(RichText::new(tr("Element no.")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.lens).range(1..=999));
+            ui.add(egui::DragValue::new(&mut p.zmx_mut().lens).range(1..=999));
             ui.label(RichText::new(tr("Config")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.config).range(1..=999))
+            ui.add(egui::DragValue::new(&mut p.zmx_mut().config).range(1..=999))
                 .on_hover_text(tr(
                     "Which multi-configuration of the .zmx to take the lens from",
                 ));

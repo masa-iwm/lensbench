@@ -1806,9 +1806,9 @@ pub(crate) fn split_open(
     };
     let half = rows[a].t / 2.0;
     let mut z1 = z.clone();
-    z1.range = [1, a];
+    z1.zmx_mut().range = [1, a];
     // 群は分けた範囲に収まるものだけ（間隔はブロックの外なので、跨ぐ群は無い）
-    z1.zgroups.retain(|g| g.to <= a);
+    z1.zmx_mut().zgroups.retain(|g| g.to <= a);
     // 取り込みの面 a（座標ブレークを除いて数えた番号）の厚さを半分に
     let rel = (1..a).filter(|&i| !rows[i].is_cb()).count();
     z1.set_edit(rel, "t", serde_json::json!(half));
@@ -1817,8 +1817,8 @@ pub(crate) fn split_open(
         return vec![z1, p];
     }
     let mut z2 = z;
-    z2.range = [a + 1, 0];
-    z2.zgroups.retain(|g| g.from > a);
+    z2.zmx_mut().range = [a + 1, 0];
+    z2.zmx_mut().zgroups.retain(|g| g.from > a);
     vec![z1, p, z2]
 }
 
@@ -3311,14 +3311,17 @@ mod open_insert_tests {
             surfs,
             parent: None,
         };
-        z.zgroups = open_groups(&[
+        z.zmx_mut().zgroups = open_groups(&[
             blk("lens1", vec![1, 2]),
             blk("lens2", vec![3, 4]),
             blk("lens3", vec![6, 7]),
         ]);
         let picks = split_open(z.clone(), &rows, Some(gap), p.clone());
         assert_eq!(picks.len(), 3);
-        assert_eq!((picks[0].range, picks[2].range), ([1, gap], [gap + 1, 0]));
+        assert_eq!(
+            (picks[0].zmx().range, picks[2].zmx().range),
+            ([1, gap], [gap + 1, 0])
+        );
         c.picks = picks;
         let pj = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
         let env = lensbench_project::Env {

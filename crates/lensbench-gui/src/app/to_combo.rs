@@ -98,11 +98,11 @@ impl Core {
             .and_then(|s| s["cfg"].as_u64())
             .filter(|&n| n > 1)
         {
-            z.config = cfg as usize;
+            z.zmx_mut().config = cfg as usize;
         }
         // 開いた系の玉・群（最上位のブロック）を取り込みの中の群として残す（取り込み全体が 1 つのブロックになり、
         // その中に元の玉が並ぶ）
-        z.zgroups = open_groups(&self.sys.ld_blocks);
+        z.zmx_mut().zgroups = open_groups(&self.sys.ld_blocks);
         match self.open_insert.take() {
             Some((after, p)) => c.picks.extend(split_open(z, &self.sys.ld_rows, after, p)),
             None => c.picks.push(z),

@@ -1119,7 +1119,7 @@ mod tests {
         // .zmx の玉・ユーザーカタログの項目からの差し替えは、前のファイルを持ち越さずカタログの玉のブロックに（GPN-04）
         let mut z = Pick::new(ElemKind::Zmx);
         z.path = "a.zmx".into();
-        z.lens = 2;
+        z.zmx_mut().lens = 2;
         z.stop_front = true;
         z.air = 3.0;
         let c = Combo {

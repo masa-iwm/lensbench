@@ -1082,7 +1082,7 @@ mod tests {
         let mut z = Pick::new(ElemKind::Zmx);
         z.path = "a.zmx".into();
         assert!(z.block("Z")["source"]["config"].is_null());
-        z.config = 2;
+        z.zmx_mut().config = 2;
         assert_eq!(z.block("Z")["source"]["config"], 2);
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -1,10 +1,53 @@
-//! .zmx の取り込みの中の群（[`ZGroup`]、プロジェクトの zmx の groups）
+//! .zmx の玉・取り込みの欄（[`ZmxSrc`]）と、取り込みの中の群（[`ZGroup`]、プロジェクトの zmx の groups）
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
-use super::StatePlace;
+use super::{Pick, StatePlace};
+
+/// .zmx の玉・取り込みだけが持つ欄（[`Pick::zmx`]）。ファイルの場所は、ユーザーカタログの項目と同じ
+/// [`Pick::path`] に持つ
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ZmxSrc {
+    /// .zmx の玉: 何番目の玉か（1 始まり）
+    pub lens: usize,
+    /// マルチコンフィグの番号（1 始まり）
+    pub config: usize,
+    /// 取り込み: 面 from〜to（0 は既定: 面 1〜像面の手前）
+    pub range: [usize; 2],
+    /// 取り込み: 玉モードの群（面 from〜to、名前・役割）
+    pub zgroups: Vec<ZGroup>,
+}
+
+impl ZmxSrc {
+    pub const DEFAULT: ZmxSrc = ZmxSrc {
+        lens: 1,
+        config: 1,
+        range: [0, 0],
+        zgroups: Vec::new(),
+    };
+}
+
+impl Default for ZmxSrc {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl Pick {
+    /// .zmx の玉・取り込みの欄（ほかの種類では既定）
+    pub fn zmx(&self) -> &ZmxSrc {
+        static DEFAULT: ZmxSrc = ZmxSrc::DEFAULT;
+        self.zmx.as_deref().unwrap_or(&DEFAULT)
+    }
+
+    /// .zmx の玉・取り込みの欄を変える（無ければ作る。.zmx の種類だけで呼ぶ）
+    pub fn zmx_mut(&mut self) -> &mut ZmxSrc {
+        self.zmx.get_or_insert_with(Box::default)
+    }
+}
 
 /// .zmx の取り込みの中の群（プロジェクトの zmx の groups）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

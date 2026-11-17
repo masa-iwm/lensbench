@@ -484,8 +484,8 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
         Some("lens") if src.get("zmx").is_some() => {
             let mut p = Pick::new(ElemKind::Zmx);
             p.path = s(&src["zmx"]);
-            p.lens = src["lens"].as_u64().unwrap_or(1) as usize;
-            p.config = src["config"].as_u64().unwrap_or(1) as usize;
+            p.zmx_mut().lens = src["lens"].as_u64().unwrap_or(1) as usize;
+            p.zmx_mut().config = src["config"].as_u64().unwrap_or(1) as usize;
             p
         }
         Some("lens") => lens(src["surfaces"].as_array().map_or(&[][..], |a| &a[..]))?,
@@ -531,16 +531,16 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
         Some("zmx") => {
             let mut p = Pick::new(ElemKind::ZmxRange);
             p.path = s(&b["path"]);
-            p.range = [
+            p.zmx_mut().range = [
                 b["from"].as_u64().unwrap_or(0) as usize,
                 b["to"].as_u64().unwrap_or(0) as usize,
             ];
-            p.config = b["config"].as_u64().unwrap_or(1) as usize;
+            p.zmx_mut().config = b["config"].as_u64().unwrap_or(1) as usize;
             p.stop_front = b["stop"].as_bool().unwrap_or(true);
             for g in b["groups"].as_array().into_iter().flatten() {
                 // 基本の移動・置き方は組合せの欄に無い（比べると違うので組合せにしない）
                 let (id, name) = (s(&g["id"]), s(&g["name"]));
-                p.zgroups.push(ZGroup {
+                p.zmx_mut().zgroups.push(ZGroup {
                     from: g["from"].as_u64().unwrap_or(0) as usize,
                     to: g["to"].as_u64().unwrap_or(0) as usize,
                     id: if id == name.trim() { String::new() } else { id },
@@ -734,8 +734,8 @@ fn find<'a>(ps: &'a mut [Pick], id: &str) -> Option<&'a mut Pick> {
 /// .zmx の取り込みの中の群を id で
 fn find_zgroup<'a>(ps: &'a mut [Pick], id: &str) -> Option<&'a mut ZGroup> {
     for p in ps {
-        if let Some(i) = p.zgroups.iter().position(|g| g.key() == id) {
-            return p.zgroups.get_mut(i);
+        if let Some(i) = p.zmx().zgroups.iter().position(|g| g.key() == id) {
+            return p.zmx_mut().zgroups.get_mut(i);
         }
         for b in p.ports.iter_mut() {
             if let Some(x) = find_zgroup(&mut b.picks, id) {

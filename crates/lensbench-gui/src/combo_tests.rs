@@ -730,7 +730,7 @@ fn multi_surface_blocks_build() {
     // 範囲に .zmx の絞り（A0 は面 5）が無ければ、.zmx の絞りは使わず前に自動の絞りを置く（レビュー指摘）
     assert_eq!(zmx_stop_info(&c.picks[2].path).map(|x| x.0), Some(5));
     let mut short = c.clone();
-    short.picks[2].range = [1, 3];
+    short.picks[2].zmx_mut().range = [1, 3];
     assert!(!short.picks[2].range_has_stop() && short.lead_stop());
     let sp = short.project();
     assert_eq!(sp["blocks"][0]["type"], "stop");
