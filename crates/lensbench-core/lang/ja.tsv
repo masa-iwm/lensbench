@@ -2140,3 +2140,5 @@ parameter {param} can't be written back to blocks (only c, r, k and t of surface
 the project would not expand: {e}	書き戻すとプロジェクトが展開できません: {e}
 the block is not in the project	ブロックがプロジェクトにありません
 this kind of block can't hold surface edits	この種類のブロックは面の上書きを持てません
+parameter {}: the target doesn't match the kind	パラメータ {}: 付く先が種類と合いません
+parameter {} is not on a surface	パラメータ {} は面のパラメータではありません

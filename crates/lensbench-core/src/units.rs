@@ -330,7 +330,7 @@ impl System {
         let mut notes = Vec::new();
         if let Some(c) = &mut self.rx_mut().configs {
             c.rows.retain(|r| {
-                let used = matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf == u;
+                let used = r.param.target == crate::param::Target::Unit(u);
                 if used {
                     notes.push(format!(
                         "removed multi-configuration row {}",
@@ -340,8 +340,10 @@ impl System {
                 !used
             });
             for r in c.rows.iter_mut() {
-                if matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf > u {
-                    r.param.surf -= 1;
+                if let crate::param::Target::Unit(k) = &mut r.param.target {
+                    if *k > u {
+                        *k -= 1;
+                    }
                 }
             }
         }

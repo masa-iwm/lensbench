@@ -115,7 +115,7 @@ fn changed_system_traces_bit_identical_to_reloaded_zmx() {
                 ch.iter().all(|(q, _)| {
                     base.pickup_of(*q).is_none()
                         && !(q.name().ends_with(".t")
-                            && base.solves.iter().any(|z| z.surf == q.surf))
+                            && base.solves.iter().any(|z| z.surf == q.index()))
                 })
             })
             .chain([vec![(p("1.t"), base.surfaces[1].t + 0.1)]])
@@ -295,4 +295,28 @@ fn surface_shape_cache_follows_curvature_changes() {
             }
         }
     }
+}
+
+/// パラメータの付く先は種類から決まり、番号の意味は付く先で決まる。食い違う付く先は使えない
+#[test]
+fn params_carry_their_target() {
+    use lensbench_core::param::Target;
+    use lensbench_core::units::UnitKind;
+    assert_eq!(Param::new(3, Kind::Thick).target, Target::Surf(3));
+    assert_eq!(
+        Param::new(2, Kind::Unit(UnitKind::Tx)).target,
+        Target::Unit(2)
+    );
+    assert_eq!(Param::obj_x().target, Target::System);
+    assert_eq!(Param::new(3, Kind::Thick).surface(), Some(3));
+    assert_eq!(Param::unit(2, UnitKind::Tx).surface(), None);
+    assert_eq!(Param::unit(2, UnitKind::Tx).unit_index(), Some(2));
+    let s = load("A0");
+    let p = s.param("2.t").unwrap();
+    assert_eq!(p, Param::new(2, Kind::Thick));
+    let bad = Param {
+        target: Target::System,
+        kind: Kind::Thick,
+    };
+    assert!(s.check_param(bad).is_err());
 }

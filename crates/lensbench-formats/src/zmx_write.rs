@@ -753,22 +753,23 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
 type ConfigOp = (&'static str, usize, Option<u8>, fn(f64) -> f64);
 fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
     use lensbench_core::param::Kind;
-    let d = s.surfaces.get(p.surf)?;
+    let d = s.surfaces.get(p.surface()?)?;
     let id: fn(f64) -> f64 = |v| v;
     Some(match p.kind {
-        Kind::Thick => ("THIC", p.surf, None, id),
-        Kind::Curv => ("CRVT", p.surf, None, id),
-        Kind::Radius => (
-            "CRVT",
-            p.surf,
-            None,
-            |r| if r == 0.0 { 0.0 } else { 1.0 / r },
-        ),
-        Kind::Conic => ("CONN", p.surf, None, id),
-        Kind::Asph(i) if d.typ == SurfType::EvenAsph => ("PRAM", p.surf, Some(i + 1), id),
+        Kind::Thick => ("THIC", p.index(), None, id),
+        Kind::Curv => ("CRVT", p.index(), None, id),
+        Kind::Radius => ("CRVT", p.index(), None, |r| {
+            if r == 0.0 {
+                0.0
+            } else {
+                1.0 / r
+            }
+        }),
+        Kind::Conic => ("CONN", p.index(), None, id),
+        Kind::Asph(i) if d.typ == SurfType::EvenAsph => ("PRAM", p.index(), Some(i + 1), id),
         k if d.typ == SurfType::CoordBrk => {
             let i = k.tilt_index()?;
-            ("PRAM", p.surf, Some(i as u8 + 1), id)
+            ("PRAM", p.index(), Some(i as u8 + 1), id)
         }
         _ => return None,
     })

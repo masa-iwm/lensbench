@@ -131,7 +131,7 @@ pub(crate) fn raw_frames_d(sys: &System, p: Param) -> Vec<Option<DFrame>> {
             continue;
         }
         let mut dt = [0.0; 5];
-        let mine = p.surf == j && !p.kind.is_unit();
+        let mine = p.surface() == Some(j);
         if mine {
             if let Some(i) = p.kind.tilt_index() {
                 dt[i] = 1.0;
@@ -181,7 +181,7 @@ pub(crate) fn raw_frames_d(sys: &System, p: Param) -> Vec<Option<DFrame>> {
     }
     // 玉・群の剛体の動き（units::apply_frames と同じ順）と、その微分
     let dp = match p.kind {
-        Kind::Unit(k) => k.motion_index().map(|i| (p.surf, i)),
+        Kind::Unit(k) => k.motion_index().map(|i| (p.index(), i)),
         _ => None,
     };
     let mut ord = crate::units::order(&sys.units);
@@ -279,7 +279,7 @@ impl System {
         let ns = self.surfaces.len();
         let mut pp = PrepParam {
             kind: p.kind,
-            surf: p.surf,
+            surf: p.index(),
             glob: vec![None; ns],
             dn: vec![0.0; ns],
             d0: [0.0; 3],
@@ -305,7 +305,7 @@ impl System {
                 );
             }
             Kind::Thick | Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz | Kind::Unit(_) => {
-                if p.kind == Kind::Thick && p.surf == 0 && self.infinite() {
+                if p.kind == Kind::Thick && p.index() == 0 && self.infinite() {
                     invalid!("object distance of an object at infinity");
                 }
                 let fr = raw_frames_d(self, p);
@@ -325,7 +325,7 @@ impl System {
                 }
             }
             Kind::Dn | Kind::Disp => {
-                let m = p.surf;
+                let m = p.index();
                 let v = if p.kind == Kind::Dn {
                     1.0
                 } else {
@@ -363,7 +363,7 @@ impl System {
                 } else {
                     p.kind
                 };
-                q.surf == p.surf && q.kind.param_kind() == k
+                q.surf == p.index() && q.kind.param_kind() == k
             }))
     }
 

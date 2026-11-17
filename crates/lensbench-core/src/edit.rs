@@ -13,7 +13,7 @@
 
 use crate::error::Result;
 use crate::glass::{self, Glass};
-use crate::param::{Kind, Param};
+use crate::param::{Kind, Param, Target};
 use crate::pickup::{PickKind, Pickup};
 use crate::solves::{solve_kind_of, Solve};
 use crate::surface::{After, Aperture, Material, SurfType, Surface};
@@ -767,10 +767,10 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
     s.rx_mut().units = kept;
     if let Some(c) = &mut s.rx_mut().configs {
         c.rows.retain(|r| {
-            let used = match r.param.kind {
-                Kind::Unit(_) => unit_map.get(r.param.surf).copied().flatten().is_none(),
-                k if k.is_global() => false,
-                _ => r.param.surf == j,
+            let used = match r.param.target {
+                Target::Unit(u) => unit_map.get(u).copied().flatten().is_none(),
+                Target::System => false,
+                Target::Surf(k) => k == j,
             };
             if used {
                 notes.push(format!(
@@ -781,9 +781,9 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
             !used
         });
         for r in c.rows.iter_mut() {
-            if let Kind::Unit(_) = r.param.kind {
-                if let Some(Some(k)) = unit_map.get(r.param.surf) {
-                    r.param.surf = *k;
+            if let Target::Unit(u) = &mut r.param.target {
+                if let Some(Some(k)) = unit_map.get(*u) {
+                    *u = *k;
                 }
             }
         }
@@ -859,8 +859,8 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
     };
     if let Some(c) = &mut s.rx_mut().configs {
         for r in c.rows.iter_mut() {
-            if !r.param.kind.is_global() && !r.param.kind.is_unit() {
-                r.param.surf = mm(r.param.surf);
+            if let Target::Surf(k) = &mut r.param.target {
+                *k = mm(*k);
             }
         }
     }

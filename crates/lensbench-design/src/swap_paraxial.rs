@@ -71,7 +71,7 @@ impl SwapSearch<'_> {
             if !(sys.pickups.is_empty() && sys.solves.is_empty() && sys.macros.is_empty())
                 || vs.iter().any(|v| {
                     sys.surfaces
-                        .get(v.param.surf)
+                        .get(v.param.index())
                         .is_none_or(|s| s.grin.is_some())
                 })
             {

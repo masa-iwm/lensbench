@@ -399,13 +399,11 @@ pub(crate) fn kind_of_pick(d: &Surface, what: PickKind) -> Option<Kind> {
 impl System {
     /// パラメータ p がピックアップ先ならそのピックアップ
     pub fn pickup_of(&self, p: Param) -> Option<Pickup> {
-        if p.kind.is_global() || p.kind.is_unit() || p.surf >= self.surfaces.len() {
-            return None;
-        }
-        let what = pick_kind(&self.surfaces[p.surf], p.kind)?;
+        let j = p.surface()?;
+        let what = pick_kind(self.surfaces.get(j)?, p.kind)?;
         self.pickups
             .iter()
-            .find(|q| q.dst == p.surf && q.what == what)
+            .find(|q| q.dst == j && q.what == what)
             .copied()
     }
 
@@ -522,8 +520,8 @@ impl System {
         }
         // 半径を変えたときの曲率の変化 dc/dR = −c²
         let first = if p.kind == Kind::Radius {
-            let c = self.surfaces[p.surf].c;
-            (Param::new(p.surf, Kind::Curv), -c * c)
+            let c = self.surfaces[p.index()].c;
+            (Param::new(p.index(), Kind::Curv), -c * c)
         } else {
             (p, 1.0)
         };
@@ -534,7 +532,7 @@ impl System {
             if depth > 64 * self.surfaces.len() {
                 invalid!("pickups go round in a loop");
             }
-            let Some(what) = pick_kind(&self.surfaces[q.surf], q.kind) else {
+            let Some(what) = pick_kind(&self.surfaces[q.index()], q.kind) else {
                 continue;
             };
             for pk in self.pickups.iter().filter(|k| {
@@ -542,7 +540,7 @@ impl System {
                     PickKind::Radius => PickKind::Curv,
                     w => w,
                 };
-                k.src == q.surf && from == what
+                k.src == q.index() && from == what
             }) {
                 let d = &self.surfaces[pk.dst];
                 let Some(kind) = kind_of_pick(d, pk.what) else {

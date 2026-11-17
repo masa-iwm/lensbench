@@ -168,36 +168,89 @@ impl Kind {
     }
 }
 
-/// 面 surf のパラメータ kind
+/// パラメータが付く先。面・玉/群の番号の意味は種類で変わらない
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum Target {
+    /// 面の番号
+    Surf(usize),
+    /// 玉・群の番号（[`System::units`]）
+    Unit(usize),
+    /// 面・玉・群に付かない系全体（物点の移動・波長）
+    System,
+}
+
+/// パラメータ: 付く先と種類。付く先は種類から決まる（[`Kind::is_global`] は系全体、[`Kind::Unit`] は玉・群、
+/// ほかは面）ので、[`Param::new`]・[`Param::unit`]・[`Param::system`] で作る
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Param {
-    pub surf: usize,
+    pub target: Target,
     pub kind: Kind,
 }
 
 impl Param {
+    /// 面 surf のパラメータ kind（kind が系全体・玉/群の種類ならそちら。玉・群は surf が玉・群の番号）
     pub fn new(surf: usize, kind: Kind) -> Param {
-        Param { surf, kind }
+        let target = if kind.is_global() {
+            Target::System
+        } else if kind.is_unit() {
+            Target::Unit(surf)
+        } else {
+            Target::Surf(surf)
+        };
+        Param { target, kind }
+    }
+    /// 系全体のパラメータ（物点の移動・波長）
+    pub fn system(kind: Kind) -> Param {
+        debug_assert!(kind.is_global());
+        Param {
+            target: Target::System,
+            kind,
+        }
     }
     pub fn obj_x() -> Param {
-        Param::new(0, Kind::ObjX)
+        Param::system(Kind::ObjX)
     }
     pub fn obj_y() -> Param {
-        Param::new(0, Kind::ObjY)
+        Param::system(Kind::ObjY)
     }
     /// 玉・群 u のパラメータ
     pub fn unit(u: usize, kind: UnitKind) -> Param {
-        Param::new(u, Kind::Unit(kind))
+        Param {
+            target: Target::Unit(u),
+            kind: Kind::Unit(kind),
+        }
+    }
+    /// 面の番号（面のパラメータでなければ None）
+    pub fn surface(&self) -> Option<usize> {
+        match self.target {
+            Target::Surf(j) => Some(j),
+            _ => None,
+        }
+    }
+    /// 玉・群の番号（玉・群のパラメータでなければ None）
+    pub fn unit_index(&self) -> Option<usize> {
+        match self.target {
+            Target::Unit(u) => Some(u),
+            _ => None,
+        }
+    }
+    /// 面・玉/群の番号（系全体は 0）。番号の意味は [`Self::target`] で決まる
+    pub fn index(&self) -> usize {
+        match self.target {
+            Target::Surf(j) | Target::Unit(j) => j,
+            Target::System => 0,
+        }
     }
     pub fn name(&self) -> String {
-        if self.kind.is_global() {
-            self.kind.name()
-        } else if self.kind.is_unit() {
-            format!("unit{}.{}", self.surf, self.kind.name())
-        } else {
-            format!("{}.{}", self.surf, self.kind.name())
+        match self.target {
+            Target::System => self.kind.name(),
+            Target::Unit(u) => format!("unit{u}.{}", self.kind.name()),
+            Target::Surf(j) => format!("{j}.{}", self.kind.name()),
         }
     }
 }
@@ -251,7 +304,7 @@ impl System {
     /// パラメータの名前（玉・群は名前で）
     pub fn param_name(&self, p: Param) -> String {
         match p.kind {
-            Kind::Unit(k) => match self.units.get(p.surf) {
+            Kind::Unit(k) => match self.units.get(p.index()) {
                 Some(u) => format!("{}.{}", u.name, k.name()),
                 None => p.name(),
             },
@@ -261,6 +314,10 @@ impl System {
 
     /// パラメータがこの系で使えるか
     pub fn check_param(&self, p: Param) -> Result<()> {
+        // 付く先は種類から決まる（読んだ JSON の食い違いを断る）
+        if Param::new(p.index(), p.kind) != p {
+            invalid!("parameter {}: the target doesn't match the kind", p.name());
+        }
         if p.kind.is_object() {
             return Ok(());
         }
@@ -272,16 +329,18 @@ impl System {
             return Ok(());
         }
         if let Kind::Unit(k) = p.kind {
-            let Some(u) = self.units.get(p.surf) else {
-                invalid!("lens or group {} ({} of them)", p.surf, self.units.len());
+            let Some(u) = self.units.get(p.index()) else {
+                invalid!("lens or group {} ({} of them)", p.index(), self.units.len());
             };
-            if matches!(k, UnitKind::Dn | UnitKind::Disp) && self.unit_media(p.surf).is_empty() {
+            if matches!(k, UnitKind::Dn | UnitKind::Disp) && self.unit_media(p.index()).is_empty() {
                 let (unit, medium) = (&u.name, k.name());
                 invalid!("lens or group {unit} has no medium (glass) inside ({medium})");
             }
             return Ok(());
         }
-        let j = p.surf;
+        let Target::Surf(j) = p.target else {
+            invalid!("parameter {} is not on a surface", p.name());
+        };
         if j >= self.surfaces.len() {
             let last = self.surfaces.len() - 1;
             invalid!("surface {j} (surfaces are 0 to {last})");
@@ -341,7 +400,7 @@ impl System {
             return Ok(self.wavelengths[i as usize]);
         }
         if let Kind::Unit(k) = p.kind {
-            let u = &self.units[p.surf];
+            let u = &self.units[p.index()];
             if let Some(i) = k.motion_index() {
                 return Ok(u.motion[i]);
             }
@@ -349,7 +408,7 @@ impl System {
                 UnitKind::Shift => u.shift,
                 _ => {
                     let v: Vec<f64> = self
-                        .unit_media(p.surf)
+                        .unit_media(p.index())
                         .iter()
                         .map(|&j| {
                             let d = &self.surfaces[j];
@@ -368,7 +427,7 @@ impl System {
                 }
             });
         }
-        let d = &self.surfaces[p.surf];
+        let d = &self.surfaces[p.index()];
         Ok(match p.kind {
             Kind::Curv => d.c,
             Kind::Radius => {
@@ -462,7 +521,7 @@ impl System {
         if solve && any && !(keep.paraxial && s.macro_parms.is_empty() && s.solves_still_hold()) {
             s.solve_thickness()?;
         }
-        if flat.iter().any(|(p, _)| p.surf == 0) {
+        if flat.iter().any(|(p, _)| p.index() == 0) {
             s.check()?;
         }
         Ok(s)
@@ -499,22 +558,22 @@ impl System {
             }
             match k {
                 UnitKind::Shift => {
-                    let d = v - self.units[p.surf].shift;
+                    let d = v - self.units[p.index()].shift;
                     for (q, f) in self.unit_terms(p, false)? {
-                        match shifted.iter_mut().find(|x| x.0 == q.surf) {
+                        match shifted.iter_mut().find(|x| x.0 == q.index()) {
                             Some(x) => x.1 += f * d,
-                            None => shifted.push((q.surf, f * d)),
+                            None => shifted.push((q.index(), f * d)),
                         }
                     }
                     shift_at.get_or_insert(flat.len());
-                    motions.push((p.surf, k, v));
+                    motions.push((p.index(), k, v));
                 }
                 UnitKind::Dn | UnitKind::Disp => {
                     for (q, _) in self.unit_terms(p, false)? {
                         flat.push((q, v, true));
                     }
                 }
-                _ => motions.push((p.surf, k, v)),
+                _ => motions.push((p.index(), k, v)),
             }
         }
         if let Some(at) = shift_at {
@@ -532,8 +591,8 @@ impl System {
             Some(pk)
                 if gen
                     && srcs.iter().any(|q| {
-                        q.surf == pk.src
-                            && pick_kind(&self.surfaces[q.surf], q.kind) == Some(pk.what)
+                        q.index() == pk.src
+                            && pick_kind(&self.surfaces[q.index()], q.kind) == Some(pk.what)
                     }) =>
             {
                 picked.push((p, v));
@@ -560,11 +619,11 @@ impl System {
         let Kind::Unit(k) = p.kind else {
             return Ok(vec![(p, 1.0)]);
         };
-        let u = &self.units[p.surf];
+        let u = &self.units[p.index()];
         let mut out: Vec<(Param, f64)> = Vec::new();
         match k {
             UnitKind::Shift => {
-                let mut add = |j: usize, f: f64| match out.iter_mut().find(|x| x.0.surf == j) {
+                let mut add = |j: usize, f: f64| match out.iter_mut().find(|x| x.0.index() == j) {
                     Some(x) => x.1 += f,
                     None => out.push((Param::new(j, Kind::Thick), f)),
                 };
@@ -574,11 +633,11 @@ impl System {
                 }
                 out.retain(|(q, f)| {
                     *f != 0.0
-                        && self.surfaces[q.surf].t.is_finite()
-                        && !self.solves.iter().any(|x| x.surf == q.surf)
+                        && self.surfaces[q.index()].t.is_finite()
+                        && !self.solves.iter().any(|x| x.surf == q.index())
                 });
                 if drop_picked {
-                    let all: Vec<usize> = out.iter().map(|x| x.0.surf).collect();
+                    let all: Vec<usize> = out.iter().map(|x| x.0.index()).collect();
                     out.retain(|(q, _)| match self.pickup_of(*q) {
                         Some(pk) => !all.contains(&pk.src),
                         None => true,
@@ -591,7 +650,7 @@ impl System {
                 } else {
                     Kind::Disp
                 };
-                for j in self.unit_media(p.surf) {
+                for j in self.unit_media(p.index()) {
                     out.push((Param::new(j, kind), 1.0));
                 }
             }
@@ -609,7 +668,7 @@ impl System {
                 let kind = p.kind.name();
                 invalid!("field point {kind} is not system data (it is a trace input)");
             }
-            if !v.is_finite() && !(p.kind == Kind::Thick && p.surf == 0) {
+            if !v.is_finite() && !(p.kind == Kind::Thick && p.index() == 0) {
                 invalid!("{} = {v}", p.name());
             }
             if p.kind.is_wave() {
@@ -621,7 +680,7 @@ impl System {
             let solved = |k: Kind| {
                 self.solves
                     .iter()
-                    .find(|q| q.surf == p.surf && q.kind.param_kind() == k)
+                    .find(|q| q.surf == p.index() && q.kind.param_kind() == k)
             };
             let q = match p.kind {
                 Kind::Thick => solved(Kind::Thick),
@@ -657,7 +716,7 @@ impl System {
             if p.kind.is_wave() {
                 continue;
             }
-            let d = &mut self.rx_mut().surfaces[p.surf];
+            let d = &mut self.rx_mut().surfaces[p.index()];
             match p.kind {
                 Kind::Curv => d.c = v,
                 Kind::Radius => d.c = if v == 0.0 { 0.0 } else { 1.0 / v },

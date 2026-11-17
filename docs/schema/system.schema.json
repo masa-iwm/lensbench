@@ -2035,19 +2035,17 @@
       "type": "object"
     },
     "Param": {
-      "description": "面 surf のパラメータ kind",
+      "description": "パラメータ: 付く先と種類。付く先は種類から決まる（[`Kind::is_global`] は系全体、[`Kind::Unit`] は玉・群、\nほかは面）ので、[`Param::new`]・[`Param::unit`]・[`Param::system`] で作る",
       "properties": {
         "kind": {
           "$ref": "#/$defs/Kind"
         },
-        "surf": {
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
+        "target": {
+          "$ref": "#/$defs/Target"
         }
       },
       "required": [
-        "surf",
+        "target",
         "kind"
       ],
       "type": "object"
@@ -3836,6 +3834,46 @@
         "surf"
       ],
       "type": "object"
+    },
+    "Target": {
+      "description": "パラメータが付く先。面・玉/群の番号の意味は種類で変わらない",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "面の番号",
+          "properties": {
+            "surf": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "surf"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "玉・群の番号（[`System::units`]）",
+          "properties": {
+            "unit": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "unit"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "system",
+          "description": "面・玉・群に付かない系全体（物点の移動・波長）",
+          "type": "string"
+        }
+      ]
     },
     "Tilt": {
       "additionalProperties": false,

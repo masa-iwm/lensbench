@@ -5,6 +5,9 @@
 ## 次の版（v0.4.0 の後）
 
 ### システムファイル
+- パラメータ（`lensbench_core::param::Param`）の `surf` をやめ、付く先 `target`（`Target::Surf(面)`・`Target::Unit(玉・群)`・`Target::System`）にした
+  （IOO-08。番号の意味が種類で変わらない）。システムファイル版 2 の多重構成の表の行の `param` は `{"target": {"surf": 3}, "kind": "Thick"}` の形。
+  Rust は `Param::new(番号, 種類)`（付く先は種類から）・`Param::unit`・`Param::system` で作り、番号は `surface()`・`unit_index()`・`index()`。
 - ソルブの書き方を変えた（IOO-19）: システムファイル版 2 の `solves` は `{"surf": 5, "type": "edge", "thickness": 1.5, "radius": 4}` のように
   種類（`type`、snake_case）と種類ごとの値の欄を持つ（前の `height` と `kind` はやめた）。版 1 のファイルは読むときに直す。
   Rust は `lensbench_core::param::ThickSolve` を `lensbench_core::solves::Solve { surf, kind }` に、`SolveKind` の各種類が値を持つ

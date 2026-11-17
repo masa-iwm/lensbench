@@ -139,7 +139,7 @@ pub(crate) fn asph_step(s: &System, p: Param) -> Option<f64> {
     let Kind::Asph(i) = p.kind else {
         return None;
     };
-    match s.surfaces.get(p.surf)?.typ {
+    match s.surfaces.get(p.index())?.typ {
         SurfType::TiltSurf => Some(1e-4),
         SurfType::OddAsph => Some(1e-4 / 10f64.powi(i as i32 + 1)),
         // 偏心 [mm]・傾き [deg]、Zs・Za・Zc [mm]、角度 [deg]

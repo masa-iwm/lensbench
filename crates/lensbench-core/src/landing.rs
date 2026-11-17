@@ -220,7 +220,9 @@ impl System {
             }
         }
         for p in params {
-            if sf.get(p.surf).is_some_and(|d| d.typ == SurfType::Toroidal)
+            if sf
+                .get(p.index())
+                .is_some_and(|d| d.typ == SurfType::Toroidal)
                 && matches!(
                     p.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_)
@@ -228,7 +230,7 @@ impl System {
             {
                 notimpl!(
                     "landing derivatives of the shape parameters of a toroidal surface (surface {})",
-                    p.surf
+                    p.index()
                 );
             }
         }
@@ -733,7 +735,7 @@ impl System {
         for (q, &p) in params.iter().enumerate() {
             let pp = self.prep_param(p, w, &owner)?;
             let dn = if mirror_like { pp.dn[own_in] } else { pp.dn[j] };
-            let shape = p.surf == j
+            let shape = p.surface() == Some(j)
                 && matches!(
                     p.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)

@@ -415,7 +415,7 @@ fn wedge_face_follows_lens_orientation() {
             assert_eq!(t.params.len(), 2, "往きと戻り");
             t.params
                 .iter()
-                .map(|q| s.surfaces[q.surf].c == 0.0)
+                .map(|q| s.surfaces[q.index()].c == 0.0)
                 .collect()
         };
         assert_eq!(flat(json!({}), &r), [true, true], "rev {rev}");
@@ -447,7 +447,7 @@ fn wedge_face_follows_lens_orientation() {
             let t = m.tols.iter().find(|t| t.label == "L2 wedge x").unwrap();
             t.params
                 .iter()
-                .map(|q| s1.surfaces[q.surf].c == 0.0)
+                .map(|q| s1.surfaces[q.index()].c == 0.0)
                 .collect()
         };
         assert_eq!(flat1(&r), [true, true]);
@@ -468,7 +468,7 @@ fn wedge_face_follows_lens_orientation() {
         let f: Vec<bool> = t
             .params
             .iter()
-            .map(|q| s2.surfaces[q.surf].c == 0.0)
+            .map(|q| s2.surfaces[q.index()].c == 0.0)
             .collect();
         // id の無い玉は往きと戻りが別の玉（lens2・lens3）になるので、往きの玉の面だけ見る
         assert_eq!(f, [true], "{} rev {rev}", t.label);

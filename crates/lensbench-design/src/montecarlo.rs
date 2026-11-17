@@ -604,7 +604,7 @@ pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
             && a.params
                 .iter()
                 .zip(&b.params)
-                .all(|(p, q)| p.surf == q.surf && partner(p.kind) == Some(q.kind))
+                .all(|(p, q)| p.index() == q.index() && partner(p.kind) == Some(q.kind))
     };
     let mut n = 0;
     let mut k = 0;
