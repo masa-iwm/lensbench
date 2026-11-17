@@ -206,3 +206,35 @@ impl System {
         (t, q.unwrap_or([f64::NAN; 2]))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 途中の面で止まった光線の量は NaN（収束の判定・ヤコビアンに有限の値として混ざらない）
+    #[test]
+    fn ray_quantity_of_a_stopped_ray_is_nan() {
+        // 半径 5 mm の凸面（入射瞳径 10 mm）。瞳座標 3 の光線は高さ 15 mm で面に当たらない
+        let txt =
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+                   XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\n\
+                   SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+                   SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.2\n  DISZ 10\n\
+                   SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let raw = crate::zmx::parse_text(txt).unwrap();
+        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let spec = ObjSpec::Dir([0.0, 0.0, 1.0]);
+        for c in [
+            FieldCond::Position { surf: 2 },
+            FieldCond::DirSum { s1: 1, s2: 2 },
+            FieldCond::DirDiff { s1: 1, s2: 2 },
+        ] {
+            let (t, q) = s.ray_quantity(spec, [3.0, 0.0], 0, c);
+            assert!(t.rays[0].status.surf().is_some(), "{c:?}");
+            assert!(q[0].is_nan() && q[1].is_nan(), "{c:?}: {q:?}");
+            // 届く光線は有限
+            let (_, q) = s.ray_quantity(spec, [0.3, 0.0], 0, c);
+            assert!(q[0].is_finite() && q[1].is_finite(), "{c:?}: {q:?}");
+        }
+    }
+}
