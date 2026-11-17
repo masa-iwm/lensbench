@@ -851,7 +851,7 @@ mod tests {
         c.object_distance = Some(100.0);
         c.fields = [0.0, 0.5].map(crate::sysset::FieldPt::y).to_vec();
         c.field_kind = crate::sysset::FieldKind::ObjectHeight;
-        c.aperture = crate::sysset::ApKind::Na;
+        c.aperture = crate::sysset::ApertureKind::Na;
         c.ap_value = 0.02;
         for path in ["", "T", "R", "TR", "RT", "RR"] {
             c.path = path.into();

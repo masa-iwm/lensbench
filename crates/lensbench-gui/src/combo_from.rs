@@ -12,8 +12,7 @@ use crate::combo::{
     ApShape, Combo, ElemKind, GroupDef, MechPick, Pick, SurfEdit, SurfKind, SurfRow, ZGroup,
     SURF_MORE,
 };
-use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt};
-use lensbench_core::system::ApertureKind;
+use crate::sysset::{Aiming, ApertureKind, FieldPt, FieldSolve, SolveCond, WavePt};
 use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
@@ -139,7 +138,7 @@ impl Combo {
                 && a["type"] == "air"
                 && no_id(s)
                 && no_id(a)
-                && (c.aperture != ApKind::Epd || c.epd == 2.0 * semi);
+                && (c.aperture != ApertureKind::Epd || c.epd == 2.0 * semi);
             if lead {
                 c.epd = 2.0 * semi;
                 c.stop_gap = a["t"].as_f64().unwrap_or(0.0);
@@ -324,30 +323,17 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
     c.primary = v["primary"].as_u64().unwrap_or(1) as usize;
     let ap: lensbench_project::ApertureSpec =
         serde_json::from_value(v["aperture"].clone()).map_err(e)?;
-    c.aperture = match ap.kind {
-        ApertureKind::Epd => ApKind::Epd,
-        ApertureKind::FNum => ApKind::Fnum,
-        ApertureKind::Na => ApKind::Na,
-        ApertureKind::Float => ApKind::Float,
-        ApertureKind::Pwfn => ApKind::Pwfn,
-        ApertureKind::Cone => ApKind::Cone,
-    };
+    c.aperture = ap.kind;
     match c.aperture {
-        ApKind::Epd => c.epd = ap.value,
-        ApKind::Float => {}
+        ApertureKind::Epd => c.epd = ap.value,
+        ApertureKind::Float => {}
         _ => c.ap_value = ap.value,
     }
     let fs: FieldsSpec = match v.get("fields") {
         Some(x) => serde_json::from_value(x.clone()).map_err(e)?,
         None => FieldsSpec::default(),
     };
-    c.field_kind = match fs.kind {
-        lensbench_project::FieldKind::Angle => FieldKind::Angle,
-        lensbench_project::FieldKind::ObjectHeight => FieldKind::ObjectHeight,
-        lensbench_project::FieldKind::ParaxialImageHeight => FieldKind::ParaxialImageHeight,
-        lensbench_project::FieldKind::RealImageHeight => FieldKind::RealImageHeight,
-        lensbench_project::FieldKind::Solve => FieldKind::Solve,
-    };
+    c.field_kind = fs.kind;
     c.fields = fs
         .points
         .iter()
@@ -377,11 +363,9 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
     };
     c.object_distance = v["object_distance"].as_f64();
     c.telecentric = v["telecentric"].as_bool().unwrap_or(false);
-    c.aiming = match v["aiming"].as_str() {
-        Some("paraxial") => Aiming::Paraxial,
-        Some("real") => Aiming::Real,
-        None | Some("off") => Aiming::Off,
-        Some(a) => return Err(format!("aiming {a}")),
+    c.aiming = match v.get("aiming").filter(|a| !a.is_null()) {
+        Some(a) => serde_json::from_value(a.clone()).map_err(|_| format!("aiming {a}"))?,
+        None => Aiming::Off,
     };
     c.afocal = v["afocal"].as_str().map(str::to_string);
     c.floating_clip = v["floating_clip"].as_bool().unwrap_or(true);

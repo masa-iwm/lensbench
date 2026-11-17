@@ -109,7 +109,6 @@ impl Core {
                     self.save_as(d, move |c, p| {
                         c.worker.send(
                             Tag::SaveRange,
-                            "save_range",
                             json!({ "path": p.display().to_string(), "from": a, "to": b }),
                         );
                     });
@@ -183,8 +182,7 @@ impl Core {
                     self.info(trf("Added {} to the optimization variables", &[&name]));
                 }
                 Act::NeedData(j) => {
-                    self.worker
-                        .send(Tag::SurfData(j), "surface_data", json!({ "surface": j }));
+                    self.worker.send(Tag::SurfData(j), json!({ "surface": j }));
                 }
             }
         }

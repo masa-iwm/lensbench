@@ -173,8 +173,7 @@ impl Core {
         if remote.is_empty() {
             return Ok(false);
         }
-        self.worker
-            .send(Tag::WriteBack, "write_back", json!({ "ops": remote }));
+        self.worker.send(Tag::WriteBack, json!({ "ops": remote }));
         Ok(true)
     }
 

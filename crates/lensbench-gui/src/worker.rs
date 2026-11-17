@@ -15,11 +15,13 @@ use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
 use lensbench_core::par::CancelToken;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub use lensbench_engine::Arrays;
 
 mod doc_peek;
+#[cfg(test)]
+mod tag_tests;
 use doc_peek::doc_peek;
 
 /// 要求の目的（結果をどこに入れるか）。u64 はパネルの番号
@@ -39,6 +41,8 @@ pub enum Tag {
     Write,
     /// 組合せのレイアウト図
     Layout,
+    /// 組合せのレイアウト図を、ファイルから読んで下書きの worker で（serve の系を変えない）
+    Preview,
     /// レイアウトをファイルに書き出す（serve の layout_export）
     LayoutExport,
     /// カタログの玉の断面（行の番号）
@@ -57,8 +61,8 @@ pub enum Tag {
     SurfData(usize),
     /// レイアウト図に重ねられる構成（serve の configs）
     Configs,
-    /// ユーザーカタログの保存・一覧・変更（serve の catalog_add・catalog_items・catalog_edit）
-    UserCatalog,
+    /// ユーザーカタログの保存・一覧・変更
+    UserCatalog(CatOp),
     /// 未完のカタログ品を補って保存（serve の catalog_fill）
     CatalogFill,
     /// 最適化（serve の optimize）
@@ -69,8 +73,10 @@ pub enum Tag {
     Tolerance,
     /// ズーム軌跡（serve の zoom）
     Zoom,
-    /// 元に戻す・やり直す（serve の undo・redo）
-    History,
+    /// 元に戻す（back）・やり直す
+    History {
+        back: bool,
+    },
     /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
     HistoryDepth,
     /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける）
@@ -83,7 +89,56 @@ pub enum Tag {
     OpenDoc,
 }
 
+/// ユーザーカタログへの操作
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatOp {
+    /// 読み込んだ組合せを項目として保存する
+    Add,
+    /// 一覧
+    Items,
+    /// 項目の改名・削除
+    Edit,
+}
+
 impl Tag {
+    /// serve の method（呼び出しを束ねる [`Tag::Refresh`] だけは None）
+    pub fn method(&self) -> Option<&'static str> {
+        Some(match self {
+            Tag::Load => "load",
+            Tag::Info | Tag::Analyze(_) => "analyze",
+            Tag::Rays(_) | Tag::Focus => "trace",
+            Tag::Glasses => "glasses",
+            Tag::Lenses => "lenses",
+            Tag::Get | Tag::Gets => "get",
+            Tag::Set => "set",
+            Tag::Write => "write",
+            Tag::Layout => "layout",
+            Tag::Preview | Tag::LensPreview(_) => "preview",
+            Tag::LayoutExport => "layout_export",
+            Tag::Surfaces => "surface",
+            Tag::WriteBack => "write_back",
+            Tag::Save => "save",
+            Tag::SaveRange => "save_range",
+            Tag::SurfData(_) => "surface_data",
+            Tag::Configs => "configs",
+            Tag::UserCatalog(CatOp::Add) => "catalog_add",
+            Tag::UserCatalog(CatOp::Items) => "catalog_items",
+            Tag::UserCatalog(CatOp::Edit) => "catalog_edit",
+            Tag::CatalogFill => "catalog_fill",
+            Tag::Optimize => "optimize",
+            Tag::Swap => "swap",
+            Tag::Tolerance => "tolerance",
+            Tag::Zoom => "zoom",
+            Tag::History { back: true } => "undo",
+            Tag::History { back: false } => "redo",
+            Tag::HistoryDepth => "history",
+            Tag::Folders => "folders",
+            Tag::CadMeasure => "cad_measure",
+            Tag::OpenDoc => "doc_peek",
+            Tag::Refresh => return None,
+        })
+    }
+
     /// 解析（系が変われば、待っている分は捨ててよい）
     fn skippable(&self) -> bool {
         matches!(self, Tag::Analyze(_) | Tag::Rays(_))
@@ -102,6 +157,7 @@ impl Tag {
                 | Tag::Get
                 | Tag::Gets
                 | Tag::Layout
+                | Tag::Preview
                 | Tag::LensPreview(_)
                 | Tag::Surfaces
                 | Tag::SurfData(_)
@@ -120,6 +176,18 @@ impl Tag {
         }
     }
 
+    /// 系を変えた後に読み直す表（[`Tag::Refresh`] の呼び出し、面の表と要約）。系を変える要求に続けて付けることも
+    /// ある。途中の誤りで止まれば残りは 1 つずつ頼み直す
+    pub fn refresh_calls() -> Vec<(String, Value)> {
+        [
+            (Tag::Surfaces, json!({})),
+            (Tag::Info, json!({ "cmd": "info" })),
+        ]
+        .into_iter()
+        .filter_map(|(t, p)| Some((t.method()?.to_string(), p)))
+        .collect()
+    }
+
     /// 長い計算（ネイティブは別のスレッドで回し、[`Worker::busy_core`]・[`Worker::busy_short`] に数えない）
     fn long(&self) -> bool {
         matches!(self, Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom)
@@ -127,7 +195,7 @@ impl Tag {
 
     /// serve の系を変える要求（出す前に、待っている・回っている解析をやめる）
     fn changes_system(&self) -> bool {
-        matches!(self, Tag::Load | Tag::Set | Tag::History)
+        matches!(self, Tag::Load | Tag::Set | Tag::History { .. })
     }
 }
 
@@ -618,12 +686,35 @@ impl Worker {
         }
     }
 
-    pub fn send(&mut self, tag: Tag, method: &str, params: Value) {
-        self.send_batch(tag, vec![(method.into(), params)]);
+    /// 1 つの呼び出し。method は印から決める（[`Tag::method`]）
+    pub fn send(&mut self, tag: Tag, params: Value) {
+        self.send_each(tag, vec![params]);
+    }
+
+    /// 同じ method の呼び出しを 1 つの要求として順に（途中でエラーになればそこで止める）
+    pub fn send_each(&mut self, tag: Tag, params: Vec<Value>) {
+        let Some(m) = tag.method() else {
+            debug_assert!(false, "{tag:?} has no single method");
+            return;
+        };
+        let calls = params.into_iter().map(|p| (m.to_string(), p)).collect();
+        self.send_batch(tag, calls);
+    }
+
+    /// 印の要求に、面の表・要約の読み直し（[`Tag::refresh_calls`]）を続けて付ける。印だけなら（[`Tag::Refresh`]）
+    /// 読み直しだけ
+    pub fn send_refreshing(&mut self, tag: Tag, params: Value) {
+        let mut calls: Vec<(String, Value)> = tag
+            .method()
+            .map(|m| (m.to_string(), params))
+            .into_iter()
+            .collect();
+        calls.extend(Tag::refresh_calls());
+        self.send_batch(tag, calls);
     }
 
     /// 複数の呼び出しを 1 つの要求として順に（途中でエラーになればそこで止める）
-    pub fn send_batch(&mut self, tag: Tag, calls: Vec<(String, Value)>) {
+    fn send_batch(&mut self, tag: Tag, calls: Vec<(String, Value)>) {
         if calls.is_empty() {
             return;
         }
@@ -1327,14 +1418,23 @@ mod tests {
 
     // 順番待ちと世代は Worker で 1 つなので、1 つのテストの中で順に確かめる
     #[test]
+    fn refresh_calls_come_back_to_their_tags() {
+        for (m, _) in Tag::refresh_calls() {
+            assert_eq!(Tag::of_refresh(&m).method(), Some(m.as_str()));
+        }
+        assert_eq!(Tag::History { back: true }.method(), Some("undo"));
+        assert_eq!(Tag::UserCatalog(CatOp::Edit).method(), Some("catalog_edit"));
+    }
+
+    #[test]
     fn changing_the_system_cancels_and_drops_analyses_but_not_other_jobs() {
         let mut w = Worker::with_call(Some(1), || {}, true, Kind::Test(fake));
         // 回っている解析は中断され、待っていた解析は回らず、どちらも捨てた扱い。系の変更は回る
-        w.send(Tag::Analyze(1), "spin", Value::Null);
-        w.send(Tag::Analyze(2), "info", Value::Null);
+        w.send_batch(Tag::Analyze(1), vec![("spin".into(), Value::Null)]);
+        w.send_batch(Tag::Analyze(2), vec![("info".into(), Value::Null)]);
         wait_started();
-        w.send(Tag::Set, "set", Value::Null);
-        w.send(Tag::Analyze(3), "info", Value::Null);
+        w.send_batch(Tag::Set, vec![("set".into(), Value::Null)]);
+        w.send_batch(Tag::Analyze(3), vec![("info".into(), Value::Null)]);
         let d = wait_all(&mut w, 4);
         let got: Vec<(Tag, bool)> = d.iter().map(|d| (d.tag.clone(), d.skipped)).collect();
         assert_eq!(
@@ -1349,11 +1449,11 @@ mod tests {
         assert!(!w.busy());
         // 解析でない長い要求（最適化など）は系の変更で止めない（中の解析も止めない）。
         // 別のスレッドで回るので、その間の系の変更・解析は先に終わる
-        w.send(Tag::Optimize, "spin", Value::Null);
+        w.send_batch(Tag::Optimize, vec![("spin".into(), Value::Null)]);
         wait_started();
         assert!(w.busy() && !w.busy_short() && !w.busy_core());
-        w.send(Tag::Set, "set", Value::Null);
-        w.send(Tag::Analyze(4), "info", Value::Null);
+        w.send_batch(Tag::Set, vec![("set".into(), Value::Null)]);
+        w.send_batch(Tag::Analyze(4), vec![("info".into(), Value::Null)]);
         let d = wait_all(&mut w, 3);
         let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();
         assert_eq!(tags, vec![Tag::Set, Tag::Analyze(4), Tag::Optimize]);
@@ -1361,8 +1461,8 @@ mod tests {
         assert_eq!(d[2].first().2, Ok(&Value::from("timeout")));
         assert!(!w.busy());
         // 系の読み込みの直後に出した長い要求は、読み込みが終わってから回る（前の系で計算しない）
-        w.send(Tag::Load, "slowload", Value::Null);
-        w.send(Tag::Zoom, "loaded", Value::Null);
+        w.send_batch(Tag::Load, vec![("slowload".into(), Value::Null)]);
+        w.send_batch(Tag::Zoom, vec![("loaded".into(), Value::Null)]);
         assert!(w.busy_core() && w.busy());
         let d = wait_all(&mut w, 2);
         let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();

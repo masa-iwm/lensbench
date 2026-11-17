@@ -65,7 +65,7 @@ use crate::plots::{self, SpotRays, SysInfo};
 use crate::split;
 use crate::theme::{self, Look, Mode};
 use crate::tour::{Args, Step, Tour};
-use crate::worker::{Done, Tag, Worker};
+use crate::worker::{CatOp, Done, Tag, Worker};
 
 /// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける
 #[derive(Serialize, Deserialize)]
@@ -671,12 +671,10 @@ impl Core {
         // 系の解析の順番を待たない（下書きの worker で読む）
         self.preview.send(
             Tag::Glasses,
-            "glasses",
             json!({ "glass_dirs": dirs(&self.s.glass_dirs) }),
         );
         self.preview.send(
             Tag::Lenses,
-            "lenses",
             json!({
                 "lens_catalogs": dirs(&self.s.lens_dirs),
                 "glass_dirs": dirs(&self.s.glass_dirs),
@@ -821,7 +819,7 @@ impl Core {
         }
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
-                self.worker.send(Tag::Analyze(id), "analyze", p);
+                self.worker.send(Tag::Analyze(id), p);
                 // 下の行は操作の結果だけ。計算中は要求の数を横に出す
                 self.ana_sent(id);
             }
@@ -847,13 +845,10 @@ impl Core {
             let mut calls = Vec::new();
             for &f in &fields {
                 for &w in &waves {
-                    calls.push((
-                        "trace".to_string(),
-                        json!({ "px": px, "py": py, "field": f, "wave": w }),
-                    ));
+                    calls.push(json!({ "px": px, "py": py, "field": f, "wave": w }));
                 }
             }
-            self.worker.send_batch(Tag::Rays(id), calls);
+            self.worker.send_each(Tag::Rays(id), calls);
         }
     }
 
@@ -863,9 +858,9 @@ impl Core {
             .ses
             .params
             .iter()
-            .map(|p| ("get".to_string(), json!({ "param": p })))
+            .map(|p| json!({ "param": p }))
             .collect();
-        self.worker.send_batch(Tag::Gets, calls);
+        self.worker.send_each(Tag::Gets, calls);
     }
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
@@ -909,8 +904,7 @@ impl Core {
                 self.loc.combo_path = Some(path.clone());
                 // 図は下書きで先に。系の読み込みは、前の読み込みが終わってから最新のファイルを読む
                 self.preview.send(
-                    Tag::Layout,
-                    "preview",
+                    Tag::Preview,
                     json!({ "load": self.load_params(&path), "layout": self.layout_params() }),
                 );
                 if self.worker.busy_core() {
@@ -987,7 +981,7 @@ impl Core {
             c.s.rays
                 .apply(&mut params, c.n_fields(), c.waves_um().len(), true);
             params["file"] = json!(p.display().to_string());
-            c.worker.send(Tag::LayoutExport, "layout_export", params);
+            c.worker.send(Tag::LayoutExport, params);
         });
     }
 
@@ -995,7 +989,7 @@ impl Core {
         let d = crate::files::FileDialog::new().add_filter("Zemax", &["zmx"]);
         self.save_as(d, |c, p| {
             let path = p.display().to_string();
-            c.worker.send(Tag::Write, "write", json!({ "path": path }));
+            c.worker.send(Tag::Write, json!({ "path": path }));
         });
     }
 
@@ -1014,7 +1008,7 @@ impl Core {
             return;
         }
         let values = std::mem::take(&mut self.pending_set);
-        self.send_change(Tag::Set, "set", json!({ "values": values }));
+        self.send_change(Tag::Set, json!({ "values": values }));
         self.last_set = Some(web_time::Instant::now());
     }
 
@@ -1048,14 +1042,11 @@ impl Core {
             (Some(path), true) => {
                 let load = self.load_params(path);
                 self.preview.send(
-                    Tag::Layout,
-                    "preview",
+                    Tag::Preview,
                     json!({ "load": load, "layout": self.layout_params() }),
                 );
             }
-            _ => self
-                .worker
-                .send(Tag::Layout, "layout", self.layout_params()),
+            _ => self.worker.send(Tag::Layout, self.layout_params()),
         }
     }
 
@@ -1082,10 +1073,9 @@ impl Core {
         self.read_params();
         // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
         if !self.is_combo() {
-            self.worker
-                .send(Tag::Layout, "layout", self.layout_params());
+            self.worker.send(Tag::Layout, self.layout_params());
         }
-        self.worker.send(Tag::Configs, "configs", json!({}));
+        self.worker.send(Tag::Configs, json!({}));
         self.rerun = Some(false);
     }
 
@@ -1095,15 +1085,13 @@ impl Core {
         if self.bundled_refresh {
             return;
         }
-        self.worker.send_batch(Tag::Refresh, take::refresh_calls());
+        self.worker.send_refreshing(Tag::Refresh, Value::Null);
     }
 
     /// 系を変える要求（set・edit・undo/redo）に、面の表・多重構成の表・要約の読み直しを続けて付けて 1 つの要求で
     /// 送る（返事を受けてから読み直しを頼む往復をなくす）。返事は [`Core::take`] が分ける
-    fn send_change(&mut self, tag: Tag, method: &str, params: Value) {
-        let mut calls = vec![(method.to_string(), params)];
-        calls.extend(take::refresh_calls());
-        self.worker.send_batch(tag, calls);
+    fn send_change(&mut self, tag: Tag, params: Value) {
+        self.worker.send_refreshing(tag, params);
     }
 
     fn is_combo(&self) -> bool {
@@ -1196,7 +1184,7 @@ impl Core {
                 let c = self.p.cat_save.catalog.trim().to_string();
                 if !c.is_empty() && self.p.cat_save.listed != c {
                     self.preview
-                        .send(Tag::UserCatalog, "catalog_items", json!({ "catalog": c }));
+                        .send(Tag::UserCatalog(CatOp::Items), json!({ "catalog": c }));
                 }
             }
             Some(combo::Act::Open(k)) => {
@@ -1247,7 +1235,6 @@ impl Core {
         }
         self.worker.send(
             Tag::Focus,
-            "trace",
             json!({ "px": [0.0], "py": [1e-3], "hx": 0.0, "hy": 0.0, "last": img - 1 }),
         );
     }
@@ -1346,7 +1333,6 @@ impl Core {
         self.preview_req = Some(i);
         self.preview.send(
             Tag::LensPreview(i),
-            "preview",
             json!({ "load": self.load_params(&path), "layout": { "rays": 5 } }),
         );
     }
@@ -1519,11 +1505,11 @@ impl Core {
             .p
             .cat_save
             .window(ctx, &self.doc.combo, &self.browser.lenses, ready);
-        if let Some((method, p)) = req {
-            if method == "catalog_add" {
-                self.worker.send(Tag::UserCatalog, method, p);
+        if let Some((op, p)) = req {
+            if op == CatOp::Add {
+                self.worker.send(Tag::UserCatalog(op), p);
             } else {
-                self.preview.send(Tag::UserCatalog, method, p);
+                self.preview.send(Tag::UserCatalog(op), p);
             }
         }
     }
@@ -1546,7 +1532,7 @@ impl Core {
                 .cloned();
             match self.auto_fill.tick(ctx, sel.as_ref()) {
                 Some(crate::fill::AutoOut::Save(p)) => {
-                    self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+                    self.preview.send(Tag::CatalogFill, p);
                 }
                 #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {
@@ -1560,7 +1546,7 @@ impl Core {
             return;
         }
         if let Some(p) = self.p.fill.window(ctx) {
-            self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+            self.preview.send(Tag::CatalogFill, p);
         }
     }
 }
@@ -2686,7 +2672,7 @@ fn docs_urls() {
 /// 見本の組合せ（examples/combos。Web 版の「見本」に出る）
 #[cfg(test)]
 fn sample_combos() -> Vec<(&'static str, Combo)> {
-    use crate::sysset::{ApKind, FieldKind, FieldPt};
+    use crate::sysset::{ApertureKind, FieldKind, FieldPt};
     use combo::{ElemKind, Pick};
     let cat = |part: &str, air: f64, reversed: bool| Pick {
         vendor: "LB".into(),
@@ -2717,7 +2703,7 @@ fn sample_combos() -> Vec<(&'static str, Combo)> {
     c2.picks = vec![m, cat("BCX-50", 45.0, false)];
     let mut c3 = Combo {
         name: "C3 絞りを挟む 3 枚（有限物体）".into(),
-        aperture: ApKind::Na,
+        aperture: ApertureKind::Na,
         ap_value: 0.04,
         field_kind: FieldKind::ObjectHeight,
         fields: [0.0, 3.0, 6.0].map(FieldPt::y).to_vec(),

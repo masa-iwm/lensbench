@@ -17,100 +17,90 @@ pub(crate) mod form;
 mod pts;
 pub use pts::{FieldPt, WavePt};
 
-/// 開口の種類（プロジェクトの `aperture.type`）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum ApKind {
-    /// 入射瞳径
-    #[default]
-    Epd,
-    /// 像空間 F 値
-    Fnum,
-    /// 物体空間 NA
-    Na,
-    /// 絞りの径で決める
-    Float,
-    /// 近軸作動 F 値
-    Pwfn,
-    /// 物体の円錐角
-    Cone,
+/// 開口・視野の種類・エイミング（core の型。名前はプロジェクトファイルと同じ）
+pub use lensbench_core::system::{Aiming, ApertureKind, FieldKind};
+
+/// 画面で選ぶ種類（並びと表示の名前・プロジェクトの JSON の名前）
+pub trait Choice: Sized + Copy + 'static {
+    const ALL: &'static [Self];
+    fn label(self) -> &'static str;
+    fn key(self) -> &'static str;
 }
 
-impl ApKind {
-    pub const ALL: [ApKind; 6] = [
-        ApKind::Epd,
-        ApKind::Fnum,
-        ApKind::Na,
-        ApKind::Float,
-        ApKind::Pwfn,
-        ApKind::Cone,
+impl Choice for ApertureKind {
+    const ALL: &'static [Self] = &[
+        ApertureKind::Epd,
+        ApertureKind::FNum,
+        ApertureKind::Na,
+        ApertureKind::Float,
+        ApertureKind::Pwfn,
+        ApertureKind::Cone,
     ];
-    pub fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
-            ApKind::Epd => tr("Entrance pupil diameter"),
-            ApKind::Fnum => tr("Image space F/#"),
-            ApKind::Na => tr("Object space NA"),
-            ApKind::Float => tr("Float by stop size"),
-            ApKind::Pwfn => tr("Paraxial working F/#"),
-            ApKind::Cone => tr("Object cone angle"),
+            ApertureKind::Epd => tr("Entrance pupil diameter"),
+            ApertureKind::FNum => tr("Image space F/#"),
+            ApertureKind::Na => tr("Object space NA"),
+            ApertureKind::Float => tr("Float by stop size"),
+            ApertureKind::Pwfn => tr("Paraxial working F/#"),
+            ApertureKind::Cone => tr("Object cone angle"),
         }
     }
     fn key(self) -> &'static str {
         match self {
-            ApKind::Epd => "epd",
-            ApKind::Fnum => "fnum",
-            ApKind::Na => "na",
-            ApKind::Float => "float",
-            ApKind::Pwfn => "pwfn",
-            ApKind::Cone => "cone",
+            ApertureKind::Epd => "epd",
+            ApertureKind::FNum => "fnum",
+            ApertureKind::Na => "na",
+            ApertureKind::Float => "float",
+            ApertureKind::Pwfn => "pwfn",
+            ApertureKind::Cone => "cone",
         }
     }
+}
+
+/// 開口の種類の欄の決まり
+pub trait ApertureField {
     /// 値を入れる種類か（EPD は入射瞳径、Float は絞りの径で、どちらも「絞りの径」の欄）
-    pub fn has_value(self) -> bool {
-        !matches!(self, ApKind::Epd | ApKind::Float)
-    }
+    fn has_value(self) -> bool;
     /// 種類を変えたときの初めの値
+    fn initial(self) -> f64;
+    fn unit(self) -> &'static str;
+    /// 物体が無限遠では使えない
+    fn needs_finite(self) -> bool;
+}
+
+impl ApertureField for ApertureKind {
+    fn has_value(self) -> bool {
+        !matches!(self, ApertureKind::Epd | ApertureKind::Float)
+    }
     fn initial(self) -> f64 {
         match self {
-            ApKind::Fnum | ApKind::Pwfn => 5.0,
-            ApKind::Na => 0.1,
-            ApKind::Cone => 5.0,
-            ApKind::Epd | ApKind::Float => 0.0,
+            ApertureKind::FNum | ApertureKind::Pwfn => 5.0,
+            ApertureKind::Na => 0.1,
+            ApertureKind::Cone => 5.0,
+            ApertureKind::Epd | ApertureKind::Float => 0.0,
         }
     }
     fn unit(self) -> &'static str {
         match self {
-            ApKind::Cone => "°",
+            ApertureKind::Cone => "°",
             _ => "",
         }
     }
-    /// 物体が無限遠では使えない
     fn needs_finite(self) -> bool {
-        matches!(self, ApKind::Na | ApKind::Cone)
+        matches!(self, ApertureKind::Na | ApertureKind::Cone)
     }
 }
 
-/// 視野の種類（プロジェクトの `fields.type`）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldKind {
-    #[default]
-    Angle,
-    ObjectHeight,
-    ParaxialImageHeight,
-    RealImageHeight,
-    Solve,
-}
-
-impl FieldKind {
-    pub const ALL: [FieldKind; 5] = [
+impl Choice for FieldKind {
+    const ALL: &'static [Self] = &[
         FieldKind::Angle,
         FieldKind::ObjectHeight,
         FieldKind::ParaxialImageHeight,
         FieldKind::RealImageHeight,
         FieldKind::Solve,
     ];
-    pub fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
             FieldKind::Angle => tr("Angle"),
             FieldKind::ObjectHeight => tr("Object height"),
@@ -128,12 +118,14 @@ impl FieldKind {
             FieldKind::Solve => "solve",
         }
     }
-    fn unit(self) -> &'static str {
-        match self {
-            FieldKind::Angle => "°",
-            FieldKind::Solve => "",
-            _ => " mm",
-        }
+}
+
+/// 視野の値の単位
+fn field_unit(k: FieldKind) -> &'static str {
+    match k {
+        FieldKind::Angle => "°",
+        FieldKind::Solve => "",
+        _ => " mm",
     }
 }
 
@@ -180,18 +172,8 @@ impl FieldSolve {
     }
 }
 
-/// 光線エイミング（プロジェクトの `aiming`）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum Aiming {
-    #[default]
-    Off,
-    Paraxial,
-    Real,
-}
-
-impl Aiming {
-    const ALL: [Aiming; 3] = [Aiming::Off, Aiming::Paraxial, Aiming::Real];
+impl Choice for Aiming {
+    const ALL: &'static [Self] = &[Aiming::Off, Aiming::Paraxial, Aiming::Real];
     fn label(self) -> &'static str {
         match self {
             Aiming::Off => tr("Off"),
@@ -224,7 +206,7 @@ pub const FLOATING_CLIP_HINT: &str = "Floating apertures (FLAP in .zmx etc.). Un
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SysSnap {
-    pub aperture: ApKind,
+    pub aperture: ApertureKind,
     pub ap_value: f64,
     pub epd: f64,
     pub field_kind: FieldKind,
@@ -375,8 +357,8 @@ impl Combo {
     /// プロジェクトの `aperture`
     pub fn aperture_json(&self) -> Value {
         let value = match self.aperture {
-            ApKind::Epd => self.epd,
-            ApKind::Float => 0.0,
+            ApertureKind::Epd => self.epd,
+            ApertureKind::Float => 0.0,
             _ => self.ap_value,
         };
         json!({ "type": self.aperture.key(), "value": value })
@@ -444,8 +426,8 @@ impl Combo {
     /// 設定の一行の要約（開口・視野・波長・物体）
     pub fn settings_summary(&self) -> String {
         let ap = match self.aperture {
-            ApKind::Epd => format!("EPD {} mm", fmt_num(self.epd)),
-            ApKind::Float => format!("{} {} mm", tr("Stop diameter"), fmt_num(self.epd)),
+            ApertureKind::Epd => format!("EPD {} mm", fmt_num(self.epd)),
+            ApertureKind::Float => format!("{} {} mm", tr("Stop diameter"), fmt_num(self.epd)),
             k => format!("{} {}{}", k.label(), fmt_num(self.ap_value), k.unit()),
         };
         let obj = match self.object_distance {
@@ -644,8 +626,8 @@ impl form::Extra for ComboExtra<'_> {
     fn aperture_rows(&mut self, ui: &mut Ui, f: &mut form::SysForm) {
         let c = &*self.0;
         // 前に自動で置く絞りの径（EPD は入射瞳径の欄が兼ねる。絞りが要素なら要素の半径）
-        if f.aperture != ApKind::Epd && c.lead_stop() {
-            ui.label(if f.aperture == ApKind::Float {
+        if f.aperture != ApertureKind::Epd && c.lead_stop() {
+            ui.label(if f.aperture == ApertureKind::Float {
                 tr("Stop diameter [mm]")
             } else {
                 tr("Stop diameter (drawing only) [mm]")
@@ -712,7 +694,7 @@ impl form::Extra for ComboExtra<'_> {
             .small()
             .color(weak),
         );
-        if f.aperture == ApKind::Float && !c.lead_stop() {
+        if f.aperture == ApertureKind::Float && !c.lead_stop() {
             ui.label(
                 RichText::new(tr("The aperture is set by the stop element's radius"))
                     .small()
@@ -870,7 +852,7 @@ mod tests {
     #[test]
     fn settings_go_to_the_project() {
         let mut c = Combo {
-            aperture: ApKind::Fnum,
+            aperture: ApertureKind::FNum,
             ap_value: 4.0,
             field_kind: FieldKind::ObjectHeight,
             fields: vec![FieldPt::xyw(1.0, 2.0, 0.5)],
@@ -910,7 +892,7 @@ mod tests {
     #[test]
     fn solve_field_and_float() {
         let c = Combo {
-            aperture: ApKind::Float,
+            aperture: ApertureKind::Float,
             field_kind: FieldKind::Solve,
             field_solve: FieldSolve {
                 cond: SolveCond::DirSum,
@@ -933,7 +915,7 @@ mod tests {
     #[test]
     fn stop_diameter_goes_through_the_form() {
         let mut c = Combo {
-            aperture: ApKind::Fnum,
+            aperture: ApertureKind::FNum,
             ap_value: 4.0,
             epd: 8.0,
             picks: vec![Pick::new(ElemKind::Lens)],
@@ -949,7 +931,10 @@ mod tests {
         let mut f = form::SysForm::of_combo(&c);
         f.epd = 6.0;
         f.apply_to(&mut c);
-        assert_eq!((c.epd, c.ap_value, c.aperture), (6.0, 4.0, ApKind::Fnum));
+        assert_eq!(
+            (c.epd, c.ap_value, c.aperture),
+            (6.0, 4.0, ApertureKind::FNum)
+        );
     }
 
     #[test]
@@ -1042,7 +1027,7 @@ mod tests {
         lens.air = 45.0;
         base.picks.push(lens);
         let mut n = 0;
-        for ap in ApKind::ALL {
+        for &ap in ApertureKind::ALL {
             for fk in [
                 FieldKind::Angle,
                 FieldKind::ObjectHeight,
@@ -1050,7 +1035,7 @@ mod tests {
                 FieldKind::RealImageHeight,
             ] {
                 for obj in [None, Some(80.0)] {
-                    for aim in Aiming::ALL {
+                    for &aim in Aiming::ALL {
                         let mut c = base.clone();
                         c.aperture = ap;
                         c.ap_value = ap.initial();
@@ -1080,12 +1065,12 @@ mod tests {
         c.afocal = None;
         c.object_distance = Some(80.0);
         c.telecentric = true;
-        c.aperture = ApKind::Na;
+        c.aperture = ApertureKind::Na;
         c.ap_value = 0.05;
         c.field_kind = FieldKind::ObjectHeight;
         assert!(c.settings_problems().is_empty());
         assert!(build(&c).is_ok(), "{:?}", build(&c).err());
-        c.aperture = ApKind::Fnum;
+        c.aperture = ApertureKind::FNum;
         assert!(!c.settings_problems().is_empty());
         assert!(build(&c).is_err());
         std::fs::remove_dir_all(&dir).ok();

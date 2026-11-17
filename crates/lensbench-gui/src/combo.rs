@@ -14,7 +14,7 @@ use crate::combo_tree::Loc;
 pub use crate::combo_tree::{Branch, Gap};
 use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
-use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, WavePt};
+use crate::sysset::{Aiming, ApertureKind, FieldKind, FieldPt, FieldSolve, WavePt};
 use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
@@ -891,7 +891,7 @@ pub struct Combo {
     /// 置く機構部品
     pub mechanics: Vec<MechPick>,
     /// 開口の種類
-    pub aperture: ApKind,
+    pub aperture: ApertureKind,
     /// 開口の値（F 値・NA など。EPD・Float では使わない）
     pub ap_value: f64,
     /// 絞りの径 [mm]。開口が EPD なら入射瞳径。絞りの要素が無ければ、絞りは最初の要素の前
@@ -966,7 +966,7 @@ impl Default for Combo {
             name: tr("Catalog lens combination").into(),
             picks: Vec::new(),
             mechanics: Vec::new(),
-            aperture: ApKind::Epd,
+            aperture: ApertureKind::Epd,
             ap_value: 0.0,
             epd: 5.0,
             stop_gap: 2.0,

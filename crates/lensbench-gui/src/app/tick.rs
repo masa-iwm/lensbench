@@ -43,7 +43,7 @@ impl App {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
             if matches!(
                 d.tag,
-                Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill
+                Tag::Glasses | Tag::Lenses | Tag::UserCatalog(_) | Tag::CatalogFill
             ) {
                 // 失敗しても読み込み中は終わる
                 match d.tag {
@@ -57,7 +57,7 @@ impl App {
             // 失敗は系の読み込みの方で出す
             let (_, params, r) = d.first();
             match (&d.tag, r) {
-                (Tag::Layout, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
+                (Tag::Preview, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
                 (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
                 (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r.map_err(|e| &**e)),
                 // 読めないファイルは系の読み込みの方で誤りを出す
@@ -81,7 +81,7 @@ impl App {
         }
         // 取った品の STEP と簡易外形の照合（Web 版。品の載ったカタログは下書きの Worker が持つ）
         for p in self.c.browser.cad.take_measure() {
-            self.c.preview.send(Tag::CadMeasure, "cad_measure", p);
+            self.c.preview.send(Tag::CadMeasure, p);
         }
         // 組合せを動かしている間は解析を待たせ、系の作り直しとレイアウト図を先に回す
         let settle = std::time::Duration::from_millis(350);

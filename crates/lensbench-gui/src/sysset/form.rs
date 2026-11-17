@@ -10,8 +10,9 @@ use lensbench_core::system::AfocalUnit;
 use lensbench_project::Environment;
 
 use super::{
-    Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt, AFOCAL_UNITS, PRESETS,
+    Aiming, ApertureKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt, AFOCAL_UNITS, PRESETS,
 };
+use super::{ApertureField, Choice};
 use crate::combo::Combo;
 use crate::i18n::tr;
 use crate::theme;
@@ -19,7 +20,7 @@ use crate::theme;
 /// 系の設定の共通の値
 #[derive(Debug, Clone, PartialEq)]
 pub struct SysForm {
-    pub aperture: ApKind,
+    pub aperture: ApertureKind,
     /// 開口の値（F 値・NA など。Float の値は使わない）
     pub ap_value: f64,
     /// 入射瞳径 [mm]（種類を変えても残す）
@@ -115,7 +116,7 @@ pub fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
             egui::ComboBox::from_id_salt(id.with("apk"))
                 .selected_text(f.aperture.label())
                 .show_ui(ui, |ui| {
-                    for k in ApKind::ALL {
+                    for &k in ApertureKind::ALL {
                         ui.selectable_value(&mut f.aperture, k, k.label());
                     }
                 });
@@ -135,7 +136,7 @@ pub fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                     &mut busy,
                 );
                 ui.end_row();
-            } else if f.aperture == ApKind::Epd {
+            } else if f.aperture == ApertureKind::Epd {
                 ui.label(tr("Entrance pupil diameter [mm]"));
                 drag(
                     ui,
@@ -165,7 +166,7 @@ pub fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
             }
             ui.label(tr("Ray aiming"));
             ui.horizontal(|ui| {
-                for a in Aiming::ALL {
+                for &a in Aiming::ALL {
                     ui.radio_value(&mut f.aiming, a, a.label());
                 }
             });
@@ -240,7 +241,7 @@ fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
         egui::ComboBox::from_id_salt(id.with("fk"))
             .selected_text(f.field_kind.label())
             .show_ui(ui, |ui| {
-                for k in FieldKind::ALL {
+                for &k in FieldKind::ALL {
                     ui.selectable_value(&mut f.field_kind, k, k.label());
                 }
             });
@@ -293,7 +294,7 @@ fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
     {
         ui.data_mut(|d| d.insert_temp(vid, show_vig));
     }
-    let unit = f.field_kind.unit();
+    let unit = super::field_unit(f.field_kind);
     let mut del = None;
     egui::Grid::new(id.with("fields"))
         .striped(true)
@@ -423,7 +424,7 @@ mod tests {
     fn combo_round_trips() {
         let c = Combo {
             afocal: Some("dg".into()),
-            aperture: ApKind::Float,
+            aperture: ApertureKind::Float,
             epd: 3.0,
             ..Default::default()
         };
@@ -437,11 +438,11 @@ mod tests {
             ..Default::default()
         };
         let mut f = SysForm::of_combo(&c);
-        f.aperture = ApKind::Fnum;
+        f.aperture = ApertureKind::FNum;
         f.ap_value = 5.0;
         f.apply_to(&mut c);
         let mut f = SysForm::of_combo(&c);
-        f.aperture = ApKind::Epd;
+        f.aperture = ApertureKind::Epd;
         f.apply_to(&mut c);
         assert_eq!((c.epd, c.ap_value), (10.0, 5.0));
     }

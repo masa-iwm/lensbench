@@ -101,11 +101,12 @@ pub enum VigInterp {
 }
 
 /// 系の開口の種類。JSON の名前は "epd"・"fnum"・"na"・"float"・"pwfn"・"cone"
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ApertureKind {
     /// 入射瞳径
+    #[default]
     #[cfg_attr(feature = "serde", serde(rename = "epd", alias = "Epd"))]
     Epd,
     /// 像側 F 値

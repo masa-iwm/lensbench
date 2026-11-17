@@ -129,7 +129,7 @@ impl App {
                 match z.params(&cands) {
                     Ok(p) => {
                         z.running = true;
-                        self.c.worker.send(Tag::Zoom, "zoom", p);
+                        self.c.worker.send(Tag::Zoom, p);
                     }
                     Err(e) => self.c.fail(e),
                 }
@@ -257,7 +257,7 @@ impl App {
                 if let Ok(p) = o.params() {
                     o.running = true;
                     o.gen = self.c.sys_gen;
-                    self.c.worker.send(Tag::Optimize, "optimize", p);
+                    self.c.worker.send(Tag::Optimize, p);
                 }
             }
             Step::OptApply => {
@@ -302,7 +302,7 @@ impl App {
                     v["top"] = json!(sw.top);
                     sw.running = true;
                     self.c.swap_ids = self.c.doc.combo.ids();
-                    self.c.worker.send(Tag::Swap, "swap", v);
+                    self.c.worker.send(Tag::Swap, v);
                 }
             }
             Step::SwapInsert => {
@@ -351,7 +351,7 @@ impl App {
                 match t.spec() {
                     Ok(p) => {
                         t.running = true;
-                        self.c.worker.send(Tag::Tolerance, "tolerance", p);
+                        self.c.worker.send(Tag::Tolerance, p);
                     }
                     Err(e) => self.c.fail(e),
                 }
@@ -416,7 +416,7 @@ impl App {
                 c.object_distance = Some(100.0);
                 c.field_kind = crate::sysset::FieldKind::ObjectHeight;
                 c.fields = [0.0, 0.5].map(crate::sysset::FieldPt::y).to_vec();
-                c.aperture = crate::sysset::ApKind::Na;
+                c.aperture = crate::sysset::ApertureKind::Na;
                 c.ap_value = 0.02;
                 c.waves = vec![crate::sysset::WavePt::um(0.6328)];
                 c.primary = 1;

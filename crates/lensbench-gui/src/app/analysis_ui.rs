@@ -196,7 +196,7 @@ impl Core {
                     && !self.new_param.trim().is_empty()
                 {
                     let p = self.new_param.trim().to_string();
-                    self.worker.send(Tag::Get, "get", json!({ "param": p }));
+                    self.worker.send(Tag::Get, json!({ "param": p }));
                     self.new_param.clear();
                 }
             });

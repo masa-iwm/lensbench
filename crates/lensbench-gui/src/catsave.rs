@@ -12,6 +12,7 @@ use crate::catalog::LensRow;
 use crate::combo::Combo;
 use crate::i18n::{tr, trf};
 use crate::theme;
+use crate::worker::CatOp;
 
 /// カタログの項目（一覧の 1 行）
 #[derive(Debug, Clone, PartialEq)]
@@ -46,8 +47,8 @@ pub struct CatSave {
     pub note: Option<(String, bool)>,
 }
 
-/// 窓から頼む操作（serve の method・params）
-pub type Req = (&'static str, Value);
+/// ウィンドウから頼む操作と params
+pub type Req = (CatOp, Value);
 
 impl CatSave {
     /// 要素 k を選んで開く
@@ -245,7 +246,7 @@ impl CatSave {
                 .clicked()
             {
                 req = Some((
-                    "catalog_add",
+                    CatOp::Add,
                     json!({
                         "catalog": cat, "name": self.name.trim(), "blocks": blocks,
                         "description": self.description, "replace": self.replace,
@@ -254,7 +255,7 @@ impl CatSave {
                 ));
             }
             if !cat.is_empty() && ui.button(tr("List items")).clicked() {
-                req = Some(("catalog_items", json!({ "catalog": cat })));
+                req = Some((CatOp::Items, json!({ "catalog": cat })));
             }
         });
         if let Some((t, err)) = &self.note {
@@ -314,7 +315,7 @@ impl CatSave {
                                 .clicked()
                             {
                                 req = Some((
-                                    "catalog_edit",
+                                    CatOp::Edit,
                                     json!({ "catalog": cat, "name": it.name,
                                             "rename": it.new_name.trim(), "description": it.new_desc }),
                                 ));
@@ -325,7 +326,7 @@ impl CatSave {
                                     .clicked()
                                 {
                                     req = Some((
-                                        "catalog_edit",
+                                        CatOp::Edit,
                                         json!({ "catalog": cat, "name": it.name, "delete": true }),
                                     ));
                                 }

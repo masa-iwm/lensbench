@@ -7,8 +7,8 @@ impl Core {
         if d.tag == Tag::Refresh {
             let n = d.replies.len();
             if !d.skipped {
-                for (m, p) in refresh_calls().into_iter().skip(n) {
-                    self.worker.send(Tag::of_refresh(&m), &m, p);
+                for (m, p) in Tag::refresh_calls().into_iter().skip(n) {
+                    self.worker.send(Tag::of_refresh(&m), p);
                 }
             }
             return d.split().into_iter().for_each(|d| self.take(d));
@@ -28,7 +28,7 @@ impl Core {
             if stopped {
                 for p in self.ses.params.clone() {
                     if !asked.contains(&p) {
-                        self.worker.send(Tag::Get, "get", json!({ "param": p }));
+                        self.worker.send(Tag::Get, json!({ "param": p }));
                     }
                 }
             }
@@ -36,7 +36,7 @@ impl Core {
         }
         // 系を変える要求に付けた読み直し（send_change）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
         // 断られたら読み直しは回っていない（途中の誤りで止まる）
-        if matches!(d.tag, Tag::Set | Tag::History) && d.replies.len() > 1 {
+        if matches!(d.tag, Tag::Set | Tag::History { .. }) && d.replies.len() > 1 {
             let (d, rest) = d.split_change();
             let ok = d.error().is_none() && !d.skipped;
             self.bundled_refresh = ok;
@@ -48,7 +48,7 @@ impl Core {
             return;
         }
         self.rev += 1;
-        if matches!(d.tag, Tag::Load | Tag::Set | Tag::History) {
+        if matches!(d.tag, Tag::Load | Tag::Set | Tag::History { .. }) {
             self.sys_gen += 1;
         }
         let ms = d.ms;
@@ -123,7 +123,7 @@ impl Core {
                     }
                 }
             }
-            Tag::UserCatalog => self.p.cat_save.note = Some((e.to_string(), true)),
+            Tag::UserCatalog(_) => self.p.cat_save.note = Some((e.to_string(), true)),
             Tag::CatalogFill => self.p.fill.failed(e),
             _ => {}
         }
@@ -151,10 +151,10 @@ impl Core {
             Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom => {
                 return Some(self.job_done(&d.tag, v, ms, text));
             }
-            Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill => {
+            Tag::Glasses | Tag::Lenses | Tag::UserCatalog(_) | Tag::CatalogFill => {
                 return Some(self.catalog_done(d, v, ms, text));
             }
-            Tag::Load | Tag::Set | Tag::History | Tag::Surfaces => {
+            Tag::Load | Tag::Set | Tag::History { .. } | Tag::Surfaces => {
                 return self.system_done(d, params, v, text);
             }
             Tag::Info => self.sys.info = Some(v),
@@ -254,7 +254,9 @@ impl Core {
                 return None;
             }
             // 下書きの Worker の分（tick で受け取る）
-            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => return None,
+            Tag::Preview | Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => {
+                return None
+            }
             Tag::Focus => {
                 self.focus_from(d);
                 return None;
@@ -316,9 +318,9 @@ impl Core {
                 }
                 self.on_loaded(v);
             }
-            Tag::Set | Tag::History => {
+            Tag::Set | Tag::History { .. } => {
                 self.take_history(&v);
-                if d.tag != Tag::History {
+                if !matches!(d.tag, Tag::History { .. }) {
                     self.docs.edited();
                 }
                 let back = params["back"].as_bool() == Some(true);
@@ -334,15 +336,14 @@ impl Core {
                     self.info(tr(if back { "Undone" } else { "Redone" }));
                     return None;
                 }
-                if d.tag == Tag::History {
+                if matches!(d.tag, Tag::History { .. }) {
                     text = tr(if back { "Undone" } else { "Redone" }).into();
                 }
                 // 値の変更（Set）も保存していない変更
                 self.loc.ld_dirty = true;
                 // 値を変えたら面の表・要約と、開いている解析を計算し直す
                 self.refresh();
-                self.worker
-                    .send(Tag::Layout, "layout", self.layout_params());
+                self.worker.send(Tag::Layout, self.layout_params());
                 self.rerun = Some(true);
             }
             Tag::Surfaces => {
@@ -429,25 +430,22 @@ impl Core {
                     )
                 };
             }
-            Tag::UserCatalog => {
-                let (method, _, _) = d.first();
+            Tag::UserCatalog(op) => {
                 self.p.cat_save.take(&v);
-                text = match method {
-                    "catalog_add" => trf(
+                text = match op {
+                    CatOp::Add => trf(
                         "Saved to {}: {}",
                         &[
                             &v["catalog"].as_str().unwrap_or_default(),
                             &v["added"].as_str().unwrap_or_default(),
                         ],
                     ),
-                    "catalog_edit" => {
-                        trf("Updated {}", &[&v["catalog"].as_str().unwrap_or_default()])
-                    }
-                    _ => text,
+                    CatOp::Edit => trf("Updated {}", &[&v["catalog"].as_str().unwrap_or_default()]),
+                    CatOp::Items => text,
                 };
                 // Web 版: ブラウザに残すユーザーカタログのフォルダは、最初に保存したときにレンズのフォルダに足す
                 #[cfg(target_arch = "wasm32")]
-                if method == "catalog_add" {
+                if op == CatOp::Add {
                     let d = crate::web_store::USER_CATALOGS.to_string();
                     if v["catalog"].as_str().is_some_and(|c| c.starts_with(&d))
                         && !self.s.lens_dirs.contains(&d)
@@ -455,7 +453,7 @@ impl Core {
                         self.s.lens_dirs.push(d);
                     }
                 }
-                if method != "catalog_items" {
+                if op != CatOp::Items {
                     self.p.cat_save.note = Some((text.clone(), false));
                     // カタログブラウザに並ぶカタログなら一覧を読み直す
                     self.refresh_catalog();
@@ -507,7 +505,7 @@ impl Core {
             Tag::Optimize => {
                 self.p.opt.undo = None;
                 // 結果を系に当てたら元に戻す段が増える
-                self.worker.send(Tag::HistoryDepth, "history", json!({}));
+                self.worker.send(Tag::HistoryDepth, json!({}));
                 text = trf(
                     "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
@@ -572,13 +570,4 @@ impl Core {
             }
         }
     }
-}
-
-/// 系を変えた後に読み直す表（[`Tag::Refresh`]。途中の誤りで止まれば残りは 1 つずつ頼み直す）
-pub(super) fn refresh_calls() -> Vec<(String, Value)> {
-    let calls = [
-        ("surface", json!({})),
-        ("analyze", json!({ "cmd": "info" })),
-    ];
-    calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect()
 }

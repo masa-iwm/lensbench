@@ -317,8 +317,10 @@ impl Core {
             // 戻すと serve のやり直す段はすべて別の文書のもの
             self.docs.skip = if back { redo + steps } else { skip };
             self.docs.pending = Some(n);
-            let m = if back { "undo" } else { "redo" };
-            self.send_change(Tag::History, m, json!({ "back": back, "steps": steps }));
+            self.send_change(
+                Tag::History { back },
+                json!({ "back": back, "steps": steps }),
+            );
         } else if steps == 0 && combo_doc {
             self.apply_snap(n);
             self.docs.skip = skip;
@@ -463,11 +465,7 @@ impl Core {
             return;
         }
         self.flush_set();
-        self.send_change(
-            Tag::History,
-            if back { "undo" } else { "redo" },
-            json!({ "back": back, "steps": n }),
-        );
+        self.send_change(Tag::History { back }, json!({ "back": back, "steps": n }));
     }
 }
 

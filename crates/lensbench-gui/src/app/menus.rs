@@ -67,7 +67,7 @@ impl App {
                             self.c.p.opt.running = true;
                             self.c.p.opt.result = None;
                             self.c.p.opt.gen = self.c.sys_gen;
-                            self.c.worker.send(Tag::Optimize, "optimize", p);
+                            self.c.worker.send(Tag::Optimize, p);
                         }
                         Err(e) => self.c.p.opt.error = Some(e),
                     }
@@ -81,7 +81,7 @@ impl App {
                             self.c.p.tol.error = None;
                             self.c.p.tol.running = true;
                             self.c.p.tol.result = None;
-                            self.c.worker.send(Tag::Tolerance, "tolerance", p);
+                            self.c.worker.send(Tag::Tolerance, p);
                         }
                         Err(e) => self.c.p.tol.error = Some(e),
                     }

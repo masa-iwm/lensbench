@@ -30,7 +30,6 @@ impl Core {
         }
         self.preview.send(
             Tag::Folders,
-            "folders",
             json!({ "glass_dirs": now.0, "lens_dirs": now.1 }),
         );
         self.folders.asked = Some(now);
