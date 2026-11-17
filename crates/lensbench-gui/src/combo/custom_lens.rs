@@ -2,8 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::Pick;
-
 /// 自作の玉（2 面の単玉）・平板の欄（[`Pick::custom`]）。3 面以上・貼り合わせの玉は [`Pick::surfs`] に面ごとに持つ。
 /// 半径は [`Pick::semi`]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,18 +38,5 @@ impl Default for CustomLens {
             glass: "N-BK7".into(),
             semi_auto: false,
         }
-    }
-}
-
-impl Pick {
-    /// 自作の玉・平板の欄（ほかの種類では [`CustomLens::NONE`]）
-    pub fn custom(&self) -> &CustomLens {
-        static NONE: CustomLens = CustomLens::NONE;
-        self.custom.as_deref().unwrap_or(&NONE)
-    }
-
-    /// 自作の玉・平板の欄を変える（無ければ新しい玉の値で作る。自作の玉・平板だけで呼ぶ）
-    pub fn custom_mut(&mut self) -> &mut CustomLens {
-        self.custom.get_or_insert_with(Box::default)
     }
 }

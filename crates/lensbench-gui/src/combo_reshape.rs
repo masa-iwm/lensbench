@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use lensbench_project::edit_ops::{BlockRef, Ref, SurfaceOp};
 
-use crate::combo::{Combo, ElemKind, Pick, SurfKind, SurfRow};
+use crate::combo::{Combo, ElemKind, KindData, Pick, SurfKind, SurfRow};
 use crate::combo_tree::Gap;
 use crate::i18n::tr;
 
@@ -228,8 +228,8 @@ impl Combo {
                 };
                 q.kind = part.0;
                 // 面の並びから分けた玉・平板にも、自作の玉の欄を持たせる（面を減らして 2 面の単玉になったときに使う）
-                if q.custom.is_none() {
-                    q.custom = Pick::new(part.0).custom;
+                if !matches!(q.data.as_deref(), Some(KindData::Custom(_))) {
+                    q.data = Pick::new(part.0).data;
                 }
                 // 行は光の進む順なので、反転は持たない（面の並びは反転を無視するが、古い保存では残っていることがある）
                 q.reversed = false;
@@ -401,7 +401,10 @@ mod tests {
         assert_eq!(z(&after), z(&before));
         assert!(after.iter().any(|x| x.2 == "N-BK7"));
         // 分けた玉も自作の玉の欄を持つ。面を消して 1 面にしても、厚さ 0・硝材なしの玉にならない
-        assert!(c.picks[0].custom.is_some());
+        assert!(matches!(
+            c.picks[0].data.as_deref(),
+            Some(KindData::Custom(_))
+        ));
         let mut one = c.picks[0].clone();
         one.surfs.truncate(1);
         let b = one.block("L1");

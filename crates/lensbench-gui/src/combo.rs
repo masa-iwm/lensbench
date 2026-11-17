@@ -24,6 +24,7 @@ mod custom_lens;
 mod detector;
 mod element;
 mod figure;
+mod kind_data;
 mod mech;
 mod mirror;
 mod raw;
@@ -37,6 +38,7 @@ pub use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
+pub use kind_data::KindData;
 pub use mech::MechPick;
 pub use mirror::MirrorData;
 pub use sys_extra::SysExtra;
@@ -297,9 +299,6 @@ pub struct Pick {
     pub reversed: bool,
     /// この要素の後の空気 [mm]（最後の要素では像面まで）
     pub air: f64,
-    /// 自作の玉（2 面の単玉）・平板の曲率半径・中心厚・硝材（その種類だけが持つ。[`CustomLens`]）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom: Option<Box<CustomLens>>,
     /// 半径 [mm]
     pub semi: f64,
     /// 偏心 x・y [mm]
@@ -318,11 +317,11 @@ pub struct Pick {
     pub coat: String,
     /// カタログの BS の、組合せの欄に無い項目（thickness・semi など）。そのまま持つブロック（Raw）はブロックの JSON
     pub extra: Value,
-    /// 開口・遮蔽の形と寸法（開口の要素だけが持つ。[`ApData`]）。円・遮蔽の外径は semi、偏心は decenter
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ap: Option<Box<ApData>>,
     /// 面の表で変えた面の値（ブロックの surface_edits になる）
     pub edits: Vec<SurfEdit>,
+    /// 種類だけが持つ欄（自作の玉・平板、鏡、BS、開口、.zmx。[`KindData`]、読み書きは [`Pick::custom`] など）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<Box<KindData>>,
     /// 玉の前面を絞りにする（カタログの玉・自作の玉・平板・.zmx の玉）
     pub stop_front: bool,
     /// 自作の玉（3 面以上・貼り合わせ）と面の並びの面。自作の玉は空なら r1・r2・t・glass の 2 面
@@ -340,21 +339,12 @@ pub struct Pick {
     pub state_air: BTreeMap<String, f64>,
     /// 状態ごとの偏心・傾き（無ければ decenter・tilt。置き方を持つ要素と鏡）
     pub state_place: BTreeMap<String, StatePlace>,
-    /// BS の形・分け方・膜など（BS だけが持つ。[`Bs`]）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bs: Option<Box<Bs>>,
     /// BS: 口 B・C・D の先の並びを持つ（並びの最後に置く）
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
     pub ports: [Branch; 3],
-    /// 鏡のコーニック・往路を戻る（鏡だけが持つ。[`MirrorData`]）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mirror: Option<Box<MirrorData>>,
     /// 群の名前（続く同じ名前の要素を 1 つの群のブロックにする。空なら群に入れない）
     pub group: String,
-    /// .zmx の玉・取り込みの番号・面の範囲・群（その種類だけが持つ。[`ZmxSrc`]）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zmx: Option<Box<ZmxSrc>>,
     /// edits・ops を付けたときの面の並びの印（[`Pick::surf_sig`]）。面の数・順・元が変わったら上書きを外す
     #[serde(skip_serializing_if = "String::is_empty")]
     pub edits_for: String,
@@ -381,7 +371,6 @@ impl Default for Pick {
             part: String::new(),
             reversed: false,
             air: 5.0,
-            custom: None,
             semi: 12.7,
             decenter: [0.0; 2],
             tilt: [0.0; 3],
@@ -391,12 +380,10 @@ impl Default for Pick {
             lock_place: false,
             coat: String::new(),
             extra: Value::Null,
-            ap: None,
             edits: Vec::new(),
-            bs: None,
+            data: None,
             branched: false,
             ports: Default::default(),
-            mirror: None,
             stop_front: false,
             surfs: Vec::new(),
             ops: Vec::new(),
@@ -406,7 +393,6 @@ impl Default for Pick {
             state_air: BTreeMap::new(),
             state_place: BTreeMap::new(),
             group: String::new(),
-            zmx: None,
             edits_for: String::new(),
             id: String::new(),
             air_id: String::new(),
@@ -501,23 +487,25 @@ impl Pick {
             ..Pick::default()
         };
         match kind {
-            ElemKind::Lens => p.custom = Some(Box::default()),
+            ElemKind::Lens => p.data = Some(Box::new(KindData::Custom(CustomLens::default()))),
             ElemKind::Plate => {
                 // 平板の面は平ら（ブロックにも半径を書かない。開き直しても同じ欄になるように）
-                p.custom = Some(Box::new(CustomLens {
+                *p.custom_mut() = CustomLens {
                     r1: 0.0,
                     r2: 0.0,
                     t: 3.0,
                     ..CustomLens::default()
-                }));
+                };
             }
             ElemKind::Mirror => {
-                p.mirror = Some(Box::default());
+                p.mirror_mut();
                 p.tilt = [45.0, 0.0, 0.0];
                 p.semi = 12.7;
                 p.air = 20.0;
             }
-            ElemKind::Zmx => p.zmx = Some(Box::default()),
+            ElemKind::Zmx => {
+                p.zmx_mut();
+            }
             ElemKind::Surfaces => {
                 p.surfs = vec![SurfRow::default()];
             }
@@ -525,7 +513,7 @@ impl Pick {
                 // .zmx の絞りをそのまま使う（範囲に絞りが無ければ外す）
                 p.stop_front = true;
                 p.air = 20.0;
-                p.zmx = Some(Box::default());
+                p.zmx_mut();
             }
             ElemKind::Stop => {
                 p.semi = 2.5;
@@ -533,15 +521,12 @@ impl Pick {
             }
             ElemKind::Splitter => {
                 p.air = 10.0;
-                p.bs = Some(Box::new(Bs {
-                    glass: "N-BK7".into(),
-                    ..Bs::default()
-                }));
+                p.bs_mut().glass = "N-BK7".into();
             }
             ElemKind::Aperture => {
                 p.semi = 5.0;
                 p.air = 10.0;
-                p.ap = Some(Box::default());
+                p.ap_mut();
             }
             _ => {}
         }
@@ -2556,11 +2541,11 @@ fn kind_fields(
             num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
-            semi_edit(
-                ui,
-                &mut p.semi,
-                &mut p.custom.get_or_insert_with(Box::default).semi_auto,
-            );
+            {
+                let mut auto = p.custom().semi_auto;
+                semi_edit(ui, &mut p.semi, &mut auto);
+                p.custom_mut().semi_auto = auto;
+            }
             if ui
                 .button(tr("+ Surface"))
                 .on_hover_text(tr(
@@ -2599,11 +2584,11 @@ fn kind_fields(
             num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
-            semi_edit(
-                ui,
-                &mut p.semi,
-                &mut p.custom.get_or_insert_with(Box::default).semi_auto,
-            );
+            {
+                let mut auto = p.custom().semi_auto;
+                semi_edit(ui, &mut p.semi, &mut auto);
+                p.custom_mut().semi_auto = auto;
+            }
         }
         ElemKind::Mirror => {
             num(ui, "R", &mut p.mirror_mut().radius, " mm");

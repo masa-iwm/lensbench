@@ -187,6 +187,15 @@ fn nest_kind_fields(picks: &mut Value) {
                 o.insert("ap".into(), Value::Object(ap));
             }
         }
+        // 種類の欄は data の下に 1 つ（前の版は要素に並べていた）
+        if !o.contains_key("data") {
+            if let Some((k, v)) = ["custom", "mirror", "bs", "ap", "zmx"]
+                .iter()
+                .find_map(|k| o.remove(*k).map(|v| (k.to_string(), v)))
+            {
+                o.insert("data".into(), json!({ k: v }));
+            }
+        }
         for b in o
             .get_mut("ports")
             .and_then(Value::as_array_mut)
@@ -376,6 +385,11 @@ mod tests {
         let mut cv = serde_json::to_value(&c).unwrap();
         for p in cv["picks"].as_array_mut().unwrap() {
             let o = p.as_object_mut().unwrap();
+            if let Some(d) = o.remove("data") {
+                for (k, v) in d.as_object().unwrap() {
+                    o.insert(k.clone(), v.clone());
+                }
+            }
             // 前の版はどの要素も全部の欄を書いた。BS の一辺・厚さと硝材は玉と同じ t・glass、鏡の曲率半径は r1
             let bs = o
                 .remove("bs")
@@ -423,7 +437,10 @@ mod tests {
         let d = Combo::from_project(&v, std::path::Path::new("")).unwrap();
         assert_eq!(d.picks[0].bs().ratio, 0.3);
         assert_eq!(d.picks[0].bs().form, combo::BsForm::Plate);
-        assert!(d.picks[1].bs.is_none() && d.picks[1].ap.is_none());
+        assert!(matches!(
+            d.picks[1].data.as_deref(),
+            Some(combo::KindData::Custom(_))
+        ));
         assert_eq!(d.picks[2].ap().shape, combo::ApShape::Rect);
         assert_eq!(d.picks[2].ap().half, [2.0, 1.0]);
         assert_eq!(

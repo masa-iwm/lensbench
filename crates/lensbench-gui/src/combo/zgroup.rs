@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
-use super::{Pick, StatePlace};
+use super::StatePlace;
 
 /// .zmx の玉・取り込みだけが持つ欄（[`Pick::zmx`]）。ファイルの場所は、ユーザーカタログの項目と同じ
 /// [`Pick::path`] に持つ
@@ -33,19 +33,6 @@ impl ZmxSrc {
 impl Default for ZmxSrc {
     fn default() -> Self {
         Self::DEFAULT
-    }
-}
-
-impl Pick {
-    /// .zmx の玉・取り込みの欄（ほかの種類では既定）
-    pub fn zmx(&self) -> &ZmxSrc {
-        static DEFAULT: ZmxSrc = ZmxSrc::DEFAULT;
-        self.zmx.as_deref().unwrap_or(&DEFAULT)
-    }
-
-    /// .zmx の玉・取り込みの欄を変える（無ければ作る。.zmx の種類だけで呼ぶ）
-    pub fn zmx_mut(&mut self) -> &mut ZmxSrc {
-        self.zmx.get_or_insert_with(Box::default)
     }
 }
 

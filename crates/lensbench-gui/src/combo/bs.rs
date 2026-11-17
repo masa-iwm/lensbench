@@ -121,17 +121,6 @@ impl BsSplit {
 }
 
 impl Pick {
-    /// BS の欄（BS でなければ既定）
-    pub fn bs(&self) -> &Bs {
-        static DEFAULT: Bs = Bs::DEFAULT;
-        self.bs.as_deref().unwrap_or(&DEFAULT)
-    }
-
-    /// BS の欄を変える（無ければ作る。BS の要素だけで呼ぶ）
-    pub fn bs_mut(&mut self) -> &mut Bs {
-        self.bs.get_or_insert_with(Box::default)
-    }
-
     /// BS の分ける面の分け方
     pub fn split_mode(&self) -> BsSplit {
         self.bs().split.unwrap_or(if self.coat.trim().is_empty() {

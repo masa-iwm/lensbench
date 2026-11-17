@@ -1,6 +1,5 @@
 //! 開口・遮蔽の形（[`ApShape`]）と開口の要素だけが持つ欄（[`ApData`]）
 
-use super::Pick;
 use crate::i18n::tr;
 use serde::{Deserialize, Serialize};
 
@@ -61,17 +60,5 @@ impl ApData {
 impl Default for ApData {
     fn default() -> Self {
         ApData::DEFAULT
-    }
-}
-
-impl Pick {
-    /// 開口の欄（開口の要素でなければ既定）
-    pub fn ap(&self) -> &ApData {
-        self.ap.as_deref().unwrap_or(&ApData::DEFAULT)
-    }
-
-    /// 開口の欄を変える（無ければ作る。開口の要素だけで呼ぶ）
-    pub fn ap_mut(&mut self) -> &mut ApData {
-        self.ap.get_or_insert_with(Box::default)
     }
 }
