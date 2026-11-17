@@ -61,7 +61,7 @@ use jac::{pupil_d, JacCache, PupilCache};
 
 #[path = "dls_trace.rs"]
 mod trace;
-use trace::{launch_of, trace_ok, trace_pupil, trace_pupil_xyz};
+use trace::{launch_of, trace_ok, trace_pupil, trace_pupil_cols, trace_pupil_rec};
 
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
@@ -1104,7 +1104,7 @@ fn spot_term(
             b.fill_from(&t);
             traces.push(b);
         } else {
-            traces.push(trace_pupil_xyz(s, field, px, py, w, keep)?);
+            traces.push(trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?);
         }
     }
     // 重み（spot() と同じ: 単色は波長の重みによらない）
@@ -1220,7 +1220,10 @@ fn centroid_term(
                 b.fill_from(&tr);
                 (b, Some(g))
             }
-            None => (trace_pupil_xyz(s, field, px, py, w, keep)?, None),
+            None => (
+                trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?,
+                None,
+            ),
         };
         let kw = if ws.len() == 1 { 1.0 } else { s.weights[w] };
         for i in 0..n {
@@ -1364,39 +1367,52 @@ fn wfe_term(
     // 微分（rows と同じ順）: dOPD・d(L − Lc)・d(M − Mc) [パラメータ]
     let mut drows: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = Vec::new();
     for (k, &w) in ws.iter().enumerate() {
-        let t = trace_pupil(s, field, px, py, w, rec, keep)?;
-        let tc = trace_ok(s, field, &[0.0], &[0.0], w, rec)?;
+        // 値は列（位置・方向・光路長・理想レンズの位相）で読む。微分が要るときだけ記録つきの Trace も持つ
         let wr = if poly { s.primary } else { w };
-        let tp = if wr == w {
-            tc.clone()
+        let (b, bc, bp, tr) = if rec {
+            let (t, b) = trace_pupil_rec(s, field, px, py, w, keep, Cols::WAVE)?;
+            let (tc, bc) = trace_pupil_rec(s, field, &[0.0], &[0.0], w, false, Cols::WAVE)?;
+            let (tp, bp) = if wr == w {
+                (tc.clone(), bc.clone())
+            } else {
+                trace_pupil_rec(s, field, &[0.0], &[0.0], wr, false, Cols::WAVE)?
+            };
+            (b, bc, bp, Some((t, tc, tp)))
         } else {
-            trace_ok(s, field, &[0.0], &[0.0], wr, rec)?
+            let b = trace_pupil_cols(s, field, px, py, w, keep, Cols::WAVE)?;
+            let bc = trace_pupil_cols(s, field, &[0.0], &[0.0], w, false, Cols::WAVE)?;
+            let bp = if wr == w {
+                bc.clone()
+            } else {
+                trace_pupil_cols(s, field, &[0.0], &[0.0], wr, false, Cols::WAVE)?
+            };
+            (b, bc, bp, None)
         };
-        let c = &tc.rays[0];
-        let (pc, kc) = (tp.rays[0].xyz, tp.rays[0].lmn);
-        let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
+        let (cxyz, clmn) = (bc.xyz[0], bc.lmn[0]);
+        let (pc, kc) = (bp.xyz[0], bp.lmn[0]);
+        let lc = to_ref(s, w, pc, kc, cxyz, clmn, bc.opl[0]) + bc.lens_opd[0];
         let wl = s.wave(w).mm();
-        let opd: Vec<f64> = t
-            .rays
-            .iter()
-            .map(|x| (lc - (to_ref(s, w, pc, kc, x.xyz, x.lmn, x.opl) + x.lens_opd)) / wl)
+        let opd: Vec<f64> = (0..b.len())
+            .map(|i| {
+                (lc - (to_ref(s, w, pc, kc, b.xyz[i], b.lmn[i], b.opl[i]) + b.lens_opd[i])) / wl
+            })
             .collect();
-        let idx: Vec<usize> = (0..n).filter(|&i| t.ok(i) && opd[i].is_finite()).collect();
+        let idx: Vec<usize> = (0..n).filter(|&i| b.ok(i) && opd[i].is_finite()).collect();
         let sw: f64 = idx.iter().map(|&i| wts[i]).sum();
         if idx.is_empty() || !(sw > 0.0) {
             invalid!("no valid rays (all vignetted)");
         }
         for &i in &idx {
-            let x = &t.rays[i];
             // アフォーカルの傾きの基底は瞳座標（sweep::rms と同じ）
             let (bl, bm) = if s.afocal {
                 (px[i], py[i])
             } else {
-                (x.lmn[0] - kc[0], x.lmn[1] - kc[1])
+                (b.lmn[i][0] - kc[0], b.lmn[i][1] - kc[1])
             };
             rows.push((k, i, opd[i], bl, bm, wts[i] / sw));
         }
-        if let Some(ps) = ps {
+        if let (Some(ps), Some((t, tc, tp))) = (ps, tr.as_ref()) {
+            let c = &tc.rays[0];
             if t.rays
                 .iter()
                 .chain(&tc.rays)
@@ -1406,14 +1422,14 @@ fn wfe_term(
                 invalid!("a system with an ideal lens");
             }
             let ni = s.image_index(w);
-            let gl = s.land_grad(&t, w, ps, None)?;
-            let go = s.opl_grad(&t, w, ps)?;
-            let glc = s.land_grad(&tc, w, ps, None)?;
-            let goc = s.opl_grad(&tc, w, ps)?;
+            let gl = s.land_grad(t, w, ps, None)?;
+            let go = s.opl_grad(t, w, ps)?;
+            let glc = s.land_grad(tc, w, ps, None)?;
+            let goc = s.opl_grad(tc, w, ps)?;
             let (glp, gop) = if wr == w {
                 (glc.clone(), goc.clone())
             } else {
-                (s.land_grad(&tp, wr, ps, None)?, s.opl_grad(&tp, wr, ps)?)
+                (s.land_grad(tp, wr, ps, None)?, s.opl_grad(tp, wr, ps)?)
             };
             let nr = s.image_index(wr);
             let mut d: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> =

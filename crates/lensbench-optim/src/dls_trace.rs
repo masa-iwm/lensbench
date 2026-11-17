@@ -59,17 +59,18 @@ pub(super) fn trace_pupil(
     }
 }
 
-/// 瞳の光線の像面の位置だけを列に追跡する（微分の要らないスポット・重心の項）。keep でなければ、止まった光線で
-/// エラー（[`trace_ok`] と同じ文）。値は [`trace_pupil`] の位置・[`Trace::ok`] と同じビット
-pub(super) fn trace_pupil_xyz(
+/// 瞳の光線の像面の量（列 cols）だけを追跡する（微分の要らない項の評価）。keep でなければ、止まった光線で
+/// エラー（[`trace_ok`] と同じ文）。値は [`trace_pupil`] の同じ量・[`Trace::ok`] と同じビット
+pub(super) fn trace_pupil_cols(
     s: &System,
     field: FieldSel,
     px: &[f64],
     py: &[f64],
     w: usize,
     keep: bool,
+    cols: Cols,
 ) -> Result<RayBuf> {
-    let mut b = RayBuf::with_cols(Cols::XYZ);
+    let mut b = RayBuf::with_cols(cols);
     s.try_trace_into(field, px, py, Some(w), None, &mut b)?;
     if !keep {
         if let Some(i) = b.status.iter().position(|r| r.surf().is_some()) {
@@ -82,4 +83,21 @@ pub(super) fn trace_pupil_xyz(
         }
     }
     Ok(b)
+}
+
+/// [`trace_pupil`] の記録つきの追跡と、その像面の量（列 cols）の写し（微分の要る項。値の後段は列で読む）
+#[allow(clippy::too_many_arguments)]
+pub(super) fn trace_pupil_rec(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    w: usize,
+    keep: bool,
+    cols: Cols,
+) -> Result<(Trace, RayBuf)> {
+    let t = trace_pupil(s, field, px, py, w, true, keep)?;
+    let mut b = RayBuf::with_cols(cols);
+    b.fill_from(&t);
+    Ok((t, b))
 }
