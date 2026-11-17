@@ -1,4 +1,6 @@
 {
+  "format": "lensbench-project",
+  "format_version": 1,
   "name": "C1 二枚のカタログレンズ",
   "wavelengths": [
     {

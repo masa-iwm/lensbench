@@ -34,6 +34,8 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### プロジェクトの面の上書き・操作
+- プロジェクトファイルに形式の印 `"format": "lensbench-project"` と版 `"format_version": 1` を足した（PRJ-23）。書くときはいつも付け、
+  読むときは省略を許すが、印が違うか版が新しいファイルは誤りにする。Rust の `Project` に `format`・`format_version`（`Option`）が増えた。
 - プロジェクトの直下の `surface_edits`・`surface_ops` をやめ、各ブロック（玉・絞り・ミラー・面の並び・zmx・user・群と zmx のインポートの群）が
   持つようにした（PRJ-04）。`surface_edits` の項目は `block` を書かず `{"surface": i, "fields": {…}}`、`surface_ops` の当てる面
   （`surface`・`dst`）はそのブロックの面の番号（参照する `src`・`other` は前どおり `{"block": id, "surface": i}` かシステムの面）。

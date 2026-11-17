@@ -891,8 +891,11 @@ fn mechanics(c: &mut Combo, v: &Value) -> R<()> {
 /// 要素に残すので同じになる。元で重なった id は組合せが付け直す）。状態・面の上書きなどが指す id は残る
 fn canon(v: &Value) -> R<Value> {
     let mut v = v.clone();
+    // 形式の印と版は読むときに確かめ済みで、書くときはいつも付ける
     if let Some(o) = v.as_object_mut() {
-        o.remove("gui");
+        for k in ["gui", "format", "format_version"] {
+            o.remove(k);
+        }
     }
     fn strip_ids(bs: &mut Value) {
         for b in bs.as_array_mut().into_iter().flatten() {

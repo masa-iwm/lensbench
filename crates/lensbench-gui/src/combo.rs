@@ -1132,7 +1132,12 @@ impl Combo {
                 blocks.push(b);
             }
         }
-        let mut v = json!({ "name": self.name });
+        // 形式の印と版は Project::to_json と同じ（読む側が確かめる）
+        let mut v = json!({
+            "format": lensbench_project::PROJECT_FORMAT,
+            "format_version": lensbench_project::PROJECT_FORMAT_VERSION,
+            "name": self.name,
+        });
         self.put_settings(&mut v);
         v["blocks"] = Value::Array(blocks);
         let path: String = self

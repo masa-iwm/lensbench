@@ -772,3 +772,21 @@ fn round_trip_blocks_write_back_with_notes() {
         "{r:?}"
     );
 }
+
+/// プロジェクトファイルの形式の印と版: 書くときに付き、読み戻せる。新しい版・違う印は誤り、省略は今の版
+#[test]
+fn project_files_carry_format_and_version() {
+    let txt = r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 4},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 10}]}"#;
+    let p = Project::from_json(txt).unwrap();
+    let out = p.to_json();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["format"], "lensbench-project");
+    assert_eq!(v["format_version"], 1);
+    Project::from_json(&out).unwrap();
+    let newer = out.replace("\"format_version\": 1", "\"format_version\": 2");
+    let e = Project::from_json(&newer).unwrap_err().to_string();
+    assert!(e.contains("newer"), "{e}");
+    let other = out.replace("lensbench-project", "lensbench-system");
+    assert!(Project::from_json(&other).is_err());
+}

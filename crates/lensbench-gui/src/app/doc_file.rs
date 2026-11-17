@@ -246,6 +246,12 @@ mod tests {
         c.state = Some("near".into());
         let v = project_file(&c);
         assert!(v.pointer("/gui/combo").is_none());
+        // GUI が書くプロジェクトファイルにも形式の印と版が付く
+        assert_eq!(v["format"], lensbench_project::PROJECT_FORMAT);
+        assert_eq!(
+            v["format_version"],
+            lensbench_project::PROJECT_FORMAT_VERSION
+        );
         let mut d = Combo::from_project(&v, std::path::Path::new("")).unwrap();
         apply_view(&mut d, v.get("gui"));
         assert_eq!(

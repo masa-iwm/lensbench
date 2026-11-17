@@ -2757,6 +2757,22 @@
       "description": "浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）",
       "type": "boolean"
     },
+    "format": {
+      "description": "形式の印 \"lensbench-project\"。書くときはいつも付ける（省略したファイルは今の版として読む）",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "format_version": {
+      "description": "形式の版（今は 1）。読める版より新しければ誤り",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "glass_catalogs": {
       "default": [
         "SCHOTT"

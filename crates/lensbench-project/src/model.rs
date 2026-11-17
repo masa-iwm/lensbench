@@ -764,8 +764,19 @@ pub struct State {
     pub project: Map<String, Value>,
 }
 
+/// プロジェクトファイルの形式の印（[`Project::format`]）
+pub const PROJECT_FORMAT: &str = "lensbench-project";
+/// プロジェクトファイルの形式の版。これより新しい版のファイルは読まない（知らない項目を落として黙って計算しないよう）
+pub const PROJECT_FORMAT_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
+    /// 形式の印 "lensbench-project"。書くときはいつも付ける（省略したファイルは今の版として読む）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// 形式の版（今は 1）。読める版より新しければ誤り
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_version: Option<u32>,
     #[serde(default)]
     pub name: String,
     #[serde(default = "default_catalogs")]
@@ -946,11 +957,26 @@ impl Project {
             )
             .into());
         }
+        if let Some(f) = p.format.as_deref().filter(|f| *f != PROJECT_FORMAT) {
+            return Err(
+                format!("project file: format {f} (a project file is {PROJECT_FORMAT})").into(),
+            );
+        }
+        if let Some(n) = p.format_version.filter(|&n| n > PROJECT_FORMAT_VERSION) {
+            return Err(format!(
+                "project file: format version {n} is newer than this lensbench reads ({PROJECT_FORMAT_VERSION}); update lensbench"
+            )
+            .into());
+        }
         check_detectors(&p.blocks)?;
         Ok(p)
     }
+    /// プロジェクトの JSON（形式の印と版をいつも付ける）
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("JSON of plain data")
+        let mut p = self.clone();
+        p.format = Some(PROJECT_FORMAT.into());
+        p.format_version = Some(PROJECT_FORMAT_VERSION);
+        serde_json::to_string_pretty(&p).expect("JSON of plain data")
     }
 
     pub fn state_names(&self) -> Vec<&str> {
