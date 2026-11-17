@@ -1,6 +1,7 @@
 //! 開いた .zmx を組合せの要素（自作の玉・絞り・面の並びと空気）に分ける（11/16 masa 決定: 開いた .zmx の変更は
 //! 取り込みの上書きでなく中身へ）。ソルブ・ピックアップ・絞りは要素の操作にする。分けた組合せの系が元の系と
-//! 同じときだけ使い、書けない面（SurfSpec で書けない型・鏡・座標ブレークなど）があれば今までどおり .zmx を取り込む
+//! 同じときだけ使い、書けない面（鏡・座標ブレーク・ゴーストの反射など）があれば今までどおり .zmx を取り込む。
+//! SurfSpec の欄で書けない形（Zernike・Grid Sag など）はシステムファイルの行（SurfSpec の row）で書く
 
 use std::path::{Path, PathBuf};
 
@@ -70,8 +71,10 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             return None;
         }
         let mut x = serde_json::to_value(lensbench_project::surface_spec(a, last).ok()?).ok()?;
-        // 半径は 1/半径 が曲率に戻る値に（系と同じ値にする）
-        x["radius"] = json!(radius_of(a.c)?);
+        // 半径は 1/半径 が曲率に戻る値に（系と同じ値にする）。行で書く面は行の曲率のまま
+        if x.get("row").is_none_or(Value::is_null) {
+            x["radius"] = json!(radius_of(a.c)?);
+        }
         if last {
             if let Some(o) = x.as_object_mut() {
                 o.remove("t");

@@ -1570,6 +1570,7 @@ Vignetting factors	ケラレ係数
 Computing ({})	計算中（{}）
 {}…	{}…
 Radius, conic, thickness and semi-diameter are edited in the Lens Data table (surfaces in air only)	曲率半径・コーニック・厚み・クリア半径はレンズデータの表で編集（面は空気中だけ）
+Special surface (values in the Lens Data table)	特殊な面（値はレンズデータの表で）
 + Add a surface	＋ 面を追加
 Starts a surface list with one plane surface. Insert more surfaces from the table, and set a glass after a surface to make a lens	平面 1 枚の面の並びから始めます。面は表から挿入し、面の後に硝材を入れるとレンズになります
 A solve or pickup links surfaces that would be in different elements, so the element cannot be split	ソルブ・ピックアップが分けた先で別の要素になる面をつないでいるので、要素を分割できません

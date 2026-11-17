@@ -171,6 +171,11 @@ pub struct SurfSpec {
     /// トロイダル面の x 方向の曲率半径 [mm]（省略・0 なら円柱面）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius_x: Option<f64>,
+    /// ほかの欄で書けない面（Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズ・GRIN の媒質・無視する面・
+    /// dn・disp など）を、システムファイル（版 2）の面の行で書く。書くときはほかの欄を書かない。絞りの印（stop）は
+    /// 書けない（ブロックの set_stop で）。玉の最後の面の厚さ・媒質は使わない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<Box<crate::sysfile_v2::Row>>,
 }
 
 /// 面の形（[`SurfSpec::shape`]）

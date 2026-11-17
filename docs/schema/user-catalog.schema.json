@@ -1,10 +1,499 @@
 {
   "$defs": {
+    "Action": {
+      "description": "面の働き（屈折は省く）。mirror は反射してから位相・傾きを加える",
+      "oneOf": [
+        {
+          "const": "reflect",
+          "description": "反射（鏡）",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "屈折面での反射（ゴーストの経路の解析の写し）。medium は光が入らない側の媒質",
+          "properties": {
+            "ghost_reflect": {
+              "additionalProperties": false,
+              "properties": {
+                "medium": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "medium"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "ghost_reflect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "理想レンズ（焦点距離 f、OPD の求め方 opd_mode）",
+          "properties": {
+            "paraxial": {
+              "additionalProperties": false,
+              "properties": {
+                "f": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "mirror": {
+                  "type": "boolean"
+                },
+                "opd_mode": {
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "f"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "paraxial"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Jones 行列 [Ar, Ai, Br, Bi, Cr, Ci, Dr, Di]、または波長ごとに作る偏光子・波長板",
+          "properties": {
+            "jones": {
+              "additionalProperties": false,
+              "properties": {
+                "matrix": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 8,
+                  "minItems": 8,
+                  "type": "array"
+                },
+                "mirror": {
+                  "type": "boolean"
+                },
+                "retarder": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Retarder"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "jones"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Binary 2: 位相 Φ = order · Σ coef[i] ρ^{2(i+1)}（形は偶数次非球面）",
+          "properties": {
+            "binary2": {
+              "additionalProperties": false,
+              "properties": {
+                "mirror": {
+                  "type": "boolean"
+                },
+                "phase": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Binary2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "binary2"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Fresnel: 交点は頂点の平面、屈折は偶数次非球面（c・k・a）の傾きで",
+          "properties": {
+            "fresnel": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "mirror": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "fresnel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Cylinder Fresnel: 交点は形（cylinder）、屈折は bend の面の傾きで",
+          "properties": {
+            "cylinder_fresnel": {
+              "additionalProperties": false,
+              "properties": {
+                "bend": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/CylFresnel"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "mirror": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "cylinder_fresnel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "複屈折材の板の入口（mode 0: 常光の成分だけ、2: 波長板。axis は結晶軸）",
+          "properties": {
+            "birefringent_in": {
+              "additionalProperties": false,
+              "properties": {
+                "axis": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "mode": {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "mode",
+                "axis"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "birefringent_in"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "birefringent_out",
+          "description": "複屈折材の板の出口",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "利用者定義の面（登録のモデルの名前と設定）",
+          "properties": {
+            "user": {
+              "additionalProperties": false,
+              "properties": {
+                "config": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/Value"
+                  },
+                  "default": {},
+                  "type": "object"
+                },
+                "mirror": {
+                  "type": "boolean"
+                },
+                "model": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "user"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "After": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reverse",
+          "description": "\"reverse\": 前の変換を戻す"
+        },
+        {
+          "$ref": "#/$defs/Tilt"
+        }
+      ],
+      "description": "面の後の傾き・偏心"
+    },
+    "Aperture": {
+      "description": "面の開口",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "円（最小・最大半径、偏心）",
+          "properties": {
+            "circular": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "dy": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "max": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "min": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "circular"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "矩形（x・y の半幅、偏心）",
+          "properties": {
+            "rect": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "dy": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "hx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "hy": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "hx",
+                "hy"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "rect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "浮動開口（半径は面の半直径。違うときだけ semi）",
+          "properties": {
+            "floating": {
+              "additionalProperties": false,
+              "properties": {
+                "semi": {
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "floating"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "楕円（x・y の半軸、偏心）",
+          "properties": {
+            "ellipse": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "dy": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "hx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "hy": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "hx",
+                "hy"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "ellipse"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "円形遮蔽（最小〜最大半径の間を遮る）",
+          "properties": {
+            "obscuration": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "dy": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "max": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "min": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "obscuration"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "スパイダー（幅 width の腕 arms 本）",
+          "properties": {
+            "spider": {
+              "additionalProperties": false,
+              "properties": {
+                "arms": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "dx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "dy": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "width": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "arms"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "spider"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Arm": {
       "description": "経路の既定（文字を指定しないとき）",
       "enum": [
         "t",
         "r"
+      ],
+      "type": "string"
+    },
+    "Auto": {
+      "enum": [
+        "auto"
       ],
       "type": "string"
     },
@@ -14,6 +503,34 @@
         "auto"
       ],
       "type": "string"
+    },
+    "Binary2": {
+      "description": "Binary 2 の位相 Φ = order · Σ coef[i] ρ^{2(i+1)}（ρ = r / norm、係数の単位は rad）",
+      "properties": {
+        "coef": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "norm": {
+          "description": "正規化半径",
+          "format": "double",
+          "type": "number"
+        },
+        "order": {
+          "description": "回折次数 M",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "order",
+        "norm",
+        "coef"
+      ],
+      "type": "object"
     },
     "BireSpec": {
       "description": "複屈折材の板の入口・出口の面。`{\"in\": {\"axis\": [x, y, z]}}` か `\"out\"`",
@@ -1219,6 +1736,277 @@
         }
       ]
     },
+    "CylFresnel": {
+      "description": "Cylinder Fresnel の屈折に使う面: z = c y² / (1 + √(1 − (1 + k) c² y²)) + Σ coef[i] y^{2(i+1)}",
+      "properties": {
+        "c": {
+          "format": "double",
+          "type": "number"
+        },
+        "coef": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "k": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "c",
+        "k",
+        "coef"
+      ],
+      "type": "object"
+    },
+    "Grad9Mat": {
+      "description": "Gradient 9 の材料（GRADIENT_9.DAT の組）",
+      "properties": {
+        "b": {
+          "format": "double",
+          "type": "number"
+        },
+        "c": {
+          "format": "double",
+          "type": "number"
+        },
+        "k0": {
+          "format": "double",
+          "type": "number"
+        },
+        "k1": {
+          "format": "double",
+          "type": "number"
+        },
+        "k2": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "b",
+        "c",
+        "k0",
+        "k1",
+        "k2"
+      ],
+      "type": "object"
+    },
+    "GradiumProfile": {
+      "description": "Gradium の分布（PROFILE.GRD の組）",
+      "properties": {
+        "coef": {
+          "description": "n_0 … n_11",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "family": {
+          "description": "分散の名前（SGRIN.DAT の組）",
+          "type": "string"
+        },
+        "file": {
+          "description": "読んだファイルの名前（PROFILE.GRD など。.zmx の COFN に書く）",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "zmax": {
+          "description": "玉の素材の厚さ z_max",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "family",
+        "zmax",
+        "coef",
+        "file"
+      ],
+      "type": "object"
+    },
+    "GridSag": {
+      "description": "Grid Sag の格子",
+      "properties": {
+        "dx": {
+          "description": "格子の間隔 [mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "dy": {
+          "format": "double",
+          "type": "number"
+        },
+        "linear": {
+          "description": "双一次で補間する（false は双三次）。双一次では傾きも格子点の傾きの双一次補間",
+          "type": "boolean"
+        },
+        "nodata": {
+          "description": "値のない点",
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "nx": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ny": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "xdec": {
+          "description": "格子の中心の偏心 [mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "ydec": {
+          "format": "double",
+          "type": "number"
+        },
+        "z": {
+          "description": "点ごとの (z, ∂z/∂x, ∂z/∂y, ∂²z/∂x∂y)。並びは y の小さい行から、行の中は x の小さい点から\n（iy * nx + ix）。単位は mm",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nx",
+        "ny",
+        "dx",
+        "dy",
+        "xdec",
+        "ydec",
+        "z",
+        "nodata",
+        "linear"
+      ],
+      "type": "object"
+    },
+    "Grin": {
+      "additionalProperties": false,
+      "description": "屈折率分布の媒質",
+      "properties": {
+        "dt": {
+          "description": "OpticStudio の刻み Δt",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "description": "材料の名前",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/GrinKind"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "GrinKind": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "Gradium": {
+              "properties": {
+                "cap": {
+                  "description": "端の扱い: 0 両端で止める、1 左（z′ + Δz < 0）だけ止める、2 右だけ止める、3 止めない\n（止めない側は端の屈折率の一様な媒質）",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "dec": {
+                  "description": "公差の項 d_x d_y t_x t_y（近軸では使わない）",
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 4,
+                  "minItems": 4,
+                  "type": "array"
+                },
+                "disp": {
+                  "$ref": "#/$defs/Sgrin"
+                },
+                "dz": {
+                  "description": "分布の上の位置のずれ Δz",
+                  "format": "double",
+                  "type": "number"
+                },
+                "prof": {
+                  "$ref": "#/$defs/GradiumProfile"
+                }
+              },
+              "required": [
+                "prof",
+                "disp",
+                "dz",
+                "dec",
+                "cap"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Gradium"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "Grad9": {
+              "properties": {
+                "mat": {
+                  "$ref": "#/$defs/Grad9Mat"
+                },
+                "tan": {
+                  "description": "形の傾きの項 tan α、tan β",
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "mat",
+                "tan"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Grad9"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "HoldSpec": {
       "description": "保持する素子",
       "properties": {
@@ -1430,6 +2218,67 @@
       },
       "type": "object"
     },
+    "Medium": {
+      "anyOf": [
+        {
+          "description": "ガラスの名前（カタログから引く。\"AIR\" は空気）",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/MediumData",
+          "description": "モデルガラス・GRIN"
+        }
+      ],
+      "description": "面の後の媒質"
+    },
+    "MediumData": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "モデルガラス（nd・vd・ΔPgF）。vd = 0 は分散なし（屈折率 nd）",
+          "properties": {
+            "model": {
+              "additionalProperties": false,
+              "properties": {
+                "dpgf": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "nd": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "vd": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "nd"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "model"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "屈折率分布（Gradium・Gradient 9）",
+          "properties": {
+            "grin": {
+              "$ref": "#/$defs/Grin"
+            }
+          },
+          "required": [
+            "grin"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Num": {
       "anyOf": [
         {
@@ -1517,6 +2366,30 @@
       },
       "type": "object"
     },
+    "Plate": {
+      "additionalProperties": false,
+      "description": "波長板の複屈折材の板",
+      "properties": {
+        "axis_deg": {
+          "format": "double",
+          "type": "number"
+        },
+        "material": {
+          "type": "string"
+        },
+        "thickness": {
+          "description": "厚さ [mm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "material",
+        "thickness",
+        "axis_deg"
+      ],
+      "type": "object"
+    },
     "PlateSpec": {
       "description": "波長板の複屈折材の板 1 枚",
       "properties": {
@@ -1580,6 +2453,61 @@
       ],
       "description": "番号か名前。面は OpticStudio の面番号か面のコメント、玉・群と機構部品は 0 始まりの番号か名前"
     },
+    "Retarder": {
+      "additionalProperties": false,
+      "description": "偏光子・波長板（Jones の面）",
+      "properties": {
+        "axis_deg": {
+          "format": "double",
+          "type": "number"
+        },
+        "order": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "plates": {
+          "description": "複屈折材の板（ガラスは名前で引く）",
+          "items": {
+            "$ref": "#/$defs/Plate"
+          },
+          "type": "array"
+        },
+        "retardance": {
+          "description": "設計波長での遅延 [波長]",
+          "format": "double",
+          "type": "number"
+        },
+        "tx": {
+          "format": "double",
+          "type": "number"
+        },
+        "ty": {
+          "format": "double",
+          "type": "number"
+        },
+        "wl0": {
+          "description": "設計波長 [µm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "axis_deg",
+        "tx",
+        "ty",
+        "retardance",
+        "wl0"
+      ],
+      "type": "object"
+    },
+    "Reverse": {
+      "enum": [
+        "reverse"
+      ],
+      "type": "string"
+    },
     "Role": {
       "description": "群の役割",
       "enum": [
@@ -1588,6 +2516,139 @@
         "fixed"
       ],
       "type": "string"
+    },
+    "Row": {
+      "additionalProperties": false,
+      "description": "面の列の 1 行（面とその後の間隔）",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Action"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の働き（省略は屈折）"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/After"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の後の傾き・偏心（\"reverse\" は前の変換を戻す）"
+        },
+        "aperture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Aperture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の開口（省略は開口なし）"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tilt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の前の傾き・偏心"
+        },
+        "coating": {
+          "description": "膜の名前",
+          "type": "string"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "coordinate_break": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tilt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "座標ブレーク（面でなく座標系だけを変える行）"
+        },
+        "disp": {
+          "description": "媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))",
+          "format": "double",
+          "type": "number"
+        },
+        "dn": {
+          "description": "媒質の屈折率のずれ（全波長に足す）",
+          "format": "double",
+          "type": "number"
+        },
+        "ignore": {
+          "description": "無視する",
+          "type": "boolean"
+        },
+        "image": {
+          "description": "像面の印（最後の行）",
+          "type": "boolean"
+        },
+        "medium": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Medium"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の後の媒質（省略は空気。鏡・座標ブレークでは前の媒質）"
+        },
+        "object": {
+          "description": "物体面の印（最初の行。読むときは確かめるだけ）",
+          "type": "boolean"
+        },
+        "semi": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Semi2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "半直径 [mm]。\"auto\" は光線から求める"
+        },
+        "shape": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shape"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "面の形（省略は平面の標準面）"
+        },
+        "stop": {
+          "description": "絞り",
+          "type": "boolean"
+        },
+        "t": {
+          "description": "次の面までの厚さ [mm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "Semi": {
       "anyOf": [
@@ -1600,6 +2661,407 @@
         }
       ],
       "description": "面の半直径: 数 [mm] か \"auto\"（全視野・全波長の主光線と瞳の縁の光線から求める）"
+    },
+    "Semi2": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/Auto",
+          "description": "\"auto\": 光線から求める"
+        }
+      ],
+      "description": "半直径"
+    },
+    "Sgrin": {
+      "description": "Gradient 5 の分散（SGRIN.DAT の組）",
+      "properties": {
+        "k": {
+          "description": "K_ij（i = 1..3、j = 1..K_MAX）",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "l": {
+          "description": "L_ij（i = 1..3、j = 1..L_MAX）",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "lmax": {
+          "format": "double",
+          "type": "number"
+        },
+        "lmin": {
+          "description": "波長の範囲 [µm]",
+          "format": "double",
+          "type": "number"
+        },
+        "lref": {
+          "description": "基準波長 [µm]",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "lmin",
+        "lmax",
+        "lref",
+        "k",
+        "l"
+      ],
+      "type": "object"
+    },
+    "Shape": {
+      "description": "面の形（種類ごとの値だけ）。曲率は c [1/mm]",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "二次曲面（標準面）",
+          "properties": {
+            "conic": {
+              "additionalProperties": false,
+              "properties": {
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "conic"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "偶数次非球面: a は r², r⁴, … の係数",
+          "properties": {
+            "even_asphere": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "even_asphere"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Odd Asphere: b は r¹, r², … の係数",
+          "properties": {
+            "odd_asphere": {
+              "additionalProperties": false,
+              "properties": {
+                "b": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "odd_asphere"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "トロイダル面: YZ 面の曲線（c・k・y², y⁴, … の係数 a）を回転の曲率 cx で回した面（cx = 0 は円柱面）",
+          "properties": {
+            "toroid": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "cx": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "toroid"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Zernike Standard Sag",
+          "properties": {
+            "zernike_standard": {
+              "$ref": "#/$defs/ZernikeShape"
+            }
+          },
+          "required": [
+            "zernike_standard"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Zernike Fringe Sag",
+          "properties": {
+            "zernike_fringe": {
+              "$ref": "#/$defs/ZernikeShape"
+            }
+          },
+          "required": [
+            "zernike_fringe"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Grid Sag",
+          "properties": {
+            "grid_sag": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "grid": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/GridSag"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "grid_file": {
+                  "description": "格子の .DAT のファイル名（書き出し用）",
+                  "type": "string"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "terms": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ZernSag"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "grid_sag"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Tilted: 平面 z = x tan α + y tan β。c・k は交点を求める初めの値にだけ使う（.zmx から読んだ値が残るとき）",
+          "properties": {
+            "tilted": {
+              "additionalProperties": false,
+              "properties": {
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "tan": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "tilted"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Irregular: 偏心・傾けた標準面に Zs ρ⁴ + Za ρ_y² + Zc ρ² ρ_y（ρ は半直径で正規化）",
+          "properties": {
+            "irregular": {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "description": "項を回す角度 [deg]",
+                  "format": "double",
+                  "type": "number"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "decenter": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "tilt": {
+                  "description": "傾き x・y [deg]",
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "za": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "zc": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "zs": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "irregular"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "y だけの偶数次非球面（Cylinder Fresnel の基板。働きは cylinder_fresnel）",
+          "properties": {
+            "cylinder": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "cylinder"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SolveWhat": {
       "description": "ソルブを外す量",
@@ -1969,6 +3431,17 @@
             "null"
           ]
         },
+        "row": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Row"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ほかの欄で書けない面（Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズ・GRIN の媒質・無視する面・\ndn・disp など）を、システムファイル（版 2）の面の行で書く。書くときはほかの欄を書かない。絞りの印（stop）は\n書けない（ブロックの set_stop で）。玉の最後の面の厚さ・媒質は使わない"
+        },
         "semi": {
           "$ref": "#/$defs/Semi",
           "default": 0.0,
@@ -2241,6 +3714,40 @@
       ],
       "type": "object"
     },
+    "Tilt": {
+      "additionalProperties": false,
+      "description": "傾き・偏心（座標ブレーク・面の前後）",
+      "properties": {
+        "decenter": {
+          "description": "偏心 x・y [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "order": {
+          "description": "順序（0: 偏心 → X → Y → Z、1: Z → Y → X → 偏心）",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tilt": {
+          "description": "傾き x・y・z [deg]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "UserItem": {
       "description": "ユーザーカタログの項目",
       "properties": {
@@ -2349,6 +3856,30 @@
       },
       "type": "object"
     },
+    "Value": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "description": "真偽（[`ConfigReader::flag`]。0・1 の数も受ける）",
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "description": "数の並び（角度 4 個など）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "設定の値（系ファイルの JSON では数・真偽・文字列・数の並びをそのまま書く）"
+    },
     "WaveplateSpec": {
       "description": "波長板: 速い軸 `axis_deg` に対する遅い軸の遅延。理想（材料なし）は (order + retardance)·wavelength_um/λ 波長。\n`material`（複屈折材、常光はガラス material、異常光は material-E）か `plates`（2 材の組など）があれば\n遅延は板ごとの Δn(λ)·d/λ。`material` で厚さを省くと、設計波長の遅延 order + retardance から決める",
       "properties": {
@@ -2408,6 +3939,94 @@
       "required": [
         "wavelength_um"
       ],
+      "type": "object"
+    },
+    "ZernSag": {
+      "description": "Zernike の矢高の項\n\nserde では内部の `groups`・`mmax` を書き出さず、読み直したら `coef` から作り直す。\n項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする",
+      "properties": {
+        "coef": {
+          "description": "項 1, 2, … の係数 [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "dx": {
+          "description": "Zernike の項の中心の偏心（Zern Decenter X・Y）[mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "dy": {
+          "format": "double",
+          "type": "number"
+        },
+        "extrapolate": {
+          "description": "正規化半径の外でも Zernike の項を使うか",
+          "type": "boolean"
+        },
+        "fringe": {
+          "description": "Fringe の順（規格化なし）か、Standard（Noll の順、規格化）か",
+          "type": "boolean"
+        },
+        "norm": {
+          "description": "正規化半径 [mm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "fringe",
+        "norm",
+        "coef",
+        "extrapolate",
+        "dx",
+        "dy"
+      ],
+      "type": "object"
+    },
+    "ZernikeShape": {
+      "additionalProperties": false,
+      "description": "Zernike Sag の形",
+      "properties": {
+        "a": {
+          "description": "土台の偶数次非球面の係数",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "c": {
+          "format": "double",
+          "type": "number"
+        },
+        "grid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GridSag"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Grid Sag から種類を変えた面に残った格子（近軸の曲率にだけ効く）"
+        },
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "terms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ZernSag"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "type": "object"
     },
     "ZmxGroup": {

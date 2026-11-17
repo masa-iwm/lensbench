@@ -18,7 +18,8 @@ fn radius_of(v: &Value) -> Option<f64> {
 
 /// 面の表の 1 行に値 key を書く。書けたか
 fn write_row(row: &mut SurfRow, key: &str, v: &Value, sign: f64) -> bool {
-    if row.kind != SurfKind::Standard {
+    // 行で持つ面は中身を変えない（面の上書きにする）
+    if row.kind != SurfKind::Standard || row.special().is_some() {
         return false;
     }
     match key {
@@ -80,6 +81,9 @@ fn set_more(row: &mut SurfRow, k: &str, v: Option<Value>) {
 
 /// 面の後の値（厚さ・ガラス）を行に書く。書けたか
 fn write_after(row: &mut SurfRow, key: &str, v: &Value) -> bool {
+    if row.special().is_some() {
+        return false;
+    }
     match key {
         "t" => v.as_f64().map(|t| row.t = t).is_some(),
         "material" => match v {

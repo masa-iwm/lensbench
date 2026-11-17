@@ -549,6 +549,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         "jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path".into(),
                     );
                 }
+                if v.iter().any(|s| !lensbench_core::elements::reversible(s)) {
+                    return Err(
+                        "only standard, even and odd asphere, toroidal, Fresnel and Binary 2 surfaces can be in a surface list on the return path".into(),
+                    );
+                }
                 if !place.on {
                     if place.off == OffMode::Air {
                         let l: f64 = v.iter().map(|s| s.t).sum();

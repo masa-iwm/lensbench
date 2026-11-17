@@ -106,10 +106,17 @@ fn p(d: &Surface, i: usize) -> f64 {
 }
 
 fn row(s: &System, j: usize) -> Result<Row, String> {
-    let d = &s.surfaces[j];
+    // 絞りの大きさで決める開口（Float By Stop Size）の絞りの半直径は開口そのもの（光線から求め直さない）なので値を書く
+    let float_stop = s.aperture.0 == ApertureKind::Float && j == s.stop();
+    let mut r = surface_row(&s.surfaces[j], float_stop)?;
+    r.object = j == 0;
+    r.image = j + 1 == s.surfaces.len();
+    Ok(r)
+}
+
+/// 面 1 つの行（物体面・像面の印は付けない）。float_stop は半直径を自動にしない（浮動開口の絞り）
+pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> {
     let mut r = Row {
-        object: j == 0,
-        image: j + 1 == s.surfaces.len(),
         comment: d.comment.clone(),
         coating: d.coat.clone(),
         stop: d.stop,
@@ -125,8 +132,6 @@ fn row(s: &System, j: usize) -> Result<Row, String> {
         disp: d.disp,
         ..Default::default()
     };
-    // 絞りの大きさで決める開口（Float By Stop Size）の絞りの半直径は開口そのもの（光線から求め直さない）なので値を書く
-    let float_stop = s.aperture.0 == ApertureKind::Float && j == s.stop();
     r.semi = if d.semi_auto && !float_stop {
         Some(Semi::Auto(Auto::Auto))
     } else if zero(&d.semi) {
@@ -332,7 +337,7 @@ fn row(s: &System, j: usize) -> Result<Row, String> {
     r.shape = shape;
     r.action = action;
     if !mirror {
-        r.medium = medium(s, j)?;
+        r.medium = medium(d)?;
     }
     Ok(r)
 }
@@ -362,9 +367,8 @@ fn aperture(d: &Surface) -> Option<Aperture> {
     })
 }
 
-/// 面 j の後の媒質（鏡でない面）
-fn medium(s: &System, j: usize) -> Result<Option<Medium>, String> {
-    let d = &s.surfaces[j];
+/// 面の後の媒質（鏡でない面）
+fn medium(d: &Surface) -> Result<Option<Medium>, String> {
     if let Some(g) = &d.grin {
         return Ok(Some(Medium::Data(MediumData::Grin(Box::new(Grin {
             name: d.mat.name(),

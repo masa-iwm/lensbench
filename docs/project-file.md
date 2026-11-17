@@ -120,6 +120,12 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 複屈折材の板を面で直接書く: 面の並びに `{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [x, y, z]}}}`
   （結晶軸は面の局所座標、`"mode": 0` で常光の成分だけ）と `{"t": 5, "birefringent": "out"}`。入口と出口の間にほかの面は置けない。
   .zmx の BIRE__IN（Mode 0・2）・BIRE_OUT も読める（Mode 1・3 の異常光の道と Gradient Mode は未対応）。
+- ほかの欄で書けない面: 面の並び・自作の玉の面に `{"row": {…}}` と書くと、システムファイル（版 2）の面の行
+  （`shape`・`action`・`medium`・`aperture`・`semi`・`t`・`ignore`・`dn`・`disp`・`comment`・`coating` など）で面を書ける。
+  Zernike Standard / Fringe Sag・Grid Sag・Irregular・Tilted・Binary 2・Cylinder Fresnel・理想レンズ・GRIN の媒質・無視する面などに使う。
+  `row` を書いた面にはほかの鍵を書かない。行の `stop`（絞りはブロックの `set_stop`）・`object`・`image` は書けない。玉の最後の面の
+  厚さ・媒質は使わない（後ろの空気のブロック）。GUI が .zmx を要素に分けるときもこの形で書く（鏡・座標ブレーク・面の前後の
+  傾き偏心のある .zmx は今までどおり取り込みのまま）。
 - フィルタ・ダイクロイックの膜: プロジェクトかユーザーカタログの `"coatings": {名前: 膜}` に書いた膜を、面・BS の `coat`
   に名前で使う（TABLE 膜として偏光の追跡・透過に効く。プロジェクトの同じ名前がカタログより優先、膜ファイルの同じ名前より優先）。
   膜は `{"type": "table", "rows": [[入射角 deg, 波長 µm, Rs, Rp, Ts, Tp], …]}`（表そのまま）、`curve`（`wavelengths_nm`・`t`・`r`、

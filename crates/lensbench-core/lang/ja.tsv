@@ -600,6 +600,7 @@ a system whose image space is not air is not split into lenses	像空間が空�
 only a lens can be reversed	反転できるのはレンズだけ
 a lens with surface tilts or decenters is not reversed	面のチルト・偏心があるレンズは反転しません
 a lens with a Jones surface is not reversed	Jones 面のあるレンズは反転しません
+a lens with a Zernike, grid sag, tilted, irregular, cylinder Fresnel or paraxial surface or a GRIN medium is not reversed	Zernike・Grid Sag・Tilted・Irregular・Cylinder Fresnel・理想レンズの面や GRIN の媒質のあるレンズは反転しません
 a lens with a spider aperture of an odd number of arms is not reversed	アームが奇数本のスパイダー開口のあるレンズは反転しません
 reversing a lens with a mirror or coordinate break	ミラー・座標ブレークを含むレンズの反転
 the rebuilt system has no stop	組み直したシステムに絞りがありません
@@ -889,6 +890,7 @@ tilt is not supported on a birefringent waveplate	複屈折材の波長板に ti
 a block with a mirror can't be 'kept as air'	ミラーを含むブロックは「空気で残す」にできません
 a mirror can't go in a decentered or tilted block (tilt the mirror itself)	偏心・チルトをつけたブロックにミラーは入れられません（ミラーのチルトはミラーで）
 jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path	往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応
+only standard, even and odd asphere, toroidal, Fresnel and Binary 2 surfaces can be in a surface list on the return path	復路の面の並びに置けるのは標準面・偶数次と奇数次の非球面・トロイダル面・Fresnel・Binary 2 の面だけです
 decentered or tilted groups are not supported on the return path (put it on the lenses in the group)	往路を戻る範囲の、偏心・チルトをつけた群は未対応（群の中のレンズに付けてください）
 groups that are OFF are not supported on the return path	往路を戻る範囲の、OFF の群は未対応
 a mirror on the return path	往路を戻る範囲にミラーがあります
@@ -2146,3 +2148,6 @@ project file: format version {n} is newer than this lensbench reads ({PROJECT_FO
 parameter {}: the target doesn't match the kind	パラメータ {}: 付く先が種類と合いません
 parameter {} is not on a surface	パラメータ {} は面のパラメータではありません
 {} is a pickup quantity, not a parameter	{} はピックアップの量で、パラメータではありません
+this surface can't be written as a row	この面は行で書けません
+a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
+row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）

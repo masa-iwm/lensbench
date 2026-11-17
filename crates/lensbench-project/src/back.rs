@@ -343,6 +343,36 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
 /// `surface_spec` → `surf` で同じ面に戻る。書けない値（面の前後の傾き・偏心、[`SurfShape`] のほかの型、
 /// 鏡、ignore、dn・disp）は誤り
 pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
+    surface_fields(f, last).or_else(|e| row_spec(f, last).map_err(|_| e))
+}
+
+/// ほかの欄で書けない面を、システムファイル（版 2）の面の行で（[`SurfSpec::row`]）。鏡（ブロックの鏡で書く）・
+/// ゴーストの反射・座標ブレークと、面の前後の傾き偏心（玉を裏返す・往復するときに向きを決められない）は書かない
+fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
+    if f.is_mirror()
+        || f.reflect.is_some()
+        || f.typ == SurfType::CoordBrk
+        || f.before.is_some()
+        || f.after != After::None
+    {
+        return Err("this surface can't be written as a row".into());
+    }
+    let mut r = crate::sysfile_v2::write::surface_row(f, false)?;
+    r.stop = false;
+    if last {
+        r.t = 0.0;
+        r.medium = None;
+        r.dn = 0.0;
+        r.disp = 0.0;
+    }
+    Ok(SurfSpec {
+        row: Some(Box::new(r)),
+        ..Default::default()
+    })
+}
+
+/// 面を SurfSpec の欄で（書けなければ誤り）
+fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     let shape = match f.typ {
         SurfType::Standard | SurfType::EvenAsph | SurfType::Jones | SurfType::CoordBrk => {
             SurfShape::Standard

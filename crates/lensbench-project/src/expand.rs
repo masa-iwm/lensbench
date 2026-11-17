@@ -56,6 +56,7 @@ pub(crate) fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
         .map(|i| {
             let mut s = v[n - 1 - i].clone();
             s.c = -s.c;
+            s.cx = -s.cx;
             s.asph.iter_mut().for_each(|a| *a = -*a);
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;
@@ -97,6 +98,22 @@ pub(crate) fn surf_ap(ap: Option<SurfAperture>, semi: f64) -> Aperture {
 }
 
 pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
+    if let Some(r) = &q.row {
+        let alone = SurfSpec {
+            row: None,
+            ..q.clone()
+        };
+        if serde_json::to_value(&alone).ok() != serde_json::to_value(SurfSpec::default()).ok() {
+            return Err("a surface written as row can't have the other keys".into());
+        }
+        if r.stop || r.object || r.image {
+            return Err(
+                "row of a surface can't have stop, object or image (use set_stop of the block)"
+                    .into(),
+            );
+        }
+        return crate::sysfile_v2::read::surface((**r).clone()).map_err(Into::into);
+    }
     let mut s = Surface {
         typ: match q.shape {
             SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => SurfType::EvenAsph,

@@ -158,7 +158,8 @@ fn named(v: &[f64]) -> Vec<f64> {
     a
 }
 
-fn surface(r: Row) -> Result<Surface, String> {
+/// 行 1 つの面（ガラスから引くもの: 波長板の複屈折材・ゴーストの反射の媒質は引かない）
+pub(crate) fn surface(r: Row) -> Result<Surface, String> {
     let mut d = Surface {
         comment: r.comment,
         coat: r.coating,

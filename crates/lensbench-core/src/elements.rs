@@ -186,6 +186,18 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
     Ok(out)
 }
 
+/// 面を前後反転できるか（曲率・非球面の係数の符号を変えるだけで済む形: 標準面・偶数次・奇数次非球面・トロイダル面・
+/// Fresnel・Binary 2（位相は ρ だけの関数で、薄い位相の板の遅れは光の向きによらないので係数はそのまま）、GRIN でない
+/// 媒質）。Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズなどは、反転に形ごとの
+/// 変換が要るので反転しない
+pub fn reversible(s: &Surface) -> bool {
+    use crate::surface::SurfType as T;
+    matches!(
+        s.typ,
+        T::Standard | T::EvenAsph | T::OddAsph | T::Toroidal | T::Fresnel | T::Binary2
+    ) && s.grin.is_none()
+}
+
 /// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 曲率・非球面・x の偏心の符号が反転）
 pub fn reverse(e: &Element) -> Result<Element> {
     if e.kind != Kind::Lens {
@@ -213,6 +225,9 @@ pub fn reverse(e: &Element) -> Result<Element> {
         s.asph.iter_mut().for_each(|a| *a = -*a);
         if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
+        }
+        if !reversible(&s) {
+            invalid!("a lens with a Zernike, grid sag, tilted, irregular, cylinder Fresnel or paraxial surface or a GRIN medium is not reversed");
         }
         s.ap = match s.ap {
             Aperture::Circular { min, max, dx, dy } => Aperture::Circular {
@@ -354,6 +369,33 @@ mod tests {
             assert_eq!((x.c, x.t, &x.mat), (y.c, y.t, &y.mat));
         }
         assert_eq!(a.paraxial().efl, s.paraxial().efl);
+    }
+
+    /// Binary 2 の面のある玉は反転でき、焦点距離が変わらない（位相の係数はそのまま）。Zernike の面のある玉は反転しない
+    #[test]
+    fn binary2_lens_reverses_and_zernike_does_not() {
+        let s = two_lenses();
+        let e = split(&s).unwrap();
+        let mut b = e[0].clone();
+        b.surfaces[1].typ = crate::surface::SurfType::Binary2;
+        b.surfaces[1].bin2 = Some(std::sync::Arc::new(crate::surface::Binary2 {
+            order: 1.0,
+            norm: 10.0,
+            coef: vec![-20.0],
+        }));
+        // 系の焦点距離（近軸の追跡は位相の面の屈折力も入る）
+        let efl = |x: &Element| {
+            let mut x = x.clone();
+            x.surfaces[0].stop = true;
+            assemble(&s, &[x, e[3].clone()]).unwrap().paraxial().efl
+        };
+        let r = reverse(&b).unwrap();
+        assert!((efl(&b) - efl(&e[0])).abs() > 1e-3 * efl(&e[0]).abs());
+        assert!((efl(&r) - efl(&b)).abs() < 1e-9 * efl(&b).abs());
+        assert_eq!(r.surfaces[0].bin2, b.surfaces[1].bin2);
+        let mut z = e[0].clone();
+        z.surfaces[0].typ = crate::surface::SurfType::ZernikeStd;
+        assert!(reverse(&z).is_err());
     }
 
     #[test]

@@ -153,6 +153,7 @@ pub const SURF_MORE: &[&str] = &[
     "aperture",
     "tilt",
     "birefringent",
+    "row",
 ];
 
 impl Default for SurfRow {
@@ -184,8 +185,18 @@ impl Default for SurfRow {
 }
 
 impl SurfRow {
+    /// ほかの欄で書けない面（Zernike・Grid Sag・GRIN など）の、システムファイル（版 2）の行。値はレンズデータの
+    /// 表で変え、面の上書きになる
+    pub fn special(&self) -> Option<&Value> {
+        self.more.get("row")
+    }
+
     /// project の SurfSpec の JSON
     pub fn json(&self) -> Value {
+        // ほかの欄で書けない面（システムファイルの行で持つ面）はその行だけ
+        if let (SurfKind::Standard, Some(r)) = (self.kind, self.special()) {
+            return json!({ "row": r });
+        }
         let mut v = self.json_fields();
         for (k, x) in &self.more {
             v[k] = x.clone();
@@ -3090,7 +3101,13 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                         ui.selectable_value(&mut r.kind, x, x.label());
                     }
                 });
-            if r.kind == SurfKind::Standard {
+            if r.kind == SurfKind::Standard && r.special().is_some() {
+                ui.label(
+                    RichText::new(tr("Special surface (values in the Lens Data table)"))
+                        .small()
+                        .color(weak),
+                );
+            } else if r.kind == SurfKind::Standard {
                 let rad = if r.radius == 0.0 {
                     "∞".to_string()
                 } else {

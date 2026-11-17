@@ -290,6 +290,98 @@ mod surface_spec_all_tests {
 }
 
 #[cfg(test)]
+mod surface_row_tests {
+    use super::*;
+    use lensbench_core::surface::SurfType;
+
+    /// SurfSpec の欄で書けない面（Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズ・GRIN など）は
+    /// システムファイル（版 2）の行で書け、読んで書き直しても同じ
+    #[test]
+    fn special_surfaces_round_trip_as_rows() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut files = Vec::new();
+        for d in ["tests/freeform", "tests/surftypes", "tests/grin"] {
+            for e in std::fs::read_dir(root.join(d)).unwrap().flatten() {
+                let p = e.path();
+                if p.extension().is_some_and(|x| x == "zmx") {
+                    files.push(p);
+                } else if p.join("system.zmx").exists() {
+                    files.push(p.join("system.zmx"));
+                }
+            }
+        }
+        let mut types = std::collections::BTreeSet::new();
+        let mut grin = 0;
+        for f in &files {
+            let opt = lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![
+                    root.join("tests/glass"),
+                    f.parent().unwrap().to_path_buf(),
+                    root.join("tests/grin"),
+                ],
+                ..Default::default()
+            };
+            let Ok(s) = lensbench_core::zmx::load_with(f, &opt) else {
+                continue;
+            };
+            let n = s.surfaces.len();
+            for (j, a) in s.surfaces.iter().enumerate().take(n - 1).skip(1) {
+                let Ok(q) = surface_spec(a, false) else {
+                    assert!(
+                        a.is_mirror()
+                            || a.reflect.is_some()
+                            || a.typ == SurfType::CoordBrk
+                            || a.before.is_some(),
+                        "{} surface {j}: {:?}",
+                        f.display(),
+                        surface_spec(a, false).err()
+                    );
+                    continue;
+                };
+                if q.row.is_none() {
+                    continue;
+                }
+                types.insert(format!("{:?}", a.typ));
+                grin += usize::from(a.grin.is_some());
+                let at = || format!("{} surface {j}", f.display());
+                let s1 = surf(&q).unwrap_or_else(|e| panic!("{}: {e}", at()));
+                assert_eq!(s1.typ, a.typ, "{}", at());
+                let q2 = surface_spec(&s1, false).unwrap();
+                let s2 = surf(&q2).unwrap();
+                assert_eq!(format!("{s1:?}"), format!("{s2:?}"), "{}", at());
+                assert_eq!(
+                    serde_json::to_value(&q).unwrap(),
+                    serde_json::to_value(&q2).unwrap(),
+                    "{}",
+                    at()
+                );
+                // 玉の最後の面: 厚さ・媒質は書かない
+                let last = surface_spec(a, true).unwrap();
+                let r = last.row.as_ref().unwrap();
+                assert!(r.t == 0.0 && r.medium.is_none(), "{}", at());
+            }
+        }
+        for t in ["ZernikeStd", "ZernikeFringe", "GridSag"] {
+            assert!(types.contains(t), "{t} not in {types:?}");
+        }
+        assert!(grin > 0, "{types:?}");
+        // ほかの欄と一緒には書けない
+        let mut q = surface_spec(
+            &lensbench_core::surface::Surface {
+                typ: SurfType::Paraxial,
+                ..Default::default()
+            },
+            false,
+        )
+        .unwrap();
+        assert!(q.row.is_some());
+        q.conic = 1.0;
+        assert!(surf(&q).is_err());
+    }
+}
+
+#[cfg(test)]
 mod read_text_tests {
     use super::*;
     use std::io::Write;
