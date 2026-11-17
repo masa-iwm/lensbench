@@ -1504,7 +1504,8 @@ pub struct Ctx<'a> {
     pub note: Option<&'a str>,
     /// 多重構成の構成の数と行の名前（セルのメニューの「多重構成の行にする」）
     pub config_n: usize,
-    pub config_rows: &'a [String],
+    /// 多重構成の表の行（操作の名前と構成ごとの値）
+    pub config_rows: &'a [(String, Vec<f64>)],
     /// 硝材の候補（GUI のガラスカタログ）
     pub glasses: &'a [GlassChoice],
     /// ガラスカタログを読み終えた（候補が空でも）

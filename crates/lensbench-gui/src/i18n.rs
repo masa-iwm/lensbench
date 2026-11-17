@@ -97,12 +97,46 @@ pub const fn n_(en: &'static str) -> &'static str {
     en
 }
 
+/// 番地を混ぜるだけのハッシュ（鍵は文字列の番地と長さ）
+#[derive(Default)]
+struct AddrHasher(u64);
+
+impl std::hash::Hasher for AddrHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, b: &[u8]) {
+        for &x in b {
+            self.write_u64(u64::from(x));
+        }
+    }
+    fn write_usize(&mut self, n: usize) {
+        self.write_u64(n as u64);
+    }
+    fn write_u64(&mut self, n: u64) {
+        self.0 = (self.0.rotate_left(5) ^ n).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
+thread_local! {
+    /// 同梱の表で引けた訳を英語の番地で（拡張の訳は後から足せるので入れない）
+    static BY_ADDR: std::cell::RefCell<
+        HashMap<(usize, usize), &'static str, std::hash::BuildHasherDefault<AddrHasher>>,
+    > = Default::default();
+}
+
 /// 今の言語の文字列
 pub fn tr(en: &'static str) -> &'static str {
     if !is_ja() {
         return en;
     }
+    // 同じ文字列の定数は同じ番地なので、番地で先に引く（毎フレーム何百回も呼ぶ。文字列をハッシュしない）
+    let key = (en.as_ptr() as usize, en.len());
+    if let Some(j) = BY_ADDR.with(|m| m.borrow().get(&key).copied()) {
+        return j;
+    }
     if let Some(j) = ja().get(en) {
+        BY_ADDR.with(|m| m.borrow_mut().insert(key, *j));
         return j;
     }
     EXTRA

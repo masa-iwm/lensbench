@@ -34,7 +34,7 @@ pub(super) fn cell_menu(
     r: &Row,
     bire: Option<&Value>,
     combo: bool,
-    cfg: (usize, &[String]),
+    cfg: (usize, &[(String, Vec<f64>)]),
 ) -> Vec<Act> {
     let mut ops: Vec<Value> = Vec::new();
     let mut acts = Vec::new();
@@ -237,7 +237,7 @@ pub(super) fn cell_menu(
     }
     // 多重構成の行にする（開いた系）
     if let (false, Some(name)) = (combo, config_param(r, j, col)) {
-        let have = cfg.1.iter().any(|p| p.eq_ignore_ascii_case(&name));
+        let have = cfg.1.iter().any(|p| p.0.eq_ignore_ascii_case(&name));
         let resp = ui.add_enabled(
             !have,
             egui::Button::new(if have {

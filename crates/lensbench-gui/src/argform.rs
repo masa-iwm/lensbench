@@ -329,8 +329,8 @@ pub fn exclusive_groups(specs: &[&ArgSpec]) -> Vec<Vec<usize>> {
 }
 
 /// 解析 `cmd` の引数の一覧（CLI の定義から。プロセスの中で 1 度だけ作る）
-pub fn analysis_specs(cmd: &str) -> Vec<ArgSpec> {
-    static CACHE: OnceLock<Mutex<HashMap<String, Vec<ArgSpec>>>> = OnceLock::new();
+pub fn analysis_specs(cmd: &str) -> std::sync::Arc<[ArgSpec]> {
+    static CACHE: OnceLock<Mutex<HashMap<String, std::sync::Arc<[ArgSpec]>>>> = OnceLock::new();
     let mut c = CACHE.get_or_init(Default::default).lock_ok();
     c.entry(cmd.to_string())
         .or_insert_with(|| {
@@ -340,7 +340,7 @@ pub fn analysis_specs(cmd: &str) -> Vec<ArgSpec> {
             for s in &mut v {
                 s.label = analysis_label(cmd, &s.name);
             }
-            v
+            v.into()
         })
         .clone()
 }
@@ -832,7 +832,7 @@ mod tests {
     #[test]
     fn analysis_args_have_titles() {
         for (cmd, _, _) in crate::layout::ANALYSES {
-            for s in analysis_specs(cmd) {
+            for s in analysis_specs(cmd).iter() {
                 if s.name == "save" {
                     continue;
                 }

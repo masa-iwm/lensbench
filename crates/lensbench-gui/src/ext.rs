@@ -100,6 +100,11 @@ fn table() -> Option<GuiExt> {
     lensbench_core::ext::current().slot::<GuiExt>().cloned()
 }
 
+/// 表を写さずに f で読む（毎フレーム引く `get`・`detector` 用）
+fn with_table<R>(f: impl FnOnce(&GuiExt) -> Option<R>) -> Option<R> {
+    lensbench_core::ext::current().slot::<GuiExt>().and_then(f)
+}
+
 /// 拡張の検出器（組合せの最後に置く検出器のブロック、`lensbench_project::detectors` に登録した種類）の欄
 #[derive(Clone, Copy)]
 pub struct Detector {
@@ -121,7 +126,7 @@ pub fn detectors() -> Vec<Detector> {
 
 /// kind の検出器
 pub fn detector(kind: &str) -> Option<Detector> {
-    detectors().into_iter().find(|d| d.kind == kind)
+    with_table(|t| t.detectors.iter().find(|d| d.kind == kind).copied())
 }
 
 /// 解析をプロセスの既定の表に足す（同じ cmd は置き換える）
@@ -136,7 +141,7 @@ pub fn list() -> Vec<Analysis> {
 
 /// cmd の拡張の解析
 pub fn get(cmd: &str) -> Option<Analysis> {
-    list().into_iter().find(|a| a.cmd == cmd)
+    with_table(|t| t.analyses.iter().find(|a| a.cmd == cmd).copied())
 }
 
 /// 英語の訳（日本語, 英語）を足す（`tr` で引く。同梱の表に無いものだけ使う）

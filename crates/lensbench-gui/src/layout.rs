@@ -88,17 +88,24 @@ pub fn analysis_group(cmd: &str) -> &'static str {
     }
 }
 
-/// 解析の表示名（今の言語）
-pub fn analysis_label(cmd: &str) -> String {
-    analyses()
+/// cmd の解析（同梱、無ければ拡張）。一覧を作らずに引く（タブの名前などで毎フレーム呼ぶ）
+fn find_analysis(cmd: &str) -> Option<(&'static str, &'static str, bool)> {
+    ANALYSES
         .iter()
         .find(|a| a.0 == cmd)
+        .copied()
+        .or_else(|| crate::ext::get(cmd).map(|a| (a.cmd, a.label, a.select)))
+}
+
+/// 解析の表示名（今の言語）
+pub fn analysis_label(cmd: &str) -> String {
+    find_analysis(cmd)
         .map(|a| tr(a.1).to_string())
         .unwrap_or_else(|| cmd.to_string())
 }
 
 pub fn takes_sel(cmd: &str) -> bool {
-    analyses().iter().find(|a| a.0 == cmd).is_some_and(|a| a.2)
+    find_analysis(cmd).is_some_and(|a| a.2)
 }
 
 /// 解析の結果の見せ方

@@ -40,6 +40,7 @@ impl Core {
         }
         // 今の経路に沿った要素（分岐の無い組合せは並びそのもの）
         let picks = &self.doc.combo.chain_view().picks;
+        // 開いた系は欄の集合を表を描く間だけ借りる（毎フレーム写さない。表を描いた後で戻す）
         let locked: BTreeSet<String> = if is_combo {
             ids.iter()
                 .zip(picks)
@@ -47,7 +48,7 @@ impl Core {
                 .map(|(i, _)| i.clone())
                 .collect()
         } else {
-            self.p.ld.locked.clone()
+            std::mem::take(&mut self.p.ld.locked)
         };
         let lead = self.doc.combo.lead_stop();
         let spans = if is_combo {
@@ -76,16 +77,9 @@ impl Core {
         };
         let overridden =
             |j: usize, col: Col| is_combo && ld_combo::overridden(rows, &spans, picks, j, col);
-        let cfg_rows: Vec<String> = self
-            .p
-            .mc
-            .table
-            .as_ref()
-            .map(|t| t.rows.iter().map(|r| r.0.clone()).collect())
-            .unwrap_or_default();
         let ctx = lens_data::Ctx {
             config_n: self.p.mc.table.as_ref().map_or(1, |t| t.n),
-            config_rows: &cfg_rows,
+            config_rows: self.p.mc.table.as_ref().map_or(&[], |t| t.rows.as_slice()),
             glasses: &self.ld_glasses,
             glasses_loaded: self.browser.loaded && !self.browser.glasses_pending,
             rows,
@@ -100,6 +94,9 @@ impl Core {
             )),
         };
         let (acts, mut bottom) = lens_data::ui(ui, &mut self.p.ld, &ctx);
+        if !is_combo {
+            self.p.ld.locked = locked;
+        }
         for a in acts {
             match a {
                 Act::Select(name) => {

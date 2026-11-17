@@ -455,6 +455,8 @@ struct Core {
     rev: u64,
     /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す）
     param_sys_cache: std::cell::RefCell<Option<(u64, std::rc::Rc<crate::param_pick::Sys>)>>,
+    /// [`Core::field_labels`] の写し
+    field_labels_cache: std::cell::RefCell<analysis_ui::FieldLabels>,
     /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
     sys_gen: u64,
 }
@@ -2093,6 +2095,7 @@ impl App {
                 swap_file: None,
                 rev: 0,
                 param_sys_cache: Default::default(),
+                field_labels_cache: Default::default(),
                 sys_gen: 0,
                 browser,
                 doc,

@@ -3,10 +3,40 @@
 use super::*;
 
 impl Core {
+    /// 視野の表示（`(x, y)`）。系の要約の視野が変わったときだけ作り直す（系・解析のパネルが毎フレーム使う。
+    /// 比べるのは数だけなので、要約を差し替えた経路を問わない）
+    pub(super) fn field_labels(&self) -> std::rc::Rc<[String]> {
+        let xy = |f: &Value| [f[0].as_f64().unwrap_or(0.0), f[1].as_f64().unwrap_or(0.0)];
+        let src: &[Value] = self
+            .sys
+            .summary
+            .as_ref()
+            .and_then(|s| s["fields"].as_array())
+            .map_or(&[], Vec::as_slice);
+        {
+            let c = self.field_labels_cache.borrow();
+            if c.0.len() == src.len() && c.0.iter().zip(src).all(|(a, f)| *a == xy(f)) {
+                return c.1.clone();
+            }
+        }
+        let pts: Vec<[f64; 2]> = src.iter().map(xy).collect();
+        let labels: std::rc::Rc<[String]> = pts
+            .iter()
+            .map(|p| format!("({}, {})", fmt_num(p[0]), fmt_num(p[1])))
+            .collect();
+        *self.field_labels_cache.borrow_mut() = (pts, labels.clone());
+        labels
+    }
+
     /// 系の要約（大きな数）とパラメータ
     pub(super) fn system_ui(&mut self, ui: &mut Ui) {
         let weak = theme::weak_text(ui.visuals());
-        let Some(sum) = self.sys.summary.clone() else {
+        let Some(sum) = self.sys.summary.as_ref().map(|s| {
+            (
+                s["name"].as_str().unwrap_or_default().to_string(),
+                s["surfaces"].to_string(),
+            )
+        }) else {
             ui.add_space(8.0);
             ui.label(tr(
                 "Open a system file (.zmx or project .json), or drop it onto the window.",
@@ -31,7 +61,7 @@ impl Core {
             return;
         };
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let name = sum["name"].as_str().unwrap_or_default();
+            let (name, surfaces) = sum;
             if !name.is_empty() {
                 ui.label(RichText::new(name).strong());
             }
@@ -77,6 +107,7 @@ impl Core {
                 });
             }
             ui.add_space(4.0);
+            let fields = self.field_labels();
             egui::Grid::new("summary")
                 .num_columns(2)
                 .striped(true)
@@ -99,24 +130,7 @@ impl Core {
                         tr("Paraxial image height [mm]"),
                         RichText::new(n(self.info_num("paraxial_image_height"))),
                     );
-                    row(
-                        tr("Number of surfaces"),
-                        RichText::new(format!("{}", sum["surfaces"])),
-                    );
-                    let fields: Vec<String> = sum["fields"]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .map(|f| {
-                                    format!(
-                                        "({}, {})",
-                                        fmt_num(f[0].as_f64().unwrap_or(0.0)),
-                                        fmt_num(f[1].as_f64().unwrap_or(0.0))
-                                    )
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                    row(tr("Number of surfaces"), RichText::new(surfaces));
                     row(tr("Fields"), RichText::new(fields.join(" ")));
                 });
             // 波長（色付き）
@@ -142,7 +156,7 @@ impl Core {
                 .color(weak),
             );
             let mut remove = None;
-            for (i, p) in self.ses.params.clone().iter().enumerate() {
+            for (i, p) in self.ses.params.iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(p).monospace());
                     match self.sys.param_vals.get(p).copied() {
@@ -203,33 +217,39 @@ impl Core {
         });
     }
 
-    /// 解析の引数の欄に並べる項目（視野・波長を上で選ぶ解析はそれを除く。図に要る引数は図のときは GUI が足すので除く）
-    pub(super) fn shown_specs(&self, cfg: &AnaCfg) -> Vec<argform::ArgSpec> {
+    /// 解析の引数の欄に並べる項目（視野・波長を上で選ぶ解析はそれを除く。図に要る引数は図のときは GUI が足すので除く）。
+    /// 解析パネルごとに毎フレーム呼ぶので、引数の一覧は写さずに並べる項目の番号だけ持つ
+    pub(super) fn shown_specs(&self, cfg: &AnaCfg) -> ShownSpecs {
         let object = crate::ext::get(&cfg.cmd).and_then(|a| a.object);
         let sel = layout::takes_sel(&cfg.cmd);
         let fig = cfg.view == View::Figure;
-        argform::analysis_specs(&cfg.cmd)
-            .into_iter()
+        let all = argform::analysis_specs(&cfg.cmd);
+        let keep = all
+            .iter()
+            .enumerate()
             // 結果の書き出し（save）は「JSON をコピー」で足りるので出さない
             // 設定のオブジェクトの引数（とそのファイル）は下の欄（JSON を読む）で
-            .filter(|s| s.name != "save" && !object.is_some_and(|o| o.covers(&s.name)))
-            .filter(|s| !(sel && (s.name == "field" || s.name == "wave")))
-            .filter(|s| {
+            .filter(|(_, s)| s.name != "save" && !object.is_some_and(|o| o.covers(&s.name)))
+            .filter(|(_, s)| !(sel && (s.name == "field" || s.name == "wave")))
+            .filter(|(_, s)| {
                 !(fig
                     && matches!(
                         (cfg.cmd.as_str(), s.name.as_str()),
                         ("wavefront", "map") | ("interference" | "pop", "grid")
                     ))
             })
-            .map(|mut s| {
-                // GUI が既定で足す周波数は欄の薄い字に
-                if matches!(cfg.cmd.as_str(), "mtf-field" | "mtf-focus") && s.name == "freqs" {
-                    s.default = json!(figures::default_freqs(self.cutoff()));
-                    s.required = false;
-                }
-                s
-            })
-            .collect()
+            .map(|(i, _)| i)
+            .collect();
+        // GUI が既定で足す周波数は欄の薄い字に
+        let freqs = matches!(cfg.cmd.as_str(), "mtf-field" | "mtf-focus")
+            .then(|| all.iter().find(|s| s.name == "freqs"))
+            .flatten()
+            .map(|s| argform::ArgSpec {
+                default: json!(figures::default_freqs(self.cutoff())),
+                required: false,
+                ..s.clone()
+            });
+        ShownSpecs { all, keep, freqs }
     }
 
     /// 上の行の「⚙ 設定」（開閉と変えた数）と「すべて既定に」。計算し直すなら true
@@ -512,21 +532,7 @@ impl Core {
         }
         let nf = self.n_fields();
         let waves = self.waves_um();
-        let fields: Vec<String> = self
-            .sys
-            .summary
-            .as_ref()
-            .and_then(|s| s["fields"].as_array().cloned())
-            .unwrap_or_default()
-            .iter()
-            .map(|f| {
-                format!(
-                    "({}, {})",
-                    fmt_num(f[0].as_f64().unwrap_or(0.0)),
-                    fmt_num(f[1].as_f64().unwrap_or(0.0))
-                )
-            })
-            .collect();
+        let fields = self.field_labels();
         let before = cfg.clone();
         let mut rerun = false;
         ui.horizontal_wrapped(|ui| {
@@ -621,3 +627,25 @@ impl Core {
         }
     }
 }
+
+/// [`Core::shown_specs`] の答え: 解析の引数の一覧（共有）と、並べる項目の番号。周波数は既定を GUI のものに変えた写し
+pub(super) struct ShownSpecs {
+    all: std::sync::Arc<[argform::ArgSpec]>,
+    keep: Vec<usize>,
+    freqs: Option<argform::ArgSpec>,
+}
+
+impl ShownSpecs {
+    pub(super) fn iter(&self) -> impl Iterator<Item = &argform::ArgSpec> {
+        self.keep.iter().map(|&i| {
+            let s = &self.all[i];
+            match &self.freqs {
+                Some(f) if s.name == "freqs" => f,
+                _ => s,
+            }
+        })
+    }
+}
+
+/// 視野の表示の写し（元の視野の座標と、表示の文字列）
+pub(super) type FieldLabels = (Vec<[f64; 2]>, std::rc::Rc<[String]>);
