@@ -74,6 +74,8 @@ rfd = "0.15"
 
 # 未完のカタログ品の品ページを開くアプリ内のブラウザ（WebView2。別のプロセスで動かす、webview.rs）。feature webview
 [target.'cfg(windows)'.dependencies]
+# ファイルの窓の持ち主（本体の HWND を rfd に渡す、files.rs）
+raw-window-handle = "0.6"
 wry = { version = "0.56", default-features = false, optional = true }
 tao = { version = "0.36", default-features = false, features = ["rwh_06"], optional = true }
 

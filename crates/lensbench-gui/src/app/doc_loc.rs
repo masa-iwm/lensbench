@@ -24,6 +24,19 @@ pub(super) struct DocLoc {
     pub(super) ld_dirty: bool,
 }
 
+impl DocLoc {
+    /// 保存の窓を始めるフォルダ: 保存先・元のファイル・読み込んだ系のフォルダ（下書きの置き場は除く）
+    pub(super) fn dir(&self) -> Option<PathBuf> {
+        let work = work_dir();
+        [&self.doc_path, &self.doc_from, &self.file]
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p.parent())
+            .find(|d| !d.starts_with(&work) && d.is_dir())
+            .map(Path::to_path_buf)
+    }
+}
+
 /// 組合せの系・カタログの下書きを置くフォルダ。中身はプロセスの中のメモリ（[`crate::work_fs`]）。
 /// ネイティブはプロセスごとに分ける。Web 版の置き場はページごとなので分けない
 pub(super) fn work_dir() -> PathBuf {

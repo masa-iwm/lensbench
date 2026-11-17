@@ -39,16 +39,9 @@ impl Core {
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
     ) {
-        if !self.saves.push(d, then) {
-            self.save_dialog_busy();
+        if !self.saves.push(d.or_directory(self.loc.dir()), then) {
+            self.status = busy_status();
         }
-    }
-
-    /// 保存の窓がもう出ているので、新しい保存はしない（下の行に知らせる。保存して閉じるのも止まる）
-    pub(super) fn save_dialog_busy(&mut self) {
-        self.fail(tr(
-            "A save dialog is already open; finish or cancel it first",
-        ));
     }
 
     /// 保存先を選んでいる途中か

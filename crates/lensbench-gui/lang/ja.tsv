@@ -287,7 +287,7 @@ Stop diameter	絞りの径
 Aperture, fields, wavelengths and weights, ray aiming, object distance, stop position, and more	開口・視野・波長とウェイト・エイミング・物体距離・絞りの位置など
 Double-click for full view	ダブルクリックで全体表示
 Set the BS in the element settings	BS は組合せの要素の設定で
-Saved to {}	{} に保存
+Saved to {}	保存しました: {}
 {} is locked	{} はロック中
 {} is not a number	{} は数ではありません
 Lock {}	{} をロック
@@ -1319,7 +1319,7 @@ Return	戻り
 Return pass after a mirror (double pass): reverse surface order, keep curvature, negate thickness	ミラーの後の戻り（ダブルパス）: 面の順を逆に、曲率はそのまま、厚みの符号を変える
 Export only the selected surface range (lens/group) to a system file… (Shift selects a range; save the whole system with File → Save)	選択した面の範囲（レンズ・群）だけをシステムファイルにエクスポート…（Shift で範囲を選択。システム全体の保存はファイル → 保存）
 Select the surfaces to export (not the object or image surface)	エクスポートする面を選択してください（物体面・像面は除きます）
-Exported to {}	{} にエクスポート
+Exported to {}	エクスポートしました: {}
 Zernike {}	Zernike {}
 r^{} coefficient	r^{} の係数
 {} {}	{} の{}

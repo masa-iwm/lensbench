@@ -1928,6 +1928,8 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> App {
         let font = crate::fonts::install(&cc.egui_ctx);
         crate::files::set_ctx(&cc.egui_ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::files::set_owner(cc);
         // 通し確認では保存した設定を使わない（引数のフォルダだけ）
         let mut s: Settings = if args.tour.is_some() {
             Settings::default()

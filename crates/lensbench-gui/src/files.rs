@@ -19,6 +19,8 @@ use std::path::PathBuf;
 pub struct FileDialog {
     filters: Vec<(String, Vec<String>)>,
     file_name: Option<String>,
+    /// 始めのフォルダ（開いているファイルのフォルダなど。無ければ OS が決める）
+    directory: Option<PathBuf>,
 }
 
 impl FileDialog {
@@ -34,6 +36,13 @@ impl FileDialog {
         self.file_name = Some(n.into());
         self
     }
+    /// 始めのフォルダ（もう決めてあれば変えない）
+    pub fn or_directory(mut self, dir: Option<PathBuf>) -> Self {
+        if self.directory.is_none() {
+            self.directory = dir.filter(|d| d.is_dir());
+        }
+        self
+    }
 
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
     fn rfd(&self) -> rfd::FileDialog {
@@ -43,6 +52,14 @@ impl FileDialog {
         }
         if let Some(f) = &self.file_name {
             d = d.set_file_name(f);
+        }
+        if let Some(dir) = &self.directory {
+            d = d.set_directory(dir);
+        }
+        // 持ち主を本体の窓にする（本体をクリックしても窓が後ろに回らない）
+        #[cfg(windows)]
+        if let Some(o) = native::owner() {
+            d = d.set_parent(&o);
         }
         d
     }
@@ -175,6 +192,58 @@ mod native {
         *CTX.lock_ok() = Some(ctx.clone());
     }
 
+    /// Windows: 本体の窓（HWND）。ファイルの窓の持ち主にする
+    #[cfg(windows)]
+    static OWNER: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+    /// 本体の窓を覚える（Windows だけ。ほかは何もしない）
+    pub fn set_owner(cc: &eframe::CreationContext<'_>) {
+        #[cfg(windows)]
+        {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(h) = cc.window_handle() {
+                if let RawWindowHandle::Win32(w) = h.as_raw() {
+                    OWNER.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = cc;
+    }
+
+    #[cfg(windows)]
+    pub fn owner() -> Option<Owner> {
+        std::num::NonZeroIsize::new(OWNER.load(std::sync::atomic::Ordering::Relaxed)).map(Owner)
+    }
+
+    /// rfd の set_parent に渡す本体の窓
+    #[cfg(windows)]
+    pub struct Owner(std::num::NonZeroIsize);
+
+    #[cfg(windows)]
+    impl raw_window_handle::HasWindowHandle for Owner {
+        fn window_handle(
+            &self,
+        ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+            let h = raw_window_handle::Win32WindowHandle::new(self.0);
+            // 本体の窓はアプリが終わるまで生きている
+            Ok(unsafe {
+                raw_window_handle::WindowHandle::borrow_raw(
+                    raw_window_handle::RawWindowHandle::Win32(h),
+                )
+            })
+        }
+    }
+
+    #[cfg(windows)]
+    impl raw_window_handle::HasDisplayHandle for Owner {
+        fn display_handle(
+            &self,
+        ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+            Ok(raw_window_handle::DisplayHandle::windows())
+        }
+    }
+
     /// 窓を出す（同じ id の窓が出ている間は出さない）
     pub fn spawn(
         id: &str,
@@ -242,6 +311,10 @@ pub fn set_ctx(ctx: &egui::Context) {
     #[cfg(not(target_arch = "wasm32"))]
     native::set_ctx(ctx);
 }
+
+/// 本体の窓を覚える（Windows はファイルの窓の持ち主にする）
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::set_owner;
 
 /// 人の答えを待たない運転（画面の通し確認 `--tour`）。確かめる窓は出さずに「いいえ」（CI の Linux で
 /// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない
@@ -312,8 +385,15 @@ mod zenity {
                 let pats: Vec<String> = e.iter().map(|x| format!("*.{x}")).collect();
                 a.push(format!("--file-filter={n} | {}", pats.join(" ")));
             }
+            let dir = self
+                .0
+                .directory
+                .as_ref()
+                .map(|d| format!("{}/", d.display()));
             if let Some(f) = &self.0.file_name {
-                a.push(format!("--filename={f}"));
+                a.push(format!("--filename={}{f}", dir.unwrap_or_default()));
+            } else if let Some(d) = dir {
+                a.push(format!("--filename={d}"));
             }
             a
         }
