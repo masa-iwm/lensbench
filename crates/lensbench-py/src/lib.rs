@@ -38,7 +38,7 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
-    Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, Trace,
+    Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolIn, Trace,
 };
 use lensbench_core::{analysis, psf, sweep, with_threads, zmx, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
@@ -809,7 +809,12 @@ fn compute(
         (Some(w), Some(c)) => {
             let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
             let y = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
-            let p = sys.trace_pol_launch(launch, w, &[x, y], c, o.pol_phase, RecSel::Off)?;
+            let p = sys.trace_pol_launch(
+                launch,
+                w,
+                PolIn::new(&[x, y], c).phase(o.pol_phase),
+                RecSel::Off,
+            )?;
             // (光線, 行 = 出射の x・y, 列 = 入射の x・y) と z 成分 (光線, 列)
             let mut j = Vec::with_capacity(n * 4);
             let mut z = Vec::with_capacity(n * 2);

@@ -14,7 +14,7 @@ use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
 use lensbench_core::pupil::{PupilFunction, PupilGrid, Rim};
 use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
-use lensbench_core::system::{FieldSel, System};
+use lensbench_core::system::{FieldSel, PolIn, System};
 use lensbench_core::{invalid, Result};
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -229,9 +229,13 @@ fn trace_grid(
     let mut e = vec![[C64::new(0.0, 0.0); 3]; g * g];
     // 偏光つきなら偏光追跡の結果の追跡（同じ光線、ビット単位で同じ）を使い、同じ点を 2 回追わない
     let pt = match pol {
-        Some((p, coat)) => {
-            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[p.jones()], coat, false)?)
-        }
+        Some((p, coat)) => Some(sys.try_trace_pol(
+            field,
+            &pxs,
+            &pys,
+            Some(w),
+            PolIn::new(&[p.jones()], coat).no_phase(),
+        )?),
         None => None,
     };
     let plain;

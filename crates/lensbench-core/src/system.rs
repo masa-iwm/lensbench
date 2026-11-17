@@ -630,6 +630,7 @@ mod launch;
 mod near;
 mod paraxial;
 mod pol;
+pub use pol::PolIn;
 mod raybuf;
 mod rays;
 mod types;

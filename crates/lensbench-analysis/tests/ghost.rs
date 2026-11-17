@@ -2,7 +2,7 @@
 
 use lensbench_analysis::ghost::{self, ghost_system};
 use lensbench_core::coating::{stack, Coatings, C64};
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use std::path::PathBuf;
@@ -114,10 +114,22 @@ fn plate_ghost_has_r_squared_intensity_and_the_extra_path() {
     let r = (n - 1.0) / (n + 1.0);
     for hy in [0.0, 1.0] {
         let m = s
-            .try_trace_pol(FieldSel::Norm(0.0, hy), &[0.0], &[0.0], None, &[X, Y], &c)
+            .try_trace_pol(
+                FieldSel::Norm(0.0, hy),
+                &[0.0],
+                &[0.0],
+                None,
+                PolIn::new(&[X, Y], &c),
+            )
             .unwrap();
         let h = g
-            .try_trace_pol(FieldSel::Norm(0.0, hy), &[0.0], &[0.0], None, &[X, Y], &c)
+            .try_trace_pol(
+                FieldSel::Norm(0.0, hy),
+                &[0.0],
+                &[0.0],
+                None,
+                PolIn::new(&[X, Y], &c),
+            )
             .unwrap();
         let th0 = (10.0f64 * hy).to_radians();
         let th1 = (th0.sin() / n).asin();
@@ -160,10 +172,22 @@ fn ideal_coating_reflects_one_minus_t() {
     let g = ghost_system(&s, 2, 1).unwrap().sys;
     let c = Coatings::for_system(&s).unwrap();
     let m = s
-        .try_trace_pol(FieldSel::Norm(0.0, 1.0), &[0.3], &[0.2], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 1.0),
+            &[0.3],
+            &[0.2],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let h = g
-        .try_trace_pol(FieldSel::Norm(0.0, 1.0), &[0.3], &[0.2], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 1.0),
+            &[0.3],
+            &[0.2],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let i = |e: [C64; 3]| e.iter().map(|z| z.norm_sqr()).sum::<f64>();
     let ratio = i(h.e[0][0]) / i(m.e[0][0]);
@@ -268,7 +292,13 @@ fn image_surface_reflects_first_only_when_listed_with_a_coating() {
     let g = ghost_system(&s, 3, 1).unwrap().sys;
     let c = Coatings::for_system(&s).unwrap();
     let h = g
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     assert!(h.e[0][0].iter().all(|z| z.norm() == 0.0));
     // 像面に理想膜 I.96（反射率 4%）: 検出器の反射
@@ -282,10 +312,22 @@ fn image_surface_reflects_first_only_when_listed_with_a_coating() {
     assert_eq!(ghost::pairs(&s, 1, 3), vec![(2, 1), (3, 1), (3, 2)]);
     let g = ghost_system(&s, 3, 2).unwrap().sys;
     let m = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let h = g
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let i = |e: [C64; 3]| e.iter().map(|z| z.norm_sqr()).sum::<f64>();
     // 像面で 4%、面 2 に空気側から戻って 4%（膜なし n = 1.5）、面 2 の透過はもう 1 回ぶん要らない

@@ -6,7 +6,7 @@
 //! ので、書き出した .zmx を開いた系とは全波長で合う。プロジェクトの系（波長ごとの Jones）と合うのは設計波長
 //! （0.6328 µm）だけで、他の波長では波長板の遅延の違いだけずれる。
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::{FieldSel, System};
+use lensbench_core::system::{FieldSel, PolIn, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
 use lensbench_project::{expand, Env, ExpandOpts, Project};
@@ -152,7 +152,13 @@ fn pol_diff(s: &System) -> Vec<(f64, f64)> {
         let (px, py) = (v("px"), v("py"));
         for (w, wv) in worst.iter_mut().enumerate() {
             let t = s
-                .try_trace_pol(FieldSel::Norm(hx, hy), &px, &py, Some(w), &pols, &coat)
+                .try_trace_pol(
+                    FieldSel::Norm(hx, hy),
+                    &px,
+                    &py,
+                    Some(w),
+                    PolIn::new(&pols, &coat),
+                )
                 .unwrap();
             for (i, e) in t.e.iter().enumerate() {
                 let o = |m: usize, c: usize| {

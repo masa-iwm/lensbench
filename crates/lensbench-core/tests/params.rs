@@ -2,7 +2,7 @@
 
 use crate::common::root;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use lensbench_formats::zmx_write;
@@ -276,12 +276,15 @@ fn surface_shape_cache_follows_curvature_changes() {
         let flat = base.with_params(&[(p, 0.0)]).unwrap();
         let coat = Coatings::for_system(&flat).unwrap_or_default();
         let f = FieldSel::Index(1.min(flat.fields.len() - 1));
-        flat.try_trace_pol(f, &px, &py, None, &pols, &coat).unwrap();
+        flat.try_trace_pol(f, &px, &py, None, PolIn::new(&pols, &coat))
+            .unwrap();
         let back = flat.with_params(&[(p, c0)]).unwrap();
         let fresh = back.prescription().clone().build_raw().unwrap();
-        let a = back.try_trace_pol(f, &px, &py, None, &pols, &coat).unwrap();
+        let a = back
+            .try_trace_pol(f, &px, &py, None, PolIn::new(&pols, &coat))
+            .unwrap();
         let b = fresh
-            .try_trace_pol(f, &px, &py, None, &pols, &coat)
+            .try_trace_pol(f, &px, &py, None, PolIn::new(&pols, &coat))
             .unwrap();
         for (i, (ra, rb)) in a.trace.rays.iter().zip(&b.trace.rays).enumerate() {
             for k in 0..3 {

@@ -1,7 +1,7 @@
 //! 偏光子・波長板の面: 波長ごとの Jones 行列、偏光の追跡、面の書き方の往復
 
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
@@ -35,14 +35,12 @@ fn fields(s: &lensbench_core::System, w: usize) -> [[C64; 2]; 2] {
     let one = C64::new(1.0, 0.0);
     let zero = C64::new(0.0, 0.0);
     let t = s
-        .try_trace_pol_opts(
+        .try_trace_pol(
             FieldSel::Index(0),
             &[0.0],
             &[0.0],
             Some(w),
-            &[[one, zero], [zero, one]],
-            &coat,
-            false,
+            PolIn::new(&[[one, zero], [zero, one]], &coat).no_phase(),
         )
         .unwrap();
     let e = &t.e[0];

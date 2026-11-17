@@ -11,7 +11,7 @@ use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::freeform::{GridSag, ZernSag};
 use lensbench_core::par::with_batch;
 use lensbench_core::surface::{Aperture, SurfType};
-use lensbench_core::system::Trace;
+use lensbench_core::system::{PolIn, Trace};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
 use std::sync::Arc;
@@ -321,8 +321,10 @@ fn check_pol(name: &str, s: &System, c: &Coatings, px: &[f64], py: &[f64]) -> us
     for fi in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
             let f = FieldSel::Index(fi);
-            let a = with_batch(false, || s.try_trace_pol(f, px, py, Some(w), &[x, y], c));
-            let b = s.try_trace_pol(f, px, py, Some(w), &[x, y], c);
+            let a = with_batch(false, || {
+                s.try_trace_pol(f, px, py, Some(w), PolIn::new(&[x, y], c))
+            });
+            let b = s.try_trace_pol(f, px, py, Some(w), PolIn::new(&[x, y], c));
             let what = format!("{name} 偏光 視野 {fi} 波長 {w}");
             let (a, b) = match (a, b) {
                 (Ok(a), Ok(b)) => (a, b),

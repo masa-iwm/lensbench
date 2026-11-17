@@ -12,7 +12,7 @@
 use crate::coating::{Coatings, C64};
 use crate::math::V3;
 use crate::par::scoped;
-use crate::system::{FieldSel, Launch, RecSel, System};
+use crate::system::{FieldSel, Launch, PolIn, RecSel, System};
 use crate::{invalid, Result};
 use rayon::prelude::*;
 
@@ -461,7 +461,7 @@ pub fn trace_jones(
     let surfs = surf.map(|s| [s]);
     let rec = surfs.as_ref().map_or(RecSel::Off, |s| RecSel::Surfs(s));
     let pols = [[C64::new(1.0, 0.0), czero()], [czero(), C64::new(1.0, 0.0)]];
-    let pt = sys.trace_pol_launch(&launch, 0, &pols, coat, false, rec)?;
+    let pt = sys.trace_pol_launch(&launch, 0, PolIn::new(&pols, coat).no_phase(), rec)?;
     let (mut center, pol_e) = (Some(pt.trace), pt.e);
     for w in 0..nw {
         let t = match center.take() {

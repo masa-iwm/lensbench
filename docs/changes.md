@@ -254,6 +254,10 @@
 - `spot` の各視野に `rays`（追跡した本数 `total` と、除いた光線の理由ごとの本数 `vignetted`・`missed`・`tir`・`aim_failed`。
   波長の分を足し、主光線は数えない）を足した（KRN-09）。Rust は `analysis::Spot::rays`（`trace::RayCounts`）、`RayBuf::counts`・`Trace::counts`。
 ### Rust API
+- 偏光追跡の入口の引数をまとめた（KRN-17）: 入力の偏光・膜・伝搬の位相は `system::PolIn`（`PolIn::new(pols, coat)`、位相を
+  かけないなら `.no_phase()`）。`try_trace_pol(field, px, py, w, PolIn)`、`trace_pol_launch(l, w, PolIn, rec)`、`trace_pol_spec` は
+  ケラレ係数・視野を `TraceOpts` で受けて `trace_pol_spec(spec, px, py, w, TraceOpts, PolIn)`（`trace_spec` と同じく止める面・面ごとの
+  記録も選べる）。`try_trace_pol_opts` は消した（`PolIn::new(..).phase(phase)` で同じ）。値はビット単位で同じ。
 - OPD の基準の選び方を `lensbench_core::pupil::RefSurface::of` の 1 か所にした（XCT-19）: OPD の値（`analysis::to_ref`）・最適化の微分・
   Huygens PSF が同じ判定（`RefSurface::plane_for`・`pupil::exit_pupil_near`、閾値は `lensbench_core::tol`）を使う。値はビット単位で同じ。
   Huygens PSF は射出瞳が求まらないシステムで、平面の基準に黙って切り替えず OPD と同じエラーを返す（`pupil::check_opd_reference`）。

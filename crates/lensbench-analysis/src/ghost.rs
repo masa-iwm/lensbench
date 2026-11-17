@@ -15,7 +15,7 @@
 use lensbench_core::coating;
 use lensbench_core::math::*;
 use lensbench_core::surface::{After, Material, Reflect, SurfType, Surface, Tilt};
-use lensbench_core::system::{apply_cb, step_frame, ApertureKind, System};
+use lensbench_core::system::{apply_cb, step_frame, ApertureKind, PolIn, System};
 use lensbench_core::{invalid, Result};
 
 /// 展開したゴーストの系
@@ -347,7 +347,13 @@ pub fn survey(
         [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
     ];
     let power = |s: &System| -> std::result::Result<f64, String> {
-        let t = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &pols, coat)?;
+        let t = s.try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&pols, coat),
+        )?;
         let r = &t.trace.rays[0];
         if r.status.surf().is_some() {
             return Err(format!(

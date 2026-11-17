@@ -2,7 +2,7 @@
 //! 偏光の追跡に効く
 
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
@@ -25,14 +25,12 @@ fn transmission(s: &lensbench_core::System, w: usize) -> f64 {
     let one = C64::new(1.0, 0.0);
     let zero = C64::new(0.0, 0.0);
     let t = s
-        .try_trace_pol_opts(
+        .try_trace_pol(
             FieldSel::Index(0),
             &[0.0],
             &[0.0],
             Some(w),
-            &[[one, zero], [zero, one]],
-            &coat,
-            false,
+            PolIn::new(&[[one, zero], [zero, one]], &coat).no_phase(),
         )
         .unwrap();
     let e = &t.e[0];
@@ -301,8 +299,7 @@ fn filters_match_opticstudio() {
                         &[f(&r["px"])],
                         &[f(&r["py"])],
                         Some(w),
-                        &[inp],
-                        &coat,
+                        PolIn::new(&[inp], &coat),
                     )
                     .unwrap();
                 let e = t.e[0][0];

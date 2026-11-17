@@ -110,32 +110,16 @@ impl System {
         Ok(out)
     }
 
-    /// 偏光追跡: 入力の偏光 pols（物体の座標系の (Ex, Ey)）ごとの電場を、最後の面の局所座標で
-    /// 伝搬の位相 exp(−i k OPL) 込みで返す（OpticStudio の偏光追跡と同じ約束）
+    /// 偏光追跡: 入力の偏光 pol.pols（物体の座標系の (Ex, Ey)）ごとの電場を、最後の面の局所座標で返す。
+    /// pol.phase なら伝搬の位相 exp(−i k OPL) 込み（OpticStudio の偏光追跡と同じ約束）。phase = false なら
+    /// 膜・境界・Jones 面の振幅と位相だけ（光路長は `trace.rays[i].opl` にある）
     pub fn try_trace_pol(
         &self,
         field: FieldSel,
         px: &[f64],
         py: &[f64],
         w: Option<usize>,
-        pols: &[[C64; 2]],
-        coat: &Coatings,
-    ) -> Result<PolTrace> {
-        self.try_trace_pol_opts(field, px, py, w, pols, coat, true)
-    }
-
-    /// [`Self::try_trace_pol`] で、伝搬の位相 exp(−i k OPL) をかけるかを選ぶ（phase = false なら膜・境界・
-    /// Jones 面の振幅と位相だけ。光路長は `trace.rays[i].opl` にある）
-    #[allow(clippy::too_many_arguments)]
-    pub fn try_trace_pol_opts(
-        &self,
-        field: FieldSel,
-        px: &[f64],
-        py: &[f64],
-        w: Option<usize>,
-        pols: &[[C64; 2]],
-        coat: &Coatings,
-        phase: bool,
+        pol: PolIn,
     ) -> Result<PolTrace> {
         let w = w.unwrap_or(self.primary);
         let (hx, hy) = self.field_sel_norm(field, w)?;
@@ -146,45 +130,65 @@ impl System {
             px,
             py,
             w,
-            Some(vig),
-            Some((hx, hy)),
-            pols,
-            coat,
-            phase,
+            TraceOpts::new().vig(vig).hxy((hx, hy)),
+            pol,
         )
     }
 
-    /// 物体の指定（物点・方向）と瞳座標の偏光追跡（[`Self::try_trace_pol_opts`] の物体を直接与える形）。
-    /// vig はケラレ係数（None なら視野 hxy のもの）
-    #[allow(clippy::too_many_arguments)]
+    /// 物体の指定（物点・方向）と瞳座標の偏光追跡（[`Self::try_trace_pol`] の物体を直接与える形）。
+    /// o はケラレ係数・止める面・面ごとの記録・視野（[`Self::trace_spec`] と同じ。o.vig が None なら視野 o.hxy のもの）
     pub fn trace_pol_spec(
         &self,
         spec: ObjSpec,
         px: &[f64],
         py: &[f64],
         w: usize,
-        vig: Option<[f64; 5]>,
-        hxy: Option<(f64, f64)>,
-        pols: &[[C64; 2]],
-        coat: &Coatings,
-        phase: bool,
+        o: TraceOpts,
+        pol: PolIn,
     ) -> Result<PolTrace> {
-        let ps = self.pol_surfaces(w, coat)?;
+        let ps = self.pol_surfaces(w, pol.coat)?;
         let (mut t, e, err) = self.trace_spec_inner(
             spec,
             px,
             py,
             w,
-            vig,
-            None,
-            false,
-            hxy,
-            Some((pols, &ps, phase)),
+            o.vig,
+            o.upto,
+            o.record,
+            o.hxy,
+            Some((pol.pols, &ps, pol.phase)),
         );
         if let Some(e) = err {
             return Err(e);
         }
-        t.hx_hy = hxy.unwrap_or((0.0, 0.0));
+        t.hx_hy = o.hxy.unwrap_or((0.0, 0.0));
         Ok(PolTrace { trace: t, e })
+    }
+}
+
+/// 偏光追跡の入力: 入力の偏光（物体の座標系の (Ex, Ey)）、膜、伝搬の位相をかけるか
+#[derive(Debug, Clone, Copy)]
+pub struct PolIn<'a> {
+    pub pols: &'a [[C64; 2]],
+    pub coat: &'a Coatings,
+    /// 伝搬の位相 exp(−i k OPL) をかける（既定 true）
+    pub phase: bool,
+}
+
+impl<'a> PolIn<'a> {
+    pub fn new(pols: &'a [[C64; 2]], coat: &'a Coatings) -> Self {
+        Self {
+            pols,
+            coat,
+            phase: true,
+        }
+    }
+    /// 伝搬の位相をかけない
+    pub fn no_phase(self) -> Self {
+        self.phase(false)
+    }
+    pub fn phase(mut self, phase: bool) -> Self {
+        self.phase = phase;
+        self
     }
 }

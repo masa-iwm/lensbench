@@ -3,6 +3,7 @@
 use lensbench_core::ext::{self, Ext};
 use lensbench_core::plugin::{Config, Value};
 use lensbench_core::surface::SurfType;
+use lensbench_core::system::PolIn;
 use lensbench_core::usersurf::{SurfaceInstance, SurfaceModel, UserSurf};
 use lensbench_core::Waves;
 use lensbench_core::{analysis, zmx, FieldSel, System};
@@ -103,7 +104,13 @@ fn polarization_and_errors() {
     let one = lensbench_core::coating::C64::new(1.0, 0.0);
     let zero = lensbench_core::coating::C64::new(0.0, 0.0);
     let t = s
-        .try_trace_pol(FieldSel::Index(3), &[0.2], &[0.5], None, &[[one, zero]], &c)
+        .try_trace_pol(
+            FieldSel::Index(3),
+            &[0.2],
+            &[0.5],
+            None,
+            PolIn::new(&[[one, zero]], &c),
+        )
         .unwrap();
     let p: f64 = t.e[0][0].iter().map(|z| z.norm_sqr()).sum();
     assert!((p - 1.0).abs() < 1e-12, "{p}");

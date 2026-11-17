@@ -3,7 +3,7 @@
 
 use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::surface::SurfType;
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{Error, System};
 use std::path::PathBuf;
@@ -35,7 +35,13 @@ fn axial_ray_has_the_normal_incidence_fresnel_transmission() {
     let w = s.primary;
     let c = Coatings::for_system(&s).unwrap();
     let t = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let ifs = interfaces(&s, w);
     assert!(ifs.len() >= 4);
@@ -67,7 +73,7 @@ fn ideal_coatings_scale_every_ray_alike() {
     let py = [0.0, 0.0, 0.5, -0.9];
     let ys = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
     let t = s
-        .try_trace_pol(FieldSel::Index(2), &px, &py, None, &[X, ys], &c)
+        .try_trace_pol(FieldSel::Index(2), &px, &py, None, PolIn::new(&[X, ys], &c))
         .unwrap();
     let amp = 0.95f64.sqrt().powi(ifs.len() as i32);
     for i in 0..px.len() {
@@ -89,7 +95,13 @@ fn absorption_follows_the_internal_transmittance() {
     let wl = s.wavelengths[w];
     let c = Coatings::for_system(&s).unwrap();
     let t0 = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     // 最初のガラスに、厚さ 10 mm で内部透過率 0.9 のデータを足す
     let j = interfaces(&s, w)[0].0;
@@ -108,7 +120,13 @@ fn absorption_follows_the_internal_transmittance() {
     })
     .unwrap();
     let t1 = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     let ratio = t1.e[0][0][0].norm() / t0.e[0][0][0].norm();
     let expect = 0.9f64.powf(thick / 10.0 / 2.0);
@@ -129,7 +147,13 @@ fn quarter_wave_jones_surface_makes_circular_polarization() {
     let c = Coatings::for_system(&s).unwrap();
     let d45 = [C64::new(0.5f64.sqrt(), 0.0), C64::new(0.5f64.sqrt(), 0.0)];
     let t = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[d45], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[d45], &c),
+        )
         .unwrap();
     let e = t.e[0][0];
     let r = e[1] / e[0];
@@ -148,7 +172,13 @@ fn measured_tables_are_used_for_unknown_coatings() {
     .unwrap();
     let mut c = Coatings::for_system(&s).unwrap();
     // 表がなければ止める。エラーには面の番号・種類・材料・膜の名前が入る
-    let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c);
+    let r = s.try_trace_pol(
+        FieldSel::Norm(0.0, 0.0),
+        &[0.0],
+        &[0.0],
+        None,
+        PolIn::new(&[X], &c),
+    );
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
     let label = format!("surface {j}(STANDARD, {}, coating ZEC1)", s.surfaces[j].mat);
     assert_eq!(s.surf_label(j), label);
@@ -170,7 +200,13 @@ fn measured_tables_are_used_for_unknown_coatings() {
     )
     .unwrap();
     let t = s
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c),
+        )
         .unwrap();
     // 面 j だけ表の係数、他は膜なしのフレネル。軸上では s 方向が x̂ × k の向き（y）になるので、x 偏光は p
     let mut s0 = a0();
@@ -181,7 +217,13 @@ fn measured_tables_are_used_for_unknown_coatings() {
     .unwrap();
     let c0 = Coatings::for_system(&s0).unwrap();
     let t0 = s0
-        .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c0)
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            None,
+            PolIn::new(&[X], &c0),
+        )
         .unwrap();
     let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
     let fres = 2.0 * (n1 * n2).sqrt() / (n1 + n2);
@@ -191,7 +233,13 @@ fn measured_tables_are_used_for_unknown_coatings() {
     let other =
         (0..s.wavelengths.len()).find(|&v| (s.wavelengths[v] - s.wavelengths[w]).abs() > 1e-6);
     if let Some(o) = other {
-        let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], Some(o), &[X], &c);
+        let r = s.try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.0],
+            Some(o),
+            PolIn::new(&[X], &c),
+        );
         assert!(matches!(r, Err(Error::NotImplemented(_))));
     }
 }
@@ -216,7 +264,13 @@ fn ideal_lens_keeps_the_field_transverse() {
         let ys = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
         let nf = s.fields.len();
         let t = s
-            .try_trace_pol(FieldSel::Index(nf - 1), &px, &py, None, &[X, ys], &c)
+            .try_trace_pol(
+                FieldSel::Index(nf - 1),
+                &px,
+                &py,
+                None,
+                PolIn::new(&[X, ys], &c),
+            )
             .unwrap();
         for i in 0..px.len() {
             let k = t.trace.rays[i].lmn;
@@ -264,8 +318,7 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
             &[0.0, 0.0],
             &[0.1, 1.0],
             None,
-            &[X],
-            &c,
+            PolIn::new(&[X], &c),
         )
         .unwrap();
     assert!(t.trace.ok(0) && t.trace.rays[1].vig == j);
@@ -294,8 +347,7 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
             &[0.0, 0.0],
             &[0.1, 1.0],
             None,
-            &[X],
-            &c,
+            PolIn::new(&[X], &c),
         )
         .unwrap();
     assert!(t.trace.rays[1].vig == img - 1 && t.trace.rays[1].status.is_ok());
@@ -307,7 +359,13 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
         Ok(())
     })
     .unwrap();
-    let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
+    let r = s.try_trace_pol(
+        FieldSel::Norm(0.0, 0.0),
+        &[0.0],
+        &[1.0],
+        None,
+        PolIn::new(&[X], &c),
+    );
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
     // 光線ごとのエラーにも面の名札が付く
     let m = r.unwrap_err().message().unwrap_or_default().to_string();
@@ -746,7 +804,7 @@ fn polarized_trace_matches_the_plain_trace_bitwise() {
     for field in [FieldSel::Norm(0.0, 0.0), FieldSel::Norm(0.3, 0.7)] {
         let t = s.try_trace(field, &px, &py, None, None, false).unwrap();
         let p = s
-            .try_trace_pol_opts(field, &px, &py, None, &[X], &c, false)
+            .try_trace_pol(field, &px, &py, None, PolIn::new(&[X], &c).no_phase())
             .unwrap();
         assert_eq!(format!("{t:?}"), format!("{:?}", p.trace));
     }

@@ -13,6 +13,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::Coatings;
 use lensbench_core::coating::C64;
+use lensbench_core::system::PolIn;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
 
@@ -140,11 +141,12 @@ fn main() {
                 [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],
                 [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
             ];
-            if s.try_trace_pol(f, &px[..1], &py[..1], None, &pols, &c)
+            if s.try_trace_pol(f, &px[..1], &py[..1], None, PolIn::new(&pols, &c))
                 .is_ok()
             {
                 time("trace_pol 20k x2", || {
-                    s.try_trace_pol(f, &px, &py, None, &pols, &c).unwrap()
+                    s.try_trace_pol(f, &px, &py, None, PolIn::new(&pols, &c))
+                        .unwrap()
                 });
             }
             let ps: Vec<_> = (1..s.image())

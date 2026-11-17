@@ -3,7 +3,7 @@
 
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::{Aiming, FieldSel};
+use lensbench_core::system::{Aiming, FieldSel, PolIn};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
 use lensbench_core::{with_threads, System};
@@ -64,7 +64,13 @@ fn fingerprint(name: &str) -> String {
         [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
     ];
     let p = s
-        .try_trace_pol(FieldSel::Index(nf - 1), &px, &py, None, &pols, &c)
+        .try_trace_pol(
+            FieldSel::Index(nf - 1),
+            &px,
+            &py,
+            None,
+            PolIn::new(&pols, &c),
+        )
         .unwrap();
     out += &format!("{:?}", p.e);
     out

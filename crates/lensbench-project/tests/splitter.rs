@@ -1,7 +1,7 @@
 //! ビームスプリッター: 手で組んだ同じ系との一致、経路の列挙、往き透過・戻り反射、膜の係数。
 
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::FieldSel;
+use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::System;
 use lensbench_project::{expand, paths, Env, ExpandOpts, Project};
 use std::path::PathBuf;
@@ -293,7 +293,13 @@ fn double_pass_turns_at_the_splitter() {
     let c = Coatings::for_system(&tr).unwrap();
     let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
     let pt = tr
-        .try_trace_pol_opts(FieldSel::Index(0), &[0.0], &[0.0], Some(1), &[x], &c, false)
+        .try_trace_pol(
+            FieldSel::Index(0),
+            &[0.0],
+            &[0.0],
+            Some(1),
+            PolIn::new(&[x], &c).no_phase(),
+        )
         .unwrap();
     let e = pt.e[0][0];
     let amp = (e[0].norm_sqr() + e[1].norm_sqr() + e[2].norm_sqr()).sqrt();
@@ -349,7 +355,13 @@ fn michelson_arms_meet_at_port_d() {
     let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
     let ia = |s: &System| {
         let pt = s
-            .try_trace_pol_opts(FieldSel::Index(0), &[0.0], &[0.0], Some(1), &[x], &c, false)
+            .try_trace_pol(
+                FieldSel::Index(0),
+                &[0.0],
+                &[0.0],
+                Some(1),
+                PolIn::new(&[x], &c).no_phase(),
+            )
             .unwrap();
         let e = pt.e[0][0];
         e[0].norm_sqr() + e[1].norm_sqr() + e[2].norm_sqr()
@@ -374,14 +386,12 @@ fn ideal_pbs_splits_s_and_p() {
         let s = sys(blocks, Some(path));
         let c = Coatings::for_system(&s).unwrap();
         let pt = s
-            .try_trace_pol_opts(
+            .try_trace_pol(
                 FieldSel::Index(0),
                 &[0.0],
                 &[0.0],
                 Some(1),
-                &[x, y],
-                &c,
-                false,
+                PolIn::new(&[x, y], &c).no_phase(),
             )
             .unwrap();
         let i = |e: [C64; 3]| e[0].norm_sqr() + e[1].norm_sqr() + e[2].norm_sqr();
@@ -632,8 +642,7 @@ fn paths_match_opticstudio() {
                     &[f(&r["px"])],
                     &[f(&r["py"])],
                     Some(w),
-                    &[inp],
-                    &c,
+                    PolIn::new(&[inp], &c),
                 )
                 .unwrap();
             let e = pt.e[0][0];

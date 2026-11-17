@@ -12,6 +12,7 @@
 //! G9A の rays_dtnom.json・sysdata_dtnom.txt は Δt 0.5 のときの値で、収束値と 4e-6 ずれる（参考）。
 
 use crate::common::root;
+use lensbench_core::system::PolIn;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{analysis, FieldSel, System};
 use lensbench_formats::zmx_write;
@@ -284,8 +285,7 @@ fn coordinate_breaks_inside_the_medium() {
                     &[0.3],
                     &[0.2],
                     None,
-                    &[[one, zero], [zero, one]],
-                    &c,
+                    PolIn::new(&[[one, zero], [zero, one]], &c),
                 )
                 .unwrap();
             p.e[0].clone()

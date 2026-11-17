@@ -17,7 +17,7 @@ use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
 use lensbench_core::interp::Spline;
 use lensbench_core::pupil::{PupilGrid, Rim};
-use lensbench_core::system::{Launch, RecSel, System};
+use lensbench_core::system::{Launch, PolIn, RecSel, System};
 use lensbench_core::{invalid, Result};
 
 /// 格子点ごとの値の数（Jones 4 + z 成分 2）
@@ -97,7 +97,7 @@ impl PolGrid {
         };
         let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
         let y = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
-        let p = sys.trace_pol_launch(&gl, w, &[x, y], coat, false, RecSel::Off)?;
+        let p = sys.trace_pol_launch(&gl, w, PolIn::new(&[x, y], coat).no_phase(), RecSel::Off)?;
         let n = nx * ny;
         let mut vals = vec![[C64::new(0.0, 0.0); NV]; n];
         let mut good = vec![false; n];

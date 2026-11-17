@@ -277,13 +277,12 @@ impl System {
         &self,
         l: &Launch,
         w: usize,
-        pols: &[[C64; 2]],
-        coat: &Coatings,
-        phase: bool,
+        pol: PolIn,
         rec: RecSel<'r>,
     ) -> Result<PolTrace> {
-        let ps = self.pol_surfaces(w, coat)?;
-        let (t, e, err) = self.trace_launch_inner(l, w, None, rec, Some((pols, &ps, phase)));
+        let ps = self.pol_surfaces(w, pol.coat)?;
+        let (t, e, err) =
+            self.trace_launch_inner(l, w, None, rec, Some((pol.pols, &ps, pol.phase)));
         if let Some(e) = err {
             return Err(e);
         }

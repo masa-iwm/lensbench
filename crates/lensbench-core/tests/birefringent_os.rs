@@ -4,7 +4,7 @@
 //! （120°）の貼り合わせ、b4_m0 は b1 の Mode 0（常光の成分だけ）、b2_coat は b2 の両面に理想膜 I.99999（LB379.DAT）、
 //! b2_ax0・b2_ax60 は b2 の結晶軸を 0°・60° にしたもの。基準は Normalized Polarized の像面の電場（入力 x・y）
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::system::{FieldSel, System};
+use lensbench_core::system::{FieldSel, PolIn, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
 use std::path::PathBuf;
@@ -46,7 +46,13 @@ fn pol_diff(s: &System, name: &str) -> Vec<(f64, f64)> {
         let (px, py) = (v("px"), v("py"));
         for (w, wv) in worst.iter_mut().enumerate() {
             let t = s
-                .try_trace_pol(FieldSel::Norm(hx, hy), &px, &py, Some(w), &pols, &coat)
+                .try_trace_pol(
+                    FieldSel::Norm(hx, hy),
+                    &px,
+                    &py,
+                    Some(w),
+                    PolIn::new(&pols, &coat),
+                )
                 .unwrap();
             for (i, e) in t.e.iter().enumerate() {
                 let o = |m: usize, c: usize| {
