@@ -891,8 +891,10 @@ impl FillWin {
             }
         });
         #[cfg(not(target_arch = "wasm32"))]
-        if ui.button(tr("📂 Choose a STEP file to measure…")).clicked() {
-            if let Some(p) = crate::files::open("fill_step", true, || {
+        {
+            let start = ui.button(tr("📂 Choose a STEP file to measure…")).clicked();
+            // 窓は別のスレッドで出すので、選んだファイルは後のフレームで受ける
+            if let Some(p) = crate::files::open("fill_step", start, || {
                 crate::files::FileDialog::new().add_filter("STEP", &["step", "stp", "STEP", "STP"])
             }) {
                 self.take_step(p);

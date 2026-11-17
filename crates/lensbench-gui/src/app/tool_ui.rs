@@ -60,23 +60,11 @@ impl Core {
                     }
                 }
                 Action::Save(v) => {
-                    if let Some(path) = crate::files::FileDialog::new()
+                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
+                    let d = crate::files::FileDialog::new()
                         .add_filter(tr("Optimization settings"), &["json"])
-                        .set_file_name("optimize.json")
-                        .save_file()
-                    {
-                        let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
-                        self.status = match lensbench_core::vfs::write(&path, txt + "\n") {
-                            Ok(()) => Status {
-                                text: trf("Saved to {}", &[&path.display()]),
-                                error: false,
-                            },
-                            Err(e) => Status {
-                                text: format!("{}: {e}", path.display()),
-                                error: true,
-                            },
-                        };
-                    }
+                        .set_file_name("optimize.json");
+                    self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
                 }
                 Action::Load => load = true,
             }
@@ -123,22 +111,10 @@ impl Core {
 
     /// 文字列をファイルに保存する（保存先はダイアログで選ぶ）
     pub(super) fn save_text(&mut self, filter: &str, ext: &str, name: &str, txt: String) {
-        if let Some(path) = crate::files::FileDialog::new()
+        let d = crate::files::FileDialog::new()
             .add_filter(filter, &[ext])
-            .set_file_name(name)
-            .save_file()
-        {
-            self.status = match lensbench_core::vfs::write(&path, txt) {
-                Ok(()) => Status {
-                    text: trf("Saved to {}", &[&path.display()]),
-                    error: false,
-                },
-                Err(e) => Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                },
-            };
-        }
+            .set_file_name(name);
+        self.save_as(d, move |c, p| c.write_reported(&p, txt));
     }
 
     pub(super) fn tolerance_ui(&mut self, ui: &mut Ui) {
@@ -309,23 +285,11 @@ impl Core {
                     }
                 }
                 Action::Save(v) => {
-                    if let Some(path) = crate::files::FileDialog::new()
+                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
+                    let d = crate::files::FileDialog::new()
                         .add_filter(tr("Swap search settings"), &["json"])
-                        .set_file_name("swap.json")
-                        .save_file()
-                    {
-                        let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
-                        self.status = match lensbench_core::vfs::write(&path, txt + "\n") {
-                            Ok(()) => Status {
-                                text: trf("Saved to {}", &[&path.display()]),
-                                error: false,
-                            },
-                            Err(e) => Status {
-                                text: format!("{}: {e}", path.display()),
-                                error: true,
-                            },
-                        };
-                    }
+                        .set_file_name("swap.json");
+                    self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
                 }
                 Action::Load => load = true,
             }

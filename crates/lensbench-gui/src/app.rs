@@ -18,6 +18,7 @@ mod menus;
 mod open_doc;
 mod panels;
 mod result;
+mod save_as;
 mod status;
 mod sys_copy;
 mod tick;
@@ -459,6 +460,7 @@ struct Core {
     field_labels_cache: std::cell::RefCell<analysis_ui::FieldLabels>,
     /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
     sys_gen: u64,
+    saves: save_as::Saves,
 }
 
 pub struct App {
@@ -967,52 +969,14 @@ impl Core {
                         (combo && !n.is_empty()).then(|| n.to_string())
                     })
                     .unwrap_or_else(|| "project".into());
-                let Some(p) = crate::files::FileDialog::new()
+                let d = crate::files::FileDialog::new()
                     .add_filter(tr("Project"), &["json"])
-                    .set_file_name(format!("{name}.json"))
-                    .save_file()
-                else {
-                    return;
-                };
-                p
+                    .set_file_name(format!("{name}.json"));
+                self.save_as(d, move |c, p| c.save_to(combo, p));
+                return;
             }
         };
-        if combo {
-            let mut v = doc_file::project_file(&self.doc.combo);
-            let panels = self.panels_value();
-            if let Some(o) = panels.as_object() {
-                for (k, x) in o {
-                    v["gui"][k] = x.clone();
-                }
-            }
-            let r = lensbench_core::vfs::write(
-                &path,
-                serde_json::to_string_pretty(&v).unwrap_or_default(),
-            );
-            self.status = match r {
-                Ok(()) => {
-                    self.loc.doc_path = Some(path.clone());
-                    self.loc.saved_combo = Snap::new(Some(self.doc.combo.clone()));
-                    self.push_recent(&path.display().to_string());
-                    Status {
-                        text: trf("Saved to {}", &[&path.display()]),
-                        error: false,
-                    }
-                }
-                Err(e) => Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                },
-            };
-        } else {
-            self.loc.doc_path = Some(path.clone());
-            self.loc.doc_from = None;
-            self.worker.send(
-                Tag::Save,
-                "save",
-                json!({ "path": path.display().to_string() }),
-            );
-        }
+        self.save_to(combo, path);
     }
 
     /// レイアウトを書き出す（形式は拡張子）。今の見る面・重ねた構成で。2D は断面、3D は立体
@@ -1029,35 +993,28 @@ impl Core {
         } else {
             "svg"
         };
-        if let Some(p) = crate::files::FileDialog::new()
+        let d = crate::files::FileDialog::new()
             .add_filter(tr("2D drawing"), &["svg", "png", "dxf"])
             .add_filter(
                 tr("3D solids"),
                 &["step", "stp", "glb", "gltf", "obj", "stl"],
             )
-            .set_file_name(format!("{base}.{ext}"))
-            .save_file()
-        {
-            let mut params = self.overlay.params_in(self.ses.view_plane);
-            self.s
-                .rays
-                .apply(&mut params, self.n_fields(), self.waves_um().len(), true);
+            .set_file_name(format!("{base}.{ext}"));
+        self.save_as(d, |c, p| {
+            let mut params = c.overlay.params_in(c.ses.view_plane);
+            c.s.rays
+                .apply(&mut params, c.n_fields(), c.waves_um().len(), true);
             params["file"] = json!(p.display().to_string());
-            self.worker.send(Tag::LayoutExport, "layout_export", params);
-        }
+            c.worker.send(Tag::LayoutExport, "layout_export", params);
+        });
     }
 
     fn write_zmx(&mut self) {
-        if let Some(p) = crate::files::FileDialog::new()
-            .add_filter("Zemax", &["zmx"])
-            .save_file()
-        {
-            self.worker.send(
-                Tag::Write,
-                "write",
-                json!({ "path": p.display().to_string() }),
-            );
-        }
+        let d = crate::files::FileDialog::new().add_filter("Zemax", &["zmx"]);
+        self.save_as(d, |c, p| {
+            let path = p.display().to_string();
+            c.worker.send(Tag::Write, "write", json!({ "path": path }));
+        });
     }
 
     /// 値の変更を送る（計算中なら終わってからまとめて）
@@ -2097,6 +2054,7 @@ impl App {
                 param_sys_cache: Default::default(),
                 field_labels_cache: Default::default(),
                 sys_gen: 0,
+                saves: Default::default(),
                 browser,
                 doc,
                 folders_open: false,
@@ -2533,25 +2491,23 @@ impl App {
             self.c.info(tr("Copied the figure as an image"));
             return;
         }
-        let Some(p) = crate::files::FileDialog::new()
+        let d = crate::files::FileDialog::new()
             .add_filter("PNG", &["png"])
-            .set_file_name(format!("{cmd}.png"))
-            .save_file()
-        else {
-            return;
-        };
-        self.c.status = match crate::image_util::png_bytes(&part)
-            .and_then(|b| lensbench_core::vfs::write(&p, b).map_err(|e| e.to_string()))
-        {
-            Ok(()) => Status {
-                text: trf("Saved to {}", &[&p.display()]),
-                error: false,
-            },
-            Err(e) => Status {
-                text: format!("{}: {e}", p.display()),
-                error: true,
-            },
-        };
+            .set_file_name(format!("{cmd}.png"));
+        self.c.save_as(d, move |c, p| {
+            c.status = match crate::image_util::png_bytes(&part)
+                .and_then(|b| lensbench_core::vfs::write(&p, b).map_err(|e| e.to_string()))
+            {
+                Ok(()) => Status {
+                    text: trf("Saved to {}", &[&p.display()]),
+                    error: false,
+                },
+                Err(e) => Status {
+                    text: format!("{}: {e}", p.display()),
+                    error: true,
+                },
+            };
+        });
     }
 
     /// 窓を閉じる前に、保存していない変更があれば「保存 / 保存しない / やめる」を聞く
@@ -2574,6 +2530,9 @@ impl App {
                 self.c.close_pending = false;
                 self.c.close_ok = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else if !self.c.worker.busy() && !self.c.saving() {
+                // 保存の窓をやめた
+                self.c.close_pending = false;
             }
         }
         if !self.c.close_ask {
@@ -2609,8 +2568,8 @@ impl App {
                 self.c.close_ask = false;
                 self.c.status.error = false;
                 self.c.save(false);
-                // 保存の窓をやめたら閉じない（開いた系の保存は計算のスレッドで終わるのを待つ）
-                self.c.close_pending = self.c.worker.busy() || !self.c.dirty();
+                // 保存の窓を選び終わるのと、開いた系の保存が計算のスレッドで終わるのを待つ（窓をやめたら閉じない）
+                self.c.close_pending = true;
             }
             Some(1) => {
                 self.c.close_ask = false;
@@ -3084,8 +3043,8 @@ fn overlay_params() {
 enum ResOut {
     /// 図を画像にする（true は写す、false は PNG で保存）
     Shot(bool),
-    /// 保存できなかった
-    Error(String),
+    /// 保存先を選んで書く（書く中身はメニューを押したときの結果）
+    Save(crate::files::FileDialog, String),
 }
 
 /// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV。図の画像）
@@ -3121,20 +3080,15 @@ fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -> Option<Re
         for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
             if ui.button(label).clicked() {
                 ui.close_menu();
-                if let Some(p) = crate::files::FileDialog::new()
+                let text = if ext == "json" {
+                    serde_json::to_string_pretty(v).unwrap_or_default()
+                } else {
+                    delimited(&tables(v), ',')
+                };
+                let d = crate::files::FileDialog::new()
                     .add_filter(ext.to_uppercase(), &[ext])
-                    .set_file_name(format!("{cmd}.{ext}"))
-                    .save_file()
-                {
-                    let text = if ext == "json" {
-                        serde_json::to_string_pretty(v).unwrap_or_default()
-                    } else {
-                        delimited(&tables(v), ',')
-                    };
-                    if let Err(e) = lensbench_core::vfs::write(&p, text) {
-                        out = Some(ResOut::Error(format!("{}: {e}", p.display())));
-                    }
-                }
+                    .set_file_name(format!("{cmd}.{ext}"));
+                out = Some(ResOut::Save(d, text));
             }
         }
         if fig && ui.button(tr("Figure as image (PNG)…")).clicked() {

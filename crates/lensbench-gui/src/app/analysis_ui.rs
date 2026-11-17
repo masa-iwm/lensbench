@@ -391,17 +391,12 @@ impl Core {
             if ui.small_button(tr("Save JSON…")).clicked() {
                 match argform::to_map(&specs, &cfg.sensor) {
                     Ok(m) => {
-                        if let Some(p) = crate::files::FileDialog::new()
+                        let t =
+                            serde_json::to_string_pretty(&argform::nest(&m)).unwrap_or_default();
+                        let d = crate::files::FileDialog::new()
                             .add_filter("JSON", &["json"])
-                            .set_file_name(o.file_name)
-                            .save_file()
-                        {
-                            let t = serde_json::to_string_pretty(&argform::nest(&m))
-                                .unwrap_or_default();
-                            if let Err(e) = lensbench_core::vfs::write(&p, t + "\n") {
-                                self.fail(format!("{}: {e}", p.display()));
-                            }
-                        }
+                            .set_file_name(o.file_name);
+                        self.save_as(d, move |c, p| c.write_reported(&p, t + "\n"));
                     }
                     Err(e) => self.fail(e),
                 }

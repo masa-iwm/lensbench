@@ -192,16 +192,17 @@ impl CatSave {
                         }
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    if ui
-                        .small_button("…")
-                        .on_hover_text(tr("Choose a new or an existing catalog"))
-                        .clicked()
                     {
-                        if let Some(p) = crate::files::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .set_file_name("my_catalog.json")
-                            .save_file()
-                        {
+                        let start = ui
+                            .small_button("…")
+                            .on_hover_text(tr("Choose a new or an existing catalog"))
+                            .clicked();
+                        // 窓は別のスレッドで出すので、選んだパスは後のフレームで受ける
+                        if let Some(p) = crate::files::save("catsave-catalog", start, || {
+                            crate::files::FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .set_file_name("my_catalog.json")
+                        }) {
                             self.catalog = p.display().to_string();
                         }
                     }

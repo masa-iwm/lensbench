@@ -1,4 +1,7 @@
-//! ファイルを選ぶ・確かめる窓。ネイティブは rfd の同期の窓そのまま（Linux は zenity を呼ぶ [`zenity`]）。
+//! ファイルを選ぶ・確かめる窓。ネイティブは rfd（Linux は zenity を呼ぶ [`zenity`]）の窓を別のスレッドで出し、
+//! 選んだパスを後のフレームで返す（画面を描いている途中で OS の窓のメッセージループを回さない）。
+//! 呼ぶ側はネイティブもブラウザも同じ: 毎フレーム同じ `id` で [`open`]・[`open_folder`]・[`save`] を呼び、
+//! 選び始めるフレームだけ `start` を true にする。
 //!
 //! ブラウザ（wasm）には同期の窓もファイルシステムも無いので:
 //! - **開く**（[`open`]・[`open_folder`]）: ブラウザのファイル選択で選んだファイルを
@@ -49,15 +52,9 @@ impl FileDialog {
         zenity::FileDialog(self)
     }
 
-    /// 保存先を選ぶ（ネイティブ）
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn save_file(self) -> Option<PathBuf> {
-        self.rfd().save_file()
-    }
-
     /// 保存先（wasm）: `/downloads/名前`。書かれたら [`flush_downloads`] がダウンロードにする
     #[cfg(target_arch = "wasm32")]
-    pub fn save_file(self) -> Option<PathBuf> {
+    fn save_file(self) -> Option<PathBuf> {
         let name = self.file_name.clone().unwrap_or_else(|| {
             let ext = self
                 .filters
@@ -87,8 +84,10 @@ pub const UPLOADS: &str = "/uploads";
 pub fn open(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = id;
-        start.then(|| dialog().rfd().pick_file()).flatten()
+        if start {
+            native::spawn(id, dialog(), |d| d.rfd().pick_file());
+        }
+        native::take(id).flatten()
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -103,8 +102,10 @@ pub fn open(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Optio
 pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = id;
-        start.then(|| dialog().rfd().pick_folder()).flatten()
+        if start {
+            native::spawn(id, dialog(), |d| d.rfd().pick_folder());
+        }
+        native::take(id).flatten()
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -112,6 +113,99 @@ pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -
             web::pick(id, dialog(), true);
         }
         web::take(id)
+    }
+}
+
+/// 保存先を選ぶ。`start` のフレームで選び始め、選んだパスを返す（ネイティブは選び終わった後のフレームで、同じ `id` の
+/// 呼び出しが返す。wasm はその場で `/downloads/名前` を返し、書かれたら [`flush_downloads`] がダウンロードにする）
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub fn save(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if start {
+            native::spawn(id, dialog(), |d| d.rfd().save_file());
+        }
+        native::take(id).flatten()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = id;
+        start.then(|| dialog().save_file()).flatten()
+    }
+}
+
+/// 保存先を選び始める（答えは [`finished`] で受ける。毎フレーム同じ所で呼べない所から使う）
+pub fn start_save(id: &str, d: FileDialog) {
+    #[cfg(not(target_arch = "wasm32"))]
+    native::spawn(id, d, |d| d.rfd().save_file());
+    #[cfg(target_arch = "wasm32")]
+    SAVED.with(|m| m.borrow_mut().insert(id.to_string(), d.save_file()));
+}
+
+/// [`start_save`] の答え: 選び終わっていなければ None、選んだら Some(パス)、やめたら Some(None)
+pub fn finished(id: &str) -> Option<Option<PathBuf>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    return native::take(id);
+    #[cfg(target_arch = "wasm32")]
+    SAVED.with(|m| m.borrow_mut().remove(id))
+}
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    /// wasm: [`start_save`] の答え（その場で決まる）
+    static SAVED: std::cell::RefCell<std::collections::HashMap<String, Option<PathBuf>>> =
+        Default::default();
+}
+
+/// ネイティブ: 窓を別のスレッドで出し、選んだパスを id ごとに置く
+#[cfg(not(target_arch = "wasm32"))]
+mod native {
+    use super::FileDialog;
+    use lensbench_core::LockExt;
+    use std::collections::{HashMap, HashSet};
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    /// 選び終わった窓の答え（id → 選んだパス、やめたら None）と、窓を出している id
+    static DONE: Mutex<Option<HashMap<String, Option<PathBuf>>>> = Mutex::new(None);
+    static OPEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+    static CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
+
+    pub fn set_ctx(ctx: &egui::Context) {
+        *CTX.lock_ok() = Some(ctx.clone());
+    }
+
+    /// 窓を出す（同じ id の窓が出ている間は出さない）
+    pub fn spawn(
+        id: &str,
+        d: FileDialog,
+        f: impl FnOnce(&FileDialog) -> Option<PathBuf> + Send + 'static,
+    ) {
+        if !OPEN
+            .lock_ok()
+            .get_or_insert_with(HashSet::new)
+            .insert(id.to_string())
+        {
+            return;
+        }
+        let id = id.to_string();
+        std::thread::spawn(move || {
+            let p = f(&d);
+            DONE.lock_ok()
+                .get_or_insert_with(HashMap::new)
+                .insert(id.clone(), p);
+            if let Some(o) = OPEN.lock_ok().as_mut() {
+                o.remove(&id);
+            }
+            if let Some(c) = &*CTX.lock_ok() {
+                c.request_repaint();
+            }
+        });
+    }
+
+    /// 選び終わっていれば Some（やめたら Some(None)）
+    pub fn take(id: &str) -> Option<Option<PathBuf>> {
+        DONE.lock_ok().as_mut().and_then(|d| d.remove(id))
     }
 }
 
@@ -141,12 +235,12 @@ pub fn flush_downloads() {
     web::flush_downloads();
 }
 
-/// 結果が出たときに画面を描き直させる（wasm で、選び終わったときに使う）
+/// 結果が出たときに画面を描き直させる（選び終わったときに使う）
 pub fn set_ctx(ctx: &egui::Context) {
     #[cfg(target_arch = "wasm32")]
     web::set_ctx(ctx);
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = ctx;
+    native::set_ctx(ctx);
 }
 
 /// 人の答えを待たない運転（画面の通し確認 `--tour`）。確かめる窓は出さずに「いいえ」（CI の Linux で

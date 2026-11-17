@@ -124,11 +124,8 @@ impl Core {
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
                 }
-                Some(ResOut::Error(e)) => {
-                    self.status = Status {
-                        text: e,
-                        error: true,
-                    }
+                Some(ResOut::Save(d, text)) => {
+                    self.saves.push(d, move |c, p| c.write_reported(&p, text))
                 }
                 None => {}
             }

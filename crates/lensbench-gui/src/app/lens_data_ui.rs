@@ -142,17 +142,16 @@ impl Core {
                         .and_then(|f| f.file_stem())
                         .map(|x| x.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "system".into());
-                    if let Some(p) = crate::files::FileDialog::new()
+                    let d = crate::files::FileDialog::new()
                         .add_filter(tr("System file"), &["json"])
-                        .set_file_name(format!("{stem}_{a}-{b}.json"))
-                        .save_file()
-                    {
-                        self.worker.send(
+                        .set_file_name(format!("{stem}_{a}-{b}.json"));
+                    self.save_as(d, move |c, p| {
+                        c.worker.send(
                             Tag::SaveRange,
                             "save_range",
                             json!({ "path": p.display().to_string(), "from": a, "to": b }),
                         );
-                    }
+                    });
                 }
                 Act::UnitMech => {
                     self.um_open = !self.um_open;
