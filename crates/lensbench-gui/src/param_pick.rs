@@ -296,6 +296,7 @@ pub fn edit(
             .hint_text(hint)
             .desired_width(width),
     );
+    crate::widgets::name_field(&resp, hint, s);
     let sid = resp.id.with("param_comp");
     let mut st: CompState = ui.data(|d| d.get_temp(sid)).unwrap_or_default();
     if std::mem::take(&mut st.refocus) {

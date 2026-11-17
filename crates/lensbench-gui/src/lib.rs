@@ -40,6 +40,8 @@ mod missing_glass;
 mod open_sysset;
 mod optim_panel;
 mod palette;
+#[cfg(test)]
+mod panel_ui_tests;
 mod param_pick;
 mod plot_tools;
 mod plots;

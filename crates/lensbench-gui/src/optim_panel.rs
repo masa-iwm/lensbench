@@ -546,11 +546,13 @@ pub fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
 }
 
 pub(crate) fn small_edit(ui: &mut Ui, s: &mut String, w: f32, hint: &str) -> egui::Response {
-    ui.add(
+    let r = ui.add(
         egui::TextEdit::singleline(s)
             .desired_width(w)
             .hint_text(hint),
-    )
+    );
+    crate::widgets::name_field(&r, hint, s);
+    r
 }
 
 /// パネルを描く。`progress` は走っている間の評価関数の履歴

@@ -11,6 +11,16 @@ pub mod menu;
 #[cfg(test)]
 mod ui_tests;
 
+/// 見出しの無い入力欄（薄い字の例だけのもの）に名前を付ける（AccessKit の木に出て、読み上げ・画面の試験が欄を
+/// 探せる）。egui の TextEdit は薄い字を木に出さないので、その文を名前にし、値は欄の文字のまま
+pub fn name_field(r: &egui::Response, name: &str, text: &str) {
+    r.widget_info(|| {
+        let mut w = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, r.enabled(), name);
+        w.current_text_value = Some(text.to_owned());
+        w
+    });
+}
+
 /// 折り返す行（`horizontal_wrapped`）で、幅 w の塊が行の残りに入らなければ先に折り返す。ComboBox や組にした
 /// 部品は行の端で折り返されず、パネルの右で切れるので、その前に呼ぶ
 pub fn wrap_before(ui: &mut egui::Ui, w: f32) {
