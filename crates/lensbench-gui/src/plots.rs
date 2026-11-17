@@ -241,6 +241,10 @@ pub fn spot(
                 ui.vertical(|ui| {
                     let (resp, painter) =
                         ui.allocate_painter(egui::vec2(cell, cell), Sense::click_and_drag());
+                    crate::widgets::name_figure(
+                        &resp,
+                        &trf("Spot diagram, {}", &[&field_namer(ui)(f)]),
+                    );
                     let rect = resp.rect;
                     painter.rect_filled(rect, 8.0, vis.extreme_bg_color);
                     let painter = painter.with_clip_rect(rect.intersect(ui.clip_rect()));

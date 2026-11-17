@@ -1744,6 +1744,10 @@ pub fn ui(
     );
     let ui = &mut top;
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+    crate::widgets::name_figure(
+        &resp,
+        fig_name(data.as_ref().is_some_and(|d| d.d3.is_some())),
+    );
     let id = resp.id;
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
@@ -1886,6 +1890,15 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
     true
 }
 
+/// レイアウト図の AccessKit の名前（2D か 3D か）
+fn fig_name(d3: bool) -> &'static str {
+    if d3 {
+        tr("Layout figure (3D)")
+    } else {
+        tr("Layout figure (2D)")
+    }
+}
+
 /// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方）
 pub fn view_only(
     ui: &mut Ui,
@@ -1902,6 +1915,7 @@ pub fn view_only(
         Sense::hover()
     };
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), sense);
+    crate::widgets::name_figure(&resp, fig_name(d.d3.is_some()));
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
     }

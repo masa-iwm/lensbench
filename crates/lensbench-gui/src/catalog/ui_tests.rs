@@ -160,3 +160,16 @@ fn catalog_bad_spec_shows_error() {
     h.run_steps(4);
     h.get_by_label(&lensbench_core::i18n::tr(&e));
 }
+
+/// ガラスマップの図は AccessKit の木に名前（件数つき）で出る
+#[test]
+fn catalog_glass_map_is_named() {
+    let _g = serial();
+    let mut h = harness(loaded(), (1, 1));
+    h.get_by_label("Glasses (2)").click();
+    h.run_steps(4);
+    h.get(
+        by().role(egui::accesskit::Role::Image)
+            .label("Glass map (2 glasses)"),
+    );
+}
