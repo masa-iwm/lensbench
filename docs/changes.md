@@ -293,6 +293,10 @@
   平面として交点を求める。Tilted の交点のニュートン法の初期値は頂点の平面（前は c・k の二次曲面。Tilted の形は c・k を使わない）。
   結果は丸めの範囲で変わる。
 ### Rust API
+- 偏光追跡の電場 `PolTrace::e` を光線ごとの `Vec` の `Vec` から 1 本の配列 `PolField` にした。`t.e[i][m]`・`for e in &t.e`・`t.e.len()` は
+  そのまま使える（`t.e[i]` は `&[CV3]`、`Vec` が要るなら `to_vec()`）。並びのまま読むのは `as_flat()`・`into_flat()`、偏光の数は `pols()`。
+- `raygrid::JonesGrid` に瞳の縁までの距離 `edge`・その縁の開口の面 `edge_surf`・距離の瞳座標での勾配 `edge_dm` を足した。縁を開口の縁で
+  点ごとに決める追跡 `raygrid::trace_jones_edge`（単位円の外 3 格子まで追い、けられた光線の値も残す）を足した。
 - 非球面の係数の並び（`Surface::asph`）も種類の枝に移した（KRN-05 の 2 段目）。`s.asph` は `s.asph()`（読む、係数を持たない種類は空）、
   書くのは `s.asph_mut()`（長さを変えられる種類）・`s.set_asph(v)`・`s.set_asph_at(i, x)`。Tilted は `Form::TiltSurf { tan }`、Irregular は
   `Form::Irregular { p }`（決まった数の値、`asph()` では前と同じ並び）。標準面・Gradium・Gradient 9・Jones・理想レンズ・利用者定義の面・

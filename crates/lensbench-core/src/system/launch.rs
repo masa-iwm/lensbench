@@ -117,7 +117,7 @@ impl System {
         record: bool,
         hxy: Option<(f64, f64)>,
         pol: Option<(&[[C64; 2]], &[PolSurf], bool)>,
-    ) -> (Trace, Vec<Vec<CV3>>, Option<Error>) {
+    ) -> (Trace, PolField, Option<Error>) {
         let l = Launch::Pupil {
             spec,
             signed: false,
@@ -352,7 +352,7 @@ impl System {
         last: Option<usize>,
         rec: RecSel<'_>,
         pol: Option<(&[[C64; 2]], &[PolSurf], bool)>,
-    ) -> (Trace, Vec<Vec<CV3>>, Option<Error>) {
+    ) -> (Trace, PolField, Option<Error>) {
         let mut dst = Dst::trace();
         let (d, es, err) = self.trace_launch_core(l, w, last, rec, pol, &mut dst);
         let Dst::Trace {
@@ -429,7 +429,7 @@ impl System {
         rec: RecSel<'_>,
         pol: Option<(&[[C64; 2]], &[PolSurf], bool)>,
         dst: &mut Dst,
-    ) -> (Done, Vec<Vec<CV3>>, Option<Error>) {
+    ) -> (Done, PolField, Option<Error>) {
         let (starts, fail) = self.launch_starts(l, w);
         let n = starts.len();
         // エイミングに失敗した光線は NaN から出す（位置・方向・光路長・記録・電場がすべて NaN になる）
@@ -638,12 +638,12 @@ impl System {
             } else {
                 (0..ng).map(group).collect()
             };
-            es.reserve(n);
+            es.reserve(n * np);
             for (good, e, mut perr, m) in groups {
                 for l in 0..m {
                     take_err(good[l], perr[l].take());
-                    es.push(e[l * np..(l + 1) * np].to_vec());
                 }
+                es.extend_from_slice(&e[..m * np]);
             }
         } else {
             let pes: Vec<_> = if par {
@@ -655,9 +655,10 @@ impl System {
             } else {
                 (0..n).map(one).collect()
             };
+            es.reserve(n * pol.map_or(0, |p| p.0.len()));
             for b in pes.into_iter().flatten() {
                 let (good, e, perr) = *b;
-                es.push(e);
+                es.extend_from_slice(&e);
                 take_err(good, perr);
             }
         }
@@ -678,7 +679,7 @@ impl System {
                 last,
                 hx_hy: hxy.unwrap_or((0.0, 0.0)),
             },
-            es,
+            PolField::from_flat(pol.map_or(0, |p| p.0.len()), es),
             first_err,
         )
     }

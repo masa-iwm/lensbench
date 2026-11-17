@@ -67,7 +67,92 @@ pub struct Trace {
 pub struct PolTrace {
     pub trace: Trace,
     /// 光線ごと・入力の偏光ごとの電場（最後の面の局所座標、既定は伝搬の位相込み）。追跡が止まった光線は NaN
-    pub e: Vec<Vec<CV3>>,
+    pub e: PolField,
+}
+
+/// 光線ごと・入力の偏光ごとの電場を 1 本の配列に並べたもの（光線 i の偏光 m は `e[i][m]`）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PolField {
+    /// 光線あたりの入力の偏光の数
+    np: usize,
+    /// 光線の本数
+    n: usize,
+    data: Vec<CV3>,
+}
+
+impl PolField {
+    /// 光線あたり np 個の電場を光線の順に並べた data から
+    pub fn from_flat(np: usize, data: Vec<CV3>) -> Self {
+        let n = data.len().checked_div(np).unwrap_or(0);
+        assert_eq!(
+            n * np,
+            data.len(),
+            "the field length must be a multiple of the polarizations"
+        );
+        PolField { np, n, data }
+    }
+    /// 光線の本数
+    pub fn len(&self) -> usize {
+        self.n
+    }
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+    /// 光線あたりの入力の偏光の数
+    pub fn pols(&self) -> usize {
+        self.np
+    }
+    /// 光線ごとの電場（入力の偏光の順）
+    pub fn iter(&self) -> PolFieldIter<'_> {
+        PolFieldIter { f: self, i: 0 }
+    }
+    /// 全部の電場（光線の順、光線ごとに入力の偏光の順）
+    pub fn as_flat(&self) -> &[CV3] {
+        &self.data
+    }
+    pub fn into_flat(self) -> Vec<CV3> {
+        self.data
+    }
+}
+
+/// [`PolField::iter`] の反復子
+#[derive(Debug, Clone)]
+pub struct PolFieldIter<'a> {
+    f: &'a PolField,
+    i: usize,
+}
+
+impl<'a> Iterator for PolFieldIter<'a> {
+    type Item = &'a [CV3];
+    fn next(&mut self) -> Option<&'a [CV3]> {
+        let f = self.f;
+        (self.i < f.n).then(|| {
+            self.i += 1;
+            &f.data[(self.i - 1) * f.np..self.i * f.np]
+        })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let r = self.f.n - self.i;
+        (r, Some(r))
+    }
+}
+
+impl ExactSizeIterator for PolFieldIter<'_> {}
+
+impl<'a> IntoIterator for &'a PolField {
+    type Item = &'a [CV3];
+    type IntoIter = PolFieldIter<'a>;
+    fn into_iter(self) -> PolFieldIter<'a> {
+        self.iter()
+    }
+}
+
+impl std::ops::Index<usize> for PolField {
+    type Output = [CV3];
+    fn index(&self, i: usize) -> &[CV3] {
+        assert!(i < self.n, "ray {i} out of {}", self.n);
+        &self.data[i * self.np..(i + 1) * self.np]
+    }
 }
 
 impl Trace {

@@ -337,7 +337,7 @@ fn check_pol(name: &str, s: &System, c: &Coatings, px: &[f64], py: &[f64]) -> us
             same(&a.trace, &b.trace, &what);
             assert_eq!(a.e.len(), b.e.len());
             for (i, (ea, eb)) in a.e.iter().zip(&b.e).enumerate() {
-                let bits = |e: &Vec<[C64; 3]>| -> Vec<u64> {
+                let bits = |e: &[[C64; 3]]| -> Vec<u64> {
                     e.iter()
                         .flat_map(|v| v.iter().flat_map(|c| [c.re.to_bits(), c.im.to_bits()]))
                         .collect()

@@ -265,7 +265,7 @@ pub fn fiber_coupling(
     } else {
         RecSel::Off
     };
-    let (t, e): (Trace, Option<Vec<Vec<crate::trace::CV3>>>) = match coat {
+    let (t, e): (Trace, Option<crate::system::PolField>) = match coat {
         Some(c) => {
             let p = s.trace_pol_launch(&launch, w, PolIn::new(&pols, c).no_phase(), rec)?;
             (p.trace, Some(p.e))

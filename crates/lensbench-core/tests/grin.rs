@@ -286,7 +286,7 @@ fn coordinate_breaks_inside_the_medium() {
                     PolIn::new(&[[one, zero], [zero, one]], &c),
                 )
                 .unwrap();
-            p.e[0].clone()
+            p.e[0].to_vec()
         };
         let (e0, e1) = (pol(&s), pol(&b));
         let mut de = 0.0f64;
