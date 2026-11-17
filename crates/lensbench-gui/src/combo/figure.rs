@@ -769,12 +769,8 @@ fn paint(
             );
         }
     }
-    let glass_fill = if vis.dark_mode {
-        Color32::from_rgba_unmultiplied(0x2B, 0x4A, 0x66, 150)
-    } else {
-        Color32::from_rgba_unmultiplied(0xCD, 0xE4, 0xF8, 200)
-    };
-    let mirror_fill = Color32::from_rgba_unmultiplied(0x9A, 0xA3, 0xAF, 160);
+    let glass_fill = theme::glass_fill(vis);
+    let mirror_fill = theme::mirror_fill(vis);
     let outline = |selected: bool| {
         if selected {
             Stroke::new(2.2_f32, accent)
@@ -804,7 +800,7 @@ fn paint(
         painter.add(egui::Shape::line(closed, outline(sel(b.k))));
     }
     // 面の表で選んだ面: その面を持つ玉の縁と、面の頂点の印（#125）
-    let hl = Color32::from_rgb(0xE0, 0x6C, 0x00);
+    let hl = theme::highlight(vis);
     for line in &sc.hl {
         painter.add(egui::Shape::line(line.clone(), Stroke::new(2.0_f32, hl)));
     }
@@ -819,8 +815,8 @@ fn paint(
         );
     }
     // 機構部品: 壁の断面（選べない、名前は指したとき）
-    let mech_fill = Color32::from_rgba_unmultiplied(0x9A, 0x8C, 0x7A, 0x60);
-    let mech_line = Color32::from_rgb(0x7A, 0x6C, 0x5A);
+    let mech_fill = theme::mech_fill(vis);
+    let mech_line = theme::mech_line(vis);
     for (i, (name, polys)) in sc.mechs.iter().enumerate() {
         for (j, poly) in polys.iter().enumerate() {
             painter.add(egui::Shape::convex_polygon(

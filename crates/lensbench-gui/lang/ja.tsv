@@ -1323,6 +1323,7 @@ Zernike {}	Zernike {}
 r^{} coefficient	r^{} の係数
 {} {}	{} の{}
 Surface {} {}	面 {} の{}
+{} Config {}	{} の構成 {}
 Use this value in all configurations	この値を全部の構成に
 Apply this configuration to the system	この構成を系に入れる
 dispersion change	分散の変化

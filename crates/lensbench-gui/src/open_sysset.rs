@@ -80,7 +80,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
             changed.extend(f.write_data(d));
         }
         Err(e) => {
-            ui.colored_label(egui::Color32::from_rgb(220, 80, 60), e);
+            ui.colored_label(crate::theme::error(ui.visuals()), e);
         }
     }
 

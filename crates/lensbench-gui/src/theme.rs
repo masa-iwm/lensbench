@@ -163,6 +163,53 @@ pub fn highlight(v: &Visuals) -> Color32 {
     }
 }
 
+/// 図のガラスの塗り（断面は半透明、3D は面の陰を付けて塗るので不透明）
+pub fn glass_fill(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        Color32::from_rgba_unmultiplied(0x2B, 0x4A, 0x66, 150)
+    } else {
+        Color32::from_rgba_unmultiplied(0xCD, 0xE4, 0xF8, 200)
+    }
+}
+
+/// 3D の図のガラスの色（陰を付ける前）
+pub fn glass_3d(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0x4A7AA6)
+    } else {
+        rgb(0x9CC6EC)
+    }
+}
+
+/// 図の鏡・BS の分ける面の塗り
+pub fn mirror_fill(_v: &Visuals) -> Color32 {
+    Color32::from_rgba_unmultiplied(0x9A, 0xA3, 0xAF, 160)
+}
+
+/// 3D の図の鏡の色（陰を付ける前）
+pub fn mirror_3d(_v: &Visuals) -> Color32 {
+    rgb(0xA8AFB8)
+}
+
+/// 図の機構部品の塗りと縁
+pub fn mech_fill(_v: &Visuals) -> Color32 {
+    Color32::from_rgba_unmultiplied(0x9A, 0x8C, 0x7A, 0x60)
+}
+pub fn mech_line(_v: &Visuals) -> Color32 {
+    rgb(0x7A6C5A)
+}
+/// 3D の図の機構部品の色（陰を付ける前）
+pub fn mech_3d(_v: &Visuals) -> Color32 {
+    rgb(0x9A8C7A)
+}
+
+/// 3D の座標軸 x・y・z の色
+pub const AXES: [Color32; 3] = [
+    Color32::from_rgb(0xD9, 0x53, 0x4F),
+    Color32::from_rgb(0x4C, 0xAF, 0x50),
+    Color32::from_rgb(0x42, 0x8B, 0xCA),
+];
+
 pub fn apply(ctx: &egui::Context, look: &Look) {
     let a = Color32::from_rgb(look.accent[0], look.accent[1], look.accent[2]);
     for (theme, mut v) in [(Theme::Dark, dark(a)), (Theme::Light, light(a))] {

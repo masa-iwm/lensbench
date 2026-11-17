@@ -528,6 +528,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         h.col(|ui| {
                             let rt = RichText::new(trf("Config {}", &[&k])).strong();
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
+                            // AccessKit の木に名前を出す（自前の当たり判定。GPN-22）
+                            r.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Button,
+                                    true,
+                                    st.sel_col == Some(k - 1),
+                                    trf("Config {}", &[&k]),
+                                )
+                            });
                             if st.sel_col == Some(k - 1) {
                                 ui.painter().rect_filled(ui.max_rect(), 2.0, ui.visuals().selection.bg_fill);
                             }
@@ -572,6 +581,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         row.set_selected(st.cur.is_some_and(|c| c.0 == i));
                         row.col(|ui| {
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_name"), Sense::click());
+                            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.as_str()));
                             ui.label(RichText::new(name).monospace());
                             let d = param_desc(name);
                             let r = if d.is_empty() { r } else { r.on_hover_text(d) };
@@ -628,6 +638,16 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 let resp = ui
                                     .interact(ui.max_rect(), ui.id().with(("mce", i, k)), Sense::click())
                                     .on_hover_text(hover);
+                                // AccessKit の木に名前（パラメータと構成）と値を出す（レンズデータのセルと同じ、GPN-22）
+                                resp.widget_info(|| {
+                                    let mut w = egui::WidgetInfo::labeled(
+                                        egui::WidgetType::Button,
+                                        true,
+                                        trf("{} Config {}", &[name, &(k + 1)]),
+                                    );
+                                    w.current_text_value = Some(short(v));
+                                    w
+                                });
                                 let mut rt = RichText::new(short(v)).monospace();
                                 if k + 1 == t.active {
                                     rt = rt.color(accent);

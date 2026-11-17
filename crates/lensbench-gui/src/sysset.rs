@@ -712,7 +712,7 @@ impl form::Extra for ComboExtra<'_> {
                     let s: Vec<String> = ks.iter().map(|k| (k + 1).to_string()).collect();
                     ui.label(
                         RichText::new(trf("Elements {} (keep only one)", &[&s.join(", ")]))
-                            .color(Color32::RED),
+                            .color(crate::theme::error(ui.visuals())),
                     );
                 }
             }
@@ -779,7 +779,8 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     if !probs.is_empty() {
         ui.separator();
         for p in probs {
-            ui.label(RichText::new(format!("⚠ {p}")).color(Color32::from_rgb(220, 80, 60)));
+            let c = crate::theme::warn(ui.visuals());
+            ui.label(RichText::new(format!("⚠ {p}")).color(c));
         }
     }
     // 膜（フィルタ）の定義（プロジェクトの coatings）
@@ -817,7 +818,7 @@ fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32)
             let missing = !cats.is_empty() && !cats.iter().any(|x| x.eq_ignore_ascii_case(name));
             let t = RichText::new(name.as_str());
             ui.label(if missing {
-                t.color(Color32::from_rgb(220, 80, 60))
+                t.color(crate::theme::error(ui.visuals()))
             } else {
                 t
             })

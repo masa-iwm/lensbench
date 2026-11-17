@@ -272,12 +272,8 @@ pub fn show(
         Tri([Pos2; 3], Color32, Option<usize>),
         Seg([Pos2; 2], Color32),
     }
-    let glass = if vis.dark_mode {
-        Color32::from_rgb(0x4A, 0x7A, 0xA6)
-    } else {
-        Color32::from_rgb(0x9C, 0xC6, 0xEC)
-    };
-    let mirror = Color32::from_rgb(0xA8, 0xAF, 0xB8);
+    let glass = theme::glass_3d(&vis);
+    let mirror = theme::mirror_3d(&vis);
     let plate = vis.strong_text_color();
     let light = {
         let l = [0.35f32, 0.55, 1.0];
@@ -293,7 +289,7 @@ pub fn show(
             Kind::Glass => (glass, 0.5),
             Kind::Mirror => (if selected { accent } else { mirror }, 0.9),
             Kind::Plate(_) => (plate, 0.35),
-            Kind::Mech => (Color32::from_rgb(0x9A, 0x8C, 0x7A), 0.45),
+            Kind::Mech => (theme::mech_3d(&vis), 0.45),
         };
         let vs: Vec<[f32; 3]> = m.pos.iter().map(|&p| to_view(p)).collect();
         for t in &m.tris {
@@ -371,9 +367,9 @@ pub fn show(
     // 向きの印（左下）: x 赤・y 緑・z 青
     let o = Pos2::new(rect.left() + 34.0, rect.bottom() - 34.0);
     for (i, (name, c)) in [
-        ("x", Color32::from_rgb(0xD9, 0x53, 0x4F)),
-        ("y", Color32::from_rgb(0x4C, 0xAF, 0x50)),
-        ("z", Color32::from_rgb(0x42, 0x8B, 0xCA)),
+        ("x", theme::AXES[0]),
+        ("y", theme::AXES[1]),
+        ("z", theme::AXES[2]),
     ]
     .into_iter()
     .enumerate()
