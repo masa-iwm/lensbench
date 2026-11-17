@@ -34,8 +34,12 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### プロジェクトの面の上書き・操作
+- Rust の `ExpandOpts` に `within`（外側で展開中のファイル・項目、ふつうは空）を足した。欄を全部並べて作っていたら
+  `..Default::default()` を足す（PRJ-28）。プロジェクトのインポートの循環は深さ 8 の上限でなく循環の道で見つけ、
+  エラーの文は「a loop of imports: a.json → b.json → a.json」になった（ユーザーカタログの項目の循環も同じ文）
 - プロジェクトファイルに形式の印 `"format": "lensbench-project"` と版 `"format_version": 1` を足した（PRJ-23）。書くときはいつも付け、
   読むときは省略を許すが、印が違うか版が新しいファイルは誤りにする。Rust の `Project` に `format`・`format_version`（`Option`）が増えた。
+  この版より前の lensbench は、この版が書いたプロジェクトファイルを「unknown key format, format_version」で読めない
 - プロジェクトの直下の `surface_edits`・`surface_ops` をやめ、各ブロック（玉・絞り・ミラー・面の並び・zmx・user・群と zmx のインポートの群）が
   持つようにした（PRJ-04）。`surface_edits` の項目は `block` を書かず `{"surface": i, "fields": {…}}`、`surface_ops` の当てる面
   （`surface`・`dst`）はそのブロックの面の番号（参照する `src`・`other` は前どおり `{"block": id, "surface": i}` かシステムの面）。

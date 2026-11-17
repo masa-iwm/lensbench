@@ -663,6 +663,84 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// 取り込んだプロジェクトの循環は道を並べて止め、循環でない深い入れ子は通す。状態・BS の経路を選べる
+#[test]
+fn imported_projects_find_loops_and_take_a_state() {
+    let dir = std::env::temp_dir().join(format!("lb-json-loop-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let put = |name: &str, rest: &str| {
+        std::fs::write(dir.join(name), format!("{{ {HEAD} {rest} }}")).unwrap();
+    };
+    put(
+        "leaf.json",
+        r#""blocks": [{"type": "stop", "semi": 5}, {"type": "air", "id": "d1", "t": 5},
+            {"type": "lens", "source": {"surfaces": [
+              {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}, {"radius": -50, "semi": 6}]}},
+            {"type": "air", "t": 40}],
+          "states": [{"name": "far", "set": {"d1": {"t": 9}}}]"#,
+    );
+    // 10 段の入れ子（循環ではない）
+    for i in 0..10 {
+        let next = if i == 9 {
+            "leaf.json".to_string()
+        } else {
+            format!("c{}.json", i + 1)
+        };
+        put(
+            &format!("c{i}.json"),
+            &format!(r#""blocks": [{{"type": "zmx", "path": "{next}"}}]"#),
+        );
+    }
+    let at = |name: &str| serde_json::to_string(&dir.join(name).display().to_string()).unwrap();
+    let len = |s: &System| {
+        s.surfaces[1..s.surfaces.len() - 1]
+            .iter()
+            .map(|q| q.t)
+            .sum::<f64>()
+    };
+    let deep = project(&format!(
+        r#"[{{"type": "zmx", "path": {}}}]"#,
+        at("c0.json")
+    ));
+    let base = project(&format!(
+        r#"[{{"type": "zmx", "path": {}}}]"#,
+        at("leaf.json")
+    ));
+    assert_eq!(len(&deep), len(&base));
+    // 状態を選ぶ
+    let far = project(&format!(
+        r#"[{{"type": "zmx", "path": {}, "state": "far"}}]"#,
+        at("leaf.json")
+    ));
+    assert!((len(&far) - len(&base) - 4.0).abs() < 1e-12);
+    // x → y → x
+    put("x.json", r#""blocks": [{"type": "zmx", "path": "y.json"}]"#);
+    put("y.json", r#""blocks": [{"type": "zmx", "path": "x.json"}]"#);
+    let e = try_project(&format!(r#"[{{"type": "zmx", "path": {}}}]"#, at("x.json")))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("a loop of imports"), "{e}");
+    assert!(
+        e.contains("x.json → ") && e.contains("y.json → ") && e.ends_with("x.json"),
+        "{e}"
+    );
+    // 状態は .zmx には付けられない
+    let e = try_project(&format!(
+        r#"[{{"type": "zmx", "path": {}, "state": "far"}}]"#,
+        serde_json::to_string(
+            &root()
+                .join("tests/refs/A0/system.zmx")
+                .display()
+                .to_string()
+        )
+        .unwrap()
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("for a project file"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// 折り曲げの鏡を 2 軸で傾けても、鏡の後の軸は反射した光軸に乗る（軸上の主光線が鏡の後の全部の面で (0, 0) を
 /// 通り、方向は局所の ∓z）
 #[test]

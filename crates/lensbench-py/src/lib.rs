@@ -978,7 +978,7 @@ impl PySystem {
             let o = lensbench_project::ExpandOpts {
                 state: state.as_deref(),
                 path: beam_path.as_deref(),
-                cache: None,
+                ..Default::default()
             };
             let x = lensbench_project::expand(&p, &env, &o)?;
             Ok((x.system, x.notes))

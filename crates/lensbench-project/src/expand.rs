@@ -270,6 +270,24 @@ pub struct ExpandOpts<'a> {
     pub path: Option<&'a str>,
     /// カタログの玉を使い回す（同じ環境の展開の間だけで共有する）
     pub cache: Option<&'a SourceCache>,
+    /// 外側で展開中のファイル・項目（取り込んだプロジェクトを展開するとき、循環を見つける）。ふつうは空
+    pub within: &'a [Loading],
+}
+
+/// 展開中のファイル（正規化したパス）と、ユーザーカタログならその項目
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loading {
+    pub file: PathBuf,
+    pub item: Option<String>,
+}
+
+impl std::fmt::Display for Loading {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.item {
+            Some(it) => write!(f, "{} item {it}", self.file.display()),
+            None => write!(f, "{}", self.file.display()),
+        }
+    }
 }
 
 /// 展開の結果
@@ -503,10 +521,15 @@ pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> lensbench_core::Result<
         }
         None => p,
     };
-    Ok(
-        expand_inner(p, env, o.path.or(p.path.as_deref()), false, o.cache)?
-            .ok_or("internal error: the BS path is short outside the path search")?,
-    )
+    Ok(expand_inner(
+        p,
+        env,
+        o.path.or(p.path.as_deref()),
+        false,
+        o.cache,
+        o.within,
+    )?
+    .ok_or("internal error: the BS path is short outside the path search")?)
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
@@ -524,7 +547,7 @@ pub fn paths_cached(
     let mut out = Vec::new();
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
-        match expand_inner(p, env, Some(&q), true, Some(cache)) {
+        match expand_inner(p, env, Some(&q), true, Some(cache), &[]) {
             Ok(Some(_)) => out.push(q),
             Ok(None) => {
                 if out.len() + todo.len() > 1024 {
@@ -571,6 +594,7 @@ pub(crate) fn expand_inner(
     path: Option<&str>,
     strict: bool,
     cache: Option<&SourceCache>,
+    within: &[Loading],
 ) -> lensbench_core::Result<Option<Expansion>> {
     {
         let mut ids = Vec::new();
@@ -619,7 +643,8 @@ pub(crate) fn expand_inner(
         env,
         cache,
         base: env.base.clone(),
-        users: Vec::new(),
+        loading: within.to_vec(),
+        outer: within.len(),
         sf: Vec::new(),
         map: Vec::new(),
         noted: Vec::new(),

@@ -97,6 +97,7 @@ fn written(
             state: spec.state.as_deref(),
             path: spec.path.as_deref(),
             cache: Some(&cache),
+            ..Default::default()
         };
         lensbench_project::expand(q, &env, &o)
             .map(|_| ())
@@ -111,6 +112,7 @@ fn written(
             state: spec.state.as_deref(),
             path: spec.path.as_deref(),
             cache: Some(&cache),
+            ..Default::default()
         };
         fresh = lensbench_project::expand(&before, &env, &o)?.system;
         &fresh

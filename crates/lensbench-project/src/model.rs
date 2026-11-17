@@ -596,6 +596,12 @@ pub enum Block {
         /// .zmx の絞りを系の絞りにする（false なら取り込んだ面の絞りを外す。系の絞りはほかのブロックで）
         #[serde(default = "yes")]
         stop: bool,
+        /// 取り込むプロジェクト（.json）の状態（省略なら状態の変更なし）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        state: Option<String>,
+        /// 取り込むプロジェクト（.json）の BS の経路（T・R の文字列。省略なら状態・プロジェクトの path）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        beam_path: Option<String>,
         /// 玉モードの群（.zmx の面の範囲）
         #[serde(default)]
         groups: Vec<ZmxGroup>,

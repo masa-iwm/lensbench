@@ -252,15 +252,18 @@ fn a_catalog_item_referring_to_itself_is_an_error() {
     assert!(
         ea.message()
             .unwrap_or_default()
-            .contains("refers to itself"),
+            .contains("a loop of imports"),
         "{ea}"
     );
     assert!(
         eb.message()
             .unwrap_or_default()
-            .contains("refers to itself"),
+            .contains("a loop of imports"),
         "{eb}"
     );
+    // 循環の道: b → c → b
+    let m = eb.message().unwrap_or_default();
+    assert!(m.contains("item b → ") && m.contains("item c → "), "{eb}");
     assert_eq!(ok.unwrap().surfaces[1].t, 2.0);
 }
 

@@ -899,8 +899,6 @@ a detector must be the last block	検出器は最後のブロックだけ
 importing a .zmx on the return path is not supported (use a lens block)	往路を戻る範囲の .zmx のインポートは未対応（レンズのブロックにしてください）
 {path}: the configuration number must be 1 or more	{path}: 構成の番号は 1 以上
 {path}: a .json system has only configuration 1	{path}: .json のシステムでは構成の番号は 1 だけ
-{path}: system imports nested too deep (a loop?)	{path}: システムのインポートが深すぎます（循環？）
-{}: item {item} refers to itself (a loop)	{}: 項目 {item} が自分自身を参照しています（循環）
 {}: no item {item}	{}: 項目 {item} はありません
 {item}: glass catalog not found: {}. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	{item}: 硝材カタログが見つかりません: {}。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
 {}: coating {k}: {e}	{}: コーティング {k}: {e}
@@ -2147,6 +2145,8 @@ project file: format {f} (a project file is {PROJECT_FORMAT})	プロジェクト
 project file: format version {n} is newer than this lensbench reads ({PROJECT_FORMAT_VERSION}); update lensbench	プロジェクトファイル: 形式の版 {n} はこの lensbench が読める版（{PROJECT_FORMAT_VERSION}）より新しいです。lensbench を更新してください
 parameter {}: the target doesn't match the kind	パラメータ {}: 付く先が種類と合いません
 parameter {} is not on a surface	パラメータ {} は面のパラメータではありません
+a loop of imports: {}	インポートが循環しています: {}
+{path}: state and beam_path are for a project file	{path}: state と beam_path はプロジェクトファイルのインポートにだけ使えます
 {} is a pickup quantity, not a parameter	{} はピックアップの量で、パラメータではありません
 this surface can't be written as a row	この面は行で書けません
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません

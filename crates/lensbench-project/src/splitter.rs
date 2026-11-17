@@ -507,8 +507,10 @@ pub(crate) fn parse_path(s: &str) -> lensbench_core::Result<Vec<bool>> {
 impl<'a, 'b> Ctx<'a, 'b> {
     fn split_key(&self, id: &str) -> String {
         let mut k = String::new();
-        for (p, it) in &self.users {
-            k.push_str(&format!("{}#{it}/", p.display()));
+        for l in &self.loading[self.outer..] {
+            if let Some(it) = &l.item {
+                k.push_str(&format!("{}#{it}/", l.file.display()));
+            }
         }
         k.push_str(id);
         k

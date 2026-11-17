@@ -100,8 +100,11 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) cache: Option<&'a SourceCache>,
     /// 相対パスの基準（ユーザーカタログの項目の中ではカタログのフォルダ）
     pub(crate) base: PathBuf,
-    /// 展開中のユーザーカタログの項目（正規化したパス, 項目）。循環を見つける
-    pub(crate) users: Vec<(PathBuf, String)>,
+    /// 展開中のファイル・ユーザーカタログの項目（外側の展開から受けたものが先）。品と取り込んだプロジェクトの
+    /// 両方の循環をここで見つける
+    pub(crate) loading: Vec<Loading>,
+    /// loading のうち外側の展開から受けた数（この展開で積んだ項目は後ろ）
+    pub(crate) outer: usize,
     pub(crate) sf: Vec<Surface>,
     /// sf の各面の出どころ（[`SurfOrigin`]: 面を足したブロック、往路・復路、.zmx の元の面）。sf と同じ長さ
     pub(crate) map: Vec<SurfOrigin>,
@@ -595,9 +598,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
             Block::User { .. } => {
                 let (g, dir, key) = self.user_group(b)?;
                 let base = std::mem::replace(&mut self.base, dir);
-                self.users.push(key);
+                self.loading.push(key);
                 let r = self.back_block(&g);
-                self.users.pop();
+                self.loading.pop();
                 self.base = base;
                 r?;
             }
@@ -655,18 +658,43 @@ impl<'a, 'b> Ctx<'a, 'b> {
         Ok(())
     }
 
-    pub(crate) fn load_zmx(&mut self, path: &str, cfg: usize) -> lensbench_core::Result<System> {
+    /// 展開中のファイル・項目に key があれば、循環の道を並べた誤り
+    pub(crate) fn not_loading(&self, key: &Loading) -> lensbench_core::Result<()> {
+        let Some(i) = self.loading.iter().position(|l| l == key) else {
+            return Ok(());
+        };
+        let chain: Vec<String> = self.loading[i..]
+            .iter()
+            .chain([key])
+            .map(ToString::to_string)
+            .collect();
+        Err(format!("a loop of imports: {}", chain.join(" → ")).into())
+    }
+
+    /// .zmx・系ファイル・プロジェクトの系を読む。pick はプロジェクトのときの状態と BS の経路
+    pub(crate) fn load_zmx(
+        &mut self,
+        path: &str,
+        cfg: usize,
+        pick: (Option<&str>, Option<&str>),
+    ) -> lensbench_core::Result<System> {
         if cfg == 0 {
             return Err(format!("{path}: the configuration number must be 1 or more").into());
         }
         let p = self.base.join(path);
+        let picked = pick.0.is_some() || pick.1.is_some();
+        if picked
+            && !p
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+        {
+            return Err(format!("{path}: state and beam_path are for a project file").into());
+        }
         // 覚えた系（ファイルが変わっていなければ）
-        let key = (
-            lensbench_core::vfs::canonicalize(&p).unwrap_or_else(|_| p.clone()),
-            cfg,
-        );
+        let file = lensbench_core::vfs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+        let key = (file.clone(), cfg);
         let stamp = self.cache.and_then(|_| lensbench_core::vfs::stamp(&p).ok());
-        if let (Some(c), Some(st)) = (self.cache, &stamp) {
+        if let (Some(c), Some(st), false) = (self.cache, &stamp, picked) {
             if let Some(s) = c.file(&key, st) {
                 self.merge_glasses(&s);
                 return Ok(s);
@@ -684,33 +712,37 @@ impl<'a, 'b> Ctx<'a, 'b> {
             if cfg != 1 {
                 return Err(format!("{path}: a .json system has only configuration 1").into());
             }
-            thread_local! {
-                static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-            }
-            if DEPTH.with(|d| d.get()) >= 8 {
-                return Err(format!("{path}: system imports nested too deep (a loop?)").into());
-            }
             // ファイルは 1 回だけ読む（系ファイルかプロジェクトかは中身で見る）
             let txt = lensbench_core::vfs::read_to_string(&p)
                 .map_err(lensbench_core::Error::io_at(p.display()))?;
             if sysfile::is_system_json(&txt) {
+                if picked {
+                    return Err(
+                        format!("{path}: state and beam_path are for a project file").into(),
+                    );
+                }
                 let s = sysfile::load_text_with(&p, &txt, &self.env.glass_dirs)?.0;
                 keep(self, &s);
                 self.merge_glasses(&s);
                 return Ok(s);
             }
-            DEPTH.with(|d| d.set(d.get() + 1));
+            let me = Loading { file, item: None };
+            self.not_loading(&me)?;
+            let mut within = self.loading.clone();
+            within.push(me);
             // 入れ子のプロジェクトは中のファイルが変わりうるので系は覚えず、中の葉だけ覚える
-            let r = Project::from_json(&txt).and_then(|q| {
-                let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
-                let o = ExpandOpts {
-                    cache: self.cache,
-                    ..Default::default()
-                };
-                expand(&q, &env, &o).map(|x| x.system)
-            });
-            DEPTH.with(|d| d.set(d.get() - 1));
-            let s = r.map_err(|e| e.at(p.display()))?;
+            let s = Project::from_json(&txt)
+                .and_then(|q| {
+                    let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
+                    let o = ExpandOpts {
+                        state: pick.0,
+                        path: pick.1,
+                        cache: self.cache,
+                        within: &within,
+                    };
+                    expand(&q, &env, &o).map(|x| x.system)
+                })
+                .map_err(|e| e.at(p.display()))?;
             self.merge_glasses(&s);
             return Ok(s);
         }
@@ -729,7 +761,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn user_group(
         &mut self,
         b: &Block,
-    ) -> lensbench_core::Result<(Block, PathBuf, (PathBuf, String))> {
+    ) -> lensbench_core::Result<(Block, PathBuf, Loading)> {
         self.user_group_frame(b).map(|(g, d, k, _)| (g, d, k))
     }
 
@@ -738,7 +770,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn user_group_frame(
         &mut self,
         b: &Block,
-    ) -> lensbench_core::Result<(Block, PathBuf, (PathBuf, String), ItemFrame)> {
+    ) -> lensbench_core::Result<(Block, PathBuf, Loading, ItemFrame)> {
         let Block::User {
             id,
             catalog,
@@ -750,15 +782,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
             unreachable!()
         };
         let path = self.base.join(catalog);
-        let key = (
-            lensbench_core::vfs::canonicalize(&path).unwrap_or_else(|_| path.clone()),
-            item.clone(),
-        );
-        if self.users.contains(&key) {
-            return Err(
-                format!("{}: item {item} refers to itself (a loop)", path.display()).into(),
-            );
-        }
+        let key = Loading {
+            file: lensbench_core::vfs::canonicalize(&path).unwrap_or_else(|_| path.clone()),
+            item: Some(item.clone()),
+        };
+        self.not_loading(&key)?;
         let cat = UserCatalog::load_shared(&path)?;
         let it = cat
             .items
@@ -835,7 +863,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn lens_element(&mut self, src: &LensSource) -> lensbench_core::Result<Element> {
         match src {
             LensSource::Zmx { zmx, lens, config } => {
-                let s = self.load_zmx(zmx, *config)?;
+                let s = self.load_zmx(zmx, *config, (None, None))?;
                 Ok(pick_lens(&s, *lens).map_err(|e| format!("{zmx}: {e}"))?)
             }
             LensSource::Catalog { vendor, part } => {
@@ -1059,9 +1087,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 stop,
                 groups,
                 place,
+                state,
+                beam_path,
                 ..
             } => {
-                let s = self.load_zmx(path, *config)?;
+                let s = self.load_zmx(path, *config, (state.as_deref(), beam_path.as_deref()))?;
                 self.zenv
                     .push((path.clone(), s.temperature, s.pressure, s.adjust_index));
                 let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
@@ -1129,15 +1159,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
             Block::User { id, item, .. } => {
                 let (g, dir, key, frame) = self.user_group_frame(b)?;
                 let base = std::mem::replace(&mut self.base, dir);
-                self.users.push(key);
+                self.loading.push(key);
                 let start = self.sf.len();
                 let r = self.block(&g, &[], 0);
-                self.users.pop();
+                self.loading.pop();
                 self.base = base;
                 r?;
                 // 品の枠は、外側の品（項目の中の項目でない）だけ置く
                 if let Some((f, rev)) =
-                    frame.filter(|_| self.users.is_empty() && self.sf.len() > start)
+                    frame.filter(|_| self.loading.len() == self.outer && self.sf.len() > start)
                 {
                     let name = if id.is_empty() {
                         item.clone()
