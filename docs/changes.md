@@ -311,6 +311,8 @@
 - 物体が無限遠のときの理想レンズ（`PARAXIAL`・`ideal_mapping`）の OPD: 光が −z へ進むとき（ミラーの後）、入ってくる平行光の
   面内の位相の符号が逆だった（OPD に視野の角に比例する傾きが残った）のを直した。+z へ進む光は変わらない（ビット同じ）。
 ### Rust API
+- Python の `set_param`・`set_params` は、自動の半直径が追跡に効かない系では半直径の求め直しを後回しにし、系を読むときに最後の
+  系から 1 回求める（値は毎回求めたときと同じ。ループで繰り返す `set_param` が 7〜60 倍速い）。`System::semi_affects_trace` を公開した。
 - 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
   分布は厳密に同じで手間はおよそ 1/6、同じ種でも雑音の値は前と違う。`Rng::normal`・`Rng::poisson` はそのまま
   （公差のモンテカルロなどの値は変わらない）。

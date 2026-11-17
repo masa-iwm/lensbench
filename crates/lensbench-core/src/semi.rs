@@ -80,7 +80,7 @@ impl System {
     /// 自動の半直径が追跡に効くか: 自動の面に浮動開口がある（ける）、Irregular の面（半直径で正規化）、
     /// 自動の半直径を元にするピックアップ（曲率などを半直径から取るものも）、半径 0 のコバ厚のソルブ（半直径で測る）。最適化・公差の内側
     /// （[`System::with_params_fast`]）はこのときだけ求め直す
-    pub(crate) fn semi_affects_trace(&self) -> bool {
+    pub fn semi_affects_trace(&self) -> bool {
         let auto = |k: usize| self.surfaces.get(k).is_some_and(|d| d.semi_auto);
         self.surfaces.iter().any(|d| {
             d.semi_auto

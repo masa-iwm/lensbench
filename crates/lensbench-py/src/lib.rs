@@ -33,6 +33,7 @@ use soa::{Soa, Traced};
 mod userterm;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_analysis::polgrid::{self, PolGrid};
@@ -166,6 +167,9 @@ pub struct PySystem {
     coat_files: Vec<PathBuf>,
     /// The coatings of the system (read when first needed). Emptied by edits that change coatings, media or the coating file
     coat: RwLock<CoatCell>,
+    /// 自動の半直径の求め直しが残っている（set_param などが半直径の追跡に効かない系で後回しにした）。系を読む・直すときに
+    /// [`PySystem::sys`]・[`PySystem::write`] が求め直す（結果は最後の系だけで決まるので、毎回求め直したときと同じ）
+    semi_stale: AtomicBool,
 }
 
 /// The coatings read for a system (shared by cloned and derived systems)
@@ -440,7 +444,35 @@ fn surf_of(s: &System, a: SurfArg) -> PyResult<usize> {
 impl PySystem {
     /// The current system (a cloned Arc)
     pub fn sys(&self) -> Arc<System> {
-        self.sys.read_ok().clone()
+        if !self.semi_stale.load(Ordering::Acquire) {
+            return self.sys.read_ok().clone();
+        }
+        self.write().clone()
+    }
+
+    /// 系の書き込みの鍵（後回しにした自動の半直径を先に求め直す）
+    fn write(&self) -> std::sync::RwLockWriteGuard<'_, Arc<System>> {
+        let mut g = self.sys.write_ok();
+        if self.semi_stale.swap(false, Ordering::AcqRel) {
+            let mut n: System = (**g).clone();
+            n.update_semi();
+            *g = Arc::new(n);
+        }
+        g
+    }
+
+    /// パラメータを変えた系に替える。自動の半直径が追跡に効かない系では求め直しを後回しにする（Python のループで
+    /// set_param を繰り返すとき、毎回の求め直しが重い）
+    fn replace_with_params(
+        &self,
+        g: &mut std::sync::RwLockWriteGuard<'_, Arc<System>>,
+        changes: &[(lensbench_core::param::Param, f64)],
+    ) -> PyResult<()> {
+        let n = g.with_params_fast(changes).map_err(err)?;
+        let lazy = n.surfaces.iter().any(|d| d.semi_auto) && !n.semi_affects_trace();
+        **g = Arc::new(n);
+        self.semi_stale.store(lazy, Ordering::Release);
+        Ok(())
     }
 
     /// Make from a system (the coating file, the coatings read)
@@ -449,6 +481,7 @@ impl PySystem {
             sys: RwLock::new(Arc::new(sys)),
             coat_files,
             coat: RwLock::new(coat),
+            semi_stale: AtomicBool::new(false),
         }
     }
 
@@ -460,7 +493,7 @@ impl PySystem {
     /// Clone the system, change it with f and replace it only on success (a running trace keeps the previous system).
     /// If something that coating loading depends on changes, drop the coatings read and read them again when next needed
     fn mutate<R>(&self, f: impl FnOnce(&mut System) -> lensbench_core::Result<R>) -> PyResult<R> {
-        let mut g = self.sys.write_ok();
+        let mut g = self.write();
         let mut n: System = (**g).clone();
         let r = f(&mut n).map_err(err)?;
         if coat_changed(&g, &n) {
@@ -1448,7 +1481,7 @@ impl PySystem {
         spans: Vec<(usize, usize)>,
         pivot: (f64, f64, f64),
     ) -> PyResult<()> {
-        let mut g = self.sys.write_ok();
+        let mut g = self.write();
         let mut n = g.with_params(&[]).map_err(err)?;
         let sp: Vec<[usize; 2]> = spans.into_iter().map(|(a, b)| [a, b]).collect();
         n.define_unit(name, &sp, [pivot.0, pivot.1, pivot.2])
@@ -1482,18 +1515,14 @@ impl PySystem {
     fn set_param(&self, spec: &str, value: f64) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let p = g.param(spec).map_err(err)?;
-        let n = g.with_params(&[(p, value)]).map_err(err)?;
-        *g = Arc::new(n);
-        Ok(())
+        self.replace_with_params(&mut g, &[(p, value)])
     }
 
     /// Change several at once: {"3.t": 10.0, "5.dx": 0.01} or [("3.t", 10.0), ...]
     fn set_params(&self, changes: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let c = parse_changes(&g, changes)?;
-        let n = g.with_params(&c).map_err(err)?;
-        *g = Arc::new(n);
-        Ok(())
+        self.replace_with_params(&mut g, &c)
     }
 
     /// Return a new changed system (the original system is not changed; a light copy)
@@ -1809,7 +1838,7 @@ impl PySystem {
         cond: Option<Bound<'_, PyTuple>>,
         fields: Option<Vec<(f64, f64)>>,
     ) -> PyResult<()> {
-        let mut g = self.sys.write_ok();
+        let mut g = self.write();
         let ft = match (kind.to_ascii_lowercase().as_str(), &cond) {
             ("angle", None) => FieldType::Angle,
             ("object_height", None) => FieldType::ObjH,

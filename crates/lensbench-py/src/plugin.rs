@@ -294,6 +294,7 @@ impl Instance for PyFuncInstance {
                         sys: RwLock::new(sys.clone()),
                         coat_files: Vec::new(),
                         coat: RwLock::new(Arc::new(coat)),
+                        semi_stale: Default::default(),
                     };
                     f.call1((cfg, inp, Bound::new(py, ps)?))?
                 }

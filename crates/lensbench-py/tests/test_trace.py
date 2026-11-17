@@ -216,6 +216,21 @@ def test_params():
         s.set_param("99.t", 1.0)
 
 
+def test_set_param_defers_the_automatic_semi_diameters():
+    # set_param を続けても、自動の半直径は読むときに最後の系から求め直す（毎回の with_params と同じ値）
+    s = lb.System.load(zmx("C0"), glass_dirs=GLASS)
+    t0, c0 = s.get_param("3.t"), s.get_param("2.c")
+    for k in range(5):
+        s.set_param("3.t", t0 + 0.1 * k)
+        s.set_params({"2.c": c0 * (1 + 0.01 * k)})
+    want = s.with_params({})  # with_params は半直径をその場で求める
+    eager = lb.System.load(zmx("C0"), glass_dirs=GLASS).with_params({"3.t": t0 + 0.4, "2.c": c0 * 1.04})
+    for j in range(s.surface_count):
+        assert s.surface(j)["semi"] == eager.surface(j)["semi"] == want.surface(j)["semi"], j
+    px, py = grid(8)
+    assert np.array_equal(s.trace(1, px, py)["x"], eager.trace(1, px, py)["x"])
+
+
 def test_unit_params():
     # 玉・群の単位のパラメータ: 玉は読込で lens1 …、群は define_unit で
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
