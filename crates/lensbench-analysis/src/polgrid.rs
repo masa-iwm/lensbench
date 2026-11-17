@@ -16,6 +16,7 @@
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
 use lensbench_core::interp::Spline;
+use lensbench_core::pupil::{PupilGrid, Rim};
 use lensbench_core::system::{Launch, RecSel, System};
 use lensbench_core::{invalid, Result};
 
@@ -44,11 +45,14 @@ pub struct PolGrid {
     bad: Vec<bool>,
 }
 
-/// 1 軸の格子の座標（[−1, 1] を n − 1 等分）
+/// 1 軸の格子の座標（[−1, 1] を n − 1 等分、[`PupilGrid::Linear`] の座標）
 pub fn axis(n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| -1.0 + 2.0 * i as f64 / (n - 1) as f64)
-        .collect()
+    PupilGrid::Linear {
+        n,
+        rim: Rim::Padded,
+    }
+    .axis()
+    .unwrap_or_default()
 }
 
 impl PolGrid {
@@ -109,7 +113,7 @@ impl PolGrid {
         if !good.iter().any(|&g| g) {
             invalid!("no point of the polarization grid passes");
         }
-        let inside = |k: usize| gx[k] * gx[k] + gy[k] * gy[k] <= 1.0 + 1e-12;
+        let inside = |k: usize| Rim::Padded.inside(gx[k], gy[k]);
         let missing: Vec<usize> = (0..n).filter(|&k| !good[k] && inside(k)).collect();
         let mut bad = vec![false; n];
         missing.iter().for_each(|&k| bad[k] = true);
