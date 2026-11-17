@@ -50,7 +50,26 @@ impl PupilGrid {
 
     /// 単位円の中の格子点（行優先）の (番号, px, py)。[`trace_jones`] が追う光線の並び
     pub fn rays(&self) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
-        let idx: Vec<usize> = (0..self.g * self.g).filter(|&q| self.inside(q)).collect();
+        self.rays_where(|q| self.inside(q))
+    }
+
+    /// 格子点 q が単位円のすぐ外で、単位円にかかる区間の双三次の支え（4 × 4 の節）になり得るか（半径 1 + 3 h まで、
+    /// h は格子の間隔）
+    #[inline]
+    pub fn rim(&self, q: usize) -> bool {
+        let [x, y] = self.coords(q);
+        let h = 2.0 / (self.g - 1) as f64;
+        // 中か（[`PupilGrid::inside`]、2 乗の和で決める）の否定にする（hypot と 2 乗の和で r = 1 の点が抜けない）
+        !self.inside(q) && x.hypot(y) <= 1.0 + 3.0 * h
+    }
+
+    /// 単位円の中と、そのすぐ外（[`PupilGrid::rim`]）の格子点の (番号, px, py)。[`trace_jones_edge`] が追う光線の並び
+    pub fn rays_rim(&self) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
+        self.rays_where(|q| self.inside(q) || self.rim(q))
+    }
+
+    fn rays_where(&self, f: impl Fn(usize) -> bool) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
+        let idx: Vec<usize> = (0..self.g * self.g).filter(|&q| f(q)).collect();
         let px = idx.iter().map(|&q| self.coords(q)[0]).collect();
         let py = idx.iter().map(|&q| self.coords(q)[1]).collect();
         (idx, px, py)
@@ -413,6 +432,14 @@ pub struct JonesGrid {
     /// [波長][光線] の、光路長を中心波長の着地点へ移した量 [mm]（`rays.l` に足してある。波長 0 は 0）。
     /// 引けば各波長の光線の着地点での値になる（追跡の照合用）
     pub landing: Vec<Vec<f64>>,
+    /// 光線ごとの、光が通る範囲の縁までの符号付きの距離 [正規化瞳の半径の単位]（中が正。[`trace_jones_edge`] だけ、
+    /// ほかは空）。縁は瞳の単位円と、光線をける開口。値（位置・光路長・方向・Jones）のある光線（けられた光線と単位円の
+    /// すぐ外の光線を含む）は有限、ほかは NaN。`rays.ok` は値があって距離が 0 以上の光線
+    pub edge: Vec<f64>,
+    /// [`JonesGrid::edge`] を決めた開口の面（0 は単位円）と、距離のその面の交点 (x, y) についての勾配（瞳の単位 / mm、
+    /// 縁までの距離のパラメータ微分 = 勾配 · 交点の動き）。[`trace_jones_edge`] だけ、ほかは空
+    pub edge_surf: Vec<usize>,
+    pub edge_dm: Vec<[f64; 2]>,
 }
 
 /// [`trace_path`] と同じ追跡で、入射の x・y の 2 つを追って Jones 行列にする。`surf` を指定すると、その面の
@@ -423,6 +450,78 @@ pub fn trace_jones(
     g: usize,
     coat: &Coatings,
     surf: Option<usize>,
+) -> Result<JonesGrid> {
+    trace_jones_in(sys, field, g, coat, surf, false)
+}
+
+/// [`trace_jones`] に、光が通る範囲の縁までの距離（[`JonesGrid::edge`]）を足したもの。単位円のすぐ外の光線
+/// （[`PupilGrid::rim`]）も追い、けられた光線もそのまま追った値を残す（補間の支え）。縁までの距離は、光線をける開口
+/// ごとの縁までの距離 [mm]（けられた面の交点）を、瞳の格子の差分で求めた勾配で瞳の単位に直したものと、単位円までの
+/// 距離 1 − r の最小。値のある範囲を瞳の格子の区間でなく、この距離の補間で点ごとに決めるため。開口は中心波長で
+/// 光線をけた面だけを見る。浮動開口（自動の半径）ではけない（半径は光束から決めたもので、ほかの波長の縁の光線を
+/// わずかにけるのは半径の決め方による）
+pub fn trace_jones_edge(
+    sys: &System,
+    field: FieldSel,
+    g: usize,
+    coat: &Coatings,
+    surf: Option<usize>,
+) -> Result<JonesGrid> {
+    if !sys.floating_clip {
+        return trace_jones_in(sys, field, g, coat, surf, true);
+    }
+    let mut s = sys.clone();
+    s.edit(|p| {
+        p.floating_clip = false;
+        Ok(())
+    })?;
+    trace_jones_in(&s, field, g, coat, surf, true)
+}
+
+/// 瞳の格子 g × g の値 `m`（値のない点は NaN）を、差分の勾配の大きさで割った値（縁までの距離の 1 次の近似、
+/// [瞳の半径の単位]）と、その勾配の大きさ。勾配を求められない点（隣に値がない）は、符号だけを残して半間隔
+/// （勾配は NaN）
+fn distance_by_gradient(g: usize, m: &[f64]) -> Vec<(f64, f64)> {
+    let h = 2.0 / (g - 1) as f64;
+    let at = |i: i64, j: i64| -> Option<f64> {
+        if i < 0 || j < 0 || i >= g as i64 || j >= g as i64 {
+            return None;
+        }
+        let v = m[j as usize * g + i as usize];
+        v.is_finite().then_some(v)
+    };
+    let diff = |c: f64, lo: Option<f64>, hi: Option<f64>| match (lo, hi) {
+        (Some(a), Some(b)) => Some((b - a) / (2.0 * h)),
+        (None, Some(b)) => Some((b - c) / h),
+        (Some(a), None) => Some((c - a) / h),
+        (None, None) => None,
+    };
+    (0..g * g)
+        .map(|q| {
+            let c = m[q];
+            if !c.is_finite() {
+                return (c, f64::NAN);
+            }
+            let (i, j) = ((q % g) as i64, (q / g) as i64);
+            let gx = diff(c, at(i - 1, j), at(i + 1, j));
+            let gy = diff(c, at(i, j - 1), at(i, j + 1));
+            let n = gx.unwrap_or(0.0).hypot(gy.unwrap_or(0.0));
+            if (gx.is_none() && gy.is_none()) || !(n > 0.0) {
+                (0.5 * h * c.signum(), f64::NAN)
+            } else {
+                (c / n, n)
+            }
+        })
+        .collect()
+}
+
+fn trace_jones_in(
+    sys: &System,
+    field: FieldSel,
+    g: usize,
+    coat: &Coatings,
+    surf: Option<usize>,
+    with_edge: bool,
 ) -> Result<JonesGrid> {
     if let Some(s) = surf {
         if s == 0 || s > sys.image() {
@@ -437,7 +536,16 @@ pub fn trace_jones(
     }
     let nw = sys.wavelengths.len();
     let mut r = RayGrid::new(g, nw);
-    let (idx, pxs, pys) = PupilGrid { g }.rays();
+    let pg = PupilGrid { g };
+    let (idx, pxs, pys) = if with_edge { pg.rays_rim() } else { pg.rays() };
+    // 縁を求めるときは、けられた光線も値を残す（追跡はけられても続く）
+    let pass = |t: &crate::system::Trace, m: usize| {
+        if with_edge {
+            t.rays[m].status.is_ok()
+        } else {
+            t.ok(m)
+        }
+    };
     let mut good = vec![false; g * g];
     for &q in &idx {
         good[q] = true;
@@ -483,7 +591,7 @@ pub fn trace_jones(
         // 像空間の屈折率（向きの符号は使わない）
         let nimg = sys.image_index(w).abs();
         for (m, &q) in idx.iter().enumerate() {
-            if !t.ok(m) {
+            if !pass(&t, m) {
                 good[q] = false;
                 continue;
             }
@@ -570,7 +678,7 @@ pub fn trace_jones(
     // [`crate::phase`] の exp(−i k L)）
     let mut jones = vec![[[czero(); 2]; 2]; g * g];
     for (m, &q) in idx.iter().enumerate() {
-        if !t0.ok(m) || !good[q] {
+        if !pass(&t0, m) || !good[q] {
             good[q] = false;
             continue;
         }
@@ -586,13 +694,78 @@ pub fn trace_jones(
         let tr = &t0;
         if let Some(rec) = tr.rec_at(s) {
             for (m, &q) in idx.iter().enumerate() {
-                if good[q] && tr.ok(m) && rec.xyz[m][0].is_finite() {
+                if good[q] && pass(tr, m) && rec.xyz[m][0].is_finite() {
                     xf[q] = rec.xyz[m][0];
                     yf[q] = rec.xyz[m][1];
                 }
             }
         }
     }
+    let (mut edge_surf, mut edge_dm) = (Vec::new(), Vec::new());
+    let edge = if with_edge {
+        // 中心波長で光線をけた面（けられた最初の面）の開口ごとの縁までの距離
+        let mut vs: Vec<usize> = t0.rays.iter().map(|r| r.vig).filter(|&v| v > 0).collect();
+        vs.sort_unstable();
+        vs.dedup();
+        edge_surf = vec![0usize; g * g];
+        edge_dm = vec![[0.0; 2]; g * g];
+        let mut edge: Vec<f64> = (0..g * g)
+            .map(|q| {
+                if good[q] {
+                    let [x, y] = pg.coords(q);
+                    // 2 乗の和の平方根（中か [`PupilGrid::inside`] と同じ境: 中の光線は 0 以上）
+                    1.0 - (x * x + y * y).sqrt()
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect();
+        if !vs.is_empty() {
+            let ta = sys.try_trace(field, &pxs, &pys, Some(0), None, RecSel::Surfs(&vs))?;
+            for &k in &vs {
+                let ap = sys.surfaces[k].ap;
+                let rec = ta.rec_at(k).expect("record");
+                let mut m = vec![f64::NAN; g * g];
+                let mut at = vec![[f64::NAN; 2]; g * g];
+                for (i, &q) in idx.iter().enumerate() {
+                    let p = rec.xyz[i];
+                    if good[q] && p[0].is_finite() {
+                        m[q] = crate::trace::aperture_margin(ap, p[0], p[1]);
+                        at[q] = [p[0], p[1]];
+                    }
+                }
+                for (q, (d, n)) in distance_by_gradient(g, &m).into_iter().enumerate() {
+                    if !edge[q].is_finite() {
+                        continue;
+                    }
+                    let d = if d.is_nan() { f64::NEG_INFINITY } else { d };
+                    if d < edge[q] {
+                        edge[q] = d;
+                        edge_surf[q] = k;
+                        // 距離の、開口の面の交点での勾配（中心差分）/ 瞳での勾配の大きさ
+                        let [x, y] = at[q];
+                        let dl = 1e-6 * x.abs().max(y.abs()).max(1.0);
+                        let mg = |a: f64, b: f64| crate::trace::aperture_margin(ap, a, b);
+                        edge_dm[q] = if n.is_finite() {
+                            [
+                                (mg(x + dl, y) - mg(x - dl, y)) / (2.0 * dl * n),
+                                (mg(x, y + dl) - mg(x, y - dl)) / (2.0 * dl * n),
+                            ]
+                        } else {
+                            [0.0; 2]
+                        };
+                    }
+                }
+            }
+        }
+        // 単位円の外の光線は距離が 0 に丸まっても（r = 1 の格子点）使う光線にしない
+        for (q, (o, e)) in good.iter_mut().zip(&edge).enumerate() {
+            *o = *o && *e >= 0.0 && pg.inside(q);
+        }
+        edge
+    } else {
+        Vec::new()
+    };
     r.ok = good;
     Ok(JonesGrid {
         rays: r,
@@ -600,5 +773,8 @@ pub fn trace_jones(
         xf,
         yf,
         landing,
+        edge,
+        edge_surf,
+        edge_dm,
     })
 }

@@ -5,7 +5,7 @@
 mod aperture;
 mod pol;
 
-pub(crate) use aperture::aperture_out;
+pub(crate) use aperture::{aperture_margin, aperture_out};
 pub(crate) use pol::{cmv, pol_step, rotate_min, CryState, CNAN3, CV3};
 pub use pol::{CryKind, PolKind, PolSurf};
 
