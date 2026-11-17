@@ -732,14 +732,8 @@ pub(crate) fn expand_inner(
             };
         }
     }
-    let ft = match p.fields.kind {
-        FieldKind::Angle => FieldType::Angle,
-        FieldKind::ObjectHeight => FieldType::ObjH,
-        FieldKind::ParaxialImageHeight => FieldType::ParH,
-        FieldKind::RealImageHeight => FieldType::RealH,
-        // 面の名前は展開した後で引く
-        FieldKind::Solve => FieldType::Angle,
-    };
+    // 条件で定める視野の面の名前は展開した後で引く
+    let ft = p.fields.kind.plain().unwrap_or(FieldType::Angle);
     if p.fields.vignetting.len() > p.fields.points.len() {
         return Err(format!(
             "fields: {} vignetting rows for {} fields",

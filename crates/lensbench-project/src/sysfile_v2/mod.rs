@@ -194,17 +194,7 @@ pub struct Fields {
     pub vignetting: Vec<[f64; 5]>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldKind {
-    #[default]
-    Angle,
-    ObjectHeight,
-    ParaxialImageHeight,
-    RealImageHeight,
-    /// 条件で定める視野（solve に条件、points が目標値）
-    Solve,
-}
+pub use lensbench_core::system::FieldKind;
 
 /// 条件で定める視野の条件（面は番号）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

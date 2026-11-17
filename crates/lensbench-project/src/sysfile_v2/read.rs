@@ -76,10 +76,7 @@ pub(crate) fn system(
         }),
         (FieldKind::Solve, None) => return Err("fields: type solve needs solve".into()),
         (_, Some(_)) => return Err("fields: solve is only for type solve".into()),
-        (FieldKind::Angle, None) => FieldType::Angle,
-        (FieldKind::ObjectHeight, None) => FieldType::ObjH,
-        (FieldKind::ParaxialImageHeight, None) => FieldType::ParH,
-        (FieldKind::RealImageHeight, None) => FieldType::RealH,
+        (k, None) => k.plain().ok_or("fields: type solve needs solve")?,
     };
     let aperture = (p.aperture.kind, p.aperture.value);
     let aiming = p.aiming;

@@ -15,6 +15,46 @@ pub enum FieldType {
     Solve(FieldCond),
 }
 
+/// 視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前、
+/// XCT-09）。JSON の名前は "angle"・"object_height"・"paraxial_image_height"・"real_image_height"・"solve"
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum FieldKind {
+    #[default]
+    Angle,
+    ObjectHeight,
+    ParaxialImageHeight,
+    RealImageHeight,
+    /// 条件で定める視野（[`FieldType::Solve`]）
+    Solve,
+}
+
+impl FieldKind {
+    /// 視野の種類と条件
+    pub fn of(t: FieldType) -> (FieldKind, Option<FieldCond>) {
+        match t {
+            FieldType::Angle => (FieldKind::Angle, None),
+            FieldType::ObjH => (FieldKind::ObjectHeight, None),
+            FieldType::ParH => (FieldKind::ParaxialImageHeight, None),
+            FieldType::RealH => (FieldKind::RealImageHeight, None),
+            FieldType::Solve(c) => (FieldKind::Solve, Some(c)),
+        }
+    }
+
+    /// 条件のない種類の [`FieldType`]（Solve は None）
+    pub fn plain(self) -> Option<FieldType> {
+        match self {
+            FieldKind::Angle => Some(FieldType::Angle),
+            FieldKind::ObjectHeight => Some(FieldType::ObjH),
+            FieldKind::ParaxialImageHeight => Some(FieldType::ParH),
+            FieldKind::RealImageHeight => Some(FieldType::RealH),
+            FieldKind::Solve => None,
+        }
+    }
+}
+
 /// 条件で定める視野の条件（主光線、局所座標）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1289,6 +1289,7 @@
       "type": "object"
     },
     "FieldKind": {
+      "description": "視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前、\nXCT-09）。JSON の名前は \"angle\"・\"object_height\"・\"paraxial_image_height\"・\"real_image_height\"・\"solve\"",
       "oneOf": [
         {
           "enum": [
@@ -1301,7 +1302,7 @@
         },
         {
           "const": "solve",
-          "description": "条件で定める視野（solve に条件、points が目標値）",
+          "description": "条件で定める視野（[`FieldType::Solve`]）",
           "type": "string"
         }
       ]

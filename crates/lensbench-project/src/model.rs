@@ -18,17 +18,8 @@ pub struct ApertureSpec {
     pub value: f64,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldKind {
-    #[default]
-    Angle,
-    ObjectHeight,
-    ParaxialImageHeight,
-    RealImageHeight,
-    /// 条件で定める視野（solve に条件、points が目標値）
-    Solve,
-}
+/// 視野の種類（core の [`FieldKind`]、XCT-09）
+pub use lensbench_core::system::FieldKind;
 
 /// 条件で定める視野の条件。面は番号か名前（面のコメント）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
