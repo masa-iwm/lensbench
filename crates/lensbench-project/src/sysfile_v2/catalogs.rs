@@ -113,16 +113,7 @@ pub(crate) fn file_hash(p: &Path) -> std::io::Result<String> {
 
 /// 同梱のカタログ name の AGF の本文の hash（同じ中身の AGF ファイルの [`file_hash`] と同じ値）
 fn builtin_hash(name: &str) -> Option<String> {
-    glass::builtin::FILES
-        .iter()
-        .find(|(f, _)| f.trim_end_matches(".AGF").eq_ignore_ascii_case(name))
-        .map(|(_, t)| {
-            let hex: String = Sha256::digest(t.as_bytes())
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
-            format!("sha256:{hex}")
-        })
+    glass::builtin::sha256(name).map(str::to_string)
 }
 
 /// 系のガラスと値が同じカタログ: ファイルか同梱のもの（None）
@@ -284,4 +275,25 @@ pub(crate) fn load(
         }
     }
     Ok((out, notes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 同梱の AGF の hash（起動のたびに求めないよう持っている値）が中身と合う
+    #[test]
+    fn builtin_hashes_match_the_files() {
+        for ((f, t), h) in glass::builtin::FILES.iter().zip(glass::builtin::SHA256) {
+            let hex: String = Sha256::digest(t.as_bytes())
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            assert_eq!(
+                h,
+                format!("sha256:{hex}"),
+                "{f} を作り直したら SHA256 を直す"
+            );
+        }
+    }
 }

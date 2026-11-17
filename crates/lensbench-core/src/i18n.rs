@@ -113,25 +113,25 @@ struct Entry {
 
 const JA: &str = include_str!("../lang/ja.tsv");
 
-/// The table lines with a tab: `(in an "# items" section, line)`. Lines of an `# items` section are names
+/// The table lines with a tab: `(in an "# items" section, English, Japanese)`. Lines of an `# items` section are names
 /// (tolerance items such as `{name} decenter x`) that only [`translate_item`] uses: their templates
 /// match any head, so they must not take part of a message
-fn table_lines(text: &str) -> impl Iterator<Item = (bool, &str)> + '_ {
+fn table_lines(text: &str) -> impl Iterator<Item = (bool, &str, &str)> + '_ {
     let mut items = false;
     text.lines().filter_map(move |l| {
         if l.starts_with('#') {
             items = l.starts_with("# items");
             return None;
         }
-        (!l.trim().is_empty() && l.contains('\t')).then_some((items, l))
+        let (en, ja) = l.split_once('\t')?;
+        (!l.trim().is_empty()).then_some((items, en, ja))
     })
 }
 
 fn entries(text: &'static str, items: bool) -> impl Iterator<Item = Entry> {
     table_lines(text)
-        .filter(move |(i, _)| *i == items)
-        .filter_map(|(_, l)| l.split_once('\t'))
-        .map(|(en, ja)| Entry {
+        .filter(move |(i, _, _)| *i == items)
+        .map(|(_, en, ja)| Entry {
             en: pieces(en),
             ja: pieces(ja),
         })
@@ -213,8 +213,8 @@ pub fn add_table(text: &'static str) {
 
 fn lines(text: &'static str) -> impl Iterator<Item = (&'static str, &'static str)> {
     table_lines(text)
-        .filter(|(i, _)| !i)
-        .filter_map(|(_, l)| l.split_once('\t'))
+        .filter(|(i, _, _)| !i)
+        .map(|(_, en, ja)| (en, ja))
 }
 
 /// Check a table: each line has a tab, the same `{…}` in English and Japanese, unnamed `{}` in the same

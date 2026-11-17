@@ -22,23 +22,38 @@ pub fn catalogs() -> impl Iterator<Item = &'static str> {
     FILES.iter().map(|(f, _)| f.trim_end_matches(".AGF"))
 }
 
-/// 同梱のカタログ `name`（大文字小文字は問わない）のガラス。無ければ None
+/// 同梱の AGF の本文の sha256（[`FILES`] と同じ順、`sha256:` と 16 進）。系のファイルに書くカタログの hash を
+/// 起動のたびに求めないよう、ここに持つ（中身と合うことは lensbench-project の試験で確かめる。AGF を作り直したら直す）
+pub const SHA256: [&str; 2] = [
+    "sha256:a4d4e7e0bc2802044118e1a08befb4f8d7cdb2385c4d20dcc2660ad6a73ecf20",
+    "sha256:f699cbfe20731c294c36e25053a98f360e17874d80d89168d8658f89137fb600",
+];
+
+/// 同梱のカタログ `name`（大文字小文字は問わない）の [`FILES`] の位置
+fn index(name: &str) -> Option<usize> {
+    FILES
+        .iter()
+        .position(|(f, _)| f.trim_end_matches(".AGF").eq_ignore_ascii_case(name))
+}
+
+/// 同梱のカタログ `name`（大文字小文字は問わない）の AGF の本文の hash（[`SHA256`]）。無ければ None
+pub fn sha256(name: &str) -> Option<&'static str> {
+    index(name).map(|i| SHA256[i])
+}
+
+/// 同梱のカタログ `name`（大文字小文字は問わない）のガラス。無ければ None。
+/// カタログは使う時に 1 つずつ読む（SCHOTT だけの系で OHARA を読まない）
 pub fn catalog(name: &str) -> Option<Glasses> {
-    static C: OnceLock<Vec<(&'static str, Glasses)>> = OnceLock::new();
-    let all = C.get_or_init(|| {
-        FILES
-            .iter()
-            .map(|(f, t)| {
-                let cat = f.trim_end_matches(".AGF");
-                // 同梱のデータは試験（below）で読めることを確かめている
-                let g = super::parse_agf(t, cat).unwrap_or_default();
-                (cat, Arc::new(g))
-            })
-            .collect()
-    });
-    all.iter()
-        .find(|(c, _)| c.eq_ignore_ascii_case(name))
-        .map(|(_, g)| g.clone())
+    static C: [OnceLock<Glasses>; FILES.len()] = [const { OnceLock::new() }; FILES.len()];
+    let i = index(name)?;
+    Some(
+        C[i].get_or_init(|| {
+            let (f, t) = FILES[i];
+            // 同梱のデータは試験（below）で読めることを確かめている
+            Arc::new(super::parse_agf(t, f.trim_end_matches(".AGF")).unwrap_or_default())
+        })
+        .clone(),
+    )
 }
 
 /// カタログ `names` のうち、フォルダ `dirs` に無く同梱のものを使うカタログ
