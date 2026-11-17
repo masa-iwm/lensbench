@@ -358,3 +358,39 @@ SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\nSURF 3\n  TYPE STANDA
     assert!(d1 < 1e-12 * h1.peak, "{d1}");
     assert!(d0 > 1e-4 * h0.peak, "the weights must change the PSF: {d0}");
 }
+
+/// 射出瞳が求まらない系（偏心した球の面に軸上の光線が届かない）: Huygens PSF も OPD と同じ誤りを返し、平面の基準に
+/// 黙って切り替えない
+#[test]
+fn huygens_without_an_exit_pupil_is_the_opd_error() {
+    let s = zmx::build(
+        &zmx::parse_text(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 2\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 5\n\
+SURF 2\n  TYPE COORDBRK\n  PARM 2 50\n  DISZ 0\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.1\n  DISZ 50\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        )
+        .unwrap(),
+        &Default::default(),
+        &[],
+        None,
+    )
+    .unwrap();
+    let f = FieldSel::Index(0);
+    let e1 = analysis::opd(&s, f, &[0.0], &[0.0], None, true)
+        .err()
+        .map(|e| e.to_string());
+    let ho = HuygensOpts {
+        pupil: Some(16),
+        image: 16,
+        pixel: None,
+    };
+    let e2 = huygens_psf(&s, f, Waves::All, ho)
+        .err()
+        .map(|e| e.to_string());
+    assert!(s.exit_pupil().is_nan());
+    assert!(e1.is_some() && e1 == e2, "{e1:?} {e2:?}");
+}

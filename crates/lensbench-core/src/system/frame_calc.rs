@@ -107,14 +107,20 @@ pub fn frames(s: &System) -> Frames {
         .collect::<Vec<Option<Frame>>>();
     let mut rel = vec![None; res.len()];
     let mut prev: Option<(usize, Frame)> = None;
-    let moved = s.units.iter().any(|u| u.moved());
+    // 面 j を含む動いた玉・群の組（入れ子なら複数）。組が同じ 2 面は同じ剛体の動きを受けるので、間の局所の変換は
+    // 動きの前と同じ
+    let moved_units = |j: usize| -> Vec<usize> {
+        (0..s.units.len())
+            .filter(|&u| s.units[u].moved() && s.units[u].contains(j))
+            .collect()
+    };
     let id = I3;
     for (j, f) in res.iter().enumerate() {
         if let Some(f) = f {
             if let Some((qi, q)) = prev {
                 // 局所の変換が z のずらしだけなら、大域の座標系から逆算せず面の厚さそのものを使う（傾きの後でも
-                // RᵀR の丸めで一般の変換に落ちない）。玉・群の動きがある系は大域から求める
-                let rl = match local_shift(s, qi, j).filter(|_| !moved) {
+                // RᵀR の丸めで一般の変換に落ちない）。玉・群の動きの境をまたぐ区間（2 面の受ける動きが違う）だけ大域から求める
+                let rl = match local_shift(s, qi, j).filter(|_| moved_units(qi) == moved_units(j)) {
                     Some(sh) => Rel {
                         r: id,
                         t: [0.0, 0.0, sh],

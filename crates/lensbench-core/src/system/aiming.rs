@@ -165,13 +165,15 @@ impl System {
         let fr = self.frames();
         let plan = batch::Plan::new(self, fr, w, s, false);
         let tol = 1e-12;
-        let fail_tol = 1e-9 * rx.max(ry).max(1.0);
+        // 絞りの半径は符号つき（像が反転する向きなら負）なので大きさで
+        let rmax = rx.abs().max(ry.abs()).max(1.0);
+        let fail_tol = 1e-9 * rmax;
         let scale_ = ex
             .iter()
             .chain(ey.iter())
             .fold(1.0f64, |m, v| m.max(v.abs()));
         let h = 1e-7 * scale_;
-        let lim = tol * rx.max(ry).max(1.0);
+        let lim = tol * rmax;
         let geom = StartGeom::new(self, spec);
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
             let (p, k) = geom.ray(v[0], v[1]);

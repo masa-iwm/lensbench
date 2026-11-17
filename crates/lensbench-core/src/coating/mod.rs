@@ -39,7 +39,6 @@ pub use iface::*;
 pub use interpolate::*;
 pub use library::*;
 pub use remote::{set_remote_loader, RemoteCoatings, RemoteLoader};
-pub use thin_film::admittance;
 pub use thin_film::*;
 
 pub use num_complex::Complex64 as C64;

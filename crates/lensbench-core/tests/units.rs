@@ -601,3 +601,26 @@ fn opl_grad_double_pass() {
         .collect();
     check("ダブルパス", &s, 1, 0, last, &ps);
 }
+
+/// 玉が傾いても、玉の中・玉の外の共軸の区間は z のずらしだけの速い経路のまま（動きの境の区間だけ一般の変換）
+#[test]
+fn rigid_motion_keeps_the_shift_path_inside_and_outside_the_lens() {
+    let s = load("A0");
+    let u = s.find_unit("lens2").unwrap();
+    let [a, b] = s.units[u].spans[0];
+    let m = s
+        .with_params(&[(Param::unit(u, lensbench_core::units::UnitKind::Tx), 2.0)])
+        .unwrap();
+    let (r0, r1) = (&s.frames().rel, &m.frames().rel);
+    for j in 1..s.surfaces.len() {
+        let (Some(p), Some(q)) = (&r0[j], &r1[j]) else {
+            continue;
+        };
+        if j == a || j == b + 1 {
+            // 境: 動いた玉に入る・出る区間
+            assert!(q.shift.is_none(), "面 {j}");
+        } else if p.shift.is_some() {
+            assert_eq!(p.shift, q.shift, "面 {j}");
+        }
+    }
+}
