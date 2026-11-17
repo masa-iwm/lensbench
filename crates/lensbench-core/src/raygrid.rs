@@ -6,7 +6,7 @@
 //! - 強度は幾何光学: 瞳の格子のセル 1 つを三角形 2 つに分け、三角形ごとに
 //!   ファイバのモードの重み（ファイバ端の方向余弦のガウス）× 方向余弦の面積 / 検出面の面積。
 //!   画素は、その中心を含む最初の三角形の値を取る（ねじれた三角形 = 折り返しは除く）。
-//! - 場は中心波長の偏光追跡の Jones ベクトル（検出面の局所 x・y、約束は exp(+i k L)）、
+//! - 場は中心波長の偏光追跡の Jones ベクトル（検出面の局所 x・y、約束は exp(−i k L)、[`crate::phase`]）、
 //!   光路長は追跡した波長ごと。画素の値は三角形の重心座標で補間する。
 
 use crate::coating::{Coatings, C64};
@@ -72,7 +72,7 @@ pub struct RayGrid {
     /// [波長][光線] の光路長 [mm]（波長 0 = 中心）。どの波長も中心波長の検出面の着地点 (xs, ys) での値（[`trace_jones`] が
     /// 波長ごとの着地点のずれを 1 次で直す）
     pub l: Vec<Vec<f64>>,
-    /// 検出面の局所 x・y の場（中心波長、約束は exp(+i k L)）
+    /// 検出面の局所 x・y の場（中心波長、約束は exp(−i k L)）
     pub ex: Vec<C64>,
     pub ey: Vec<C64>,
     /// 無限遠物体で光線が 1 点に集まる面が見つからず、`sx`・`sy` に瞳の座標の 1e-4 倍を入れた（モードの重みが
@@ -324,7 +324,7 @@ pub fn rasterize_with(
 // ---------------------------------------------------------------------------------------------------------------
 // 追跡
 
-/// ファイバの入射偏光（物体の座標系の Jones ベクトル、約束は exp(+i k L)）
+/// ファイバの入射偏光（物体の座標系の Jones ベクトル、約束は exp(−i k L)）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputPol {
     X,
@@ -346,8 +346,8 @@ impl InputPol {
                 C64::new(d.to_radians().cos(), 0.0),
                 C64::new(d.to_radians().sin(), 0.0),
             ],
-            InputPol::CircularPlus => [C64::new(r, 0.0), C64::new(0.0, r)],
-            InputPol::CircularMinus => [C64::new(r, 0.0), C64::new(0.0, -r)],
+            InputPol::CircularPlus => [C64::new(r, 0.0), C64::new(0.0, -r)],
+            InputPol::CircularMinus => [C64::new(r, 0.0), C64::new(0.0, r)],
         }
     }
 
@@ -380,7 +380,7 @@ fn has_phase_terms(sys: &System) -> bool {
 ///   光路長 + (光線 − 主光線) の位相込みの光路）
 /// - ファイバ端の方向余弦: 有限物体は物体点からの方向。無限遠物体は視野の光線が 1 点に集まる最初の面での方向
 ///   （その面がなければ一様な瞳）
-/// - 場: 中心波長の偏光追跡を検出面の局所 x・y で、exp(+i k L) の約束に直したもの
+/// - 場: 中心波長の偏光追跡を検出面の局所 x・y で（exp(−i k L) の約束）
 pub fn trace_path(
     sys: &System,
     field: FieldSel,
@@ -402,7 +402,7 @@ pub fn trace_path(
 }
 
 /// [`trace_jones`] の結果: 光線の格子（場 `ex`・`ey` は 0 のまま）、光線ごとの Jones 行列（行 = 検出面の局所 x・y、
-/// 列 = ファイバ端の入射 x・y、中心波長、exp(+i k L) の約束）と、面 `surf` を指定したときのその面の局所座標の交点
+/// 列 = ファイバ端の入射 x・y、中心波長、exp(−i k L) の約束）と、面 `surf` を指定したときのその面の局所座標の交点
 #[derive(Debug, Clone)]
 pub struct JonesGrid {
     pub rays: RayGrid,
@@ -566,8 +566,8 @@ pub fn trace_jones(
             }
         }
     }
-    // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)）を
-    // exp(+i k L) の約束の場に（[`crate::phase`]）
+    // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)、約束は
+    // [`crate::phase`] の exp(−i k L)）
     let mut jones = vec![[[czero(); 2]; 2]; g * g];
     for (m, &q) in idx.iter().enumerate() {
         if !t0.ok(m) || !good[q] {
@@ -575,8 +575,8 @@ pub fn trace_jones(
             continue;
         }
         for (b, pol) in pol_e[m].iter().enumerate().take(2) {
-            jones[q][0][b] = crate::phase::pol_to_scalar(pol[0]);
-            jones[q][1][b] = crate::phase::pol_to_scalar(pol[1]);
+            jones[q][0][b] = pol[0];
+            jones[q][1][b] = pol[1];
         }
     }
     let (mut xf, mut yf) = (Vec::new(), Vec::new());

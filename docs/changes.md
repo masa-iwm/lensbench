@@ -185,10 +185,13 @@
   （理由は `error`、変数は解き始めの値、近軸量・評価関数は `null`）として残して続け、`warnings` に出す（IOO-27）。中断は前どおりエラー。
 - モンテカルロ公差の乱数・抽選を一括実行（`lensbench_runs`）のものと共通にした（IOO-14）。同じ種でも試行のずれと統計は前の版と
   違う（統計としては同じ分布。切った正規分布は棄却法から逆関数法に）。感度・公称の値は変わらない。
-- 位相の約束を exp(i(ωt − kz))（光路長 L の位相は exp(−ikL)）にそろえる（ANA-13、`lensbench_core::phase`）。この版では POP・
-  Huygens PSF・像面上の干渉縞を変えた。POP（`pop`）を保存した場（JSON の `grid.phase`、表の位相の列）の位相は符号が逆になる
+- 位相の約束を exp(i(ωt − kz))（光路長 L の位相は exp(−ikL)）にそろえた（ANA-13、`lensbench_core::phase`）。POP・
+  Huygens PSF・像面上の干渉縞・光線の格子（`raygrid`）を変えた。POP（`pop`）を保存した場（JSON の `grid.phase`、表の位相の列）の位相は符号が逆になる
   （照度は変わらない。前の版の値は −1 倍で移る）。Rust の `pop::Beam` の `u` は前の版の複素共役で、全体の場は
   `u·exp(−ik·パイロット)`（`Beam::from_fn` に渡す残りの場もこの約束で）。プラグインに渡る POP の場（`u`・`input_u`）も前の版の共役。Huygens PSF・干渉縞の強度は変わらない。
+  光線の格子（`raygrid::trace_path`・`trace_jones`）の場 `ex`・`ey` と Jones 行列は前の版の複素共役で、入射の偏光
+  `InputPol::CircularPlus` の Jones は `(1, −i)/√2`（前は `(1, i)/√2`。同じ向きの円偏光で、`jones()` の値だけが変わる）。
+  `lensbench_core::phase::pol_to_scalar` はなくした（約束が 1 つなので要らない）。
 
 ### 光学系
 - .zmx の ZPL マクロのソルブ（IOO-22）: 途中でエラーになって止まったマクロは、値は前と同じく OpticStudio に合わせる（それまでの

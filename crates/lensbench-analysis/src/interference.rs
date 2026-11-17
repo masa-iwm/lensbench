@@ -230,9 +230,7 @@ fn trace_grid(
     // 偏光つきなら偏光追跡の結果の追跡（同じ光線、ビット単位で同じ）を使い、同じ点を 2 回追わない
     let pt = match pol {
         Some((p, coat)) => {
-            // 入射の Jones ベクトル（InputPol は exp(+i k L) の約束）を偏光追跡の exp(−i k L) の約束に
-            let jin = p.jones().map(|c| c.conj());
-            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[jin], coat, false)?)
+            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[p.jones()], coat, false)?)
         }
         None => None,
     };
