@@ -28,6 +28,8 @@ mod plugin;
 mod pyjson;
 mod runs;
 mod search;
+mod soa;
+use soa::{Soa, Traced};
 mod userterm;
 
 use std::path::PathBuf;
@@ -38,7 +40,7 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
-    Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolIn, Trace,
+    Aiming, Cols, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolIn, RayBuf,
 };
 use lensbench_core::{analysis, psf, sweep, with_threads, zmx, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
@@ -484,127 +486,6 @@ impl PySystem {
     }
 }
 
-/// Arrange the traces per wavelength into (wavelength, ray) arrays (each column copied once)
-struct Soa {
-    nw: usize,
-    n: usize,
-    /// (name, value, count per ray)
-    f: Vec<(&'static str, Vec<f64>, usize)>,
-    err: Vec<i32>,
-    vig: Vec<i32>,
-    ok: Vec<bool>,
-    rec_surf: Vec<i64>,
-    rec: Vec<(&'static str, Vec<f64>)>,
-}
-
-/// Columns returned by default (local coordinates of the last surface, optical path length)
-const COLS: [&str; 9] = ["x", "y", "z", "l", "m", "n", "opl", "opl_os", "lens_opd"];
-
-/// Columns added with globals=True (global position and direction)
-const GLOBAL_COLS: [&str; 6] = ["gx", "gy", "gz", "gl", "gm", "gn"];
-
-type RecGet = fn(&lensbench_core::system::RecSurf, usize) -> f64;
-
-const REC_COLS: [(&str, RecGet); 10] = [
-    ("rec_x", |r, i| r.xyz[i][0]),
-    ("rec_y", |r, i| r.xyz[i][1]),
-    ("rec_z", |r, i| r.xyz[i][2]),
-    ("rec_l", |r, i| r.lmn[i][0]),
-    ("rec_m", |r, i| r.lmn[i][1]),
-    ("rec_n", |r, i| r.lmn[i][2]),
-    ("rec_gx", |r, i| r.p[i][0]),
-    ("rec_gy", |r, i| r.p[i][1]),
-    ("rec_gz", |r, i| r.p[i][2]),
-    ("rec_opl", |r, i| r.opl[i]),
-];
-
-impl Soa {
-    fn new(traces: &[Trace], n: usize, globals: bool, record: bool) -> Soa {
-        let nw = traces.len();
-        // 光線を 1 回だけ走査して全部の列を埋める
-        let ng = if globals { GLOBAL_COLS.len() } else { 0 };
-        let mut cols: Vec<Vec<f64>> = (0..COLS.len() + ng)
-            .map(|_| Vec::with_capacity(nw * n))
-            .collect();
-        let mut err = Vec::with_capacity(nw * n);
-        let mut vig = Vec::with_capacity(nw * n);
-        let mut ok = Vec::with_capacity(nw * n);
-        for t in traces {
-            for (i, r) in t.rays.iter().enumerate().take(n) {
-                let v = [
-                    r.xyz[0],
-                    r.xyz[1],
-                    r.xyz[2],
-                    r.lmn[0],
-                    r.lmn[1],
-                    r.lmn[2],
-                    r.opl,
-                    t.opl_os[i],
-                    r.lens_opd,
-                ];
-                for (c, x) in cols.iter_mut().zip(v) {
-                    c.push(x);
-                }
-                if globals {
-                    let g = [r.p[0], r.p[1], r.p[2], r.k[0], r.k[1], r.k[2]];
-                    for (c, x) in cols[COLS.len()..].iter_mut().zip(g) {
-                        c.push(x);
-                    }
-                }
-                err.push(r.status.code() as i32);
-                vig.push(r.vig as i32);
-                ok.push(t.ok(i));
-            }
-        }
-        let names = COLS
-            .iter()
-            .chain(if globals { &GLOBAL_COLS[..] } else { &[] });
-        let mut f: Vec<_> = names.zip(cols).map(|(&k, v)| (k, v, 1)).collect();
-        if globals {
-            let mut p0 = Vec::with_capacity(nw * n * 3);
-            let mut k0 = Vec::with_capacity(nw * n * 3);
-            for t in traces {
-                p0.extend(t.p0.iter().flatten());
-                k0.extend(t.k0.iter().flatten());
-            }
-            f.push(("p0", p0, 3));
-            f.push(("k0", k0, 3));
-        }
-        let rec_surf: Vec<i64> = traces
-            .first()
-            .filter(|_| record)
-            .map(|t| t.rec.iter().map(|r| r.surf as i64).collect())
-            .unwrap_or_default();
-        let ns = rec_surf.len();
-        let rec = if !record {
-            Vec::new()
-        } else {
-            REC_COLS
-                .iter()
-                .map(|&(k, g)| {
-                    let mut v = Vec::with_capacity(nw * ns * n);
-                    for t in traces {
-                        for r in &t.rec {
-                            v.extend((0..r.opl.len()).map(|i| g(r, i)));
-                        }
-                    }
-                    (k, v)
-                })
-                .collect()
-        };
-        Soa {
-            nw,
-            n,
-            f,
-            err,
-            vig,
-            ok,
-            rec_surf,
-            rec,
-        }
-    }
-}
-
 /// Arguments shared by trace and trace_rays
 struct TraceOpts {
     ws: Vec<usize>,
@@ -736,34 +617,58 @@ fn compute(
     o: &TraceOpts,
 ) -> lensbench_core::Result<TraceOut> {
     let rec_trace = o.record || o.params.is_some();
-    let mut traces = Vec::with_capacity(o.ws.len());
     let mut g = Vec::new();
     let mut gl = Vec::new();
-    for &w in &o.ws {
-        // 記録する面を選んだとき: dOPL/dp には全面の記録が要るので、そのときは全面で追って後で選ぶ
-        let sel = match (&o.rec_surfs, o.params.is_some()) {
-            (Some(v), false) => RecSel::Surfs(v),
-            _ => RecSel::from(rec_trace),
-        };
-        let mut t = sys.trace_launch(launch, w, o.last, sel);
-        if let Some(ps) = &o.params {
-            let mut gw = sys.opl_grad(&t, w, ps)?;
+    // 記録・微分・検出器のずらしが無ければ列に直接書く（光線ごとの結果を作らない）
+    let traced = if !rec_trace && o.dz.is_none() {
+        let cols = Cols::XYZ
+            | Cols::LMN
+            | Cols::OPL
+            | Cols::OPL_OS
+            | Cols::LENS_OPD
+            | if o.globals {
+                Cols::PK | Cols::START
+            } else {
+                Cols::empty()
+            };
+        let bufs =
+            o.ws.iter()
+                .map(|&w| {
+                    let mut b = RayBuf::with_cols(cols);
+                    sys.trace_launch_into(launch, w, o.last, &mut b);
+                    b
+                })
+                .collect();
+        Traced::Cols(bufs)
+    } else {
+        let mut traces = Vec::with_capacity(o.ws.len());
+        for &w in &o.ws {
+            // 記録する面を選んだとき: dOPL/dp には全面の記録が要るので、そのときは全面で追って後で選ぶ
+            let sel = match (&o.rec_surfs, o.params.is_some()) {
+                (Some(v), false) => RecSel::Surfs(v),
+                _ => RecSel::from(rec_trace),
+            };
+            let mut t = sys.trace_launch(launch, w, o.last, sel);
+            if let Some(ps) = &o.params {
+                let mut gw = sys.opl_grad(&t, w, ps)?;
+                if let Some(z) = o.dz {
+                    sys.opl_grad_shift(&t, w, ps, z, &mut gw)?;
+                }
+                g.extend(gw);
+                if o.land {
+                    gl.extend(sys.land_grad(&t, w, ps, o.dz)?);
+                }
+            }
             if let Some(z) = o.dz {
-                sys.opl_grad_shift(&t, w, ps, z, &mut gw)?;
+                sys.shift_end(&mut t, w, z)?;
             }
-            g.extend(gw);
-            if o.land {
-                gl.extend(sys.land_grad(&t, w, ps, o.dz)?);
+            if let Some(v) = &o.rec_surfs {
+                t.rec.retain(|r| v.contains(&r.surf));
             }
+            traces.push(t);
         }
-        if let Some(z) = o.dz {
-            sys.shift_end(&mut t, w, z)?;
-        }
-        if let Some(v) = &o.rec_surfs {
-            t.rec.retain(|r| v.contains(&r.surf));
-        }
-        traces.push(t);
-    }
+        Traced::Rays(traces)
+    };
     let jones = match (o.pw, coat) {
         (Some(w), Some(c)) if o.pol_grid.is_some() => {
             let (nx, ny) = o.pol_grid.unwrap();
@@ -774,11 +679,13 @@ fn compute(
             };
             // 止まった・けられた光線と伝搬の位相は、その波長の普通の追跡から
             let own;
-            let t = match o.ws.iter().position(|&q| q == w) {
-                Some(k) if o.dz.is_none() => &traces[k],
+            let (t, k) = match o.ws.iter().position(|&q| q == w) {
+                Some(k) if o.dz.is_none() => (&traced, k),
                 _ => {
-                    own = sys.trace_launch(launch, w, o.last, RecSel::Off);
-                    &own
+                    let mut b = RayBuf::with_cols(Cols::OPL);
+                    sys.trace_launch_into(launch, w, o.last, &mut b);
+                    own = Traced::Cols(vec![b]);
+                    (&own, 0)
                 }
             };
             let kw = 2.0 * std::f64::consts::PI / (sys.wavelengths[w] * 1e-3);
@@ -787,12 +694,13 @@ fn compute(
             let mut z = Vec::with_capacity(n * 2);
             let mut bad = Vec::with_capacity(n);
             for i in 0..n {
-                let v = if t.ok(i) { pg.eval(px[i], py[i]) } else { None };
-                bad.push(t.ok(i) && v.is_none());
+                let (ok, opl) = t.ok_opl(k, i);
+                let v = if ok { pg.eval(px[i], py[i]) } else { None };
+                bad.push(ok && v.is_none());
                 match v {
                     Some(mut v) => {
                         if o.pol_phase {
-                            let ph = C64::new(0.0, -kw * t.rays[i].opl).exp();
+                            let ph = C64::new(0.0, -kw * opl).exp();
                             v.iter_mut().for_each(|c| *c *= ph);
                         }
                         j.extend_from_slice(&v[..4]);
@@ -827,7 +735,11 @@ fn compute(
         }
         _ => None,
     };
-    Ok((Soa::new(&traces, n, o.globals, o.record), jones, g, gl))
+    let soa = match &traced {
+        Traced::Rays(t) => Soa::new(t, n, o.globals, o.record),
+        Traced::Cols(b) => Soa::from_bufs(b, n, o.globals),
+    };
+    Ok((soa, jones, g, gl))
 }
 
 /// Make the dict of a trace result

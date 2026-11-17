@@ -12,7 +12,7 @@
 
 use crate::error::{Error, Result};
 use crate::invalid;
-use crate::system::{FieldCond, ObjSpec, Trace};
+use crate::system::{FieldCond, Launch, ObjSpec, RecSel, Trace};
 use crate::System;
 
 /// 未知数
@@ -113,12 +113,12 @@ impl System {
             (Unknown::Object, ObjSpec::Point(p)) => p,
             _ => prob.pupil,
         };
-        let run = |u: [f64; 2]| -> (Trace, [f64; 2]) {
+        let run = |u: [f64; 2], rec_all: bool| -> (Trace, [f64; 2]) {
             let (spec, pp) = match prob.unknown {
                 Unknown::Object => (ObjSpec::Point(u), prob.pupil),
                 Unknown::Pupil => (prob.object, u),
             };
-            let (t, q) = self.ray_quantity(spec, pp, w, prob.residual.quantity());
+            let (t, q) = self.ray_quantity(spec, pp, w, prob.residual.quantity(), rec_all);
             let r = match prob.residual {
                 Residual::Position { target, .. } => [q[0] - target[0], q[1] - target[1]],
                 _ => q,
@@ -126,7 +126,7 @@ impl System {
             (t, r)
         };
         let norm = |r: [f64; 2]| r[0].abs().max(r[1].abs());
-        if !norm(run(start).1).is_finite() {
+        if !norm(run(start, false).1).is_finite() {
             invalid!("the starting ray doesn't pass ({:?})", prob.unknown);
         }
         let nw = crate::newton2::Newton2 {
@@ -140,7 +140,7 @@ impl System {
             // 残差が減るまで歩幅を半分にする
             line: crate::newton2::Line::Decrease { min: 1e-4 },
         };
-        let sol = nw.solve(|u| run(u).1, start, [0.0; 2]);
+        let sol = nw.solve(|u| run(u, false).1, start, [0.0; 2]);
         let (u, r, it) = (sol.v, sol.r, sol.it);
         if sol.end == crate::newton2::End::Singular {
             return Err(Error::Invalid(format!(
@@ -155,7 +155,7 @@ impl System {
                 prob.tol
             );
         }
-        let t = run(u).0;
+        let t = run(u, true).0;
         let (object, pupil) = match prob.unknown {
             Unknown::Object => (ObjSpec::Point(u), prob.pupil),
             Unknown::Pupil => (prob.object, u),
@@ -180,13 +180,32 @@ impl System {
         pupil: [f64; 2],
         w: usize,
         c: FieldCond,
+        rec_all: bool,
     ) -> (Trace, [f64; 2]) {
         let last = match c {
             FieldCond::Position { surf } => surf,
             FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => s1.max(s2),
         };
-        let o = crate::TraceOpts::new().vig([0.0; 5]).upto(last).record();
-        let t = self.trace_spec(spec, &[pupil[0]], &[pupil[1]], w, o.hxy((0.0, 0.0)));
+        // 記録は rec_all でなければ要る面だけ（面の多いシステムで反復ごとの記録の確保を減らす）
+        let surfs = match c {
+            FieldCond::Position { surf } => [surf, surf],
+            FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => [s1, s2],
+        };
+        let l = Launch::Pupil {
+            spec,
+            signed: false,
+            px: &[pupil[0]],
+            py: &[pupil[1]],
+            vig: Some([0.0; 5]),
+            hxy: Some((0.0, 0.0)),
+        };
+        let rec = if rec_all {
+            RecSel::All
+        } else {
+            RecSel::Surfs(&surfs)
+        };
+        let mut t = self.trace_launch(&l, w, Some(last), rec);
+        t.hx_hy = (0.0, 0.0);
         if t.rays[0].status.surf().is_some() {
             return (t, [f64::NAN; 2]);
         }
@@ -229,11 +248,11 @@ mod tests {
             FieldCond::DirSum { s1: 1, s2: 2 },
             FieldCond::DirDiff { s1: 1, s2: 2 },
         ] {
-            let (t, q) = s.ray_quantity(spec, [3.0, 0.0], 0, c);
+            let (t, q) = s.ray_quantity(spec, [3.0, 0.0], 0, c, false);
             assert!(t.rays[0].status.surf().is_some(), "{c:?}");
             assert!(q[0].is_nan() && q[1].is_nan(), "{c:?}: {q:?}");
             // 届く光線は有限
-            let (_, q) = s.ray_quantity(spec, [0.3, 0.0], 0, c);
+            let (_, q) = s.ray_quantity(spec, [0.3, 0.0], 0, c, false);
             assert!(q[0].is_finite() && q[1].is_finite(), "{c:?}: {q:?}");
         }
     }

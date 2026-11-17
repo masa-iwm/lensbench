@@ -37,7 +37,7 @@ impl System {
                 ObjSpec::Point(v)
             }
         };
-        let img = |v: [f64; 2]| self.ray_quantity(spec(v), [0.0, 0.0], wave, c).1;
+        let img = |v: [f64; 2]| self.ray_quantity(spec(v), [0.0, 0.0], wave, c, false).1;
         // 収束は残差 < 1e-13（<= の幅は 1e-13 のすぐ下の数）
         let nw = crate::newton2::Newton2 {
             tol: f64::from_bits(1e-13f64.to_bits() - 1),
