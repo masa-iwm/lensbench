@@ -217,7 +217,7 @@ def test_params():
 
 
 def test_set_param_defers_the_automatic_semi_diameters():
-    # set_param を続けても、自動の半直径は読むときに最後の系から求め直す（毎回の with_params と同じ値）
+    # set_param を続けても、自動の半直径は読むときに最後の系から求め直す（光線が届く面は毎回の with_params と同じ値）
     s = lb.System.load(zmx("C0"), glass_dirs=GLASS)
     t0, c0 = s.get_param("3.t"), s.get_param("2.c")
     for k in range(5):

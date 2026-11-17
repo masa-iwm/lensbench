@@ -202,9 +202,9 @@ pub(crate) fn lens_area(gl: &LensGl) -> f64 {
     acc
 }
 
-/// 周波数 1 cycle/mm あたりの正規化瞳でのずれ (δx, δy)。OpticStudio の FFT MTF と同じく瞳の座標で計算する
-/// （計算面は主光線に垂直、像面の向きによらない）: 球欠（dir 0）は px の向きに λ / (∂L/∂px)、子午（dir 1）は
-/// py の向きに λ / (∂M/∂py) ずらし、J の非対角（斜めの視野での瞳の歪み）は使わない
+/// 周波数 1 cycle/mm あたりの瞳でのずれ (δu, δv)（組の座標）。周波数は像面の上で測る: J は像面の局所座標の
+/// 方向余弦 (L, M) の瞳での変化なので、像面が傾いていればその傾きも入る。球欠（dir 0）は u の向きに
+/// λ / (∂L'/∂u)、子午（dir 1）は v の向きに λ / (∂M'/∂v) ずらし、J の非対角（斜めの視野での瞳の歪み）は使わない
 pub(crate) fn pupil_shift(j: &[[f64; 2]; 2], lam: f64, dir: usize) -> (f64, f64) {
     if dir == 0 {
         (lam / j[0][0], 0.0)
@@ -295,23 +295,19 @@ fn wave_otf(
         fr: *fr,
     };
     let amp = (!wa.a.is_uniform()).then_some(&wa);
-    if method == MtfMethod::Fft && !freqs.is_empty() {
-        return wave_otf_fft(s, field, wi, n, freqs, amp, fr);
-    }
     let auto = n.is_none();
-    let n = match n {
-        Some(n) => n,
-        None => mtf_points(opd_slope_max(s, field, wi)?),
-    };
-    if method == MtfMethod::Auto && auto && n > T.auto_fft_n && freqs.len() >= T.auto_fft_freqs {
-        return wave_otf_fft(s, field, wi, Some(n), freqs, amp, fr);
+    let (n, first) = pupil_points(s, field, wi, n, fr)?;
+    if method == MtfMethod::Fft && !freqs.is_empty()
+        || method == MtfMethod::Auto && auto && n > T.auto_fft_n && freqs.len() >= T.auto_fft_freqs
+    {
+        return wave_otf_fft(s, field, wi, n, first, freqs, amp, fr);
     }
     let jm = fr.jacobian(s, field, wi)?;
     let lam = s.wave(wi).mm();
     // 補間の格子: 求積の点数と同じくらいの細かさ（6 点補間の誤差は h^6 で小さい）
     let ip = match method {
         MtfMethod::Auto | MtfMethod::Interp if !freqs.is_empty() => {
-            Some(mtf_interp(s, field, wi, n, fr)?)
+            Some(mtf_interp(s, field, wi, n, fr, first)?)
         }
         _ => None,
     };
@@ -340,9 +336,7 @@ fn wave_otf(
     // - 自動の点数なら、周波数・向きごとにずらしの位相差の傾きで点数を減らす（[`shift_points`]）
     // 和はその点数での瞳の光量（[`lens_area`]）で割り、光量は単位円の面積 π とする（点数による縁の誤差を
     // 打ち消し、周波数 0 で 1）
-    let all_finite = ip
-        .as_ref()
-        .is_some_and(|ip| ip.w.iter().all(|v| v.is_finite()));
+    let all_finite = ip.as_ref().is_some_and(|ip| ip.all_finite());
     let (gls, nks, e0): (Vec<(usize, LensGl)>, Vec<usize>, f64) = if all_finite {
         let ip = ip.as_ref().expect("pupil sampled above");
         let nks: Vec<usize> = jobs

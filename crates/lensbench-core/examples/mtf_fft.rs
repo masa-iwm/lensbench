@@ -72,10 +72,31 @@ fn main() {
             }
             let fs = FieldSel::Index(fi as usize - 1);
             let t0 = Instant::now();
-            let mi =
-                analysis::mtf_with(&s, fs, Waves::All, None, &freqs, MtfMethod::Interp).unwrap();
+            let mi = analysis::mtf_amp(
+                &s,
+                fs,
+                Waves::All,
+                None,
+                &freqs,
+                MtfMethod::Interp,
+                None,
+                None,
+                analysis::MtfAxes::Pupil,
+            )
+            .unwrap();
             let t1 = Instant::now();
-            let mf = analysis::mtf_with(&s, fs, Waves::All, None, &freqs, MtfMethod::Fft).unwrap();
+            let mf = analysis::mtf_amp(
+                &s,
+                fs,
+                Waves::All,
+                None,
+                &freqs,
+                MtfMethod::Fft,
+                None,
+                None,
+                analysis::MtfAxes::Pupil,
+            )
+            .unwrap();
             let t2 = Instant::now();
             a += (t1 - t0).as_secs_f64();
             b += (t2 - t1).as_secs_f64();

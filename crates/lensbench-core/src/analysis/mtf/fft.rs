@@ -179,22 +179,20 @@ pub(super) fn autocorr_at(r: &[C64], s: f64) -> C64 {
 /// 1 波長の複素 OTF を FFT の自己相関で求める（[`MtfMethod::Fft`]）。返す値は [`wave_otf`] と同じ形。
 /// 瞳の標本の OPD は [`PupilInterp`] の補間。球欠は行ごと、子午は列ごとの 1 次元の自己相関の和で、
 /// 周波数のずれ（標本の間隔の非整数倍）は自己相関を 4 点で補間する
+#[allow(clippy::too_many_arguments)]
 pub(super) fn wave_otf_fft(
     s: &System,
     field: FieldSel,
     wi: usize,
-    n: Option<usize>,
+    n: usize,
+    first: Option<PupilInterp>,
     freqs: &[f64],
     amp: Option<&FrameAmp>,
     fr: &MtfFrame,
 ) -> Result<WaveOtf> {
     let jm = fr.jacobian(s, field, wi)?;
-    let n = match n {
-        Some(n) => n,
-        None => mtf_points(opd_slope_max(s, field, wi)?),
-    };
+    let ip = mtf_interp(s, field, wi, n, fr, first)?;
     let lam = s.wave(wi).mm();
-    let ip = mtf_interp(s, field, wi, n, fr)?;
     // 瞳の標本（直径 ns 点、区間の中心）。円の縁は中心が内側かどうかで 0・1 にする（面積の割合を振幅にすると
     // 縁どうしの重なりが割合の積になって h に比例してずれる）。補間との差は ns² に反比例
     // する。標本は求積の点数の 2 倍にする（直径に 2n ≈ 6g 点で、OPD の 1 波あたり 3 点ほど）。

@@ -2,39 +2,31 @@
 
 use super::*;
 
-/// 瞳の OPD の傾きの最大 [波 / 正規化瞳の半径]。`Tuning::slope_grid` 点四方の格子の隣り合う点の差で見積もる
-/// （けられた点は飛ばす）
+/// 瞳の OPD の傾きの最大 [波 / 正規化瞳の半径]。一辺 `Tuning::slope_grid` 点（[-1, 1] を `slope_grid` − 1 区間）の
+/// 格子の隣り合う点の差で見積もる（けられた点は飛ばす）
 pub fn opd_slope_max(s: &System, field: FieldSel, w: usize) -> Result<f64> {
-    let m = T.slope_grid;
-    let h = 2.0 / (m - 1) as f64;
-    // 正方形の全点（単位円の外の点も追い、差を取るときに円の内側だけを使う）
-    let g = PupilGrid::Linear {
-        n: m,
-        rim: Rim::Padded,
-    }
-    .axis()
-    .expect("linear grid");
-    let px: Vec<f64> = (0..m * m).map(|k| g[k % m]).collect();
-    let py: Vec<f64> = (0..m * m).map(|k| g[k / m]).collect();
-    let o = opd(s, field, &px, &py, Some(w), true)?;
-    let ok = |k: usize| {
-        px[k].hypot(py[k]) <= 1.0 + crate::tol::PUPIL_RIM && o.ok(k) && o.opd[k].is_finite()
-    };
-    let mut g: f64 = 0.0;
-    for i in 0..m {
-        for j in 0..m {
-            let k = i * m + j;
-            if !ok(k) {
-                continue;
-            }
-            for k2 in [k + 1, k + m] {
-                if (k2 == k + 1 && j + 1 < m || k2 == k + m && i + 1 < m) && ok(k2) {
-                    g = g.max((o.opd[k2] - o.opd[k]).abs() / h);
-                }
-            }
+    Ok(PupilInterp::new(s, field, w, T.slope_grid - 1, &MtfFrame::IDENTITY)?.slope_max())
+}
+
+/// MTF の求積の点数 n（None なら OPD の傾きから自動で決める）と、傾きを見積もった格子（`Tuning::slope_grid`）。
+/// 傾きは向きによらず正規化瞳の x・y の格子で見積もる（組を回すと格子の点が変わり、n が変わりうる）ので、
+/// 組 fr が恒等のときだけ、その格子を補間の格子（[`mtf_interp`]）の最初の候補として返す（同じ大きさなら
+/// そのまま使い、同じ点を 2 度追わない）
+pub(super) fn pupil_points(
+    s: &System,
+    field: FieldSel,
+    wi: usize,
+    n: Option<usize>,
+    fr: &MtfFrame,
+) -> Result<(usize, Option<PupilInterp>)> {
+    Ok(match n {
+        Some(n) => (n, None),
+        None => {
+            let ip = PupilInterp::new(s, field, wi, T.slope_grid - 1, &MtfFrame::IDENTITY)?;
+            let n = mtf_points(ip.slope_max());
+            (n, fr.is_identity().then_some(ip))
         }
-    }
-    Ok(g)
+    })
 }
 
 /// MTF の補間（求積の点数 n）。格子の一辺を min(n, [`Tuning::interp_grid_start`]) から始め、区間の中点の
@@ -49,11 +41,15 @@ pub(super) fn mtf_interp(
     wi: usize,
     n: usize,
     fr: &MtfFrame,
+    mut first: Option<PupilInterp>,
 ) -> Result<PupilInterp> {
     let n = n.max(T.points_min);
     let mut g = n.min(T.interp_grid_start);
     loop {
-        let mut ip = PupilInterp::new(s, field, wi, g, fr)?;
+        let mut ip = match first.take() {
+            Some(ip) if ip.cells == g => ip,
+            _ => PupilInterp::new(s, field, wi, g, fr)?,
+        };
         let cells = ((2.0 / ip.h).round() as usize).max(1);
         if g < n {
             let e = interp_errors(s, field, wi, &ip, cells.div_ceil(48).max(1))?
@@ -137,11 +133,12 @@ pub(super) fn frame_opd(
 /// 組 fr の座標 (u, v) の正方格子で追跡した OPD の補間（各軸 6 点の Lagrange、5 次）。格子が子午・球欠の向きに
 /// 沿うので、どちらかの向きにずらした点の列は格子の線に乗る（[`PupilInterp::eval_lines`]）
 pub(super) struct PupilInterp {
-    /// 格子の点数（一辺）・間隔・始点
+    /// 格子の点数（一辺）・[-1, 1] の区間の数・間隔・始点
     m: usize,
+    cells: usize,
     pub(super) h: f64,
     x0: f64,
-    /// OPD [波]（けられ・止まった点は NaN）、行優先 [iy][ix]
+    /// OPD [波]（けられ・止まった点と、追わない円の外の点（[`PupilInterp::sampled`]）は NaN）、行優先 [iy][ix]
     pub(super) w: Vec<f64>,
     /// 格子の向きの組
     pub(super) fr: MtfFrame,
@@ -150,37 +147,80 @@ pub(super) struct PupilInterp {
 pub(super) const LAG: usize = 6;
 
 impl PupilInterp {
-    /// 一辺 n 区間で [-1, 1] を覆い、補間の足が届くよう外側に 3 点ずつ足す
+    /// 一辺 n 区間で [-1, 1] を覆い、補間の足が届くよう外側に 3 点ずつ足す。追うのは [`PupilInterp::sampled`] の点だけ
     fn new(s: &System, field: FieldSel, w: usize, n: usize, fr: &MtfFrame) -> Result<PupilInterp> {
         crate::par::check_cancel()?;
         let h = 2.0 / n as f64;
         let pad = LAG / 2;
         let m = n + 1 + 2 * pad;
         let x0 = -1.0 - pad as f64 * h;
-        let (mut px, mut py) = (Vec::with_capacity(m * m), Vec::with_capacity(m * m));
-        for iy in 0..m {
-            for ix in 0..m {
-                px.push(x0 + ix as f64 * h);
-                py.push(x0 + iy as f64 * h);
-            }
-        }
-        let o = frame_opd(s, field, w, fr, &px, &py)?;
-        let w = (0..m * m)
-            .map(|i| {
-                if o.ok(i) && o.opd[i].is_finite() {
-                    o.opd[i]
-                } else {
-                    f64::NAN
-                }
-            })
-            .collect();
-        Ok(PupilInterp {
+        let mut ip = PupilInterp {
             m,
+            cells: n,
             h,
             x0,
-            w,
+            w: vec![f64::NAN; m * m],
             fr: *fr,
-        })
+        };
+        let idx: Vec<usize> = (0..m * m).filter(|&i| ip.sampled(i)).collect();
+        let px: Vec<f64> = idx.iter().map(|&i| ip.node(i).0).collect();
+        let py: Vec<f64> = idx.iter().map(|&i| ip.node(i).1).collect();
+        let o = frame_opd(s, field, w, fr, &px, &py)?;
+        for (k, &i) in idx.iter().enumerate() {
+            if o.ok(k) && o.opd[k].is_finite() {
+                ip.w[i] = o.opd[k];
+            }
+        }
+        Ok(ip)
+    }
+
+    /// 格子点 i の座標
+    #[inline]
+    fn node(&self, i: usize) -> (f64, f64) {
+        (
+            self.x0 + (i % self.m) as f64 * self.h,
+            self.x0 + (i / self.m) as f64 * self.h,
+        )
+    }
+
+    /// 格子点 i を追うか: 中心から 1 + 5.5h 以内。補間するのは半径 1 + h 以内の点（瞳の中の求積点と、区間の中点の
+    /// 確かめ）だけで、その足（各軸 ±3 区間）は中心から 1 + (1 + 3√2)h ≈ 1 + 5.25h 以内に収まる。正方形の
+    /// 隅の点（全体の 2 割ほど）は使わないので追わない
+    #[inline]
+    fn sampled(&self, i: usize) -> bool {
+        let (x, y) = self.node(i);
+        x.hypot(y) <= 1.0 + 5.5 * self.h
+    }
+
+    /// 追った点がどれも有限（けられ・止まった点が無い）か
+    pub(super) fn all_finite(&self) -> bool {
+        (0..self.w.len()).all(|i| !self.sampled(i) || self.w[i].is_finite())
+    }
+
+    /// 単位円（と縁の許し）の中の隣り合う格子点の OPD の差から、OPD の傾きの最大 [波 / 正規化瞳の半径]
+    /// （けられた点は飛ばす）
+    fn slope_max(&self) -> f64 {
+        let m = self.m;
+        let ok = |i: usize| {
+            let (x, y) = self.node(i);
+            x.hypot(y) <= 1.0 + crate::tol::PUPIL_RIM && self.w[i].is_finite()
+        };
+        let mut g: f64 = 0.0;
+        for iy in 0..m {
+            for ix in 0..m {
+                let k = iy * m + ix;
+                if !ok(k) {
+                    continue;
+                }
+                if ix + 1 < m && ok(k + 1) {
+                    g = g.max((self.w[k + 1] - self.w[k]).abs() / self.h);
+                }
+                if iy + 1 < m && ok(k + m) {
+                    g = g.max((self.w[k + m] - self.w[k]).abs() / self.h);
+                }
+            }
+        }
+        g
     }
 
     /// 1 点の補間。足の 36 点のどれかが NaN（けられ）なら None

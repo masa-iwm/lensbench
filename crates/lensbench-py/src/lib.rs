@@ -168,7 +168,8 @@ pub struct PySystem {
     /// The coatings of the system (read when first needed). Emptied by edits that change coatings, media or the coating file
     coat: RwLock<CoatCell>,
     /// 自動の半直径の求め直しが残っている（set_param などが半直径の追跡に効かない系で後回しにした）。系を読む・直すときに
-    /// [`PySystem::sys`]・[`PySystem::write`] が求め直す（結果は最後の系だけで決まるので、毎回求め直したときと同じ）
+    /// [`PySystem::sys`]・[`PySystem::write`] が求め直す。最後の系で光線が届く面は毎回求め直したときと同じ。届かない面は
+    /// 求め直しが値を変えないので、途中の系の値ではなく後回しにする前の値が残る
     semi_stale: AtomicBool,
 }
 
