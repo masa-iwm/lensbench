@@ -404,25 +404,31 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     }
                 }
             }
+            // 番号と値の対応は Surface::parm（整数の欄は整数で書く）
             SurfType::CoordBrk => {
-                for (i, a) in d.cb().iter().enumerate() {
-                    w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
+                for i in 1..=5 {
+                    w(
+                        &mut o,
+                        format!("  PARM {i} {}", f(d.parm(i).unwrap_or(0.0))),
+                    );
                 }
                 w(&mut o, format!("  PARM 6 {}", d.cb_order()));
             }
             SurfType::Jones => {
-                for (i, a) in d.jones().iter().enumerate() {
-                    w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
+                for i in 1..=8 {
+                    w(
+                        &mut o,
+                        format!("  PARM {i} {}", f(d.parm(i).unwrap_or(0.0))),
+                    );
                 }
             }
             SurfType::Paraxial => {
-                w(&mut o, format!("  PARM 1 {}", f(d.focal())));
+                w(&mut o, format!("  PARM 1 {}", f(d.parm(1).unwrap_or(0.0))));
                 w(&mut o, format!("  PARM 2 {}", d.opd_mode()));
             }
             SurfType::User => {}
             SurfType::Toroidal => {
-                let r = if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() };
-                w(&mut o, format!("  PARM 1 {}", f(r)));
+                w(&mut o, format!("  PARM 1 {}", f(d.parm(1).unwrap_or(0.0))));
                 for (i, a) in d.asph().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 2, f(*a)));
                 }

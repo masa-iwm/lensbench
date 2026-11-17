@@ -1201,23 +1201,20 @@ pub fn build(
         } else if name == "BIRE_OUT" {
             d.bire = Some(crate::surface::Bire::Out);
         }
+        // 面タイプの PARM の値（番号と値の対応は Surface::set_parm の 1 か所）
+        let set_parms = |d: &mut Surface| {
+            for i in 1..=8 {
+                d.set_parm(i, p(i as i64));
+            }
+        };
+        if matches!(
+            typ,
+            SurfType::Jones | SurfType::CoordBrk | SurfType::Paraxial
+        ) {
+            set_parms(&mut d);
+        }
         match typ {
-            SurfType::Jones => {
-                d.form = Form::Jones {
-                    jones: std::array::from_fn(|i| p(i as i64 + 1)),
-                };
-            }
-            SurfType::CoordBrk => {
-                d.form = Form::CoordBrk {
-                    cb: std::array::from_fn(|i| p(i as i64 + 1)),
-                    order: p(6) as u8,
-                };
-            }
             SurfType::Paraxial => {
-                d.form = Form::Paraxial {
-                    focal: p(1),
-                    opd_mode: p(2) as i32,
-                };
                 // 0・1 は基準 D0〜D3 で OpticStudio と一致を確認済み。それ以外は未確認
                 if !(0..=1).contains(&d.opd_mode()) {
                     notimpl!("paraxial lens (surface {k}) OPD mode {}", d.opd_mode());
@@ -1294,6 +1291,10 @@ pub fn build(
             }
             _ => {}
         }
+        // 係数の並び（Tilted・Irregular は決まった数だけ）とトロイダルの回転半径（0 は無限 = 円柱面）
+        if crate::form::asph_parm_base(typ).is_some() {
+            set_parms(&mut d);
+        }
         if matches!(
             typ,
             SurfType::Standard
@@ -1314,20 +1315,7 @@ pub fn build(
         ) {
             d.c = fop("CRVT", ki, s.curv.unwrap_or(0.0));
             d.k = fop("CONN", ki, s.coni.unwrap_or(0.0));
-            if matches!(
-                typ,
-                SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2
-            ) || crate::freeform::is_freeform(typ)
-            {
-                // Tilted・Irregular は先頭の決まった数だけ（.zmx の残りのパラメータは使わない）
-                d.set_asph((1..=8).map(p).collect());
-            } else if typ == SurfType::Toroidal {
-                // パラメータ 1 は回転半径（0 は無限 = 円柱面）、2〜8 は y^2〜y^14 の係数
-                let r = p(1);
-                d.form = Form::Toroidal {
-                    cx: if r == 0.0 { 0.0 } else { 1.0 / r },
-                    asph: (2..=8).map(p).collect(),
-                };
+            if typ == SurfType::Toroidal {
                 let nz = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nz != 0.0 {
                     notimpl!("surface {k}: Zernike terms on a toroidal surface ({nz} terms)");

@@ -2,8 +2,9 @@
 
 use crate::error::Result;
 // ピックアップする量はパラメータと同じ量の型（ピックアップに使えるのは Kind::is_pick）
+use crate::form::asph_parm_base;
 use crate::param::{Kind, Param};
-use crate::surface::{After, Form, SurfType, Surface, Tilt};
+use crate::surface::{After, SurfType, Surface, Tilt};
 use crate::system::System;
 use crate::{invalid, notimpl};
 
@@ -121,94 +122,14 @@ impl Pickup {
     }
 }
 
-/// 面タイプの .zmx の PARM の番号のうち、係数の並び `Surface::asph` の最初に当たる番号（asph[k] は PARM base + k、
-/// PARM 8 まで）。偶数次非球面・フレネル・バイナリ 2・自由曲面（奇数次非球面・傾いた面・不規則面・Zernike・Grid Sag）は 1、
-/// トロイダルは 2（PARM 1 は回転半径）。係数を持たない面タイプは None（面の量の対応はここ 1 か所）
-pub(crate) fn asph_parm_base(t: SurfType) -> Option<usize> {
-    match t {
-        SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2 => {
-            Some(1)
-        }
-        SurfType::Toroidal => Some(2),
-        t if crate::freeform::is_freeform(t) => Some(1),
-        _ => None,
-    }
-}
-
 /// パラメータ Kind::Asph（a2・a4…）を持てる面か（偶数次非球面と自由曲面）
 pub(crate) fn takes_asph(d: &Surface) -> bool {
     d.typ() == SurfType::EvenAsph || d.shape().is_freeform()
 }
 
-/// 面タイプのパラメータ i（.zmx の PARM の番号）の値。この面タイプで値を持たない番号は None
+/// 面タイプのパラメータ i（.zmx の PARM の番号）の値。この面タイプで値を持たない番号は None（[`Surface::parm`]）
 pub fn surf_parm(d: &Surface, i: u8) -> Option<f64> {
-    let i = i as usize;
-    let at =
-        |v: &[f64], j: usize| -> Option<f64> { (j < 8).then(|| v.get(j).copied().unwrap_or(0.0)) };
-    match d.typ() {
-        SurfType::Toroidal if i == 1 => Some(if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() }),
-        t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
-            at(d.asph(), i - asph_parm_base(t).unwrap_or(1))
-        }
-        SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb()[i - 1]),
-        SurfType::CoordBrk if i == 6 => Some(d.cb_order() as f64),
-        SurfType::Paraxial if i == 1 => Some(d.focal()),
-        SurfType::Paraxial if i == 2 => Some(d.opd_mode() as f64),
-        SurfType::Jones if (1..=8).contains(&i) => Some(d.jones()[i - 1]),
-        SurfType::Gradium | SurfType::Gradient9 => {
-            use crate::grin::GrinKind;
-            let g = d.grin()?;
-            match (&g.kind, i) {
-                (_, 1) => Some(g.dt),
-                (GrinKind::Gradium { prof, .. }, 0) => Some(prof.zmax),
-                (GrinKind::Gradium { dz, .. }, 2) => Some(*dz),
-                (GrinKind::Gradium { .. }, 3) => g.ref_index(),
-                (GrinKind::Gradium { dec, .. }, 4..=7) => Some(dec[i - 4]),
-                (GrinKind::Gradium { cap, .. }, 8) => Some(*cap as f64),
-                (GrinKind::Grad9 { tan, .. }, 2 | 3) => Some(tan[i - 2]),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
-}
-
-/// 面タイプのパラメータ i を書く。値を持たない番号なら false
-pub(crate) fn set_surf_parm(d: &mut Surface, i: u8, v: f64) -> bool {
-    let i = i as usize;
-    let t = d.typ();
-    if let Some(b) = asph_parm_base(t).filter(|b| (*b..=8).contains(&i)) {
-        if let Some(a) = d.asph_mut().filter(|a| a.len() < 9 - b) {
-            a.resize(9 - b, 0.0);
-        }
-        return d.set_asph_at(i - b, v);
-    }
-    match (&mut d.form, i) {
-        (Form::Toroidal { cx, .. }, 1) => *cx = if v == 0.0 { 0.0 } else { 1.0 / v },
-        (Form::CoordBrk { cb, .. }, 1..=5) => cb[i - 1] = v,
-        (Form::CoordBrk { order, .. }, 6) => *order = v as u8,
-        (Form::Paraxial { focal, .. }, 1) => *focal = v,
-        (Form::Paraxial { opd_mode, .. }, 2) => *opd_mode = v as i32,
-        (Form::Jones { jones }, 1..=8) => {
-            jones[i - 1] = v;
-            d.retarder = None;
-        }
-        // GRIN: Δt と Gradient 9 の形の傾きだけ（Δz などは頂点の屈折率 n も変わるので未対応）
-        (Form::Gradium { grin } | Form::Gradient9 { grin }, _) => {
-            use crate::grin::GrinKind;
-            let Some(g) = grin.as_mut() else {
-                return false;
-            };
-            let g = std::sync::Arc::make_mut(g);
-            match (&mut g.kind, i) {
-                (_, 1) => g.dt = v,
-                (GrinKind::Grad9 { tan, .. }, 2 | 3) => tan[i - 2] = v,
-                _ => return false,
-            }
-        }
-        _ => return false,
-    }
-    true
+    d.parm(i)
 }
 
 pub(crate) fn pick_get(d: &Surface, what: Kind) -> Option<f64> {
@@ -244,7 +165,7 @@ pub(crate) fn pick_set(d: &mut Surface, what: Kind, v: f64) -> bool {
         Kind::Curv => d.c = v,
         Kind::Thick => d.t = v,
         Kind::Conic => d.k = v,
-        Kind::Parm(i) => return set_surf_parm(d, i, v),
+        Kind::Parm(i) => return d.set_parm(i, v),
         Kind::Dn => d.dn = v,
         Kind::Disp => d.disp = v,
         Kind::Semi => {

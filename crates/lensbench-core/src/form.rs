@@ -531,6 +531,81 @@ impl Surface {
         Ok(())
     }
 
+    /// 面タイプのパラメータ i（.zmx の PARM の番号）の値。この面タイプで値を持たない番号は None
+    pub fn parm(&self, i: u8) -> Option<f64> {
+        let d = self;
+        let i = i as usize;
+        let at = |v: &[f64], j: usize| -> Option<f64> {
+            (j < 8).then(|| v.get(j).copied().unwrap_or(0.0))
+        };
+        match d.typ() {
+            SurfType::Toroidal if i == 1 => Some(if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() }),
+            t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
+                at(d.asph(), i - asph_parm_base(t).unwrap_or(1))
+            }
+            SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb()[i - 1]),
+            SurfType::CoordBrk if i == 6 => Some(d.cb_order() as f64),
+            SurfType::Paraxial if i == 1 => Some(d.focal()),
+            SurfType::Paraxial if i == 2 => Some(d.opd_mode() as f64),
+            SurfType::Jones if (1..=8).contains(&i) => Some(d.jones()[i - 1]),
+            SurfType::Gradium | SurfType::Gradient9 => {
+                use crate::grin::GrinKind;
+                let g = d.grin()?;
+                match (&g.kind, i) {
+                    (_, 1) => Some(g.dt),
+                    (GrinKind::Gradium { prof, .. }, 0) => Some(prof.zmax),
+                    (GrinKind::Gradium { dz, .. }, 2) => Some(*dz),
+                    (GrinKind::Gradium { .. }, 3) => g.ref_index(),
+                    (GrinKind::Gradium { dec, .. }, 4..=7) => Some(dec[i - 4]),
+                    (GrinKind::Gradium { cap, .. }, 8) => Some(*cap as f64),
+                    (GrinKind::Grad9 { tan, .. }, 2 | 3) => Some(tan[i - 2]),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// 面タイプのパラメータ i（.zmx の PARM の番号）を書く。値を持たない番号なら false（.zmx の読込・ピックアップ・
+    /// パラメータが使う、番号と値の対応はここと [`Surface::parm`] の 1 か所）
+    pub fn set_parm(&mut self, i: u8, v: f64) -> bool {
+        let d = self;
+        let i = i as usize;
+        let t = d.typ();
+        if let Some(b) = asph_parm_base(t).filter(|b| (*b..=8).contains(&i)) {
+            if let Some(a) = d.asph_mut().filter(|a| a.len() < 9 - b) {
+                a.resize(9 - b, 0.0);
+            }
+            return d.set_asph_at(i - b, v);
+        }
+        match (&mut d.form, i) {
+            (Form::Toroidal { cx, .. }, 1) => *cx = if v == 0.0 { 0.0 } else { 1.0 / v },
+            (Form::CoordBrk { cb, .. }, 1..=5) => cb[i - 1] = v,
+            (Form::CoordBrk { order, .. }, 6) => *order = v as u8,
+            (Form::Paraxial { focal, .. }, 1) => *focal = v,
+            (Form::Paraxial { opd_mode, .. }, 2) => *opd_mode = v as i32,
+            (Form::Jones { jones }, 1..=8) => {
+                jones[i - 1] = v;
+                d.retarder = None;
+            }
+            // GRIN: Δt と Gradient 9 の形の傾きだけ（Δz などは頂点の屈折率 n も変わるので未対応）
+            (Form::Gradium { grin } | Form::Gradient9 { grin }, _) => {
+                use crate::grin::GrinKind;
+                let Some(g) = grin.as_mut() else {
+                    return false;
+                };
+                let g = std::sync::Arc::make_mut(g);
+                match (&mut g.kind, i) {
+                    (_, 1) => g.dt = v,
+                    (GrinKind::Grad9 { tan, .. }, 2 | 3) => tan[i - 2] = v,
+                    _ => return false,
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// Tilted・Irregular の決まった数の値の置き場
     pub fn asph_fixed_mut(&mut self) -> Option<&mut [f64]> {
         match &mut self.form {
@@ -702,5 +777,19 @@ impl schemars::JsonSchema for Form {
     }
     fn json_schema(g: &mut schemars::SchemaGenerator) -> schemars::Schema {
         FormFlat::json_schema(g)
+    }
+}
+
+/// 面タイプの .zmx の PARM の番号のうち、係数の並び `Surface::asph` の最初に当たる番号（asph[k] は PARM base + k、
+/// PARM 8 まで）。偶数次非球面・フレネル・バイナリ 2・自由曲面（奇数次非球面・傾いた面・不規則面・Zernike・Grid Sag）は 1、
+/// トロイダルは 2（PARM 1 は回転半径）。係数を持たない面タイプは None（面の量の対応はここ 1 か所）
+pub(crate) fn asph_parm_base(t: SurfType) -> Option<usize> {
+    match t {
+        SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2 => {
+            Some(1)
+        }
+        SurfType::Toroidal => Some(2),
+        t if crate::freeform::is_freeform(t) => Some(1),
+        _ => None,
     }
 }
