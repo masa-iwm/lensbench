@@ -325,7 +325,7 @@ fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> 
     let mut out = Vec::new();
     for (k, (mut p, air)) in items.into_iter().enumerate() {
         // 空気を持たない要素: 分岐のある BS（並びの最後）と、口の先の往路を戻る鏡
-        let bare = p.branched || (branch && p.kind == ElemKind::Mirror && p.back);
+        let bare = p.branched || (branch && p.kind == ElemKind::Mirror && p.mirror().back);
         match (bare, air) {
             (true, None) => {
                 if p.branched && k + 1 != n {
@@ -501,12 +501,12 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
             }
             let mut p = Pick::new(ElemKind::Mirror);
             p.r1 = f(&b["radius"], 0.0);
-            p.conic = f(&b["conic"], 0.0);
+            p.mirror_mut().conic = f(&b["conic"], 0.0);
             let t: [f64; 2] = arr(&b["tilt"]);
             p.tilt = [t[0], t[1], 0.0];
             p.semi = f(&b["semi"], 0.0);
             p.coat = s(&b["coat"]);
-            p.back = b["back"] == true;
+            p.mirror_mut().back = b["back"] == true;
             p.on = b["on"].as_bool().unwrap_or(true);
             p.id = s(&b["id"]);
             return Ok(p);

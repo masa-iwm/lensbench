@@ -24,6 +24,7 @@ mod detector;
 mod element;
 mod figure;
 mod mech;
+mod mirror;
 mod raw;
 mod sys_extra;
 mod write_face;
@@ -35,6 +36,7 @@ use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
 pub use mech::MechPick;
+pub use mirror::MirrorData;
 pub use sys_extra::SysExtra;
 pub use zgroup::{ZGroup, ZmxSrc};
 
@@ -315,8 +317,6 @@ pub struct Pick {
     pub locked: bool,
     /// ロックしたとき、位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えない
     pub lock_place: bool,
-    /// 鏡のコーニック
-    pub conic: f64,
     /// 鏡の膜・BS の分ける面の膜（膜ファイル・LBCM の名前。空なら理想の鏡・ratio の分岐）
     pub coat: String,
     /// カタログの BS の、組合せの欄に無い項目（thickness・semi など）。そのまま持つブロック（Raw）はブロックの JSON
@@ -350,8 +350,9 @@ pub struct Pick {
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
     pub ports: [Branch; 3],
-    /// 鏡: 往路を戻る（ダブルパス・干渉計の腕の端）
-    pub back: bool,
+    /// 鏡のコーニック・往路を戻る（鏡だけが持つ。[`MirrorData`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mirror: Option<Box<MirrorData>>,
     /// 群の名前（続く同じ名前の要素を 1 つの群のブロックにする。空なら群に入れない）
     pub group: String,
     /// .zmx の玉・取り込みの番号・面の範囲・群（その種類だけが持つ。[`ZmxSrc`]）
@@ -395,7 +396,6 @@ impl Default for Pick {
             path: String::new(),
             locked: false,
             lock_place: false,
-            conic: 0.0,
             coat: String::new(),
             extra: Value::Null,
             ap: None,
@@ -403,7 +403,7 @@ impl Default for Pick {
             bs: None,
             branched: false,
             ports: Default::default(),
-            back: false,
+            mirror: None,
             stop_front: false,
             surfs: Vec::new(),
             ops: Vec::new(),
@@ -518,7 +518,9 @@ impl Pick {
                 p.tilt = [45.0, 0.0, 0.0];
                 p.semi = 12.7;
                 p.air = 20.0;
+                p.mirror = Some(Box::default());
             }
+            ElemKind::Zmx => p.zmx = Some(Box::default()),
             ElemKind::Surfaces => {
                 p.surfs = vec![SurfRow::default()];
             }
@@ -526,6 +528,7 @@ impl Pick {
                 // .zmx の絞りをそのまま使う（範囲に絞りが無ければ外す）
                 p.stop_front = true;
                 p.air = 20.0;
+                p.zmx = Some(Box::default());
             }
             ElemKind::Stop => {
                 p.semi = 2.5;
@@ -715,7 +718,7 @@ impl Pick {
                 })
             }
             ElemKind::Mirror => json!({
-                "type": "mirror", "id": id, "radius": Self::radius(self.r1), "conic": self.conic,
+                "type": "mirror", "id": id, "radius": Self::radius(self.r1), "conic": self.mirror().conic,
                 "tilt": [self.tilt[0], self.tilt[1]], "semi": self.semi,
             }),
             ElemKind::Stop => json!({ "type": "stop", "id": id, "semi": self.semi }),
@@ -729,7 +732,7 @@ impl Pick {
             if !self.coat.trim().is_empty() {
                 b["coat"] = json!(self.coat.trim());
             }
-            if self.back {
+            if self.mirror().back {
                 b["back"] = json!(true);
             }
         }
@@ -2599,7 +2602,7 @@ fn kind_fields(
             place_ui(ui, p, st, &[], &[0, 1]);
             num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
             crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
-            ui.checkbox(&mut p.back, tr("Return along the path")).on_hover_text(tr(
+            ui.checkbox(&mut p.mirror_mut().back, tr("Return along the path")).on_hover_text(tr(
                 "Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS",
             ));
         }
@@ -2972,7 +2975,7 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
             for (j, e) in b.picks.iter().enumerate() {
                 ui.label("→");
                 let mut l = e.label();
-                if e.kind == ElemKind::Mirror && e.back {
+                if e.kind == ElemKind::Mirror && e.mirror().back {
                     l = trf("{} (returns)", &[&l]);
                 }
                 if ui
@@ -2997,7 +3000,7 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
                         if kind == ElemKind::Mirror {
                             // 腕の端の鏡: 光軸に垂直で往路を戻る
                             e.tilt = [0.0; 3];
-                            e.back = true;
+                            e.mirror_mut().back = true;
                         }
                         b.picks.push(e);
                         ui.close_menu();

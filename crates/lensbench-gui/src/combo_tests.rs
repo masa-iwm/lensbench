@@ -243,7 +243,7 @@ fn on_off_back_and_states() {
     };
     c.picks[1].on = false;
     c.picks[1].off_air = true;
-    c.picks[2].back = true;
+    c.picks[2].mirror_mut().back = true;
     let v = c.project();
     let b = &v["blocks"];
     assert_eq!((&b[4]["on"], &b[4]["off"]), (&json!(false), &json!("air")));

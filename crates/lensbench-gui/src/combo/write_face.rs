@@ -171,7 +171,7 @@ impl Pick {
             },
             ElemKind::Mirror => match (rel, key) {
                 (0, "r") => radius_of(v).map(|r| self.r1 = r).is_some(),
-                (0, "k") => v.as_f64().map(|k| self.conic = k).is_some(),
+                (0, "k") => v.as_f64().map(|k| self.mirror_mut().conic = k).is_some(),
                 (0, "semi") => v
                     .as_f64()
                     .filter(|s| *s >= 0.0)

@@ -1915,7 +1915,7 @@ pub fn pick_from(r: &LensRow) -> Pick {
         p.vendor = r.vendor.clone();
         p.part = r.part.clone();
         p.r1 = radius;
-        p.conic = conic;
+        p.mirror_mut().conic = conic;
         p.coat = r.coat.clone();
         if r.diameter.is_finite() && r.diameter > 0.0 {
             p.semi = r.diameter / 2.0;

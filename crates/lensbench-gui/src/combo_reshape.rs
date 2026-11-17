@@ -177,7 +177,7 @@ impl Combo {
             || !p.state_place.is_empty()
             || !p.group.is_empty()
             || !p.on
-            || p.back;
+            || p.mirror().back;
         if p.locked {
             return Err(tr("A locked element cannot be changed").into());
         }

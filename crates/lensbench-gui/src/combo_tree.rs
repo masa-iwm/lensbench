@@ -133,7 +133,7 @@ fn walk(
                 }
             };
         }
-        let back = p.kind == ElemKind::Mirror && p.back;
+        let back = p.kind == ElemKind::Mirror && p.mirror().back;
         out.push(Step {
             loc: loc.clone(),
             port: None,
@@ -568,7 +568,7 @@ impl Combo {
             {
                 let mut m = Pick::new(ElemKind::Mirror);
                 m.tilt = [0.0; 3];
-                m.back = true;
+                m.mirror_mut().back = true;
                 m
             },
         ];
@@ -576,7 +576,7 @@ impl Combo {
         bs.ports[1].picks = vec![{
             let mut m = Pick::new(ElemKind::Mirror);
             m.tilt = [0.0; 3];
-            m.back = true;
+            m.mirror_mut().back = true;
             m
         }];
         bs.ports[2].air = 50.0;
@@ -677,7 +677,7 @@ fn go(
             break;
         }
         // 分岐の中の往路を戻る鏡の後は、BS へ戻る（後の空気は置かない）
-        if p.kind == ElemKind::Mirror && p.back && !prefix.is_empty() {
+        if p.kind == ElemKind::Mirror && p.mirror().back && !prefix.is_empty() {
             parts.push((String::new(), b, None));
             continue;
         }
