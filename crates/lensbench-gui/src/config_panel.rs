@@ -540,7 +540,8 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                             if st.sel_col == Some(k - 1) {
                                 ui.painter().rect_filled(ui.max_rect(), 2.0, ui.visuals().selection.bg_fill);
                             }
-                            ui.label(if k == t.active { rt.color(accent) } else { rt });
+                            // 文字は描くだけ（ラベルにすると widget_info と同じ名前が AccessKit の木に 2 つ出る）
+                            paint_cell_text(ui, if k == t.active { rt.color(accent) } else { rt });
                             let r = r.on_hover_text(tr(
                                 "Click to select the column (Delete removes the configuration). Double-click to apply it. Right-click to insert or delete",
                             ));
@@ -582,7 +583,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         row.col(|ui| {
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_name"), Sense::click());
                             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.as_str()));
-                            ui.label(RichText::new(name).monospace());
+                            paint_cell_text(ui, RichText::new(name).monospace());
                             let d = param_desc(name);
                             let r = if d.is_empty() { r } else { r.on_hover_text(d) };
                             if r.clicked() {
@@ -911,6 +912,19 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
         );
     }
     acts
+}
+
+/// セルの左に文字を描く（AccessKit の木には出さない。名前はセルの当たり判定の widget_info が持つ）
+fn paint_cell_text(ui: &egui::Ui, rt: RichText) {
+    let r = ui.max_rect();
+    let g = egui::WidgetText::from(rt).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        r.width(),
+        egui::TextStyle::Body,
+    );
+    let pos = egui::pos2(r.left(), r.center().y - g.size().y / 2.0);
+    ui.painter().galley(pos, g, ui.visuals().text_color());
 }
 
 #[cfg(test)]

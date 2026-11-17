@@ -779,7 +779,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     if !probs.is_empty() {
         ui.separator();
         for p in probs {
-            let c = crate::theme::warn(ui.visuals());
+            let c = crate::theme::error(ui.visuals());
             ui.label(RichText::new(format!("⚠ {p}")).color(c));
         }
     }
