@@ -219,6 +219,37 @@ fn remove_thickness_solve() {
     assert!(solved(&h).contains(&j), "{}", h.state().test_state());
 }
 
+/// ソルブの種類を選んでも [...] の欄は開いたままで、種類の一覧は閉じる（一覧を別の小窓にしていたときは、選ぶと
+/// 欄が閉じて一覧だけが残った）
+#[test]
+fn solve_kind_pick_keeps_menu() {
+    let _g = serial();
+    let mut h = harness(a0());
+    h.get_by_label("Surface 1 Thickness").click();
+    h.run_steps(2);
+    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.run_steps(2);
+    let kind_btn = |h: &Harness<'static, App>, k: &str| {
+        let want = format!("Kind: {k} ");
+        h.query_by(move |n| n.label().is_some_and(|l| l.starts_with(&want)))
+            .is_some()
+    };
+    assert!(kind_btn(&h, "marginal_height"));
+    assert!(h.query_by_label("edge").is_none());
+    h.get(
+        egui_kittest::kittest::by()
+            .predicate(|n| n.label().is_some_and(|l| l.starts_with("Kind: "))),
+    )
+    .click();
+    h.run_steps(2);
+    h.get_by_label("edge").click();
+    h.run_steps(2);
+    assert!(kind_btn(&h, "edge"), "{}", h.state().test_state());
+    // 一覧は閉じ、欄は残る
+    assert!(h.query_by_label("chief_height").is_none());
+    assert!(h.query_by_label("+ Make solve").is_some());
+}
+
 /// 見るパラメータの get は 1 つの要求に束ねる。先頭のパラメータが誤り（無い面）で止まっても、残りは 1 つずつ
 /// 頼み直して値が入る（GAR-05）
 #[test]

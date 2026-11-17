@@ -41,6 +41,7 @@ pub(super) fn cell_menu(
     let weak = theme::weak_text(ui.visuals());
     if m.cell != Some((j, col)) {
         m.cell = Some((j, col));
+        m.kind_open = false;
         m.dn = crate::surf_edit::full(r.dn);
         m.disp = crate::surf_edit::full(r.disp);
     }
@@ -70,13 +71,28 @@ pub(super) fn cell_menu(
         if !kinds.contains(&m.kind.as_str()) {
             m.kind = kinds.first().copied().unwrap_or_default().into();
         }
-        ui.menu_button(trf("Kind: {}", &[&m.kind]), |ui| {
-            for k in &kinds {
-                if ui.selectable_label(m.kind == *k, *k).clicked() {
-                    m.kind = k.to_string();
-                }
-            }
-        });
+        // 種類の一覧は同じ欄の中に開く。menu_button の小窓は親の欄（[...] の欄）の外と見なされ、選ぶと親が閉じて
+        // 一覧だけが残っていた
+        let arrow = if m.kind_open { "⏶" } else { "⏷" };
+        if ui
+            .button(format!("{} {arrow}", trf("Kind: {}", &[&m.kind])))
+            .clicked()
+        {
+            m.kind_open = !m.kind_open;
+        }
+        if m.kind_open {
+            egui::ScrollArea::vertical()
+                .id_salt("solve_kinds")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    for k in &kinds {
+                        if ui.selectable_label(m.kind == *k, *k).clicked() {
+                            m.kind = k.to_string();
+                            m.kind_open = false;
+                        }
+                    }
+                });
+        }
         ui.horizontal(|ui| {
             field(ui, tr("Value"), &mut m.val, "0", 60.0);
             field(ui, "param", &mut m.param, "", 50.0);

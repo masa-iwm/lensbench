@@ -763,6 +763,8 @@ pub struct GlassChoice {
 struct CellMenu {
     /// ソルブの種類・値・param・別の面
     kind: String,
+    /// ソルブの種類の一覧を欄の中に開いているか（別の小窓にすると、選んだときに親の欄が閉じて一覧だけ残る）
+    kind_open: bool,
     val: String,
     param: String,
     other: String,
