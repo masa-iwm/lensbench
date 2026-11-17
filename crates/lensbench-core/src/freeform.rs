@@ -36,7 +36,7 @@ pub struct ZernSag {
     pub dy: f64,
     /// (m, cos か) ごとにまとめた Jacobi 多項式 P_k^(0, m)(2ρ² − 1) の係数（項の係数と規格化を掛けたもの、k = (n − m)/2 の順）
     #[cfg_attr(feature = "serde", serde(skip))]
-    groups: Vec<(u32, bool, Vec<f64>)>,
+    groups: Vec<ZGroup>,
     /// m の最大
     #[cfg_attr(feature = "serde", serde(skip))]
     mmax: u32,
@@ -133,35 +133,67 @@ fn radial_norm(n: u32, m: u32, normalize: bool) -> f64 {
     }
 }
 
-/// Σ_k a_k Q_k(x) と d/dx。Q_k = P_k^(0, m)（Jacobi 多項式）で、R_(m+2k)^m(ρ) = ρ^m Q_k(2ρ² − 1)。
-/// 3 項漸化式で求める（ρ² のべきの多項式に直すと係数が交互の符号で 1e5 台になり、ρ → 1 で桁落ちする）
-fn jacobi_sum(a: &[f64], m: u32, x: f64) -> (f64, f64) {
-    let b = m as f64;
-    let (mut q0, mut d0) = (1.0, 0.0);
-    let (mut s, mut ds) = (a[0], 0.0);
-    if a.len() == 1 {
-        return (s, ds);
+/// (m, cos か) ごとにまとめた項: Σ_k a_k Q_k(x) の x = 2ρ² − 1 のべきの係数。Q_k = P_k^(0, m)（Jacobi 多項式）で、
+/// R_(m+2k)^m(ρ) = ρ^m Q_k(2ρ² − 1)
+#[derive(Debug, Clone, PartialEq)]
+struct ZGroup {
+    m: u32,
+    cos: bool,
+    /// x のべきの係数（低い次数から）
+    px: Vec<f64>,
+}
+
+impl ZGroup {
+    /// `a`: Q_k の係数（項の係数と規格化を掛けたもの、k = (n − m)/2 の順）。
+    ///
+    /// 係数は Q_k の 3 項漸化式で作る。ρ² のべきにすると係数が交互の符号で 1e5 台になり ρ → 1 で 3e-10 ずれたが、
+    /// 区間の中心の x のべきなら 3e-13 に収まり（n ≤ 20）、光線ごとの評価は Horner（漸化式をそのまま回すより 3 倍ほど速い）
+    fn new(m: u32, cos: bool, a: Vec<f64>) -> ZGroup {
+        let b = m as f64;
+        let n = a.len();
+        let mut px = vec![0.0; n];
+        // Q_0 = 1、Q_1 = 1 + (m + 2)(x − 1)/2
+        let h = 0.5 * (b + 2.0);
+        let (mut q0, mut q1) = (vec![1.0], vec![1.0 - h, h]);
+        px[0] = a[0];
+        if n > 1 {
+            px[0] += a[1] * q1[0];
+            px[1] += a[1] * q1[1];
+        }
+        for (k, &ak) in a.iter().enumerate().skip(2) {
+            // 2k(k + m)(2k + m − 2) Q_k = (2k + m − 1)[(2k + m)(2k + m − 2) x − m²] Q_(k−1)
+            //                              − 2(k − 1)(k + m − 1)(2k + m) Q_(k−2)
+            let kf = k as f64;
+            let c = 2.0 * kf + b;
+            let c0 = 2.0 * kf * (kf + b) * (c - 2.0);
+            let al = (c - 1.0) * c * (c - 2.0) / c0;
+            let be = -(c - 1.0) * b * b / c0;
+            let ga = 2.0 * (kf - 1.0) * (kf + b - 1.0) * c / c0;
+            let mut q2 = vec![0.0; k + 1];
+            for (i, &v) in q1.iter().enumerate() {
+                q2[i + 1] += al * v;
+                q2[i] += be * v;
+            }
+            for (i, &v) in q0.iter().enumerate() {
+                q2[i] -= ga * v;
+            }
+            for (i, &v) in q2.iter().enumerate() {
+                px[i] += ak * v;
+            }
+            (q0, q1) = (q1, q2);
+        }
+        ZGroup { m, cos, px }
     }
-    // Q_1 = 1 + (m + 2)(x − 1)/2
-    let (mut q1, mut d1) = (1.0 + 0.5 * (b + 2.0) * (x - 1.0), 0.5 * (b + 2.0));
-    s += a[1] * q1;
-    ds += a[1] * d1;
-    for (k, &ak) in a.iter().enumerate().skip(2) {
-        // 2k(k + m)(2k + m − 2) Q_k = (2k + m − 1)[(2k + m)(2k + m − 2) x − m²] Q_(k−1)
-        //                              − 2(k − 1)(k + m − 1)(2k + m) Q_(k−2)
-        let k = k as f64;
-        let c = 2.0 * k + b;
-        let c0 = 2.0 * k * (k + b) * (c - 2.0);
-        let c1 = (c - 1.0) * c * (c - 2.0);
-        let c2 = -(c - 1.0) * b * b;
-        let c3 = 2.0 * (k - 1.0) * (k + b - 1.0) * c;
-        let q2 = ((c1 * x + c2) * q1 - c3 * q0) / c0;
-        let d2 = ((c1 * x + c2) * d1 + c1 * q1 - c3 * d0) / c0;
-        (q0, d0, q1, d1) = (q1, d1, q2, d2);
-        s += ak * q1;
-        ds += ak * d1;
+
+    /// Σ_k a_k Q_k(x) と d/dx
+    fn eval(&self, x: f64) -> (f64, f64) {
+        let (mut v, mut d) = (0.0, 0.0);
+        for &c in self.px.iter().rev() {
+            d = d * x + v;
+            v = v * x + c;
+        }
+        (v, d)
     }
-    (s, ds)
 }
 
 impl ZernSag {
@@ -203,7 +235,10 @@ impl ZernSag {
         }
         g.sort_by_key(|e| (e.0, !e.1));
         self.mmax = g.iter().map(|e| e.0).max().unwrap_or(0);
-        self.groups = g;
+        self.groups = g
+            .into_iter()
+            .map(|(m, cs, a)| ZGroup::new(m, cs, a))
+            .collect();
     }
 
     /// Zernike の項の和と (∂/∂x, ∂/∂y)
@@ -227,7 +262,7 @@ impl ZernSag {
         let k = ((n - m) / 2) as usize;
         let mut p = vec![0.0; k + 1];
         p[k] = radial_norm(n, m, !self.fringe);
-        let g = [(m, cs, p)];
+        let g = [ZGroup::new(m, cs, p)];
         eval_groups(&g, m, self.norm, self.extrapolate, x - self.dx, y - self.dy)
     }
 
@@ -243,7 +278,7 @@ impl ZernSag {
 
 /// Σ_(m, cos/sin) A(u, v) P(ρ²) と (∂/∂x, ∂/∂y)
 fn eval_groups(
-    groups: &[(u32, bool, Vec<f64>)],
+    groups: &[ZGroup],
     mmax: u32,
     norm: f64,
     extrapolate: bool,
@@ -277,17 +312,17 @@ fn eval_groups(
         wi[m] = wr[m - 1] * v + wi[m - 1] * u;
     }
     let (mut z, mut zu, mut zv) = (0.0, 0.0, 0.0);
-    for (m, cs, p) in groups {
-        let m = *m as usize;
+    for gr in groups {
+        let (m, cs) = (gr.m as usize, gr.cos);
         // P(ρ²) = Σ a_k Q_k(2ρ² − 1) と dP/d(ρ²)
-        let (pv, dq) = jacobi_sum(p, m as u32, 2.0 * r2 - 1.0);
+        let (pv, dq) = gr.eval(2.0 * r2 - 1.0);
         let dp = 2.0 * dq;
         // A = Re w^m（cos）か Im w^m（sin）、∂A/∂u・∂A/∂v
         let (a, au, av) = if m == 0 {
             (1.0, 0.0, 0.0)
         } else {
             let mf = m as f64;
-            if *cs {
+            if cs {
                 (wr[m], mf * wr[m - 1], -mf * wi[m - 1])
             } else {
                 (wi[m], mf * wi[m - 1], mf * wr[m - 1])
@@ -602,7 +637,7 @@ mod tests {
     #[test]
     fn radial_terms_are_accurate_up_to_order_20() {
         // 動径多項式 R_n^m（n ≤ 20、Standard の 231 項）の ρ^m を除いた部分を、整数の係数（u128 で厳密）の
-        // double-double の Horner と比べる。ρ² のべきで f64 の Horner にすると ρ → 1 で 3e-10 ずれた
+        // double-double の Horner と比べる。ρ² のべきで f64 の Horner にすると ρ → 1 で 3e-10 ずれた（x = 2ρ² − 1 のべきは 3e-13）
         fn two_sum(a: f64, b: f64) -> (f64, f64) {
             let s = a + b;
             let bb = s - a;
@@ -632,12 +667,12 @@ mod tests {
                     acc = two_sum(s1, e1 + lo);
                 }
                 let exact = acc.0 + acc.1;
-                let (v, _) = jacobi_sum(&a, m, 2.0 * r2 - 1.0);
+                let (v, _) = ZGroup::new(m, true, a.clone()).eval(2.0 * r2 - 1.0);
                 // 値の大きさ（ρ → 0 で m が大きいと C(k + m, k) 倍になる）に対する誤差
                 worst = worst.max((v - exact).abs() / exact.abs().max(1.0));
             }
         }
-        assert!(worst < 1e-13, "{worst:e}");
+        assert!(worst < 5e-13, "{worst:e}");
     }
 
     #[test]
