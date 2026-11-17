@@ -51,6 +51,7 @@ mod remote_frame;
 #[cfg(not(target_arch = "wasm32"))]
 mod samples;
 mod split;
+mod state_table;
 mod surf_edit;
 mod swap_panel;
 mod sysset;

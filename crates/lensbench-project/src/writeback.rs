@@ -287,7 +287,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
         }
         E::SetParam { param, .. } => {
             return Err(format!(
-                "parameter {param} can't be written back to blocks (only c, r, k and t of surfaces)"
+                "parameter {param} can't be written back to blocks (only surface parameters)"
             ))
         }
         _ => return Err("only surface edits can be written back to blocks".into()),
@@ -319,6 +319,67 @@ pub fn face_mods(p: &Project) -> Vec<(&str, &FaceMods)> {
     out
 }
 
+/// パラメータの値を変える操作を、面の値・面のデータの上書きにする。厚さ・半径・曲率・コーニックは面の値、ほかの
+/// 値（非球面係数・Zernike・偏心など）は、ここまでの操作をすべて順に当てた系の写し run に当てて、変わった面の
+/// データの項目（同じ項目を先に変えた値も入った今の値）にする。ほかの操作はそのまま返し、run にも当てる。
+/// 値の変わらないパラメータは None（書くものが無い）
+fn param_op(run: &mut Option<System>, x: Edited, op: &EditOp) -> Result<Option<EditOp>, String> {
+    let cur = run.get_or_insert_with(|| x.before.clone());
+    let EditOp::SetParam { param, value } = op else {
+        // 当てられない操作（書き戻せないものなど）は写しに当てずに進む。書けるかは後で to_mod が見る
+        let mut next = cur.clone();
+        if crate::edit_ops::apply(&mut next, std::slice::from_ref(op)).is_ok() {
+            *cur = next;
+        }
+        return Ok(Some(op.clone()));
+    };
+    let no =
+        || format!("parameter {param} can't be written back to blocks (only surface parameters)");
+    let (s, k) = param.trim().rsplit_once('.').ok_or_else(no)?;
+    let s = s.strip_prefix("surf:").unwrap_or(s);
+    let j: usize = s.trim().parse().map_err(|_| no())?;
+    use lensbench_core::param::{Kind, Param};
+    let kind = Kind::parse(k).map_err(|e| e.to_string())?;
+    let key = match kind {
+        Kind::Curv => Some("c"),
+        Kind::Radius => Some("r"),
+        Kind::Conic => Some("k"),
+        Kind::Thick => Some("t"),
+        _ => None,
+    };
+    // 今と同じ値なら書くものは無い（注意も出さない）
+    if cur.get_param(Param::new(j, kind)).ok() == Some(value.0) {
+        return Ok(None);
+    }
+    let mut fields = Map::new();
+    let next = cur
+        .with_params(&[(Param::new(j, kind), value.0)])
+        .map_err(|e| e.to_string())?;
+    if let Some(key) = key {
+        fields.insert(key.into(), Value::from(value.0));
+        *cur = next;
+        return Ok(Some(EditOp::SetSurface {
+            surface: Ref::Index(j),
+            fields,
+        }));
+    }
+    let a = crate::edit_ops::surface_data(cur, j).map_err(|e| e.to_string())?;
+    let b = crate::edit_ops::surface_data(&next, j).map_err(|e| e.to_string())?;
+    for (k, v) in b["data"].as_object().into_iter().flatten() {
+        if !matches!(k.as_str(), "semi" | "semi_auto") && a["data"].get(k) != Some(v) {
+            fields.insert(k.clone(), v.clone());
+        }
+    }
+    *cur = next;
+    if fields.is_empty() {
+        return Err(no());
+    }
+    Ok(Some(EditOp::SetSurfaceData {
+        surface: Ref::Index(j),
+        data: fields,
+    }))
+}
+
 /// 展開した系 x（プロジェクト p の展開。状態・経路は問わない、ブロックの木が同じこと）にした編集 ops を、面を足した
 /// ブロックの [`FaceMods`] に足す。書き戻せない操作（面を入れる・消す、座標ブレーク・復路の面、面の上書きを
 /// 持てないブロックの面、系の設定など）は書かずに、説明を返す。面を入れる・消す操作の後の操作は面の番号が
@@ -331,6 +392,7 @@ pub fn write_back(
     check: &dyn Fn(&Project) -> Result<(), String>,
 ) -> Vec<String> {
     let mut notes = Vec::new();
+    let mut run = None;
     for (k, op) in ops.iter().enumerate() {
         if matches!(
             op,
@@ -343,7 +405,19 @@ pub fn write_back(
             ));
             break;
         }
-        let r = to_mod(p, x, op).and_then(|(n, m)| {
+        let op2 = match param_op(&mut run, x, op) {
+            Ok(Some(o)) => o,
+            Ok(None) => continue,
+            Err(e) => {
+                notes.push(format!(
+                    "edit {}: {} is not written back ({e})",
+                    k + 1,
+                    op.name()
+                ));
+                continue;
+            }
+        };
+        let r = to_mod(p, x, &op2).and_then(|(n, m)| {
             let rt = matches!(m, Mod::Edit(_))
                 && x.faces.iter().flatten().any(|g| g.node == n && g.back);
             let f = faces(p, &n)?;

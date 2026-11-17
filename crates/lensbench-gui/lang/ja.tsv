@@ -622,7 +622,6 @@ Max iterations	反復の上限
 Undo apply	反映を元に戻す
 Converged	収束した
 Variables	変数
-Variable {} cannot be applied to the combination (only surface thickness, radius and conic)	変数 {} は組合せに当てられません（面の厚み・曲率半径・コーニックだけ）
 No variables	変数がありません
 Variables barely move	変数がほとんど動きません
 After	後
@@ -1588,3 +1587,12 @@ Layout figure (2D)	レイアウト図（2D）
 Layout figure (3D)	レイアウト図（3D）
 Spot diagram, {}	スポットダイアグラム（{}）
 Glass map ({} glasses)	硝材マップ（{} 種）
+Show values not changed in any state	どの状態でも変えていない値も出す
+Click a column header to make it the current state. Right-click a cell to use the base value	列の見出しを押すとその状態を今の状態にします。セルを右クリックで基本の値に戻せます
+changed	変更あり
+Use base value	基本の値に戻す
+shift	移動
+Show the base values (no state)	基本の値を出す（状態なし）
+Make {} the current state	{} を今の状態にする
+Make {} the current state (it also changes system settings such as aperture and fields)	{} を今の状態にする（開口・視野などのシステムの設定も変わります）
+No states yet. Add one in the Layout panel (states are the configurations of a combination: element ON/OFF, spacing, decenter and tilt, group shift, .zmx configuration).	状態はまだありません。レイアウトのパネルで足してください（状態は組合せの構成です: 要素の ON/OFF・間隔・偏心とチルト・群の移動・.zmx の構成）。

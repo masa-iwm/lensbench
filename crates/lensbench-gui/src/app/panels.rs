@@ -14,6 +14,8 @@ pub(super) struct Panels {
     pub(super) open_nav: crate::widgets::Nav,
     /// 多重構成の表
     pub(super) mc: config_panel::State,
+    /// 組合せの状態の表（組合せでは多重構成の表の代わり）
+    pub(super) states: crate::state_table::View,
     /// 開いた系の系の設定
     pub(super) oss: open_sysset::State,
     /// 組合せの要素をユーザーカタログに保存する窓
@@ -38,6 +40,7 @@ impl Default for Panels {
             combo_view: Default::default(),
             open_nav: Default::default(),
             mc: Default::default(),
+            states: Default::default(),
             oss: Default::default(),
             cat_save: CatSave::default(),
             fill: Default::default(),

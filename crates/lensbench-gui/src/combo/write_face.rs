@@ -24,6 +24,11 @@ fn write_row(row: &mut SurfRow, key: &str, v: &Value, sign: f64) -> bool {
     }
     match key {
         "r" => radius_of(v).map(|r| row.radius = sign * r).is_some(),
+        // 曲率（0 は平面: 半径 0 の約束）
+        "c" => v
+            .as_f64()
+            .map(|c| row.radius = if c == 0.0 { 0.0 } else { sign / c })
+            .is_some(),
         "k" => v.as_f64().map(|k| row.conic = k).is_some(),
         "semi" => v
             .as_f64()

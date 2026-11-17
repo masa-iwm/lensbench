@@ -328,6 +328,11 @@ impl Core {
     /// 多重構成の表
     pub(super) fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
+        // 組合せの構成は状態: 状態の表（変えた値は組合せの変更として組み直す）
+        if combo {
+            crate::state_table::ui(ui, &mut self.doc.combo, &mut self.p.states);
+            return;
+        }
         let cands = self.param_sys();
         for a in config_panel::ui(ui, &mut self.p.mc, combo, &cands) {
             match a {

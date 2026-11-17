@@ -221,12 +221,18 @@ impl Core {
             let mut b: Vec<_> = edits.iter().map(key).collect();
             a.sort();
             b.sort();
+            let mut moved = false;
             if a != b {
                 p.edits = edits;
-                changed = true;
+                moved = true;
             }
             if p.ops != ops {
                 p.ops = ops;
+                moved = true;
+            }
+            // 中身に書ける値（自作の玉の面の値など）は中身へ（面の数え方の印も付け直す）
+            if moved {
+                p.bake_edits();
                 changed = true;
             }
         }

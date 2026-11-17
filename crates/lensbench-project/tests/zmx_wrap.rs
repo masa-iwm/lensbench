@@ -52,7 +52,7 @@ fn zmx_projects_rebuild_the_same_system() {
 }
 
 #[test]
-fn zmx_project_refuses_what_it_cannot_write() {
+fn zmx_project_writes_multi_config_and_field_solve() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut s = lensbench_core::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
@@ -69,7 +69,7 @@ fn zmx_project_refuses_what_it_cannot_write() {
     let p = lensbench_project::zmx_project(std::slice::from_ref(&m), "x.zmx").unwrap();
     assert_eq!(p["states"].as_array().map(Vec::len), Some(3), "{p}");
     assert_eq!(p["states"][2]["set"]["zmx"]["config"], 3, "{p}");
-    s.edit_raw(|rx| {
+    s.edit(|rx| {
         rx.field_type =
             lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
                 surf: 3,
@@ -77,7 +77,21 @@ fn zmx_project_refuses_what_it_cannot_write() {
         Ok(())
     })
     .unwrap();
-    assert!(lensbench_project::zmx_project(std::slice::from_ref(&s), "x.zmx").is_err());
+    // 条件で定める視野は、条件の面を系の面の番号で書く。作り直した系は元と同じ
+    let p = lensbench_project::zmx_project(std::slice::from_ref(&s), "A0/system.zmx").unwrap();
+    assert_eq!(p["fields"]["type"], "solve", "{p}");
+    assert_eq!(p["fields"]["solve"]["surface"], "3", "{p}");
+    let env = lensbench_project::Env {
+        base: root.join("tests/refs"),
+        glass_dirs: vec![root.join("tests/glass")],
+        catalog: None,
+        step_files: None,
+    };
+    let t = lensbench_project::Project::from_json(&p.to_string())
+        .and_then(|q| lensbench_project::expand(&q, &env, &Default::default()).map_err(Into::into))
+        .unwrap()
+        .system;
+    lensbench_project::same_system(&s, &t).unwrap();
 }
 
 /// glrs はブロックの面・系の面の番号で書ける。ケラレ係数が視野より多ければ誤り

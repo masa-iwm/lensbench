@@ -456,3 +456,35 @@ fn zoom_unchecked_state_is_skipped() {
     assert_eq!(h.state().acts.len(), 1);
     h.get_by_label("Select at least one state");
 }
+
+/// 組合せの状態の表: 状態ごとの列が出て、見出しを押すとその状態が今の状態になる。状態の列のセルを変えると
+/// その状態の値になる
+#[test]
+fn state_table_selects_and_edits_states() {
+    use crate::combo::{Combo, ElemKind, Pick};
+    let _g = serial();
+    let mut c = Combo::default();
+    let mut z = Pick::new(ElemKind::ZmxRange);
+    z.path = "a.zmx".into();
+    z.zmx_mut().state_config.insert("Config 2".into(), 2);
+    c.picks.push(z);
+    c.states = vec!["Config 1".into(), "Config 2".into()];
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(900.0, 600.0))
+        .build_ui_state(
+            |ui, st: &mut (Combo, crate::state_table::View, bool)| {
+                st.2 |= crate::state_table::ui(ui, &mut st.0, &mut st.1);
+            },
+            (c, Default::default(), false),
+        );
+    h.run_steps(2);
+    assert!(h.query_by_label("Base").is_some());
+    h.get_by_label("Config 2").click();
+    h.run_steps(2);
+    assert_eq!(h.state().0.state.as_deref(), Some("Config 2"));
+    assert!(h.state().2);
+    // 構成の行の値: 基本は 1、Config 2 は 2
+    let st = &h.state().0;
+    assert_eq!(st.picks[0].config_in(None), 1);
+    assert_eq!(st.picks[0].config_in(Some("Config 2")), 2);
+}

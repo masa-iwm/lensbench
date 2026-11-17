@@ -319,19 +319,21 @@ impl Core {
             self.send_change(Tag::Set, "set", json!({ "values": m }));
             return true;
         }
-        let mut edits = Vec::new();
-        for (n, x) in vals {
-            match crate::optim_panel::combo_edit(n, *x) {
-                Ok(e) => edits.push(e),
-                Err(n) => {
-                    self.fail(trf(
-                        "Variable {} cannot be applied to the combination (only surface thickness, radius and conic)",
-                        &[&n],
-                    ));
-                    return false;
-                }
-            }
-        }
+        // 厚さ・半径・コーニックは要素の欄に。ほかの値（非球面係数・偏心など）があれば、serve の write_back で
+        // 要素の面の上書きにする（返事で要素に入れて作り直す）
+        let Some(edits) = vals
+            .iter()
+            .map(|(n, x)| crate::optim_panel::combo_edit(n, *x).ok())
+            .collect::<Option<Vec<_>>>()
+        else {
+            let ops: Vec<Value> = vals
+                .iter()
+                .map(|(k, x)| json!({ "op": "set_param", "param": k, "value": x }))
+                .collect();
+            self.worker
+                .send(Tag::WriteBack, "write_back", json!({ "ops": ops }));
+            return true;
+        };
         let ids = self.doc.combo.span_ids();
         let lead = self.doc.combo.lead_stop();
         let spans = lens_data::elem_spans(&ids, &self.sys.elem_blocks, lead, &self.sys.ld_rows);

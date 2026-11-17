@@ -1643,6 +1643,95 @@ fn write_back_returns_changed_blocks() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// write_back の set_param: 厚さ・半径・コーニック以外の面のパラメータ（非球面係数）も、変わった面のデータの項目を
+/// ブロックの面の上書きにする
+#[test]
+fn write_back_set_param_of_aspheric() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-writeback-asph-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let txt = r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 6},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5},
+          {"type": "lens", "id": "A", "source": {"surfaces": [{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8, "asph": [0, 1e-6]}, {"radius": -60, "semi": 8}]}},
+          {"type": "air", "t": 30}]}"#;
+    let f = dir.join("p.json");
+    std::fs::write(&f, txt).unwrap();
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    // 面 2 は A の前の面（偶数次非球面）
+    let r = sv.call(
+        "write_back",
+        json!({ "ops": [{ "op": "set_param", "param": "2.a6", "value": 3e-9 }] }),
+    );
+    let b = &r["blocks"][0];
+    assert_eq!(b["id"], "A", "{r}");
+    let e = &b["faces"]["surface_edits"][0];
+    assert_eq!(e["surface"], 0, "{r}");
+    let fields = e["fields"].as_object().unwrap();
+    assert_eq!(fields.len(), 1, "{r}");
+    assert!(
+        fields.values().next().unwrap().to_string().contains("3e-9"),
+        "{r}"
+    );
+    // 面のパラメータでないものは書き戻さずに notes
+    let r = sv.call(
+        "write_back",
+        json!({ "ops": [{ "op": "set_param", "param": "objy", "value": 1.0 }] }),
+    );
+    assert!(
+        r["notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("only surface parameters"),
+        "{r}"
+    );
+    // 保存: set で変えた 2 つの係数（同じ項目）がどちらも残る
+    sv.call("set", json!({ "values": { "2.a4": 2e-6, "2.a6": 5e-9 } }));
+    let out = dir.join("saved.json");
+    let r = sv.call("save_project", json!({ "path": out.display().to_string() }));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    let saved = std::fs::read_to_string(&out).unwrap();
+    assert!(saved.contains("2e-6") && saved.contains("5e-9"), "{saved}");
+    // 同じ面の同じ項目を先に別の操作で変えていても、その値を残す（write_back・edit → set → save_project）
+    let load = json!({
+        "file": f.display().to_string(),
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+    });
+    sv.call("load", load.clone());
+    let asph = json!({ "op": "set_surface_data", "surface": 2, "data": { "asph": [0.0, 2e-6] } });
+    let r = sv.call(
+        "write_back",
+        json!({ "ops": [asph, { "op": "set_param", "param": "2.a6", "value": 3e-9 }] }),
+    );
+    assert_eq!(r["notes"], json!([]), "{r}");
+    let edits = r["blocks"][0]["faces"]["surface_edits"].to_string();
+    assert!(edits.contains("2e-6") && edits.contains("3e-9"), "{r}");
+    // 今と同じ値は書くものが無い（注意も出さない）
+    let r = sv.call(
+        "write_back",
+        json!({ "ops": [{ "op": "set_param", "param": "2.a4", "value": 1e-6 }] }),
+    );
+    assert_eq!(r["notes"], json!([]), "{r}");
+    assert!(
+        r["blocks"][0]["faces"].get("surface_edits").is_none(),
+        "{r}"
+    );
+    sv.call("load", load);
+    sv.call("edit", json!({ "ops": [asph] }));
+    sv.call("set", json!({ "values": { "2.a6": 3e-9 } }));
+    let r = sv.call("save_project", json!({ "path": out.display().to_string() }));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    let saved = std::fs::read_to_string(&out).unwrap();
+    assert!(saved.contains("2e-6") && saved.contains("3e-9"), "{saved}");
+    sv.stop();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// 展開で断る上書き（往復するブロックの面の前後の偏心、鏡のブロックの面の dn）は書き戻さずに notes。保存した
 /// プロジェクトは必ず読める
 #[test]

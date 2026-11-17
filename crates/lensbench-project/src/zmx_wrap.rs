@@ -10,7 +10,7 @@ pub const ZMX_ID: &str = "zmx";
 /// .zmx（`path`）の構成ごとの系 cfgs（cfgs[k - 1] が構成 k）の設定と、`path` をまるごと取り込む zmx ブロック 1 つの
 /// プロジェクト。系 1 つで多重構成の表があれば、表から構成ごとの系を作る。構成が 2 つ以上なら、本体は構成 1 で、
 /// 構成ごとに状態「Config k」を足す（zmx ブロックの config と、構成で変わる系の値）。
-/// プロジェクトで書けない設定（条件で定める視野）があれば誤り
+/// 書いた形が読めなければ誤り
 pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value> {
     let from_table: Vec<System>;
     let cfgs = match cfgs {
@@ -87,13 +87,27 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
         FieldType::ObjH => "object_height",
         FieldType::ParH => "paraxial_image_height",
         FieldType::RealH => "real_image_height",
-        FieldType::Solve(_) => return Err("a field defined by a condition".into()),
+        FieldType::Solve(_) => "solve",
     };
     let mut fields = json!({
         "type": ft,
         "points": s.fields.iter().map(|f| [f.x, f.y]).collect::<Vec<_>>(),
         "weights": s.fields.iter().map(|f| f.w).collect::<Vec<_>>(),
     });
+    // 条件の面は系の面の番号（.zmx をまるごと取り込むので、展開した系でも同じ番号）
+    if let FieldType::Solve(c) = s.field_type {
+        fields["solve"] = match c {
+            FieldCond::Position { surf } => {
+                json!({ "cond": "position", "surface": surf.to_string() })
+            }
+            FieldCond::DirSum { s1, s2 } => {
+                json!({ "cond": "dir_sum", "s1": s1.to_string(), "s2": s2.to_string() })
+            }
+            FieldCond::DirDiff { s1, s2 } => {
+                json!({ "cond": "dir_diff", "s1": s1.to_string(), "s2": s2.to_string() })
+            }
+        };
+    }
     if s.field_norm == FieldNorm::Rect {
         fields["norm"] = json!("rect");
     }

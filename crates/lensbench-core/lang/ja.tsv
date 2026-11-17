@@ -69,7 +69,6 @@ type {ty} (one of {})	種類 {ty}（{} のどれか）
 --layers {l}: expected a number of layers N or a range N..M	--layers {l}: 層の数 N か範囲 N..M を書いてください
 PARM({n}, {k}): the parameter (0 to 255) or the surface is out of range	PARM({n}, {k}): パラメータ（0〜255）か面が範囲の外です
 no system	システムがない
-a field defined by a condition	条件で定めた視野
 --states and --beam-paths are only for project files (.json)	--states・--beam-paths はプロジェクトファイル（.json）だけで使えます
 # command line (lensbench-cli)
 See the arguments with lensbench <command> --help	引数の一覧は lensbench <コマンド> --help
@@ -2142,7 +2141,7 @@ only surface edits can be written back to blocks	ブロックへ書き戻せる�
 the thickness after the last surface of a block includes the following air (change the air block)	ブロックの最後の面の厚みには後ろの空気が入っています（空気のブロックで変えてください）
 edit {}: {} also changes the return path of the round-trip block	変更 {}: {} は往復するブロックの復路も変えます
 the medium after the last surface of a round-trip block is the following air (change the air block)	往復するブロックの最後の面の後の媒質は後ろの空気です（空気のブロックで変えてください）
-parameter {param} can't be written back to blocks (only c, r, k and t of surfaces)	パラメータ {param} はブロックへ書き戻せません（面の c・r・k・t だけ）
+parameter {param} can't be written back to blocks (only surface parameters)	パラメータ {param} はブロックに書き戻せません（面のパラメータだけ）
 the project would not expand: {e}	書き戻すとプロジェクトが展開できません: {e}
 the block is not in the project	ブロックがプロジェクトにありません
 this kind of block can't hold surface edits	この種類のブロックは面の上書きを持てません
