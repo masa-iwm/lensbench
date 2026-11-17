@@ -90,28 +90,28 @@ impl Table {
     }
 
     pub fn write_npz<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
-        let mut z = Zip::default();
-        for (k, v) in &self.meta {
-            let c = match v {
-                Value::Number(n) => Some(match n.as_i64() {
-                    Some(i) => npy(&Col::I64(vec![i]), true),
-                    None => npy(&Col::F64(vec![n.as_f64().unwrap_or(f64::NAN)]), true),
-                }),
-                Value::String(s) => Some(npy(&Col::Str(vec![s.clone()]), true)),
-                Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_number) => Some(npy(
-                    &Col::F64(a.iter().map(|x| x.as_f64().unwrap_or(f64::NAN)).collect()),
-                    false,
-                )),
-                _ => None,
-            };
-            if let Some(b) = c {
-                z.add(&format!("{k}.npy"), b);
-            }
-        }
+        let mut z = Zip::new(ZIP_LIMITS);
+        write_npz_meta(&mut z, w, &self.meta)?;
         for (n, c) in &self.cols {
-            z.add(&format!("{n}.npy"), npy(c, false));
+            z.add(w, &format!("{n}.npy"), &[&npy(c, false)])?;
         }
         z.finish(w)
+    }
+
+    /// 同じ列の並びの表を後ろに足す（[`rays_each`] の塊をつなぐ）
+    fn append(&mut self, other: Table) {
+        if self.cols.is_empty() {
+            self.cols = other.cols;
+            return;
+        }
+        for ((_, a), (_, b)) in self.cols.iter_mut().zip(other.cols) {
+            match (a, b) {
+                (Col::F64(a), Col::F64(b)) => a.extend(b),
+                (Col::I64(a), Col::I64(b)) => a.extend(b),
+                (Col::Str(a), Col::Str(b)) => a.extend(b),
+                _ => unreachable!("the chunks have the same columns"),
+            }
+        }
     }
 
     /// 拡張子（csv・json・npz）で決めて書き出す
@@ -158,6 +158,47 @@ fn csv_quote(s: &str) -> String {
     }
 }
 
+/// 表の外の値を npz に書く（スカラーは 0 次元、数の配列は 1 次元。ほかの値は書かない）
+fn write_npz_meta<W: Write>(
+    z: &mut Zip,
+    w: &mut W,
+    meta: &Map<String, Value>,
+) -> std::io::Result<()> {
+    for (k, v) in meta {
+        let c = match v {
+            Value::Number(n) => Some(match n.as_i64() {
+                Some(i) => npy(&Col::I64(vec![i]), true),
+                None => npy(&Col::F64(vec![n.as_f64().unwrap_or(f64::NAN)]), true),
+            }),
+            Value::String(s) => Some(npy(&Col::Str(vec![s.clone()]), true)),
+            Value::Array(a) if !a.is_empty() && a.iter().all(Value::is_number) => Some(npy(
+                &Col::F64(a.iter().map(|x| x.as_f64().unwrap_or(f64::NAN)).collect()),
+                false,
+            )),
+            _ => None,
+        };
+        if let Some(b) = c {
+            z.add(w, &format!("{k}.npy"), &[&b])?;
+        }
+    }
+    Ok(())
+}
+
+/// .npy の頭（版 1.0）。`shape` は `()`（0 次元）か `(n,)`
+fn npy_header(descr: &str, shape: &str) -> Vec<u8> {
+    let mut h = format!("{{'descr': '{descr}', 'fortran_order': False, 'shape': {shape}, }}");
+    // 魔法の 6 + 版 2 + 長さ 2 + 見出し + 改行 が 64 の倍数
+    while (10 + h.len() + 1) % 64 != 0 {
+        h.push(' ');
+    }
+    h.push('\n');
+    let mut b = Vec::with_capacity(10 + h.len());
+    b.extend_from_slice(b"\x93NUMPY\x01\x00");
+    b.extend_from_slice(&(h.len() as u16).to_le_bytes());
+    b.extend_from_slice(h.as_bytes());
+    b
+}
+
 /// .npy（版 1.0、リトルエンディアン）。scalar なら 0 次元
 fn npy(c: &Col, scalar: bool) -> Vec<u8> {
     let (descr, data): (String, Vec<u8>) = match c {
@@ -193,21 +234,18 @@ fn npy(c: &Col, scalar: bool) -> Vec<u8> {
     } else {
         format!("({},)", c.len())
     };
-    let mut h = format!("{{'descr': '{descr}', 'fortran_order': False, 'shape': {shape}, }}");
-    // 魔法の 6 + 版 2 + 長さ 2 + 見出し + 改行 が 64 の倍数
-    while (10 + h.len() + 1) % 64 != 0 {
-        h.push(' ');
-    }
-    h.push('\n');
-    let mut b = Vec::with_capacity(10 + h.len() + data.len());
-    b.extend_from_slice(b"\x93NUMPY\x01\x00");
-    b.extend_from_slice(&(h.len() as u16).to_le_bytes());
-    b.extend_from_slice(h.as_bytes());
+    let mut b = npy_header(&descr, &shape);
     b.extend_from_slice(&data);
     b
 }
 
+#[cfg(test)]
 fn crc32(b: &[u8]) -> u32 {
+    !crc32_update(!0, b)
+}
+
+/// CRC-32 を続けて計算する（始めは `!0`、終わりに `!` を取る）
+fn crc32_update(mut c: u32, b: &[u8]) -> u32 {
     static TABLE: std::sync::OnceLock<[u32; 256]> = std::sync::OnceLock::new();
     let t = TABLE.get_or_init(|| {
         let mut t = [0u32; 256];
@@ -224,17 +262,10 @@ fn crc32(b: &[u8]) -> u32 {
         }
         t
     });
-    let mut c = !0u32;
     for &x in b {
         c = t[((c ^ x as u32) & 0xff) as usize] ^ (c >> 8);
     }
-    !c
-}
-
-/// 無圧縮の zip（npz 用）。4 GB・65,535 個を超える分は zip64 で書く（PRJ-27。numpy の np.load も読む）
-#[derive(Default)]
-struct Zip {
-    files: Vec<(String, Vec<u8>)>,
+    c
 }
 
 /// zip の 32 ビット・16 ビットの欄の上限（これ以上は zip64 の欄に書き、こちらは 0xFFFFFFFF・0xFFFF）
@@ -249,88 +280,110 @@ const ZIP_LIMITS: ZipLimits = ZipLimits {
     u16: u16::MAX as usize,
 };
 
+/// 無圧縮の zip（npz 用）を足すそばから書く（中身を全部は持たない、PRJ-27）。4 GB・65,535 個を超える分は zip64 で書く
+/// （numpy の np.load も読む）
+struct Zip {
+    lim: ZipLimits,
+    /// 次の局所の頭の位置
+    off: u64,
+    central: Vec<u8>,
+    n: usize,
+}
+
 impl Zip {
-    fn add(&mut self, name: &str, data: Vec<u8>) {
-        self.files.push((name.to_string(), data));
-    }
-
-    fn finish<W: Write>(self, w: &mut W) -> std::io::Result<()> {
-        self.finish_with(w, ZIP_LIMITS)
-    }
-
-    fn finish_with<W: Write>(self, w: &mut W, lim: ZipLimits) -> std::io::Result<()> {
-        let mut off: u64 = 0;
-        let mut central = Vec::new();
-        let n = self.files.len();
-        for (name, data) in &self.files {
-            let crc = crc32(data);
-            let nb = name.as_bytes();
-            let size = data.len() as u64;
-            let big = size >= lim.u32;
-            let far = off >= lim.u32;
-            // 版: zip64 の欄を持つなら 4.5
-            let ver: u16 = if big || far { 45 } else { 20 };
-            let size32 = if big { u32::MAX } else { size as u32 };
-            // 局所の頭: 大きければ大きさは zip64 の追加の欄（元の大きさ・圧縮後の大きさ）
-            let mut lx = Vec::new();
-            if big {
-                lx.extend_from_slice(&1u16.to_le_bytes());
-                lx.extend_from_slice(&16u16.to_le_bytes());
-                lx.extend_from_slice(&size.to_le_bytes());
-                lx.extend_from_slice(&size.to_le_bytes());
-            }
-            let mut h = Vec::with_capacity(30 + nb.len() + lx.len());
-            h.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-            h.extend_from_slice(&ver.to_le_bytes());
-            h.extend_from_slice(&0u16.to_le_bytes()); // フラグ
-            h.extend_from_slice(&0u16.to_le_bytes()); // 無圧縮
-            h.extend_from_slice(&0u16.to_le_bytes()); // 時刻
-            h.extend_from_slice(&0x0021u16.to_le_bytes()); // 日付 1980-01-01
-            h.extend_from_slice(&crc.to_le_bytes());
-            h.extend_from_slice(&size32.to_le_bytes());
-            h.extend_from_slice(&size32.to_le_bytes());
-            h.extend_from_slice(&(nb.len() as u16).to_le_bytes());
-            h.extend_from_slice(&(lx.len() as u16).to_le_bytes());
-            h.extend_from_slice(nb);
-            h.extend_from_slice(&lx);
-            w.write_all(&h)?;
-            w.write_all(data)?;
-            // 中央の頭: zip64 の追加の欄は、溢れた欄だけを元の大きさ・圧縮後の大きさ・頭の位置の順に
-            let mut cx = Vec::new();
-            if big {
-                cx.extend_from_slice(&size.to_le_bytes());
-                cx.extend_from_slice(&size.to_le_bytes());
-            }
-            if far {
-                cx.extend_from_slice(&off.to_le_bytes());
-            }
-            if !cx.is_empty() {
-                let body = std::mem::take(&mut cx);
-                cx.extend_from_slice(&1u16.to_le_bytes());
-                cx.extend_from_slice(&(body.len() as u16).to_le_bytes());
-                cx.extend_from_slice(&body);
-            }
-            let mut c = Vec::with_capacity(46 + nb.len() + cx.len());
-            c.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
-            c.extend_from_slice(&ver.to_le_bytes());
-            c.extend_from_slice(&ver.to_le_bytes());
-            c.extend_from_slice(&0u16.to_le_bytes());
-            c.extend_from_slice(&0u16.to_le_bytes());
-            c.extend_from_slice(&0u16.to_le_bytes());
-            c.extend_from_slice(&0x0021u16.to_le_bytes());
-            c.extend_from_slice(&crc.to_le_bytes());
-            c.extend_from_slice(&size32.to_le_bytes());
-            c.extend_from_slice(&size32.to_le_bytes());
-            c.extend_from_slice(&(nb.len() as u16).to_le_bytes());
-            c.extend_from_slice(&(cx.len() as u16).to_le_bytes());
-            c.extend_from_slice(&[0u8; 6]); // 注釈・ディスク番号・内部属性
-            c.extend_from_slice(&0u32.to_le_bytes()); // 外部属性
-            c.extend_from_slice(&(if far { u32::MAX } else { off as u32 }).to_le_bytes());
-            c.extend_from_slice(nb);
-            c.extend_from_slice(&cx);
-            central.extend(c);
-            off += (h.len() + data.len()) as u64;
+    fn new(lim: ZipLimits) -> Zip {
+        Zip {
+            lim,
+            off: 0,
+            central: Vec::new(),
+            n: 0,
         }
+    }
+
+    /// 1 つ書く。中身は `parts` をつないだもの
+    fn add<W: Write>(&mut self, w: &mut W, name: &str, parts: &[&[u8]]) -> std::io::Result<()> {
+        let lim = self.lim;
+        let off = self.off;
+        let crc = !parts.iter().fold(!0u32, |c, p| crc32_update(c, p));
+        let nb = name.as_bytes();
+        let size: u64 = parts.iter().map(|p| p.len() as u64).sum();
+        let big = size >= lim.u32;
+        let far = off >= lim.u32;
+        // 版: zip64 の欄を持つなら 4.5
+        let ver: u16 = if big || far { 45 } else { 20 };
+        let size32 = if big { u32::MAX } else { size as u32 };
+        // 局所の頭: 大きければ大きさは zip64 の追加の欄（元の大きさ・圧縮後の大きさ）
+        let mut lx = Vec::new();
+        if big {
+            lx.extend_from_slice(&1u16.to_le_bytes());
+            lx.extend_from_slice(&16u16.to_le_bytes());
+            lx.extend_from_slice(&size.to_le_bytes());
+            lx.extend_from_slice(&size.to_le_bytes());
+        }
+        let mut h = Vec::with_capacity(30 + nb.len() + lx.len());
+        h.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        h.extend_from_slice(&ver.to_le_bytes());
+        h.extend_from_slice(&0u16.to_le_bytes()); // フラグ
+        h.extend_from_slice(&0u16.to_le_bytes()); // 無圧縮
+        h.extend_from_slice(&0u16.to_le_bytes()); // 時刻
+        h.extend_from_slice(&0x0021u16.to_le_bytes()); // 日付 1980-01-01
+        h.extend_from_slice(&crc.to_le_bytes());
+        h.extend_from_slice(&size32.to_le_bytes());
+        h.extend_from_slice(&size32.to_le_bytes());
+        h.extend_from_slice(&(nb.len() as u16).to_le_bytes());
+        h.extend_from_slice(&(lx.len() as u16).to_le_bytes());
+        h.extend_from_slice(nb);
+        h.extend_from_slice(&lx);
+        w.write_all(&h)?;
+        for p in parts {
+            w.write_all(p)?;
+        }
+        // 中央の頭: zip64 の追加の欄は、溢れた欄だけを元の大きさ・圧縮後の大きさ・頭の位置の順に
+        let mut cx = Vec::new();
+        if big {
+            cx.extend_from_slice(&size.to_le_bytes());
+            cx.extend_from_slice(&size.to_le_bytes());
+        }
+        if far {
+            cx.extend_from_slice(&off.to_le_bytes());
+        }
+        if !cx.is_empty() {
+            let body = std::mem::take(&mut cx);
+            cx.extend_from_slice(&1u16.to_le_bytes());
+            cx.extend_from_slice(&(body.len() as u16).to_le_bytes());
+            cx.extend_from_slice(&body);
+        }
+        let c = &mut self.central;
+        c.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        c.extend_from_slice(&ver.to_le_bytes());
+        c.extend_from_slice(&ver.to_le_bytes());
+        c.extend_from_slice(&0u16.to_le_bytes());
+        c.extend_from_slice(&0u16.to_le_bytes());
+        c.extend_from_slice(&0u16.to_le_bytes());
+        c.extend_from_slice(&0x0021u16.to_le_bytes());
+        c.extend_from_slice(&crc.to_le_bytes());
+        c.extend_from_slice(&size32.to_le_bytes());
+        c.extend_from_slice(&size32.to_le_bytes());
+        c.extend_from_slice(&(nb.len() as u16).to_le_bytes());
+        c.extend_from_slice(&(cx.len() as u16).to_le_bytes());
+        c.extend_from_slice(&[0u8; 6]); // 注釈・ディスク番号・内部属性
+        c.extend_from_slice(&0u32.to_le_bytes()); // 外部属性
+        c.extend_from_slice(&(if far { u32::MAX } else { off as u32 }).to_le_bytes());
+        c.extend_from_slice(nb);
+        c.extend_from_slice(&cx);
+        self.off += h.len() as u64 + size;
+        self.n += 1;
+        Ok(())
+    }
+
+    /// 中央の目録と終わりの記録を書く
+    fn finish<W: Write>(self, w: &mut W) -> std::io::Result<()> {
+        let Zip {
+            lim,
+            off,
+            central,
+            n,
+        } = self;
         w.write_all(&central)?;
         let clen = central.len() as u64;
         // 終わりの記録: 数・中央の大きさ・位置のどれかが溢れれば、zip64 の終わりの記録とその在り処を先に書く
@@ -379,6 +432,28 @@ pub struct RayOptions {
     pub surfaces: Option<Vec<usize>>,
 }
 
+/// 光線の表の列（[`rays`]）。i は整数、f は実数
+const RAY_COLS: [(&str, bool); 18] = [
+    ("field", false),
+    ("wave", false),
+    ("ray", false),
+    ("px", true),
+    ("py", true),
+    ("surface", false),
+    ("x", true),
+    ("y", true),
+    ("z", true),
+    ("l", true),
+    ("m", true),
+    ("n", true),
+    ("gx", true),
+    ("gy", true),
+    ("gz", true),
+    ("opl", true),
+    ("err", false),
+    ("vig", false),
+];
+
 /// 光線の面ごとの交点の表（1 行 = 1 光線 × 1 面）。
 ///
 /// 列: field・wave（1 始まり）、ray（0 始まり）、px・py、surface、
@@ -386,6 +461,25 @@ pub struct RayOptions {
 /// 無限遠の物体では面 1 の頂点を通る、光線に垂直な面から）、
 /// err・vig（光線が止まった面・けられた面、0 はなし）。止まった後の面の値は NaN
 pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
+    let mut all = Table::default();
+    let meta = rays_each(s, o, |t| {
+        all.append(t);
+        Ok(())
+    })?;
+    if all.cols.is_empty() {
+        all = ray_chunk(Default::default(), Default::default(), Default::default());
+    }
+    all.meta = meta;
+    Ok(all)
+}
+
+/// [`rays`] の表を、視野・波長の組ごとの塊（同じ列の [`Table`]、meta は空）で `f` に渡す。返すのは表の meta。
+/// 全体を持たずに書き出すため（[`save_rays`]、PRJ-27）
+pub fn rays_each(
+    s: &System,
+    o: &RayOptions,
+    mut f: impl FnMut(Table) -> Result<()>,
+) -> Result<Map<String, Value>> {
     let nf = s.fields.len();
     let nw = s.wavelengths.len();
     let fields = o.fields.clone().unwrap_or_else(|| (0..nf).collect());
@@ -407,18 +501,12 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
         )));
     }
     let last = *surfs.iter().max().unwrap_or(&img);
-    let mut c_f = Vec::new();
-    let mut c_w = Vec::new();
-    let mut c_r = Vec::new();
-    let mut c_px = Vec::new();
-    let mut c_py = Vec::new();
-    let mut c_s = Vec::new();
-    let mut v: [Vec<f64>; 10] = Default::default();
-    let mut c_err = Vec::new();
-    let mut c_vig = Vec::new();
     for &fi in &fields {
         for &w in &waves {
             let t = s.try_trace(FieldSel::Index(fi), &o.px, &o.py, Some(w), Some(last), true)?;
+            let mut ints: [Vec<i64>; 6] = Default::default();
+            let mut pxy: [Vec<f64>; 2] = Default::default();
+            let mut v: [Vec<f64>; 10] = Default::default();
             for i in 0..o.px.len() {
                 let r = &t.rays[i];
                 for &j in &surfs {
@@ -427,12 +515,12 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
                         continue;
                     };
                     let e = q.entry(i);
-                    c_f.push(fi as i64 + 1);
-                    c_w.push(w as i64 + 1);
-                    c_r.push(i as i64);
-                    c_px.push(o.px[i]);
-                    c_py.push(o.py[i]);
-                    c_s.push(j as i64);
+                    ints[0].push(fi as i64 + 1);
+                    ints[1].push(w as i64 + 1);
+                    ints[2].push(i as i64);
+                    pxy[0].push(o.px[i]);
+                    pxy[1].push(o.py[i]);
+                    ints[3].push(j as i64);
                     let vals = [
                         e.xyz[0], e.xyz[1], e.xyz[2], e.lmn[0], e.lmn[1], e.lmn[2], e.p[0], e.p[1],
                         e.p[2], e.opl,
@@ -440,31 +528,171 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
                     for k in 0..10 {
                         v[k].push(vals[k]);
                     }
-                    c_err.push(r.status.code() as i64);
-                    c_vig.push(r.vig as i64);
+                    ints[4].push(r.status.code() as i64);
+                    ints[5].push(r.vig as i64);
                 }
             }
+            f(ray_chunk(ints, pxy, v))?;
         }
     }
-    let names = ["x", "y", "z", "l", "m", "n", "gx", "gy", "gz", "opl"];
-    let mut cols = vec![
-        ("field".to_string(), Col::I64(c_f)),
-        ("wave".to_string(), Col::I64(c_w)),
-        ("ray".to_string(), Col::I64(c_r)),
-        ("px".to_string(), Col::F64(c_px)),
-        ("py".to_string(), Col::F64(c_py)),
-        ("surface".to_string(), Col::I64(c_s)),
-    ];
-    for (k, n) in names.iter().enumerate() {
-        cols.push((n.to_string(), Col::F64(std::mem::take(&mut v[k]))));
-    }
-    cols.push(("err".into(), Col::I64(c_err)));
-    cols.push(("vig".into(), Col::I64(c_vig)));
     let mut meta = Map::new();
     meta.insert("name".into(), json!(s.name));
     meta.insert("unit".into(), json!("mm"));
     meta.insert("wavelengths_um".into(), json!(s.wavelengths));
-    Ok(Table { cols, meta })
+    Ok(meta)
+}
+
+/// 光線の表の塊（整数の列 field・wave・ray・surface・err・vig、px・py、実数の列 x〜opl）
+fn ray_chunk(ints: [Vec<i64>; 6], pxy: [Vec<f64>; 2], v: [Vec<f64>; 10]) -> Table {
+    let [f, w, r, s, err, vig] = ints;
+    let [px, py] = pxy;
+    let mut cols = vec![
+        ("field".to_string(), Col::I64(f)),
+        ("wave".to_string(), Col::I64(w)),
+        ("ray".to_string(), Col::I64(r)),
+        ("px".to_string(), Col::F64(px)),
+        ("py".to_string(), Col::F64(py)),
+        ("surface".to_string(), Col::I64(s)),
+    ];
+    for ((n, _), c) in RAY_COLS[6..16].iter().zip(v) {
+        cols.push((n.to_string(), Col::F64(c)));
+    }
+    cols.push(("err".into(), Col::I64(err)));
+    cols.push(("vig".into(), Col::I64(vig)));
+    Table {
+        cols,
+        meta: Map::new(),
+    }
+}
+
+/// 書き出しの塊を溜めてから vfs の末尾に足す（1 回ごとにファイルを開かないため）
+struct VfsAppend {
+    path: std::path::PathBuf,
+    buf: Vec<u8>,
+}
+
+impl VfsAppend {
+    const CHUNK: usize = 8 << 20;
+}
+
+impl Write for VfsAppend {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.buf.extend_from_slice(b);
+        if self.buf.len() >= Self::CHUNK {
+            self.flush()?;
+        }
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        if !self.buf.is_empty() {
+            lensbench_core::vfs::append(&self.path, &self.buf)?;
+            self.buf.clear();
+        }
+        Ok(())
+    }
+}
+
+/// 一時の列のファイルを消す（途中の誤りでも残さない）
+struct Parts(Vec<std::path::PathBuf>);
+
+impl Drop for Parts {
+    fn drop(&mut self) {
+        for p in &self.0 {
+            let _ = lensbench_core::vfs::remove_file(p);
+        }
+    }
+}
+
+/// [`rays`] の表を、全体をメモリに作らずにファイルへ書く（PRJ-27）。CSV は塊ごとに末尾へ、npz は列ごとの一時ファイル
+/// （書き出し先の隣の `<名前>.part<k>`）に溜めて最後に 1 列ずつ zip に写す。JSON は列ごとの形なので [`rays`] で作ってから書く。
+/// 中身は `rays(s, o)?.save(path)` と同じ。返すのは行の数
+pub fn save_rays(s: &System, o: &RayOptions, path: &Path) -> Result<usize> {
+    let e = path
+        .extension()
+        .and_then(|x| x.to_str())
+        .map(|x| x.to_ascii_lowercase())
+        .unwrap_or_default();
+    let io = |r: std::io::Result<()>| r.map_err(lensbench_core::Error::io_at(path.display()));
+    match e.as_str() {
+        "csv" => {
+            let h: Vec<String> = RAY_COLS.iter().map(|c| csv_quote(c.0)).collect();
+            io(lensbench_core::vfs::write(
+                path,
+                format!("{}\n", h.join(",")),
+            ))?;
+            let mut rows = 0;
+            let mut w = VfsAppend {
+                path: path.to_path_buf(),
+                buf: Vec::new(),
+            };
+            let r = rays_each(s, o, |t| {
+                rows += t.rows();
+                for i in 0..t.rows() {
+                    let r: Vec<String> = t.cols.iter().map(|c| c.1.cell(i)).collect();
+                    io(writeln!(w, "{}", r.join(",")))?;
+                }
+                Ok(())
+            });
+            let done = r.and_then(|_| io(w.flush()));
+            if done.is_err() {
+                let _ = lensbench_core::vfs::remove_file(path);
+            }
+            done.map(|_| rows)
+        }
+        "npz" => {
+            let parts = Parts(
+                (0..RAY_COLS.len())
+                    .map(|k| {
+                        let mut n = path.file_name().unwrap_or_default().to_os_string();
+                        n.push(format!(".part{k}"));
+                        path.with_file_name(n)
+                    })
+                    .collect(),
+            );
+            for p in &parts.0 {
+                io(lensbench_core::vfs::write(p, b""))?;
+            }
+            let mut rows = 0;
+            let meta = rays_each(s, o, |t| {
+                rows += t.rows();
+                for ((_, c), p) in t.cols.iter().zip(&parts.0) {
+                    let b: Vec<u8> = match c {
+                        Col::F64(v) => v.iter().flat_map(|x| x.to_le_bytes()).collect(),
+                        Col::I64(v) => v.iter().flat_map(|x| x.to_le_bytes()).collect(),
+                        Col::Str(_) => unreachable!("the ray table has no text columns"),
+                    };
+                    io(lensbench_core::vfs::append(p, b))?;
+                }
+                Ok(())
+            })?;
+            io(lensbench_core::vfs::write(path, b""))?;
+            let mut w = VfsAppend {
+                path: path.to_path_buf(),
+                buf: Vec::new(),
+            };
+            let done = (|| -> std::io::Result<()> {
+                let mut z = Zip::new(ZIP_LIMITS);
+                write_npz_meta(&mut z, &mut w, &meta)?;
+                for ((n, float), p) in RAY_COLS.iter().zip(&parts.0) {
+                    let data = lensbench_core::vfs::read(p)?;
+                    let descr = if *float { "<f8" } else { "<i8" };
+                    let h = npy_header(descr, &format!("({rows},)"));
+                    z.add(&mut w, &format!("{n}.npy"), &[&h, &data])?;
+                }
+                z.finish(&mut w)?;
+                w.flush()
+            })();
+            if done.is_err() {
+                let _ = lensbench_core::vfs::remove_file(path);
+            }
+            io(done).map(|_| rows)
+        }
+        _ => {
+            let t = rays(s, o)?;
+            t.save(path)?;
+            Ok(t.rows())
+        }
+    }
 }
 
 /// 解析の結果（JSON）を表にする。最初の「オブジェクトの配列」の値を行に、なければ全体を 1 行にする。
@@ -580,12 +808,13 @@ mod tests {
             ("c", Col::F64(vec![0.5])),
         ];
         let write = |lim: ZipLimits| {
-            let mut z = Zip::default();
-            for (n, c) in &cols {
-                z.add(&format!("{n}.npy"), npy(c, false));
-            }
+            let mut z = Zip::new(lim);
             let mut out = Vec::new();
-            z.finish_with(&mut out, lim).unwrap();
+            for (n, c) in &cols {
+                z.add(&mut out, &format!("{n}.npy"), &[&npy(c, false)])
+                    .unwrap();
+            }
+            z.finish(&mut out).unwrap();
             out
         };
         let small = write(ZIP_LIMITS);

@@ -103,6 +103,11 @@ pub trait Analysis: Send + Sync + 'static {
     fn save(&self, _out: &Self::Output, _path: &Path) -> Option<Result<Saved>> {
         None
     }
+    /// 結果を作らずに解析しながら書き出す（大きな表を全部はメモリに持たない解析だけ、PRJ-27）。書き出すときは
+    /// [`Analysis::run`]・[`Analysis::save`] の代わりにこれを先に呼ぶ。None なら run してから save
+    fn run_to_file(&self, _cx: &Cx<'_>, _p: &Self::Params, _path: &Path) -> Option<Result<Saved>> {
+        None
+    }
 }
 
 /// 解析が自分で決めた書き出し（[`Analysis::save`]）
@@ -281,6 +286,17 @@ impl<A: Analysis> DynAnalysis for Erased<A> {
         save: Option<&Path>,
     ) -> Result<(Value, Option<Value>)> {
         let p = self.parse(params)?;
+        if let Some(path) = save {
+            match self.0.run_to_file(cx, &p, path).transpose()? {
+                Some(Saved::Written(v)) => return Ok((v, None)),
+                Some(Saved::Json(v)) => {
+                    let mut r = v.clone();
+                    r["written"] = Value::from(path.display().to_string());
+                    return Ok((r, Some(v)));
+                }
+                None => {}
+            }
+        }
         let out = self.0.run(cx, &p)?;
         let json = |o: &A::Output| {
             serde_json::to_value(o)

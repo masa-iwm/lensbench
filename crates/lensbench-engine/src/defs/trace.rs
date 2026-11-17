@@ -128,38 +128,8 @@ impl Analysis for Rays {
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &RaysParams) -> Result<RaysOut> {
-        let s = cx.system;
-        let (px, py) = match &p.pupil {
-            Some(v) => {
-                if v.is_empty() || v.len() % 2 != 0 {
-                    return Err(Error::Invalid(
-                        "pupil is a list of px,py pairs (an even count)".into(),
-                    ));
-                }
-                v.chunks(2).map(|c| (c[0], c[1])).unzip()
-            }
-            None => scene::pupil(p.fan.scene(), p.rays),
-        };
-        let img = s.image();
-        if let Some(j) = p.surface.iter().flatten().find(|&&j| j == 0 || j > img) {
-            return Err(Error::Invalid(format!(
-                "surface {j} can't be written (1 to {img})"
-            )));
-        }
-        let waves = if p.all_waves {
-            Some((0..s.wavelengths.len()).collect())
-        } else {
-            indices(&p.waves, s.wavelengths.len(), "wavelength")?
-        };
-        let o = table::RayOptions {
-            fields: indices(&p.fields, s.fields.len(), "field")?,
-            waves,
-            px,
-            py,
-            surfaces: p.surface.clone(),
-        };
         Ok(RaysOut {
-            table: table::rays(s, &o)?,
+            table: table::rays(cx.system, &ray_options(cx.system, p)?)?,
         })
     }
     fn save(&self, out: &RaysOut, path: &Path) -> Option<Result<Saved>> {
@@ -169,6 +139,49 @@ impl Analysis for Rays {
             )
         }))
     }
+    /// 書き出すときは表を全部作らずに書く（CSV・npz、PRJ-27）
+    fn run_to_file(&self, cx: &Cx<'_>, p: &RaysParams, path: &Path) -> Option<Result<Saved>> {
+        Some(
+            ray_options(cx.system, p)
+                .and_then(|o| table::save_rays(cx.system, &o, path))
+                .map(|rows| {
+                    Saved::Written(json!({ "written": path.display().to_string(), "rows": rows }))
+                }),
+        )
+    }
+}
+
+/// 光線の表の設定から追跡の条件を作る
+fn ray_options(s: &lensbench_core::System, p: &RaysParams) -> Result<table::RayOptions> {
+    let (px, py) = match &p.pupil {
+        Some(v) => {
+            if v.is_empty() || v.len() % 2 != 0 {
+                return Err(Error::Invalid(
+                    "pupil is a list of px,py pairs (an even count)".into(),
+                ));
+            }
+            v.chunks(2).map(|c| (c[0], c[1])).unzip()
+        }
+        None => scene::pupil(p.fan.scene(), p.rays),
+    };
+    let img = s.image();
+    if let Some(j) = p.surface.iter().flatten().find(|&&j| j == 0 || j > img) {
+        return Err(Error::Invalid(format!(
+            "surface {j} can't be written (1 to {img})"
+        )));
+    }
+    let waves = if p.all_waves {
+        Some((0..s.wavelengths.len()).collect())
+    } else {
+        indices(&p.waves, s.wavelengths.len(), "wavelength")?
+    };
+    Ok(table::RayOptions {
+        fields: indices(&p.fields, s.fields.len(), "field")?,
+        waves,
+        px,
+        py,
+        surfaces: p.surface.clone(),
+    })
 }
 
 // ----------------------------------------------------------------------------------------- pop

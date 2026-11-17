@@ -161,6 +161,8 @@
   前は 1 の不正）にした（XCT-19）。
 
 ### 結果の形
+- `rays --save` の csv・npz は、表を全部メモリに作らずに視野・波長の組ごとに書く（PRJ-27。中身は前と同じ）。Rust に
+  `table::rays_each`・`table::save_rays`、解析の定義に `Analysis::run_to_file`（書き出すときに run・save の代わりに呼ぶ）。
 - STEP の書き出しで、非球面の面を周 9 点 × 断面の有理 B スプライン曲面から、断面の B スプライン曲線を回した
   `SURFACE_OF_REVOLUTION` にした（PRJ-20。回転が厳密、断面の区間は許容差 1e-6 mm から決める）。Rust の `OptionsStep` に `profile_tol`。
 - 回折 MTF（`mtf`・`geo-mtf`・`huygens-mtf`）の `cutoff` は `[x, y]` から `{"tangential", "sagittal"}` に（JSON・Python）。

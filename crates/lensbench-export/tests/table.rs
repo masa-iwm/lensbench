@@ -87,3 +87,41 @@ fn npz_is_readable() {
     let wl: Array1<f64> = z.by_name("wavelengths_um.npy").unwrap();
     assert_eq!(wl.to_vec(), s.wavelengths);
 }
+
+/// 全体を持たずに書く光線の表（save_rays）が、表を作ってから書いたもの（rays → save）とバイトまで同じ（PRJ-27）。
+/// 全視野・全波長・けられる光線を含む
+#[test]
+fn streamed_ray_table_is_the_same_file() {
+    let s = zmx("A0");
+    let o = RayOptions {
+        fields: None,
+        waves: Some(vec![0, 1, 2]),
+        px: vec![0.0, 0.5, -1.0, 1.2],
+        py: vec![0.0, -0.5, 1.0, 0.0],
+        surfaces: None,
+    };
+    let dir = std::env::temp_dir().join(format!("lb-streamed-rays-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let t = table::rays(&s, &o).unwrap();
+    for ext in ["csv", "npz", "json"] {
+        let a = dir.join(format!("a.{ext}"));
+        let b = dir.join(format!("b.{ext}"));
+        t.save(&a).unwrap();
+        let rows = table::save_rays(&s, &o, &b).unwrap();
+        assert_eq!(rows, t.rows());
+        assert_eq!(
+            std::fs::read(&a).unwrap(),
+            std::fs::read(&b).unwrap(),
+            "{ext}"
+        );
+    }
+    // 一時の列のファイルは残らない
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".part"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
