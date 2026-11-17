@@ -454,8 +454,11 @@ impl std::fmt::Debug for PupilCache {
 impl PupilCache {
     /// しまう格子の標本の数の上限（512 × 512）
     const MAX_SAMPLES: usize = 1 << 18;
-    /// しまう標本の合計の上限
+    /// しまう標本の合計の上限（1 標本 120 バイトほど。ネイティブで約 120 MB、Web 版はメモリが狭いので約 30 MB）
+    #[cfg(not(target_arch = "wasm32"))]
     const MAX_TOTAL: usize = 1 << 20;
+    #[cfg(target_arch = "wasm32")]
+    const MAX_TOTAL: usize = 1 << 18;
     /// しまう数の上限
     const MAX_ENTRIES: usize = 8;
 
