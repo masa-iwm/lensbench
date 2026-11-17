@@ -16,6 +16,10 @@ rust-version = "1.100"
 # truck（STEP の三角形化）を組まない印（RUSTFLAGS="--cfg lensbench_no_mesh"。lensbench-cad）
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(lensbench_no_mesh)"] }
 
+# 使っていない依存は止める（cargo の lint。clippy の -D warnings では止まらない）
+[workspace.lints.cargo]
+unused_dependencies = "deny"
+
 [workspace.lints.clippy]
 # 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める
 needless_range_loop = "allow"

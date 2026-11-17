@@ -133,10 +133,17 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
-      # GitHub 側の syncing_files が既定の 10 分で終わらず止まることがある（11/10 に 2 回）ので 20 分待つ
+      # GitHub 側の syncing_files が 10 分で終わらず止まることがある（11/10 に 2 回）。待つ上限は 10 分
+      # （600000 ms。これより長くしても 10 分に切り詰められ、注意が出る）なので、失敗したらもう 1 回だけ試す
       - id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
         with:
-          timeout: 1200000
+          timeout: 600000
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
+        with:
+          timeout: 600000

@@ -11,6 +11,9 @@
 set -uo pipefail
 
 cache="${APT_DEB_CACHE:-$HOME/.cache/apt-debs}"
+# 保存した deb の置き場を apt に渡すと、root だけが読める lock と _apt 持ちの partial/ が残り、actions/cache の保存の
+# tar が読めずに失敗する（Annotations の「Failed to save: /usr/bin/tar ... exit code 2」）。どの道で終わっても消す
+trap 'sudo rm -rf "$cache/partial" "$cache/lock" 2>/dev/null || true' EXIT
 installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
 missing_of() { local p; for p in "$@"; do installed "$p" || echo "$p"; done; }
 
