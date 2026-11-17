@@ -503,16 +503,9 @@ fn value_cell(
     resp.context_menu(|ui| {
         if ro.is_none() {
             out.fx.acts.extend(override_item(ui, c, j, col));
-            out.fx.acts.extend(cell_menu(
-                ui,
-                &mut st.menu,
-                j,
-                col,
-                r,
-                v.bire_of(j),
-                c.combo,
-                (c.config_n, c.config_rows),
-            ));
+            out.fx
+                .acts
+                .extend(cell_menu(ui, &mut st.menu, j, col, r, v.bire_of(j)));
         }
         let m = v.row_menu(ui, &mut st.menu, c, j);
         out.fx.merge(m);

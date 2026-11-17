@@ -86,10 +86,8 @@ impl View {
             j,
             &c.rows[j],
             row_ro.as_deref(),
-            c.combo,
             self.last,
             self.sel_span,
-            inner_block(c.blocks, j),
             c.rows,
             c.blocks,
         )

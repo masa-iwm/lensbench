@@ -283,16 +283,6 @@ pub(super) fn strip_ui(
     {
         st.detail = !st.detail;
     }
-    if let Some(on) = c.unit_mech {
-        if icon(ui, "⊞", on)
-            .on_hover_text(tr(
-                "Create lenses/groups (zoom, focus groups, …) from surface ranges and place mechanical parts. The range starts at the selected surface",
-            ))
-            .clicked()
-        {
-            acts.push(Act::UnitMech);
-        }
-    }
     // 選んだ面の範囲（玉・群）だけを系ファイルに書き出す（系全体の保存はファイルのメニュー・Ctrl+S）
     out.export_btn |= icon(ui, "📤", false)
         .on_hover_text(tr(

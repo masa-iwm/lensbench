@@ -281,3 +281,32 @@ fn bundled_gets_survive_first_error() {
         assert!(!vals.contains_key("99.t"));
     }
 }
+
+/// 読めるが組合せで同じ系を書けないプロジェクト（状態で玉を反転する）は開かず、理由を出す（開いた系にしない）
+#[test]
+fn file_not_writable_as_combo_is_refused() {
+    let _g = serial();
+    let r = root();
+    let dir = std::env::temp_dir().join(format!("lb-gui-refuse-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("p.json");
+    std::fs::write(
+        &f,
+        r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 6},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5},
+          {"type": "lens", "id": "L", "source": {"surfaces": [{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}},
+          {"type": "air", "t": 30}],
+        "states": [{"name": "flip", "set": {"L": {"reversed": true}}}]}"#,
+    )
+    .unwrap();
+    let h = harness(Args {
+        open: Some(f),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let st = h.state().test_state();
+    assert_eq!(st["status_error"], true, "{st}");
+    assert_eq!(st["system"], false, "{st}");
+    assert!(h.state().c.loc.file.is_none(), "{st}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -37,10 +37,6 @@ impl Snap {
         }
     }
 
-    pub fn get(&self) -> Option<&Combo> {
-        self.combo.as_ref()
-    }
-
     pub fn is_none(&self) -> bool {
         self.combo.is_none()
     }

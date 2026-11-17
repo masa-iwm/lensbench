@@ -20,7 +20,8 @@ pub(super) struct Ask {
 }
 
 impl Core {
-    /// 確かめる。答えは後で `then` に渡す（待たない運転では今すぐ「いいえ」）。前の確かめが残っていれば「いいえ」で閉じる
+    /// 確かめる（今は Web 版のブラウザに残したファイルを消すときだけ）。答えは後で `then` に渡す（待たない運転では今すぐ「いいえ」）。前の確かめが残っていれば「いいえ」で閉じる
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(super) fn ask(
         &mut self,
         title: &str,

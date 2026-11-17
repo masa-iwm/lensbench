@@ -3,7 +3,6 @@
 use super::*;
 
 pub(super) fn read_only(
-    is_combo: bool,
     rows: &[lens_data::Row],
     spans: &[Option<[usize; 2]>],
     picks: &[&combo::Pick],
@@ -12,9 +11,6 @@ pub(super) fn read_only(
     col: lens_data::Col,
 ) -> Option<String> {
     use lens_data::Col;
-    if !is_combo {
-        return None;
-    }
     let img = rows.len().saturating_sub(1);
     if j == 0 || j >= img {
         return Some(tr("Set the object and image surfaces in the combination settings").into());

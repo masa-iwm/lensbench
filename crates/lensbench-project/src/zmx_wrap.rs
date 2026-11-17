@@ -23,8 +23,9 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
                 &from_table[..]
             }
             None => {
-                let p = settings(s, path)?;
-                Project::from_json(&p.to_string())?;
+                let mut p = settings(s, path)?;
+                set_catalogs(&mut p, std::slice::from_ref(s));
+                checked(&p)?;
                 return Ok(p);
             }
         },
@@ -49,6 +50,8 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
             let d = match key.as_str() {
                 "telecentric" => json!(false),
                 "floating_clip" => json!(true),
+                "apodization" => json!("uniform"),
+                "ropd" => json!(2),
                 "environment" => {
                     json!({ "temperature_c": 20.0, "pressure_atm": 1.0, "adjust_index": false })
                 }
@@ -64,8 +67,9 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
         }));
     }
     p["states"] = json!(states);
+    set_catalogs(&mut p, cfgs);
     // 書いた形を読めるか、状態を当てられるか
-    let pj = Project::from_json(&p.to_string())?;
+    let pj = checked(&p)?;
     for st in pj.state_names() {
         pj.with_state(st)?;
     }
@@ -142,10 +146,16 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
         p["telecentric"] = json!(true);
     }
     if s.afocal {
-        p["afocal"] = json!(s.afocal_unit.code());
+        p["afocal"] = json!(s.afocal_unit.code().to_ascii_lowercase());
     }
     if !s.floating_clip {
         p["floating_clip"] = json!(false);
+    }
+    if s.apodization != lensbench_core::pupil::Apodization::Uniform {
+        p["apodization"] = serde_json::to_value(s.apodization).map_err(|e| e.to_string())?;
+    }
+    if s.ropd != 2 {
+        p["ropd"] = json!(s.ropd);
     }
     // GLRS はブロックの面で書く（前に要素を足しても同じ面を指す）。ブロックの面は座標ブレークを数えないので、
     // 座標ブレーク・物体面・像面は系の面の番号のまま
@@ -165,11 +175,33 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
             "adjust_index": s.adjust_index,
         });
     }
-    // 像面の形・傾き（平面で傾きなしなら書かない。半直径は描画にだけ使うので書かない）
+    // 物体面の形・開口（平面で開口なしなら書かない。厚さは object_distance、コメントは zmx ブロックが持ち越す）
+    if let Some(obj) = s.surfaces.first() {
+        let mut r = crate::sysfile_v2::write::surface_row(obj, false)?;
+        r.semi = None;
+        r.stop = false;
+        r.object = false;
+        r.t = 0.0;
+        r.medium = None;
+        r.comment.clear();
+        if r != crate::sysfile_v2::Row::default() {
+            p["object"] = serde_json::to_value(&r).map_err(|e| e.to_string())?;
+        }
+    }
+    // 像面の形・傾き（平面で傾きなしなら書かない。半直径は描画にだけ使うので書かない。像面の後ろは無いので厚さも書かない）
     if let Some(img) = s.surfaces.last().filter(|_| image > 0) {
         let mut r = crate::sysfile_v2::write::surface_row(img, false)?;
         r.semi = None;
         r.stop = false;
+        r.t = 0.0;
+        // 浮動開口の半径は面の半直径に付いてくるので、半直径を書かない像面では値を書く
+        if let (
+            Some(crate::sysfile_v2::Aperture::Floating { semi: v @ None }),
+            lensbench_core::surface::Aperture::Floating { semi },
+        ) = (r.aperture.as_mut(), img.ap)
+        {
+            *v = Some(semi);
+        }
         if r != crate::sysfile_v2::Row::default() {
             p["image"] = serde_json::to_value(&r).map_err(|e| e.to_string())?;
         }
@@ -198,7 +230,58 @@ fn comparable(s: &System) -> lensbench_core::Result<Value> {
     for k in ["name", "import_notes", "glasses", "units", "configs"] {
         m.remove(k);
     }
+    // 物体面・像面の半直径は描画にだけ使うので、そのピックアップも見ない
+    let last = s.surfaces.len().saturating_sub(1);
+    if let Some(Value::Array(ps)) = m.get_mut("pickups") {
+        ps.retain(|q| {
+            let dst = q["dst"].as_u64().map(|d| d as usize);
+            !(q["what"] == "Semi" && (dst == Some(0) || dst == Some(last)))
+        });
+        if ps.is_empty() {
+            m.remove("pickups");
+        }
+    }
+    // 面の後の媒質の屈折率（同じ名前のガラスを別のカタログから引いたら違う。ガラスの表そのものは比べない）
+    let n: Vec<&[f64]> = (0..s.surfaces.len()).map(|j| s.n(j)).collect();
+    m.insert("media_n".into(), json!(n));
+    // 無限遠系でなければ無限遠系の単位は使わない
+    if m.get("afocal") != Some(&Value::Bool(true)) {
+        m.remove("afocal_unit");
+    }
+    // ZPL マクロのソルブの値は光線から求めた値（解く順で最後の桁が変わる）なので、その面の値は 10 桁まで
+    let solved_by_macro: Vec<usize> = s
+        .macro_parms
+        .iter()
+        .map(|q| q.surf)
+        .chain(s.solves.iter().filter_map(|q| {
+            matches!(
+                q.kind,
+                lensbench_core::solves::SolveKind::MacroCurv { .. }
+                    | lensbench_core::solves::SolveKind::MacroThick { .. }
+            )
+            .then_some(q.surf)
+        }))
+        .collect();
+    fn round10(v: &mut Value) {
+        match v {
+            Value::Number(n) if n.is_f64() => {
+                if let Some(x) = n.as_f64().filter(|x| x.is_finite()) {
+                    let r: f64 = format!("{x:.9e}").parse().unwrap_or(x);
+                    // ±0 と 1e-15 ほどの差は 0
+                    *v = json!(if r.abs() < 1e-12 { 0.0 } else { r });
+                }
+            }
+            Value::Array(a) => a.iter_mut().for_each(round10),
+            Value::Object(o) => o.values_mut().for_each(round10),
+            _ => {}
+        }
+    }
     if let Some(Value::Array(sf)) = m.get_mut("surfaces") {
+        for &k in &solved_by_macro {
+            if let Some(x) = sf.get_mut(k) {
+                round10(x);
+            }
+        }
         let last = sf.len().saturating_sub(1);
         for (i, x) in sf.iter_mut().enumerate() {
             let Some(o) = x.as_object_mut() else { continue };
@@ -239,5 +322,47 @@ fn diff(a: &Value, b: &Value, path: &mut String, out: &mut Vec<String>) {
         }
         _ if a != b => out.push(format!("{path}: {a} vs {b}")),
         _ => {}
+    }
+}
+
+/// 書いたプロジェクトを読み直す。読めなければ null の欄（有限でない値は JSON で null になる）の場所を理由に足す
+fn checked(p: &Value) -> lensbench_core::Result<Project> {
+    fn nulls(v: &Value, at: &str, out: &mut Vec<String>) {
+        match v {
+            Value::Null => out.push(at.to_string()),
+            Value::Array(a) => a
+                .iter()
+                .enumerate()
+                .for_each(|(i, x)| nulls(x, &format!("{at}/{i}"), out)),
+            Value::Object(o) => o
+                .iter()
+                .for_each(|(k, x)| nulls(x, &format!("{at}/{k}"), out)),
+            _ => {}
+        }
+    }
+    Project::from_json(&p.to_string()).map_err(|e| {
+        let mut at = Vec::new();
+        nulls(p, "", &mut at);
+        if at.is_empty() {
+            e
+        } else {
+            e.map_message(|e| format!("{e} (null at {})", at.join(", ")))
+        }
+    })
+}
+
+/// 構成のガラスを引くカタログ（.zmx の GCAT で引いたものと同じガラスになる並び）を `glass_catalogs` に書く。
+/// 既定の並びでは、同じ名前のガラスを別のカタログから引くことがある
+fn set_catalogs(p: &mut Value, cfgs: &[System]) {
+    let mut names: Vec<String> = Vec::new();
+    for s in cfgs {
+        for n in crate::sysfile_v2::catalogs::names(s) {
+            if !names.contains(&n) {
+                names.push(n);
+            }
+        }
+    }
+    if !names.is_empty() && names != crate::defaults::default_catalogs() {
+        p["glass_catalogs"] = json!(names);
     }
 }

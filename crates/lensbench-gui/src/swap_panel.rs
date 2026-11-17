@@ -61,11 +61,9 @@ pub struct Cands {
     pub blocks: Vec<(String, String)>,
     /// id のある空気 (id, 説明)
     pub gaps: Vec<(String, String)>,
-    /// 組合せの系（結果を組合せに入れられる）
-    pub combo: bool,
     /// プロジェクトの状態の名前（複数の状態で同時に評価するときに選ぶ）
     pub states: Vec<String>,
-    /// 名前の欄の補完の候補（開いた系の玉・群）
+    /// 名前の欄の補完の候補
     pub sys: std::rc::Rc<crate::param_pick::Sys>,
 }
 
@@ -369,7 +367,6 @@ pub fn combo_project(c: &Combo) -> (Value, Cands) {
     let mut p = c.project();
     let ids = c.ids();
     let mut cands = Cands {
-        combo: true,
         ..Default::default()
     };
     // project() の並び: 前の絞りがあれば [絞り, 空気]、続いて要素ごとに [要素, 空気]（要素の後の空気が dk）。
@@ -406,31 +403,6 @@ pub fn combo_project(c: &Combo) -> (Value, Cands) {
         }
     }
     (p, cands)
-}
-
-/// プロジェクトの JSON の玉と、id のある空気
-pub fn project_cands(p: &Value) -> Cands {
-    let mut c = Cands::default();
-    fn walk(bs: &Value, c: &mut Cands) {
-        for b in bs.as_array().into_iter().flatten() {
-            let id = b["id"].as_str().unwrap_or_default();
-            match b["type"].as_str() {
-                Some("lens") if !id.is_empty() => {
-                    let s = &b["source"];
-                    let d = match (s["vendor"].as_str(), s["part"].as_str()) {
-                        (Some(v), Some(q)) => format!("{v} {q}"),
-                        _ => String::new(),
-                    };
-                    c.blocks.push((id.into(), d));
-                }
-                Some("air") if !id.is_empty() => c.gaps.push((id.into(), String::new())),
-                Some("group") => walk(&b["blocks"], c),
-                _ => {}
-            }
-        }
-    }
-    walk(&p["blocks"], &mut c);
-    c
 }
 
 /// 結果の行の組を組合せに入れる（玉の型番・向き、変数の間隔 dK.t）。`ids` は回したときの組合せの id。
@@ -547,7 +519,7 @@ pub fn ui(
                 egui::CollapsingHeader::new(RichText::new(tr("Result")).strong())
                     .id_salt("swap_result")
                     .default_open(true)
-                    .show(ui, |ui| result_ui(ui, p, c, &r, &mut acts, weak));
+                    .show(ui, |ui| result_ui(ui, p, &r, &mut acts, weak));
             }
             ui.separator();
             ui.add_enabled_ui(!p.running, |ui| {
@@ -719,15 +691,13 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
             }
         });
     });
-    if c.combo {
-        ui.label(
-            RichText::new(tr(
-                "Combination gaps are d0 (after the stop), d1 (after the first element), ... Only gaps can be put back into the combination.",
-            ))
-            .small()
-            .color(weak),
-        );
-    }
+    ui.label(
+        RichText::new(tr(
+            "Combination gaps are d0 (after the stop), d1 (after the first element), ... Only gaps can be put back into the combination.",
+        ))
+        .small()
+        .color(weak),
+    );
 }
 
 fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
@@ -860,7 +830,6 @@ fn cand_text(l: &SwapCand) -> String {
 fn result_ui(
     ui: &mut Ui,
     p: &mut SwapPanel,
-    c: &Cands,
     r: &SwapReply,
     acts: &mut Vec<Action>,
     weak: egui::Color32,
@@ -909,10 +878,7 @@ fn result_ui(
         .id_salt("swap_res_h")
         .show(ui, |ui| {
             egui::Grid::new("swap_res").striped(true).show(ui, |ui| {
-                let mut hs = vec![tr("Rank").to_string()];
-                if c.combo {
-                    hs.push(String::new());
-                }
+                let mut hs = vec![tr("Rank").to_string(), String::new()];
                 hs.push(tr("Lens").into());
                 hs.push(tr("Merit function").into());
                 if with_efl {
@@ -928,11 +894,10 @@ fn result_ui(
                 for (i, x) in rows.iter().enumerate() {
                     let mark = if p.inserted == Some(i) { " ✔" } else { "" };
                     ui.label(format!("{}{mark}", i + 1));
-                    if c.combo
-                        && ui
-                            .add_enabled(x.error.is_none(), egui::Button::new(tr("Use")).small())
-                            .on_hover_text(tr("Put this set into the combination"))
-                            .clicked()
+                    if ui
+                        .add_enabled(x.error.is_none(), egui::Button::new(tr("Use")).small())
+                        .on_hover_text(tr("Put this set into the combination"))
+                        .clicked()
                     {
                         acts.push(Action::Insert(i));
                     }
@@ -969,24 +934,12 @@ fn result_ui(
                 }
             });
         });
-    ui.horizontal_wrapped(|ui| {
-        if c.combo {
-            if ui
-                .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo use")))
-                .clicked()
-            {
-                acts.push(Action::Undo);
-            }
-        } else {
-            ui.label(
-                RichText::new(tr(
-                    "For a combination, a chosen set can be put into it (for a project file the results are view only).",
-                ))
-                .small()
-                .color(weak),
-            );
-        }
-    });
+    if ui
+        .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo use")))
+        .clicked()
+    {
+        acts.push(Action::Undo);
+    }
 }
 
 #[cfg(test)]
@@ -1171,21 +1124,5 @@ mod tests {
             swap_row(json!({"lenses": [], "vars": [{"name": "d2.t", "param": "", "x": 4.0}]}));
         insert_row(&mut d, &ids, &row).unwrap();
         assert_eq!(d.picks[1].air, 4.0);
-    }
-
-    #[test]
-    fn project_blocks() {
-        let p = json!({"blocks": [
-            {"type": "stop"}, {"type": "air", "t": 1},
-            {"type": "lens", "id": "A", "source": {"vendor": "LB", "part": "X"}},
-            {"type": "air", "id": "gap", "t": 3},
-            {"type": "group", "id": "G", "blocks": [{"type": "lens", "id": "B", "source": {"zmx": "a.zmx"}}]},
-        ]});
-        let c = project_cands(&p);
-        assert_eq!(
-            c.blocks,
-            vec![("A".into(), "LB X".into()), ("B".into(), String::new())]
-        );
-        assert_eq!(c.gaps, vec![("gap".to_string(), String::new())]);
     }
 }

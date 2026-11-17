@@ -816,6 +816,12 @@ pub struct Project {
     /// 浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub floating_clip: bool,
+    /// 瞳の振幅の分布（`"uniform"`・`{"gaussian": G}`・`"cosine_cubed"`。省略は一様）
+    #[serde(default, skip_serializing_if = "is_uniform")]
+    pub apodization: lensbench_core::pupil::Apodization,
+    /// OPD の基準（.zmx の ROPD。省略は 2: 出射瞳の参照球）
+    #[serde(default = "two_i64", skip_serializing_if = "is_two_i64")]
+    pub ropd: i64,
     pub blocks: Vec<Block>,
     #[serde(default)]
     pub states: Vec<State>,
@@ -836,6 +842,10 @@ pub struct Project {
     /// 厚さ・媒質・絞りの印は書けない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<Box<crate::sysfile_v2::Row>>,
+    /// 物体面の形・開口（省略は平面で開口なし）。`image` と同じ面の行で、厚さは `object_distance`。厚さ・媒質・絞りの印・
+    /// 傾き偏心は書けない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object: Option<Box<crate::sysfile_v2::Row>>,
     /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gui: Option<Value>,
@@ -1093,6 +1103,22 @@ enum NodeMut<'x> {
     ZmxGroup(&'x mut ZmxGroup),
 }
 
+/// zmx ブロックの .zmx のフォルダ（.zmx を読むときと同じく、ガラスのカタログを探す先に足す）
+pub(crate) fn zmx_dirs(blocks: &[Block], base: &Path, out: &mut Vec<PathBuf>) {
+    for b in blocks {
+        if let Block::Zmx { path, .. } = b {
+            if let Some(d) = base.join(path).parent() {
+                if !out.iter().any(|x| x == d) {
+                    out.push(d.to_path_buf());
+                }
+            }
+        }
+        for k in kids(b) {
+            zmx_dirs(k, base, out);
+        }
+    }
+}
+
 /// 子のブロックの並び（群・BS の枝）
 fn kids(b: &Block) -> Vec<&Vec<Block>> {
     match b {
@@ -1284,4 +1310,16 @@ pub fn unknown_keys<T: serde::de::DeserializeOwned + Serialize>(
         check(p, input, &ignored, &mut found);
     }
     found.into_iter().map(|p| p.join("/")).collect()
+}
+
+fn is_uniform(a: &lensbench_core::pupil::Apodization) -> bool {
+    *a == lensbench_core::pupil::Apodization::Uniform
+}
+
+fn two_i64() -> i64 {
+    2
+}
+
+fn is_two_i64(v: &i64) -> bool {
+    *v == 2
 }

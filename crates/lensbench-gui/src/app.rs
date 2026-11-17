@@ -32,7 +32,6 @@ mod lens_data_ui;
 mod take;
 #[cfg(any(target_arch = "wasm32", test))]
 mod test_state;
-mod to_combo;
 mod tool_ui;
 mod tour_steps;
 #[cfg(test)]
@@ -55,14 +54,12 @@ use crate::catalog::{self, Browser, Combo};
 use crate::catsave::CatSave;
 use crate::combo;
 use crate::combo_doc::Snap;
-use crate::config_panel;
 use crate::figures;
 use crate::i18n::{self, n_, tr, trf, Lang};
 use crate::json_view::{self, fmt_num};
 use crate::layout::{self, AnaCfg, Kind, Layout, OsWin, Pane, Preset, View};
 use crate::lens_data;
 use crate::missing_glass::{missing_glass_of, model_glass_zmx};
-use crate::open_sysset;
 use crate::palette::{Item, Palette};
 use crate::plots::{self, SpotRays, SysInfo};
 use crate::split;
@@ -215,8 +212,6 @@ pub struct Session {
     pub ld_by_surface: bool,
     /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す）
     pub panels: Value,
-    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す）
-    pub locked: std::collections::BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Default for Session {
@@ -231,7 +226,6 @@ impl Default for Session {
             ld_detail: false,
             ld_by_surface: false,
             panels: Value::Null,
-            locked: Default::default(),
         }
     }
 }
@@ -407,10 +401,8 @@ struct Core {
     rays_open: bool,
     /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
     combo_sel_prev: Option<usize>,
-    /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す
-    to_combo: Option<bool>,
-    /// 開いた系を組合せにするとき差し込む要素と、差し込む間隔（その前の面の番号。None は系の後ろ）
-    open_insert: Option<(Option<usize>, combo::Pick)>,
+    /// 次の [`Core::open_doc_unlisted`] は、開いている段（元のファイルを開いたとき）を使う（モデルガラスの写し）
+    reopen_same: bool,
     /// 前の画面の組合せの要素の数（空の組合せに足したかを見る。usize::MAX はまだ見ていない）
     combo_len_prev: usize,
     font: Option<String>,
@@ -423,8 +415,6 @@ struct Core {
     combo_hist: ComboHist,
     /// 文書を替えた段（新規・開く）の元に戻す・やり直す
     docs: DocHist,
-    /// 玉・群・機構部品の欄を開く（通し確認）
-    um_open: bool,
     /// レンズデータの硝材の候補（ガラスカタログを読んだときに作る）
     ld_glasses: Vec<lens_data::GlassChoice>,
     /// 閉じる前に「保存しますか」を聞いている
@@ -451,8 +441,6 @@ struct Core {
     /// 未完のカタログ品を、行を選んだら裏で補う
     auto_fill: crate::fill::AutoFill,
     swap_ids: Vec<String>,
-    /// 開いたプロジェクトの玉・間隔（ファイルと、その中の候補）
-    swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
     /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す）
@@ -656,18 +644,11 @@ impl Core {
         self.next_id
     }
 
-    /// 読み直す。開いた系は前の系を段に積む（読み直すを元に戻せる）。組合せの系は組合せから作り直す
+    /// 読み直す（組合せから作り直す）
     fn reload(&mut self) {
-        let Some(f) = self.loc.file.clone() else {
-            return;
-        };
-        if self.is_combo() {
+        if let Some(f) = self.loc.file.clone() {
             self.open(&f);
-            return;
         }
-        self.worker
-            .send(Tag::Load, "reload", json!({ "history": "push" }));
-        self.info(trf("Reading {}…", &[&f.display()]));
     }
 
     /// 系のファイルを選んで開く。start のフレームで選び始める（Web 版は選び終わった後のフレームで開くので、
@@ -1088,14 +1069,10 @@ impl Core {
                 r.prev = None;
             }
         }
-        // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
+        // 読み直した系には面の表の変更は無い。別の系なら階層・選択も戻す（組合せの作り直しは同じ系）
         self.loc.ld_dirty = false;
         if new_file != self.loc.file {
             self.p.ld.reset();
-            let key = new_file.as_ref().map(|f| f.display().to_string());
-            self.p.ld.locked = key
-                .and_then(|k| self.ses.locked.get(&k).cloned())
-                .unwrap_or_default();
         }
         self.loc.file = new_file;
         self.sys.elem_blocks = crate::combo::block_spans(&v);
@@ -1129,28 +1106,6 @@ impl Core {
         self.worker.send_batch(tag, calls);
     }
 
-    /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（今のセルはブロックの最後の面）
-    fn select_ld_surface(&mut self, j: usize) {
-        self.p.ld.scope.clear();
-        let top = self
-            .sys
-            .ld_blocks
-            .iter()
-            .find(|b| b.parent.is_none() && b.surfs.contains(&j));
-        match top {
-            Some(b) => {
-                self.p.ld.sel = Some(b.name.clone());
-                // ブロックの最後の面（たたんだ行の鍵。続けて足すとブロックの後に入る）
-                let last = b.surfs.last().copied().unwrap_or(j);
-                self.p.ld.cur = Some((last, lens_data::Col::R));
-            }
-            None => {
-                self.p.ld.sel = None;
-                self.p.ld.cur = Some((j, lens_data::Col::R));
-            }
-        }
-    }
-
     fn is_combo(&self) -> bool {
         self.loc.file.is_some() && self.loc.file == self.loc.combo_path
     }
@@ -1158,8 +1113,6 @@ impl Core {
     /// 組合せのレイアウト図と要素の操作
     fn layout_ui(&mut self, ui: &mut Ui) {
         let is_combo = self.is_combo();
-        // 開いた系の図の下の欄（図と分けたとき）
-        let mut below: Option<Ui> = None;
         let accent = theme::accent(&self.s.look);
         if self.loc.file.is_some() {
             let mut changed = false;
@@ -1206,64 +1159,6 @@ impl Core {
                 self.request_layout();
             }
         }
-        if self.loc.file.is_some() && !is_combo {
-            ui.horizontal_wrapped(|ui| {
-                ui.weak(tr(
-                    "The open system was not built from the combination (the layout is view-only).",
-                ));
-                if ui
-                    .button(tr("Make this system a combination"))
-                    .on_hover_text(tr(
-                        "Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it",
-                    ))
-                    .clicked()
-                {
-                    if self.doc.combo.picks.is_empty() {
-                        self.to_combo = Some(false);
-                    } else {
-                        self.ask(
-                            tr("Make a combination"),
-                            tr("Replace the current combination with one that imports the opened system?"),
-                            |c, yes| {
-                                if yes {
-                                    c.to_combo = Some(false);
-                                }
-                            },
-                        );
-                    }
-                }
-                if !self.doc.combo.picks.is_empty()
-                    && ui.button(tr("▶ Build the combination")).clicked()
-                {
-                    self.build_combo(self.doc.combo.project());
-                }
-            });
-            // 開いている系のレイアウト図（組合せと同じ描き方）
-            // 組合せの要素のパレット・図はその下に
-            // 図と下の組合せの欄に残りを分ける（パネルが低くても下が押し出されないように）
-            if let Some(d) = &self.layout_data {
-                let (mut top, b) = split::two(ui, "open_layout", (0.55, 0.55), 80.0);
-                let h = top.available_height();
-                let hl = self.p.ld.cur.map(|x| x.0);
-                let nav = Some(&mut self.p.open_nav);
-                let clicked = combo::view_only(&mut top, d, h, accent, nav, hl);
-                match clicked {
-                    // 図でクリックした玉の行をレンズデータで選ぶ
-                    Some(combo::OpenAct::Clicked([a, _])) => self.select_ld_surface(a),
-                    // カタログの行を落とした間隔に差し込む（開いた系を組合せにして）
-                    Some(combo::OpenAct::Drop { after, pick }) => {
-                        let n = self.doc.combo.picks.len();
-                        self.insert_into_open(Some(after), *pick, n, |_, _| {});
-                    }
-                    None => {}
-                }
-                below = Some(b);
-            }
-        }
-        let ui = match below.as_mut() {
-            Some(b) => b,
-            None => ui,
-        };
         let data = if is_combo {
             self.layout_data.as_ref()
         } else {
@@ -1322,27 +1217,7 @@ impl Core {
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
-        // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
-        // 置き換わらないように）
-        let n = self.doc.combo.picks.len();
-        if self.loc.file.is_some()
-            && !self.is_combo()
-            && self.to_combo.is_none()
-            && self.combo_len_prev == 0
-            && n > 0
-            && !self
-                .loc
-                .built_combo
-                .get()
-                .is_some_and(|b| !b.picks.is_empty())
-        {
-            self.to_combo = Some(true);
-        }
-        self.combo_len_prev = n;
-        if let Some(keep) = self.to_combo {
-            self.open_to_combo(keep);
-            return;
-        }
+        self.combo_len_prev = self.doc.combo.picks.len();
         if self.load_stale && !self.worker.busy_core() {
             self.load_stale = false;
             if let Some(p) = self.loc.combo_path.clone() {
@@ -1421,7 +1296,6 @@ impl Core {
         // ダブルクリックで足す玉は、組合せで選んでいる要素の直後へ
         self.doc.insert_after = self.p.combo_view.sel.filter(|&k| k < self.doc.combo.len());
         self.browser.lens_hide.clone_from(&self.s.lens_hide);
-        let n_old = self.doc.combo.picks.len();
         let act = self.browser.ui(
             ui,
             &mut self.doc,
@@ -1430,36 +1304,7 @@ impl Core {
         );
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.doc.added.take() {
-            if self.loc.file.is_some() && !self.is_combo() {
-                // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直しは要らない。立てたままだと
-                // 組合せにした後に開いた系の像面までの距離を書き換える
-                self.doc.refocus = false;
-                // 組合せでない系を開いているときは開いた系に足す: レンズデータで選んでいる面の後（空気の間隔なら）、
-                // 無ければ系の後ろ。以前は前の組合せが残っていると、足した玉は前の組合せに入り、開いた系が前の組合せの
-                // 系に置き換わっていた
-                if let Some(p) = self.doc.combo.el(k).cloned() {
-                    let after = self
-                        .p
-                        .ld
-                        .cur
-                        .map(|(j, _)| j)
-                        .filter(|&j| open_gap_ok(&self.sys.ld_rows, j));
-                    self.insert_into_open(after, p, n_old, move |c, yes| {
-                        if yes {
-                            c.doc.combo.remove_chain(k);
-                        } else {
-                            // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
-                            c.loc.built_combo = Snap::new(Some(c.doc.combo.clone()));
-                            c.p.combo_view.select(k);
-                            c.info(tr(
-                                "Added to the combination (the open system is unchanged; build it with \"▶ Build a system from this combination\")",
-                            ));
-                        }
-                    });
-                }
-            } else {
-                self.p.combo_view.select(k);
-            }
+            self.p.combo_view.select(k);
         }
         self.lens_preview();
         match act {
@@ -1662,7 +1507,9 @@ impl Core {
         }
         m.model = Some(dst.clone());
         (self.loc.doc_path, self.loc.doc_from) = (None, None);
-        self.open(&dst);
+        // 組合せとして開く（まだ無いガラスがあれば、系として読んだ誤りでもう一度ここへ来る）
+        self.reopen_same = true;
+        self.open_doc_unlisted(&dst);
     }
 
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
@@ -1720,68 +1567,6 @@ impl Core {
 
 /// フォルダの並びを編集する。変えたら true
 /// 組合せの系で、面の表から変えられない値の理由（開いた系は None）
-/// 開いた系の最上位のブロック（玉・群）を、系の取り込みの群（面の範囲と名前）に
-pub(crate) fn open_groups(blocks: &[lens_data::Block]) -> Vec<combo::ZGroup> {
-    blocks
-        .iter()
-        .filter(|b| b.parent.is_none() && !b.name.trim().is_empty())
-        .filter_map(|b| {
-            let from = *b.surfs.iter().min()?;
-            let to = *b.surfs.iter().max()?;
-            (from >= 1).then(|| combo::ZGroup {
-                from,
-                to,
-                name: b.name.clone(),
-                ..Default::default()
-            })
-        })
-        .collect()
-}
-
-/// 開いた系の面 `after` の後が、要素を差し込める空気の間隔か（物体面・像面の後、座標ブレーク、ガラスの中、鏡の後は不可）
-pub(crate) fn open_gap_ok(rows: &[lens_data::Row], after: usize) -> bool {
-    let Some(r) = rows.get(after) else {
-        return false;
-    };
-    after >= 1
-        && after + 1 < rows.len()
-        && !r.is_cb()
-        && (r.material.trim().is_empty() || r.material.eq_ignore_ascii_case("AIR"))
-        && r.t.is_finite()
-        && r.t > 0.0
-}
-
-/// 開いた系の取り込み `z`（面 1〜像面の手前）に要素 `p` を差し込んだ並び。面 `after` の後の空気の間隔に置くときは、
-/// 取り込みを面 1〜after と after+1〜 に分け、間隔の空気を半分ずつ前後に分ける。差し込めない間隔・None は系の後ろ
-pub(crate) fn split_open(
-    z: combo::Pick,
-    rows: &[lens_data::Row],
-    after: Option<usize>,
-    mut p: combo::Pick,
-) -> Vec<combo::Pick> {
-    let img = rows.len().saturating_sub(1);
-    let Some(a) = after.filter(|&a| open_gap_ok(rows, a)) else {
-        // 系の後ろ: 取り込みは像面の手前の面の厚さまで含む。足した要素の後の空気はその初めの値
-        return vec![z, p];
-    };
-    let half = rows[a].t / 2.0;
-    let mut z1 = z.clone();
-    z1.zmx_mut().range = [1, a];
-    // 群は分けた範囲に収まるものだけ（間隔はブロックの外なので、跨ぐ群は無い）
-    z1.zmx_mut().zgroups.retain(|g| g.to <= a);
-    // 取り込みの面 a（座標ブレークを除いて数えた番号）の厚さを半分に
-    let rel = (1..a).filter(|&i| !rows[i].is_cb()).count();
-    z1.set_edit(rel, "t", serde_json::json!(half));
-    p.air = half;
-    if a + 1 >= img {
-        return vec![z1, p];
-    }
-    let mut z2 = z;
-    z2.zmx_mut().range = [a + 1, 0];
-    z2.zmx_mut().zgroups.retain(|g| g.from > a);
-    vec![z1, p, z2]
-}
-
 /// missing は見つからないフォルダ（下書きの Worker が調べた分、[`Core::ask_folders`]）
 fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>, missing: &[String]) -> bool {
     let mut changed = false;
@@ -2037,7 +1822,6 @@ impl App {
                 combo_edit: None,
                 combo_hist: Default::default(),
                 docs: Default::default(),
-                um_open: false,
                 ld_glasses: Vec::new(),
                 close_ask: false,
                 combo_census: None,
@@ -2052,7 +1836,6 @@ impl App {
                 close_pending: false,
                 auto_fill: Default::default(),
                 swap_ids: Vec::new(),
-                swap_file: None,
                 rev: 0,
                 param_sys_cache: Default::default(),
                 field_labels_cache: Default::default(),
@@ -2076,8 +1859,7 @@ impl App {
                 rays_open: false,
                 folders: Default::default(),
                 combo_sel_prev: None,
-                to_combo: None,
-                open_insert: None,
+                reopen_same: false,
                 combo_len_prev: usize::MAX,
                 font,
                 next_id,
@@ -2629,7 +2411,6 @@ impl eframe::App for App {
             ld_detail: self.c.p.ld.detail,
             ld_by_surface: self.c.p.ld.by_surface,
             panels: self.c.panels_value(),
-            locked: self.c.ses.locked.clone(),
         };
         // ポータブル: 設定のフォルダの中のパスは相対で書く
         if let Some(b) = crate::portable::base() {
@@ -2992,108 +2773,6 @@ fn sample_combos_are_up_to_date() {
             p.air_id.clear();
         }
         assert_eq!(back, c, "{name}");
-    }
-}
-
-#[cfg(test)]
-mod open_insert_tests {
-    use super::*;
-    use combo::{ElemKind, Pick};
-
-    /// 開いた系の空気の間隔に要素を差し込む: 取り込みを 2 つに分け、間隔を半分ずつ前後に分ける。
-    /// 差し込んだ要素の前後の面は元の系と同じ（間隔の中の位置だけが変わる）
-    #[test]
-    fn split_open_inserts_in_air_gap() {
-        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
-        let glass = vec![root.join("tests/glass")];
-        let zmx = root.join("tests/refs/A0/system.zmx");
-        let opt = lensbench_core::zmx::LoadOptions {
-            cfg: 1,
-            catalog_dirs: glass.clone(),
-            ..Default::default()
-        };
-        let a = lensbench_core::zmx::load_with(&zmx, &opt).unwrap();
-        let rows: Vec<lens_data::Row> = a
-            .surfaces
-            .iter()
-            .map(|s| lens_data::Row {
-                t: s.t,
-                material: s.mat.name(),
-                ..Default::default()
-            })
-            .collect();
-        let img = rows.len() - 1;
-        // 物体面の後・像面の後・ガラスの中には差し込めない
-        assert!(!open_gap_ok(&rows, 0) && !open_gap_ok(&rows, img));
-        let gap = (1..img)
-            .find(|&j| open_gap_ok(&rows, j) && open_gap_ok(&rows, j) && j + 1 < img)
-            .expect("空気の間隔");
-        let glass_j = (1..img).find(|&j| !rows[j].material.is_empty()).unwrap();
-        assert!(!open_gap_ok(&rows, glass_j));
-
-        let d = lensbench_project::edit_ops::system_data(&a).unwrap();
-        let mut c = Combo::default();
-        c.take_system_data(&d, a.surfaces[0].t).unwrap();
-        let mut z = Pick::new(ElemKind::ZmxRange);
-        z.path = zmx.display().to_string();
-        z.air = 0.0;
-        // 差し込む要素: 厚さ 2 mm の平板
-        let mut p = Pick::new(ElemKind::Plate);
-        p.custom_mut().t = 2.0;
-        p.custom_mut().glass = "N-BK7".into();
-        p.semi = 5.0;
-        // 開いた系の玉（lens1 1–2、lens2 3–4、lens3 6–7）を群として残す
-        let blk = |name: &str, surfs: Vec<usize>| lens_data::Block {
-            name: name.into(),
-            surfs,
-            parent: None,
-        };
-        z.zmx_mut().zgroups = open_groups(&[
-            blk("lens1", vec![1, 2]),
-            blk("lens2", vec![3, 4]),
-            blk("lens3", vec![6, 7]),
-        ]);
-        let picks = split_open(z.clone(), &rows, Some(gap), p.clone());
-        assert_eq!(picks.len(), 3);
-        assert_eq!(
-            (picks[0].zmx().range, picks[2].zmx().range),
-            ([1, gap], [gap + 1, 0])
-        );
-        c.picks = picks;
-        let pj = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
-        let env = lensbench_project::Env {
-            base: root.clone(),
-            glass_dirs: glass,
-            ..Default::default()
-        };
-        let b = lensbench_project::expand(&pj, &env, &lensbench_project::ExpandOpts::default())
-            .map(|x| x.system)
-            .unwrap();
-        // 平板の 2 面が増える
-        assert_eq!(b.surfaces.len(), a.surfaces.len() + 2);
-        // 元の玉は取り込みのブロックの中の玉として残る
-        let names: Vec<&str> = b.units.iter().map(|u| u.name.as_str()).collect();
-        for n in ["lens1", "lens2", "lens3", "ZX1", "ZX2"] {
-            assert!(names.contains(&n), "{n} が無い: {names:?}");
-        }
-        let half = a.surfaces[gap].t / 2.0;
-        // 物体面の厚さは系の設定（物体の位置）なので比べない
-        for j in 1..gap {
-            assert_eq!(a.surfaces[j].c, b.surfaces[j].c);
-            assert!((a.surfaces[j].t - b.surfaces[j].t).abs() < 1e-12, "面 {j}");
-        }
-        assert!((b.surfaces[gap].t - half).abs() < 1e-12);
-        assert!((b.surfaces[gap + 1].t - 2.0).abs() < 1e-12);
-        assert!((b.surfaces[gap + 2].t - half).abs() < 1e-12);
-        for j in gap + 1..a.surfaces.len() {
-            assert_eq!(a.surfaces[j].c, b.surfaces[j + 2].c, "面 {j}");
-        }
-        // 差し込めない間隔・None は系の後ろ
-        assert_eq!(
-            split_open(z.clone(), &rows, Some(glass_j), p.clone()).len(),
-            2
-        );
-        assert_eq!(split_open(z, &rows, None, p).len(), 2);
     }
 }
 

@@ -80,22 +80,11 @@ pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: 
     if paste.is_some() {
         st.paste_insert = None;
     }
-    if let (Some(t), Some((j, _)), true) = (&paste, st.cur, insert_paste) {
-        let first = v.folded(j).map_or(j, |(_, a)| a);
-        if !c.combo {
-            if let Some(n) = locked_at(c.blocks, c.locked, first) {
-                out.acts.push(Act::Refused(trf("{} is locked", &[&n])));
-            } else {
-                out.acts.extend(insert_paste_acts(
-                    c.rows,
-                    c.blocks,
-                    v.scope,
-                    first.max(1),
-                    &v.cols,
-                    t,
-                ));
-            }
-        }
+    if let (Some(_), Some(_), true) = (&paste, st.cur, insert_paste) {
+        // 面を足して貼り付ける操作は組合せの系ではまだできない
+        out.acts.push(Act::Refused(
+            tr("Inserting surfaces and pasting is not available in a combination").into(),
+        ));
     } else if let (Some(t), Some((j, col))) = (paste, st.cur) {
         // 貼り付け先: 範囲を選んでいれば範囲の行、なければ今の行から下へ（たたんだ行は飛ばす）
         let from = if v.selected.len() > 1 {
@@ -233,16 +222,7 @@ pub(super) fn kbd_menu(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
                             done = true;
                             out.acts.push(a);
                         }
-                        let a = cell_menu(
-                            ui,
-                            menu,
-                            j,
-                            col,
-                            r,
-                            v.bire_of(j),
-                            c.combo,
-                            (c.config_n, c.config_rows),
-                        );
+                        let a = cell_menu(ui, menu, j, col, r, v.bire_of(j));
                         done |= !a.is_empty();
                         out.acts.extend(a);
                     }
@@ -301,14 +281,8 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                     let mut ops = vec![
                         serde_json::json!({ "op": "insert_surface", "at": at, "surface": {} }),
                     ];
-                    if c.combo {
-                        // 組合せの系: 要素の中身に足す。後に足すときは前の面の要素（要素の境目でどちらに足すか）
-                        ops[0]["after"] = serde_json::json!(after);
-                    } else {
-                        // ブロックの中を見ているとき、そのブロック（と外のブロック）の最初の面の前に足した面もブロックに
-                        // 入れる（入れないとブロックの外になって表から消える）
-                        ops.extend(grow_blocks(c.blocks, v.scope, at, after));
-                    }
+                    // 要素の中身に足す。後に足すときは前の面の要素（要素の境目でどちらに足すか）
+                    ops[0]["after"] = serde_json::json!(after);
                     out.acts.push(Act::Ops(ops));
                     st.ins_at = Some((at, c.rows.len()));
                 } else if v.selected.len() > 1 {

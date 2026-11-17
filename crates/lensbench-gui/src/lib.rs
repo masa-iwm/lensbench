@@ -21,7 +21,6 @@ mod combo_from;
 mod combo_reshape;
 mod combo_split;
 mod combo_tree;
-mod config_panel;
 mod crash;
 mod export_table;
 pub mod ext;
@@ -37,7 +36,6 @@ mod layout;
 mod layout_rays;
 mod lens_data;
 mod missing_glass;
-mod open_sysset;
 mod optim_panel;
 mod palette;
 #[cfg(test)]
@@ -59,7 +57,6 @@ mod theme;
 mod tol_catalog;
 mod tol_panel;
 mod tour;
-mod unit_mech;
 mod view3d;
 #[cfg(target_arch = "wasm32")]
 mod web_bg;

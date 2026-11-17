@@ -28,7 +28,7 @@ impl Core {
                         ("Tab / Shift+Tab", tr("Move between fields and buttons in a panel")),
                         ("Enter / Space", tr("Press a button / select")),
                         ("↑ ↓", tr("Step a number field (parameters and analysis settings recompute right away)")),
-                        ("Ctrl+A", tr("Next multi-configuration (Shift: previous). In the Lens Data table, selects all rows")),
+                        ("Ctrl+A", tr("Next state of the combination (Shift: previous). In the Lens Data table, selects all rows")),
                         ("Enter", tr("Analysis settings: recompute with the typed value")),
                         (tr("Letters"), tr("Analysis list: type to filter (Enter picks the first match)")),
                         ("F1", tr("This list")),
@@ -54,16 +54,6 @@ impl Core {
                             ("Shift+F10", tr("Right-click menu")),
                             ("Ctrl+L", tr("Lock a block")),
                             ("Enter / Backspace", tr("Enter / leave a block")),
-                        ],
-                    ),
-                    (
-                        tr("Multi-Config"),
-                        vec![
-                            ("← → ↑ ↓ / Tab", tr("Move between cells")),
-                            ("Enter / F2", tr("Edit (typing also starts editing)")),
-                            ("Delete", tr("Delete the selected row (or the configuration if a column header is selected)")),
-                            ("Ctrl+C / Ctrl+V", tr("Copy rows / paste over")),
-                            ("Shift+F10", tr("Right-click menu")),
                         ],
                     ),
                     (

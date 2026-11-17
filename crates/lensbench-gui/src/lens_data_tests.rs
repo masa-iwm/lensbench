@@ -393,29 +393,6 @@ fn copy_and_paste_rows_as_tab_separated_text() {
     };
     assert_eq!(fields.len(), 3, "{fields:?}"); // r・t・material
     assert_eq!(fields["material"], json!("N-BK7"));
-    // 面を挿入して貼り付け: 2 行なら面 1 の前に 2 面を挿入し、挿入した面 1・2 に値を書く
-    let acts = insert_paste_acts(&rows, &[], None, 1, &cols, &t);
-    let Act::Ops(ops) = &acts[0] else {
-        panic!("{acts:?}")
-    };
-    assert_eq!(
-        ops,
-        &vec![
-            json!({ "op": "insert_surface", "at": 1, "surface": {} }),
-            json!({ "op": "insert_surface", "at": 2, "surface": {} }),
-        ]
-    );
-    let js: Vec<usize> = acts[1..]
-        .iter()
-        .map(|a| match a {
-            Act::Fields { j, fields } => {
-                assert!(fields.contains_key("t"), "{fields:?}");
-                *j
-            }
-            _ => panic!("{a:?}"),
-        })
-        .collect();
-    assert_eq!(js, vec![1, 2]);
     // 1 つの値を選んだ範囲の行の今の列に
     let acts = paste_acts(&rows, &[1, 2], &cols, 3, "7", &ro);
     assert_eq!(acts.len(), 2);
@@ -449,34 +426,6 @@ fn copy_and_paste_rows_as_tab_separated_text() {
     // 選択の範囲
     assert_eq!(selection(&[0, 1, 2, 3], Some(3), Some(1)), vec![1, 2, 3]);
     assert_eq!(selection(&[0, 1, 2, 3], None, Some(2)), vec![2]);
-}
-
-#[test]
-fn inserting_at_the_start_of_the_entered_block_keeps_the_new_surface_inside() {
-    let units = vec![
-        unit("G12", &[[3, 6], [8, 11]], false),
-        unit("G2", &[[3, 4], [10, 11]], false),
-    ];
-    let b = tree(&units);
-    let g12 = b.iter().position(|x| x.name == "G12");
-    let ops = grow_blocks(&b, g12, 3, false);
-    assert_eq!(
-        ops,
-        vec![json!({ "op": "set_unit", "unit": "G12", "spans": [[3, 7], [9, 12]] })]
-    );
-    // 途中の面の前なら範囲はもともと伸びる
-    assert!(grow_blocks(&b, g12, 5, false).is_empty());
-    // 中のブロック G2 に入っていれば G2 と、同じ所から始まる G12 も
-    let g2 = b.iter().position(|x| x.name == "G2");
-    assert_eq!(grow_blocks(&b, g2, 3, false).len(), 2);
-    assert!(grow_blocks(&b, None, 3, false).is_empty());
-    // 最後の面の後に足す（Insert）: 面 6 の後（at 7）なら最初の組が伸びる
-    assert_eq!(
-        grow_blocks(&b, g12, 7, true),
-        vec![json!({ "op": "set_unit", "unit": "G12", "spans": [[3, 7], [9, 12]] })]
-    );
-    // 途中の面の後なら範囲はもともと伸びる
-    assert!(grow_blocks(&b, g12, 5, true).is_empty());
 }
 
 /// 鏡の後の戻り（ダブルパス）: 面 4・5 を面 1・2 から逆の順に。曲率はそのまま、間の硝材は元の間、厚さは符号を変える
@@ -571,11 +520,7 @@ fn drive_with(
         locked,
         read_only: &ro,
         overridden: &|_, _| false,
-        combo: false,
-        unit_mech: None,
         note: None,
-        config_n: 1,
-        config_rows: &[],
         glasses: &[],
         glasses_loaded: true,
     };
@@ -849,7 +794,7 @@ fn ui_insert_key_adds_a_surface_after_and_alt_insert_before() {
     );
     assert_eq!(
         ops_of(&acts),
-        [json!({ "op": "insert_surface", "at": 2, "surface": {} })],
+        [json!({ "op": "insert_surface", "at": 2, "surface": {}, "after": false })],
         "{acts:?}"
     );
     // Alt+Insert は後に
@@ -868,7 +813,7 @@ fn ui_insert_key_adds_a_surface_after_and_alt_insert_before() {
     );
     assert_eq!(
         ops_of(&acts),
-        [json!({ "op": "insert_surface", "at": 3, "surface": {} })],
+        [json!({ "op": "insert_surface", "at": 3, "surface": {}, "after": true })],
         "{acts:?}"
     );
 }

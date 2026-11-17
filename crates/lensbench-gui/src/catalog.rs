@@ -1473,7 +1473,7 @@ impl Browser {
             // 機構部品だけの断面は玉が無い（solids が空）ので、部品の壁があれば描く
             Some((j, d)) if *j == i && (!d.solids.is_empty() || !d.mechs.is_empty()) => {
                 let accent = ui.visuals().selection.stroke.color;
-                crate::combo::view_only(ui, d, h, accent, None, None);
+                crate::combo::view_only(ui, d, h, accent);
             }
             Some((j, _)) if *j == i => {
                 ui.allocate_space(egui::vec2(ui.available_width(), h));

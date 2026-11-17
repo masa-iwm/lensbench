@@ -543,6 +543,35 @@
       ],
       "type": "object"
     },
+    "Apodization": {
+      "description": "瞳のアポダイゼーション（系の設定。.zmx の系の行 GFAC 係数 種類、OpticStudio の System Explorer の Aperture の\nApodization Type・Apodization Factor）。解析の瞳関数の振幅に常に入る（FFT PSF・Huygens PSF・回折 MTF）。\n\n式は OpticStudio のヘルプ（System Explorer > Aperture）の定義に合わせる:\n- Gaussian: 「瞳の上で振幅がガウス形に変わる。アポダイゼーション係数は振幅が瞳の半径の座標で減る速さ」。\n  振幅 A(ρ) = exp(−G ρ²)（ρ は正規化瞳の半径、G が係数。瞳の中心で 1）。G = 1 で縁の振幅が 1/e（強度 1/e²）、\n  強度が 1/e² になる半径は ρ₀ = 1/√G（ヘルプの例「係数 3 なら入射瞳の直径が 1/e² の幅の √3 倍」と同じ）。\n- Cosine Cubed: 「点光源が平面を照らすときの強度の落ち方」。強度 I(θ) = cos³θ（θ は z 軸と、入射瞳と交わる\n  光線の角）を瞳の中心で 1 に正規化（I/I_中心）。振幅は √I。θ は物点から近軸の入射瞳の面の点\n  (ρ_x r, ρ_y r)（r は入射瞳の半径）への向きで求める。無限遠物体ではどの光線も同じ向きなので一様になる。\n\nOpticStudio 26.1 と照合済み（Cooke 40 の Strehl が OS の FFT PSF 瞳 512 と 0.3% 以内。試験は解析的に確かめたもの）",
+      "oneOf": [
+        {
+          "const": "uniform",
+          "description": "一様（.zmx の GFAC _ 0）",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ガウス A(ρ) = exp(−G ρ²)（GFAC G 1）",
+          "properties": {
+            "gaussian": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "gaussian"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "cosine_cubed",
+          "description": "cos³θ の強度（GFAC _ 2）",
+          "type": "string"
+        }
+      ]
+    },
     "Arm": {
       "description": "経路の既定（文字を指定しないとき）",
       "enum": [
@@ -4349,6 +4378,10 @@
     "aperture": {
       "$ref": "#/$defs/ApertureSpec"
     },
+    "apodization": {
+      "$ref": "#/$defs/Apodization",
+      "description": "瞳の振幅の分布（`\"uniform\"`・`{\"gaussian\": G}`・`\"cosine_cubed\"`。省略は一様）"
+    },
     "blocks": {
       "items": {
         "$ref": "#/$defs/Block"
@@ -4444,6 +4477,17 @@
       "default": "",
       "type": "string"
     },
+    "object": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Row"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "物体面の形・開口（省略は平面で開口なし）。`image` と同じ面の行で、厚さは `object_distance`。厚さ・媒質・絞りの印・\n傾き偏心は書けない"
+    },
     "object_distance": {
       "default": null,
       "description": "物体面から最初のブロックまで [mm]（省略で無限遠）",
@@ -4465,6 +4509,11 @@
       "description": "主波長の番号（1 始まり）",
       "format": "uint",
       "minimum": 0,
+      "type": "integer"
+    },
+    "ropd": {
+      "description": "OPD の基準（.zmx の ROPD。省略は 2: 出射瞳の参照球）",
+      "format": "int64",
       "type": "integer"
     },
     "states": {

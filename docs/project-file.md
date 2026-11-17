@@ -59,9 +59,13 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 像面の形・傾きは `"image"`（省略は平面で傾きなし）。面の並びの `row` と同じシステムファイル（版 2）の面の行で、
   `shape`（曲がった像面など）・`before`（像面の傾き偏心）・`aperture` などを書く。`t`・`medium`・`stop`・`coordinate_break` は書けない。
   GUI が像面を傾けた .zmx を組合せで開くときもこれで書く。
+- 物体面の形・開口は `"object"`（省略は平面で開口なし）。`image` と同じ面の行で、`shape`（傾いた平面など）・`aperture` を書く。
+  厚さは `object_distance` で、`t`・`medium`・`stop`・`coordinate_break`・`before`・`after` は書けない。
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - クリア半径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。
+- 瞳の振幅の分布は `"apodization"`（`"uniform"`（既定）・`{"gaussian": G}`・`"cosine_cubed"`。.zmx の GFAC と同じ）、OPD の基準は
+  `"ropd"`（既定 2。.zmx の ROPD と同じ）。
 - 温度・気圧は `"environment": {"temperature_c": 25, "pressure_atm": 1, "adjust_index": true}`（省略で 20 °C・1 atm・補正なし。
   .zmx の ENVD と同じ）。ガラスの屈折率はこの環境で計算し、インポートした .zmx の環境と違えば注意を出す。
 - 知らないキー（綴りの違いなど）はエラーにする。GUI は自分の編集の状態を `gui` に残す。

@@ -642,7 +642,9 @@ fn expand_body(
         )
         .into());
     }
-    let dirs = glass::catalog_dirs(&env.glass_dirs);
+    let mut dirs = env.glass_dirs.clone();
+    crate::model::zmx_dirs(&p.blocks, &env.base, &mut dirs);
+    let dirs = glass::catalog_dirs(&dirs);
     let (glasses, missing) = glass::load_catalogs_shared(&p.glass_catalogs, &dirs);
     if !missing.is_empty() {
         return Err(lensbench_core::Error::Invalid(format!(
@@ -737,10 +739,8 @@ fn expand_body(
     }
     let wl: Vec<f64> = p.wavelengths.iter().map(|w| w.um).collect();
     let wt: Vec<f64> = p.wavelengths.iter().map(|w| w.weight).collect();
-    let obj = Surface {
-        t: p.object_distance.unwrap_or(f64::INFINITY),
-        ..Default::default()
-    };
+    let mut obj = crate::zmx_links::object_surface(p.object.as_deref())?;
+    obj.t = p.object_distance.unwrap_or(f64::INFINITY);
     let mut sf = vec![obj];
     if p.object_distance.is_some() {
         sf[0].t += c.lead;
@@ -780,7 +780,7 @@ fn expand_body(
         }
     });
     name_faces(&mut map, &sf, &c.nodes);
-    // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
+    // 面の後の媒質が決まるか（屈折率は系を作るときに解く。GRIN の面の材料名は分布の名前でガラスではない）
     let envr = p.environment;
     for (j, d) in sf.iter_mut().enumerate() {
         let known = (j > 0 && (d.is_mirror() || d.is_coord_break()))
@@ -873,6 +873,8 @@ fn expand_body(
     s.pressure = envr.pressure_atm;
     s.adjust_index = envr.adjust_index;
     s.floating_clip = p.floating_clip;
+    s.apodization = p.apodization;
+    s.ropd = p.ropd;
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {
@@ -931,6 +933,7 @@ fn expand_body(
     let mut rx = s.prescription().clone();
     rx.units = s.lens_units();
     // 取り込んだ .zmx の膜ファイル（面の膜の名前はそのファイルで引く）。違うファイルの .zmx が 2 つ以上なら最初のもの
+    crate::zmx_links::carry_notes(&mut rx, &zpicks);
     let mut cofs = c.zenv.iter().filter_map(|z| Some((&z.0, z.4.as_ref()?)));
     if let Some((_, f)) = cofs.next() {
         rx.coating_file = Some(f.clone());
@@ -1012,6 +1015,10 @@ fn expand_body(
                 rx.glrs = g;
                 Ok(())
             })?;
+            // ZPL マクロは大域座標（RAGX など）を読めるので、基準の面を決めてから解き直す
+            if !s.macros.is_empty() {
+                s.resolve_links()?;
+            }
         }
     }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
@@ -1322,6 +1329,7 @@ pub(crate) fn keep_pickups(
             at.insert(*k, i + 1);
         }
     }
+    crate::zmx_links::carry_object(s, zpicks, &mut at)?;
     let mut warn = Vec::new();
     for (inst, z) in zpicks.iter().enumerate() {
         let (path, picks) = (&z.path, &z.pickups);
@@ -1392,6 +1400,7 @@ pub(crate) fn keep_pickups(
     if !s.pickups.is_empty() {
         s.resolve_links()?;
     }
+    let moff = crate::zmx_links::carry_macros(s, zpicks, &at)?;
     // ソルブ（厚さ・曲率）: 関わる面（厚さは次の面、玉のパワーは前の面、基準の面）が同じ並びで取り込まれていれば
     // 残し、展開した系で解き直す（雛形の像面の手前の面の厚さのソルブは、展開した系でも像面の手前にあれば残す）
     for (inst, z) in zpicks.iter().enumerate() {
@@ -1414,6 +1423,7 @@ pub(crate) fn keep_pickups(
                 ok &= q.surf >= 1 && same(q.surf - 1);
             }
             let mut kind = q.kind;
+            crate::zmx_links::shift_macro(&mut kind, moff[inst]);
             if let Some(o) = q.kind.other_surface() {
                 ok &= same(o);
                 // 基準の面との距離で決まるものは、間の面（基準の面が後ろでも）も並んで取り込まれていること
@@ -1443,7 +1453,7 @@ pub(crate) fn keep_pickups(
             }
         }
     }
-    if !s.solves.is_empty() {
+    if !s.solves.is_empty() || !s.macro_parms.is_empty() {
         let val = |s: &System, q: &Solve| {
             let d = &s.surfaces[q.surf];
             if q.kind.is_curv() {

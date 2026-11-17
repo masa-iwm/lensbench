@@ -47,8 +47,6 @@ pub enum Tag {
     Focus,
     /// 面の表（全部の面の値と玉・群）
     Surfaces,
-    /// 面の表で変えた値（serve の edit）
-    Edit,
     /// 組合せの面の表のソルブ・ピックアップを要素のブロックへ書き戻す（serve の write_back）
     WriteBack,
     /// 系ファイルに保存（serve の save）
@@ -57,12 +55,6 @@ pub enum Tag {
     SaveRange,
     /// 面の設定（serve の surface_data、面の番号）
     SurfData(usize),
-    /// 開いた系の系の設定（serve の system_data）
-    SysData,
-    /// 多重構成の表（serve の config_table）
-    ConfigTable,
-    /// .zmx の多重構成を表にする操作（serve の config_diff）
-    ConfigDiff,
     /// レイアウト図に重ねられる構成（serve の configs）
     Configs,
     /// ユーザーカタログの保存・一覧・変更（serve の catalog_add・catalog_items・catalog_edit）
@@ -113,8 +105,6 @@ impl Tag {
                 | Tag::LensPreview(_)
                 | Tag::Surfaces
                 | Tag::SurfData(_)
-                | Tag::SysData
-                | Tag::ConfigTable
                 | Tag::Configs
                 | Tag::HistoryDepth
                 | Tag::Refresh
@@ -126,7 +116,6 @@ impl Tag {
     pub fn of_refresh(method: &str) -> Tag {
         match method {
             "surface" => Tag::Surfaces,
-            "config_table" => Tag::ConfigTable,
             _ => Tag::Info,
         }
     }
@@ -138,7 +127,7 @@ impl Tag {
 
     /// serve の系を変える要求（出す前に、待っている・回っている解析をやめる）
     fn changes_system(&self) -> bool {
-        matches!(self, Tag::Load | Tag::Set | Tag::Edit | Tag::History)
+        matches!(self, Tag::Load | Tag::Set | Tag::History)
     }
 }
 
@@ -287,7 +276,7 @@ impl Done {
             .collect()
     }
 
-    /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info、config_table → ConfigTable）
+    /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info）
     pub fn split(self) -> Vec<Done> {
         let (ms, gen) = (self.ms, self.gen);
         self.replies
@@ -1344,7 +1333,7 @@ mod tests {
         w.send(Tag::Analyze(1), "spin", Value::Null);
         w.send(Tag::Analyze(2), "info", Value::Null);
         wait_started();
-        w.send(Tag::Edit, "edit", Value::Null);
+        w.send(Tag::Set, "set", Value::Null);
         w.send(Tag::Analyze(3), "info", Value::Null);
         let d = wait_all(&mut w, 4);
         let got: Vec<(Tag, bool)> = d.iter().map(|d| (d.tag.clone(), d.skipped)).collect();
@@ -1353,7 +1342,7 @@ mod tests {
             vec![
                 (Tag::Analyze(1), true),
                 (Tag::Analyze(2), true),
-                (Tag::Edit, false),
+                (Tag::Set, false),
                 (Tag::Analyze(3), false),
             ]
         );

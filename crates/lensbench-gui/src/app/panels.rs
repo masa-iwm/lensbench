@@ -6,18 +6,10 @@ use super::*;
 pub(super) struct Panels {
     /// 面の表: 状態、面の値、玉・群、木
     pub(super) ld: lens_data::LensData,
-    /// 開いた系の玉・群・機構部品の欄
-    pub(super) um: crate::unit_mech::Edits,
     /// 組合せのレイアウト図の選択・拡大・ドラッグ
     pub(super) combo_view: combo::View,
-    /// 開いた系のレイアウト図の拡大・移動
-    pub(super) open_nav: crate::widgets::Nav,
-    /// 多重構成の表
-    pub(super) mc: config_panel::State,
     /// 組合せの状態の表（組合せでは多重構成の表の代わり）
     pub(super) states: crate::state_table::View,
-    /// 開いた系の系の設定
-    pub(super) oss: open_sysset::State,
     /// 組合せの要素をユーザーカタログに保存する窓
     pub(super) cat_save: CatSave,
     /// 未完のカタログ品を補う窓
@@ -36,12 +28,8 @@ impl Default for Panels {
     fn default() -> Self {
         Self {
             ld: Default::default(),
-            um: Default::default(),
             combo_view: Default::default(),
-            open_nav: Default::default(),
-            mc: Default::default(),
             states: Default::default(),
-            oss: Default::default(),
             cat_save: CatSave::default(),
             fill: Default::default(),
             opt: crate::optim_panel::OptPanel::new(),

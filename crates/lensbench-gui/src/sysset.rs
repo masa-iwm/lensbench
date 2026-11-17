@@ -264,21 +264,6 @@ impl Combo {
     }
 
     /// [`Self::snap`] の値を当てる
-    /// 開いた系の設定（serve の `system_data` の data）を組合せの設定にする。obj_t は物体面の厚さ（無限遠は inf）。
-    /// 条件で定める視野は組合せの欄に移せないので断る
-    pub fn take_system_data(&mut self, d: &Value, obj_t: f64) -> Result<(), String> {
-        let empty = serde_json::Map::new();
-        let f = form::SysForm::from_data(d.as_object().unwrap_or(&empty))?;
-        if f.field_cond.is_some() {
-            return Err(
-                tr("A system with solved fields cannot be moved to combination settings").into(),
-            );
-        }
-        f.apply_to(self);
-        self.object_distance = obj_t.is_finite().then_some(obj_t);
-        Ok(())
-    }
-
     pub fn apply_snap(&mut self, s: &SysSnap) {
         self.aperture = s.aperture;
         self.ap_value = s.ap_value;
@@ -339,6 +324,9 @@ impl Combo {
                     if p.is_empty() { Value::Null } else { json!(p) },
                 );
             }
+        }
+        if let Some(m) = self.state_more.get(n) {
+            out.extend(m.clone());
         }
         out
     }
@@ -878,57 +866,6 @@ const PRESETS: &[(&str, &[f64])] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// 開いた系（.zmx）を組合せ（系の取り込み 1 つ＋系の設定）にすると、同じ系になる
-    #[test]
-    fn open_system_becomes_a_combo() {
-        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
-        let glass = vec![root.join("tests/glass")];
-        let zmx = root.join("tests/refs/A0/system.zmx");
-        let opt = lensbench_core::zmx::LoadOptions {
-            cfg: 1,
-            catalog_dirs: glass.clone(),
-            ..Default::default()
-        };
-        let a = lensbench_core::zmx::load_with(&zmx, &opt).unwrap();
-        let d = lensbench_project::edit_ops::system_data(&a).unwrap();
-        let mut c = Combo::default();
-        c.take_system_data(&d, a.surfaces[0].t).unwrap();
-        let mut z = Pick::new(ElemKind::ZmxRange);
-        z.path = zmx.display().to_string();
-        z.air = 0.0;
-        c.picks.push(z);
-        assert!(
-            c.settings_problems().is_empty(),
-            "{:?}",
-            c.settings_problems()
-        );
-        let p = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
-        let env = lensbench_project::Env {
-            step_files: None,
-            base: root.clone(),
-            glass_dirs: glass,
-            catalog: None,
-        };
-        let b = lensbench_project::expand(&p, &env, &lensbench_project::ExpandOpts::default())
-            .map(|x| x.system)
-            .unwrap();
-        assert_eq!(b.surfaces.len(), a.surfaces.len());
-        for (x, y) in a.surfaces.iter().zip(&b.surfaces) {
-            assert_eq!(x.c, y.c);
-            assert!((x.t - y.t).abs() < 1e-12 || x.t == y.t, "{} {}", x.t, y.t);
-        }
-        assert_eq!(b.wavelengths, a.wavelengths);
-        assert_eq!(b.primary, a.primary);
-        assert_eq!(b.fields.len(), a.fields.len());
-        assert_eq!(b.field_type, a.field_type);
-        assert_eq!(c.aperture, ApKind::Epd);
-        assert_eq!(c.object_distance, None);
-        // 条件で定める視野は断る
-        let mut d2 = d.clone();
-        d2["field_type"] = json!({ "Solve": {} });
-        assert!(c.take_system_data(&d2, 0.0).is_err());
-    }
 
     #[test]
     fn settings_go_to_the_project() {

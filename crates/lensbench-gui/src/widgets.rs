@@ -59,20 +59,6 @@ pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
         .ok_or_else(|| trf("Value of {} is not a number: {}", &[&what, &t]))
 }
 
-/// 表のセルの数。inf・infinity（符号つきも）は無限大、空・数でない・nan は誤り（多重構成の表など）
-pub fn parse_cell(s: &str) -> Result<f64, String> {
-    let t = s.trim();
-    match t.to_ascii_lowercase().as_str() {
-        "inf" | "infinity" | "+inf" | "+infinity" => Ok(f64::INFINITY),
-        "-inf" | "-infinity" => Ok(f64::NEG_INFINITY),
-        _ => t
-            .parse::<f64>()
-            .ok()
-            .filter(|x| x.is_finite())
-            .ok_or_else(|| trf("Not a number: {}", &[&t])),
-    }
-}
-
 /// 候補の並べ方: 前方一致なら Some(true)、名前か説明の部分一致なら Some(false)、合わなければ None。
 /// 名前・説明・打った文字は同じ大小（小文字か大文字）に揃えて渡す（補完つきの欄で共通）
 pub fn match_rank(name: &str, desc: &str, q: &str) -> Option<bool> {
@@ -163,13 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_cell_reads_inf() {
-        assert_eq!(parse_cell(" inf "), Ok(f64::INFINITY));
-        assert_eq!(parse_cell("-Infinity"), Ok(f64::NEG_INFINITY));
-        assert_eq!(parse_cell("2.5"), Ok(2.5));
-        for s in ["", "nan", "x"] {
-            assert!(parse_cell(s).is_err(), "{s}");
-        }
+    fn match_rank_orders() {
         assert_eq!(match_rank("n-bk7", "schott", "n-b"), Some(true));
         assert_eq!(match_rank("n-bk7", "schott", "bk"), Some(false));
         assert_eq!(match_rank("n-bk7", "schott", "sch"), Some(false));
@@ -183,11 +163,4 @@ mod tests {
         assert_eq!(json_num(&json!({"$f": "-inf"})), Some(f64::NEG_INFINITY));
         assert_eq!(json_num(&json!("x")), None);
     }
-}
-
-/// 見るだけの図の拡大（対数）と移動（パネルの状態に持つ）
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
-pub struct Nav {
-    pub zoom_log: f32,
-    pub pan: egui::Vec2,
 }

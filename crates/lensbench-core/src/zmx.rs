@@ -920,22 +920,20 @@ pub fn build(
     }
     // この構成の多重構成の値。扱わないオペランドは構成で変わってはいけない
     let mut ops: HashMap<(String, i64), String> = HashMap::new();
-    let mut vals: HashMap<(String, i64, Vec<String>), HashSet<String>> = HashMap::new();
+    // 2 番目の番号（PRAM の PARM の番号など、多重構成の表の config_table と同じ位置）も鍵にする
+    let key = |op: &String, p1: i64, rest: &[String]| (op.clone(), p1, rest.get(1).cloned());
+    let mut vals: HashMap<(String, i64, Option<String>), HashSet<String>> = HashMap::new();
     for (op, p1, c, v, rest) in &raw.mce {
-        vals.entry((
-            op.clone(),
-            *p1,
-            // 2 番目の番号（PRAM の PARM の番号など、多重構成の表の config_table と同じ位置）
-            rest.iter().skip(1).take(1).cloned().collect(),
-        ))
-        .or_default()
-        .insert(v.clone());
+        vals.entry(key(op, *p1, rest))
+            .or_default()
+            .insert(v.clone());
         if *c == cfg {
             ops.insert((op.clone(), *p1), v.clone());
         }
     }
-    for ((op, p1, _), vs) in &vals {
-        if !MCE_HANDLED.contains(&op.as_str()) && vs.len() > 1 {
+    // 誤りはファイルの順で最初のオペランド（毎回同じものを出す）
+    for (op, p1, _, _, rest) in &raw.mce {
+        if !MCE_HANDLED.contains(&op.as_str()) && vals[&key(op, *p1, rest)].len() > 1 {
             notimpl!("multi-configuration operand {op} {p1} changes between configurations");
         }
     }
@@ -1780,7 +1778,14 @@ fn thickness_pickups(raw: &Raw, th: &mut [f64]) -> Result<()> {
         let mut changed = false;
         for (k, r) in raw.surfs.iter().enumerate() {
             if let Some((src, sc, off, None)) = r.pzup {
-                let v = sc * th.get(src).copied().unwrap_or(0.0) + off;
+                // 無限大の厚さは 1e10 として掛ける（OpticStudio が書く値と同じ）
+                let t = th.get(src).copied().unwrap_or(0.0);
+                let v =
+                    sc * if t.is_infinite() {
+                        1e10f64.copysign(t)
+                    } else {
+                        t
+                    } + off;
                 if v != th[k] {
                     th[k] = v;
                     changed = true;

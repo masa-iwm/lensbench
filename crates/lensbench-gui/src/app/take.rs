@@ -36,7 +36,7 @@ impl Core {
         }
         // 系を変える要求に付けた読み直し（send_change）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
         // 断られたら読み直しは回っていない（途中の誤りで止まる）
-        if matches!(d.tag, Tag::Set | Tag::Edit | Tag::History) && d.replies.len() > 1 {
+        if matches!(d.tag, Tag::Set | Tag::History) && d.replies.len() > 1 {
             let (d, rest) = d.split_change();
             let ok = d.error().is_none() && !d.skipped;
             self.bundled_refresh = ok;
@@ -48,7 +48,7 @@ impl Core {
             return;
         }
         self.rev += 1;
-        if matches!(d.tag, Tag::Load | Tag::Set | Tag::Edit | Tag::History) {
+        if matches!(d.tag, Tag::Load | Tag::Set | Tag::History) {
             self.sys_gen += 1;
         }
         let ms = d.ms;
@@ -90,11 +90,6 @@ impl Core {
                 if let Some(p) = d.replies[0].params["param"].as_str() {
                     self.sys.param_vals.remove(p);
                 }
-            }
-            // 断られた変更は欄から消す（系の値を読み直す）
-            Tag::Edit => {
-                self.p.oss = Default::default();
-                self.p.ld.insp.stale();
             }
             // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す。ほかの理由で
             // 読めなければ開く前の文書に戻す
@@ -159,7 +154,7 @@ impl Core {
             Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill => {
                 return Some(self.catalog_done(d, v, ms, text));
             }
-            Tag::Load | Tag::Set | Tag::Edit | Tag::History | Tag::Surfaces | Tag::SysData => {
+            Tag::Load | Tag::Set | Tag::History | Tag::Surfaces => {
                 return self.system_done(d, params, v, text);
             }
             Tag::Info => self.sys.info = Some(v),
@@ -221,32 +216,6 @@ impl Core {
             Tag::SurfData(j) => {
                 self.p.ld.insp.set(j, v);
                 return None;
-            }
-            Tag::ConfigTable => match config_panel::parse(&v) {
-                Ok(t) => {
-                    self.p.mc.table = Some(t);
-                    return None;
-                }
-                Err(text) => {
-                    self.fail(text);
-                    return None;
-                }
-            },
-            Tag::ConfigDiff => {
-                self.p.mc.notes = v["notes"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let ops = v["ops"].clone();
-                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
-                text = trf(
-                    "Imported {} rows into the multi-configuration table",
-                    &[&v["rows"]],
-                );
             }
             Tag::WriteBack => {
                 match self.take_write_back(&v) {
@@ -347,7 +316,7 @@ impl Core {
                 }
                 self.on_loaded(v);
             }
-            Tag::Set | Tag::Edit | Tag::History => {
+            Tag::Set | Tag::History => {
                 self.take_history(&v);
                 if d.tag != Tag::History {
                     self.docs.edited();
@@ -377,7 +346,6 @@ impl Core {
                 self.rerun = Some(true);
             }
             Tag::Surfaces => {
-                self.p.oss.stale();
                 // 要約の面の数も今の系に（読み込み時のままにしない）
                 if let (Some(sum), Some(a)) = (self.sys.summary.as_mut(), v["surfaces"].as_array())
                 {
@@ -390,7 +358,6 @@ impl Core {
                         return None;
                     }
                 };
-                self.p.um.set_mechs(&v["mechanics"]);
                 self.sys.ld_blocks = lens_data::tree(&units);
                 self.p.ld.insp.stale();
                 self.sys.ld_rows = rows;
@@ -415,26 +382,6 @@ impl Core {
                             ));
                     }
                 }
-                return None;
-            }
-            Tag::SysData => {
-                // 要約の視野・波長も今の系に
-                if let Some(sum) = self.sys.summary.as_mut() {
-                    let d = &v["data"];
-                    if let Some(f) = d["fields"].as_array() {
-                        sum["fields"] = json!(f
-                            .iter()
-                            .map(|f| [f["x"].as_f64(), f["y"].as_f64()])
-                            .collect::<Vec<_>>());
-                    }
-                    if d["wavelengths"].is_array() {
-                        sum["wavelengths_um"] = d["wavelengths"].clone();
-                    }
-                    if let Some(p) = d["primary"].as_u64() {
-                        sum["primary"] = json!(p + 1);
-                    }
-                }
-                self.p.oss.set(&v);
                 return None;
             }
             _ => {}
@@ -631,7 +578,6 @@ impl Core {
 pub(super) fn refresh_calls() -> Vec<(String, Value)> {
     let calls = [
         ("surface", json!({})),
-        ("config_table", json!({})),
         ("analyze", json!({ "cmd": "info" })),
     ];
     calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect()

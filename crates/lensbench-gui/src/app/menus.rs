@@ -446,17 +446,7 @@ impl App {
                 *cmd = Some(Cmd::WriteZmx);
             }
             let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
-            // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す
-            let zmx = !self.c.is_combo()
-                && self.c.loc.doc_path.is_none()
-                && self.c.loc.file.as_ref().is_some_and(|f| {
-                    f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"))
-                });
-            let save_label = if zmx {
-                tr("Save as system file (.json)…(Ctrl+S)")
-            } else {
-                tr("Save (Ctrl+S)")
-            };
+            let save_label = tr("Save (Ctrl+S)");
             if ui
                 .add_enabled(can_save, egui::Button::new(save_label))
                 .on_hover_text(tr(

@@ -20,9 +20,7 @@ pub struct Sys {
 /// どの名前を候補にするか
 #[derive(Debug, Clone, Copy)]
 pub enum Set<'a> {
-    /// 多重構成の行
-    Config,
-    /// 最適化・ズームの変数（組合せの系なら面の t・r・k だけ）
+    /// 最適化・ズームの変数（組合せの系なら面の t・r・k と形の係数だけ）
     Var { combo: bool },
     /// 公差・系のパネル（物体の位置・波長も）
     Any,
@@ -109,8 +107,6 @@ fn surf_kinds(sys: &Sys, j: usize, set: Set) -> Vec<String> {
     let typ = sys.surfs[j].0.as_str();
     let cb = typ == "COORDBRK";
     let mut v = match set {
-        Set::Config if cb => strs(&["t", "dx", "dy", "tx", "ty", "tz"]),
-        Set::Config => strs(&["r", "t", "k", "dn", "disp"]),
         Set::Var { combo: true } => strs(&["t", "r", "k"]),
         Set::Var { .. } if cb => strs(&["t", "dx", "dy", "tx", "ty", "tz"]),
         Set::Var { .. } => strs(&["r", "c", "t", "k", "dx", "dy", "tx", "ty", "tz"]),
@@ -120,7 +116,7 @@ fn surf_kinds(sys: &Sys, j: usize, set: Set) -> Vec<String> {
         ]),
         Set::Units | Set::Swap { .. } => return Vec::new(),
     };
-    if !cb && !matches!(set, Set::Var { combo: true }) {
+    if !cb {
         v.extend(coef_kinds(typ));
     }
     v.retain(|k| surf_ok(sys, j, k));
@@ -130,7 +126,7 @@ fn surf_kinds(sys: &Sys, j: usize, set: Set) -> Vec<String> {
 /// 玉・群で候補にする種類
 fn unit_kinds(set: Set) -> &'static [&'static str] {
     match set {
-        Set::Config | Set::Any => &["shift", "dx", "dy", "tx", "ty", "tz", "dn", "disp"],
+        Set::Any => &["shift", "dx", "dy", "tx", "ty", "tz", "dn", "disp"],
         Set::Var { combo: true } | Set::Units => &[],
         Set::Var { .. } | Set::Swap { .. } => &["shift", "dx", "dy", "tx", "ty", "tz"],
     }
@@ -170,11 +166,9 @@ pub fn names(sys: &Sys, set: Set) -> Vec<(String, String)> {
             v.push(format!("{u}.{k}"));
         }
     }
-    if matches!(set, Set::Config | Set::Any) {
+    if matches!(set, Set::Any) {
         v.push("objx".into());
         v.push("objy".into());
-    }
-    if matches!(set, Set::Any) {
         v.extend((1..=sys.waves).map(|i| format!("wave{i}")));
     }
     v.into_iter()
@@ -420,7 +414,7 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
             });
         });
     }
-    if matches!(set, Set::Config | Set::Any) {
+    if matches!(set, Set::Any) {
         ui.menu_button(tr("object position"), |ui| {
             for n in ["objx", "objy"] {
                 pick(ui, n, format!("{n}  {}", param_desc(n)));
@@ -499,16 +493,17 @@ mod tests {
     fn names_by_set() {
         let s = sys();
         let has = |set: Set, n: &str| names(&s, set).iter().any(|x| x.0 == n);
-        assert!(has(Set::Config, "1.a4") && has(Set::Config, "2.tx"));
-        assert!(!has(Set::Config, "2.r") && !has(Set::Config, "wave1"));
         assert!(
             has(Set::Var { combo: false }, "1.c") && has(Set::Var { combo: false }, "G1.shift")
         );
         assert!(!has(Set::Var { combo: false }, "objx"));
         let combo = names(&s, Set::Var { combo: true });
-        assert!(combo
-            .iter()
-            .all(|x| x.0.ends_with(".t") || x.0.ends_with(".r") || x.0.ends_with(".k")));
+        // 組合せ: 厚さ・半径・コーニックと形の係数（偏心・曲率・玉・群は無い）
+        assert!(combo.iter().all(|x| {
+            let k = x.0.rsplit_once('.').unwrap().1;
+            !matches!(k, "c" | "dx" | "dy" | "tx" | "ty" | "tz" | "shift")
+        }));
+        assert!(has(Set::Var { combo: true }, "1.a4") && has(Set::Var { combo: true }, "1.r"));
         assert!(has(Set::Any, "wave2") && has(Set::Any, "1.dn") && !has(Set::Any, "wave3"));
         assert_eq!(
             names(&s, Set::Units),
@@ -525,7 +520,6 @@ mod tests {
     fn names_follow_check_param() {
         let s = sys();
         for set in [
-            Set::Config,
             Set::Var { combo: false },
             Set::Var { combo: true },
             Set::Any,
@@ -551,7 +545,7 @@ mod tests {
     fn completion_order() {
         let s = sys();
         let c = |t: &str| -> Vec<String> {
-            complete(names(&s, Set::Config), t)
+            complete(names(&s, Set::Any), t)
                 .into_iter()
                 .map(|x| x.0)
                 .collect()

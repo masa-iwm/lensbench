@@ -179,6 +179,11 @@ fn order(mut v: Vec<Source>) -> Vec<Ordered> {
     v.into_iter().map(|(n, f, _)| (n, f.map(|x| x.0))).collect()
 }
 
+/// 系のガラスを名前で引いて同じガラスになるカタログの名前の並び（プロジェクトの `glass_catalogs`）
+pub(crate) fn names(s: &System) -> Vec<String> {
+    order(sources(s)).into_iter().map(|x| x.0).collect()
+}
+
 /// 系ファイルの `catalogs`
 pub(crate) fn refs(s: &System) -> lensbench_core::Result<Vec<CatalogRef>> {
     order(sources(s))

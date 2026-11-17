@@ -205,8 +205,6 @@ impl Core {
         self.sys.ld_rows.clear();
         self.sys.ld_units.clear();
         self.sys.ld_blocks.clear();
-        self.p.mc = Default::default();
-        self.p.oss = Default::default();
         self.sys.param_vals.clear();
         self.pending_set.clear();
         for r in self.results.values_mut() {

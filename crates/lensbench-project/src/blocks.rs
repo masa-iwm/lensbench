@@ -252,6 +252,13 @@ pub(crate) struct ZmxLinks {
     pub(crate) solves: Vec<Solve>,
     /// 取り込んだ .zmx の像面の番号
     pub(crate) image: usize,
+    /// 取り込んだ .zmx の物体面のコメント（面 1 から系の面 1 に取り込んだとき、系の物体面のコメントにする）
+    pub(crate) obj_comment: String,
+    /// 取り込んだ .zmx のマクロのソルブの注意（展開した系の注意にする）
+    pub(crate) macro_notes: Vec<String>,
+    /// 取り込んだ .zmx の ZPL マクロと、パラメータ・円錐係数・半直径のマクロのソルブ（ソルブの番号は macros の番号）
+    pub(crate) macros: Vec<lensbench_core::zpl_solve::Macro>,
+    pub(crate) macro_parms: Vec<lensbench_core::zpl_solve::MacroParm>,
 }
 
 impl<'a, 'b> Ctx<'a, 'b> {
@@ -1131,6 +1138,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     pickups: s.pickups.clone(),
                     solves: s.solves.clone(),
                     image: s.image(),
+                    obj_comment: s.surfaces[0].comment.clone(),
+                    macro_notes: s.macro_notes.clone(),
+                    macros: s.macros.clone(),
+                    macro_parms: s.macro_parms.clone(),
                 });
                 let (a, z) = (from.unwrap_or(1), to.unwrap_or(s.image() - 1));
                 // 範囲の中の要素と、その直後の空気だけを取る（範囲の外の要素の後の空気は除く）

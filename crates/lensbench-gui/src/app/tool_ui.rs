@@ -13,10 +13,9 @@ impl Core {
             ));
             return;
         }
-        let is_combo = self.is_combo();
         let cands = op::Cands {
             units: self.sys.ld_units.iter().map(|u| u.name.clone()).collect(),
-            combo: is_combo,
+            combo: true,
             sys: self.param_sys(),
             rows: &self.sys.ld_rows,
         };
@@ -189,40 +188,13 @@ impl Core {
         if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr(
-                "Build a system from a combination, or open a project with lens blocks, to run a swap search.",
+                "Build a system from a combination to run a swap search.",
             ));
             return;
         }
-        let is_combo = self.is_combo();
-        let (project, mut cands) = if is_combo {
-            let (p, c) = sp::combo_project(&self.doc.combo);
-            (Some(p), c)
-        } else {
-            let f = self.loc.file.clone().unwrap_or_default();
-            if self.swap_file.as_ref().map(|x| &x.0) != Some(&f) {
-                let c = lensbench_core::vfs::read_to_string(&f)
-                    .ok()
-                    .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-                    .map(|v| sp::project_cands(&v))
-                    .unwrap_or_default();
-                self.swap_file = Some((f, c));
-            }
-            (
-                None,
-                std::mem::take(&mut self.swap_file.as_mut().unwrap().1),
-            )
-        };
-        // 同時に評価できる状態（組合せは組合せの状態、開いたプロジェクトは読み込んだ系の状態）
-        cands.states = if is_combo {
-            self.doc.combo.states.clone()
-        } else {
-            self.overlay
-                .items
-                .iter()
-                .filter(|x| x.0 == "states")
-                .map(|x| x.1.clone())
-                .collect()
-        };
+        let (project, mut cands) = sp::combo_project(&self.doc.combo);
+        // 同時に評価できる状態
+        cands.states = self.doc.combo.states.clone();
         let progress = if self.p.swap.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(150));
@@ -232,11 +204,6 @@ impl Core {
         };
         cands.sys = self.param_sys();
         let acts = sp::ui(ui, &mut self.p.swap, &cands, progress);
-        if !is_combo {
-            if let Some(x) = self.swap_file.as_mut() {
-                x.1 = cands;
-            }
-        }
         let mut load = false;
         for a in acts {
             let count = matches!(a, Action::Count(_));
@@ -246,9 +213,7 @@ impl Core {
                     if count {
                         v["count_only"] = json!(true);
                     }
-                    if let Some(p) = &project {
-                        v["project"] = p.clone();
-                    }
+                    v["project"] = project.clone();
                     v["top"] = json!(self.p.swap.top);
                     self.swap_ids = self.doc.combo.ids();
                     self.p.swap.running = true;
@@ -308,16 +273,11 @@ impl Core {
         }
     }
 
-    /// 変数の値を開いている系に当てる（開いた系は serve の set、組合せの系は組合せの要素に当てて作り直す）。
+    /// 変数の値を組合せの要素に当てて作り直す。
     /// 当てられない値があれば何もせず false
     pub(super) fn apply_values(&mut self, vals: &[(String, f64)]) -> bool {
         if vals.is_empty() {
             return false;
-        }
-        if !self.is_combo() {
-            let m: Map<String, Value> = vals.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
-            self.send_change(Tag::Set, "set", json!({ "values": m }));
-            return true;
         }
         // 厚さ・半径・コーニックは要素の欄に。ほかの値（非球面係数・偏心など）があれば、serve の write_back で
         // 要素の面の上書きにする（返事で要素に入れて作り直す）
@@ -351,35 +311,6 @@ impl Core {
     /// 組合せの系の設定
     pub(super) fn sysset_ui(&mut self, ui: &mut Ui) {
         self.ask_folders();
-        if self.loc.file.is_some() && !self.is_combo() {
-            // 開いた系の設定。組合せの設定はその下にたたむ
-            if self.p.oss.want() {
-                self.worker.send(Tag::SysData, "system_data", json!({}));
-            }
-            let ns = self.sys.ld_rows.len();
-            egui::ScrollArea::vertical()
-                .id_salt("sysset_scroll")
-                .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(tr(
-                            "Settings of the open system. Changes go into the system; keep them with \"Save system file…\".",
-                        ))
-                        .small()
-                        .weak(),
-                    );
-                    if let Some(op) = open_sysset::ui(ui, &mut self.p.oss, ns) {
-                        self.send_change(Tag::Edit, "edit", json!({ "ops": [op] }));
-                    }
-                    ui.add_space(8.0);
-                    egui::CollapsingHeader::new(tr("Combination settings (used when a combination is built)"))
-                        .id_salt("combo_sysset")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            crate::sysset::ui(ui, &mut self.doc.combo, &self.folders.agf)
-                        });
-                });
-            return;
-        }
         let cats = &self.folders.agf;
         egui::ScrollArea::vertical()
             .id_salt("sysset_scroll")

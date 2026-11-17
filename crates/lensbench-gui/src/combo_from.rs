@@ -18,6 +18,30 @@ use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
 
+/// 多重構成の .zmx の構成ごとの系。読めない構成があれば、その番号を付けた誤り
+fn load_each_config(
+    f: &Path,
+    lo: &lensbench_core::zmx::LoadOptions,
+) -> R<Vec<lensbench_core::System>> {
+    let txt = lensbench_core::glass::read_text(f).map_err(|e| format!("{}: {e}", f.display()))?;
+    let n = lensbench_core::zmx::parse_text(&txt)
+        .map_err(|e| e.to_string())?
+        .configurations();
+    (1..=n)
+        .map(|k| {
+            lensbench_core::zmx::load_configs_text(&txt, f, lo, &[k])
+                .map(|mut v| v.remove(0))
+                .map_err(|e| {
+                    if n > 1 {
+                        format!("configuration {k} of {n}: {e}")
+                    } else {
+                        e.to_string()
+                    }
+                })
+        })
+        .collect()
+}
+
 impl Combo {
     /// .zmx・システムファイルを、まるごと取り込む要素 1 つの組合せにする（書ければ要素に分ける）。多重構成の .zmx は
     /// 構成ごとの状態「Config k」を持つ組合せにする（要素には分けない）。プロジェクトで書けない設定があり、作り直した系が
@@ -42,7 +66,7 @@ impl Combo {
                 catalog_dirs: glass_dirs.to_vec(),
                 ..Default::default()
             };
-            lensbench_core::zmx::load_configs(f, &lo, &[]).map_err(|e| e.to_string())?
+            load_each_config(f, &lo)?
         } else {
             match s.configs().map(|c| c.n) {
                 Some(n) => (1..=n)
@@ -832,7 +856,13 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                         merged[k] = x.clone();
                     }
                 }
-                _ => return Err(format!("state project {k}")),
+                // 欄の無い系の値は、そのまま持って書き戻す
+                _ => {
+                    c.state_more
+                        .entry(n.clone())
+                        .or_default()
+                        .insert(k.clone(), x.clone());
+                }
             }
         }
         let mut t = base.clone();
@@ -988,6 +1018,27 @@ fn canon(v: &Value) -> R<Value> {
     }
     let p: Project = serde_json::from_value(v).map_err(|e| e.to_string())?;
     let mut v = serde_json::to_value(&p).map_err(|e| e.to_string())?;
+    // 状態の波長の重みは省くと 1（系の波長と同じ）。状態の視野の重みが全部 1 なら書かないのと同じ
+    if let Some(sts) = v["states"].as_array_mut() {
+        for st in sts {
+            if let Some(f) = st["project"]["fields"].as_object_mut() {
+                if f.get("weights").is_some_and(|w| {
+                    w.is_null()
+                        || w.as_array()
+                            .is_some_and(|w| w.iter().all(|x| x.as_f64() == Some(1.0)))
+                }) {
+                    f.remove("weights");
+                }
+            }
+            if let Some(ws) = st["project"]["wavelengths"].as_array_mut() {
+                for w in ws {
+                    if w.is_object() && w.get("weight").is_none_or(Value::is_null) {
+                        w["weight"] = json!(1.0);
+                    }
+                }
+            }
+        }
+    }
     // 視野の重みが全部 1 なら書かないのと同じ
     if v["fields"]["weights"]
         .as_array()

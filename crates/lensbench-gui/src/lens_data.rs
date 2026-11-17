@@ -609,8 +609,6 @@ pub enum Act {
         j: usize,
         fields: Map<String, Value>,
     },
-    /// 玉・群・機構部品の欄を開く・閉じる（開いた系）
-    UnitMech,
     /// 面 j のデータの項目を変える（serve の edit の set_surface_data）
     Data { j: usize, data: Map<String, Value> },
     /// そのほかの編集の操作（絞り・ソルブ・ピックアップ。開いた系だけ）
@@ -745,8 +743,6 @@ struct CellMenu {
     src: String,
     scale: String,
     offset: String,
-    /// 選んだ範囲で作る玉・群の名前
-    unit_name: String,
     /// 硝材の追加設定の dn・disp の入力（cell の面・列が変わったら今の値から）
     dn: String,
     disp: String,
@@ -920,54 +916,6 @@ fn click_to(st: &mut LensData, j: usize, col: Col, shift: bool, keep: bool) {
     }
 }
 
-/// 面 at に面を足したとき（after なら面 at−1 の後に、そうでなければ面 at の前に）、ブロック scope（と外のブロック）が
-/// at から始まる・at−1 で終わるなら、足した面も含める範囲にする（serve の edit の set_unit。insert_surface の後に当てる）
-fn grow_blocks(blocks: &[Block], scope: Option<usize>, at: usize, after: bool) -> Vec<Value> {
-    let mut ops = Vec::new();
-    let mut b = scope;
-    while let Some(i) = b {
-        let blk = &blocks[i];
-        let has = |x: usize| blk.surfs.contains(&x);
-        let edge = if after {
-            at > 0 && has(at - 1) && !has(at)
-        } else {
-            has(at) && (at == 0 || !has(at - 1))
-        };
-        if edge {
-            // 続く面の組 [最初, 最後] を、足した後の番号に（at から始まる組は前に 1 つ伸ばす）
-            let mut spans: Vec<[usize; 2]> = Vec::new();
-            for &x in &blk.surfs {
-                match spans.last_mut() {
-                    Some(s) if s[1] + 1 == x => s[1] = x,
-                    _ => spans.push([x, x]),
-                }
-            }
-            for s in &mut spans {
-                if s[0] > at {
-                    s[0] += 1;
-                }
-                if s[1] >= at {
-                    s[1] += 1;
-                } else if after && s[1] + 1 == at {
-                    s[1] = at;
-                }
-            }
-            ops.push(json!({ "op": "set_unit", "unit": blk.name, "spans": spans }));
-        }
-        b = blk.parent;
-    }
-    ops
-}
-
-/// 面 j を含む一番内側のブロック
-fn inner_block(blocks: &[Block], j: usize) -> Option<String> {
-    blocks
-        .iter()
-        .filter(|b| b.surfs.contains(&j))
-        .min_by_key(|b| b.surfs.len())
-        .map(|b| b.name.clone())
-}
-
 /// 選んだ行を表の文字に（タブ区切り、1 行に 1 面。Excel に貼れる。たたんだブロックの行は除く）
 fn copy_text(rows: &[Row], sel: &[usize], cols: &[Col]) -> String {
     sel.iter()
@@ -984,47 +932,6 @@ fn copy_text(rows: &[Row], sel: &[usize], cols: &[Col]) -> String {
 
 /// 貼り付け: タブ区切りの文字を、今のセル（行 at、列 ci）から右下へ当てる。1 つの値で範囲を選んでいれば、範囲の行の今の列に。
 /// 変えられないセル（ro が理由を返す）・同じ値は飛ばす。種類は先に変える（パラメータの意味が種類で変わる）
-/// 面を挿入して貼り付け: 写した行の数だけ、面 at の前に空の面を挿入し（ブロックの中なら gros_blocks でブロックを伸ばす）、
-/// 写した行の値を最初の列から書く（OpticStudio の Paste Surfaces）
-fn insert_paste_acts(
-    rows: &[Row],
-    blocks: &[Block],
-    scope: Option<usize>,
-    at: usize,
-    cols: &[Col],
-    text: &str,
-) -> Vec<Act> {
-    let n = text
-        .trim_end_matches(['\r', '\n'])
-        .split('\n')
-        .filter(|l| !l.trim().is_empty())
-        .count();
-    if n == 0 {
-        return Vec::new();
-    }
-    let mut ops = Vec::new();
-    for k in 0..n {
-        ops.push(json!({ "op": "insert_surface", "at": at + k, "surface": {} }));
-        if k == 0 {
-            ops.extend(grow_blocks(blocks, scope, at, false));
-        }
-    }
-    let blank = Row {
-        typ: "STANDARD".into(),
-        r: f64::INFINITY,
-        // insert_surface の {} の面は半径 0（固定）
-        ..Default::default()
-    };
-    let mut after: Vec<Row> = rows.to_vec();
-    for _ in 0..n {
-        after.insert(at, blank.clone());
-    }
-    let targets: Vec<usize> = (at..at + n).collect();
-    let mut acts = vec![Act::Ops(ops)];
-    acts.extend(paste_acts(&after, &targets, cols, 0, text, &|_, _| None));
-    acts
-}
-
 fn paste_acts(
     rows: &[Row],
     targets: &[usize],
@@ -1215,7 +1122,7 @@ pub fn range_pick_ops(
     Ok(ops)
 }
 
-/// 行の右クリックの欄: 絞り・無視・面の挿入・削除・玉や群を作る・外す・面や玉・群のピックアップ・詳細設定
+/// 行の右クリックの欄: 絞り・無視・面の挿入・削除・面や玉・群のピックアップ・詳細設定
 #[allow(clippy::too_many_arguments)]
 fn row_menu(
     ui: &mut Ui,
@@ -1223,10 +1130,8 @@ fn row_menu(
     j: usize,
     r: &Row,
     locked: Option<&str>,
-    combo: bool,
     last: usize,
     span: Option<[usize; 2]>,
-    block: Option<String>,
     rows: &[Row],
     blocks: &[Block],
 ) -> RowMenu {
@@ -1237,17 +1142,10 @@ fn row_menu(
     }
     ui.add_enabled_ui(!edge && locked.is_none(), |ui| {
         if r.stop {
-            // 組合せでは外せる（前の絞り・絞りの要素に戻す）。開いた系は別の面を絞りにすると外れる
-            if combo {
-                if ui.button(tr("Remove stop")).clicked() {
-                    m.acts
-                        .push(Act::Ops(vec![json!({ "op": "unset_stop", "surface": j })]));
-                }
-            } else {
-                ui.add_enabled(
-                    false,
-                    egui::Button::new(tr("Stop (make another surface the stop to move it)")),
-                );
+            // 外すと前の絞り・絞りの要素に戻る
+            if ui.button(tr("Remove stop")).clicked() {
+                m.acts
+                    .push(Act::Ops(vec![json!({ "op": "unset_stop", "surface": j })]));
             }
         } else if ui.button(tr("Make this surface the stop")).clicked() {
             m.acts
@@ -1260,79 +1158,27 @@ fn row_menu(
             m.acts.push(Act::Fields { j, fields });
         }
     });
-    if !combo {
-        ui.separator();
-        m.insert_before = ui.button(tr("Insert surface before (Insert)")).clicked();
-        m.insert = ui.button(tr("Insert surface after (Alt+Insert)")).clicked();
-        if ui.button(tr("Paste (overwrite, Ctrl+V)")).clicked() {
-            m.paste = Some(false);
-        }
-        if ui
-            .button(tr("Insert surfaces before and paste (Ctrl+Shift+V)"))
-            .on_hover_text(tr(
-                "Insert as many surfaces as copied rows, then write the values (like OpticStudio's Paste Surfaces)",
-            ))
-            .clicked()
-        {
-            m.paste = Some(true);
-        }
-        m.insert |= m.insert_before;
-        m.delete = ui
-            .add_enabled(
-                !edge && !r.stop,
-                egui::Button::new(tr("Delete this surface (Delete)")),
-            )
-            .clicked();
+    ui.separator();
+    m.insert_before = ui.button(tr("Insert surface before (Insert)")).clicked();
+    m.insert = ui.button(tr("Insert surface after (Alt+Insert)")).clicked();
+    if ui.button(tr("Paste (overwrite, Ctrl+V)")).clicked() {
+        m.paste = Some(false);
     }
-    // 玉・群（開いた系）: 選んだ行の面の範囲で作る、この面のブロックを外す
-    if !combo {
-        ui.separator();
-        let span = span.unwrap_or([j, j]);
-        ui.label(
-            RichText::new(trf(
-                "Make a lens/group from surfaces {}–{}",
-                &[&span[0], &span[1]],
-            ))
-            .strong(),
-        );
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut cm.unit_name)
-                    .hint_text(tr("Name (G1 etc.)"))
-                    .desired_width(110.0),
-            );
-            if ui
-                .add_enabled(
-                    !cm.unit_name.trim().is_empty(),
-                    egui::Button::new(tr("Create")),
-                )
-                .clicked()
-            {
-                m.acts.push(Act::Ops(vec![json!({
-                    "op": "define_unit", "name": cm.unit_name.trim(), "spans": [span],
-                })]));
-                cm.unit_name.clear();
-            }
-        });
-        if let Some(b) = block {
-            if ui
-                .button(trf("Remove block {} (keep surfaces)", &[&b]))
-                .clicked()
-            {
-                m.acts
-                    .push(Act::Ops(vec![json!({ "op": "remove_unit", "unit": b })]));
-            }
-        }
-    } else {
-        ui.separator();
-        ui.label(
-            RichText::new(tr(
-                "Groups in a combination are set in the element settings (Group)",
-            ))
-            .small()
-            .color(theme::weak_text(ui.visuals())),
-        );
-    }
+    m.insert |= m.insert_before;
+    m.delete = ui
+        .add_enabled(
+            !edge && !r.stop,
+            egui::Button::new(tr("Delete this surface (Delete)")),
+        )
+        .clicked();
+    ui.separator();
+    ui.label(
+        RichText::new(tr(
+            "Groups in a combination are set in the element settings (Group)",
+        ))
+        .small()
+        .color(theme::weak_text(ui.visuals())),
+    );
     // 面・玉・群としてのピックアップ（選んだ範囲の面を、別の面・範囲・ブロックから。反転・戻りの向きも）
     ui.separator();
     let span = span.unwrap_or([j, j]);
@@ -1441,8 +1287,6 @@ pub struct LensData {
     kbd_fresh: bool,
     /// 表の下に面の詳細設定（開口・傾き偏心・形のデータ・全項目）とブロックの設定を出す
     pub detail: bool,
-    /// 開いた系（組合せでない系）でロックしたブロック
-    pub locked: BTreeSet<String>,
     /// キーを表で使う（表をクリックした後）
     active: bool,
     /// 選んだ面の設定の欄
@@ -1469,16 +1313,8 @@ pub struct Ctx<'a> {
     pub read_only: &'a dyn Fn(usize, Col) -> Option<String>,
     /// 面 j の列 c に組合せの要素の面の上書きがある（カタログの玉・取り込み。セルに印、右クリックで外す）
     pub overridden: &'a dyn Fn(usize, Col) -> bool,
-    /// 組合せの系（絞り・ソルブ・ピックアップは開いた系だけ）
-    pub combo: bool,
-    /// 玉・群・機構部品の欄（開いた系だけ。Some は今開いているか）
-    pub unit_mech: Option<bool>,
     /// 表についての注意（左端の帯の ⓘ に出す）
     pub note: Option<&'a str>,
-    /// 多重構成の構成の数と行の名前（セルのメニューの「多重構成の行にする」）
-    pub config_n: usize,
-    /// 多重構成の表の行（操作の名前と構成ごとの値）
-    pub config_rows: &'a [(String, Vec<f64>)],
     /// 硝材の候補（GUI のガラスカタログ）
     pub glasses: &'a [GlassChoice],
     /// ガラスカタログを読み終えた（候補が空でも）

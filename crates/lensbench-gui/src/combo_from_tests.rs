@@ -430,3 +430,20 @@ fn all_block_projects_become_combos() {
     assert!(no.is_empty(), "{no:#?}");
     assert!(ok >= 30, "{ok} / {n}");
 }
+
+/// 状態で変える欄の無い系の値（温度・気圧）は、そのまま持って書き戻す
+#[test]
+fn state_values_without_fields_round_trip() {
+    let v = json!({ "wavelengths": [{ "um": 0.5876 }], "aperture": { "type": "epd", "value": 6 },
+        "blocks": [{ "type": "stop" }, { "type": "air", "t": 5 },
+          { "type": "lens", "id": "L", "source": { "surfaces": [{ "radius": 60, "t": 4, "glass": "N-BK7", "semi": 8 }, { "radius": -60, "semi": 8 }] } },
+          { "type": "air", "t": 30 }],
+        "states": [{ "name": "hot", "project": { "environment": { "temperature_c": 40, "pressure_atm": 1, "adjust_index": true } } }] });
+    let c = Combo::from_project(&v, &root()).unwrap();
+    assert!(c.state_more["hot"].contains_key("environment"));
+    let p = c.project();
+    assert_eq!(
+        p["states"][0]["project"]["environment"]["temperature_c"], 40,
+        "{p}"
+    );
+}

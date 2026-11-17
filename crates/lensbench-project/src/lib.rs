@@ -67,6 +67,7 @@ mod expand;
 mod expand_error;
 mod faces;
 mod model;
+mod zmx_links;
 mod zmx_wrap;
 pub use back::*;
 pub use blocks::*;

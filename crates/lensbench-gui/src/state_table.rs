@@ -333,7 +333,7 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
                             RichText::new(name)
                         };
                         let hint = match col {
-                            Some(n) if c.state_sys.contains_key(n) => trf(
+                            Some(n) if c.state_sys.contains_key(n) || c.state_more.contains_key(n) => trf(
                                 "Make {} the current state (it also changes system settings such as aperture and fields)",
                                 &[n],
                             ),
@@ -348,14 +348,15 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
             })
             .body(|mut body| {
                 // 系の値を状態で変えたか
-                if states.iter().any(|n| c.state_sys.contains_key(n)) {
+                let sys_own = |n: &str| c.state_sys.contains_key(n) || c.state_more.contains_key(n);
+                if states.iter().any(|n| sys_own(n)) {
                     body.row(20.0, |mut r| {
                         r.col(|ui| {
                             ui.label(RichText::new(tr("System settings")).color(weak));
                         });
                         for col in &cols {
                             r.col(|ui| {
-                                let own = col.as_ref().is_some_and(|n| c.state_sys.contains_key(n));
+                                let own = col.as_deref().is_some_and(sys_own);
                                 ui.label(if own { tr("changed") } else { "—" });
                             });
                         }

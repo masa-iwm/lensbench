@@ -90,33 +90,8 @@ impl App {
                 crate::coat_defs::focus(ctx);
                 self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
             }
-            Step::Units => {
-                // 開いた系（P17）に群 G23（群 2・3）を足し、機構部品（筒）を置いて、群 G2 の設定と欄を見せる
-                let u = |n: &str| {
-                    self.c
-                        .sys
-                        .ld_units
-                        .iter()
-                        .find(|u| u.name == n)
-                        .map(|u| u.spans.clone())
-                };
-                let mut ops = Vec::new();
-                if let (Some(a), Some(b)) = (u("G2"), u("G3")) {
-                    ops.push(json!({ "op": "define_unit", "name": "G23", "spans": [[a[0][0], b[0][1]]] }));
-                }
-                ops.push(json!({ "op": "add_mech", "part": {
-                    "name": "tube", "surface": 1, "offset": [0.0, 0.0, -2.0],
-                    "bores": [{ "z0": 0.0, "z1": 40.0, "radius": 15.0 }], "outer_radius": 18.0,
-                }}));
-                self.c.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
-                self.c.p.ld.scope.clear();
-                self.c.p.ld.sel = Some("G2".into());
-                self.c.p.ld.block_view = Some("G2".into());
-                self.c.um_open = true;
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
-            }
             Step::UndoOpen => {
-                // 開いた系の中の段より先まで戻す: 開く前の組合せ（干渉計）に戻る
+                // ズームの例を開く前の段まで戻す: 開く前の組合せ（干渉計）に戻る
                 let n = self.c.undo_list(true).len();
                 self.c.undo(true, n);
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
@@ -126,7 +101,10 @@ impl App {
                 // 前の組合せは文書の段に積む（最後の段で元に戻す）
                 let p = crate::tour::zoom_sample(dir);
                 let _ = self.c.push_doc(trf("Open {}", &[&"P17"]));
-                self.c.open(&p);
+                // 組合せとして開く（その場で作るので、続けて頼むズームは組み直した系で計算する）
+                if let Err(e) = self.c.open_combo_now(&p) {
+                    self.c.fail(e);
+                }
                 let z = &mut self.c.p.zoom;
                 z.vars = ["G2.shift", "G3.shift"]
                     .map(|n| crate::zoom_panel::VarRow {

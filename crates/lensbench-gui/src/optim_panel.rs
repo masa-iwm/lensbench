@@ -737,7 +737,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
     if c.combo {
         ui.label(
             RichText::new(tr(
-                "Combination: only surface thickness (gaps), radius and conic can be applied back to the combination.",
+                "Combination: surface thickness (gaps), radius, conic and shape coefficients (aspheric terms etc.) can be applied back to the combination.",
             ))
             .small()
             .color(weak),

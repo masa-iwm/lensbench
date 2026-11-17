@@ -1,4 +1,4 @@
-//! セルの右クリック・[...] の欄（ソルブ・ピックアップ・屈折率の追加設定・多重構成の行・組合せの上書きを外す）
+//! セルの右クリック・[...] の欄（ソルブ・ピックアップ・屈折率の追加設定・最適化の変数・組合せの上書きを外す）
 
 use super::*;
 
@@ -24,7 +24,7 @@ pub(super) fn override_item(ui: &mut Ui, c: &Ctx, j: usize, col: Col) -> Option<
 }
 
 /// セルの右クリック・[...] の欄: その値のソルブ・ピックアップ（OpticStudio のソルブの小欄のように）。硝材は
-/// 屈折率の追加設定（dn・disp・複屈折）も。bire は面の複屈折の値（読んでいなければ None）、combo は組合せの系
+/// 屈折率の追加設定（dn・disp・複屈折）も。bire は面の複屈折の値（読んでいなければ None）
 #[allow(clippy::too_many_arguments)]
 pub(super) fn cell_menu(
     ui: &mut Ui,
@@ -33,8 +33,6 @@ pub(super) fn cell_menu(
     col: Col,
     r: &Row,
     bire: Option<&Value>,
-    combo: bool,
-    cfg: (usize, &[(String, Vec<f64>)]),
 ) -> Vec<Act> {
     let mut ops: Vec<Value> = Vec::new();
     let mut acts = Vec::new();
@@ -217,8 +215,8 @@ pub(super) fn cell_menu(
         if !fields.is_empty() {
             acts.push(Act::Fields { j, fields });
         }
-        // 複屈折材の板の入口・出口（開いた系の標準面。組合せは要素の波長板で）
-        if (!combo && r.typ == "STANDARD") || bire.is_some_and(|b| !b.is_null()) {
+        // 複屈折材の板の入口・出口（今ある設定だけ。新しく付けるのは要素の波長板で）
+        if bire.is_some_and(|b| !b.is_null()) {
             ui.label(RichText::new(tr("Birefringence")).color(weak));
             match bire {
                 Some(b) => {
@@ -235,23 +233,7 @@ pub(super) fn cell_menu(
         }
         ui.separator();
     }
-    // 多重構成の行にする（開いた系）
-    if let (false, Some(name)) = (combo, config_param(r, j, col)) {
-        let have = cfg.1.iter().any(|p| p.0.eq_ignore_ascii_case(&name));
-        let resp = ui.add_enabled(
-            !have,
-            egui::Button::new(if have {
-                trf("Multi-config row {} exists", &[&name])
-            } else {
-                trf("Make a multi-config row ({})", &[&name])
-            }),
-        );
-        if resp.clicked() {
-            if cfg.0 < 2 {
-                ops.push(json!({ "op": "set_config_count", "n": 2 }));
-            }
-            ops.push(json!({ "op": "add_config_row", "param": name }));
-        }
+    if let Some(name) = config_param(r, j, col) {
         // 最適化の変数にする（硝材の dn は除く）
         if col != Col::Material
             && ui

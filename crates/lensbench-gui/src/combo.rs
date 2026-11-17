@@ -930,6 +930,9 @@ pub struct Combo {
     pub state_sys: BTreeMap<String, crate::sysset::SysSnap>,
     /// 状態ごとの BS の経路（無ければ path）
     pub state_path: BTreeMap<String, String>,
+    /// 状態ごとの、欄の無い系の値（温度・気圧、GLRS、像面など。プロジェクトの状態の project の項目をそのまま）
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub state_more: BTreeMap<String, serde_json::Map<String, Value>>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 群の役割・移動（名前は要素の group）
@@ -983,6 +986,7 @@ impl Default for Combo {
             state: None,
             state_sys: BTreeMap::new(),
             state_path: BTreeMap::new(),
+            state_more: BTreeMap::new(),
             coatings: BTreeMap::new(),
             groups: Vec::new(),
             detector: None,
@@ -1917,17 +1921,10 @@ fn fig_name(d3: bool) -> &'static str {
     }
 }
 
-/// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方）
-pub fn view_only(
-    ui: &mut Ui,
-    d: &LayoutData,
-    h: f32,
-    accent: Color32,
-    mut nav: Option<&mut crate::widgets::Nav>,
-    hl_surf: Option<usize>,
-) -> Option<OpenAct> {
-    // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける
-    let sense = if d.d3.is_some() || nav.is_some() {
+/// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方。カタログの下見）
+pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32) {
+    // 3D は回す・拡大の操作を受ける
+    let sense = if d.d3.is_some() {
         Sense::click_and_drag()
     } else {
         Sense::hover()
@@ -1937,88 +1934,8 @@ pub fn view_only(
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
     }
-    let mut view = View {
-        hl_surf,
-        ..Default::default()
-    };
-    if let Some(n) = nav.as_deref() {
-        view.nav = true;
-        view.zoom_log = n.zoom_log;
-        view.pan = n.pan;
-    }
+    let mut view = View::default();
     figure(ui, rect, &resp, None, d, &mut view, accent);
-    if let Some(n) = nav.as_deref_mut() {
-        n.zoom_log = view.zoom_log;
-        n.pan = view.pan;
-    }
-    // カタログの行を落とす（nav のある開いた系の図だけ。2D の図）: 差し込む間隔の印
-    if nav.is_some() && d.d3.is_none() && !d.unfold {
-        let q = ui.ctx().pointer_hover_pos().filter(|q| rect.contains(*q));
-        let after = q.and_then(|q| open_drop_after(&view.surf_pos, q));
-        if resp.dnd_hover_payload::<DropPick>().is_some() {
-            if let Some(a) = after {
-                let pa = view.surf_pos.get(a).copied().flatten();
-                let pb = view.surf_pos.get(a + 1).copied().flatten();
-                if let (Some(pa), Some(pb)) = (pa, pb) {
-                    let x = (pa.x + pb.x) / 2.0;
-                    let p = ui.painter_at(rect);
-                    p.line_segment(
-                        [
-                            Pos2::new(x, rect.top() + 8.0),
-                            Pos2::new(x, rect.bottom() - 8.0),
-                        ],
-                        Stroke::new(2.5_f32, accent),
-                    );
-                    p.text(
-                        Pos2::new(x + 4.0, rect.top() + 10.0),
-                        egui::Align2::LEFT_TOP,
-                        trf("Insert after surface {}", &[&a]),
-                        egui::FontId::proportional(12.0),
-                        accent,
-                    );
-                }
-            }
-        }
-        if let Some(p) = resp.dnd_release_payload::<DropPick>() {
-            if let Some(a) = after {
-                return Some(OpenAct::Drop {
-                    after: a,
-                    pick: Box::new(p.0.clone()),
-                });
-            }
-        }
-    }
-    // クリックした玉の面の範囲（ドラッグで動かしたときは除く）
-    resp.clicked()
-        .then_some(view.hover_surfs)
-        .flatten()
-        .map(OpenAct::Clicked)
-}
-
-/// 開いた系（組合せでない系）の図の操作
-pub enum OpenAct {
-    /// クリックした玉の面の範囲
-    Clicked([usize; 2]),
-    /// カタログの行を落とした: 面 `after` の後の間隔に差し込む
-    Drop { after: usize, pick: Box<Pick> },
-}
-
-/// 開いた系の図へ落とす位置 q から、差し込む間隔（その前の面の番号）: 一番近い面の頂点より右なら、その面の後、
-/// 左なら前の面の後。物体面の後（面 0）と像面の後には差し込まない
-fn open_drop_after(surf_pos: &[Option<Pos2>], q: Pos2) -> Option<usize> {
-    let n = surf_pos.len();
-    if n < 3 {
-        return None;
-    }
-    let (j, v) = surf_pos
-        .iter()
-        .enumerate()
-        .take(n - 1)
-        .skip(1)
-        .filter_map(|(j, v)| v.map(|v| (j, v)))
-        .min_by(|a, b| (a.1 - q).length().total_cmp(&(b.1 - q).length()))?;
-    let after = if q.x >= v.x { j } else { j - 1 };
-    (1..n - 1).contains(&after).then_some(after)
 }
 
 /// 落とす位置 q から差し込む番号: 一番近い要素の真ん中より光軸の先なら後ろ、手前なら前
@@ -2417,6 +2334,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
             }
             combo.state_sys.remove(&n);
             combo.state_path.remove(&n);
+            combo.state_more.remove(&n);
             for g in &mut combo.groups {
                 g.state_shift.remove(&n);
             }

@@ -21,6 +21,14 @@ pub struct SysExtra {
     /// 像面の形・傾き（プロジェクトの image をそのまま）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Value>,
+    /// 物体面の形・開口（プロジェクトの object をそのまま）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object: Option<Value>,
+    /// 瞳の振幅の分布・OPD の基準（プロジェクトの apodization・ropd をそのまま）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apodization: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ropd: Option<Value>,
 }
 
 impl SysExtra {
@@ -40,6 +48,15 @@ impl SysExtra {
             glrs: v.get("glrs").filter(|g| !g.is_null()).cloned(),
             environment,
             image: v.get("image").filter(|g| !g.is_null()).cloned(),
+            object: v.get("object").filter(|g| !g.is_null()).cloned(),
+            apodization: v
+                .get("apodization")
+                .filter(|g| !g.is_null() && **g != json!("uniform"))
+                .cloned(),
+            ropd: v
+                .get("ropd")
+                .filter(|g| !g.is_null() && **g != json!(2))
+                .cloned(),
         })
     }
 
@@ -56,6 +73,15 @@ impl SysExtra {
         }
         if let Some(g) = &self.image {
             v["image"] = g.clone();
+        }
+        if let Some(g) = &self.object {
+            v["object"] = g.clone();
+        }
+        if let Some(g) = &self.apodization {
+            v["apodization"] = g.clone();
+        }
+        if let Some(g) = &self.ropd {
+            v["ropd"] = g.clone();
         }
     }
 }
