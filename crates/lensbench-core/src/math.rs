@@ -83,8 +83,7 @@ pub fn rot(ax: usize, a_deg: f64) -> M3 {
     if a_deg == 0.0 {
         return I3;
     }
-    let a = a_deg.to_radians();
-    let (s, c) = a.sin_cos();
+    let (s, c) = crate::quantity::Angle::from_deg(a_deg).sin_cos();
     match ax {
         0 => [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]],
         1 => [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]],
@@ -102,9 +101,9 @@ pub(crate) fn solve2(j: [f64; 4], e: [f64; 2]) -> [f64; 2] {
 
 /// [`rot`] の角 [deg] による微分
 pub(crate) fn drot(ax: usize, a_deg: f64) -> M3 {
-    let a = a_deg.to_radians();
-    let (s, c) = a.sin_cos();
-    let k = std::f64::consts::PI / 180.0;
+    let (s, c) = crate::quantity::Angle::from_deg(a_deg).sin_cos();
+    // d(rad)/d(deg)
+    let k = crate::quantity::Angle::from_deg(1.0).rad();
     let m = match ax {
         0 => [[0.0, 0.0, 0.0], [0.0, -s, -c], [0.0, c, -s]],
         1 => [[-s, 0.0, c], [0.0, 0.0, 0.0], [-c, 0.0, -s]],
@@ -133,5 +132,5 @@ pub fn xyz_angles(m: &M3) -> [f64; 3] {
     let b = m[0][2].atan2((m[0][0] * m[0][0] + m[0][1] * m[0][1]).sqrt());
     let a = (-m[1][2]).atan2(m[2][2]);
     let c = (-m[0][1]).atan2(m[0][0]);
-    [a.to_degrees(), b.to_degrees(), c.to_degrees()]
+    [a, b, c].map(|x| crate::quantity::Angle::from_rad(x).deg())
 }

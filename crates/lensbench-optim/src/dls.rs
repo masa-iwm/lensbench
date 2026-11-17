@@ -1079,7 +1079,7 @@ fn opd_term(
     let (pc, kc) = (tp.rays[0].xyz, tp.rays[0].lmn);
     let c = &tc.rays[0];
     let x = &t.rays[0];
-    let wl = s.wavelengths[w] * 1e-3;
+    let wl = s.wave(w).mm();
     let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
     let v = (lc - (to_ref(s, w, pc, kc, x.xyz, x.lmn, x.opl) + x.lens_opd)) / wl;
     if !v.is_finite() {
@@ -1414,7 +1414,7 @@ fn wfe_term(
         let c = &tc.rays[0];
         let (pc, kc) = (tp.rays[0].xyz, tp.rays[0].lmn);
         let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
-        let wl = s.wavelengths[w] * 1e-3;
+        let wl = s.wave(w).mm();
         let opd: Vec<f64> = t
             .rays
             .iter()

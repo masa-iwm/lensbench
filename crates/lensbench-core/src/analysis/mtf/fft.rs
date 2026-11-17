@@ -193,7 +193,7 @@ pub(super) fn wave_otf_fft(
         Some(n) => n,
         None => mtf_points(opd_slope_max(s, field, wi)?),
     };
-    let lam = s.wavelengths[wi] * 1e-3;
+    let lam = s.wave(wi).mm();
     let ip = mtf_interp(s, field, wi, n)?;
     // 瞳の標本（直径 ns 点、区間の中心）。円の縁は中心が内側かどうかで 0・1 にする（面積の割合を振幅にすると
     // 縁どうしの重なりが割合の積になって h に比例してずれる）。補間との差は ns² に反比例

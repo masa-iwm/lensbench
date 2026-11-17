@@ -190,7 +190,7 @@ fn huygens_once(
         let jm = pupil_jacobian(s, field, wi)?;
         let (ga, gb) = plane_slopes(s, jm, kc, PsfPlane::Image);
         let (pa, pb) = perp_slopes_of(s, jm, kc);
-        let lam = s.wavelengths[wi] * 1e-3;
+        let lam = s.wave(wi).mm();
         slopes.push(((ga / lam, gb / lam), (pa / lam, pb / lam)));
         if ws.len() > 1 && !(s.weights[wi] > 0.0) {
             continue;
@@ -256,7 +256,7 @@ fn huygens_once(
                 wi + 1
             );
         }
-        let lam = s.wavelengths[wi] * 1e-3;
+        let lam = s.wave(wi).mm();
         let n = s.image_index(wi);
         let kn = 2.0 * PI * n / lam;
         let op = PupilFunction::trace_amp(s, field, Some(wi), grid, true, extra)?;

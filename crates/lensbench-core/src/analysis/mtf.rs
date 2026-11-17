@@ -285,7 +285,7 @@ fn wave_otf(
         return wave_otf_fft(s, field, wi, Some(n), freqs, amp, fr);
     }
     let jm = fr.jacobian(s, field, wi)?;
-    let lam = s.wavelengths[wi] * 1e-3;
+    let lam = s.wave(wi).mm();
     // 補間の格子: 求積の点数と同じくらいの細かさ（6 点補間の誤差は h^6 で小さい）
     let ip = match method {
         MtfMethod::Auto | MtfMethod::Interp if !freqs.is_empty() => {
@@ -451,7 +451,7 @@ pub fn mtf_tangential(s: &System, field: FieldSel, axes: MtfAxes) -> Result<Opti
 /// [`mtf_cutoff`] で、子午・球欠の向きを fr で
 fn mtf_cutoff_in(s: &System, field: FieldSel, wave: usize, fr: &MtfFrame) -> Result<TanSag<f64>> {
     let jm = fr.jacobian(s, field, wave)?;
-    let lam = s.wavelengths[wave] * 1e-3;
+    let lam = s.wave(wave).mm();
     let cut = |dir: usize| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
         2.0 / sx.hypot(sy)

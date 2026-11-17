@@ -1067,7 +1067,7 @@ pub fn beam_from_rays(
         dy: dg,
         x0: xc,
         y0: yc,
-        wl: s.wavelengths[w] * 1e-3,
+        wl: s.wave(w).mm(),
         index: n,
         pilot,
         w: 0.0,

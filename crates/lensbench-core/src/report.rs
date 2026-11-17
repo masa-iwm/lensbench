@@ -52,7 +52,7 @@ pub fn system_data(s: &System) -> SystemData {
     let hmax = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
     let pimh = match s.field_type {
         FieldType::Angle => {
-            let t = hmax.to_radians().tan();
+            let t = crate::quantity::Angle::from_deg(hmax).tan();
             if s.infinite() {
                 p.efl.abs() * t
             } else {

@@ -320,7 +320,7 @@ pub fn fiber_coupling(
         let by = grad(b, ok, g, d, i, j, 0)?;
         Some((ax * by - ay * bx).abs())
     };
-    let kw = 2.0 * std::f64::consts::PI / (s.wavelengths[w] * 1e-3);
+    let kw = s.wave(w).k_mm();
     let c = g / 2;
     let t0 = if ok0[c * g + c] {
         tt[c * g + c]

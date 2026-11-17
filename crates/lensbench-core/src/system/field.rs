@@ -1,6 +1,7 @@
 //! 視野の正規化・ケラレ係数・物体の決め方・絞り半径
 
 use super::*;
+use crate::quantity::Angle;
 
 impl System {
     pub fn field_norm_values(&self) -> (f64, f64) {
@@ -155,7 +156,7 @@ impl System {
                 return self.cond_spec(FieldCond::Position { surf: self.image() }, x, y)
             }
             FieldType::Solve(c) => return self.cond_spec(c, x, y),
-            FieldType::Angle => (x.to_radians().tan(), y.to_radians().tan()),
+            FieldType::Angle => (Angle::from_deg(x).tan(), Angle::from_deg(y).tan()),
             FieldType::ParH => {
                 let h1 = par.chief_parimage_per_unit;
                 if self.infinite() {
@@ -170,7 +171,7 @@ impl System {
             // 角度の視野が 90° を超えると光は物体側の後ろから来る（方向余弦 n < 0。OpticStudio と同じ）。
             // tan のままでは向きが反対になるので符号を戻す。ちょうど 90° は向きが決まらない
             if self.field_type == FieldType::Angle {
-                let c = x.to_radians().cos() * y.to_radians().cos();
+                let c = Angle::from_deg(x).cos() * Angle::from_deg(y).cos();
                 if c == 0.0 || !c.is_finite() {
                     notimpl!("angle field ({x}°, {y}°): a field of exactly 90°");
                 }

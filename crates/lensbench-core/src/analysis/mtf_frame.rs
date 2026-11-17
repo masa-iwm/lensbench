@@ -2,6 +2,7 @@
 
 use super::pupil_jacobian;
 use crate::error::Result;
+use crate::quantity::Angle;
 use crate::system::{FieldSel, FieldType, System};
 
 /// MTF の子午・球欠の向き
@@ -46,7 +47,7 @@ impl MtfFrame {
         let (x, y) = (hx * nx, hy * ny);
         // 角度の視野の向きは (tan θx, tan θy)（物体の側の主光線の向き。方位 45° 以外では (θx, θy) の向きと違う）
         let (x, y) = if s.field_type == FieldType::Angle {
-            (x.to_radians().tan(), y.to_radians().tan())
+            (Angle::from_deg(x).tan(), Angle::from_deg(y).tan())
         } else {
             (x, y)
         };

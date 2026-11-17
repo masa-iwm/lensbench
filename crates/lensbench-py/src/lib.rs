@@ -688,7 +688,7 @@ fn compute(
                     (&own, 0)
                 }
             };
-            let kw = 2.0 * std::f64::consts::PI / (sys.wavelengths[w] * 1e-3);
+            let kw = sys.wave(w).k_mm();
             let nan = C64::new(f64::NAN, f64::NAN);
             let mut j = Vec::with_capacity(n * 4);
             let mut z = Vec::with_capacity(n * 2);

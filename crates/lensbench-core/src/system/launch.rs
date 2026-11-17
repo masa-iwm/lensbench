@@ -451,7 +451,7 @@ impl System {
         let fr = fres_fr.as_ref().unwrap_or(self.frames());
         let clip = self.floating_clip;
         let st = self.stop();
-        let kw = 2.0 * std::f64::consts::PI / (self.wavelengths[w] * 1e-3);
+        let kw = self.wave(w).k_mm();
         // 記録する面（無視しない面）の配列を先に用意し、光線ごとにその位置へ直接書く
         let mut rec_out: Vec<RecSurf> = Vec::new();
         let mut slot = Vec::new();

@@ -50,6 +50,7 @@ pub mod plugin;
 pub mod pop;
 pub mod psf;
 pub mod pupil;
+pub mod quantity;
 pub mod raygrid;
 pub mod report;
 pub mod semi;

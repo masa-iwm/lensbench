@@ -141,7 +141,7 @@ pub(crate) fn opd_chief(
     let (pc, kc) = (rp.rays[0].xyz, rp.rays[0].lmn);
     let c = &rc.rays[0];
     let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
-    let wl = s.wavelengths[w] * 1e-3;
+    let wl = s.wave(w).mm();
     let opd = (0..r.len())
         .map(|i| (lc - (to_ref(s, w, pc, kc, r.xyz[i], r.lmn[i], r.opl[i]) + r.lens_opd[i])) / wl)
         .collect();

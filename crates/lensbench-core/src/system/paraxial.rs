@@ -52,10 +52,7 @@ impl System {
                     let dphi = match action {
                         Action::Binary2(Some(b)) => {
                             let a = b.coef.first().copied().unwrap_or(0.0);
-                            self.wavelengths[w] * 1e-3 / (2.0 * std::f64::consts::PI)
-                                * b.order
-                                * 2.0
-                                * a
+                            self.wave(w).mm() / (2.0 * std::f64::consts::PI) * b.order * 2.0 * a
                                 / (b.norm * b.norm)
                                 * yy
                         }
@@ -316,7 +313,11 @@ impl System {
                     let (s, img) = (self.stop(), self.image());
                     let chief = |deg: f64| {
                         self.trace_spec(
-                            ObjSpec::Dir(normalize([0.0, deg.to_radians().tan(), 1.0])),
+                            ObjSpec::Dir(normalize([
+                                0.0,
+                                crate::quantity::Angle::from_deg(deg).tan(),
+                                1.0,
+                            ])),
                             &[0.0],
                             &[0.0],
                             self.primary,

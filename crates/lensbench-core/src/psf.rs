@@ -392,7 +392,7 @@ fn psf_once(
             continue;
         }
         let (ga, gb) = plane_slopes(s, pupil_jacobian(s, field, wi)?, kc, o.plane);
-        let lam = s.wavelengths[wi] * 1e-3;
+        let lam = s.wave(wi).mm();
         cut.0 = cut.0.max(2.0 * (ga / lam).abs());
         cut.1 = cut.1.max(2.0 * (gb / lam).abs());
     }
@@ -437,7 +437,7 @@ fn psf_once(
             (PsfPlane::Image, Some(q)) => PupilGrid::Sheared { n: np, q },
             _ => PupilGrid::Cells(np),
         };
-        let lam = s.wavelengths[wi] * 1e-3;
+        let lam = s.wave(wi).mm();
         // 位相の係数: exp(−2πi (a px x + b py y))、a = (∂L/∂px) / λ（垂直な面なら (∂d/∂px·e1) / λ）
         let (a, b) = (ga / lam, gb / lam);
         // 瞳の標本の間隔 h で像の DFT は周期 1 / (a h) で繰り返すので、像の格子がそれを超えると重なる
