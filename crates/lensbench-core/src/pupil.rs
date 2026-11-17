@@ -18,7 +18,7 @@ use crate::system::{FieldSel, RayBuf, System, Trace};
 pub enum Rim {
     /// x² + y² ≤ 1
     Closed,
-    /// x² + y² ≤ 1 + 1e-12（丸めで縁の点を落とさない）
+    /// x² + y² ≤ 1 + [`crate::tol::PUPIL_RIM`]（丸めで縁の点を落とさない）
     Padded,
 }
 
@@ -28,7 +28,7 @@ impl Rim {
     pub fn inside(self, x: f64, y: f64) -> bool {
         match self {
             Rim::Closed => x * x + y * y <= 1.0,
-            Rim::Padded => x * x + y * y <= 1.0 + 1e-12,
+            Rim::Padded => x * x + y * y <= 1.0 + crate::tol::PUPIL_RIM,
         }
     }
 }

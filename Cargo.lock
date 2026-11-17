@@ -2982,6 +2982,7 @@ dependencies = [
  "serde",
  "serde_json",
  "web-time",
+ "windows-sys 0.61.2",
  "zip",
 ]
 

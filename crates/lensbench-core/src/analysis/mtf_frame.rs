@@ -138,7 +138,8 @@ impl MtfFrame {
                 [[dot(e, je), dot(e, jf)], [dot(f, je), dot(f, jf)]]
             }
         };
-        if !(jp[0][0].abs() > 1e-12 && jp[1][1].abs() > 1e-12) {
+        if !(jp[0][0].abs() > crate::tol::JACOBIAN_MIN && jp[1][1].abs() > crate::tol::JACOBIAN_MIN)
+        {
             crate::notimpl!("MTF: the image space aperture is 0 (afocal?)");
         }
         Ok(jp)

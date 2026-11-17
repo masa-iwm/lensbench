@@ -1,5 +1,6 @@
 //! 光線の始め方・追跡の結果・記録の型
 
+use super::raybuf::ColOut;
 use super::*;
 
 /// 光線の始め方
@@ -163,27 +164,25 @@ impl From<bool> for RecSel<'_> {
     }
 }
 
-/// 記録の配列（面ごと）の先頭。追跡の並列化で、光線 i は各配列の i 番目だけに書く
+/// 記録の配列（面ごと）の書き口。追跡の並列化で、光線 i は各配列の i 番目だけに書く（[`ColOut`]）
 pub(super) struct SoaPtrs {
     /// 記録の番号（無視しない面の順）→ 出力の面の番号（記録しない面は usize::MAX）
-    pub(super) slot: Vec<usize>,
-    pub(super) xyz: Vec<*mut V3>,
-    pub(super) lmn: Vec<*mut V3>,
-    pub(super) opl: Vec<*mut f64>,
-    pub(super) p: Vec<*mut V3>,
+    slot: Vec<usize>,
+    xyz: Vec<ColOut<V3>>,
+    lmn: Vec<ColOut<V3>>,
+    opl: Vec<ColOut<f64>>,
+    p: Vec<ColOut<V3>>,
     pub(super) n: usize,
 }
-// 安全: 書く位置は光線ごとに別（SoaRow::put を参照）で、配列は追跡の間は動かさない
-unsafe impl Sync for SoaPtrs {}
 
 impl SoaPtrs {
     pub(super) fn new(r: &mut [RecSurf], slot: Vec<usize>, n: usize) -> SoaPtrs {
         SoaPtrs {
             slot,
-            xyz: r.iter_mut().map(|x| x.xyz.as_mut_ptr()).collect(),
-            lmn: r.iter_mut().map(|x| x.lmn.as_mut_ptr()).collect(),
-            opl: r.iter_mut().map(|x| x.opl.as_mut_ptr()).collect(),
-            p: r.iter_mut().map(|x| x.p.as_mut_ptr()).collect(),
+            xyz: r.iter_mut().map(|x| ColOut::over(&mut x.xyz)).collect(),
+            lmn: r.iter_mut().map(|x| ColOut::over(&mut x.lmn)).collect(),
+            opl: r.iter_mut().map(|x| ColOut::over(&mut x.opl)).collect(),
+            p: r.iter_mut().map(|x| ColOut::over(&mut x.p)).collect(),
             n,
         }
     }
@@ -206,14 +205,11 @@ impl trace::RecSink for SoaRow<'_> {
             Some(&s) if s != usize::MAX => s,
             _ => return,
         };
-        assert!(k < o.xyz.len() && self.i < o.n);
-        // 安全: 範囲は上で確かめた。光線 i は SoaRow を 1 つだけ持ち、i 番目には他の光線が書かない
-        unsafe {
-            *o.xyz[k].add(self.i) = e.xyz;
-            *o.lmn[k].add(self.i) = e.lmn;
-            *o.opl[k].add(self.i) = e.opl;
-            *o.p[k].add(self.i) = e.p;
-        }
+        // 光線 i は SoaRow を 1 つだけ持ち、i 番目には他の光線が書かない
+        o.xyz[k].put(self.i, e.xyz);
+        o.lmn[k].put(self.i, e.lmn);
+        o.opl[k].put(self.i, e.opl);
+        o.p[k].put(self.i, e.p);
     }
 }
 

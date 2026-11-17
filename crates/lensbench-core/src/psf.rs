@@ -238,11 +238,12 @@ pub fn plane_slopes(s: &System, jm: [[f64; 2]; 2], k: [f64; 3], plane: PsfPlane)
 /// （x・y の両方に角度のある視野で出る）があると x と y の変換に分かれない。瞳の格子の点 c（区間の中心、[−1, 1]²）を
 /// p = Q c、Q = J⁻¹ diag(ga, gb)（ga・gb は [`plane_slopes`] の値）で追うと J Q = diag(ga, gb) なので位相は
 /// x ga c_x + y gb c_y に分かれ、行列の DFT がそのまま使える。単位円は c の上で [−1, 1]² に内接する楕円になる。
-/// J が対角（非対角が対角の 1e-12 以下）なら None（写さない）
+/// J が対角（非対角が対角の [`crate::tol::JACOBIAN_REL`] 以下）なら None（写さない）
 #[doc(hidden)]
 pub fn image_shear(jm: [[f64; 2]; 2]) -> Option<[[f64; 2]; 2]> {
     let [[a, b], [c, d]] = jm;
-    if b.abs() <= 1e-12 * a.abs() && c.abs() <= 1e-12 * d.abs() {
+    let r = crate::tol::JACOBIAN_REL;
+    if b.abs() <= r * a.abs() && c.abs() <= r * d.abs() {
         return None;
     }
     let det = a * d - b * c;

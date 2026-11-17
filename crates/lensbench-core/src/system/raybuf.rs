@@ -154,75 +154,100 @@ pub(super) struct Done {
     pub(super) hx_hy: (f64, f64),
 }
 
-/// 光線ごとの結果の書き先（列の先頭。書かない列は空）。光線 i は各列の i 番目だけに書く
-pub(super) struct OutPtrs {
+/// 列の書き口: 光線 i は i 番目だけに書く（追跡の並列化で、各添字は 1 つのスレッドだけが書く）。生のポインタへの
+/// 書き込みはここの 1 か所だけで、添字の範囲はいつも確かめる。使わない列（[`ColOut::off`]）には書かない
+pub(super) struct ColOut<T: Copy> {
+    p: *mut T,
     n: usize,
-    ray: *mut RayOut,
-    status: *mut RayStatus,
-    vig: *mut u32,
-    xyz: *mut V3,
-    lmn: *mut V3,
-    opl: *mut f64,
-    p: *mut V3,
-    k: *mut V3,
-    p0: *mut V3,
-    k0: *mut V3,
-    opl_os: *mut f64,
-    lens_opd: *mut f64,
+}
+// 安全: 書く位置は添字ごとに別（各添字は 1 つのスレッドだけが書く）で、列は書き終えるまで動かさない・読まない
+unsafe impl<T: Copy + Send> Sync for ColOut<T> {}
+unsafe impl<T: Copy + Send> Send for ColOut<T> {}
+
+impl<T: Copy> ColOut<T> {
+    pub(super) fn off() -> Self {
+        ColOut {
+            p: std::ptr::null_mut(),
+            n: 0,
+        }
+    }
+
+    /// v を空にして n 個ぶん確保した領域（中身は未初期化）。v の長さは書き終えてから決める（[`Dst::finish`]）。
+    /// on でなければ v を空にするだけで書かない
+    fn spare(v: &mut Vec<T>, on: bool, n: usize) -> Self {
+        v.clear();
+        if !on {
+            return ColOut::off();
+        }
+        v.reserve(n);
+        ColOut {
+            p: v.spare_capacity_mut()[..n].as_mut_ptr() as *mut T,
+            n,
+        }
+    }
+
+    /// v の今の中身に上書きする
+    pub(super) fn over(v: &mut [T]) -> Self {
+        ColOut {
+            p: v.as_mut_ptr(),
+            n: v.len(),
+        }
+    }
+
+    #[inline(always)]
+    pub(super) fn on(&self) -> bool {
+        !self.p.is_null()
+    }
+
+    #[inline(always)]
+    pub(super) fn put(&self, i: usize, v: T) {
+        if self.p.is_null() {
+            return;
+        }
+        assert!(i < self.n);
+        // 安全: i < n は上で確かめ、領域は n 個ぶんある。i 番目は 1 つのスレッドだけが書く（型の約束）
+        unsafe { self.p.add(i).write(v) }
+    }
+}
+
+/// 光線ごとの結果の書き先（書かない列は [`ColOut::off`]）。光線 i は各列の i 番目だけに書く
+pub(super) struct OutPtrs {
+    ray: ColOut<RayOut>,
+    status: ColOut<RayStatus>,
+    vig: ColOut<u32>,
+    xyz: ColOut<V3>,
+    lmn: ColOut<V3>,
+    opl: ColOut<f64>,
+    p: ColOut<V3>,
+    k: ColOut<V3>,
+    p0: ColOut<V3>,
+    k0: ColOut<V3>,
+    opl_os: ColOut<f64>,
+    lens_opd: ColOut<f64>,
     /// 無限遠物体の opl_os の基準（面 1 の原点・軸・その前の屈折率）
     os: Option<(V3, V3, f64)>,
-}
-// 安全: 書く位置は光線ごとに別で、列は追跡の間は動かさない（長さは書き終えてから決める）
-unsafe impl Sync for OutPtrs {}
-
-fn spare<T>(v: &mut Vec<T>, on: bool, n: usize) -> *mut T {
-    if !on {
-        v.clear();
-        return std::ptr::null_mut();
-    }
-    v.clear();
-    v.reserve(n);
-    v.spare_capacity_mut()[..n].as_mut_ptr() as *mut T
 }
 
 impl OutPtrs {
     #[inline(always)]
     pub(super) fn put(&self, i: usize, r: &RayOut, p0: V3, k0: V3) {
-        debug_assert!(i < self.n);
-        // 安全: i < n（呼び出し側の約束）で、各列は n 個ぶん確保してある
-        unsafe {
-            let w = |q: *mut V3, v: V3| {
-                if !q.is_null() {
-                    q.add(i).write(v)
-                }
+        self.ray.put(i, *r);
+        self.status.put(i, r.status);
+        self.vig.put(i, r.vig as u32);
+        self.xyz.put(i, r.xyz);
+        self.lmn.put(i, r.lmn);
+        self.opl.put(i, r.opl);
+        self.p.put(i, r.p);
+        self.k.put(i, r.k);
+        self.p0.put(i, p0);
+        self.k0.put(i, k0);
+        self.lens_opd.put(i, r.lens_opd);
+        if self.opl_os.on() {
+            let v = match self.os {
+                Some((o, ax, nb)) => r.opl - dot(sub(o, p0), ax) / dot(k0, ax) * nb,
+                None => r.opl,
             };
-            let wf = |q: *mut f64, v: f64| {
-                if !q.is_null() {
-                    q.add(i).write(v)
-                }
-            };
-            if !self.ray.is_null() {
-                self.ray.add(i).write(*r);
-            }
-            if !self.status.is_null() {
-                self.status.add(i).write(r.status);
-                self.vig.add(i).write(r.vig as u32);
-            }
-            w(self.xyz, r.xyz);
-            w(self.lmn, r.lmn);
-            wf(self.opl, r.opl);
-            w(self.p, r.p);
-            w(self.k, r.k);
-            w(self.p0, p0);
-            w(self.k0, k0);
-            wf(self.lens_opd, r.lens_opd);
-            if !self.opl_os.is_null() {
-                let v = match self.os {
-                    Some((o, ax, nb)) => r.opl - dot(sub(o, p0), ax) / dot(k0, ax) * nb,
-                    None => r.opl,
-                };
-                self.opl_os.add(i).write(v);
-            }
+            self.opl_os.put(i, v);
         }
     }
 }
@@ -257,37 +282,35 @@ impl Dst<'_> {
                 k0,
                 opl_os,
             } => OutPtrs {
-                n,
-                ray: spare(rays, true, n),
-                status: std::ptr::null_mut(),
-                vig: std::ptr::null_mut(),
-                xyz: std::ptr::null_mut(),
-                lmn: std::ptr::null_mut(),
-                opl: std::ptr::null_mut(),
-                p: std::ptr::null_mut(),
-                k: std::ptr::null_mut(),
-                p0: spare(p0, true, n),
-                k0: spare(k0, true, n),
-                opl_os: spare(opl_os, true, n),
-                lens_opd: std::ptr::null_mut(),
+                ray: ColOut::spare(rays, true, n),
+                status: ColOut::off(),
+                vig: ColOut::off(),
+                xyz: ColOut::off(),
+                lmn: ColOut::off(),
+                opl: ColOut::off(),
+                p: ColOut::off(),
+                k: ColOut::off(),
+                p0: ColOut::spare(p0, true, n),
+                k0: ColOut::spare(k0, true, n),
+                opl_os: ColOut::spare(opl_os, true, n),
+                lens_opd: ColOut::off(),
                 os,
             },
             Dst::Buf(b) => {
                 let c = b.cols;
                 OutPtrs {
-                    n,
-                    ray: std::ptr::null_mut(),
-                    status: spare(&mut b.status, true, n),
-                    vig: spare(&mut b.vig, true, n),
-                    xyz: spare(&mut b.xyz, c.has(Cols::XYZ), n),
-                    lmn: spare(&mut b.lmn, c.has(Cols::LMN), n),
-                    opl: spare(&mut b.opl, c.has(Cols::OPL), n),
-                    p: spare(&mut b.p, c.has(Cols::PK), n),
-                    k: spare(&mut b.k, c.has(Cols::PK), n),
-                    p0: spare(&mut b.p0, c.has(Cols::START), n),
-                    k0: spare(&mut b.k0, c.has(Cols::START), n),
-                    opl_os: spare(&mut b.opl_os, c.has(Cols::OPL_OS), n),
-                    lens_opd: spare(&mut b.lens_opd, c.has(Cols::LENS_OPD), n),
+                    ray: ColOut::off(),
+                    status: ColOut::spare(&mut b.status, true, n),
+                    vig: ColOut::spare(&mut b.vig, true, n),
+                    xyz: ColOut::spare(&mut b.xyz, c.has(Cols::XYZ), n),
+                    lmn: ColOut::spare(&mut b.lmn, c.has(Cols::LMN), n),
+                    opl: ColOut::spare(&mut b.opl, c.has(Cols::OPL), n),
+                    p: ColOut::spare(&mut b.p, c.has(Cols::PK), n),
+                    k: ColOut::spare(&mut b.k, c.has(Cols::PK), n),
+                    p0: ColOut::spare(&mut b.p0, c.has(Cols::START), n),
+                    k0: ColOut::spare(&mut b.k0, c.has(Cols::START), n),
+                    opl_os: ColOut::spare(&mut b.opl_os, c.has(Cols::OPL_OS), n),
+                    lens_opd: ColOut::spare(&mut b.lens_opd, c.has(Cols::LENS_OPD), n),
                     os,
                 }
             }
@@ -296,7 +319,8 @@ impl Dst<'_> {
 
     /// 0..n の全部を書いたあとで長さを決める
     ///
-    /// 安全: [`Self::prepare`] の後に、0..n のすべての i について [`OutPtrs::put`] を呼んだこと
+    /// 安全: [`Self::prepare`] の後に、0..n のすべての i について [`OutPtrs::put`] を呼んだこと（未初期化のまま長さに
+    /// 入れる所はここだけ）
     pub(super) unsafe fn finish(&mut self, n: usize) {
         unsafe fn set<T>(v: &mut Vec<T>, n: usize) {
             debug_assert!(v.capacity() >= n);

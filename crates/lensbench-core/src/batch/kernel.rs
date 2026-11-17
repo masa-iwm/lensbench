@@ -361,9 +361,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                                 (q[2] - z) / (kl[2] - dz * 2.0 * (q[0] * kl[0] + q[1] * kl[1]));
                             ds = sel(act, dn, ds);
                             s = sel(act, s - dn, s);
-                            // 止める刻みは trace::newton_tol と同じ（1e-14 か s・z の丸めの 8 ulp の大きい方）
+                            // 止める刻みは trace::newton_tol と同じ（NEWTON_STEP_MIN か s・z の丸めの 8 ulp の大きい方）
                             let t = (s.abs() + z.abs()) * (8.0 * f64::EPSILON);
-                            let tol = sel(t.gt(1e-14), t, V::splat(1e-14));
+                            let m = crate::tol::NEWTON_STEP_MIN;
+                            let tol = sel(t.gt(m), t, V::splat(m));
                             act = act & dn.abs().gt(tol);
                         }
                         // !(|ds| <= 1e-10)（NaN も）

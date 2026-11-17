@@ -209,7 +209,7 @@ pub fn pupil_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]
     } else {
         pupil_jacobian_inner(s, field, w)?
     };
-    if !(jm[0][0].abs() > 1e-12 && jm[1][1].abs() > 1e-12) {
+    if !(jm[0][0].abs() > crate::tol::JACOBIAN_MIN && jm[1][1].abs() > crate::tol::JACOBIAN_MIN) {
         notimpl!("MTF: the image space aperture is 0 (afocal?)");
     }
     Ok(jm)
@@ -274,7 +274,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
         *c = [-(p[0] - m[0]) / h * u, -(p[1] - m[1]) / h * u];
     }
     let jm = [[col[0][0], col[1][0]], [col[0][1], col[1][1]]];
-    if !(jm[0][0].abs() > 1e-12 && jm[1][1].abs() > 1e-12) {
+    if !(jm[0][0].abs() > crate::tol::JACOBIAN_MIN && jm[1][1].abs() > crate::tol::JACOBIAN_MIN) {
         notimpl!("MTF: the beam width of the afocal image space is 0");
     }
     Ok(jm)

@@ -17,7 +17,9 @@ pub fn opd_slope_max(s: &System, field: FieldSel, w: usize) -> Result<f64> {
     let px: Vec<f64> = (0..m * m).map(|k| g[k % m]).collect();
     let py: Vec<f64> = (0..m * m).map(|k| g[k / m]).collect();
     let o = opd(s, field, &px, &py, Some(w), true)?;
-    let ok = |k: usize| px[k].hypot(py[k]) <= 1.0 + 1e-12 && o.ok(k) && o.opd[k].is_finite();
+    let ok = |k: usize| {
+        px[k].hypot(py[k]) <= 1.0 + crate::tol::PUPIL_RIM && o.ok(k) && o.opd[k].is_finite()
+    };
     let mut g: f64 = 0.0;
     for i in 0..m {
         for j in 0..m {
@@ -328,11 +330,8 @@ impl PupilInterp {
 /// 子午と球欠の MTF が同じになるか（軸上の回転対称な系）: 格子の OPD が対称（[`PupilInterp::symmetric`]）で、
 /// 瞳の縮尺 J が x・y で同じ
 pub(super) fn axis_symmetric(jm: &[[f64; 2]; 2], ip: &PupilInterp) -> bool {
-    let a = jm[0][0].abs();
-    (jm[0][0] - jm[1][1]).abs() <= 1e-12 * a
-        && jm[0][1].abs() <= 1e-12 * a
-        && jm[1][0].abs() <= 1e-12 * a
-        && ip.symmetric()
+    let a = jm[0][0].abs() * crate::tol::JACOBIAN_REL;
+    (jm[0][0] - jm[1][1]).abs() <= a && jm[0][1].abs() <= a && jm[1][0].abs() <= a && ip.symmetric()
 }
 
 /// 直接追跡の点（補間できなかった点）を埋める

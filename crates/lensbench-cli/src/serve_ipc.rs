@@ -254,53 +254,18 @@ mod win {
     use std::ffi::c_void;
     use std::fs::File;
     use std::os::windows::io::{FromRawHandle, RawHandle};
-
-    type Handle = *mut c_void;
-
-    const PIPE_ACCESS_DUPLEX: u32 = 0x3;
-    const FILE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x0008_0000;
-    const PIPE_TYPE_BYTE: u32 = 0;
-    const PIPE_READMODE_BYTE: u32 = 0;
-    const PIPE_WAIT: u32 = 0;
-    const PIPE_REJECT_REMOTE_CLIENTS: u32 = 0x8;
-    const PIPE_UNLIMITED_INSTANCES: u32 = 255;
-    const ERROR_PIPE_CONNECTED: i32 = 535;
-    const FILE_MAP_WRITE: u32 = 0x2;
-    const FILE_MAP_READ: u32 = 0x4;
-
-    #[repr(C)]
-    struct MemoryBasicInformation {
-        base_address: *mut c_void,
-        allocation_base: *mut c_void,
-        allocation_protect: u32,
-        #[cfg(target_pointer_width = "64")]
-        partition_id: u16,
-        region_size: usize,
-        state: u32,
-        protect: u32,
-        typ: u32,
-    }
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn CreateNamedPipeW(
-            name: *const u16,
-            open_mode: u32,
-            pipe_mode: u32,
-            max_instances: u32,
-            out_buffer: u32,
-            in_buffer: u32,
-            timeout: u32,
-            security: *mut c_void,
-        ) -> Handle;
-        fn ConnectNamedPipe(h: Handle, overlapped: *mut c_void) -> i32;
-        fn OpenFileMappingW(access: u32, inherit: i32, name: *const u16) -> Handle;
-        fn MapViewOfFile(h: Handle, access: u32, off_hi: u32, off_lo: u32, n: usize)
-            -> *mut c_void;
-        fn UnmapViewOfFile(p: *const c_void) -> i32;
-        fn VirtualQuery(p: *const c_void, info: *mut MemoryBasicInformation, len: usize) -> usize;
-        fn CloseHandle(h: Handle) -> i32;
-    }
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_PIPE_CONNECTED, HANDLE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX,
+    };
+    use windows_sys::Win32::System::Memory::{
+        MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualQuery, FILE_MAP_READ,
+        FILE_MAP_WRITE, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS,
+    };
+    use windows_sys::Win32::System::Pipes::{
+        ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
+        PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+    };
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -325,7 +290,7 @@ mod win {
                 1 << 16,
                 1 << 16,
                 0,
-                std::ptr::null_mut(),
+                std::ptr::null(),
             )
         };
         if h.is_null() || h as isize == -1 {
@@ -341,10 +306,10 @@ mod win {
     pub fn connect(f: File) -> lensbench_core::Result<File> {
         use std::os::windows::io::AsRawHandle;
         // SAFETY: f はパイプの口のハンドル。同期の待ち（overlapped なし）
-        let ok = unsafe { ConnectNamedPipe(f.as_raw_handle() as Handle, std::ptr::null_mut()) };
+        let ok = unsafe { ConnectNamedPipe(f.as_raw_handle() as HANDLE, std::ptr::null_mut()) };
         if ok == 0 {
             let e = std::io::Error::last_os_error();
-            if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED) {
+            if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
                 return Err(lensbench_core::Error::io_at("pipe connection")(e));
             }
         }
@@ -353,7 +318,7 @@ mod win {
 
     /// 名前付きのファイルマッピングの全体を写した区画
     pub struct View {
-        h: Handle,
+        h: HANDLE,
         p: *mut u8,
         pub size: usize,
     }
@@ -369,7 +334,7 @@ mod win {
                 ))(std::io::Error::last_os_error()));
             }
             // SAFETY: h は開いたマッピング。0 バイトで全体を写す
-            let p = unsafe { MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0) };
+            let p = unsafe { MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0) }.Value;
             if p.is_null() {
                 let e = std::io::Error::last_os_error();
                 // SAFETY: h は開いたハンドル
@@ -379,10 +344,11 @@ mod win {
                 ))(e));
             }
             // SAFETY: 写した区画の先頭で問い合わせる
-            let mut mbi: MemoryBasicInformation = unsafe { std::mem::zeroed() };
-            let n =
-                unsafe { VirtualQuery(p, &mut mbi, std::mem::size_of::<MemoryBasicInformation>()) };
-            let size = if n == 0 { 0 } else { mbi.region_size };
+            let mut mbi: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+            let n = unsafe {
+                VirtualQuery(p, &mut mbi, std::mem::size_of::<MEMORY_BASIC_INFORMATION>())
+            };
+            let size = if n == 0 { 0 } else { mbi.RegionSize };
             Ok(View {
                 h,
                 p: p as *mut u8,
@@ -408,7 +374,9 @@ mod win {
         fn drop(&mut self) {
             // SAFETY: open で写した区画と開いたハンドル
             unsafe {
-                UnmapViewOfFile(self.p as *const c_void);
+                UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
+                    Value: self.p as *mut c_void,
+                });
                 CloseHandle(self.h);
             }
         }

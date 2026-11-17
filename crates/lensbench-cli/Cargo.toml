@@ -52,6 +52,17 @@ web-time = "1"
 # 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）
 mimalloc = { version = "0.1", default-features = false }
 
+# Windows の名前付きパイプ・共有メモリ（serve --pipe・--shm）の宣言だけのクレート（手で書いた extern の代わり）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Memory",
+    "Win32_System_Pipes",
+] }
+
 [dev-dependencies]
 # 試験で置き場の gzip・zip を作る
 flate2 = "1"

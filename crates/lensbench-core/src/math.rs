@@ -113,6 +113,21 @@ pub(crate) fn drot(ax: usize, a_deg: f64) -> M3 {
     m.map(|r| r.map(|v| v * k))
 }
 
+/// 直線 p0 + t·k0 の上で、直線 p1 + s·k1 に最も近い点（3 次元の最近点。平行なら NaN）
+pub(crate) fn closest_on_line(p0: V3, k0: V3, p1: V3, k1: V3) -> V3 {
+    let w0 = sub(p0, p1);
+    let (a, b, c) = (dot(k0, k0), dot(k0, k1), dot(k1, k1));
+    let (d, f) = (dot(k0, w0), dot(k1, w0));
+    add(p0, scale(k0, (b * f - c * d) / (a * c - b * b)))
+}
+
+/// 直線 p0 + t·k0 と p1 + s·k1 を y-z 面に写して交わる点の t（x は見ない。平行なら ±∞・NaN）
+pub(crate) fn cross_yz_t(p0: V3, k0: V3, p1: V3, k1: V3) -> f64 {
+    let det = k1[1] * k0[2] - k0[1] * k1[2];
+    let (ry, rz) = (p1[1] - p0[1], p1[2] - p0[2]);
+    (rz * k1[1] - ry * k1[2]) / det
+}
+
 /// 回転 R = Rx(a) Ry(b) Rz(c)（[`rot`]、順序 0 の座標ブレーク）の角 [deg]
 pub fn xyz_angles(m: &M3) -> [f64; 3] {
     let b = m[0][2].atan2((m[0][0] * m[0][0] + m[0][1] * m[0][1]).sqrt());

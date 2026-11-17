@@ -237,8 +237,7 @@ pub(super) fn pol_surface_l<V: Lanes, const N: usize>(
 /// 境界の近く（と NaN・無限大）だけ [`trace::aperture_out`]（hypot）で決める
 #[inline(always)]
 pub(super) fn aperture_out_l<V: Lanes>(a: Aperture, pl: &VL<V>) -> V::B {
-    // 半径の 2 乗の丸めの誤差（数 ulp）より十分大きい幅
-    const M: f64 = 1e-12;
+    const M: f64 = crate::tol::RADIUS2_MARGIN;
     #[inline(always)]
     fn ring<V: Lanes>(
         a: Aperture,

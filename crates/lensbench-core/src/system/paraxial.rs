@@ -302,16 +302,10 @@ impl System {
                         // Zernike・Grid Sag・傾けた GRIN の面を含む系は y-z 面で交わる点（3 次元の最近点だと、
                         // 面の傾きの項で主光線が x にも振れる系でずれる。OpticStudio 26.1 の EXPP と、鏡 1 枚の
                         // Z2 で 3e-12、G3 で 8e-7 一致。OpticStudio との照合）
-                        let det = k1[1] * k0[2] - k0[1] * k1[2];
-                        let (ry, rz) = (p1[1] - p0[1], p1[2] - p0[2]);
-                        let t = (rz * k1[1] - ry * k1[2]) / det;
-                        p0[2] + k0[2] * t
+                        p0[2] + k0[2] * cross_yz_t(p0, k0, p1, k1)
                     } else {
                         // 傾き・偏心の系は 3 次元の最近点（C0・C1 で OpticStudio と一致）
-                        let w0 = sub(p0, p1);
-                        let (a, b, c) = (dot(k0, k0), dot(k0, k1), dot(k1, k1));
-                        let (d, f) = (dot(k0, w0), dot(k1, w0));
-                        add(p0, scale(k0, (b * f - c * d) / (a * c - b * b)))[2]
+                        closest_on_line(p0, k0, p1, k1)[2]
                     }
                 };
                 if self.cusp_pupil() {
