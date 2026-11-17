@@ -438,7 +438,8 @@ fn gaussian_beam_matches_q_parameter_with_every_method() {
             let (j, jj) = (10, 14);
             let ph = |i: usize| p.beam.field(i, 0).arg();
             let (x1, x2) = (p.beam.x(j), p.beam.x(jj));
-            let want = 2.0 * PI / WL * iq.re * (x2 * x2 - x1 * x1) / 2.0;
+            // exp(−ikL) の約束: 位相は −k × 光路長
+            let want = -2.0 * PI / WL * iq.re * (x2 * x2 - x1 * x1) / 2.0;
             let dph = (C64::from_polar(1.0, ph(jj) - ph(j)) * C64::from_polar(1.0, -want)).arg();
             assert!(dph.abs() < 2e-2, "z {z} {m:?} 位相 {dph}");
         }

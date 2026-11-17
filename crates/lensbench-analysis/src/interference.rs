@@ -7,12 +7,11 @@
 //!   「Use Exit Pupil」を外したときと同じ（既定の射出瞳の形を使う設定では、軸外で射出瞳の形に合わせて点を
 //!   取り直すので、縞の位置が少し違う）。A0 系の 16 条件で強度の差は 2e-9 以下（OpticStudio の結果と照合）。
 //! - 像面上（[`detector`]）: 2 本の経路の光線の格子を像面（検出面）の画素へ補間し（[`lensbench_core::raygrid::rasterize`]）、
-//!   画素ごとに場を足して I = |A_s e^{ikL_s} + A_r e^{ikL_r}|² を出す。瞳は一様に照らす
+//!   画素ごとに場を足して I = |A_s e^{−ikL_s} + A_r e^{−ikL_r}|² を出す（約束は [`lensbench_core::phase`]）。瞳は一様に照らす
 //!   （強度は瞳の正規化座標の面積の割合 / 検出面の面積）。偏光を指定すると Jones の場で重ねる。
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
-use lensbench_core::phase::pol_to_scalar;
 use lensbench_core::pupil::{PupilFunction, PupilGrid, Rim};
 use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::system::{FieldSel, System};
@@ -209,7 +208,7 @@ impl DetectorFringe {
     }
 }
 
-/// 1 本の経路を瞳 G × G で波長 w の光線の格子にする（場は exp(+i k L) の約束の複素ベクトル、スカラーなら (1, 0, 0)）。
+/// 1 本の経路を瞳 G × G で波長 w の光線の格子にする（場は exp(−i k L) の約束の複素ベクトル、スカラーなら (1, 0, 0)）。
 /// 光路長は物体から像面まで（理想レンズがあれば位相込み）
 fn trace_grid(
     sys: &System,
@@ -231,7 +230,9 @@ fn trace_grid(
     // 偏光つきなら偏光追跡の結果の追跡（同じ光線、ビット単位で同じ）を使い、同じ点を 2 回追わない
     let pt = match pol {
         Some((p, coat)) => {
-            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[p.jones()], coat, false)?)
+            // 入射の Jones ベクトル（InputPol は exp(+i k L) の約束）を偏光追跡の exp(−i k L) の約束に
+            let jin = p.jones().map(|c| c.conj());
+            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[jin], coat, false)?)
         }
         None => None,
     };
@@ -271,11 +272,8 @@ fn trace_grid(
         r.sx[q] = pxs[m];
         r.sy[q] = pys[m];
         e[q] = match &pt {
-            Some(pt) => {
-                let v = pt.e[m][0];
-                // 伝搬の位相を除いた振幅を exp(+i k L) の約束の場に（lensbench_core::phase、raygrid と同じ）
-                v.map(pol_to_scalar)
-            }
+            // 伝搬の位相を除いた振幅（exp(−i k L) の約束）
+            Some(pt) => pt.e[m][0],
             None => [C64::new(1.0, 0.0), C64::new(0.0, 0.0), C64::new(0.0, 0.0)],
         };
         r.ok[q] = true;
@@ -416,7 +414,7 @@ pub fn detector(
         if ps.ok[q] && pr.ok[q] {
             let dl = ps.l[0][q] - pr.l[0][q] - o.delay;
             let cross: C64 = (0..3).map(|c| a_s[c] * a_r[c].conj()).sum::<C64>();
-            let ph = C64::from_polar(1.0, k * dl);
+            let ph = C64::from_polar(1.0, -k * dl);
             out.intensity.data_mut()[q] = is + ir + 2.0 * (cross * ph).re;
             out.opd.data_mut()[q] = dl / (lam * 1e-3);
             out.visibility.data_mut()[q] = if is + ir > 0.0 {
@@ -566,6 +564,57 @@ mod tests {
         let r3 = detector(&s, &s, FieldSel::Index(0), None, &o3, None).unwrap();
         let tot: f64 = r3.i_sample.data().iter().sum::<f64>() * r3.dx * r3.dx;
         assert!((tot - 1.0).abs() < 0.03, "{tot}");
+    }
+
+    #[test]
+    fn circular_input_turns_the_same_way_as_the_ray_grid() {
+        // 像面を「λ/4（diag(1, i)）→ 45° の直線偏光子」の Jones 面にすると、円偏光の片方だけが通る。
+        // 干渉縞の試料の強度が光線の格子（raygrid::trace_path）と同じ向きの円偏光で通る（ANA-13 で直した向き）
+        let mut s = lens(2.0, &[0.0]);
+        let img = s.image();
+        s.edit_raw(|p| {
+            p.surfaces[img].typ = lensbench_core::surface::SurfType::Jones;
+            p.surfaces[img].jones = [0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5];
+            Ok(())
+        })
+        .unwrap();
+        let c = Coatings::for_system(&s).unwrap();
+        let o = DetectorOpts {
+            pupil: 33,
+            npx: 9,
+            center: Some((0.0, 0.0)),
+            width: Some(0.2),
+            ..Default::default()
+        };
+        let through = |p: InputPol| -> (f64, f64) {
+            let pol = Polarized {
+                sample: p,
+                reference: p,
+                coat: &c,
+            };
+            let r = detector(&s, &s, FieldSel::Index(0), None, &o, Some(pol)).unwrap();
+            let fringe: f64 = r.i_sample.data().iter().sum();
+            let g = rg::trace_path(&s, FieldSel::Index(0), 9, p, &c).unwrap();
+            let grid: f64 = (0..g.ok.len())
+                .filter(|&q| g.ok[q])
+                .map(|q| g.ex[q].norm_sqr() + g.ey[q].norm_sqr())
+                .sum::<f64>()
+                / g.ok.iter().filter(|&&k| k).count() as f64;
+            (fringe, grid)
+        };
+        let (fp, gp) = through(InputPol::CircularPlus);
+        let (fm, gm) = through(InputPol::CircularMinus);
+        // 片方は通り、もう片方は消える。どちらが通るかが光線の格子と同じ
+        assert!(
+            gp > 0.99 && gm < 1e-12 || gm > 0.99 && gp < 1e-12,
+            "{gp} {gm}"
+        );
+        assert!(fp > 0.0 || fm > 0.0);
+        if gp > gm {
+            assert!(fm < 1e-12 * fp, "{fp} {fm}");
+        } else {
+            assert!(fp < 1e-12 * fm, "{fp} {fm}");
+        }
     }
 
     /// 物体距離 100・f 50 の理想レンズ（1:1、入射瞳径 10）、像面は像点から dz。視野は物体高 ys [mm]

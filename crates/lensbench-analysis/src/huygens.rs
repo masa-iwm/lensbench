@@ -4,11 +4,12 @@
 //! 射出瞳の参照球（OPD の基準と同じ。ROPD「無限遠」・射出瞳が無限遠なら主光線に垂直な平面）の上の各点を
 //! 2 次波源とし、像面（傾き・曲率を含む像面そのもの）の格子の各点まで素直に足し合わせる:
 //!
-//! U(P) = Σ_i f_i exp(2πi (−W_i + n σ (|P − Q_i| − R) / λ)) · (R / |P − Q_i|) · (1 + cos χ_i) / 2
+//! U(P) = Σ_i f_i exp(2πi (W_i − n σ (|P − Q_i| − R) / λ)) · (R / |P − Q_i|) · (1 + cos χ_i) / 2
 //!
 //! Q_i は光線 i を像面から参照球まで戻した点、W_i はその OPD [波]、f_i は瞳の区間の単位円内の面積の割合
 //! （FFT PSF と同じ正規化瞳の格子）、R は参照球の半径、σ は参照球が像点の前なら +1・後ろなら −1、χ_i は
-//! Q_i → P と Q_i → 像点の向きの角。平面の基準では U(P) = Σ f_i exp(2πi (−W_i + n k_i · (P − Q_i) / λ))。
+//! Q_i → P と Q_i → 像点の向きの角。平面の基準では U(P) = Σ f_i exp(2πi (W_i − n k_i · (P − Q_i) / λ))。
+//! 位相の約束は exp(−ikL)（[`lensbench_core::phase`]、FFT PSF の瞳関数 exp(+2πiW) と同じ）。
 //! 瞳から像への写像を近似しないので、像面が傾いた系・収差が大きい系・斜めの視野でも像面の上の PSF が出る。
 //!
 //! 正規化は FFT PSF と同じ: 各波長で収差のない同じ瞳の中心の値を 1 とし、多色は各波長の全強度を重みに
@@ -97,7 +98,7 @@ impl SphereTerms<'_> {
             let rho = (dx * dx + dy * dy + dz * dz).sqrt();
             let cosx = ((dx * ax[j] + dy * ay[j] + dz * az[j]) / (rho * self.rr)).abs();
             amp[j] = f[j] * self.rr / rho * 0.5 * (1.0 + cosx);
-            ph[j] = ph0[j] + self.ksg * rho;
+            ph[j] = ph0[j] - self.ksg * rho;
         }
     }
 }
@@ -270,7 +271,7 @@ fn huygens_once(
             let f = op.samples.wt[i] * op.amp[i];
             w_ok.push((op.samples.cell[i].0, op.samples.cell[i].1, w));
             let (q, k) = (op.rays.xyz[i], op.rays.lmn[i]);
-            let ph = -2.0 * PI * w;
+            let ph = 2.0 * PI * w;
             let s1_src = match sphere {
                 Some((c0, rr, sg)) => {
                     // 像面の点 q から向き k に沿って参照球まで（OPD の to_ref と同じ根）
@@ -283,7 +284,7 @@ fn huygens_once(
                         q: add(q, scale(k, t)),
                         k,
                         f,
-                        ph0: ph - kn * sg * rr,
+                        ph0: ph + kn * sg * rr,
                     }
                 }
                 None => {
@@ -348,7 +349,7 @@ fn huygens_once(
                             + ay[j] * (p[1] - qy[j])
                             + az[j] * (p[2] - qz[j]);
                         amp[j] = qf[j];
-                        ph[j] = ph0[j] + kn * kp;
+                        ph[j] = ph0[j] - kn * kp;
                     }
                 }
             }

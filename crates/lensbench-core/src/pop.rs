@@ -13,11 +13,12 @@
 //!      Direct）、できなければ角スペクトル。
 //!
 //! 場は「パイロット」（傾き a と曲率 κ の波面、[`Pilot`]）を除いた残りを格子に持つ: 全体の場は
-//! u(x, y)·exp(i k (a_x X + a_y Y + κ (X² + Y²)/2))（X = x − x0、k = 2π n/λ）。パイロットは解析的に扱うので、
+//! u(x, y)·exp(−i k (a_x X + a_y Y + κ (X² + Y²)/2))（X = x − x0、k = 2π n/λ）。パイロットは解析的に扱うので、
 //! 集光する場でも残りの位相（収差・デフォーカス）を標本化できれば足りる。出力のパイロットは
 //! Gauss ビームの q（1/q = κ − i λ′/(π w²)）を d だけ進めたもの（焦点付近で平面に近づく）。
 //!
-//! 全体の位相の定数（e^{ikd} など）は落とす。強度は Σ|u|² dx dy = 1（開口を掛ける前）に正規化する。
+//! 位相の約束は exp(i(ωt − kz))（光路長 L の位相は exp(−ikL)、[`crate::phase`]）。
+//! 全体の位相の定数（e^{−ikd} など）は落とす。強度は Σ|u|² dx dy = 1（開口を掛ける前）に正規化する。
 
 use crate::coating::C64;
 use crate::error::Result;
@@ -110,9 +111,9 @@ impl Beam {
         let p = self.pilot;
         self.k() * (p.ax * xx + p.ay * yy + 0.5 * p.curv * (xx * xx + yy * yy))
     }
-    /// 全体の場（パイロット込み）
+    /// 全体の場（パイロット込み、exp(−i·パイロットの位相) を掛ける）
     pub fn field(&self, i: usize, j: usize) -> C64 {
-        self.u[j * self.nx + i] * C64::from_polar(1.0, self.pilot_phase(self.x(i), self.y(j)))
+        self.u[j * self.nx + i] * C64::from_polar(1.0, -self.pilot_phase(self.x(i), self.y(j)))
     }
     /// x の座標の並び（標本の中心）
     pub fn xs(&self) -> Vec<f64> {
@@ -470,7 +471,7 @@ fn integral(b: &Beam, d: f64, method: PopMethod, out: OutGrid, dry: bool) -> Res
 
 /// 角スペクトル。パイロット (a, κ) の場を、M = 1 + κd、d′ = d/M として
 /// U₂(X₂) = (1/M) F_{d′}[u](ξ)、ξ = (X₂ − a d)/M（近軸。出力のパイロットは傾き a・曲率 κ/M、中心 x0 + a d）。
-/// κ = 0 なら近似なしの伝達関数 exp(i 2π d (w(f + a/λ′) − w(a/λ′)))、w(f) = √(1/λ′² − f²)
+/// κ = 0 なら近似なしの伝達関数 exp(−i 2π d (w(f + a/λ′) − w(a/λ′)))、w(f) = √(1/λ′² − f²)
 /// （出力の中心は x0 + d tan θ）。格子は 0 で広げて（回折で広がる幅、2〜8 倍）回り込みを防ぎ、広げた格子のまま返す
 fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
     use rustfft::FftPlanner;
@@ -502,7 +503,8 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
     let ix = planner.plan_fft_inverse(px);
     let iy = planner.plan_fft_inverse(py);
     let mut work = Vec::new();
-    fft2(&mut a, px, py, &*fx, &*fy, &mut work);
+    // exp(−ikL) の約束では平面波 exp(−i2π f·x) の成分を逆変換で取り出す（伝達関数は exp(−i·ph)）
+    fft2(&mut a, px, py, &*ix, &*iy, &mut work);
     // 出力の中心のずれ（入力の中心から）
     let (sx, sy) = if exact {
         let cz = (1.0 - p.ax * p.ax - p.ay * p.ay).max(1e-12).sqrt();
@@ -549,10 +551,10 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
                 }
                 -PI * lam * dp * f2
             };
-            *c *= C64::from_polar(1.0, ph);
+            *c *= C64::from_polar(1.0, -ph);
         }
     }
-    fft2(&mut a, px, py, &*ix, &*iy, &mut work);
+    fft2(&mut a, px, py, &*fx, &*fy, &mut work);
     let norm = 1.0 / (px * py) as f64 / m;
     // 伝達関数の位相の、隣り合う周波数の間の差の最大（π を超えると回り込み）
     let fmx = 0.5 / b.dx;
@@ -674,9 +676,9 @@ fn resample(b: &Beam, out: OutGrid) -> Beam {
                 + g(i0 + 1, j0) * (tx * (1.0 - ty))
                 + g(i0, j0 + 1) * ((1.0 - tx) * ty)
                 + g(i0 + 1, j0 + 1) * (tx * ty);
-            // 全体の場を保つ: u_old·P_old = u_new·P_new → u_new = u_old·exp(i(P_old − P_new))
+            // 全体の場を保つ: u_old·P_old = u_new·P_new → u_new = u_old·exp(−i(φ_old − φ_new))
             let dph = b.pilot_phase(x, y) - c0 - o.pilot_phase(x, y);
-            o.u[j * nx + i] = v * C64::from_polar(1.0, dph);
+            o.u[j * nx + i] = v * C64::from_polar(1.0, -dph);
         }
     }
     o.w = o.rms_width();
@@ -710,7 +712,7 @@ fn extent(b: &Beam) -> (f64, f64) {
     (ex, ey)
 }
 
-/// 1 軸の Fresnel の核 K[i2][i1] = exp(i k (a X1 + κ X1²/2 + (x2 − x1)²/(2d) − 出力のパイロット)) · Δx1
+/// 1 軸の Fresnel の核 K[i2][i1] = exp(−i k (a X1 + κ X1²/2 + (x2 − x1)²/(2d) − 出力のパイロット)) · Δx1
 #[allow(clippy::too_many_arguments)]
 fn kernel_1d(
     k: f64,
@@ -733,7 +735,7 @@ fn kernel_1d(
             let xi = x1[i1] - x01;
             let dd = x2[i2] - x1[i1];
             let ph = k * (a1 * xi + 0.5 * c1 * xi * xi + dd * dd / (2.0 * d) - po);
-            *v = C64::from_polar(dx1, ph);
+            *v = C64::from_polar(dx1, -ph);
         }
     });
     m
@@ -749,8 +751,8 @@ fn fresnel(b: &Beam, d: f64, o: &mut Beam) {
     let (p, q) = (b.pilot, o.pilot);
     let kx = kernel_1d(k, d, p.ax, p.curv, &x1, b.x0, q.ax, q.curv, &x2, o.x0, b.dx);
     let ky = kernel_1d(k, d, p.ay, p.curv, &y1, b.y0, q.ay, q.curv, &y2, o.y0, b.dy);
-    // 前置きの係数 1/(i λ d)
-    let pre = C64::new(0.0, -1.0 / (lam * d));
+    // 前置きの係数 i/(λ d)（exp(−ikL) の約束の Fresnel 積分）
+    let pre = C64::new(0.0, 1.0 / (lam * d));
     // tmp[j1][i2] = Σ_i1 u[j1][i1] Kx[i2][i1]
     let (n1x, n2x) = (b.nx, o.nx);
     let mut tmp = vec![C64::new(0.0, 0.0); b.ny * n2x];
@@ -808,15 +810,15 @@ fn direct(b: &Beam, d: f64, o: &mut Beam) {
             for (q, &(sx, sy, _)) in src.iter().enumerate() {
                 let (ex, ey) = (x - sx, y - sy);
                 let r = (ex * ex + ey * ey + d2).sqrt();
-                ph[q] = k * (r - d) - po;
+                ph[q] = po - k * (r - d);
                 amp[q] = d / (r * r);
                 rr[q] = r;
             }
             crate::trig::cis_scaled(&ph, &amp, &mut e);
-            // (1/2π)(d/r)(1/r − ik) e^{ik(r − d)}/r
+            // (1/2π)(d/r)(1/r + ik) e^{−ik(r − d)}/r
             let mut s = C64::new(0.0, 0.0);
             for ((&(_, _, c), &eq), &r) in src.iter().zip(&e).zip(&rr) {
-                s += c * eq * C64::new(1.0 / r, -k);
+                s += c * eq * C64::new(1.0 / r, k);
             }
             *v = s / (2.0 * PI);
         }
@@ -1130,7 +1132,7 @@ pub fn beam_from_rays(
                         }
                         let am = l0 * amp[tri[0]] + l1 * amp[tri[1]] + l2 * amp[tri[2]];
                         let rr = l0 * res[tri[0]] + l1 * res[tri[1]] + l2 * res[tri[2]];
-                        beam.u[iy * ng + ix] = C64::from_polar(am, k0 * rr);
+                        beam.u[iy * ng + ix] = C64::from_polar(am, -k0 * rr);
                     }
                 }
             }

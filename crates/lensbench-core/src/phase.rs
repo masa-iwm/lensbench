@@ -5,9 +5,10 @@
 //! - **exp(−ikL)**（時間因子 exp(+iωt)、平面波 exp(i(ωt − kz))、複素屈折率 N = n − iκ）: 偏光追跡の電場
 //!   （[`crate::system::System::try_trace_pol`]、OpticStudio の偏光追跡と同じ）、複屈折の位相、薄膜の特性行列
 //!   （[`crate::coating`]）。FFT PSF・回折 MTF の瞳関数 P = exp(+2πiW)（W = 主光線 − 光線の OPD [波]、
-//!   [`crate::pupil::PupilFunction`]）もこちら
-//! - **exp(+ikL)**（時間因子 exp(−iωt)）: 光線の格子の場（[`crate::raygrid`]）と、それを使う干渉縞・波面の解析、
-//!   POP の場と Fresnel の核（[`crate::pop`]）、Huygens PSF の exp(−2πiW)
+//!   [`crate::pupil::PupilFunction`]）、Huygens PSF、POP の場と Fresnel の核（[`crate::pop`]）、像面上の干渉縞も
+//!   こちら。すべての計算をこちらにそろえる（ANA-13）
+//! - **exp(+ikL)**（時間因子 exp(−iωt)）: まだこちらのもの: 光線の格子の場（[`crate::raygrid`]）と入射の偏光
+//!   （[`crate::raygrid::InputPol`]）、それを使う解析
 //!
 //! OPD の符号はどちらでも W = (主光線の光路 − 光線の光路) / λ（[`crate::analysis::opd`]）。
 //!
