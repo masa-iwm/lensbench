@@ -413,7 +413,7 @@ fn v1_flat(p: &mut lensbench_core::Prescription, ns: &[Option<Vec<f64>>]) {
     for j in 0..p.surfaces.len() {
         let Some(Some(n)) = ns.get(j) else { continue };
         let d = &p.surfaces[j];
-        if (j > 0 && (d.is_mirror() || d.is_coord_break())) || d.grin.is_some() {
+        if (j > 0 && (d.is_mirror() || d.is_coord_break())) || d.grin().is_some() {
             continue;
         }
         let n0 = n[0];

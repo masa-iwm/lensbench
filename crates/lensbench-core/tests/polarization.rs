@@ -139,8 +139,8 @@ fn quarter_wave_jones_surface_makes_circular_polarization() {
     let img = s.image();
     // 像面を λ/4（速軸 x）の Jones 行列面にする
     s.edit_raw(|p| {
-        p.surfaces[img].typ = SurfType::Jones;
-        p.surfaces[img].jones = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        p.surfaces[img].set_type(SurfType::Jones);
+        *p.surfaces[img].jones_mut().unwrap() = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
         Ok(())
     })
     .unwrap();

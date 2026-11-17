@@ -228,7 +228,7 @@ impl<'a> Plan<'a> {
                 (false, Some(q)) => Move::Rel(q),
                 _ => Move::First,
             };
-            let grin_eval = d.grin.is_some() && !d.is_mirror();
+            let grin_eval = d.grin().is_some() && !d.is_mirror();
             // GRIN の媒質の中の面は前の屈折率が光線ごと（交点の値）
             let n_var_before = nprev_var || grin.is_some();
             let n_tab = sys.n(j)[w];

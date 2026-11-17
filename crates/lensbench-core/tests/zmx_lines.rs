@@ -113,7 +113,7 @@ fn toroidal_sag_derivatives() {
 #[test]
 fn toroidal_with_equal_radii_is_a_sphere() {
     let a = build(&lens(&toroid(0.05, 0.0, 20.0, &[])));
-    assert_eq!(a.surfaces[1].typ, SurfType::Toroidal);
+    assert_eq!(a.surfaces[1].typ(), SurfType::Toroidal);
     let b = build(&lens("  TYPE STANDARD\n  CURV 0.05\n"));
     same_rays(&a, &b, &PX, &PY, 1e-11);
     assert!((a.paraxial().efl - b.paraxial().efl).abs() < 1e-12);
@@ -158,7 +158,7 @@ fn cylinder_matches_evenasph_in_yz_and_flat_in_xz() {
 fn toroidal_rays_land_on_the_surface() {
     let (c, k, r, asph) = (1.0 / 15.0, -0.5, -30.0, [0.0, 2e-5]);
     let s = build(&lens(&toroid(c, k, r, &asph)));
-    assert!((s.surfaces[1].cx + 1.0 / 30.0).abs() < 1e-15);
+    assert!((s.surfaces[1].cx() + 1.0 / 30.0).abs() < 1e-15);
     for fi in 0..s.fields.len() {
         let t = s
             .try_trace(FieldSel::Index(fi), &PX, &PY, None, Some(1), true)
@@ -272,7 +272,7 @@ fn toroid_and_ellipse_round_trip() {
     let a = build(&t);
     let b = build(&zmx_write::write(&a).unwrap());
     assert_eq!(a.surfaces[1].ap, b.surfaces[1].ap);
-    assert_eq!(b.surfaces[1].typ, SurfType::Toroidal);
+    assert_eq!(b.surfaces[1].typ(), SurfType::Toroidal);
     same_rays(&a, &b, &PX, &PY, 1e-12);
 }
 
@@ -388,7 +388,7 @@ CWGT   0   1 1.0E+00 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\nCWGT   0   2 2.0E+00 0 
         // 同じ偏心を PARM に直接書いた系と同じ光線
         let r = build(&base(dec, ""));
         same_rays(&s, &r, &PX, &PY, 1e-12);
-        assert_eq!(s.surfaces[2].typ, SurfType::CoordBrk);
+        assert_eq!(s.surfaces[2].typ(), SurfType::CoordBrk);
     }
 }
 

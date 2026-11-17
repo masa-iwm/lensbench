@@ -538,7 +538,7 @@ impl GridSag {
 /// 回転対称でない矢高の面タイプか（[`crate::shape::Shape::is_freeform`]。面の値によらない）
 pub fn is_freeform(t: SurfType) -> bool {
     Surface {
-        typ: t,
+        form: crate::surface::Form::of(t),
         ..Default::default()
     }
     .shape()

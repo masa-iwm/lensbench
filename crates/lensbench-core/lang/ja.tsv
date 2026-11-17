@@ -304,6 +304,10 @@ surface {j} thickness {t}	面 {j} の厚み {t}
 the object and image surfaces can't be ignored	物体面・像面は無視できません
 surface value aperture	面の値 aperture
 surface {j} is not a coordinate break (cb)	面 {j} は座標ブレークではありません（cb）
+surface {j} is not a coordinate break (cb_order)	面 {j} は座標ブレークではありません（cb_order）
+surface {j} is not a toroidal surface (cx)	面 {j} はトロイダル面ではありません（cx）
+surface {j} is not a paraxial lens (focal)	面 {j} は理想レンズではありません（focal）
+surface {j} is not a Jones surface (jones)	面 {j} は Jones 面ではありません（jones）
 cb_order must be 0 or 1 ({o})	cb_order は 0 か 1（{o}）
 surface {j} is a mirror or a coordinate break ({name})	面 {j} はミラーか座標ブレーク（{name}）
 surface {j} to delete (1 to {})	削除する面 {j}（1〜{}）

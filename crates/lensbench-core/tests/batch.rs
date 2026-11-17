@@ -197,8 +197,8 @@ fn apertures_and_toroidal_match_scalar() {
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[1];
-    d.typ = SurfType::Toroidal;
-    d.cx = d.c * 0.7;
+    d.set_type(SurfType::Toroidal);
+    *d.cx_mut().unwrap() = d.c * 0.7;
     d.asph = vec![1e-5, -2e-7];
     let s = rx.build_raw().unwrap();
     check("A0+トロイダル", &s, &px, &py);
@@ -207,8 +207,8 @@ fn apertures_and_toroidal_match_scalar() {
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[6];
-    d.typ = SurfType::ZernikeStd;
-    d.zern = Some(Arc::new(ZernSag::new(
+    d.set_type(SurfType::ZernikeStd);
+    *d.zern_mut().unwrap() = Some(Arc::new(ZernSag::new(
         false,
         5.0,
         (1..=37).map(|i| 1e-3 * (i as f64).sin()).collect(),
@@ -219,9 +219,9 @@ fn apertures_and_toroidal_match_scalar() {
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
-    d.typ = SurfType::GridSag;
+    d.set_type(SurfType::GridSag);
     let (nx, ny) = (13, 11);
-    d.grid = Some(Arc::new(GridSag {
+    *d.grid_mut().unwrap() = Some(Arc::new(GridSag {
         nx,
         ny,
         dx: 0.9,
@@ -396,8 +396,8 @@ fn pol_matches_scalar() {
     .unwrap();
     let img = s.image();
     s.edit_raw(|p| {
-        p.surfaces[img].typ = SurfType::Jones;
-        p.surfaces[img].jones = [1.0, 0.0, 0.2, 0.1, 0.0, -0.3, 0.0, 1.0];
+        p.surfaces[img].set_type(SurfType::Jones);
+        *p.surfaces[img].jones_mut().unwrap() = [1.0, 0.0, 0.2, 0.1, 0.0, -0.3, 0.0, 1.0];
         Ok(())
     })
     .unwrap();

@@ -89,23 +89,26 @@ impl Surface {
     /// 面の働き（今の値から作る見方）。座標ブレークは面でないので [`Surface::is_coord_break`] で先に分ける
     /// （ここでは [`Action::Refract`] を返すが、屈折率は前の値を引き継ぐ）
     pub fn action(&self) -> Action<'_> {
-        match self.typ {
+        match self.typ() {
             SurfType::Paraxial => Action::Paraxial {
-                f: self.focal,
-                opd_mode: self.opd_mode,
+                f: self.focal(),
+                opd_mode: self.opd_mode(),
             },
-            SurfType::User => Action::User(self.user.as_ref()),
+            SurfType::User => Action::User(self.user()),
             SurfType::Jones => Action::Jones(match &self.retarder {
                 Some(r) => JonesSrc::Retarder(r),
-                None => JonesSrc::Matrix(&self.jones),
+                None => JonesSrc::Matrix(match &self.form {
+                    crate::surface::Form::Jones { jones } => jones,
+                    _ => &crate::surface::JONES_IDENTITY,
+                }),
             }),
-            SurfType::Binary2 => Action::Binary2(self.bin2.as_deref()),
+            SurfType::Binary2 => Action::Binary2(self.bin2()),
             SurfType::Fresnel => Action::Fresnel(FresnelBend::Radial {
                 c: self.c,
                 k: self.k,
                 a: &self.asph,
             }),
-            SurfType::CylFresnel => Action::Fresnel(FresnelBend::Cyl(self.cylf.as_deref())),
+            SurfType::CylFresnel => Action::Fresnel(FresnelBend::Cyl(self.cylf())),
             SurfType::CoordBrk => Action::Refract,
             _ => match &self.bire {
                 Some(b) if !self.is_mirror() => Action::Birefringent(b),

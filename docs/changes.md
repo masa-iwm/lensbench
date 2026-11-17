@@ -274,6 +274,18 @@
 - `spot` の各視野に `rays`（追跡した本数 `total` と、除いた光線の理由ごとの本数 `vignetted`・`missed`・`tir`・`aim_failed`。
   波長の分を足し、主光線は数えない）を足した（KRN-09）。Rust は `analysis::Spot::rays`（`trace::RayCounts`）、`RayBuf::counts`・`Trace::counts`。
 ### Rust API
+- 面の種類ごとの値を種類の枝にまとめた（KRN-05 の 1 段目）: `Surface` の `typ`・`cx`・`zern`・`grid`・`grid_file`・`bin2`・`cylf`・`grin`・
+  `cb`・`cb_order`・`focal`・`opd_mode`・`jones`・`user` をやめ、`form`（`lensbench_core::surface::Form`、`#[non_exhaustive]`）が種類と
+  その種類にしか意味の無い値を持つ（例 `Form::CoordBrk { cb, order }`・`Form::Paraxial { focal, opd_mode }`）。曲率・円錐係数・`asph` は
+  `Surface` に残る。読むのは `s.typ()`・`s.cb()`・`s.zern()` など（種類が違えば既定の値か `None`）、書くのは `s.set_type(t)`（Zernike の項と
+  屈折率分布は持ち越し、ほかは既定に戻す）・`s.form = Form::…`・`s.cb_mut()`・`s.zern_mut()` などの置き場（種類が違えば `None`）。
+  種類の枝は `Form::of(t)`・`Form::typ()`。面の量の書き換え（`edit`）で、種類に無い値（トロイダル面でない面の `cx` など）を既定でない値に
+  するのは誤りになった（前は使われない値が黙って残った）。追跡・解析の結果は変わらない（全試験・OpticStudio との照合が通る）。
+  serde の形（serve の `surface_data`・`set_surface_data`、Python の pickle）は前と同じ平たい欄（`typ`・`cb`・`jones` など）だが、
+  読むときは種類に無い値の欄を捨てる。利用者定義の面にするには `typ` と `user` を同じ `set_surface_data` で書く（前は `user` を先に
+  書いてから `set_surface_type`）。
+- Grid Sag から Zernike Sag に種類を変えた面に残っていた格子をやめた（近軸の曲率にだけ効いていた）。システムファイル版 2 の Zernike の形の
+  `grid` もやめた。
 - 偏光追跡の入口の引数をまとめた（KRN-17）: 入力の偏光・膜・伝搬の位相は `system::PolIn`（`PolIn::new(pols, coat)`、位相を
   かけないなら `.no_phase()`）。`try_trace_pol(field, px, py, w, PolIn)`、`trace_pol_launch(l, w, PolIn, rec)`、`trace_pol_spec` は
   ケラレ係数・視野を `TraceOpts` で受けて `trace_pol_spec(spec, px, py, w, TraceOpts, PolIn)`（`trace_spec` と同じく止める面・面ごとの

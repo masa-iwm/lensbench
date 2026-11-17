@@ -259,7 +259,7 @@ impl Prescription {
         let Some(d) = self.surfaces.get(j) else {
             return format!("surface {j}");
         };
-        let mut what = crate::edit::surf_type_name(d.typ).to_string();
+        let mut what = crate::edit::surf_type_name(d.typ()).to_string();
         if !matches!(d.mat, Material::Air | Material::Inherit) {
             what = format!("{what}, {}", d.mat);
         }
@@ -526,13 +526,13 @@ impl System {
                 crate::shape::Shape::Conic { .. } | crate::shape::Shape::ConicTilted { .. }
             ) && d.has_asph()
             {
-                let typ = d.typ;
+                let typ = d.typ();
                 invalid!("surface {j} ({typ:?}) has asphere coefficients (use a type such as even asphere, or remove them)");
             }
         }
         // GRIN の媒質の次の面（座標ブレークは通して、その次）は交点を求められる面タイプに限る
         for (j, d) in sf.iter().enumerate() {
-            if d.ignore || d.is_mirror() || d.grin.is_none() {
+            if d.ignore || d.is_mirror() || d.grin().is_none() {
                 continue;
             }
             if let Some((k, e)) = sf
@@ -542,7 +542,7 @@ impl System {
                 .find(|(_, e)| !e.ignore && !e.is_coord_break())
             {
                 if !crate::grin::next_ok(e) {
-                    let typ = e.typ;
+                    let typ = e.typ();
                     notimpl!("surface {k} ({typ:?}) after the GRIN medium of surface {j}");
                 }
             }
@@ -596,7 +596,7 @@ impl System {
         for (j, d) in self.surfaces.iter().enumerate() {
             let action = d.action();
             if matches!(action, crate::action::Action::User(_)) && !d.ignore {
-                if d.user.is_none() {
+                if d.user().is_none() {
                     invalid!("user-defined surface (surface {j}) has no model (user)");
                 }
                 let w = self.primary;

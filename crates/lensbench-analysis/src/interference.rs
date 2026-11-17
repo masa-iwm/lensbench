@@ -575,8 +575,8 @@ mod tests {
         let mut s = lens(2.0, &[0.0]);
         let img = s.image();
         s.edit_raw(|p| {
-            p.surfaces[img].typ = lensbench_core::surface::SurfType::Jones;
-            p.surfaces[img].jones = [0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5];
+            p.surfaces[img].set_type(lensbench_core::surface::SurfType::Jones);
+            *p.surfaces[img].jones_mut().unwrap() = [0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5];
             Ok(())
         })
         .unwrap();

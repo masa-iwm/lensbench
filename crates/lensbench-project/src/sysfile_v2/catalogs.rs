@@ -35,7 +35,7 @@ fn used(s: &System) -> BTreeMap<String, &Glass> {
         if d.is_coord_break() {
             continue;
         }
-        if !d.is_mirror() && d.grin.is_none() {
+        if !d.is_mirror() && d.grin().is_none() {
             add(&d.mat.name());
             if matches!(d.bire, Some(Bire::In { .. })) {
                 add(&Bire::e_name(&d.mat.name()));

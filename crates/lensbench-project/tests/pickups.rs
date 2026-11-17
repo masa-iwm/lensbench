@@ -81,8 +81,8 @@ fn whole_zmx_keeps_pickups() {
         for j in 0..sa.surfaces.len() {
             let (x, y) = (&sa.surfaces[j], &zb.surfaces[j]);
             assert_eq!(
-                (x.c, x.k, x.t, &x.asph, x.cb),
-                (y.c, y.k, y.t, &y.asph, y.cb),
+                (x.c, x.k, x.t, &x.asph, x.cb()),
+                (y.c, y.k, y.t, &y.asph, y.cb()),
                 "面 {j}"
             );
         }
@@ -110,7 +110,7 @@ fn out_of_range_is_fixed_with_a_warning() {
     let s2 = s
         .with_params(&[(s.param(&format!("{}.dx", q.src)).unwrap(), -0.4)])
         .unwrap();
-    assert_eq!(s2.surfaces[q.dst].cb[0], 0.4);
+    assert_eq!(s2.surfaces[q.dst].cb()[0], 0.4);
 }
 
 /// 鏡のあと（光が −z へ進む）では厚さの符号が変わるので、オフセットの符号を変えて残す
@@ -172,8 +172,8 @@ fn after_a_tilted_return_mirror() {
         // 座標ブレーク 6 ← 3 と、厚さ 5 ← 4（玉の後ろの面 ← 玉の前の面）
         match q.what {
             Kind::Parm(_) => {
-                assert_eq!(s.surfaces[q.src].typ, SurfType::CoordBrk);
-                assert_eq!(s.surfaces[q.dst].typ, SurfType::CoordBrk);
+                assert_eq!(s.surfaces[q.src].typ(), SurfType::CoordBrk);
+                assert_eq!(s.surfaces[q.dst].typ(), SurfType::CoordBrk);
                 assert_eq!(q.dst, q.src + 3);
             }
             Kind::Thick => assert_eq!(q.dst, q.src + 1),

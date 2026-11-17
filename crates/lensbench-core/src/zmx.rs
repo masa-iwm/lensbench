@@ -8,7 +8,7 @@ use crate::glass::{self, Glass};
 use crate::param::Kind;
 use crate::pickup::{surf_parm, Pickup};
 use crate::solves::{Solve, SolveKind};
-use crate::surface::{After, Aperture, SurfType, Surface, Tilt};
+use crate::surface::{After, Aperture, Form, SurfType, Surface, Tilt};
 use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, System};
 use crate::{invalid, notimpl};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1160,7 +1160,7 @@ pub fn build(
         let p = |i: i64| parm[k].get(&i).copied().unwrap_or(0.0);
         use crate::material::Material as M;
         let mut d = Surface {
-            typ,
+            form: Form::of(typ),
             ignore: ign,
             t: th[k],
             comment: s.comment.clone(),
@@ -1203,24 +1203,26 @@ pub fn build(
         }
         match typ {
             SurfType::Jones => {
-                for i in 0..8 {
-                    d.jones[i] = p(i as i64 + 1);
-                }
+                d.form = Form::Jones {
+                    jones: std::array::from_fn(|i| p(i as i64 + 1)),
+                };
             }
             SurfType::CoordBrk => {
-                for i in 0..5 {
-                    d.cb[i] = p(i as i64 + 1);
-                }
-                d.cb_order = p(6) as u8;
+                d.form = Form::CoordBrk {
+                    cb: std::array::from_fn(|i| p(i as i64 + 1)),
+                    order: p(6) as u8,
+                };
             }
             SurfType::Paraxial => {
-                d.focal = p(1);
-                d.opd_mode = p(2) as i32;
+                d.form = Form::Paraxial {
+                    focal: p(1),
+                    opd_mode: p(2) as i32,
+                };
                 // 0・1 は基準 D0〜D3 で OpticStudio と一致を確認済み。それ以外は未確認
-                if !(0..=1).contains(&d.opd_mode) {
-                    notimpl!("paraxial lens (surface {k}) OPD mode {}", d.opd_mode);
+                if !(0..=1).contains(&d.opd_mode()) {
+                    notimpl!("paraxial lens (surface {k}) OPD mode {}", d.opd_mode());
                 }
-                if d.focal == 0.0 {
+                if d.focal() == 0.0 {
                     invalid!("paraxial lens (surface {k}) focal length is 0");
                 }
             }
@@ -1240,11 +1242,13 @@ pub fn build(
                 let coef = (0..nt as i64)
                     .map(|j| s.xdat.get(&(j + 3)).copied().unwrap_or(0.0))
                     .collect();
-                d.bin2 = Some(std::sync::Arc::new(crate::surface::Binary2 {
-                    order: p(0),
-                    norm,
-                    coef,
-                }));
+                d.form = Form::Binary2 {
+                    bin2: Some(std::sync::Arc::new(crate::surface::Binary2 {
+                        order: p(0),
+                        norm,
+                        coef,
+                    })),
+                };
             }
             SurfType::Gradium | SurfType::Gradient9 => {
                 if mat.eq_ignore_ascii_case("MIRROR") {
@@ -1262,7 +1266,12 @@ pub fn build(
                 } else {
                     gd.grad9(&mat, [p(2), p(3)], p(1))?
                 };
-                d.grin = Some(std::sync::Arc::new(g));
+                let grin = Some(std::sync::Arc::new(g));
+                d.form = if typ == SurfType::Gradium {
+                    Form::Gradium { grin }
+                } else {
+                    Form::Gradient9 { grin }
+                };
             }
             SurfType::CylFresnel => {
                 // XDAT 1 は項の数、2・3 は屈折の面の曲率・円錐係数、k+3 は y^{2k} の係数
@@ -1273,11 +1282,13 @@ pub fn build(
                 let coef = (0..nt as i64)
                     .map(|j| s.xdat.get(&(j + 4)).copied().unwrap_or(0.0))
                     .collect();
-                d.cylf = Some(std::sync::Arc::new(crate::surface::CylFresnel {
-                    c: s.xdat.get(&2).copied().unwrap_or(0.0),
-                    k: s.xdat.get(&3).copied().unwrap_or(0.0),
-                    coef,
-                }));
+                d.form = Form::CylFresnel {
+                    cylf: Some(std::sync::Arc::new(crate::surface::CylFresnel {
+                        c: s.xdat.get(&2).copied().unwrap_or(0.0),
+                        k: s.xdat.get(&3).copied().unwrap_or(0.0),
+                        coef,
+                    })),
+                };
             }
             _ => {}
         }
@@ -1310,7 +1321,9 @@ pub fn build(
             } else if typ == SurfType::Toroidal {
                 // パラメータ 1 は回転半径（0 は無限 = 円柱面）、2〜8 は y^2〜y^14 の係数
                 let r = p(1);
-                d.cx = if r == 0.0 { 0.0 } else { 1.0 / r };
+                d.form = Form::Toroidal {
+                    cx: if r == 0.0 { 0.0 } else { 1.0 / r },
+                };
                 d.asph = (2..=8).map(p).collect();
                 let nz = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nz != 0.0 {
@@ -1330,7 +1343,7 @@ pub fn build(
         aperture(s, k, &mut d, &ops);
         let n = if d.is_mirror() || typ == SurfType::CoordBrk {
             nprev.clone()
-        } else if let Some(g) = &d.grin {
+        } else if let Some(g) = &d.grin() {
             // GRIN: 頂点の屈折率
             wl.iter()
                 .map(|&l| {
@@ -1682,7 +1695,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
             let got = crate::zpl_solve::find_macro(name, &dirs).and_then(|m| {
                 if let T::Col(c) = &t {
                     if crate::pickup::pick_get(&s.surfaces[k], *c).is_none() {
-                        notimpl!("surface type {:?} {what}", s.surfaces[k].typ);
+                        notimpl!("surface type {:?} {what}", s.surfaces[k].typ());
                     }
                 }
                 let o = s.run_macro_outcome(&m, k)?;
@@ -1828,7 +1841,7 @@ fn tilts(s: &RawSurf, d: &mut Surface, k: usize) -> Result<Option<(usize, bool)>
         let (which, order, mode) = (g(0) as i64, g(1) as i64, g(2) as i64);
         let vals = [g(3), g(4), g(5), g(6), g(7)];
         let any = vals.iter().any(|&x| x != 0.0);
-        if d.typ == SurfType::CoordBrk && any {
+        if d.typ() == SurfType::CoordBrk && any {
             notimpl!("surface {k}: surface tilt or decenter on a coordinate break");
         }
         if order != 0 && order != 1 {
@@ -1959,9 +1972,12 @@ fn freeform_surface(
         let mut z = ZernSag::new(fringe, norm, coef, extrapolate);
         z.dx = p(9);
         z.dy = p(10);
-        d.zern = Some(Arc::new(z));
+        d.set_type(typ);
+        *d.zern_mut().expect("Zernike・Grid Sag の面") = Some(Arc::new(z));
     } else if typ != SurfType::GridSag {
-        d.zern = Some(Arc::new(ZernSag::new(fringe, 100.0, Vec::new(), true)));
+        d.set_type(typ);
+        *d.zern_mut().expect("Zernike の面") =
+            Some(Arc::new(ZernSag::new(fringe, 100.0, Vec::new(), true)));
     }
     if typ == SurfType::GridSag {
         let Some(h) = &s.gdat else {
@@ -2015,7 +2031,7 @@ fn freeform_surface(
         if interp != 0.0 && interp != 1.0 {
             notimpl!("surface {k}: Grid Sag interpolation {interp}");
         }
-        d.grid = Some(Arc::new(GridSag {
+        let grid = Some(Arc::new(GridSag {
             nx,
             ny,
             dx: g(2),
@@ -2026,9 +2042,18 @@ fn freeform_surface(
             nodata,
             linear: interp == 1.0,
         }));
-        d.grid_file = s.fimp.clone().unwrap_or_default();
+        let zern = d.zern_mut().and_then(|z| z.take());
+        d.form = Form::GridSag {
+            grid,
+            grid_file: s.fimp.clone().unwrap_or_default(),
+            zern,
+        };
     } else {
-        let z = d.zern.as_mut().map(Arc::make_mut).expect("Zernike data");
+        let z = d
+            .zern_mut()
+            .and_then(|z| z.as_mut())
+            .map(Arc::make_mut)
+            .expect("Zernike data");
         z.dx = p(9);
         z.dy = p(10);
     }

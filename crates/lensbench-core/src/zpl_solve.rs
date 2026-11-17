@@ -381,7 +381,7 @@ impl Host for SysHost<'_> {
                     } else {
                         let d = &s.surfaces[k as usize];
                         // Standard の面にはパラメータがなく、OpticStudio は 0 を返す（26.1.1 で実測）
-                        let std0 = (d.typ == crate::surface::SurfType::Standard).then_some(0.0);
+                        let std0 = (d.typ() == crate::surface::SurfType::Standard).then_some(0.0);
                         crate::pickup::surf_parm(d, *n as u8)
                             .or(std0)
                             .map(Value::Num)

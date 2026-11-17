@@ -144,7 +144,7 @@ fn surface_data_roundtrip() {
     )
     .unwrap();
     let d2 = &s.surfaces[2];
-    assert_eq!(d2.typ, lensbench_core::surface::SurfType::EvenAsph);
+    assert_eq!(d2.typ(), lensbench_core::surface::SurfType::EvenAsph);
     assert_eq!((d2.k, d2.semi), (-0.5, 9.5));
     assert_eq!(d2.asph, vec![0.0, 1e-6]);
     assert_eq!(d2.mat, mat.as_str());

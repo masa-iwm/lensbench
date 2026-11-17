@@ -12,7 +12,7 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
         let last = i + 1 == n;
         let mut q = surface_spec(s, last)
             .map_err(|x| x.map_message(|e| format!("lens surface {}: {e}", i + 1)))?;
-        if q.coordbrk.is_some() || s.typ == SurfType::Jones {
+        if q.coordbrk.is_some() || s.typ() == SurfType::Jones {
             return Err(format!(
                 "lens surface {}: only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved",
                 i + 1
@@ -359,7 +359,7 @@ pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec>
 fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if f.is_mirror()
         || f.reflect.is_some()
-        || f.typ == SurfType::CoordBrk
+        || f.typ() == SurfType::CoordBrk
         || f.before.is_some()
         || f.after != After::None
     {
@@ -381,7 +381,7 @@ fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
 
 /// 面を SurfSpec の欄で（書けなければ誤り）
 fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
-    let shape = match f.typ {
+    let shape = match f.typ() {
         SurfType::Standard | SurfType::EvenAsph | SurfType::Jones | SurfType::CoordBrk => {
             SurfShape::Standard
         }
@@ -396,10 +396,10 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if f.ignore || f.dn != 0.0 || f.disp != 0.0 {
         return Err("ignore, dn and disp can't be written".into());
     }
-    if f.cx != 0.0 && shape != SurfShape::Toroidal {
+    if f.cx() != 0.0 && shape != SurfShape::Toroidal {
         return Err("cx is only for a toroidal surface".into());
     }
-    if f.typ == SurfType::CoordBrk {
+    if f.typ() == SurfType::CoordBrk {
         if f.before.is_some() || f.after != After::None {
             return Err(
                 "tilts and decenters before or after a surface (before, after) can't be written"
@@ -414,8 +414,8 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
             semi: Semi::of(f),
             coat: f.coat.clone(),
             comment: f.comment.clone(),
-            coordbrk: Some(f.cb),
-            order: f.cb_order,
+            coordbrk: Some(f.cb()),
+            order: f.cb_order(),
             ..Default::default()
         });
     }
@@ -468,7 +468,7 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     };
     // 偏光子・波長板の面はその書き方で戻す
     let (mut polarizer, mut waveplate) = (None, None);
-    if let (SurfType::Jones, Some(r)) = (f.typ, &f.retarder) {
+    if let (SurfType::Jones, Some(r)) = (f.typ(), &f.retarder) {
         // tx = ty は波長板（遅延 0 でも設計波長を残す）、tx > ty の遅延なしは偏光子
         if r.retardance == 0.0 && r.order == 0 && r.tx > r.ty {
             let t = r.tx * r.tx;
@@ -512,18 +512,18 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
             });
         }
     }
-    let jones =
-        (f.typ == SurfType::Jones && polarizer.is_none() && waveplate.is_none()).then_some(f.jones);
+    let jones = (f.typ() == SurfType::Jones && polarizer.is_none() && waveplate.is_none())
+        .then_some(f.jones());
     Ok(SurfSpec {
         radius: (f.c != 0.0).then(|| 1.0 / f.c),
         conic: f.k,
-        asph: if matches!(f.typ, SurfType::Standard | SurfType::Jones) {
+        asph: if matches!(f.typ(), SurfType::Standard | SurfType::Jones) {
             Vec::new()
         } else {
             f.asph.clone()
         },
         shape,
-        radius_x: (f.cx != 0.0).then(|| 1.0 / f.cx),
+        radius_x: (f.cx() != 0.0).then(|| 1.0 / f.cx()),
         t: f.t,
         glass,
         semi: Semi::of(f),

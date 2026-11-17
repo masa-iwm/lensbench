@@ -5,7 +5,7 @@ use lensbench_analysis::huygens::{huygens_mtf, huygens_mtf_axes, huygens_psf, Hu
 use lensbench_core::analysis;
 use lensbench_core::grid::Grid2;
 use lensbench_core::psf::{self, diffraction_limit, PsfOpts};
-use lensbench_core::surface::{SurfType, Surface};
+use lensbench_core::surface::Surface;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
@@ -28,8 +28,10 @@ fn tilt_image(s: &System, deg: f64) -> System {
     t.insert_surface(
         at,
         Surface {
-            typ: SurfType::CoordBrk,
-            cb: [0.0, 0.0, deg, 0.0, 0.0],
+            form: lensbench_core::surface::Form::CoordBrk {
+                cb: [0.0, 0.0, deg, 0.0, 0.0],
+                order: 0,
+            },
             ..Default::default()
         },
     )

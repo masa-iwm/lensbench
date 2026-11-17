@@ -128,7 +128,7 @@ fn gradium_ref_n() {
         ("G8C", 1.7220380626866847),
     ] {
         let (s, _) = load(name);
-        let g = s.surfaces[1].grin.as_ref().unwrap();
+        let g = s.surfaces[1].grin().unwrap();
         let r = g.ref_index().unwrap();
         println!("{name}: Ref n {r} (OS {rn})");
         assert!((r - rn).abs() < 1e-12, "{name}: {r}");
@@ -199,10 +199,8 @@ fn write_roundtrip() {
 /// (dx, dy, tx, ty, tz) の座標ブレーク（厚さ t）
 fn cb(d: [f64; 5], order: u8, t: f64) -> lensbench_core::surface::Surface {
     lensbench_core::surface::Surface {
-        typ: lensbench_core::surface::SurfType::CoordBrk,
+        form: lensbench_core::surface::Form::CoordBrk { cb: d, order },
         mat: "-".into(),
-        cb: d,
-        cb_order: order,
         t,
         ..Default::default()
     }
@@ -329,8 +327,8 @@ fn unsupported_surface_after_the_medium_is_rejected() {
     let mut a = s.clone();
     let e = a.edit_raw(|p| {
         p.surfaces.insert(2, cb([0.0, 0.0, 1.0, 0.0, 0.0], 0, 0.0));
-        p.surfaces[3].typ = lensbench_core::surface::SurfType::Paraxial;
-        p.surfaces[3].focal = 50.0;
+        p.surfaces[3].set_type(lensbench_core::surface::SurfType::Paraxial);
+        *p.surfaces[3].paraxial_mut().unwrap().0 = 50.0;
         Ok(())
     });
     let e = e.unwrap_err().message().unwrap_or_default().to_string();
@@ -350,7 +348,7 @@ fn rms_vs_focus_with_the_image_inside_grin() {
     let mut cb = s.clone();
     let im = cb.image();
     let d = lensbench_core::surface::Surface {
-        typ: lensbench_core::surface::SurfType::CoordBrk,
+        form: lensbench_core::surface::Form::of(lensbench_core::surface::SurfType::CoordBrk),
         ..Default::default()
     };
     cb.insert_surface(im, d).unwrap();

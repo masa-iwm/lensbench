@@ -1,13 +1,10 @@
 //! 面のデータ（OpticStudio のレンズデータエディタの 1 行に当たる）。
 //!
-//! 値は面の種類によらない平たい形で持ち、種類ごとの意味（`asph` が何の係数かなど）は形の見方
-//! [`Surface::shape`]（[`crate::shape`]）と働きの見方 [`Surface::action`]（[`crate::action`]）で分ける。
-//! 形・働きに依る計算はこの 2 つを通す（.zmx の読み書き・編集・パラメータの番号の対応は `typ` を見る）
+//! 種類ごとの値は種類の枝 [`Form`] の中に、曲率・円錐係数・非球面の係数のような共通の値は面に持つ。共通の値の
+//! 種類ごとの意味（`asph` が何の係数かなど）は形の見方 [`Surface::shape`]（[`crate::shape`]）と働きの見方
+//! [`Surface::action`]（[`crate::action`]）で分ける。形・働きに依る計算はこの 2 つを通す
 
-use crate::freeform::{GridSag, ZernSag};
-use crate::grin::Grin;
-use std::sync::Arc;
-
+pub use crate::form::{Form, JONES_IDENTITY};
 pub use crate::material::Material;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,7 +157,9 @@ pub enum Aperture {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Surface {
-    pub typ: SurfType,
+    /// 面の種類と、種類ごとの値（[`Form`]）。serde では面の表の中に平たく（`typ`・`cb` など）
+    #[cfg_attr(feature = "serde", serde(flatten))]
+    pub form: Form,
     pub ignore: bool,
     /// 次の面までの厚さ [mm]（物体面は無限遠なら inf）
     pub t: f64,
@@ -181,24 +180,6 @@ pub struct Surface {
     pub k: f64,
     /// 偶数次非球面の係数 r^2, r^4, …（トロイダル面では y^2, y^4, …）
     pub asph: Vec<f64>,
-    /// トロイダル面の回転の曲率（1 / 回転半径、0 は回転半径が無限 = 円柱面）
-    pub cx: f64,
-    /// Zernike Sag の項（[`SurfType::ZernikeStd`]・[`SurfType::ZernikeFringe`]）
-    pub zern: Option<Arc<ZernSag>>,
-    /// Grid Sag の格子（[`SurfType::GridSag`]）と、その .DAT のファイル名（書き出し用）
-    pub grid: Option<Arc<GridSag>>,
-    pub grid_file: String,
-    /// Binary 2 の位相（[`SurfType::Binary2`]）
-    pub bin2: Option<Arc<Binary2>>,
-    /// Cylinder Fresnel の屈折の面（[`SurfType::CylFresnel`]）
-    pub cylf: Option<Arc<CylFresnel>>,
-    /// 面の後ろの屈折率分布（[`SurfType::Gradium`]・[`SurfType::Gradient9`]）。`n` は頂点の屈折率
-    pub grin: Option<Arc<Grin>>,
-    pub cb: [f64; 5],
-    pub cb_order: u8,
-    pub focal: f64,
-    pub opd_mode: i32,
-    pub jones: [f64; 8],
     pub before: Option<Tilt>,
     pub after: After,
     pub ap: Aperture,
@@ -222,12 +203,6 @@ pub struct Surface {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub bire: Option<Bire>,
-    /// 利用者定義の面（[`SurfType::User`]）のモデルと設定
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
-    pub user: Option<crate::usersurf::UserSurf>,
 }
 
 /// 偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、
@@ -446,7 +421,7 @@ pub struct Reflect {
 impl Default for Surface {
     fn default() -> Self {
         Surface {
-            typ: SurfType::Standard,
+            form: Form::Standard,
             ignore: false,
             t: 0.0,
             comment: String::new(),
@@ -458,18 +433,6 @@ impl Default for Surface {
             c: 0.0,
             k: 0.0,
             asph: Vec::new(),
-            cx: 0.0,
-            zern: None,
-            grid: None,
-            grid_file: String::new(),
-            bin2: None,
-            cylf: None,
-            grin: None,
-            cb: [0.0; 5],
-            cb_order: 0,
-            focal: 0.0,
-            opd_mode: 0,
-            jones: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             before: None,
             after: After::None,
             ap: Aperture::None,
@@ -478,7 +441,6 @@ impl Default for Surface {
             reflect: None,
             retarder: None,
             bire: None,
-            user: None,
         }
     }
 }

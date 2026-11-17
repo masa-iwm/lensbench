@@ -56,7 +56,9 @@ pub(crate) fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
         .map(|i| {
             let mut s = v[n - 1 - i].clone();
             s.c = -s.c;
-            s.cx = -s.cx;
+            if let Some(cx) = s.cx_mut() {
+                *cx = -*cx;
+            }
             s.asph.iter_mut().for_each(|a| *a = -*a);
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;
@@ -115,17 +117,14 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         return crate::sysfile_v2::read::surface((**r).clone()).map_err(Into::into);
     }
     let mut s = Surface {
-        typ: match q.shape {
-            SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => SurfType::EvenAsph,
-            SurfShape::Standard => SurfType::Standard,
-            SurfShape::OddAsph => SurfType::OddAsph,
-            SurfShape::Toroidal => SurfType::Toroidal,
-            SurfShape::Fresnel => SurfType::Fresnel,
-        },
-        cx: if q.shape == SurfShape::Toroidal {
-            curv(q.radius_x)
-        } else {
-            0.0
+        form: match q.shape {
+            SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => Form::EvenAsph,
+            SurfShape::Standard => Form::Standard,
+            SurfShape::OddAsph => Form::OddAsph,
+            SurfShape::Toroidal => Form::Toroidal {
+                cx: curv(q.radius_x),
+            },
+            SurfShape::Fresnel => Form::Fresnel,
         },
         c: curv(q.radius),
         k: q.conic,
@@ -184,7 +183,7 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         };
         if curv(q.radius) != 0.0
             || q.conic != 0.0
-            || s.typ == SurfType::EvenAsph
+            || s.typ() == SurfType::EvenAsph
             || q.shape != SurfShape::Standard
         {
             return Err(
@@ -196,8 +195,7 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         }
     }
     if let Some(j) = q.jones {
-        s.typ = SurfType::Jones;
-        s.jones = j;
+        s.form = Form::Jones { jones: j };
     }
     let ret = match (&q.polarizer, &q.waveplate) {
         (Some(p), _) => Some(p.retarder()?),
@@ -206,8 +204,9 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     };
     if let Some(r) = ret {
         // jones は設計波長（偏光子は波長によらない）の値。偏光の追跡は波長ごとに retarder から
-        s.typ = SurfType::Jones;
-        s.jones = r.jones8(r.wl0);
+        s.form = Form::Jones {
+            jones: r.jones8(r.wl0),
+        };
         s.retarder = Some(r);
     }
     if let Some([tx, ty]) = q.tilt {
@@ -232,10 +231,11 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         if q.aperture.is_some() {
             return Err("a coordinate break surface can't have an aperture".into());
         }
-        s.typ = SurfType::CoordBrk;
+        s.form = Form::CoordBrk {
+            cb: d,
+            order: q.order,
+        };
         s.mat = "-".into();
-        s.cb = d;
-        s.cb_order = q.order;
         return Ok(s);
     }
     if let Some(g) = &q.glass {
@@ -802,7 +802,10 @@ fn expand_body(
         if let Some(r) = d.retarder.as_mut().filter(|r| !r.plates.is_empty()) {
             r.resolve(&c.glasses)
                 .map_err(|e| format!("surface {j}: {e}"))?;
-            d.jones = r.jones8(r.wl0);
+            let m = r.jones8(r.wl0);
+            if let Some(j) = d.jones_mut() {
+                *j = m;
+            }
         }
         // 屈折面での反射（ビームスプリッター）: 反対側の媒質の屈折率
         if let Some(r) = &mut d.reflect {

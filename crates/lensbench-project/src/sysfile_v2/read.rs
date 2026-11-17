@@ -3,7 +3,7 @@
 
 use super::*;
 use lensbench_core::glass::Glass;
-use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
+use lensbench_core::surface::{self as cs, Form, Material, SurfType, Surface};
 use lensbench_core::system::{self as sy, FieldCond, FieldType};
 use lensbench_core::System;
 use std::collections::HashMap;
@@ -207,15 +207,16 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         if r.shape.is_some() || r.action.is_some() || r.medium.is_some() {
             return Err("a coordinate break has no shape, action or medium".into());
         }
-        d.typ = SurfType::CoordBrk;
-        d.cb = [
-            cb.decenter[0],
-            cb.decenter[1],
-            cb.tilt[0],
-            cb.tilt[1],
-            cb.tilt[2],
-        ];
-        d.cb_order = cb.order;
+        d.form = Form::CoordBrk {
+            cb: [
+                cb.decenter[0],
+                cb.decenter[1],
+                cb.tilt[0],
+                cb.tilt[1],
+                cb.tilt[2],
+            ],
+            order: cb.order,
+        };
         d.mat = "-".into();
         return Ok(d);
     }
@@ -226,24 +227,22 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         None => {}
         Some(Shape::Conic { c, k }) => (d.c, d.k) = (c, k),
         Some(Shape::EvenAsphere { c, k, a }) => {
-            d.typ = SurfType::EvenAsph;
+            d.set_type(SurfType::EvenAsph);
             (d.c, d.k, d.asph) = (c, k, a);
         }
         Some(Shape::OddAsphere { c, k, b }) => {
-            d.typ = SurfType::OddAsph;
+            d.set_type(SurfType::OddAsph);
             (d.c, d.k, d.asph) = (c, k, b);
         }
         Some(Shape::Toroid { c, k, a, cx }) => {
-            d.typ = SurfType::Toroidal;
-            (d.c, d.k, d.asph, d.cx) = (c, k, a, cx);
+            d.form = Form::Toroidal { cx };
+            (d.c, d.k, d.asph) = (c, k, a);
         }
         Some(Shape::ZernikeStandard(z)) => {
-            d.typ = SurfType::ZernikeStd;
-            zernike(&mut d, z);
+            d.form = zernike(&mut d, z, SurfType::ZernikeStd);
         }
         Some(Shape::ZernikeFringe(z)) => {
-            d.typ = SurfType::ZernikeFringe;
-            zernike(&mut d, z);
+            d.form = zernike(&mut d, z, SurfType::ZernikeFringe);
         }
         Some(Shape::GridSag {
             c,
@@ -253,14 +252,15 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             grid,
             grid_file,
         }) => {
-            d.typ = SurfType::GridSag;
             (d.c, d.k, d.asph) = (c, k, a);
-            d.zern = terms.map(Arc::new);
-            d.grid = grid.map(Arc::new);
-            d.grid_file = grid_file;
+            d.form = Form::GridSag {
+                grid: grid.map(Arc::new),
+                grid_file,
+                zern: terms.map(Arc::new),
+            };
         }
         Some(Shape::Tilted { tan, c, k }) => {
-            d.typ = SurfType::TiltSurf;
+            d.set_type(SurfType::TiltSurf);
             (d.c, d.k) = (c, k);
             d.asph = named(&tan);
         }
@@ -274,7 +274,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             zc,
             angle,
         }) => {
-            d.typ = SurfType::Irregular;
+            d.set_type(SurfType::Irregular);
             (d.c, d.k) = (c, k);
             d.asph = named(&[
                 decenter[0],
@@ -292,7 +292,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             (d.c, d.k, d.asph) = (c, k, a);
         }
     }
-    let shape_typ = d.typ;
+    let shape_typ = d.typ();
     let standard = |what: &str| -> Result<(), String> {
         if shape_typ != SurfType::Standard || cyl {
             return Err(format!("the {what} action takes no shape of this kind"));
@@ -319,8 +319,8 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             if shaped {
                 return Err("a paraxial lens has no shape".into());
             }
-            d.typ = SurfType::Paraxial;
-            (d.focal, d.opd_mode, is_mirror) = (f, opd_mode, mirror);
+            d.form = Form::Paraxial { focal: f, opd_mode };
+            is_mirror = mirror;
         }
         Some(Action::Jones {
             matrix,
@@ -330,8 +330,7 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             if shaped {
                 return Err("a Jones matrix surface has no shape".into());
             }
-            d.typ = SurfType::Jones;
-            d.jones = matrix;
+            d.form = Form::Jones { jones: matrix };
             is_mirror = mirror;
             d.retarder = retarder.map(|r| cs::Retarder {
                 axis_deg: r.axis_deg,
@@ -357,8 +356,9 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             if !matches!(shape_typ, SurfType::Standard | SurfType::EvenAsph) || cyl {
                 return Err("Binary 2 takes an even asphere shape".into());
             }
-            d.typ = SurfType::Binary2;
-            d.bin2 = phase.map(Arc::new);
+            d.form = Form::Binary2 {
+                bin2: phase.map(Arc::new),
+            };
             is_mirror = mirror;
         }
         Some(Action::Fresnel { c, k, a, mirror }) => {
@@ -367,15 +367,16 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
                     "a Fresnel surface has no shape (its c, k, a are in the action)".into(),
                 );
             }
-            d.typ = SurfType::Fresnel;
+            d.set_type(SurfType::Fresnel);
             (d.c, d.k, d.asph, is_mirror) = (c, k, a, mirror);
         }
         Some(Action::CylinderFresnel { bend, mirror }) => {
             if shaped && !cyl {
                 return Err("a cylinder Fresnel surface takes a cylinder shape".into());
             }
-            d.typ = SurfType::CylFresnel;
-            d.cylf = bend.map(Arc::new);
+            d.form = Form::CylFresnel {
+                cylf: bend.map(Arc::new),
+            };
             is_mirror = mirror;
             cyl = false;
         }
@@ -399,14 +400,16 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
             if shaped {
                 return Err("a user-defined surface has no shape".into());
             }
-            d.typ = SurfType::User;
             is_mirror = mirror;
-            if !model.is_empty() {
-                d.user = Some(
+            let user = if model.is_empty() {
+                None
+            } else {
+                Some(
                     lensbench_core::usersurf::UserSurf::new(&model, config)
                         .map_err(|e| format!("action.user: {e}"))?,
-                );
-            }
+                )
+            };
+            d.form = Form::User { user };
         }
     }
     if cyl {
@@ -441,23 +444,29 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         }
         Some(Medium::Data(MediumData::Grin(g))) => {
             let g = *g;
-            if !matches!(d.typ, SurfType::Standard) || d.bire.is_some() {
+            if !matches!(d.typ(), SurfType::Standard) || d.bire.is_some() {
                 return Err("a GRIN medium follows a conic surface".into());
             }
             let grin = lensbench_core::grin::Grin {
                 kind: g.profile,
                 dt: g.dt,
             };
-            d.typ = grin.surf_type();
-            d.grin = Some(Arc::new(grin));
+            d.set_type(grin.surf_type());
+            if let Some(g) = d.grin_mut() {
+                *g = Some(Arc::new(grin));
+            }
             d.mat = Material::Glass(g.name);
         }
     }
     Ok(d)
 }
 
-fn zernike(d: &mut Surface, z: ZernikeShape) {
+/// Zernike Sag の面（種類 t）の値を置き、種類の枝を返す
+fn zernike(d: &mut Surface, z: ZernikeShape, t: SurfType) -> Form {
     (d.c, d.k, d.asph) = (z.c, z.k, z.a);
-    d.zern = z.terms.map(Arc::new);
-    d.grid = z.grid.map(Arc::new);
+    let zern = z.terms.map(Arc::new);
+    match t {
+        SurfType::ZernikeFringe => Form::ZernikeFringe { zern },
+        _ => Form::ZernikeStd { zern },
+    }
 }

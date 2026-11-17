@@ -60,8 +60,8 @@ fn loaded_values_and_links() {
     assert_eq!(sf[5].t, 7.0);
     assert_eq!(sf[5].asph[1], -1e-6);
     assert_eq!(sf[5].asph[2], 2.0 * -2e-9 + 1e-9);
-    assert_eq!(sf[6].cb[0], -0.2);
-    assert_eq!(sf[6].cb[3], -1.5);
+    assert_eq!(sf[6].cb()[0], -0.2);
+    assert_eq!(sf[6].cb()[3], -1.5);
     assert_eq!(s.pickups.len(), 8);
     assert!(s.pickup_of(p(&s, "4.t")).is_some());
     assert!(s.pickup_of(p(&s, "6.ty")).is_some());
@@ -96,13 +96,13 @@ fn follows_source() {
     assert_eq!(a.surfaces[4].c, -0.025);
     assert_eq!(a.surfaces[5].t, 6.0);
     assert_eq!(a.surfaces[5].asph[1], -3e-6);
-    assert_eq!(a.surfaces[6].cb[0], 0.1);
-    assert_eq!(a.surfaces[6].cb[3], -2.5);
+    assert_eq!(a.surfaces[6].cb()[0], 0.1);
+    assert_eq!(a.surfaces[6].cb()[3], -2.5);
     for j in 0..a.surfaces.len() {
         let (x, y) = (&a.surfaces[j], &b.surfaces[j]);
         assert_eq!(
-            (x.c, x.k, x.t, &x.asph, x.cb),
-            (y.c, y.k, y.t, &y.asph, y.cb),
+            (x.c, x.k, x.t, &x.asph, x.cb()),
+            (y.c, y.k, y.t, &y.asph, y.cb()),
             "面 {j}"
         );
     }

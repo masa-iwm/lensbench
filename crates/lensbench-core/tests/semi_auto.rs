@@ -104,5 +104,5 @@ fn edit_semi_auto_and_zmx_roundtrip() {
         .unwrap();
     assert!(s.surfaces[3].semi_auto);
     assert!((s.surfaces[3].semi - v).abs() < 1e-12);
-    assert_eq!(s.surfaces[3].typ, SurfType::Standard);
+    assert_eq!(s.surfaces[3].typ(), SurfType::Standard);
 }

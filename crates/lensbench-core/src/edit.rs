@@ -74,19 +74,19 @@ pub(crate) fn surf_type_name(t: SurfType) -> &'static str {
 
 /// 面の種類の形のデータが揃っているか
 fn type_data_ok(d: &Surface) -> Result<()> {
-    let ok = match d.typ {
-        SurfType::ZernikeStd | SurfType::ZernikeFringe => d.zern.is_some(),
-        SurfType::GridSag => d.grid.is_some(),
-        SurfType::CylFresnel => d.cylf.is_some(),
-        SurfType::Binary2 => d.bin2.is_some(),
-        SurfType::Gradium | SurfType::Gradient9 => d.grin.is_some(),
-        SurfType::User => d.user.is_some(),
+    let ok = match d.typ() {
+        SurfType::ZernikeStd | SurfType::ZernikeFringe => d.zern().is_some(),
+        SurfType::GridSag => d.grid().is_some(),
+        SurfType::CylFresnel => d.cylf().is_some(),
+        SurfType::Binary2 => d.bin2().is_some(),
+        SurfType::Gradium | SurfType::Gradient9 => d.grin().is_some(),
+        SurfType::User => d.user().is_some(),
         _ => true,
     };
     if !ok {
         notimpl!(
             "changing to surface type {} (it needs shape data; read it from a .zmx)",
-            surf_type_name(d.typ)
+            surf_type_name(d.typ())
         );
     }
     Ok(())
@@ -259,10 +259,10 @@ impl System {
                 }
                 _ => {}
             }
-            if d.typ == SurfType::CoordBrk && !no_material(&d.mat) {
+            if d.typ() == SurfType::CoordBrk && !no_material(&d.mat) {
                 invalid!("surface {j}: material {} on a coordinate break", d.mat);
             }
-            if d.typ == SurfType::Jones && d.c != 0.0 {
+            if d.typ() == SurfType::Jones && d.c != 0.0 {
                 notimpl!("Jones matrix surface {j} on a curved surface");
             }
             if j > 0 && !d.t.is_finite() {
@@ -407,7 +407,15 @@ impl System {
                     }
                     "k" => d.k = v.num(name)?,
                     "asph" => d.asph = v.nums(name, None)?,
-                    "cx" => d.cx = v.num(name)?,
+                    "cx" => {
+                        let x = v.num(name)?;
+                        match d.cx_mut() {
+                            Some(c) => *c = x,
+                            // ほかの種類の 0 は持たない値と同じ
+                            None if x == 0.0 => {}
+                            None => invalid!("surface {j} is not a toroidal surface (cx)"),
+                        }
+                    }
                     "coating" => d.coat = v.text(name)?.trim().to_string(),
                     // 数なら固定、"auto" なら自動
                     "semi" => match v {
@@ -431,27 +439,44 @@ impl System {
                         _ => invalid!("surface value aperture"),
                     },
                     "cb" => {
-                        if d.typ != SurfType::CoordBrk {
+                        if d.typ() != SurfType::CoordBrk {
                             invalid!("surface {j} is not a coordinate break (cb)");
                         }
                         let v = v.nums(name, Some(5))?;
-                        d.cb.copy_from_slice(&v);
+                        if let Some((cb, _)) = d.cb_mut() {
+                            cb.copy_from_slice(&v);
+                        }
                     }
                     "cb_order" => {
                         let o = v.num(name)?;
                         if o != 0.0 && o != 1.0 {
                             invalid!("cb_order must be 0 or 1 ({o})");
                         }
-                        d.cb_order = o as u8;
+                        match d.cb_mut() {
+                            Some((_, order)) => *order = o as u8,
+                            None if o == 0.0 => {}
+                            None => invalid!("surface {j} is not a coordinate break (cb_order)"),
+                        }
                     }
-                    "focal" => d.focal = v.num(name)?,
+                    "focal" => {
+                        let f = v.num(name)?;
+                        match d.paraxial_mut() {
+                            Some((focal, _)) => *focal = f,
+                            None if f == 0.0 => {}
+                            None => invalid!("surface {j} is not a paraxial lens (focal)"),
+                        }
+                    }
                     "jones" => {
                         let v = v.nums(name, Some(8))?;
-                        d.jones.copy_from_slice(&v);
+                        match d.jones_mut() {
+                            Some(m) => m.copy_from_slice(&v),
+                            None if v == crate::surface::JONES_IDENTITY => {}
+                            None => invalid!("surface {j} is not a Jones surface (jones)"),
+                        }
                         d.retarder = None;
                     }
                     "dn" | "disp" => {
-                        if d.is_mirror() || d.typ == SurfType::CoordBrk {
+                        if d.is_mirror() || d.typ() == SurfType::CoordBrk {
                             invalid!("surface {j} is a mirror or a coordinate break ({name})");
                         }
                         let x = v.num(name)?;
@@ -475,14 +500,14 @@ impl System {
         };
         use SurfValue::*;
         Ok(vec![
-            ("type", Text(surf_type_name(d.typ).into())),
+            ("type", Text(surf_type_name(d.typ()).into())),
             ("comment", Text(d.comment.clone())),
             ("t", Num(d.t)),
             ("c", Num(d.c)),
             ("r", Num(if d.c == 0.0 { f64::INFINITY } else { 1.0 / d.c })),
             ("k", Num(d.k)),
             ("asph", Nums(d.asph.clone())),
-            ("cx", Num(d.cx)),
+            ("cx", Num(d.cx())),
             ("material", Text(d.mat.name())),
             ("mirror", Bool(d.is_mirror())),
             ("coating", Text(d.coat.clone())),
@@ -491,10 +516,10 @@ impl System {
             ("stop", Bool(d.stop)),
             ("ignore", Bool(d.ignore)),
             ("aperture", Aperture(d.ap)),
-            ("cb", Nums(d.cb.to_vec())),
-            ("cb_order", Num(d.cb_order as f64)),
-            ("focal", Num(d.focal)),
-            ("jones", Nums(d.jones.to_vec())),
+            ("cb", Nums(d.cb().to_vec())),
+            ("cb_order", Num(d.cb_order() as f64)),
+            ("focal", Num(d.focal())),
+            ("jones", Nums(d.jones().to_vec())),
             ("dn", Num(d.dn)),
             ("disp", Num(d.disp)),
             ("n", Nums(self.n(j).to_vec())),
@@ -863,24 +888,20 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
 
 /// 面の種類を変える（[`System::set_surface_type`] の中身）
 fn set_type(d: &mut Surface, typ: SurfType) {
-    let old = d.typ;
-    d.typ = typ;
+    let old = d.typ();
+    // 種類ごとの値は新しい種類の既定に（持ち越せる Zernike の項・屈折率分布は持ち越す）
+    d.set_type(typ);
     if typ == SurfType::CoordBrk {
         d.c = 0.0;
         d.k = 0.0;
         d.asph.clear();
-        d.cx = 0.0;
         d.mat = Material::Air;
         d.before = None;
         d.after = After::None;
         d.dn = 0.0;
         d.disp = 0.0;
-    } else if old == SurfType::CoordBrk {
-        if d.mat == Material::Inherit {
-            d.mat = Material::Air;
-        }
-        d.cb = [0.0; 5];
-        d.cb_order = 0;
+    } else if old == SurfType::CoordBrk && d.mat == Material::Inherit {
+        d.mat = Material::Air;
     }
     if typ == SurfType::Jones {
         d.c = 0.0;
@@ -893,14 +914,11 @@ fn set_type(d: &mut Surface, typ: SurfType) {
     ) {
         d.asph.clear();
     }
-    if typ != SurfType::Toroidal {
-        d.cx = 0.0;
-    }
 }
 
 /// 面 j の材料を変える（[`System::set_material`] の中身）。mat は誤りの文に書く元の綴り
 fn set_material(d: &mut Surface, j: usize, m: Material, mat: &str) -> Result<()> {
-    if d.typ == SurfType::CoordBrk && !no_material(&m) {
+    if d.typ() == SurfType::CoordBrk && !no_material(&m) {
         invalid!("surface {j}: material {mat} on a coordinate break");
     }
     let mirror = m.is_mirror();

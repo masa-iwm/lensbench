@@ -193,9 +193,9 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
 pub fn reversible(s: &Surface) -> bool {
     use crate::surface::SurfType as T;
     matches!(
-        s.typ,
+        s.typ(),
         T::Standard | T::EvenAsph | T::OddAsph | T::Toroidal | T::Fresnel | T::Binary2
-    ) && s.grin.is_none()
+    ) && s.grin().is_none()
 }
 
 /// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 曲率・非球面・x の偏心の符号が反転）
@@ -221,7 +221,9 @@ pub fn reverse(e: &Element) -> Result<Element> {
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
         s.c = -s.c;
-        s.cx = -s.cx;
+        if let Some(cx) = s.cx_mut() {
+            *cx = -*cx;
+        }
         s.asph.iter_mut().for_each(|a| *a = -*a);
         if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
@@ -378,8 +380,8 @@ mod tests {
         let s = two_lenses();
         let e = split(&s).unwrap();
         let mut b = e[0].clone();
-        b.surfaces[1].typ = crate::surface::SurfType::Binary2;
-        b.surfaces[1].bin2 = Some(std::sync::Arc::new(crate::surface::Binary2 {
+        b.surfaces[1].set_type(crate::surface::SurfType::Binary2);
+        *b.surfaces[1].bin2_mut().unwrap() = Some(std::sync::Arc::new(crate::surface::Binary2 {
             order: 1.0,
             norm: 10.0,
             coef: vec![-20.0],
@@ -393,14 +395,16 @@ mod tests {
         let r = reverse(&b).unwrap();
         assert!((efl(&b) - efl(&e[0])).abs() > 1e-3 * efl(&e[0]).abs());
         assert!((efl(&r) - efl(&b)).abs() < 1e-9 * efl(&b).abs());
-        assert_eq!(r.surfaces[0].bin2, b.surfaces[1].bin2);
+        assert_eq!(r.surfaces[0].bin2(), b.surfaces[1].bin2());
         // 理想レンズの面のある玉は反転しない（前後の媒質で屈折力が変わる）
         let mut q = e[0].clone();
-        q.surfaces[0].typ = crate::surface::SurfType::Paraxial;
-        q.surfaces[0].focal = 80.0;
+        q.surfaces[0].form = crate::surface::Form::Paraxial {
+            focal: 80.0,
+            opd_mode: 0,
+        };
         assert!(reverse(&q).is_err());
         let mut z = e[0].clone();
-        z.surfaces[0].typ = crate::surface::SurfType::ZernikeStd;
+        z.surfaces[0].set_type(crate::surface::SurfType::ZernikeStd);
         assert!(reverse(&z).is_err());
     }
 

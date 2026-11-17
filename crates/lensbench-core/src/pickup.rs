@@ -3,7 +3,7 @@
 use crate::error::Result;
 // ピックアップする量はパラメータと同じ量の型（ピックアップに使えるのは Kind::is_pick）
 use crate::param::{Kind, Param};
-use crate::surface::{After, SurfType, Surface, Tilt};
+use crate::surface::{After, Form, SurfType, Surface, Tilt};
 use crate::system::System;
 use crate::{invalid, notimpl};
 
@@ -137,7 +137,7 @@ pub(crate) fn asph_parm_base(t: SurfType) -> Option<usize> {
 
 /// パラメータ Kind::Asph（a2・a4…）を持てる面か（偶数次非球面と自由曲面）
 pub(crate) fn takes_asph(d: &Surface) -> bool {
-    d.typ == SurfType::EvenAsph || d.shape().is_freeform()
+    d.typ() == SurfType::EvenAsph || d.shape().is_freeform()
 }
 
 /// 面タイプのパラメータ i（.zmx の PARM の番号）の値。この面タイプで値を持たない番号は None
@@ -145,19 +145,19 @@ pub fn surf_parm(d: &Surface, i: u8) -> Option<f64> {
     let i = i as usize;
     let at =
         |v: &[f64], j: usize| -> Option<f64> { (j < 8).then(|| v.get(j).copied().unwrap_or(0.0)) };
-    match d.typ {
-        SurfType::Toroidal if i == 1 => Some(if d.cx == 0.0 { 0.0 } else { 1.0 / d.cx }),
+    match d.typ() {
+        SurfType::Toroidal if i == 1 => Some(if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() }),
         t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
             at(&d.asph, i - asph_parm_base(t).unwrap_or(1))
         }
-        SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb[i - 1]),
-        SurfType::CoordBrk if i == 6 => Some(d.cb_order as f64),
-        SurfType::Paraxial if i == 1 => Some(d.focal),
-        SurfType::Paraxial if i == 2 => Some(d.opd_mode as f64),
-        SurfType::Jones if (1..=8).contains(&i) => Some(d.jones[i - 1]),
+        SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb()[i - 1]),
+        SurfType::CoordBrk if i == 6 => Some(d.cb_order() as f64),
+        SurfType::Paraxial if i == 1 => Some(d.focal()),
+        SurfType::Paraxial if i == 2 => Some(d.opd_mode() as f64),
+        SurfType::Jones if (1..=8).contains(&i) => Some(d.jones()[i - 1]),
         SurfType::Gradium | SurfType::Gradient9 => {
             use crate::grin::GrinKind;
-            let g = d.grin.as_deref()?;
+            let g = d.grin()?;
             match (&g.kind, i) {
                 (_, 1) => Some(g.dt),
                 (GrinKind::Gradium { prof, .. }, 0) => Some(prof.zmax),
@@ -182,24 +182,25 @@ pub(crate) fn set_surf_parm(d: &mut Surface, i: u8, v: f64) -> bool {
         }
         a[j] = v;
     };
-    match d.typ {
-        SurfType::Toroidal if i == 1 => d.cx = if v == 0.0 { 0.0 } else { 1.0 / v },
-        t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
-            let b = asph_parm_base(t).unwrap_or(1);
-            put(&mut d.asph, i - b, 9 - b)
-        }
-        SurfType::CoordBrk if (1..=5).contains(&i) => d.cb[i - 1] = v,
-        SurfType::CoordBrk if i == 6 => d.cb_order = v as u8,
-        SurfType::Paraxial if i == 1 => d.focal = v,
-        SurfType::Paraxial if i == 2 => d.opd_mode = v as i32,
-        SurfType::Jones if (1..=8).contains(&i) => {
-            d.jones[i - 1] = v;
+    let t = d.typ();
+    if let Some(b) = asph_parm_base(t).filter(|b| (*b..=8).contains(&i)) {
+        put(&mut d.asph, i - b, 9 - b);
+        return true;
+    }
+    match (&mut d.form, i) {
+        (Form::Toroidal { cx }, 1) => *cx = if v == 0.0 { 0.0 } else { 1.0 / v },
+        (Form::CoordBrk { cb, .. }, 1..=5) => cb[i - 1] = v,
+        (Form::CoordBrk { order, .. }, 6) => *order = v as u8,
+        (Form::Paraxial { focal, .. }, 1) => *focal = v,
+        (Form::Paraxial { opd_mode, .. }, 2) => *opd_mode = v as i32,
+        (Form::Jones { jones }, 1..=8) => {
+            jones[i - 1] = v;
             d.retarder = None;
         }
         // GRIN: Δt と Gradient 9 の形の傾きだけ（Δz などは頂点の屈折率 n も変わるので未対応）
-        SurfType::Gradium | SurfType::Gradient9 => {
+        (Form::Gradium { grin } | Form::Gradient9 { grin }, _) => {
             use crate::grin::GrinKind;
-            let Some(g) = d.grin.as_mut() else {
+            let Some(g) = grin.as_mut() else {
                 return false;
             };
             let g = std::sync::Arc::make_mut(g);
@@ -309,7 +310,7 @@ pub(crate) fn pick_kind(d: &Surface, kind: Kind) -> Option<Kind> {
         Kind::Conic => Some(Kind::Conic),
         Kind::Dn => Some(Kind::Dn),
         Kind::Disp => Some(Kind::Disp),
-        Kind::Asph(i) if takes_asph(d) => asph_parm_base(d.typ).map(|b| Kind::Parm(i + b as u8)),
+        Kind::Asph(i) if takes_asph(d) => asph_parm_base(d.typ()).map(|b| Kind::Parm(i + b as u8)),
         k if d.is_coord_break() => k.tilt_index().map(|i| Kind::Parm(i as u8 + 1)),
         k => k.tilt_index().map(|i| Kind::Before(i as u8)),
     }
@@ -324,7 +325,7 @@ pub(crate) fn kind_of_pick(d: &Surface, what: Kind) -> Option<Kind> {
         Kind::Before(i) => [Kind::Dx, Kind::Dy, Kind::Tx, Kind::Ty, Kind::Tz]
             .get(i as usize)
             .copied(),
-        Kind::Parm(i) => match d.typ {
+        Kind::Parm(i) => match d.typ() {
             t if takes_asph(d)
                 && asph_parm_base(t).is_some_and(|b| (b..=8).contains(&(i as usize))) =>
             {
@@ -558,7 +559,7 @@ mod tests {
             (SurfType::TiltSurf, 1),
         ] {
             let mut d = Surface {
-                typ,
+                form: crate::form::Form::of(typ),
                 asph: vec![0.1, 0.2, 0.3],
                 ..Default::default()
             };
@@ -572,8 +573,7 @@ mod tests {
         }
         // トロイダル: PARM 1 は回転半径、係数は PARM 2 から。a2 などのパラメータは持たない
         let d = Surface {
-            typ: SurfType::Toroidal,
-            cx: 0.02,
+            form: crate::form::Form::Toroidal { cx: 0.02 },
             asph: vec![0.1, 0.2],
             ..Default::default()
         };
@@ -584,7 +584,7 @@ mod tests {
         assert_eq!(pick_kind(&d, Kind::Asph(0)), None);
         // フレネルは PARM 1〜8 が係数（パラメータ a2 は持たない）
         let d = Surface {
-            typ: SurfType::Fresnel,
+            form: crate::form::Form::Fresnel,
             asph: vec![0.4],
             ..Default::default()
         };

@@ -353,12 +353,12 @@ fn surface_type_change() {
     assert_eq!(s.n(3), vec![1.5; 3]);
     s.set_param(Param::new(3, Kind::Tx), 1.0).unwrap();
     s.set_surface_type(3, SurfType::Standard).unwrap();
-    assert_eq!(s.surfaces[3].cb, [0.0; 5]);
+    assert_eq!(s.surfaces[3].cb(), [0.0; 5]);
     assert_eq!(s.n(3), vec![1.0; 3]);
     // 形のデータの要る種類はエラー（.zmx から読む）
     assert!(s.set_surface_type(3, SurfType::ZernikeStd).is_err());
     // 失敗した編集で系は変わらない
-    assert_eq!(s.surfaces[3].typ, SurfType::Standard);
+    assert_eq!(s.surfaces[3].typ(), SurfType::Standard);
     assert!(s.set_surface_type(s.stop(), SurfType::CoordBrk).is_err());
 }
 
@@ -457,8 +457,8 @@ fn surface_fields_by_name() {
         ],
     )
     .unwrap();
-    assert_eq!(s.surfaces[4].typ, SurfType::CoordBrk);
-    assert_eq!(s.surfaces[4].cb[1], 0.1);
+    assert_eq!(s.surfaces[4].typ(), SurfType::CoordBrk);
+    assert_eq!(s.surfaces[4].cb()[1], 0.1);
 }
 
 /// 値が有限にならないピックアップ（無限遠の物体距離から）は付けられない

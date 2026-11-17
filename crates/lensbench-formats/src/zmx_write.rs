@@ -154,7 +154,7 @@ fn write_header(s: &System, coat_file: &str) -> Result<String> {
     let grd = s
         .surfaces
         .iter()
-        .find_map(|d| match d.grin.as_deref().map(|g| &g.kind) {
+        .find_map(|d| match d.grin().map(|g| &g.kind) {
             Some(lensbench_core::grin::GrinKind::Gradium { prof, .. })
                 if !prof.file.eq_ignore_ascii_case("PROFILE.GRD") =>
             {
@@ -213,11 +213,11 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 d.disp
             );
         }
-        if d.typ == SurfType::User && !d.ignore {
+        if d.typ() == SurfType::User && !d.ignore {
             notimpl!("surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)");
         }
         w(&mut o, format!("SURF {k}"));
-        let typ = match d.typ {
+        let typ = match d.typ() {
             SurfType::Standard => "STANDARD",
             SurfType::EvenAsph => "EVENASPH",
             SurfType::CoordBrk => "COORDBRK",
@@ -239,7 +239,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::User => "STANDARD",
         };
         // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）
-        let bire = match (&d.bire, d.typ) {
+        let bire = match (&d.bire, d.typ()) {
             (Some(b), SurfType::Standard) => Some(b),
             (Some(_), t) => {
                 notimpl!("surface {k}: the birefringent plate surface is {t:?} (standard only)")
@@ -331,7 +331,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             }
             None => {}
         }
-        match d.typ {
+        match d.typ() {
             SurfType::EvenAsph
             | SurfType::Fresnel
             | SurfType::OddAsph
@@ -343,7 +343,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             }
             SurfType::Binary2 => {
                 // PARM 0 は回折次数、1〜8 は r^2〜r^16。XDAT 1 は項の数、2 は正規化半径、k+2 は ρ^{2k} の係数
-                let Some(b) = &d.bin2 else {
+                let Some(b) = &d.bin2() else {
                     notimpl!("surface {k}: no Binary 2 phase");
                 };
                 w(&mut o, format!("  PARM 0 {}", f(b.order)));
@@ -358,7 +358,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             }
             SurfType::CylFresnel => {
                 // PARM 1〜8 は基板の y^2〜y^16。XDAT 1 は項の数、2・3 は屈折の面の曲率・円錐係数、k+3 は y^{2k} の係数
-                let Some(cf) = &d.cylf else {
+                let Some(cf) = &d.cylf() else {
                     notimpl!("surface {k}: no Cylinder Fresnel surface");
                 };
                 for (i, a) in d.asph.iter().enumerate() {
@@ -374,7 +374,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::Gradium | SurfType::Gradient9 => {
                 // GRINSUR8: PARM 0 素材の厚さ、1 Δt、2 Δz、3 頂点の基準の屈折率（表示用）、4〜7 dx dy tx ty、8 端の扱い。
                 // GRINSUR9: PARM 1 Δt、2 tan α、3 tan β。分布・材料の名前は GLAS
-                let Some(g) = &d.grin else {
+                let Some(g) = &d.grin() else {
                     notimpl!("surface {k}: no GRIN profile");
                 };
                 match &g.kind {
@@ -401,23 +401,23 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 }
             }
             SurfType::CoordBrk => {
-                for (i, a) in d.cb.iter().enumerate() {
+                for (i, a) in d.cb().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
                 }
-                w(&mut o, format!("  PARM 6 {}", d.cb_order));
+                w(&mut o, format!("  PARM 6 {}", d.cb_order()));
             }
             SurfType::Jones => {
-                for (i, a) in d.jones.iter().enumerate() {
+                for (i, a) in d.jones().iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
                 }
             }
             SurfType::Paraxial => {
-                w(&mut o, format!("  PARM 1 {}", f(d.focal)));
-                w(&mut o, format!("  PARM 2 {}", d.opd_mode));
+                w(&mut o, format!("  PARM 1 {}", f(d.focal())));
+                w(&mut o, format!("  PARM 2 {}", d.opd_mode()));
             }
             SurfType::User => {}
             SurfType::Toroidal => {
-                let r = if d.cx == 0.0 { 0.0 } else { 1.0 / d.cx };
+                let r = if d.cx() == 0.0 { 0.0 } else { 1.0 / d.cx() };
                 w(&mut o, format!("  PARM 1 {}", f(r)));
                 for (i, a) in d.asph.iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 2, f(*a)));
@@ -429,8 +429,8 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::ZernikeStd | SurfType::ZernikeFringe | SurfType::GridSag => {
                 // OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）: PARM 0 は外挿・補間、1〜8 は r^2〜r^16、
                 // 9・10 は Zernike の偏心。XDAT 1 は項の数、2 は正規化半径、k+2 は項 k。Grid は GDAT・GARR を埋め込む
-                let z = d.zern.as_deref();
-                let p0 = match (&d.grid, z) {
+                let z = d.zern();
+                let p0 = match (&d.grid(), z) {
                     (Some(g), _) => {
                         if g.linear {
                             1.0
@@ -447,7 +447,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     }
                     (None, None) => 1.0,
                 };
-                if d.typ == SurfType::GridSag && z.is_some_and(|z| !z.extrapolate) {
+                if d.typ() == SurfType::GridSag && z.is_some_and(|z| !z.extrapolate) {
                     notimpl!("surface {k}: the Grid Sag Zernike terms can only be extrapolated");
                 }
                 if d.asph.len() > 8 {
@@ -474,11 +474,11 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                         w(&mut o, format!("  XDAT {} {} 0 0 1 0 0 \"\"", i + 3, f(*a)));
                     }
                 }
-                if d.typ == SurfType::GridSag {
-                    let Some(g) = &d.grid else {
+                if d.typ() == SurfType::GridSag {
+                    let Some(g) = &d.grid() else {
                         notimpl!("surface {k}: no Grid Sag grid");
                     };
-                    w(&mut o, format!("  FIMP {}", d.grid_file));
+                    w(&mut o, format!("  FIMP {}", d.grid_file()));
                     w(
                         &mut o,
                         format!(
@@ -589,7 +589,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         let mat_pick = s.pickups.iter().find(|q| q.dst == k && q.what == Kind::Dn);
         if d.is_mirror() {
             w(&mut o, "  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0".into());
-        } else if let (Some(q), false) = (mat_pick, d.typ == SurfType::CoordBrk) {
+        } else if let (Some(q), false) = (mat_pick, d.typ() == SurfType::CoordBrk) {
             // 材料のピックアップ（OpticStudio の書き方: GLAS 名前 2 元の面 …。名前は読込で使わない）
             let name = match d.mat.glass() {
                 Some(m) if s.glasses.contains_key(m) => m,
@@ -599,10 +599,10 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 &mut o,
                 format!("  GLAS {name} 2 {} 1.5 40 0 0 0 0 0 0", q.src),
             );
-        } else if d.typ != SurfType::CoordBrk {
+        } else if d.typ() != SurfType::CoordBrk {
             match &d.mat {
                 Material::Air | Material::Mirror | Material::Inherit => {}
-                Material::Glass(m) if s.glasses.contains_key(m) || d.grin.is_some() => {
+                Material::Glass(m) if s.glasses.contains_key(m) || d.grin().is_some() => {
                     w(&mut o, format!("  GLAS {m} 0 0 1.5 40 0 0 0 0 0 0"));
                 }
                 Material::Glass(m) => {
@@ -774,8 +774,8 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
             }
         }),
         Kind::Conic => ("CONN", p.index(), None, id),
-        Kind::Asph(i) if d.typ == SurfType::EvenAsph => ("PRAM", p.index(), Some(i + 1), id),
-        k if d.typ == SurfType::CoordBrk => {
+        Kind::Asph(i) if d.typ() == SurfType::EvenAsph => ("PRAM", p.index(), Some(i + 1), id),
+        k if d.typ() == SurfType::CoordBrk => {
             let i = k.tilt_index()?;
             ("PRAM", p.index(), Some(i as u8 + 1), id)
         }

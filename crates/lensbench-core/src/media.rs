@@ -26,7 +26,7 @@ fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Ve
     if j > 0 && (d.is_mirror() || d.is_coord_break()) {
         return Ok(None);
     }
-    if let Some(g) = d.grin.as_deref() {
+    if let Some(g) = d.grin() {
         return lams
             .iter()
             .map(|&l| {

@@ -443,9 +443,6 @@ pub struct ZernikeShape {
     pub a: Vec<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terms: Option<ZernSag>,
-    /// Grid Sag から種類を変えた面に残った格子（近軸の曲率にだけ効く）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub grid: Option<GridSag>,
 }
 
 /// 面の働き（屈折は省く）。mirror は反射してから位相・傾きを加える

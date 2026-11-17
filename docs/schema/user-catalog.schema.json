@@ -4015,17 +4015,6 @@
           "format": "double",
           "type": "number"
         },
-        "grid": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/GridSag"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Grid Sag から種類を変えた面に残った格子（近軸の曲率にだけ効く）"
-        },
         "k": {
           "format": "double",
           "type": "number"

@@ -169,17 +169,17 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
     let s = load(&txt, &d);
     assert!(s.macro_warnings().is_empty(), "{:?}", s.macro_warnings());
     assert_eq!(s.macro_parms.len(), 2);
-    assert_eq!(s.surfaces[3].jones[0], 0.5f64.cos());
-    assert_eq!(s.surfaces[3].jones[2], -(0.5f64.sin()));
+    assert_eq!(s.surfaces[3].jones()[0], 0.5f64.cos());
+    assert_eq!(s.surfaces[3].jones()[2], -(0.5f64.sin()));
     let s = s.with_params(&[(Param::new(1, Kind::Thick), 7.0)]).unwrap();
-    assert_eq!(s.surfaces[3].jones[0], (7.0f64 * 0.1).cos());
+    assert_eq!(s.surfaces[3].jones()[0], (7.0f64 * 0.1).cos());
     let out = zmx_write::write(&s).unwrap();
     assert!(
         out.contains("PZPL 1 \"LB_JA\"") && out.contains("PZPL 3 \"LB_JB\""),
         "{out}"
     );
     let back = load(&out, &d);
-    assert_eq!(back.surfaces[3].jones[2], -((7.0f64 * 0.1).sin()));
+    assert_eq!(back.surfaces[3].jones()[2], -((7.0f64 * 0.1).sin()));
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -108,7 +108,7 @@ fn spec_round_trip_and_errors() {
     let j = s.surfaces.iter().find(|d| d.retarder.is_some()).unwrap();
     // jones は設計波長の値
     let r = j.retarder.clone().unwrap();
-    assert_eq!(j.jones, r.jones8(0.633));
+    assert_eq!(j.jones(), r.jones8(0.633));
     for bad in [
         r#"{"polarizer": {"extinction_ratio": 0.5}}"#,
         r#"{"polarizer": {"transmittance": 1.5}}"#,

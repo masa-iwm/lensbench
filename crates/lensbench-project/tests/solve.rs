@@ -35,7 +35,7 @@ fn folded() -> System {
     .map(|x| x.system)
     .unwrap();
     assert!(s.surfaces[4].is_mirror());
-    assert_eq!((s.surfaces[3].cb_order, s.surfaces[5].cb_order), (0, 1));
+    assert_eq!((s.surfaces[3].cb_order(), s.surfaces[5].cb_order()), (0, 1));
     // 鏡を偏心させる（戻りの座標ブレークは逆の順で戻す）
     s.with_params(&[
         (s.param("3.dx").unwrap(), 0.3),

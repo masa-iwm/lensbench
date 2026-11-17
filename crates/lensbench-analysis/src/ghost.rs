@@ -14,7 +14,7 @@
 
 use lensbench_core::coating;
 use lensbench_core::math::*;
-use lensbench_core::surface::{After, Material, Reflect, SurfType, Surface, Tilt};
+use lensbench_core::surface::{After, Form, Material, Reflect, SurfType, Surface, Tilt};
 use lensbench_core::system::{apply_cb, step_frame, ApertureKind, PolIn, System};
 use lensbench_core::{invalid, Result};
 
@@ -46,7 +46,7 @@ pub fn reflecting_surfaces(sys: &System) -> Vec<usize> {
                 && !d.is_mirror()
                 && !d.ignore
                 && matches!(
-                    d.typ,
+                    d.typ(),
                     SurfType::Standard
                         | SurfType::EvenAsph
                         | SurfType::Toroidal
@@ -80,7 +80,7 @@ fn plain(d: &Surface) -> bool {
     d.ignore
         || (d.before.is_none()
             && matches!(d.after, After::None | After::Reverse)
-            && (!d.is_coord_break() || d.cb.iter().all(|&v| v == 0.0)))
+            && (!d.is_coord_break() || d.cb().iter().all(|&v| v == 0.0)))
 }
 
 /// 面 a で反射し、面 b で反射するゴーストの経路を展開した系
@@ -89,8 +89,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     if !(b < a) {
         invalid!("ghost: the first reflecting surface {a} is after the second one {b} (b < a)");
     }
-    if let Some(j) =
-        (1..sys.surfaces.len()).find(|&j| !sys.surfaces[j].ignore && sys.surfaces[j].grin.is_some())
+    if let Some(j) = (1..sys.surfaces.len())
+        .find(|&j| !sys.surfaces[j].ignore && sys.surfaces[j].grin().is_some())
     {
         lensbench_core::notimpl!("ghost: a system with a GRIN medium (surface {j})");
     }
@@ -103,7 +103,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
         k == img
             && !sys.surfaces[k].is_mirror()
             && matches!(
-                sys.surfaces[k].typ,
+                sys.surfaces[k].typ(),
                 SurfType::Standard
                     | SurfType::EvenAsph
                     | SurfType::Toroidal
@@ -226,10 +226,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
             if cb.d.iter().any(|&v| v != 0.0) {
                 (o, r) = apply_cb(o, r, &cb);
                 let c = Surface {
-                    typ: SurfType::CoordBrk,
+                    form: Form::CoordBrk { cb: cb.d, order: 0 },
                     mat: Material::Inherit,
-                    cb: cb.d,
-                    cb_order: 0,
                     ..Default::default()
                 };
                 push(&mut out, &mut origin, c, None);

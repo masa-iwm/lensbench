@@ -64,8 +64,7 @@ impl System {
                     } else {
                         // GRIN の媒質へは頂点の屈折率で
                         let n2 = d
-                            .grin
-                            .as_deref()
+                            .grin()
                             .and_then(|g| g.vertex_index(self.wavelengths[w]))
                             .unwrap_or(self.n(j)[w]);
                         uu = (n * uu - yy * c * (n2 - n) + sgn * dphi) / n2;
@@ -75,7 +74,7 @@ impl System {
             }
             u[j] = uu;
             // GRIN の媒質（座標ブレークの後ろも続く）と、その面の局所 z の今の位置
-            gmed = match d.grin.as_deref().filter(|_| !d.is_mirror()) {
+            gmed = match d.grin().filter(|_| !d.is_mirror()) {
                 Some(g) => Some((g, 0.0)),
                 None if d.is_coord_break() => gmed,
                 None => None,
@@ -258,7 +257,7 @@ impl System {
             if d.ignore {
                 continue;
             }
-            if d.is_coord_break() && d.cb.iter().any(|&v| v != 0.0) {
+            if d.is_coord_break() && d.cb().iter().any(|&v| v != 0.0) {
                 return false;
             }
             if d.before.is_some() || matches!(d.after, After::Tilt(_)) {
@@ -270,7 +269,7 @@ impl System {
                 return false;
             }
             // GRIN の公差の項・Gradient 9 の形の傾き
-            if d.grin.as_deref().is_some_and(|g| !g.symmetric()) {
+            if d.grin().is_some_and(|g| !g.symmetric()) {
                 return false;
             }
         }
@@ -291,8 +290,7 @@ impl System {
                 // GRIN の分布・形を傾けた面も同じ（G8B で OpticStudio と OPDC 5e-7 波）
                 let free = self.surfaces.iter().any(|d| {
                     !d.ignore
-                        && (d.shape().is_freeform()
-                            || d.grin.as_deref().is_some_and(|g| !g.symmetric()))
+                        && (d.shape().is_freeform() || d.grin().is_some_and(|g| !g.symmetric()))
                 });
                 let cross_z = |p1: V3, k1: V3| -> f64 {
                     if free {

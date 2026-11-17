@@ -274,8 +274,8 @@ fn aspheric_and_toroidal() {
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[1];
-    d.typ = SurfType::Toroidal;
-    d.cx = d.c * 0.7;
+    d.set_type(SurfType::Toroidal);
+    *d.cx_mut().unwrap() = d.c * 0.7;
     d.asph = vec![1e-5, -2e-7];
     // 面を直接書き換えたので、像面の厚さのソルブ（面 7）を解き直す（with_params の系と揃える）
     let mut s = rx.build_raw().unwrap();
@@ -303,8 +303,8 @@ fn freeform_surfaces() {
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
-    d.typ = SurfType::ZernikeStd;
-    d.zern = Some(Arc::new(ZernSag::new(
+    d.set_type(SurfType::ZernikeStd);
+    *d.zern_mut().unwrap() = Some(Arc::new(ZernSag::new(
         false,
         6.0,
         (1..=37).map(|i| 1e-4 * (i as f64 * 0.7).sin()).collect(),
@@ -313,9 +313,9 @@ fn freeform_surfaces() {
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[1];
-    d.typ = SurfType::ZernikeFringe;
+    d.set_type(SurfType::ZernikeFringe);
     d.k = -0.4;
-    d.zern = Some(Arc::new(ZernSag::new(
+    *d.zern_mut().unwrap() = Some(Arc::new(ZernSag::new(
         true,
         9.0,
         (1..=37).map(|i| 1e-4 * (i as f64 * 1.3).cos()).collect(),
@@ -325,8 +325,8 @@ fn freeform_surfaces() {
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[6];
-    d.typ = SurfType::GridSag;
-    d.grid = Some(Arc::new(GridSag {
+    d.set_type(SurfType::GridSag);
+    *d.grid_mut().unwrap() = Some(Arc::new(GridSag {
         nx,
         ny,
         dx: 0.8,

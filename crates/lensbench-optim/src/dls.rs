@@ -819,7 +819,7 @@ fn term_rows(s: &System, k: &TermKind) -> usize {
 /// 像面が平面（波面の解析的な微分の前提）
 fn flat_image(s: &System) -> bool {
     let d = &s.surfaces[s.image()];
-    matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
+    matches!(d.typ(), SurfType::Standard | SurfType::EvenAsph)
         && d.c == 0.0
         && d.asph.iter().all(|&a| a == 0.0)
 }

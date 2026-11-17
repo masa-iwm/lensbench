@@ -136,7 +136,7 @@ fn grin_lane<V: Lanes, const N: usize>(
     let sys = plan.sys;
     let d = &sys.surfaces[st.j];
     let gs = &sys.surfaces[g.gj];
-    let gm = gs.grin.as_deref().expect("GRIN data of a GRIN step");
+    let gm = gs.grin().expect("GRIN data of a GRIN step");
     let lam = plan.lam;
     let (rr, tt) = (g.rr, g.tt);
     let mut loc = loc;
@@ -409,7 +409,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
         // 面の後ろの屈折率（GRIN の媒質へは交点の値で）
         let mut nn = V::splat(st.n_tab);
         if st.grin_eval {
-            let g = d.grin.as_deref().expect("GRIN data of a GRIN step");
+            let g = d.grin().expect("GRIN data of a GRIN step");
             for i in 0..N {
                 if err[i] == 0.0 {
                     match g.eval(plan.lam, get(&pl, i)) {
@@ -430,7 +430,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 for i in 0..N {
                     if !es.at(i) {
                         let k1 = get(&kl, i);
-                        let (k2, dl) = trace::paraxial(d.focal, get(&pl, i), k1, st.conj);
+                        let (k2, dl) = trace::paraxial(d.focal(), get(&pl, i), k1, st.conj);
                         // 電場は方向の変化と同じ最小の回転で回す（振幅は変えない。OpticStudio との照合は未確認）
                         if let (Some(e), true) = (pe.as_mut(), err[i] == 0.0) {
                             e.rotate_lane(i, cross(k1, k2), dot(k1, k2));

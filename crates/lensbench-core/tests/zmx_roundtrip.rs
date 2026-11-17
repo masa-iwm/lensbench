@@ -49,7 +49,7 @@ fn refs_keep_values_and_states() {
         assert_eq!(s.surfaces.len(), r.surfaces.len(), "{name}");
         for (k, (a, b)) in s.surfaces.iter().zip(&r.surfaces).enumerate() {
             let at = format!("{name} 面 {k}");
-            assert_eq!(a.typ, b.typ, "{at}");
+            assert_eq!(a.typ(), b.typ(), "{at}");
             assert_eq!(a.semi_auto, b.semi_auto, "{at}: 半直径の自動・固定");
             if !a.semi_auto {
                 assert_eq!(a.semi, b.semi, "{at}: 固定の半直径");

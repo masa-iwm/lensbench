@@ -210,7 +210,7 @@ fn a_double_pass_returns_to_the_start() {
     // 復路の玉の面は往路と同じ面（同じ座標系・同じ曲率）
     let glass: Vec<usize> = (0..s.surfaces.len())
         .filter(|&j| {
-            s.surfaces[j].typ == lensbench_core::surface::SurfType::Standard
+            s.surfaces[j].typ() == lensbench_core::surface::SurfType::Standard
                 && s.surfaces[j].c != 0.0
         })
         .collect();
@@ -472,9 +472,9 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
         r#"{"jones": [1, 0, 0.5, 0, 0, 0, 1, 0], "aperture": {"type": "rect", "hx": 50, "hy": 40, "dx": 1}}"#,
     );
     let k = j.image() - 1;
-    assert_eq!(j.surfaces[k].typ, SurfType::Jones);
+    assert_eq!(j.surfaces[k].typ(), SurfType::Jones);
     assert_eq!(
-        j.surfaces[k].jones,
+        j.surfaces[k].jones(),
         [1.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0]
     );
     assert_eq!(
@@ -489,9 +489,9 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
     same_rays(&base, &j, 1e-12);
     // 座標ブレークで dx だけずらすと、像面の局所 x が dx だけ減る
     let c = with(r#"{"coordbrk": [0.1, 0, 0, 0, 0], "order": 1}"#);
-    assert_eq!(c.surfaces[k].typ, SurfType::CoordBrk);
+    assert_eq!(c.surfaces[k].typ(), SurfType::CoordBrk);
     assert_eq!(
-        (c.surfaces[k].cb, c.surfaces[k].cb_order),
+        (c.surfaces[k].cb(), c.surfaces[k].cb_order()),
         ([0.1, 0.0, 0.0, 0.0, 0.0], 1)
     );
     let (px, py) = ([0.0, 0.4], [0.3, -0.6]);
@@ -1033,9 +1033,9 @@ fn a_paraxial_surface_works_on_the_return_path() {
         r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {pl}, {{"type": "air", "t": 30}}, {{"type": "mirror", "back": true}}]"#
     ));
     let par: Vec<usize> = (0..s.surfaces.len())
-        .filter(|&j| s.surfaces[j].typ == lensbench_core::surface::SurfType::Paraxial)
+        .filter(|&j| s.surfaces[j].typ() == lensbench_core::surface::SurfType::Paraxial)
         .collect();
     assert_eq!(par.len(), 2, "往路と復路の 1 つずつ");
     let (a, b) = (&s.surfaces[par[0]], &s.surfaces[par[1]]);
-    assert_eq!((a.focal, b.focal), (50.0, 50.0));
+    assert_eq!((a.focal(), b.focal()), (50.0, 50.0));
 }

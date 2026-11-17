@@ -364,7 +364,7 @@ impl System {
             if d.ignore {
                 continue;
             }
-            let tilted = (d.is_coord_break() && d.cb.iter().any(|&v| v != 0.0))
+            let tilted = (d.is_coord_break() && d.cb().iter().any(|&v| v != 0.0))
                 || d.before.is_some()
                 || matches!(d.after, After::Tilt(_));
             if d.is_mirror() || tilted {
@@ -442,16 +442,16 @@ impl System {
                 let n = &self.surfaces[k + 1];
                 for (j, x) in [(k, d), (k + 1, n)] {
                     if !matches!(
-                        x.typ,
+                        x.typ(),
                         SurfType::Standard | SurfType::EvenAsph | SurfType::OddAsph
                     ) {
-                        notimpl!("edge thickness solve on surface {j} ({:?})", x.typ);
+                        notimpl!("edge thickness solve on surface {j} ({:?})", x.typ());
                     }
                 }
                 let r = if r == 0.0 { d.semi } else { r };
                 let r2 = r * r;
                 // Odd Asphere は回転対称なので y 軸の上の矢高で測る
-                let sag_r = |x: &crate::surface::Surface| match x.typ {
+                let sag_r = |x: &crate::surface::Surface| match x.typ() {
                     SurfType::OddAsph => crate::freeform::sag_xy(x, 0.0, r).0,
                     _ => crate::trace::sag(x.c, x.k, &x.asph, r2).0,
                 };
@@ -532,10 +532,10 @@ impl System {
             notimpl!("surface {k}: ray curvature solve on a mirror or a surface after a mirror");
         }
         if !matches!(
-            d.typ,
+            d.typ(),
             SurfType::Standard | SurfType::EvenAsph | SurfType::Toroidal
         ) {
-            notimpl!("curvature solve on surface {k} ({:?})", d.typ);
+            notimpl!("curvature solve on surface {k} ({:?})", d.typ());
         }
         let pw = self.primary;
         let par = self.paraxial();
@@ -589,8 +589,11 @@ impl System {
         }
         for j in [a, b] {
             let d = &self.surfaces[j];
-            if d.is_mirror() || !matches!(d.typ, SurfType::Standard | SurfType::EvenAsph) {
-                notimpl!("lens power solve on a lens with surface {j} ({:?})", d.typ);
+            if d.is_mirror() || !matches!(d.typ(), SurfType::Standard | SurfType::EvenAsph) {
+                notimpl!(
+                    "lens power solve on a lens with surface {j} ({:?})",
+                    d.typ()
+                );
             }
         }
         let n0 = self.index_before(a, pw);

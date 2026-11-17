@@ -211,18 +211,18 @@ impl System {
             }
             if !d.ignore
                 && (matches!(d.action(), Action::Fresnel(_) | Action::Binary2(_))
-                    || matches!(d.typ, SurfType::Gradium | SurfType::Gradient9))
+                    || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9))
             {
                 notimpl!(
                     "landing derivatives of rays through surface {j} ({:?})",
-                    d.typ
+                    d.typ()
                 );
             }
         }
         for p in params {
             if p.surface()
                 .and_then(|j| sf.get(j))
-                .is_some_and(|d| d.typ == SurfType::Toroidal)
+                .is_some_and(|d| d.typ() == SurfType::Toroidal)
                 && matches!(
                     p.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_)

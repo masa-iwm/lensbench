@@ -56,7 +56,7 @@ fn dat_matches_garr() {
         "grid_d_linear",
     ] {
         let s = zmx::load(&dir().join(format!("sag_{name}.zmx"))).unwrap();
-        let g = s.surfaces[1].grid.as_ref().unwrap();
+        let g = s.surfaces[1].grid().unwrap();
         let dat = std::fs::read_to_string(dir().join(format!("lb_{name}.dat"))).unwrap();
         let h = GridSag::from_dat(&dat).unwrap();
         assert_eq!((h.nx, h.ny), (g.nx, g.ny));
@@ -90,9 +90,9 @@ fn write_roundtrip() {
         lensbench_formats::zmx_write::save(&p, &a).unwrap();
         let b = zmx::load_with(&p, &opt).unwrap();
         for (j, (x, y)) in a.surfaces.iter().zip(&b.surfaces).enumerate() {
-            assert_eq!(x.typ, y.typ, "{n} 面 {j}");
-            assert_eq!(x.zern, y.zern, "{n} 面 {j}");
-            assert_eq!(x.grid, y.grid, "{n} 面 {j}");
+            assert_eq!(x.typ(), y.typ(), "{n} 面 {j}");
+            assert_eq!(x.zern(), y.zern(), "{n} 面 {j}");
+            assert_eq!(x.grid(), y.grid(), "{n} 面 {j}");
             assert_eq!(x.asph, y.asph, "{n} 面 {j}");
             assert_eq!(x.t.to_bits(), y.t.to_bits(), "{n} 面 {j}");
         }

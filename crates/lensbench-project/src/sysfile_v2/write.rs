@@ -145,9 +145,9 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
             return Err("a coordinate break can't be a mirror".into());
         }
         r.coordinate_break = Some(Tilt {
-            decenter: [d.cb[0], d.cb[1]],
-            tilt: [d.cb[2], d.cb[3], d.cb[4]],
-            order: d.cb_order,
+            decenter: [d.cb()[0], d.cb()[1]],
+            tilt: [d.cb()[2], d.cb()[3], d.cb()[4]],
+            order: d.cb_order(),
         });
         return Ok(r);
     }
@@ -178,7 +178,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
         Ok(Some(a))
     };
     let conic = || (!(zero(&c) && zero(&k))).then_some(Shape::Conic { c, k });
-    let (shape, action) = match d.typ {
+    let (shape, action) = match d.typ() {
         SurfType::Standard | SurfType::Gradium | SurfType::Gradient9 => (conic(), plain_action()?),
         SurfType::EvenAsph => (
             Some(Shape::EvenAsphere {
@@ -193,7 +193,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 c,
                 k,
                 a: d.asph.clone(),
-                cx: d.cx,
+                cx: d.cx(),
             }),
             plain_action()?,
         ),
@@ -202,11 +202,10 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 c,
                 k,
                 a: d.asph.clone(),
-                terms: d.zern.as_deref().cloned(),
-                grid: d.grid.as_deref().cloned(),
+                terms: d.zern().cloned(),
             };
             (
-                Some(if d.typ == SurfType::ZernikeStd {
+                Some(if d.typ() == SurfType::ZernikeStd {
                     Shape::ZernikeStandard(z)
                 } else {
                     Shape::ZernikeFringe(z)
@@ -219,9 +218,9 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 c,
                 k,
                 a: d.asph.clone(),
-                terms: d.zern.as_deref().cloned(),
-                grid: d.grid.as_deref().cloned(),
-                grid_file: d.grid_file.clone(),
+                terms: d.zern().cloned(),
+                grid: d.grid().cloned(),
+                grid_file: d.grid_file().to_string(),
             }),
             plain_action()?,
         ),
@@ -261,7 +260,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 a: d.asph.clone(),
             }),
             own_action(Action::Binary2 {
-                phase: d.bin2.as_deref().cloned(),
+                phase: d.bin2().cloned(),
                 mirror,
             })?,
         ),
@@ -281,22 +280,22 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 a: d.asph.clone(),
             }),
             own_action(Action::CylinderFresnel {
-                bend: d.cylf.as_deref().cloned(),
+                bend: d.cylf().cloned(),
                 mirror,
             })?,
         ),
         SurfType::Paraxial => (
             None,
             own_action(Action::Paraxial {
-                f: d.focal,
-                opd_mode: d.opd_mode,
+                f: d.focal(),
+                opd_mode: d.opd_mode(),
                 mirror,
             })?,
         ),
         SurfType::Jones => (
             None,
             own_action(Action::Jones {
-                matrix: d.jones,
+                matrix: d.jones(),
                 retarder: d.retarder.as_ref().map(|r| Retarder {
                     axis_deg: r.axis_deg,
                     tx: r.tx,
@@ -319,7 +318,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
         ),
         SurfType::User => (
             None,
-            own_action(match &d.user {
+            own_action(match &d.user() {
                 Some(u) => Action::User {
                     model: u.model.clone(),
                     config: u.config.clone(),
@@ -369,7 +368,7 @@ fn aperture(d: &Surface) -> Option<Aperture> {
 
 /// 面の後の媒質（鏡でない面）
 fn medium(d: &Surface) -> Result<Option<Medium>, String> {
-    if let Some(g) = &d.grin {
+    if let Some(g) = &d.grin() {
         return Ok(Some(Medium::Data(MediumData::Grin(Box::new(Grin {
             name: d.mat.name(),
             profile: g.kind.clone(),

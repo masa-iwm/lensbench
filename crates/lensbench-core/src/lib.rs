@@ -29,6 +29,7 @@ pub mod ext;
 pub mod fermat;
 pub mod fiber;
 mod focus;
+pub mod form;
 pub mod freeform;
 pub mod glass;
 pub mod grid;

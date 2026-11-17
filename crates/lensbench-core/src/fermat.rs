@@ -142,8 +142,8 @@ pub(crate) fn raw_frames_d(sys: &System, p: Param) -> Vec<Option<DFrame>> {
             f = apply_cb_d(
                 f,
                 &Tilt {
-                    d: d.cb,
-                    order: d.cb_order,
+                    d: d.cb(),
+                    order: d.cb_order(),
                 },
                 &dt,
             );
@@ -509,9 +509,9 @@ impl System {
                 && (matches!(
                     d.action(),
                     crate::action::Action::Fresnel(_) | crate::action::Action::Binary2(_)
-                ) || matches!(d.typ, SurfType::Gradium | SurfType::Gradient9))
+                ) || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9))
             {
-                notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ);
+                notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ());
             }
         }
         let owner = self.medium_owner();

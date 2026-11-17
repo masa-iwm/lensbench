@@ -48,7 +48,7 @@ use lensbench_core::glass::{self, Glass};
 use lensbench_core::math::{mv, rot, M3};
 use lensbench_core::pickup::Pickup;
 use lensbench_core::solves::Solve;
-use lensbench_core::surface::{After, Aperture, Material, SurfType, Surface};
+use lensbench_core::surface::{After, Aperture, Form, Material, SurfType, Surface};
 use lensbench_core::system::{
     AfocalUnit, Aiming, ApertureKind, Field, FieldCond, FieldNorm, FieldType, System,
 };
@@ -333,7 +333,7 @@ mod surface_row_tests {
                     assert!(
                         a.is_mirror()
                             || a.reflect.is_some()
-                            || a.typ == SurfType::CoordBrk
+                            || a.typ() == SurfType::CoordBrk
                             || a.before.is_some(),
                         "{} surface {j}: {:?}",
                         f.display(),
@@ -344,11 +344,11 @@ mod surface_row_tests {
                 if q.row.is_none() {
                     continue;
                 }
-                types.insert(format!("{:?}", a.typ));
-                grin += usize::from(a.grin.is_some());
+                types.insert(format!("{:?}", a.typ()));
+                grin += usize::from(a.grin().is_some());
                 let at = || format!("{} surface {j}", f.display());
                 let s1 = surf(&q).unwrap_or_else(|e| panic!("{}: {e}", at()));
-                assert_eq!(s1.typ, a.typ, "{}", at());
+                assert_eq!(s1.typ(), a.typ(), "{}", at());
                 let q2 = surface_spec(&s1, false).unwrap();
                 let s2 = surf(&q2).unwrap();
                 assert_eq!(format!("{s1:?}"), format!("{s2:?}"), "{}", at());
@@ -371,7 +371,7 @@ mod surface_row_tests {
         // ほかの欄と一緒には書けない
         let mut q = surface_spec(
             &lensbench_core::surface::Surface {
-                typ: SurfType::Paraxial,
+                form: Form::of(SurfType::Paraxial),
                 ..Default::default()
             },
             false,

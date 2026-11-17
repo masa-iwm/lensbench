@@ -25,8 +25,8 @@ fn with_user(kv: &[(&str, Value)]) -> System {
     let mut s = paraxial();
     let cfg: Config = kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
     s.edit_raw(|p| {
-        p.surfaces[1].user = Some(UserSurf::new("ideal_mapping", cfg).unwrap());
-        p.surfaces[1].typ = SurfType::User;
+        p.surfaces[1].set_type(SurfType::User);
+        *p.surfaces[1].user_mut().unwrap() = Some(UserSurf::new("ideal_mapping", cfg).unwrap());
         Ok(())
     })
     .unwrap();
@@ -167,8 +167,8 @@ fn user_model_traces() {
     let mut s = paraxial();
     // 理想レンズの直後に位相板（間隔 0）を足す代わりに、像面の手前の面を位相板にする
     s.edit_raw(|p| {
-        p.surfaces[2].typ = SurfType::User;
-        p.surfaces[2].user = Some(
+        p.surfaces[2].set_type(SurfType::User);
+        *p.surfaces[2].user_mut().unwrap() = Some(
             UserSurf::new("test_plate", Config::from([("a".into(), Value::Num(1e-3))])).unwrap(),
         );
         Ok(())

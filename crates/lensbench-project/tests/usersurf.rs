@@ -25,8 +25,7 @@ fn edit_and_system_file_round_trip() {
         &mut s,
         &json!([
             {"op": "set_surface_data", "surface": 1,
-             "data": {"user": {"model": "ideal_mapping", "config": {"f": 50, "mapping": "theta"}}}},
-            {"op": "set_surface_type", "surface": 1, "type": "USER"},
+             "data": {"typ": "User", "user": {"model": "ideal_mapping", "config": {"f": 50, "mapping": "theta"}}}},
         ]),
     )
     .unwrap();

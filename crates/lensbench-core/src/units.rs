@@ -26,7 +26,7 @@
 
 use crate::error::Result;
 use crate::math::*;
-use crate::surface::{After, SurfType, Surface, Tilt};
+use crate::surface::{After, Surface, Tilt};
 use crate::system::{Frame, System};
 use crate::{invalid, notimpl};
 
@@ -469,10 +469,8 @@ impl System {
                 let tb = s.surfaces[b].t;
                 let ang = [unit.motion[2], unit.motion[3], unit.motion[4]];
                 let cb = |d: [f64; 5], order: u8, t: f64| Surface {
-                    typ: SurfType::CoordBrk,
+                    form: crate::surface::Form::CoordBrk { cb: d, order },
                     mat: "-".into(),
-                    cb: d,
-                    cb_order: order,
                     t,
                     ..Default::default()
                 };
@@ -634,8 +632,8 @@ pub(crate) fn raw_frames(s: &System) -> RawFrames {
                 o,
                 r,
                 &Tilt {
-                    d: d.cb,
-                    order: d.cb_order,
+                    d: d.cb(),
+                    order: d.cb_order(),
                 },
             );
             out[j] = Some(Frame { o, r });

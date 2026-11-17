@@ -9,8 +9,8 @@
 //! それ以外は光線ごとに [`Shape::isect`]・[`Shape::sag`] を呼ぶ（どれも enum の静的な分岐）。
 //!
 //! 結果は面の種類ごとに書いていた以前の計算と同じビットにしている。そのため、形に効かない残りの値で求め方が
-//! 変わる従来の扱い（[`Shape::isect_kind`] の `filled`、[`Shape::Tilted`] の `c`・`k`、[`Shape::Zernike`] の
-//! `stray_grid`）もそのまま残す。値の置き場を enum に替えるときに見直す
+//! 変わる従来の扱い（[`Shape::isect_kind`] の `filled`、[`Shape::Tilted`] の `c`・`k`）もそのまま残す。
+//! Grid Sag から種類を変えた面に残っていた格子は、種類ごとの値を [`crate::surface::Form`] に移して無くなった
 
 use crate::action::Action;
 use crate::freeform::{isect_with, GridSag, ZernSag};
@@ -79,12 +79,10 @@ pub enum Shape<'a> {
         a: &'a [f64],
         cx: f64,
     },
-    /// Zernike Sag: 偶数次非球面 + Zernike の項（Standard か Fringe かは [`ZernSag::fringe`]）。
-    /// `stray_grid` は Grid Sag から種類を変えた面に残った格子（形には効かず、従来どおり近軸の曲率にだけ効く）
+    /// Zernike Sag: 偶数次非球面 + Zernike の項（Standard か Fringe かは [`ZernSag::fringe`]）
     Zernike {
         base: Base<'a>,
         terms: Option<&'a ZernSag>,
-        stray_grid: Option<&'a GridSag>,
     },
     /// Grid Sag: 偶数次非球面 + Zernike（Standard）の項 + 格子の補間
     GridSag {
@@ -120,24 +118,23 @@ impl Surface {
             a: &self.asph,
         };
         let p = |i: usize| self.asph.get(i).copied().unwrap_or(0.0);
-        match self.typ {
+        match self.typ() {
             SurfType::Standard | SurfType::Gradium => Shape::Conic { c, k },
             SurfType::EvenAsph | SurfType::Binary2 => Shape::EvenAsphere(base),
             SurfType::Toroidal => Shape::Toroid {
                 c,
                 k,
                 a: &self.asph,
-                cx: self.cx,
+                cx: self.cx(),
             },
             SurfType::ZernikeStd | SurfType::ZernikeFringe => Shape::Zernike {
                 base,
-                terms: self.zern.as_deref(),
-                stray_grid: self.grid.as_deref(),
+                terms: self.zern(),
             },
             SurfType::GridSag => Shape::GridSag {
                 base,
-                terms: self.zern.as_deref(),
-                grid: self.grid.as_deref(),
+                terms: self.zern(),
+                grid: self.grid(),
             },
             SurfType::OddAsph => Shape::OddAsphere {
                 c,
@@ -152,7 +149,7 @@ impl Surface {
             SurfType::Gradient9 => Shape::ConicTilted {
                 c,
                 k,
-                tan: match self.grin.as_deref().map(|g| &g.kind) {
+                tan: match self.grin().map(|g| &g.kind) {
                     Some(GrinKind::Grad9 { tan, .. }) => *tan,
                     _ => [0.0; 2],
                 },
@@ -179,13 +176,13 @@ impl Surface {
 
     /// 座標ブレーク（面ではなく、座標系だけを変える要素）
     pub fn is_coord_break(&self) -> bool {
-        self.typ == SurfType::CoordBrk
+        self.typ() == SurfType::CoordBrk
     }
 
     /// 形のパラメータ（曲率・円錐係数・非球面の係数・Zernike の項）を変数・微分にできる面: 標準面・偶数次非球面と
     /// 回転対称でない面（[`Shape::is_freeform`]）。どのパラメータが形に効くかは [`Shape::takes`]
     pub(crate) fn shape_params(&self) -> bool {
-        matches!(self.typ, SurfType::Standard | SurfType::EvenAsph) || self.shape().is_freeform()
+        matches!(self.typ(), SurfType::Standard | SurfType::EvenAsph) || self.shape().is_freeform()
     }
 
     /// 形のパラメータ kind を変数・微分にできるか（[`Surface::shape_params`] の面で、形に効くもの）
@@ -538,11 +535,7 @@ impl Shape<'_> {
             // r² の項（β_2）を足す
             Shape::OddAsphere { c, b, .. } => c + 2.0 * b.get(1).copied().unwrap_or(0.0),
             Shape::Irregular(ir) => ir.c,
-            Shape::Zernike {
-                base,
-                terms,
-                stray_grid,
-            } => zern_grid_curv(base, terms, stray_grid),
+            Shape::Zernike { base, terms } => zern_grid_curv(base, terms, None),
             Shape::GridSag { base, terms, grid } => zern_grid_curv(base, terms, grid),
         }
     }
@@ -725,7 +718,7 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     let shape = d.shape();
     let action = d.action();
     let fresnel = matches!(action, Action::Fresnel(_));
-    let isect = shape.isect_kind(!d.asph.is_empty() || d.cx != 0.0);
+    let isect = shape.isect_kind(!d.asph.is_empty() || d.cx() != 0.0);
     let norm = if fresnel {
         Norm::Fresnel
     } else if matches!(action, Action::Jones(_)) && d.c != 0.0 {

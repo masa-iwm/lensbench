@@ -90,15 +90,15 @@ impl System {
                 continue;
             };
             let e = &self.surfaces[k];
-            let same_shape = e.typ == d.typ
+            let same_shape = e.typ() == d.typ()
                 && e.c == d.c
                 && e.k == d.k
                 && e.asph == d.asph
-                && e.cx == d.cx
-                && d.zern.is_none()
-                && d.grid.is_none()
-                && e.zern.is_none()
-                && e.grid.is_none();
+                && e.cx() == d.cx()
+                && d.zern().is_none()
+                && d.grid().is_none()
+                && e.zern().is_none()
+                && e.grid().is_none();
             if e.is_mirror() || !e.coat.is_empty() || e.before.is_some() || !same_shape {
                 continue;
             }

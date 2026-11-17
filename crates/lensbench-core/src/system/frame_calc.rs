@@ -16,8 +16,8 @@ pub fn step_frame(o: V3, r: M3, d: &Surface) -> ((V3, M3), (V3, M3)) {
             o,
             r,
             &Tilt {
-                d: d.cb,
-                order: d.cb_order,
+                d: d.cb(),
+                order: d.cb_order(),
             },
         );
         frame = (o, r);
@@ -68,7 +68,7 @@ fn local_shift(s: &System, q: usize, j: usize) -> Option<f64> {
             After::Tilt(t) => zero(t),
         };
     let before = if b.is_coord_break() {
-        b.cb.iter().all(|&v| v == 0.0)
+        b.cb().iter().all(|&v| v == 0.0)
     } else {
         b.before.as_ref().is_none_or(zero)
     };

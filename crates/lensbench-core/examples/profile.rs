@@ -154,7 +154,7 @@ fn main() {
                 .collect();
             if s.surfaces
                 .iter()
-                .any(|x| x.typ == lensbench_core::surface::SurfType::Paraxial)
+                .any(|x| x.typ() == lensbench_core::surface::SurfType::Paraxial)
             {
                 continue;
             }

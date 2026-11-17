@@ -233,10 +233,8 @@ pub(crate) fn check_crystal_order(v: &[Surface]) -> lensbench_core::Result<()> {
 /// (dx, dy, tx, ty, tz) の座標ブレーク
 pub(crate) fn cb(d: [f64; 5], order: u8, t: f64) -> Surface {
     Surface {
-        typ: SurfType::CoordBrk,
+        form: Form::CoordBrk { cb: d, order },
         mat: "-".into(),
-        cb: d,
-        cb_order: order,
         t,
         ..Default::default()
     }
@@ -556,7 +554,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             } => {
                 let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
                 if v.iter().any(|s| {
-                    matches!(s.typ, SurfType::Jones | SurfType::CoordBrk) || s.bire.is_some()
+                    matches!(s.typ(), SurfType::Jones | SurfType::CoordBrk) || s.bire.is_some()
                 }) {
                     return Err(
                         "jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path".into(),
@@ -564,7 +562,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 }
                 // 面の並びは空気中なので、理想レンズも向きを変えずに使える
                 if v.iter().any(|s| {
-                    !lensbench_core::elements::reversible(s) && s.typ != SurfType::Paraxial
+                    !lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial
                 }) {
                     return Err(
                         "only standard, even and odd asphere, toroidal, Fresnel, Binary 2 and paraxial surfaces can be in a surface list on the return path".into(),

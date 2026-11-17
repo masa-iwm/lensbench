@@ -125,7 +125,7 @@ fn standard_with_asph_is_error() {
     let mut s = load("A0");
     let j = (1..s.image())
         .find(|&j| {
-            s.surfaces[j].typ == lensbench_core::surface::SurfType::Standard
+            s.surfaces[j].typ() == lensbench_core::surface::SurfType::Standard
                 && s.surfaces[j].c != 0.0
         })
         .unwrap();
@@ -196,7 +196,7 @@ fn identity_coordinate_break_anywhere() {
         let v0 = values(&s0);
         for at in 1..=s0.image() {
             let cb = Surface {
-                typ: SurfType::CoordBrk,
+                form: lensbench_core::surface::Form::of(SurfType::CoordBrk),
                 ..Default::default()
             };
             let Some(s) = with_surface(&s0, at, cb) else {

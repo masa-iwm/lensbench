@@ -73,7 +73,7 @@ impl SwapSearch<'_> {
                     v.param
                         .surface()
                         .and_then(|j| sys.surfaces.get(j))
-                        .is_none_or(|s| s.grin.is_some())
+                        .is_none_or(|s| s.grin().is_some())
                 })
             {
                 continue;

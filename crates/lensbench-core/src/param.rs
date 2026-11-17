@@ -407,13 +407,13 @@ impl System {
         let curved = d.shape_params();
         match p.kind {
             Kind::Curv | Kind::Radius | Kind::Conic if j == 0 || !curved => {
-                invalid!("surface {j} ({:?}) {}", d.typ, p.kind.name());
+                invalid!("surface {j} ({:?}) {}", d.typ(), p.kind.name());
             }
             Kind::Asph(_) if !crate::pickup::takes_asph(d) => {
                 invalid!("surface {j} is not an even asphere ({})", p.kind.name());
             }
             Kind::Asph(i) if i >= 8 => invalid!("asphere coefficient {}", p.kind.name()),
-            Kind::Zern(n) => match &d.zern {
+            Kind::Zern(n) => match &d.zern() {
                 Some(z) if (n as usize) <= crate::freeform::ZernSag::max_terms(z.fringe) => {}
                 Some(_) => invalid!("surface {j} Zernike term {n} is over the limit"),
                 None => invalid!(
@@ -423,14 +423,14 @@ impl System {
             },
             _ => {}
         }
-        // 形に効かない値（Tilted の c・k、Tilted の 3 番目からの asph、ほかの型の面に残った Zernike の項など）は
+        // 形に効かない値（Tilted の c・k、Tilted の 3 番目からの asph など）は
         // 変数・微分にしない
         if matches!(
             p.kind,
             Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
         ) && !d.takes_shape_param(p.kind)
         {
-            let (typ, kind) = (d.typ, p.kind.name());
+            let (typ, kind) = (d.typ(), p.kind.name());
             invalid!("surface {j} ({typ:?}): {kind} doesn't change the shape of this surface type");
         }
         match p.kind {
@@ -498,7 +498,7 @@ impl System {
             Kind::Conic => d.k,
             Kind::Asph(i) => d.asph.get(i as usize).copied().unwrap_or(0.0),
             Kind::Zern(n) => d
-                .zern
+                .zern()
                 .as_ref()
                 .and_then(|z| z.coef.get(n as usize - 1).copied())
                 .unwrap_or(0.0),
@@ -508,7 +508,7 @@ impl System {
             k => {
                 let i = k.tilt_index().expect("tilt kind");
                 if d.is_coord_break() {
-                    d.cb[i]
+                    d.cb()[i]
                 } else {
                     d.before.map(|b| b.d[i]).unwrap_or(0.0)
                 }
@@ -787,7 +787,9 @@ impl System {
                     d.asph[i] = v;
                 }
                 Kind::Zern(n) => {
-                    let z = std::sync::Arc::make_mut(d.zern.as_mut().expect("Zernike data"));
+                    let z = std::sync::Arc::make_mut(
+                        d.zern_mut().and_then(|z| z.as_mut()).expect("Zernike data"),
+                    );
                     let i = n as usize - 1;
                     if z.coef.len() <= i {
                         z.coef.resize(i + 1, 0.0);
@@ -806,8 +808,8 @@ impl System {
                 }
                 k => {
                     let i = k.tilt_index().expect("tilt kind");
-                    if d.is_coord_break() {
-                        d.cb[i] = v;
+                    if let Some((cb, _)) = d.cb_mut() {
+                        cb[i] = v;
                     } else {
                         // 前の傾き偏心がなければ作り、面の後は「前を戻す」にする（その面だけが動く）。
                         // 既にあれば面の後はそのまま（後ろの面も一緒に動く系もある）

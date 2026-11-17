@@ -41,8 +41,8 @@ fn surftypes(name: &str) -> System {
     )
 }
 
-/// tests/refs の A0 に、偶数次非球面（面 2）・Zernike Fringe（面 1）・Zernike Standard（面 3）・Grid Sag なしの
-/// 標準面に残った Zernike の項（面 4）を置いた系
+/// tests/refs の A0 に、偶数次非球面（面 2）・Zernike Fringe（面 1）・Zernike Standard（面 3）・非球面の係数を
+/// 消した標準面（面 4）を置いた系
 fn a0_mixed() -> System {
     let mut s = fix_semi(
         zmx::load_with(
@@ -76,26 +76,25 @@ fn a0_mixed() -> System {
     };
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[1];
-    d.typ = SurfType::ZernikeFringe;
+    d.set_type(SurfType::ZernikeFringe);
     d.k = -0.4;
-    d.zern = zern(true, 9.0, 1.3);
+    *d.zern_mut().unwrap() = zern(true, 9.0, 1.3);
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[2];
-    d.typ = SurfType::EvenAsph;
+    d.set_type(SurfType::EvenAsph);
     d.k = 0.3;
     d.asph = vec![1e-5, -2e-7, 3e-10];
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
-    d.typ = SurfType::ZernikeStd;
-    d.zern = zern(false, 6.0, 0.7);
+    d.set_type(SurfType::ZernikeStd);
+    *d.zern_mut().unwrap() = zern(false, 6.0, 0.7);
     let s = rx.build_raw().unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[4];
-    d.typ = SurfType::Standard;
+    d.set_type(SurfType::Standard);
     d.asph.clear();
-    d.zern = zern(false, 6.0, 0.4);
     rx.build_raw().unwrap()
 }
 
@@ -127,7 +126,7 @@ fn a0_with(name: &str) -> System {
     .unwrap();
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
-    d.typ = src.typ;
+    d.set_type(src.typ());
     d.c = src.c;
     d.k = src.k;
     d.asph = src.asph;
@@ -139,7 +138,7 @@ pub(crate) fn asph_step(s: &System, p: Param) -> Option<f64> {
     let Kind::Asph(i) = p.kind else {
         return None;
     };
-    match s.surfaces.get(p.index())?.typ {
+    match s.surfaces.get(p.index())?.typ() {
         SurfType::TiltSurf => Some(1e-4),
         SurfType::OddAsph => Some(1e-4 / 10f64.powi(i as i32 + 1)),
         // 偏心 [mm]・傾き [deg]、Zs・Za・Zc [mm]、角度 [deg]
@@ -196,13 +195,15 @@ fn nudge(s: &System, j: usize, kind: Kind, d: f64) -> lensbench_core::Prescripti
         }
         Kind::Zern(n) => {
             let mut z = f
-                .zern
-                .as_deref()
+                .zern()
                 .cloned()
                 .unwrap_or_else(|| ZernSag::new(false, 5.0, vec![0.0; 37], true));
             z.coef[n as usize - 1] += d;
             z.rebuild();
-            f.zern = Some(Arc::new(z));
+            // Zernike の項を持てない種類の面は変えない（項を置く所が無い）
+            if let Some(v) = f.zern_mut() {
+                *v = Some(Arc::new(z));
+            }
         }
         _ => unreachable!(),
     }
@@ -316,7 +317,7 @@ fn values_that_do_not_change_the_shape_are_rejected() {
         .check_param(Param::new(4, Kind::Zern(4)))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("doesn't change the shape"), "{e}");
+    assert!(e.contains("not a Zernike Sag surface"), "{e}");
     assert!(a.check_param(Param::new(3, Kind::Zern(4))).is_ok());
     let i7 = surftypes("I7");
     assert!(i7.check_param(Param::new(2, Kind::Asph(7))).is_ok());

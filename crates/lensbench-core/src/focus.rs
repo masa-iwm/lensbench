@@ -70,11 +70,11 @@ impl FocusBase {
             .iter()
             .rev()
             .find(|d| !d.ignore && !d.is_coord_break())
-            .is_some_and(|d| d.grin.is_some());
+            .is_some_and(|d| d.grin().is_some());
         let ok = !grin
             && matches!(s.field_type, FieldType::Angle | FieldType::ObjH)
             && !s.afocal
-            && im.typ == SurfType::Standard
+            && im.typ() == SurfType::Standard
             && im.c == 0.0
             && !im.ignore
             && !im.is_mirror()

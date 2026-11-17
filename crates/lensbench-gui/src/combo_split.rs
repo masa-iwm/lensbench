@@ -68,7 +68,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     // 面 j を SurfSpec の JSON に（書けない面は None）。玉の中の面は Jones にしない
     let surf = |j: usize, last: bool, in_lens: bool| -> Option<Value> {
         let a = &s.surfaces[j];
-        if (in_lens && a.typ == SurfType::Jones) || !a.mat.is_medium() {
+        if (in_lens && a.typ() == SurfType::Jones) || !a.mat.is_medium() {
             return None;
         }
         let mut x = serde_json::to_value(lensbench_project::surface_spec(a, last).ok()?).ok()?;
