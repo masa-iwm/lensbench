@@ -552,7 +552,7 @@ impl Combo {
             ..Combo::default()
         };
         let mut bs = Pick::new(ElemKind::Splitter);
-        bs.t = 20.0;
+        bs.bs_mut().size = 20.0;
         bs.branched = true;
         bs.ports[0].air = 30.0;
         bs.ports[0].picks = vec![
@@ -878,7 +878,7 @@ mod tests {
             for split in [BsSplit::Ratio, BsSplit::Coat, BsSplit::Pbs] {
                 let bs = &mut c.picks[0];
                 bs.bs_mut().form = form;
-                bs.t = if form == BsForm::Plate { 2.0 } else { 12.7 };
+                bs.bs_mut().size = if form == BsForm::Plate { 2.0 } else { 12.7 };
                 bs.bs_mut().split = Some(split);
                 bs.coat = "I.s=0.3,p=0.4".into();
                 bs.bs_mut().wedge = [0.5, 0.0];

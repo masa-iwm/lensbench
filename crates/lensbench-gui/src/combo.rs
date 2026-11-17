@@ -295,10 +295,10 @@ pub struct Pick {
     pub reversed: bool,
     /// この要素の後の空気 [mm]（最後の要素では像面まで）
     pub air: f64,
-    /// 自作の玉・鏡の曲率半径 [mm]（0 は平面）
+    /// 自作の玉の曲率半径 [mm]（0 は平面）
     pub r1: f64,
     pub r2: f64,
-    /// 玉・平板の中心厚、BS の一辺 [mm]
+    /// 自作の玉・平板の中心厚 [mm]
     pub t: f64,
     pub glass: String,
     /// 半径 [mm]
@@ -514,11 +514,10 @@ impl Pick {
                 p.t = 3.0;
             }
             ElemKind::Mirror => {
-                p.r1 = 0.0;
+                p.mirror = Some(Box::default());
                 p.tilt = [45.0, 0.0, 0.0];
                 p.semi = 12.7;
                 p.air = 20.0;
-                p.mirror = Some(Box::default());
             }
             ElemKind::Zmx => p.zmx = Some(Box::default()),
             ElemKind::Surfaces => {
@@ -535,9 +534,11 @@ impl Pick {
                 p.air = 2.0;
             }
             ElemKind::Splitter => {
-                p.t = 12.7;
                 p.air = 10.0;
-                p.bs = Some(Box::default());
+                p.bs = Some(Box::new(Bs {
+                    glass: "N-BK7".into(),
+                    ..Bs::default()
+                }));
             }
             ElemKind::Aperture => {
                 p.semi = 5.0;
@@ -718,7 +719,7 @@ impl Pick {
                 })
             }
             ElemKind::Mirror => json!({
-                "type": "mirror", "id": id, "radius": Self::radius(self.r1), "conic": self.mirror().conic,
+                "type": "mirror", "id": id, "radius": Self::radius(self.mirror().radius), "conic": self.mirror().conic,
                 "tilt": [self.tilt[0], self.tilt[1]], "semi": self.semi,
             }),
             ElemKind::Stop => json!({ "type": "stop", "id": id, "semi": self.semi }),
@@ -2598,7 +2599,7 @@ fn kind_fields(
             semi_edit(ui, &mut p.semi, &mut p.semi_auto);
         }
         ElemKind::Mirror => {
-            num(ui, "R", &mut p.r1, " mm");
+            num(ui, "R", &mut p.mirror_mut().radius, " mm");
             place_ui(ui, p, st, &[], &[0, 1]);
             num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
             crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
@@ -2672,19 +2673,19 @@ fn kind_fields(
             if p.bs_mut().form != was {
                 // 形を変えたら寸法を形の初めの値に
                 match p.bs_mut().form {
-                    BsForm::Cube => p.t = 12.7,
-                    BsForm::Plate => p.t = 1.0,
+                    BsForm::Cube => p.bs_mut().size = 12.7,
+                    BsForm::Plate => p.bs_mut().size = 1.0,
                     BsForm::Ideal => {}
                 }
             }
             match p.bs_mut().form {
-                BsForm::Cube => num_in(ui, tr("Size"), &mut p.t, " mm", 0.001),
-                BsForm::Plate => num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0),
+                BsForm::Cube => num_in(ui, tr("Size"), &mut p.bs_mut().size, " mm", 0.001),
+                BsForm::Plate => num_in(ui, tr("Thickness"), &mut p.bs_mut().size, " mm", 0.0),
                 BsForm::Ideal => {}
             }
             if p.bs_mut().form != BsForm::Ideal {
                 ui.label(RichText::new(tr("Glass")).color(weak));
-                ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
+                ui.add(egui::TextEdit::singleline(&mut p.bs_mut().glass).desired_width(70.0));
             }
             if p.bs_mut().form != BsForm::Cube {
                 num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);

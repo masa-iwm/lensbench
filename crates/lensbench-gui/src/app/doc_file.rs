@@ -143,7 +143,31 @@ fn nest_kind_fields(picks: &mut Value) {
             .filter_map(|k| o.remove(*k).map(|v| (k.to_string(), v)))
             .collect();
         if kind == "splitter" && !o.contains_key("bs") {
+            let mut bs = bs;
+            // 前の版の BS の一辺・厚さと硝材は、玉と同じ t・glass
+            for (k, n) in [("t", "size"), ("glass", "glass")] {
+                if let Some(v) = o.remove(k) {
+                    bs.insert(n.into(), v);
+                }
+            }
             o.insert("bs".into(), Value::Object(bs));
+        }
+        // 鏡の曲率半径（前の版は玉と同じ r1）・コーニック・往路を戻る
+        if kind == "mirror" && !o.contains_key("mirror") {
+            let m: serde_json::Map<String, Value> =
+                [("r1", "radius"), ("conic", "conic"), ("back", "back")]
+                    .iter()
+                    .filter_map(|(k, n)| o.remove(*k).map(|v| (n.to_string(), v)))
+                    .collect();
+            o.insert("mirror".into(), Value::Object(m));
+        }
+        // .zmx の玉・取り込みの番号・面の範囲・群
+        if matches!(kind.as_str(), "zmx" | "zmx_range") && !o.contains_key("zmx") {
+            let z: serde_json::Map<String, Value> = ["lens", "config", "range", "zgroups"]
+                .iter()
+                .filter_map(|k| o.remove(*k).map(|v| (k.to_string(), v)))
+                .collect();
+            o.insert("zmx".into(), Value::Object(z));
         }
         // 今の形の ap は object（前の版は形の名前の文字列）
         if !o.get("ap").is_some_and(Value::is_object) {
@@ -316,7 +340,8 @@ mod tests {
         assert_eq!(converted(&v).unwrap(), None);
     }
 
-    /// 前の版の BS・開口の欄は要素に平たく書いてあった（form・ratio・ap など）。今の bs・ap へ移して読む
+    /// 前の版の BS・開口・鏡・.zmx の欄は要素に平たく書いてあった（form・ratio・ap・r1・conic・range など）。
+    /// 今の bs・ap・mirror・zmx へ移して読む
     #[test]
     fn converts_flat_kind_fields() {
         let mut c = Combo::default();
@@ -326,16 +351,46 @@ mod tests {
         let mut a = combo::Pick::new(combo::ElemKind::Aperture);
         a.ap_mut().shape = combo::ApShape::Rect;
         a.ap_mut().half = [2.0, 1.0];
-        c.picks = vec![b, combo::Pick::new(combo::ElemKind::Plate), a];
+        b.bs_mut().size = 3.0;
+        b.bs_mut().glass = "N-SF11".into();
+        let mut m = combo::Pick::new(combo::ElemKind::Mirror);
+        m.mirror_mut().radius = -100.0;
+        m.mirror_mut().conic = -1.0;
+        m.mirror_mut().back = true;
+        let mut z = combo::Pick::new(combo::ElemKind::ZmxRange);
+        z.path = "a.zmx".into();
+        z.zmx_mut().range = [2, 5];
+        z.zmx_mut().config = 2;
+        c.picks = vec![b, combo::Pick::new(combo::ElemKind::Plate), a, m, z];
         let mut cv = serde_json::to_value(&c).unwrap();
         for p in cv["picks"].as_array_mut().unwrap() {
             let o = p.as_object_mut().unwrap();
-            // 前の版はどの要素も全部の欄を書いた
+            // 前の版はどの要素も全部の欄を書いた。BS の一辺・厚さと硝材は玉と同じ t・glass、鏡の曲率半径は r1
             let bs = o
                 .remove("bs")
                 .unwrap_or_else(|| serde_json::to_value(combo::Bs::default()).unwrap());
+            let splitter = o["kind"] == "splitter";
             for (k, v) in bs.as_object().unwrap() {
-                o.insert(k.clone(), v.clone());
+                match k.as_str() {
+                    "size" if splitter => o.insert("t".into(), v.clone()),
+                    "glass" if splitter => o.insert("glass".into(), v.clone()),
+                    "size" | "glass" => None,
+                    _ => o.insert(k.clone(), v.clone()),
+                };
+            }
+            let mirror: &[(&str, &str)] = &[("radius", "r1"), ("conic", "conic"), ("back", "back")];
+            let zmx: &[(&str, &str)] = &[
+                ("lens", "lens"),
+                ("config", "config"),
+                ("range", "range"),
+                ("zgroups", "zgroups"),
+            ];
+            for (key, names) in [("mirror", mirror), ("zmx", zmx)] {
+                if let Some(m) = o.remove(key) {
+                    for (n, k) in names {
+                        o.insert(k.to_string(), m[*n].clone());
+                    }
+                }
             }
             let ap = o
                 .remove("ap")
@@ -353,5 +408,14 @@ mod tests {
         assert!(d.picks[1].bs.is_none() && d.picks[1].ap.is_none());
         assert_eq!(d.picks[2].ap().shape, combo::ApShape::Rect);
         assert_eq!(d.picks[2].ap().half, [2.0, 1.0]);
+        assert_eq!(
+            (d.picks[0].bs().size, d.picks[0].bs().glass.as_str()),
+            (3.0, "N-SF11")
+        );
+        assert_eq!(*d.picks[3].mirror(), *c.picks[3].mirror());
+        assert_eq!(
+            (d.picks[4].zmx().range, d.picks[4].zmx().config),
+            ([2, 5], 2)
+        );
     }
 }

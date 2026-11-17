@@ -409,7 +409,7 @@ fn scene(
             // BS は立方体の中心（反射側へ進むと、出る面は光軸の先にない）
             c
         } else if p.kind == ElemKind::Splitter {
-            front + u * (p.t * s) as f32 / 2.0
+            front + u * (p.bs().size * s) as f32 / 2.0
         } else {
             vtx(sp[1]).map_or(front, |b| front + (b - front) / 2.0)
         };

@@ -1890,10 +1890,10 @@ pub fn pick_from(r: &LensRow) -> Pick {
         p.vendor = r.vendor.clone();
         p.part = r.part.clone();
         if let Some(x) = sp["size"].as_f64().filter(|x| *x > 0.0) {
-            p.t = x;
+            p.bs_mut().size = x;
         }
         if let Some(g) = sp["glass"].as_str().filter(|g| !g.is_empty()) {
-            p.glass = g.to_string();
+            p.bs_mut().glass = g.to_string();
         }
         if let Some(x) = sp["ratio"].as_f64() {
             p.bs_mut().ratio = x;
@@ -1914,7 +1914,7 @@ pub fn pick_from(r: &LensRow) -> Pick {
         let mut p = Pick::new(crate::combo::ElemKind::Mirror);
         p.vendor = r.vendor.clone();
         p.part = r.part.clone();
-        p.r1 = radius;
+        p.mirror_mut().radius = radius;
         p.mirror_mut().conic = conic;
         p.coat = r.coat.clone();
         if r.diameter.is_finite() && r.diameter > 0.0 {
@@ -2871,7 +2871,7 @@ mod tests {
         r.coat = "BS3".into();
         r.splitter = Some(json!({ "form": "cube", "size": 10.0, "glass": "N-SF11", "ar": "AR2" }));
         let p = pick_from(&r);
-        assert_eq!((p.t, p.glass.as_str()), (10.0, "N-SF11"));
+        assert_eq!((p.bs().size, p.bs().glass.as_str()), (10.0, "N-SF11"));
         let b = p.block("BS1");
         assert_eq!(
             (b["coat"].as_str(), b["ar"].as_str()),

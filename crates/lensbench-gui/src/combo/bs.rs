@@ -12,6 +12,10 @@ use crate::i18n::tr;
 pub struct Bs {
     /// 形
     pub form: BsForm,
+    /// キューブの一辺・平板の厚さ [mm]
+    pub size: f64,
+    /// キューブ・平板の硝材
+    pub glass: String,
     /// 透過率
     pub ratio: f64,
     /// 分ける面の向きを逆に（反射を反対側へ。キューブの分ける面の傾き −45°）
@@ -36,6 +40,8 @@ impl Bs {
     /// 既定（BS でない要素が読むときもこの値）
     pub const DEFAULT: Bs = Bs {
         form: BsForm::Cube,
+        size: 12.7,
+        glass: String::new(),
         ratio: 0.5,
         bs_flip: false,
         wedge: [0.0; 2],
@@ -157,12 +163,12 @@ impl Pick {
         });
         match self.bs().form {
             BsForm::Cube => {
-                b["size"] = json!(self.t);
-                b["glass"] = json!(self.glass);
+                b["size"] = json!(self.bs().size);
+                b["glass"] = json!(self.bs().glass);
             }
             BsForm::Plate => {
-                b["thickness"] = json!(self.t);
-                b["glass"] = json!(self.glass);
+                b["thickness"] = json!(self.bs().size);
+                b["glass"] = json!(self.bs().glass);
                 b["semi"] = json!(self.semi);
                 if self.bs().wedge != [0.0; 2] {
                     b["wedge"] = json!(self.bs().wedge);
@@ -222,12 +228,12 @@ impl Pick {
         }
         if let Some(x) = m.remove("thickness").and_then(|v| v.as_f64()) {
             if self.bs_mut().form == BsForm::Plate {
-                self.t = x;
+                self.bs_mut().size = x;
             }
         }
         if let Some(x) = m.remove("size").and_then(|v| v.as_f64()) {
             if self.bs_mut().form == BsForm::Cube && x > 0.0 {
-                self.t = x;
+                self.bs_mut().size = x;
             }
         }
         if let Some(x) = m.remove("semi").and_then(|v| v.as_f64()) {
@@ -276,7 +282,7 @@ impl Pick {
             .remove("glass")
             .and_then(|v| v.as_str().map(str::to_string))
         {
-            self.glass = g;
+            self.bs_mut().glass = g;
         }
         for k in ["type", "id"] {
             m.remove(k);

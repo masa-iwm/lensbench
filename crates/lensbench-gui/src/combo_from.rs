@@ -500,7 +500,7 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
                 return Err("mirror aperture".into());
             }
             let mut p = Pick::new(ElemKind::Mirror);
-            p.r1 = f(&b["radius"], 0.0);
+            p.mirror_mut().radius = f(&b["radius"], 0.0);
             p.mirror_mut().conic = f(&b["conic"], 0.0);
             let t: [f64; 2] = arr(&b["tilt"]);
             p.tilt = [t[0], t[1], 0.0];
