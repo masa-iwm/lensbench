@@ -7,12 +7,73 @@ use serde_json::json;
 /// [`zmx_project`] の zmx ブロックの id（GLRS をブロックの面で書くとき）
 pub const ZMX_ID: &str = "zmx";
 
-/// 系 s（`path` の .zmx を構成 1 で読んだもの）の設定と、`path` をまるごと取り込む zmx ブロック 1 つのプロジェクト。
-/// プロジェクトで書けない設定（多重構成・条件で定める視野）があれば誤り
-pub fn zmx_project(s: &System, path: &str) -> lensbench_core::Result<Value> {
-    if s.configs.is_some() {
-        return Err("a .zmx with two or more configurations".into());
+/// .zmx（`path`）の構成ごとの系 cfgs（cfgs[k - 1] が構成 k）の設定と、`path` をまるごと取り込む zmx ブロック 1 つの
+/// プロジェクト。系 1 つで多重構成の表があれば、表から構成ごとの系を作る。構成が 2 つ以上なら、本体は構成 1 で、
+/// 構成ごとに状態「Config k」を足す（zmx ブロックの config と、構成で変わる系の値）。
+/// プロジェクトで書けない設定（条件で定める視野）があれば誤り
+pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value> {
+    let from_table: Vec<System>;
+    let cfgs = match cfgs {
+        [] => return Err("no system".into()),
+        [s] => match s.configs().map(|c| c.n) {
+            Some(n) => {
+                from_table = (1..=n)
+                    .map(|k| s.config(k))
+                    .collect::<lensbench_core::Result<_>>()?;
+                &from_table[..]
+            }
+            None => {
+                let p = settings(s, path)?;
+                Project::from_json(&p.to_string())?;
+                return Ok(p);
+            }
+        },
+        _ => cfgs,
+    };
+    let mut p = settings(&cfgs[0], path)?;
+    p["blocks"][0]["id"] = json!(ZMX_ID);
+    let mut states = Vec::new();
+    for (i, s) in cfgs.iter().enumerate() {
+        let q = settings(s, path)?;
+        let (Some(a), Some(b)) = (p.as_object(), q.as_object()) else {
+            unreachable!("settings write an object");
+        };
+        let mut project = serde_json::Map::new();
+        for (key, v) in b {
+            if key != "blocks" && a.get(key) != Some(v) {
+                project.insert(key.clone(), v.clone());
+            }
+        }
+        // 構成 1 にあって構成 k で省いた値は既定に戻す
+        for key in a.keys().filter(|key| !b.contains_key(*key)) {
+            let d = match key.as_str() {
+                "telecentric" => json!(false),
+                "floating_clip" => json!(true),
+                "environment" => {
+                    json!({ "temperature_c": 20.0, "pressure_atm": 1.0, "adjust_index": false })
+                }
+                _ => Value::Null,
+            };
+            project.insert(key.clone(), d);
+        }
+        let k = i + 1;
+        states.push(json!({
+            "name": format!("Config {k}"),
+            "set": { ZMX_ID: { "config": k } },
+            "project": project,
+        }));
     }
+    p["states"] = json!(states);
+    // 書いた形を読めるか、状態を当てられるか
+    let pj = Project::from_json(&p.to_string())?;
+    for st in pj.state_names() {
+        pj.with_state(st)?;
+    }
+    Ok(p)
+}
+
+/// 系 s の設定と zmx ブロック 1 つのプロジェクト（多重構成の表は見ない）
+fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
     let ap = match s.aperture.0 {
         ApertureKind::Epd => "epd",
         ApertureKind::FNum => "fnum",
@@ -99,8 +160,6 @@ pub fn zmx_project(s: &System, path: &str) -> lensbench_core::Result<Value> {
             p["image"] = serde_json::to_value(&r).map_err(|e| e.to_string())?;
         }
     }
-    // 書いた形を読めるか（知らないキー・型の違いがないか）
-    Project::from_json(&p.to_string())?;
     Ok(p)
 }
 
@@ -122,7 +181,7 @@ pub fn same_system(a: &System, b: &System) -> lensbench_core::Result<()> {
 fn comparable(s: &System) -> lensbench_core::Result<Value> {
     let mut v = sysfile::internal_value(s)?;
     let m = v.as_object_mut().ok_or("system is not an object")?;
-    for k in ["name", "import_notes", "glasses", "units"] {
+    for k in ["name", "import_notes", "glasses", "units", "configs"] {
         m.remove(k);
     }
     if let Some(Value::Array(sf)) = m.get_mut("surfaces") {

@@ -544,6 +544,7 @@ Catalogs for the glass of custom lenses, plates and beam splitters (earlier ones
 + Add	＋ 追加
 The k-th lens of a .zmx	.zmx の k 番目のレンズ
 Multi-configuration number of the .zmx	.zmx の多重構成の番号
+Multi-configuration number of the .zmx in state {}	状態 {} での .zmx の多重構成の番号
 .zmx import	.zmx のインポート
 Use the .zmx stop	.zmx の絞りを使う
 Insert a range of .zmx surfaces as is (default: surface 1 to the one before the image), e.g. a lens under test inside a measurement setup	.zmx の面の範囲（デフォルトは面 1〜像面の手前）をまるごと入れる（測定系の中の被検レンズなど）
@@ -947,7 +948,7 @@ Choose the columns shown in the list	一覧に出す列を選択します
 Coarse prescreen	粗い事前選別
 Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)	全組を少ないリング数で最適化し、メリットファンクションの小さい組だけを本来の設定で最適化し直します（組が多いとき速くなります）
 Keep	残す組
-Drop the ON/OFF, following air, decenter and tilt changed in this state	この状態で変えた ON/OFF・後の空気・偏心・チルトを破棄
+Drop the ON/OFF, following air, decenter, tilt and configuration changed in this state	この状態で変えた ON/OFF・後の空気・偏心・チルト・構成を破棄
 Use the base path	基本の経路に
 Changing it makes a path for state {} only	変えると状態 {} だけの経路になる
 Use values for state {} only	状態 {} だけの値にする

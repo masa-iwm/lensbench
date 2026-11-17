@@ -130,8 +130,9 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) split: SplitState,
     /// 枠付きのユーザーカタログの品（名前, 枠）。品の面は [`SurfOrigin::frame`] の番号で引く（面を巻き戻せば品も外れる）
     pub(crate) frames: Vec<(String, MechSpec)>,
-    /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
-    pub(crate) zenv: Vec<(String, f64, f64, bool)>,
+    /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正, 膜ファイル）。プロジェクトの環境と違えば注意を出す。
+    /// 膜ファイルは展開した系の膜ファイルになる
+    pub(crate) zenv: Vec<(String, f64, f64, bool, Option<std::path::PathBuf>)>,
     /// プロジェクトの木のブロック（アドレス）とその位置（[`node_paths`]）。木の外（ユーザーカタログの品の中、写した BS の腕）は無い
     pub(crate) nodes: HashMap<usize, NodePath>,
     /// たどっている木のブロック（外から内へ。アドレス）。足した面の出どころ [`SurfOrigin::leaf`] は最後のもの
@@ -1105,8 +1106,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 ..
             } => {
                 let s = self.load_zmx(path, *config, (state.as_deref(), beam_path.as_deref()))?;
-                self.zenv
-                    .push((path.clone(), s.temperature, s.pressure, s.adjust_index));
+                self.zenv.push((
+                    path.clone(),
+                    s.temperature,
+                    s.pressure,
+                    s.adjust_index,
+                    s.coating_file.clone(),
+                ));
                 let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {

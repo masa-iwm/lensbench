@@ -902,7 +902,7 @@ fn expand_body(
     }
     let mut s = s.build_raw()?;
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
-    for (path, t, pr, adj) in &c.zenv {
+    for (path, t, pr, adj, _) in &c.zenv {
         let e = &p.environment;
         // どちらも補正しないなら温度・気圧は屈折率に効かない
         if !*adj && !e.adjust_index {
@@ -923,6 +923,19 @@ fn expand_body(
     // 玉・群のパラメータ: 玉モードの玉 lens1 … と、id のあるブロック・群（同じ id の範囲は 1 つの玉・群）
     let mut rx = s.prescription().clone();
     rx.units = s.lens_units();
+    // 取り込んだ .zmx の膜ファイル（面の膜の名前はそのファイルで引く）。違うファイルの .zmx が 2 つ以上なら最初のもの
+    let mut cofs = c.zenv.iter().filter_map(|z| Some((&z.0, z.4.as_ref()?)));
+    if let Some((_, f)) = cofs.next() {
+        rx.coating_file = Some(f.clone());
+        if let Some((path, g)) = cofs.find(|(_, g)| *g != f) {
+            warn.push(format!(
+                "{path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}",
+                g.display(),
+                f.display(),
+                f.display()
+            ));
+        }
+    }
     let mut s = rx.build_raw()?;
     for id in &c.noted {
         let id = id.as_str();

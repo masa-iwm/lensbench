@@ -20,7 +20,8 @@ fn zmx_projects_rebuild_the_same_system() {
             ..Default::default()
         };
         let s = lensbench_core::zmx::load_with(f, &o).unwrap();
-        let p = lensbench_project::zmx_project(&s, &f.display().to_string()).unwrap();
+        let p = lensbench_project::zmx_project(std::slice::from_ref(&s), &f.display().to_string())
+            .unwrap();
         let env = lensbench_project::Env {
             base: "/".into(),
             glass_dirs: gd.clone(),
@@ -62,13 +63,12 @@ fn zmx_project_refuses_what_it_cannot_write() {
         },
     )
     .unwrap();
+    // 多重構成の表を持つ系 1 つからも、構成ごとの状態を作る
     let mut m = s.clone();
-    m.set_config_count(2).unwrap();
-    let e = lensbench_project::zmx_project(&m, "x.zmx").unwrap_err();
-    assert!(
-        e.message().unwrap_or_default().contains("configurations"),
-        "{e}"
-    );
+    m.set_config_count(3).unwrap();
+    let p = lensbench_project::zmx_project(std::slice::from_ref(&m), "x.zmx").unwrap();
+    assert_eq!(p["states"].as_array().map(Vec::len), Some(3), "{p}");
+    assert_eq!(p["states"][2]["set"]["zmx"]["config"], 3, "{p}");
     s.edit_raw(|rx| {
         rx.field_type =
             lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
@@ -77,7 +77,7 @@ fn zmx_project_refuses_what_it_cannot_write() {
         Ok(())
     })
     .unwrap();
-    assert!(lensbench_project::zmx_project(&s, "x.zmx").is_err());
+    assert!(lensbench_project::zmx_project(std::slice::from_ref(&s), "x.zmx").is_err());
 }
 
 /// glrs はブロックの面・系の面の番号で書ける。ケラレ係数が視野より多ければ誤り
@@ -125,4 +125,89 @@ fn glrs_and_vignetting_in_a_project() {
             .contains("2 vignetting rows for 1 fields"),
         "{e}"
     );
+}
+
+/// 多重構成の .zmx は、構成ごとの状態「Config k」を持つプロジェクトになり、状態 k を当てて作り直すと構成 k の系と同じ
+#[test]
+fn multi_config_zmx_becomes_states() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // tests/bs_configs の .zmx はガラスのカタログ LBSCH（試験の SCHOTT.AGF と同じもの）を使う
+    let lb = Path::new(env!("CARGO_TARGET_TMPDIR")).join("zmx_wrap_lbsch");
+    std::fs::create_dir_all(&lb).unwrap();
+    std::fs::copy(root.join("tests/glass/SCHOTT.AGF"), lb.join("LBSCH.AGF")).unwrap();
+    let gd = vec![root.join("tests/glass"), lb];
+    let mut files: Vec<_> = std::fs::read_dir(root.join("tests/bs_configs"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "zmx"))
+        .collect();
+    files.sort();
+    assert!(files.len() >= 8, "{files:?}");
+    let env = lensbench_project::Env {
+        base: "/".into(),
+        glass_dirs: gd.clone(),
+        catalog: None,
+        step_files: None,
+    };
+    let mut differ = Vec::new();
+    let mut multi = 0;
+    for f in &files {
+        let o = lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: gd.clone(),
+            ..Default::default()
+        };
+        let all = lensbench_core::zmx::load_configs(f, &o, &[]).unwrap();
+        let n = all.len();
+        let p = lensbench_project::zmx_project(&all, &f.display().to_string())
+            .unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+        let p = lensbench_project::Project::from_json(&p.to_string()).unwrap();
+        if n == 1 {
+            assert!(p.states.is_empty());
+            continue;
+        }
+        multi += 1;
+        assert_eq!(p.state_names().len(), n, "{}", f.display());
+        for (k, sk) in all.iter().enumerate() {
+            let q = p.with_state(&format!("Config {}", k + 1)).unwrap();
+            let t = lensbench_project::expand(&q, &env, &Default::default())
+                .unwrap_or_else(|e| panic!("{} config {}: {e}", f.display(), k + 1))
+                .system;
+            if let Err(e) = lensbench_project::same_system(sk, &t) {
+                differ.push(format!("{} config {}: {e}", f.display(), k + 1));
+            }
+        }
+    }
+    assert!(differ.is_empty(), "{differ:#?}");
+    assert!(multi >= 6, "{multi}");
+}
+
+/// 取り込んだ .zmx の膜ファイルは、展開した系の膜ファイルになる（面の膜の名前はそのファイルで引く）
+#[test]
+fn zmx_block_brings_its_coating_file() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let f = root.join("tests/birefringent/b2_coat.zmx");
+    let gd = vec![root.join("tests/glass")];
+    let s = lensbench_core::zmx::load_with(
+        &f,
+        &lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: gd.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(s.coating_file.is_some());
+    let p = lensbench_project::zmx_project(std::slice::from_ref(&s), "b2_coat.zmx").unwrap();
+    let env = lensbench_project::Env {
+        base: f.parent().unwrap().into(),
+        glass_dirs: gd,
+        catalog: None,
+        step_files: None,
+    };
+    let x = lensbench_project::Project::from_json(&p.to_string())
+        .and_then(|q| lensbench_project::expand(&q, &env, &Default::default()).map_err(Into::into))
+        .unwrap();
+    assert_eq!(x.system.coating_file, s.coating_file);
+    lensbench_project::same_system(&s, &x.system).unwrap();
 }

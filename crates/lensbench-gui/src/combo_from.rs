@@ -19,8 +19,9 @@ use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 type R<T> = Result<T, String>;
 
 impl Combo {
-    /// .zmx（構成 1 つだけ）を、まるごと取り込む要素 1 つの組合せにする。プロジェクトで書けない設定（多重構成・
-    /// 像面の傾きなど）があり、作り直した系が元と違えば誤り
+    /// .zmx・システムファイルを、まるごと取り込む要素 1 つの組合せにする（書ければ要素に分ける）。多重構成の .zmx は
+    /// 構成ごとの状態「Config k」を持つ組合せにする（要素には分けない）。プロジェクトで書けない設定があり、作り直した系が
+    /// 元（多重構成なら構成ごと）と違えば誤り
     pub fn from_zmx(f: &Path, glass_dirs: &[PathBuf], lens_catalogs: &[PathBuf]) -> R<Combo> {
         // 組合せの系は一時のフォルダに書いて読むので、パスは作業フォルダから絶対にしておく
         let f = &absolute(f);
@@ -33,25 +34,56 @@ impl Combo {
         let s = lensbench_project::open::open(f, &o)
             .map_err(|e| e.to_string())?
             .system;
+        // 多重構成の .zmx は構成ごとの系（表で書けない構成も、ファイルの構成ごとに読む）
+        let is_zmx = f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
+        let cfgs = if is_zmx {
+            let lo = lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: glass_dirs.to_vec(),
+                ..Default::default()
+            };
+            lensbench_core::zmx::load_configs(f, &lo, &[]).map_err(|e| e.to_string())?
+        } else {
+            match s.configs().map(|c| c.n) {
+                Some(n) => (1..=n)
+                    .map(|k| s.config(k))
+                    .collect::<lensbench_core::Result<_>>()?,
+                None => vec![s.clone()],
+            }
+        };
         // ブロックのパスはファイルの名前だけ（プロジェクトの相対パスはフォルダ base から）
         let name = f.file_name().ok_or("no file name")?.to_string_lossy();
-        let p = lensbench_project::zmx_project(&s, &name)?;
+        let p = lensbench_project::zmx_project(&cfgs, &name)?;
         let base = f.parent().unwrap_or(Path::new(""));
         // 書ける .zmx は要素に分ける（変更は中身へ）。書けなければ .zmx をまるごと取り込む
-        if let Some(c) = crate::combo_split::split(&s, &p, base, glass_dirs) {
-            return Ok(c);
+        if cfgs.len() == 1 {
+            if let Some(c) = crate::combo_split::split(&s, &p, base, glass_dirs) {
+                return Ok(c);
+            }
         }
-        let t = lensbench_project::Project::from_json(&p.to_string())
-            .and_then(|q| {
-                lensbench_project::expand(
-                    &q,
-                    &lensbench_project::Env::in_dir(base, glass_dirs, None),
-                    &Default::default(),
-                )
-                .map_err(lensbench_core::Error::from)
-            })
-            .map(|x| x.system)?;
-        lensbench_project::same_system(&s, &t)?;
+        let q = lensbench_project::Project::from_json(&p.to_string())?;
+        let env = lensbench_project::Env::in_dir(base, glass_dirs, None);
+        let names: Vec<Option<String>> = if cfgs.len() == 1 {
+            vec![None]
+        } else {
+            q.state_names()
+                .into_iter()
+                .map(|n| Some(n.to_string()))
+                .collect()
+        };
+        for (sk, n) in cfgs.iter().zip(&names) {
+            let qk = match n {
+                Some(n) => q.with_state(n)?,
+                None => q.clone(),
+            };
+            let t = lensbench_project::expand(&qk, &env, &Default::default())
+                .map_err(|e| e.to_string())?
+                .system;
+            lensbench_project::same_system(sk, &t).map_err(|e| match n {
+                Some(n) => format!("{n}: {e}"),
+                None => e.to_string(),
+            })?;
+        }
         Combo::from_project(&p, base)
     }
 
@@ -62,6 +94,7 @@ impl Combo {
             o.remove("gui");
         }
         absolutize(&mut v, base);
+        fill_air(&mut v["blocks"]);
         move_state_off(&mut v);
         // ふつうの読込と同じ検査（知らないキー・検出器）。黙って落とさない
         let p = Project::from_json(&v.to_string())?;
@@ -212,6 +245,22 @@ fn move_state_off(v: &mut Value) {
                 x.remove("off");
             }
         }
+    }
+}
+
+/// 間に空気の無い要素の間（最上位と群の中）に空気 0 を入れる（間の空気 0 は書かないのと同じ、[`canon`]）
+fn fill_air(bs: &mut Value) {
+    let Some(a) = bs.as_array_mut() else { return };
+    let solid = |b: &Value| b["type"] != "air";
+    let mut k = 1;
+    while k < a.len() {
+        if solid(&a[k - 1]) && solid(&a[k]) {
+            a.insert(k, json!({ "type": "air", "t": 0.0 }));
+        }
+        k += 1;
+    }
+    for b in a.iter_mut().filter(|b| b["type"] == "group") {
+        fill_air(&mut b["blocks"]);
     }
 }
 
@@ -839,6 +888,10 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                     "on" => {
                         q.state_on.insert(n.clone(), x == true);
                     }
+                    "config" if q.kind == ElemKind::ZmxRange => {
+                        let k = x.as_u64().filter(|&k| k >= 1).ok_or("state config")?;
+                        q.zmx_mut().state_config.insert(n.clone(), k as usize);
+                    }
                     "decenter" | "tilt" => {
                         let (dc, tl) = (q.decenter, q.tilt);
                         let e =
@@ -913,14 +966,25 @@ fn canon(v: &Value) -> R<Value> {
     if let Some(bs) = v.get_mut("blocks") {
         strip_ids(bs);
     }
-    // 最後の空気 0（id 無し）は書かないのと同じ（最後の面の厚さに 0 を足す）
-    if let Some(bs) = v.get_mut("blocks").and_then(Value::as_array_mut) {
-        if bs
-            .last()
-            .is_some_and(|b| b["type"] == "air" && no_id(b) && f(&b["t"], 1.0) == 0.0)
-        {
-            bs.pop();
+    // 空気 0（id 無し・置き方なし）は書かないのと同じ（前の面の厚さに 0 を足す）
+    fn drop_zero_air(bs: &mut Value) {
+        let Some(a) = bs.as_array_mut() else { return };
+        a.retain(|b| {
+            !(b["type"] == "air"
+                && no_id(b)
+                && f(&b["t"], 1.0) == 0.0
+                && b.as_object().is_some_and(|o| o.len() == 2))
+        });
+        for b in a.iter_mut() {
+            for k in ["blocks", "t", "r", "d"] {
+                if b.get(k).is_some_and(Value::is_array) {
+                    drop_zero_air(&mut b[k]);
+                }
+            }
         }
+    }
+    if let Some(bs) = v.get_mut("blocks") {
+        drop_zero_air(bs);
     }
     let p: Project = serde_json::from_value(v).map_err(|e| e.to_string())?;
     let mut v = serde_json::to_value(&p).map_err(|e| e.to_string())?;

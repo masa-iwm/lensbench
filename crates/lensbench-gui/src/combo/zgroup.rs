@@ -19,6 +19,9 @@ pub struct ZmxSrc {
     pub range: [usize; 2],
     /// 取り込み: 玉モードの群（面 from〜to、名前・役割）
     pub zgroups: Vec<ZGroup>,
+    /// 取り込み: 状態ごとのマルチコンフィグの番号（状態の名前 → 番号。無ければ config）
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub state_config: BTreeMap<String, usize>,
 }
 
 impl ZmxSrc {
@@ -27,6 +30,7 @@ impl ZmxSrc {
         config: 1,
         range: [0, 0],
         zgroups: Vec::new(),
+        state_config: BTreeMap::new(),
     };
 }
 

@@ -846,6 +846,7 @@ impl Pick {
         self.state_on.contains_key(n)
             || self.state_air.contains_key(n)
             || self.state_place.contains_key(n)
+            || self.zmx().state_config.contains_key(n)
     }
 
     /// 状態 n で変えた値をやめる
@@ -853,6 +854,15 @@ impl Pick {
         self.state_on.remove(n);
         self.state_air.remove(n);
         self.state_place.remove(n);
+        if let Some(KindData::Zmx(z)) = self.data.as_deref_mut() {
+            z.state_config.remove(n);
+        }
+    }
+
+    /// .zmx の取り込みの、状態 st でのマルチコンフィグの番号
+    pub fn config_in(&self, st: Option<&str>) -> usize {
+        st.and_then(|n| self.zmx().state_config.get(n).copied())
+            .unwrap_or(self.zmx().config)
     }
 
     /// 状態 st で変える後の空気（状態なら状態の値を作る）
@@ -1102,6 +1112,15 @@ impl Combo {
             for (n, set) in states.iter_mut() {
                 if let Some(&on) = p.state_on.get(n).filter(|_| p.kind.has_on()) {
                     set.insert(id.clone(), json!({ "on": on }));
+                }
+                if let Some(&k) = p
+                    .zmx()
+                    .state_config
+                    .get(n)
+                    .filter(|_| p.kind == ElemKind::ZmxRange)
+                {
+                    let e = set.entry(id.clone()).or_insert_with(|| json!({}));
+                    e["config"] = json!(k);
                 }
                 if let (Some(&t), Some(a)) = (p.state_air.get(n), p.air_name(&id)) {
                     set.insert(a, json!({ "t": t }));
@@ -2486,7 +2505,7 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
             if ui
                 .small_button(tr("Use base values"))
                 .on_hover_text(tr(
-                    "Drop the ON/OFF, following air, decenter and tilt changed in this state",
+                    "Drop the ON/OFF, following air, decenter, tilt and configuration changed in this state",
                 ))
                 .clicked()
             {
@@ -2608,8 +2627,23 @@ fn kind_fields(
             ui.add(egui::DragValue::new(&mut p.zmx_mut().range[1]).range(0..=9999))
                 .on_hover_text(tr("Last surface to import (0 is the one before the image)"));
             ui.label(RichText::new(tr("Config")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.zmx_mut().config).range(1..=999))
-                .on_hover_text(tr("Multi-configuration number of the .zmx"));
+            let mut cfg = p.config_in(st);
+            let hint = match st {
+                Some(n) => trf("Multi-configuration number of the .zmx in state {}", &[&n]),
+                None => tr("Multi-configuration number of the .zmx").to_string(),
+            };
+            if ui
+                .add(egui::DragValue::new(&mut cfg).range(1..=999))
+                .on_hover_text(hint)
+                .changed()
+            {
+                match st {
+                    Some(n) => {
+                        p.zmx_mut().state_config.insert(n.to_string(), cfg);
+                    }
+                    None => p.zmx_mut().config = cfg,
+                }
+            }
         }
         ElemKind::Plate => {
             num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);

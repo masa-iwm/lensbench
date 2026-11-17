@@ -68,7 +68,7 @@ glass {} came from the built-in catalog (index only; no internal transmittance o
 type {ty} (one of {})	種類 {ty}（{} のどれか）
 --layers {l}: expected a number of layers N or a range N..M	--layers {l}: 層の数 N か範囲 N..M を書いてください
 PARM({n}, {k}): the parameter (0 to 255) or the surface is out of range	PARM({n}, {k}): パラメータ（0〜255）か面が範囲の外です
-a .zmx with two or more configurations	構成が 2 つ以上の .zmx
+no system	システムがない
 a field defined by a condition	条件で定めた視野
 --states and --beam-paths are only for project files (.json)	--states・--beam-paths はプロジェクトファイル（.json）だけで使えます
 # command line (lensbench-cli)
@@ -1579,6 +1579,7 @@ a plate needs thickness	平板の thickness が必要です
 a plate needs glass	平板の glass が必要です
 block {id}: only lenses can bake in values changed in the surface table (undo the changes on others before saving)	ブロック {id}: 面の表で変えた値を焼き込めるのはレンズだけ（ほかは変更を戻してから保存）
 {path}: the .zmx environment ({t} °C, {pr} atm) differs from the project environment ({} °C, {} atm); indices are computed in the project environment (change it with environment)	{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違います。屈折率はプロジェクトの環境で計算します（environment で変えてください）
+{path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}	{path}: コーティングファイル {} は前の .zmx の {} と違います。コーティングは {} で引きます
 {tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match	{tag}: {prev_name} の後ろの端（{why}）と、{name} の前の端（{hint}）のねじが合いません
 {tag}: no block {b} for holds	{tag}: holds のブロック {b} がありません
 {name} mount	{name} のマウント

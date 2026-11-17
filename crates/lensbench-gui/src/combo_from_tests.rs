@@ -347,3 +347,86 @@ fn blocks_are_the_saved_form() {
     }
     assert_eq!(n, 21);
 }
+
+/// 多重構成の .zmx は、構成ごとの状態「Config k」を持つ組合せになる（.zmx の取り込み 1 つ、状態ごとの構成の番号）。
+/// 組合せから書いたプロジェクトの状態 k は、構成 k の系と同じ
+#[test]
+fn multi_config_zmx_opens_with_states() {
+    // tests/bs_configs の .zmx はガラスのカタログ LBSCH（試験の SCHOTT.AGF と同じもの）を使う
+    let lb = std::env::temp_dir().join(format!("lb_gui_lbsch_{}", std::process::id()));
+    std::fs::create_dir_all(&lb).unwrap();
+    std::fs::copy(root().join("tests/glass/SCHOTT.AGF"), lb.join("LBSCH.AGF")).unwrap();
+    let gd = vec![root().join("tests/glass"), lb.clone()];
+    let mut n_files = 0;
+    for name in ["mich", "p6", "tg"] {
+        let f = root().join(format!("tests/bs_configs/{name}.zmx"));
+        let c = Combo::from_zmx(&f, &gd, &[]).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let lo = lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: gd.clone(),
+            ..Default::default()
+        };
+        let all = lensbench_core::zmx::load_configs(&f, &lo, &[]).unwrap();
+        assert!(all.len() >= 3, "{name}");
+        assert_eq!(c.picks.len(), 1, "{name}");
+        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");
+        assert_eq!(c.states.len(), all.len(), "{name}");
+        assert_eq!(c.picks[0].config_in(Some("Config 2")), 2, "{name}");
+        let q = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+        let env = lensbench_project::Env::in_dir(f.parent().unwrap(), &gd, None);
+        for (k, sk) in all.iter().enumerate() {
+            let n = format!("Config {}", k + 1);
+            let t =
+                lensbench_project::expand(&q.with_state(&n).unwrap(), &env, &Default::default())
+                    .unwrap_or_else(|e| panic!("{name} {n}: {e}"))
+                    .system;
+            lensbench_project::same_system(sk, &t).unwrap_or_else(|e| panic!("{name} {n}: {e}"));
+        }
+        n_files += 1;
+    }
+    assert_eq!(n_files, 3);
+    let _ = std::fs::remove_dir_all(&lb);
+}
+
+/// examples と tests のブロックのプロジェクトは、全部が組合せになる（間に空気の無い要素も、空気 0 として）
+#[test]
+fn all_block_projects_become_combos() {
+    let mut files = Vec::new();
+    fn walk(d: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out)
+            } else if p.extension().is_some_and(|x| x == "json") {
+                out.push(p)
+            }
+        }
+    }
+    walk(&root().join("examples"), &mut files);
+    walk(&root().join("tests"), &mut files);
+    files.sort();
+    let (mut ok, mut no, mut n) = (0, Vec::new(), 0);
+    for f in &files {
+        let Ok(t) = std::fs::read_to_string(f) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) else {
+            continue;
+        };
+        if v.get("blocks").is_none() {
+            continue;
+        }
+        n += 1;
+        match std::panic::catch_unwind(|| Combo::from_project(&v, f.parent().unwrap())) {
+            Ok(Ok(_)) => ok += 1,
+            Ok(Err(e)) => no.push(format!(
+                "{}: {}",
+                f.strip_prefix(root()).unwrap().display(),
+                e.chars().take(120).collect::<String>()
+            )),
+            Err(_) => no.push(format!("{}: PANIC", f.display())),
+        }
+    }
+    assert!(no.is_empty(), "{no:#?}");
+    assert!(ok >= 30, "{ok} / {n}");
+}
