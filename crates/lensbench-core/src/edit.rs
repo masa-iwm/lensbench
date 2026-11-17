@@ -131,6 +131,27 @@ pub const SURF_FIELDS: &[&str] = &[
     "disp",
 ];
 
+/// 面の値の名前が表す 1 つの量（c r t k dn disp semi coating）。"r" は曲率（ピックアップ・ソルブの先は曲率）
+fn field_qty(name: &str) -> Option<PickKind> {
+    match name {
+        "r" => Some(PickKind::Curv),
+        "semi" => Some(PickKind::Semi),
+        "coating" => Some(PickKind::Coating),
+        _ => Kind::parse(name).ok().and_then(PickKind::plain),
+    }
+}
+
+/// 面の値の名前 name を変えると、ピックアップの量 w の先も変わるか（面の値の名前とピックアップの量の対応はここだけ）
+fn field_takes(name: &str, w: PickKind) -> bool {
+    match name {
+        // 材料は媒質のずれのピックアップ（材料のピックアップ）と一緒に動く
+        "material" => w == PickKind::Dn,
+        // 面タイプのパラメータに入る値
+        "asph" | "cb" | "cx" | "focal" | "jones" => matches!(w, PickKind::Parm(_)),
+        _ => field_qty(name) == Some(w),
+    }
+}
+
 impl SurfValue {
     fn num(&self, name: &str) -> Result<f64> {
         match self {
@@ -316,29 +337,21 @@ impl System {
             if !SURF_FIELDS.contains(&name.as_str()) {
                 invalid!("surface value name {name} ({})", SURF_FIELDS.join(" "));
             }
-            let kind = match name.as_str() {
-                "c" | "r" => Some(Kind::Curv),
-                "t" => Some(Kind::Thick),
-                "k" => Some(Kind::Conic),
-                _ => None,
-            };
-            if let Some(k) = kind {
-                if let Some(pk) = self.pickup_of(Param::new(j, k)) {
-                    invalid!("surface {j} {name} is a pickup from surface {}", pk.src);
-                }
-            }
-            let direct = |w: PickKind| match name.as_str() {
-                "dn" => w == PickKind::Dn,
-                "disp" => w == PickKind::Disp,
-                "semi" => w == PickKind::Semi,
-                "material" => w == PickKind::Dn,
-                "coating" => w == PickKind::Coating,
-                "asph" | "cb" | "cx" | "focal" | "jones" => matches!(w, PickKind::Parm(_)),
-                _ => false,
-            };
-            if let Some(pk) = self.pickups.iter().find(|q| q.dst == j && direct(q.what)) {
+            if let Some(pk) = self
+                .pickups
+                .iter()
+                .find(|q| q.dst == j && field_takes(name, q.what))
+            {
                 invalid!("surface {j} {name} is a pickup from surface {}", pk.src);
             }
+            // 曲率・厚さ・円錐係数のソルブ（"r" は曲率のソルブ）
+            let kind = match field_qty(name) {
+                Some(PickKind::Curv) => Some(Kind::Curv),
+                Some(w) => w
+                    .plain_kind()
+                    .filter(|k| matches!(k, Kind::Thick | Kind::Conic)),
+                None => None,
+            };
             if let Some(k) = kind {
                 if self
                     .solves

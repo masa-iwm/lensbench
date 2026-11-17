@@ -638,23 +638,10 @@ fn config_table(
             ("THIC", Some(_)) => Some(Kind::Thick),
             ("CRVT", Some(_)) => Some(Kind::Curv),
             ("CONN", Some(_)) => Some(Kind::Conic),
-            ("PRAM", Some(k)) => match (s.surfaces[k].typ, parm) {
-                // 係数の PARM（偶数次非球面・自由曲面、crate::pickup::asph_parm_base）
-                (t, 1..=8)
-                    if crate::pickup::takes_asph(&s.surfaces[k])
-                        && crate::pickup::asph_parm_base(t).is_some_and(|b| parm as usize >= b) =>
-                {
-                    Some(Kind::Asph(
-                        (parm as usize - crate::pickup::asph_parm_base(t).unwrap_or(1)) as u8,
-                    ))
-                }
-                (SurfType::CoordBrk, 1) => Some(Kind::Dx),
-                (SurfType::CoordBrk, 2) => Some(Kind::Dy),
-                (SurfType::CoordBrk, 3) => Some(Kind::Tx),
-                (SurfType::CoordBrk, 4) => Some(Kind::Ty),
-                (SurfType::CoordBrk, 5) => Some(Kind::Tz),
-                _ => None,
-            },
+            // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
+            ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
+                crate::pickup::kind_of_pick(&s.surfaces[k], crate::pickup::PickKind::Parm(i))
+            }),
             _ => None,
         };
         match kind {

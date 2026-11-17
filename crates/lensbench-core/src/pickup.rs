@@ -36,6 +36,33 @@ pub enum PickKind {
 }
 
 impl PickKind {
+    /// 面タイプによらない量（c r k t dn disp）の、パラメータの種類との対応。名前（[`pick_kind_parse`]・
+    /// [`pick_kind_name`]）はこれを通してパラメータの名前（[`Kind::parse`]・[`Kind::name`]）と同じ表を引く
+    pub fn plain(k: Kind) -> Option<PickKind> {
+        Some(match k {
+            Kind::Curv => PickKind::Curv,
+            Kind::Radius => PickKind::Radius,
+            Kind::Conic => PickKind::Conic,
+            Kind::Thick => PickKind::Thick,
+            Kind::Dn => PickKind::Dn,
+            Kind::Disp => PickKind::Disp,
+            _ => return None,
+        })
+    }
+
+    /// [`Self::plain`] の逆
+    pub fn plain_kind(self) -> Option<Kind> {
+        Some(match self {
+            PickKind::Curv => Kind::Curv,
+            PickKind::Radius => Kind::Radius,
+            PickKind::Conic => Kind::Conic,
+            PickKind::Thick => Kind::Thick,
+            PickKind::Dn => Kind::Dn,
+            PickKind::Disp => Kind::Disp,
+            _ => return None,
+        })
+    }
+
     /// .zmx のピックアップの列のコード（0 = 同じ列、1 = 半径、2 = 厚さ、3 = 円錐、4 = 半直径、5 + k = パラメータ k。
     /// OpticStudio 2026 R1.01 で実測）から、元の量。先と同じ列なら None
     pub fn from_column(code: i64, dst: PickKind) -> Option<Option<PickKind>> {
@@ -250,7 +277,10 @@ pub(crate) fn pick_get(d: &Surface, what: PickKind) -> Option<f64> {
         PickKind::Parm(i) => surf_parm(d, i),
         PickKind::Dn => Some(d.dn),
         PickKind::Disp => Some(d.disp),
-        // 平面の半径は 1e10（OpticStudio が平面を R = 1e10 として扱うのに合わせる）
+        // 平面の半径は 1e10（OpticStudio が平面を R = 1e10 として扱うのに合わせる）。曲率への写しは半径を通らず
+        // 曲率から（[`Pickup::value`]）なので平面は平面のまま。これが効くのは半径を別の列（厚さなど）へ写す
+        // ときだけで、∞ にすると先の値が無限大になる。面の値の表示（[`System::surface_fields`] の r）は ∞、
+        // パラメータ r（[`System::get_param`]）は書くときと同じく 0 が平面
         PickKind::Radius => Some(if d.c == 0.0 { 1e10 } else { 1.0 / d.c }),
         PickKind::Semi => Some(d.semi),
         // 膜は名前を写すだけ（[`System::pick_names`]）。数の値は無いので一定の 0
@@ -340,14 +370,15 @@ pub(crate) fn pick_kind(d: &Surface, kind: Kind) -> Option<PickKind> {
 }
 
 /// ピックアップの量を、面 d のパラメータの種類に戻す（Param で表せなければ None）
-fn kind_of_pick(d: &Surface, what: PickKind) -> Option<Kind> {
+pub(crate) fn kind_of_pick(d: &Surface, what: PickKind) -> Option<Kind> {
     match what {
-        PickKind::Curv => Some(Kind::Curv),
-        PickKind::Thick => Some(Kind::Thick),
-        PickKind::Conic => Some(Kind::Conic),
-        PickKind::Dn => Some(Kind::Dn),
-        PickKind::Disp => Some(Kind::Disp),
-        PickKind::Radius | PickKind::Semi | PickKind::After(_) | PickKind::Coating => None,
+        // 半径はピックアップの元にだけなる（パラメータ r は曲率のピックアップを動かす）
+        PickKind::Radius => None,
+        w
+        @ (PickKind::Curv | PickKind::Thick | PickKind::Conic | PickKind::Dn | PickKind::Disp) => {
+            w.plain_kind()
+        }
+        PickKind::Semi | PickKind::After(_) | PickKind::Coating => None,
         PickKind::Before(i) => [Kind::Dx, Kind::Dy, Kind::Tx, Kind::Ty, Kind::Tz]
             .get(i as usize)
             .copied(),
@@ -536,13 +567,10 @@ pub fn pick_kind_parse(s: &str) -> Result<crate::pickup::PickKind> {
     use crate::pickup::PickKind;
     let t = s.trim().to_ascii_lowercase();
     let num = |p: &str| t.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
+    if let Some(w) = Kind::parse(&t).ok().and_then(PickKind::plain) {
+        return Ok(w);
+    }
     Ok(match t.as_str() {
-        "c" | "curv" => PickKind::Curv,
-        "r" | "radius" => PickKind::Radius,
-        "t" | "thick" => PickKind::Thick,
-        "k" | "conic" => PickKind::Conic,
-        "dn" => PickKind::Dn,
-        "disp" => PickKind::Disp,
         "semi" => PickKind::Semi,
         "coating" | "coat" => PickKind::Coating,
         _ => {
@@ -564,24 +592,59 @@ pub fn pick_kind_parse(s: &str) -> Result<crate::pickup::PickKind> {
 /// ピックアップの量の名前（[`pick_kind_parse`] の逆）
 pub fn pick_kind_name(k: crate::pickup::PickKind) -> String {
     use crate::pickup::PickKind;
+    if let Some(p) = k.plain_kind() {
+        return p.name();
+    }
     match k {
-        PickKind::Curv => "c".into(),
-        PickKind::Thick => "t".into(),
-        PickKind::Conic => "k".into(),
         PickKind::Parm(i) => format!("p{i}"),
-        PickKind::Dn => "dn".into(),
-        PickKind::Disp => "disp".into(),
         PickKind::Semi => "semi".into(),
         PickKind::Coating => "coating".into(),
-        PickKind::Radius => "r".into(),
         PickKind::Before(i) => format!("before{i}"),
         PickKind::After(i) => format!("after{i}"),
+        PickKind::Curv
+        | PickKind::Radius
+        | PickKind::Conic
+        | PickKind::Thick
+        | PickKind::Dn
+        | PickKind::Disp => unreachable!("plain_kind"),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ピックアップの量の名前はパラメータの名前と同じ表（別名も同じ）で、名前の行き来が戻る（対応表を 1 か所にした）
+    #[test]
+    fn pickup_names_share_the_param_names() {
+        for (n, w) in [
+            ("c", PickKind::Curv),
+            ("curv", PickKind::Curv),
+            ("radius", PickKind::Radius),
+            ("thickness", PickKind::Thick),
+            ("thick", PickKind::Thick),
+            ("CONIC", PickKind::Conic),
+            ("dn", PickKind::Dn),
+            ("disp", PickKind::Disp),
+            ("p3", PickKind::Parm(3)),
+            ("before2", PickKind::Before(2)),
+            ("coat", PickKind::Coating),
+        ] {
+            assert_eq!(pick_kind_parse(n).unwrap(), w, "{n}");
+            assert_eq!(pick_kind_parse(&pick_kind_name(w)).unwrap(), w, "{n}");
+        }
+        for w in [
+            PickKind::Curv,
+            PickKind::Thick,
+            PickKind::Conic,
+            PickKind::Dn,
+        ] {
+            let k = w.plain_kind().unwrap();
+            assert_eq!(pick_kind_name(w), k.name());
+            assert_eq!(PickKind::plain(k), Some(w));
+        }
+        assert!(pick_kind_parse("dx").is_err());
+    }
 
     /// 面の係数のパラメータ（a2・a4…）と .zmx の PARM の番号の対応は面タイプによらず 1 か所:
     /// 自由曲面でもピックアップの量になり、PARM の値が読み書きできる（前は偶数次非球面だけで、奇数次非球面などの
