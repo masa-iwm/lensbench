@@ -102,6 +102,7 @@ impl Core {
             return;
         };
         // 狭いパネルでは折り返す
+        let mut busy = false;
         ui.horizontal_wrapped(|ui| {
             view_row(ui, cfg);
             ui.separator();
@@ -125,11 +126,16 @@ impl Core {
                         .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
                 }
                 Some(ResOut::Save(d, text)) => {
-                    self.saves.push(d, move |c, p| c.write_reported(&p, text))
+                    if !self.saves.push(d, move |c, p| c.write_reported(&p, text)) {
+                        busy = true;
+                    }
                 }
                 None => {}
             }
         });
+        if busy {
+            self.status = save_as::busy_status();
+        }
         // 図の矩形（画像にするときに切り出す）
         self.fig_rects.insert(id, ui.available_rect_before_wrap());
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);

@@ -19,15 +19,16 @@ impl Saves {
         &mut self,
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
-    ) {
+    ) -> bool {
         // 保存の窓は 1 つずつ（窓を出している間も画面は動くので、Ctrl+S を続けて押しても 2 つ目は出さない）
         if !self.wait.is_empty() {
-            return;
+            return false;
         }
         let id = format!("save-as-{}", self.next);
         self.next += 1;
         crate::files::start_save(&id, d);
         self.wait.push((id, Box::new(then)));
+        true
     }
 }
 
@@ -38,7 +39,16 @@ impl Core {
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
     ) {
-        self.saves.push(d, then);
+        if !self.saves.push(d, then) {
+            self.save_dialog_busy();
+        }
+    }
+
+    /// 保存の窓がもう出ているので、新しい保存はしない（下の行に知らせる。保存して閉じるのも止まる）
+    pub(super) fn save_dialog_busy(&mut self) {
+        self.fail(tr(
+            "A save dialog is already open; finish or cancel it first",
+        ));
     }
 
     /// 保存先を選んでいる途中か
@@ -101,5 +111,13 @@ impl Core {
             Ok(()) => self.info(trf("Saved to {}", &[&path.display()])),
             Err(e) => self.fail(format!("{}: {e}", path.display())),
         }
+    }
+}
+
+/// 保存の窓がもう出ているので新しい保存はしない、という下の行の誤り（保存して閉じるのもこれで止まる）
+pub(super) fn busy_status() -> Status {
+    Status {
+        text: tr("A save dialog is already open; finish or cancel it first").to_owned(),
+        error: true,
     }
 }

@@ -1582,6 +1582,7 @@ This surface list is turned off in some states, so it cannot be removed	この�
 This surface list has spacings for states, and the spacing before it cannot hold them, so it cannot be removed	この面の並びは状態ごとの間隔を持ち、前の間隔には状態ごとの値を持てないので、外せません
 The merit is √(Σ weight × residual² / Σ weight). Its terms have different units, so it has none	メリットファンクションは √(Σ ウェイト × 残差² / Σ ウェイト) です。項の単位が混ざっているので、単位はありません
 Rays in the pupil don't reach the image: check the aperture, fields and surface semi-diameters	瞳の光線が像面に届きません。開口・視野・面のクリア半径を確かめてください
+A save dialog is already open; finish or cancel it first	保存のウィンドウがもう開いています。先に保存するかキャンセルしてください
 Layout figure (2D)	レイアウト図（2D）
 Layout figure (3D)	レイアウト図（3D）
 Spot diagram, {}	スポットダイアグラム（{}）

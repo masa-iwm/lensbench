@@ -3,7 +3,9 @@
 //! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別の窓で開く。
 //!   元のタブがそのパネルを別の egui の画面（[`Host`]）で描いて網を送り、別の窓（[`Viewer`]）は網を描いて
 //!   入力を返すだけ。解析のパネルもそれ以外も同じ 1 つの方式
-//! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない
+//! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない。
+//!   画面のバイト列だけは窓ごとの BroadcastChannel（[`frame_channel`]）で送る（共有の口だと別の窓すべてが
+//!   ほかの窓の画面まで受けて、頭を見て捨てることになる）
 //!   - 窓 → 元: `{sid, from, hello, input}`（始めたとき）、`{sid, from, input}`（入力・大きさ。ほかは 2 秒ごと）、
 //!     `{sid, from, bye}`（閉じた。pagehide で送る）
 //!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
@@ -24,6 +26,11 @@ use wasm_bindgen::JsCast;
 /// BroadcastChannel の名前
 pub const CHANNEL: &str = "lensbench-panels";
 
+/// 元のタブ sid から別の窓のパネル id へ画面を送る BroadcastChannel の名前
+fn frame_channel(sid: &str, id: u64) -> String {
+    format!("{CHANNEL}-{sid}-{id}")
+}
+
 /// ページの URL の `?panel=<id>&main=<sid>`（別のタブのパネルのとき）
 pub fn panel_of_location() -> Option<(u64, String)> {
     let q = web_sys::window()?.location().search().ok()?;
@@ -42,10 +49,21 @@ struct Chan {
     _hide: Option<Closure<dyn FnMut()>>,
 }
 
+/// 窓が閉じて口を外すときは、受け手を外して閉じる（閉じないとページが生きている間ブラウザに残る）
+impl Drop for Chan {
+    fn drop(&mut self) {
+        self.ch.set_onmessage(None);
+        if let (Some(w), Some(h)) = (web_sys::window(), self._hide.as_ref()) {
+            let _ = w.remove_event_listener_with_callback("pagehide", h.as_ref().unchecked_ref());
+        }
+        self.ch.close();
+    }
+}
+
 impl Chan {
-    /// `bye` はページを閉じるときに送るもの
-    fn new(ctx: &egui::Context, bye: Value) -> Option<Chan> {
-        let ch = web_sys::BroadcastChannel::new(CHANNEL).ok()?;
+    /// 口 `name` を開く。`bye` はページを閉じるときに送るもの
+    fn new(ctx: &egui::Context, name: &str, bye: Option<Value>) -> Option<Chan> {
+        let ch = web_sys::BroadcastChannel::new(name).ok()?;
         let inbox: Rc<RefCell<Vec<Value>>> = Rc::default();
         let bins: Rc<RefCell<Vec<Vec<u8>>>> = Rc::default();
         let (i, b, c) = (inbox.clone(), bins.clone(), ctx.clone());
@@ -64,17 +82,19 @@ impl Chan {
             }
         });
         ch.set_onmessage(Some(on.as_ref().unchecked_ref()));
-        let ch2 = ch.clone();
-        let bye = bye.to_string();
-        let hide = Closure::<dyn FnMut()>::new(move || {
-            let _ = ch2.post_message(&JsValue::from_str(&bye));
+        let hide = bye.and_then(|bye| {
+            let ch2 = ch.clone();
+            let bye = bye.to_string();
+            let hide = Closure::<dyn FnMut()>::new(move || {
+                let _ = ch2.post_message(&JsValue::from_str(&bye));
+            });
+            web_sys::window()
+                .and_then(|w| {
+                    w.add_event_listener_with_callback("pagehide", hide.as_ref().unchecked_ref())
+                        .ok()
+                })
+                .map(|_| hide)
         });
-        let hide = web_sys::window()
-            .and_then(|w| {
-                w.add_event_listener_with_callback("pagehide", hide.as_ref().unchecked_ref())
-                    .ok()
-            })
-            .map(|_| hide);
         Some(Chan {
             ch,
             inbox,
@@ -151,6 +171,9 @@ pub struct Tabs {
     chan: Option<Chan>,
     sid: String,
     open: HashMap<u64, Open>,
+    /// 別の窓ごとの画面の口（[`frame_channel`]）
+    frames: HashMap<u64, Chan>,
+    ctx: egui::Context,
     /// 開けなかった（ポップアップを止められた）パネル。本体の中の窓にする
     pub blocked: std::collections::HashSet<u64>,
 }
@@ -159,9 +182,11 @@ impl Tabs {
     pub fn new(ctx: &egui::Context) -> Tabs {
         let sid = format!("{:x}", (js_sys::Math::random() * 1e15) as u64);
         Tabs {
-            chan: Chan::new(ctx, json!({ "sid": sid, "closed": true })),
+            chan: Chan::new(ctx, CHANNEL, Some(json!({ "sid": sid, "closed": true }))),
             sid,
             open: HashMap::new(),
+            frames: HashMap::new(),
+            ctx: ctx.clone(),
             blocked: Default::default(),
         }
     }
@@ -191,6 +216,9 @@ impl Tabs {
         let r = w.open_with_url_and_target_and_features(&url, &target, &features);
         match r {
             Ok(Some(win)) => {
+                if let Some(c) = Chan::new(&self.ctx, &frame_channel(&self.sid, id), None) {
+                    self.frames.insert(id, c);
+                }
                 self.open.insert(
                     id,
                     Open {
@@ -253,6 +281,7 @@ impl Tabs {
         for e in &out {
             if let Ev::Gone(id) = e {
                 self.open.remove(id);
+                self.frames.remove(id);
             }
         }
         out
@@ -263,7 +292,7 @@ impl Tabs {
         if let Some(o) = self.open.get_mut(&id) {
             o.ack = false;
         }
-        if let Some(c) = &self.chan {
+        if let Some(c) = self.frames.get(&id) {
             let mut b = frame_head(&self.sid, id);
             b.extend_from_slice(frame);
             c.post_bytes(&b);
@@ -301,6 +330,7 @@ impl Tabs {
 
     /// keep に無いパネルのタブを閉じる（並びを呼び出して窓のパネルが無くなったときなど）
     pub fn retain(&mut self, keep: &[u64]) {
+        self.frames.retain(|id, _| keep.contains(id));
         self.open.retain(|id, o| {
             let k = keep.contains(id);
             if !k {
@@ -487,6 +517,8 @@ impl Host {
 /// 別の窓: 元のタブから届く画面を描き、入力を返す（解析以外のパネル）
 pub struct Viewer {
     chan: Option<Chan>,
+    /// このパネルの画面の口（[`frame_channel`]）
+    frames: Option<Chan>,
     pub id: u64,
     sid: String,
     pub closed: bool,
@@ -512,7 +544,12 @@ pub struct Viewer {
 impl Viewer {
     pub fn new(ctx: &egui::Context, id: u64, sid: String) -> Viewer {
         Viewer {
-            chan: Chan::new(ctx, json!({ "sid": sid, "from": id, "bye": true })),
+            chan: Chan::new(
+                ctx,
+                CHANNEL,
+                Some(json!({ "sid": sid, "from": id, "bye": true })),
+            ),
+            frames: Chan::new(ctx, &frame_channel(&sid, id), None),
             id,
             sid,
             closed: false,
@@ -538,7 +575,12 @@ impl Viewer {
         for id in self.free.drain(..) {
             tm.write().free(id);
         }
-        for b in c.take_bins() {
+        let bins = self
+            .frames
+            .as_ref()
+            .map(Chan::take_bins)
+            .unwrap_or_default();
+        for b in bins {
             let Some((sid, to, rest)) = split_head(&b) else {
                 continue;
             };
