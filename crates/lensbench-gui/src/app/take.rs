@@ -52,97 +52,264 @@ impl Core {
             self.sys_gen += 1;
         }
         let ms = d.ms;
-        if let Some((method, e)) = d.error() {
-            let text = format!(
-                "{}: {}",
-                method_label(method),
-                super::status::plain_error(e)
-            );
-            match &d.tag {
-                Tag::Analyze(id) | Tag::Rays(id) => {
-                    self.results.entry(*id).or_default().error = Some(e.to_string());
-                }
-                Tag::Get => {
-                    if let Some(p) = d.replies[0].params["param"].as_str() {
-                        self.sys.param_vals.remove(p);
-                    }
-                }
-                // 断られた変更は欄から消す（系の値を読み直す）
-                Tag::Edit => {
-                    self.p.oss = Default::default();
-                    self.p.ld.insp.stale();
-                }
-                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す。ほかの理由で
-                // 読めなければ開く前の文書に戻す
-                Tag::Load => {
-                    if missing_glass_of(e).is_none() {
-                        self.revert_open();
-                    }
-                    if let Some(f) = d.replies[0].params["file"].as_str() {
-                        let f = f.to_string();
-                        self.s.recent.retain(|x| x != &f);
-                        if let Some(name) = missing_glass_of(e) {
-                            let m = self.missing_glass.get_or_insert_with(Default::default);
-                            let same = m
-                                .model
-                                .as_ref()
-                                .is_some_and(|p| p.display().to_string() == f);
-                            if !same {
-                                *m = MissingGlass {
-                                    file: PathBuf::from(&f),
-                                    ..Default::default()
-                                };
-                            }
-                            if !m.names.contains(&name) {
-                                m.names.push(name);
-                            }
-                            if same && m.tries < 64 {
-                                // 代用した写しにまだ無いガラスがある: それも代用して読み直す
-                                self.open_model_glass();
-                                return;
-                            }
-                        }
-                    }
-                }
-                Tag::UserCatalog => self.p.cat_save.note = Some((e.to_string(), true)),
-                Tag::CatalogFill => self.p.fill.failed(e),
-                Tag::Optimize => {
-                    self.p.opt.running = false;
-                    self.p.opt.error = Some(e.to_string());
-                }
-                Tag::Swap => {
-                    self.p.swap.running = false;
-                    self.p.swap.error = Some(e.to_string());
-                }
-                Tag::Tolerance => {
-                    self.p.tol.running = false;
-                    self.p.tol.error = Some(e.to_string());
-                }
-                Tag::Zoom => {
-                    self.p.zoom.running = false;
-                    self.p.zoom.error = Some(e.to_string());
-                }
-                _ => {}
-            }
-            self.status_err = Some((d.tag.clone(), text.clone()));
-            let hint = super::status::error_hint(e);
-            self.fail(text);
-            // 案内と符号は、訳した後の文に結びつける（文が変われば出さない）
-            let shown = self.status.text.clone();
-            self.status_hint = hint.filter(|h| !shown.contains(h.as_str())).map(|h| {
-                let c = e.code.as_deref().unwrap_or_default();
-                (shown.clone(), format!("{h}\n[{c}]"))
-            });
-            return;
+        if d.error().is_some() {
+            return self.take_error(&d);
         }
-        let mut text = trf(
+        let text = trf(
             "{} done ({} ms)",
             &[
                 &method_label(&d.replies[0].method),
                 &fmt_num((ms * 10.0).round() / 10.0),
             ],
         );
-        let (params, mut v) = d.take_first();
+        let (params, v) = d.take_first();
+        if let Some(text) = self.on_reply(&d, params, v, ms, text) {
+            self.set_done_status(&d.tag, text);
+        }
+    }
+
+    /// 誤りの返事: 解析の結果・欄・長い計算のパネルに誤りを入れ、下の行に出す
+    fn take_error(&mut self, d: &Done) {
+        let Some((method, e)) = d.error() else {
+            return;
+        };
+        let text = format!(
+            "{}: {}",
+            method_label(method),
+            super::status::plain_error(e)
+        );
+        if let Some((running, error)) = self.job(&d.tag) {
+            *running = false;
+            *error = Some(e.to_string());
+        }
+        match &d.tag {
+            Tag::Analyze(id) | Tag::Rays(id) => {
+                self.results.entry(*id).or_default().error = Some(e.to_string());
+            }
+            Tag::Get => {
+                if let Some(p) = d.replies[0].params["param"].as_str() {
+                    self.sys.param_vals.remove(p);
+                }
+            }
+            // 断られた変更は欄から消す（系の値を読み直す）
+            Tag::Edit => {
+                self.p.oss = Default::default();
+                self.p.ld.insp.stale();
+            }
+            // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す。ほかの理由で
+            // 読めなければ開く前の文書に戻す
+            Tag::Load => {
+                if missing_glass_of(e).is_none() {
+                    self.revert_open();
+                }
+                if let Some(f) = d.replies[0].params["file"].as_str() {
+                    let f = f.to_string();
+                    self.s.recent.retain(|x| x != &f);
+                    if let Some(name) = missing_glass_of(e) {
+                        let m = self.missing_glass.get_or_insert_with(Default::default);
+                        let same = m
+                            .model
+                            .as_ref()
+                            .is_some_and(|p| p.display().to_string() == f);
+                        if !same {
+                            *m = MissingGlass {
+                                file: PathBuf::from(&f),
+                                ..Default::default()
+                            };
+                        }
+                        if !m.names.contains(&name) {
+                            m.names.push(name);
+                        }
+                        if same && m.tries < 64 {
+                            // 代用した写しにまだ無いガラスがある: それも代用して読み直す
+                            self.open_model_glass();
+                            return;
+                        }
+                    }
+                }
+            }
+            Tag::UserCatalog => self.p.cat_save.note = Some((e.to_string(), true)),
+            Tag::CatalogFill => self.p.fill.failed(e),
+            _ => {}
+        }
+        self.status_err = Some((d.tag.clone(), text.clone()));
+        let hint = super::status::error_hint(e);
+        self.fail(text);
+        // 案内と符号は、訳した後の文に結びつける（文が変われば出さない）
+        let shown = self.status.text.clone();
+        self.status_hint = hint.filter(|h| !shown.contains(h.as_str())).map(|h| {
+            let c = e.code.as_deref().unwrap_or_default();
+            (shown.clone(), format!("{h}\n[{c}]"))
+        });
+    }
+
+    /// うまくいった返事を状態に入れる。下の行に出す文を返す（None は出さない。画面が自分で頼んだ途中の要求など）
+    fn on_reply(
+        &mut self,
+        d: &Done,
+        params: Value,
+        v: Value,
+        ms: f64,
+        mut text: String,
+    ) -> Option<String> {
+        match d.tag {
+            Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom => {
+                return Some(self.job_done(&d.tag, v, ms, text));
+            }
+            Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill => {
+                return Some(self.catalog_done(d, v, ms, text));
+            }
+            Tag::Load | Tag::Set | Tag::Edit | Tag::History | Tag::Surfaces | Tag::SysData => {
+                return self.system_done(d, params, v, text);
+            }
+            Tag::Info => self.sys.info = Some(v),
+            Tag::Analyze(id) => {
+                let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
+                let gen = self.rev;
+                let r = self.results.entry(id).or_default();
+                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない
+                r.prev = if r.cmd == cmd && r.params == params {
+                    r.value.take()
+                } else {
+                    None
+                };
+                r.params = params;
+                r.cmd = cmd;
+                r.value = Some(v);
+                r.ms = ms;
+                r.error = None;
+                r.gen = gen;
+            }
+            Tag::Rays(id) => {
+                let rays = d
+                    .replies
+                    .iter()
+                    .filter_map(|r| {
+                        let (_, a) = r.result.as_ref().ok()?;
+                        let f = r.params["field"].as_u64()? as usize;
+                        let w = r.params["wave"].as_u64()? as usize;
+                        Some(plots::rays_from(f, w, a))
+                    })
+                    .collect();
+                let r = self.results.entry(id).or_default();
+                r.rays = rays;
+                // 要求ごとに進む rev（パネルの結果を消した後も前の世代と重ならない）
+                r.rays_gen = self.rev;
+                return None;
+            }
+            Tag::Get => {
+                if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
+                    self.sys.param_vals.insert(p.to_string(), x);
+                    if !self.ses.params.iter().any(|q| q == p) {
+                        self.ses.params.push(p.to_string());
+                    }
+                }
+                return None;
+            }
+            Tag::HistoryDepth => {
+                self.take_history(&v);
+                return None;
+            }
+            // take の頭で分けて回すので来ない
+            Tag::Write | Tag::Refresh | Tag::Gets => {}
+            Tag::LayoutExport => {
+                text = trf(
+                    "Exported the layout to {}",
+                    &[&v["written"].as_str().unwrap_or_default()],
+                );
+            }
+            Tag::SurfData(j) => {
+                self.p.ld.insp.set(j, v);
+                return None;
+            }
+            Tag::ConfigTable => match config_panel::parse(&v) {
+                Ok(t) => {
+                    self.p.mc.table = Some(t);
+                    return None;
+                }
+                Err(text) => {
+                    self.fail(text);
+                    return None;
+                }
+            },
+            Tag::ConfigDiff => {
+                self.p.mc.notes = v["notes"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let ops = v["ops"].clone();
+                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
+                text = trf(
+                    "Imported {} rows into the multi-configuration table",
+                    &[&v["rows"]],
+                );
+            }
+            Tag::WriteBack => {
+                match self.take_write_back(&v) {
+                    Ok(true) if !self.s.auto_build => self.build_combo(self.doc.combo.project()),
+                    Ok(_) => {}
+                    Err(e) => self.fail(e),
+                }
+                let notes: Vec<String> = v["notes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
+                    .collect();
+                if notes.is_empty() {
+                    return Some(String::new());
+                }
+                text = notes.join("\n");
+            }
+            Tag::SaveRange => {
+                text = trf(
+                    "Exported to {}",
+                    &[&params["path"].as_str().unwrap_or_default()],
+                );
+            }
+            Tag::Save => {
+                self.loc.ld_dirty = false;
+                text = trf(
+                    "Saved to {}",
+                    &[&params["path"].as_str().unwrap_or_default()],
+                );
+            }
+            Tag::Layout => {
+                self.layout_data = Some(combo::LayoutData::parse(&v));
+                // 前の図の誤り（別の系で残った重ねる経路など）は、図が描けたら消す
+                self.set_done_status(&d.tag, String::new());
+                return None;
+            }
+            // 下書きの Worker の分（tick で受け取る）
+            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => return None,
+            Tag::Focus => {
+                self.focus_from(d);
+                return None;
+            }
+            Tag::Configs => {
+                // 別の系を開いて、重ねていた構成・状態・BS の経路が無くなった: 開いたときのレイアウトは
+                // 前の選択で頼んで誤りになっているので、選択を外して頼み直す（誤りは同じ要求の成功で消える）
+                if self.overlay.update(&v) {
+                    self.request_layout();
+                }
+                return None;
+            }
+        }
+        Some(text)
+    }
+
+    /// 系を開いた・変えた・読み直した返事（面の表・要約・元に戻す段）。下の行に出す文を返す
+    fn system_done(
+        &mut self,
+        d: &Done,
+        params: Value,
+        mut v: Value,
+        mut text: String,
+    ) -> Option<String> {
         match d.tag {
             Tag::Load => {
                 self.docs.opening = false;
@@ -180,41 +347,104 @@ impl Core {
                 }
                 self.on_loaded(v);
             }
-            Tag::Info => self.sys.info = Some(v),
-            Tag::Analyze(id) => {
-                let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
-                let gen = self.rev;
-                let r = self.results.entry(id).or_default();
-                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない
-                r.prev = if r.cmd == cmd && r.params == params {
-                    r.value.take()
-                } else {
-                    None
+            Tag::Set | Tag::Edit | Tag::History => {
+                self.take_history(&v);
+                if d.tag != Tag::History {
+                    self.docs.edited();
+                }
+                let back = params["back"].as_bool() == Some(true);
+                // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
+                // 面の表は変更あり
+                if let Some(l) = v.get_mut("loaded") {
+                    self.on_loaded(l.take());
+                    let top = &self.sys.hist_list.0.first();
+                    self.loc.ld_dirty =
+                        top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
+                    // 前の文書へ戻した: 写しの欄（組合せ・保存先・変更あり）を当てる
+                    self.take_pending_doc();
+                    self.info(tr(if back { "Undone" } else { "Redone" }));
+                    return None;
+                }
+                if d.tag == Tag::History {
+                    text = tr(if back { "Undone" } else { "Redone" }).into();
+                }
+                // 値の変更（Set）も保存していない変更
+                self.loc.ld_dirty = true;
+                // 値を変えたら面の表・要約と、開いている解析を計算し直す
+                self.refresh();
+                self.worker
+                    .send(Tag::Layout, "layout", self.layout_params());
+                self.rerun = Some(true);
+            }
+            Tag::Surfaces => {
+                self.p.oss.stale();
+                // 要約の面の数も今の系に（読み込み時のままにしない）
+                if let (Some(sum), Some(a)) = (self.sys.summary.as_mut(), v["surfaces"].as_array())
+                {
+                    sum["surfaces"] = json!(a.len());
+                }
+                let (rows, units) = match lens_data::parse(&v) {
+                    Ok(x) => x,
+                    Err(text) => {
+                        self.fail(text);
+                        return None;
+                    }
                 };
-                r.params = params;
-                r.cmd = cmd;
-                r.value = Some(v);
-                r.ms = ms;
-                r.error = None;
-                r.gen = gen;
+                self.p.um.set_mechs(&v["mechanics"]);
+                self.sys.ld_blocks = lens_data::tree(&units);
+                self.p.ld.insp.stale();
+                self.sys.ld_rows = rows;
+                self.sys.ld_units = units;
+                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let mats: Vec<&str> = self
+                        .sys
+                        .ld_rows
+                        .iter()
+                        .map(|r| r.material.as_str())
+                        .collect();
+                    let used = crate::builtin_glass::used(
+                        &mats,
+                        &crate::worker::agf_names(&self.s.glass_dirs),
+                    );
+                    if !used.is_empty() && !self.status.error {
+                        self.info(trf(
+                                "Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…",
+                                &[&used.join(crate::i18n::tr(", "))],
+                            ));
+                    }
+                }
+                return None;
             }
-            Tag::Rays(id) => {
-                let rays = d
-                    .replies
-                    .iter()
-                    .filter_map(|r| {
-                        let (_, a) = r.result.as_ref().ok()?;
-                        let f = r.params["field"].as_u64()? as usize;
-                        let w = r.params["wave"].as_u64()? as usize;
-                        Some(plots::rays_from(f, w, a))
-                    })
-                    .collect();
-                let r = self.results.entry(id).or_default();
-                r.rays = rays;
-                // 要求ごとに進む rev（パネルの結果を消した後も前の世代と重ならない）
-                r.rays_gen = self.rev;
-                return;
+            Tag::SysData => {
+                // 要約の視野・波長も今の系に
+                if let Some(sum) = self.sys.summary.as_mut() {
+                    let d = &v["data"];
+                    if let Some(f) = d["fields"].as_array() {
+                        sum["fields"] = json!(f
+                            .iter()
+                            .map(|f| [f["x"].as_f64(), f["y"].as_f64()])
+                            .collect::<Vec<_>>());
+                    }
+                    if d["wavelengths"].is_array() {
+                        sum["wavelengths_um"] = d["wavelengths"].clone();
+                    }
+                    if let Some(p) = d["primary"].as_u64() {
+                        sum["primary"] = json!(p + 1);
+                    }
+                }
+                self.p.oss.set(&v);
+                return None;
             }
+            _ => {}
+        }
+        Some(text)
+    }
+
+    /// ガラス・カタログの返事。下の行に出す文を返す
+    fn catalog_done(&mut self, d: &Done, v: Value, ms: f64, mut text: String) -> String {
+        match d.tag {
             Tag::Glasses => {
                 self.browser.set_glasses(catalog::parse_glasses(&v));
                 self.ld_glasses = self
@@ -251,181 +481,6 @@ impl Core {
                         &[&self.browser.lenses.len(), &fmt_num(ms.round())],
                     )
                 };
-            }
-            Tag::Get => {
-                if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
-                    self.sys.param_vals.insert(p.to_string(), x);
-                    if !self.ses.params.iter().any(|q| q == p) {
-                        self.ses.params.push(p.to_string());
-                    }
-                }
-                return;
-            }
-            Tag::HistoryDepth => {
-                self.take_history(&v);
-                return;
-            }
-            Tag::Set | Tag::Edit | Tag::History => {
-                self.take_history(&v);
-                if d.tag != Tag::History {
-                    self.docs.edited();
-                }
-                let back = params["back"].as_bool() == Some(true);
-                // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
-                // 面の表は変更あり
-                if let Some(l) = v.get_mut("loaded") {
-                    self.on_loaded(l.take());
-                    let top = &self.sys.hist_list.0.first();
-                    self.loc.ld_dirty =
-                        top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
-                    // 前の文書へ戻した: 写しの欄（組合せ・保存先・変更あり）を当てる
-                    self.take_pending_doc();
-                    self.info(tr(if back { "Undone" } else { "Redone" }));
-                    return;
-                }
-                if d.tag == Tag::History {
-                    text = tr(if back { "Undone" } else { "Redone" }).into();
-                }
-                // 値の変更（Set）も保存していない変更
-                self.loc.ld_dirty = true;
-                // 値を変えたら面の表・要約と、開いている解析を計算し直す
-                self.refresh();
-                self.worker
-                    .send(Tag::Layout, "layout", self.layout_params());
-                self.rerun = Some(true);
-            }
-            // take の頭で分けて回すので来ない
-            Tag::Write | Tag::Refresh | Tag::Gets => {}
-            Tag::LayoutExport => {
-                text = trf(
-                    "Exported the layout to {}",
-                    &[&v["written"].as_str().unwrap_or_default()],
-                );
-            }
-            Tag::Surfaces => {
-                self.p.oss.stale();
-                // 要約の面の数も今の系に（読み込み時のままにしない）
-                if let (Some(sum), Some(a)) = (self.sys.summary.as_mut(), v["surfaces"].as_array())
-                {
-                    sum["surfaces"] = json!(a.len());
-                }
-                let (rows, units) = match lens_data::parse(&v) {
-                    Ok(x) => x,
-                    Err(text) => return self.fail(text),
-                };
-                self.p.um.set_mechs(&v["mechanics"]);
-                self.sys.ld_blocks = lens_data::tree(&units);
-                self.p.ld.insp.stale();
-                self.sys.ld_rows = rows;
-                self.sys.ld_units = units;
-                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let mats: Vec<&str> = self
-                        .sys
-                        .ld_rows
-                        .iter()
-                        .map(|r| r.material.as_str())
-                        .collect();
-                    let used = crate::builtin_glass::used(
-                        &mats,
-                        &crate::worker::agf_names(&self.s.glass_dirs),
-                    );
-                    if !used.is_empty() && !self.status.error {
-                        self.info(trf(
-                                "Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…",
-                                &[&used.join(crate::i18n::tr(", "))],
-                            ));
-                    }
-                }
-                return;
-            }
-            Tag::SurfData(j) => {
-                self.p.ld.insp.set(j, v);
-                return;
-            }
-            Tag::SysData => {
-                // 要約の視野・波長も今の系に
-                if let Some(sum) = self.sys.summary.as_mut() {
-                    let d = &v["data"];
-                    if let Some(f) = d["fields"].as_array() {
-                        sum["fields"] = json!(f
-                            .iter()
-                            .map(|f| [f["x"].as_f64(), f["y"].as_f64()])
-                            .collect::<Vec<_>>());
-                    }
-                    if d["wavelengths"].is_array() {
-                        sum["wavelengths_um"] = d["wavelengths"].clone();
-                    }
-                    if let Some(p) = d["primary"].as_u64() {
-                        sum["primary"] = json!(p + 1);
-                    }
-                }
-                self.p.oss.set(&v);
-                return;
-            }
-            Tag::ConfigTable => match config_panel::parse(&v) {
-                Ok(t) => return self.p.mc.table = Some(t),
-                Err(text) => return self.fail(text),
-            },
-            Tag::ConfigDiff => {
-                self.p.mc.notes = v["notes"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let ops = v["ops"].clone();
-                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
-                text = trf(
-                    "Imported {} rows into the multi-configuration table",
-                    &[&v["rows"]],
-                );
-            }
-            Tag::WriteBack => {
-                match self.take_write_back(&v) {
-                    Ok(true) if !self.s.auto_build => self.build_combo(self.doc.combo.project()),
-                    Ok(_) => {}
-                    Err(e) => self.fail(e),
-                }
-                let notes: Vec<String> = v["notes"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
-                    .collect();
-                if notes.is_empty() {
-                    self.set_done_status(&d.tag, String::new());
-                    return;
-                }
-                text = notes.join("\n");
-            }
-            Tag::SaveRange => {
-                text = trf(
-                    "Exported to {}",
-                    &[&params["path"].as_str().unwrap_or_default()],
-                );
-            }
-            Tag::Save => {
-                self.loc.ld_dirty = false;
-                text = trf(
-                    "Saved to {}",
-                    &[&params["path"].as_str().unwrap_or_default()],
-                );
-            }
-            Tag::Layout => {
-                self.layout_data = Some(combo::LayoutData::parse(&v));
-                // 前の図の誤り（別の系で残った重ねる経路など）は、図が描けたら消す
-                self.set_done_status(&d.tag, String::new());
-                return;
-            }
-            // 下書きの Worker の分（tick で受け取る）
-            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => return,
-            Tag::Focus => {
-                self.focus_from(&d);
-                return;
             }
             Tag::UserCatalog => {
                 let (method, _, _) = d.first();
@@ -478,17 +533,31 @@ impl Core {
                 }
                 self.refresh_catalog();
             }
-            Tag::Configs => {
-                // 別の系を開いて、重ねていた構成・状態・BS の経路が無くなった: 開いたときのレイアウトは
-                // 前の選択で頼んで誤りになっているので、選択を外して頼み直す（誤りは同じ要求の成功で消える）
-                if self.overlay.update(&v) {
-                    self.request_layout();
-                }
-                return;
-            }
+            _ => {}
+        }
+        text
+    }
+
+    /// 長い計算のパネル（最適化・差し替え・公差・ズーム）の動いている印と誤りの欄
+    fn job(&mut self, tag: &Tag) -> Option<(&mut bool, &mut Option<String>)> {
+        let p = &mut self.p;
+        Some(match tag {
+            Tag::Optimize => (&mut p.opt.running, &mut p.opt.error),
+            Tag::Swap => (&mut p.swap.running, &mut p.swap.error),
+            Tag::Tolerance => (&mut p.tol.running, &mut p.tol.error),
+            Tag::Zoom => (&mut p.zoom.running, &mut p.zoom.error),
+            _ => return None,
+        })
+    }
+
+    /// 長い計算が終わった: 動いている印と誤りを下ろして結果を入れる。下の行に出す文を返す
+    fn job_done(&mut self, tag: &Tag, v: Value, ms: f64, mut text: String) -> String {
+        if let Some((running, error)) = self.job(tag) {
+            *running = false;
+            *error = None;
+        }
+        match tag {
             Tag::Optimize => {
-                self.p.opt.running = false;
-                self.p.opt.error = None;
                 self.p.opt.undo = None;
                 // 結果を系に当てたら元に戻す段が増える
                 self.worker.send(Tag::HistoryDepth, "history", json!({}));
@@ -503,8 +572,6 @@ impl Core {
                     );
             }
             Tag::Swap => {
-                self.p.swap.running = false;
-                self.p.swap.error = None;
                 self.p.swap.inserted = None;
                 let r = views::read::<lensbench_design::swap::SwapReply>(&v);
                 if r.as_ref().is_ok_and(|r| r.results.is_some()) {
@@ -519,8 +586,6 @@ impl Core {
                 );
             }
             Tag::Tolerance => {
-                self.p.tol.running = false;
-                self.p.tol.error = None;
                 text = trf(
                     "Tolerance done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
@@ -528,8 +593,6 @@ impl Core {
                 self.p.tol.result = Some(std::sync::Arc::new(v));
             }
             Tag::Zoom => {
-                self.p.zoom.running = false;
-                self.p.zoom.error = None;
                 text = trf(
                     "Zoom track done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
@@ -537,8 +600,9 @@ impl Core {
                 (self.p.zoom.result, self.p.zoom.error) = views::read::<views::ZoomView>(&v)
                     .map_or_else(|e| (None, Some(String::from(e))), |r| (Some(r), None));
             }
+            _ => {}
         }
-        self.set_done_status(&d.tag, text);
+        text
     }
 
     /// 要求がうまくいったときの下の行。画面が自分で頼んだ要求（[`Tag::quiet`]）は、同じ要求が出した誤りを

@@ -20,6 +20,10 @@ impl Saves {
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
     ) {
+        // 保存の窓は 1 つずつ（窓を出している間も画面は動くので、Ctrl+S を続けて押しても 2 つ目は出さない）
+        if !self.wait.is_empty() {
+            return;
+        }
         let id = format!("save-as-{}", self.next);
         self.next += 1;
         crate::files::start_save(&id, d);
@@ -71,21 +75,15 @@ impl Core {
                 &path,
                 serde_json::to_string_pretty(&v).unwrap_or_default(),
             );
-            self.status = match r {
+            match r {
                 Ok(()) => {
                     self.loc.doc_path = Some(path.clone());
                     self.loc.saved_combo = Snap::new(Some(self.doc.combo.clone()));
                     self.push_recent(&path.display().to_string());
-                    Status {
-                        text: trf("Saved to {}", &[&path.display()]),
-                        error: false,
-                    }
+                    self.info(trf("Saved to {}", &[&path.display()]));
                 }
-                Err(e) => Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                },
-            };
+                Err(e) => self.fail(format!("{}: {e}", path.display())),
+            }
         } else {
             self.loc.doc_path = Some(path.clone());
             self.loc.doc_from = None;
@@ -99,15 +97,9 @@ impl Core {
 
     /// 文字列を書いて、状態の行に知らせる
     pub(super) fn write_reported(&mut self, path: &Path, txt: String) {
-        self.status = match lensbench_core::vfs::write(path, txt) {
-            Ok(()) => Status {
-                text: trf("Saved to {}", &[&path.display()]),
-                error: false,
-            },
-            Err(e) => Status {
-                text: format!("{}: {e}", path.display()),
-                error: true,
-            },
-        };
+        match lensbench_core::vfs::write(path, txt) {
+            Ok(()) => self.info(trf("Saved to {}", &[&path.display()])),
+            Err(e) => self.fail(format!("{}: {e}", path.display())),
+        }
     }
 }

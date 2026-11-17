@@ -270,341 +270,12 @@ impl App {
             logo(ui, 26.0, accent);
             ui.label(RichText::new("lensbench").strong().size(15.0).color(accent));
             {
-                ui.menu_button(tr("File"), |ui| {
-                    if ui.button(tr("New (Ctrl+N)")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::New);
-                    }
-                    if ui.button(tr("Open… (Ctrl+O)")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Open);
-                    }
-                    if !self.c.samples.is_empty() {
-                        ui.menu_button(tr("Samples"), |ui| {
-                            // 組合せ・プロジェクト・.zmx の系の間に区切り
-                            let group = |f: &str| {
-                                if f.contains("/examples/combos/") {
-                                    0
-                                } else if f.ends_with(".json") {
-                                    1
-                                } else {
-                                    2
-                                }
-                            };
-                            let mut last = None;
-                            for f in &self.c.samples {
-                                let g = group(f);
-                                if last.is_some_and(|l| l != g) {
-                                    ui.separator();
-                                }
-                                if last != Some(g) && g == 0 {
-                                    ui.weak(tr("Combinations (open as a combination)"));
-                                }
-                                last = Some(g);
-                                let name = sample_name(f);
-                                if ui.button(name).on_hover_text(f).clicked() {
-                                    ui.close_menu();
-                                    cmd = Some(Cmd::Recent(f.clone()));
-                                }
-                            }
-                        });
-                    }
-                    ui.menu_button(tr("Recent files"), |ui| {
-                        if self.c.s.recent.is_empty() {
-                            ui.label(tr("(none)"));
-                        }
-                        for f in &self.c.s.recent {
-                            if ui.button(f).clicked() {
-                                ui.close_menu();
-                                cmd = Some(Cmd::Recent(f.clone()));
-                            }
-                        }
-                    });
-                    if ui
-                        .add_enabled(
-                            self.c.loc.file.is_some(),
-                            egui::Button::new(tr("Reload (Ctrl+R)")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Reload);
-                    }
-                    ui.separator();
-                    if ui
-                        .add_enabled(
-                            self.c.sys.summary.is_some(),
-                            egui::Button::new(tr("Export to .zmx…")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::WriteZmx);
-                    }
-                    let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
-                    // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す
-                    let zmx = !self.c.is_combo()
-                        && self.c.loc.doc_path.is_none()
-                        && self.c.loc.file.as_ref().is_some_and(|f| {
-                            f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"))
-                        });
-                    let save_label = if zmx {
-                        tr("Save as system file (.json)…(Ctrl+S)")
-                    } else {
-                        tr("Save (Ctrl+S)")
-                    };
-                    if ui
-                        .add_enabled(can_save, egui::Button::new(save_label))
-                        .on_hover_text(tr(
-                            "A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file",
-                        ))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Save(false));
-                    }
-                    if ui
-                        .add_enabled(
-                            can_save,
-                            egui::Button::new(tr("Save As… (Ctrl+Shift+S)")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Save(true));
-                    }
-                    ui.separator();
-                    if ui.button(tr("Catalog folders…")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Folders);
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let (n, b) = crate::web_store::usage();
-                        if ui
-                            .add_enabled(
-                                n > 0,
-                                egui::Button::new(trf(
-                                    "Clear files kept in the browser ({} files, {} MB)…",
-                                    &[&n, &format!("{:.1}", b as f64 / 1e6)],
-                                )),
-                            )
-                            .on_hover_text(tr(
-                                "Loaded files and user catalogs stay in the browser after the page is closed",
-                            ))
-                            .clicked()
-                        {
-                            ui.close_menu();
-                            self.c.ask(
-                                "lensbench",
-                                tr("Delete all loaded files and user catalogs kept in the browser?"),
-                                |c, yes| {
-                                    if yes {
-                                        crate::web_store::clear();
-                                        crate::web_store::prune_dirs(
-                                            &mut c.s.glass_dirs,
-                                            &mut c.s.lens_dirs,
-                                        );
-                                        c.refresh_catalog();
-                                    }
-                                },
-                            );
-                        }
-                    }
-                    // ブラウザ（Web 版）では閉じられないので出さない
-                    if cfg!(not(target_arch = "wasm32")) {
-                        ui.separator();
-                        if ui.button(tr("Quit")).clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    }
-                });
-                ui.menu_button(tr("Edit"), |ui| {
-                    let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
-                    if ui
-                        .add_enabled(u, egui::Button::new(tr("Undo (Ctrl+Z)")))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Undo(true, 1));
-                    }
-                    if ui
-                        .add_enabled(r, egui::Button::new(tr("Redo (Ctrl+Y)")))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Undo(false, 1));
-                    }
-                    // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
-                    for (back, title) in [(true, tr("Undo up to")), (false, tr("Redo up to"))] {
-                        let list = self.c.undo_list(back);
-                        ui.add_enabled_ui(!list.is_empty(), |ui| {
-                            ui.menu_button(title, |ui| {
-                                egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                                    for (i, l) in list.iter().enumerate() {
-                                        if ui.button(format!("{}. {l}", i + 1)).clicked() {
-                                            ui.close_menu();
-                                            cmd = Some(Cmd::Undo(back, i + 1));
-                                        }
-                                    }
-                                });
-                            });
-                        });
-                    }
-                    ui.label(
-                        RichText::new(tr(
-                            "System changes (lens data, multi-config, optimization results, combination) and open, reload and new, up to 100 steps",
-                        ))
-                        .small()
-                        .weak(),
-                    );
-                });
-                // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける
-                ui.menu_button(tr("Panels"), |ui| {
-                    let (single, many): (Vec<Kind>, Vec<Kind>) =
-                        add_kinds().into_iter().partition(Kind::single);
-                    for k in single {
-                        let t = Pane {
-                            id: 0,
-                            kind: k.clone(),
-                        }
-                        .title();
-                        if ui
-                            .button(t)
-                            .on_hover_text(tr("Single panel; brings it to the front if already open"))
-                            .clicked()
-                        {
-                            ui.close_menu();
-                            cmd = Some(Cmd::Add(k));
-                        }
-                    }
-                    ui.separator();
-                    ui.menu_button(tr("Add analysis"), |ui| {
-                        for k in many {
-                            let t = Pane {
-                                id: 0,
-                                kind: k.clone(),
-                            }
-                            .title();
-                            if ui.button(trf("+ {}", &[&t])).clicked() {
-                                ui.close_menu();
-                                cmd = Some(Cmd::Add(k));
-                            }
-                        }
-                    });
-                });
-                ui.menu_button(tr("Workspace"), |ui| {
-                    ui.label(RichText::new(tr("Preset workspaces")).small().color(weak));
-                    for p in Preset::ALL {
-                        if ui.button(p.label()).clicked() {
-                            ui.close_menu();
-                            cmd = Some(Cmd::Preset(p));
-                        }
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(tr("Saved workspaces")).small().color(weak));
-                    if self.c.s.layouts.is_empty() {
-                        ui.label(tr("(none)"));
-                    }
-                    let mut del = None;
-                    for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if ui.button(n).clicked() {
-                                ui.close_menu();
-                                cmd = Some(Cmd::Layout(i));
-                            }
-                            if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                                del = Some(i);
-                            }
-                        });
-                    }
-                    if let Some(i) = del {
-                        self.c.s.layouts.remove(i);
-                    }
-                    ui.separator();
-                    if ui.button(tr("Save current workspace…")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::SaveLayout);
-                    }
-                });
-                ui.menu_button(tr("View"), |ui| {
-                    ui.label(RichText::new(tr("Theme")).small().color(weak));
-                    for (m, l) in [
-                        (Mode::Dark, tr("Dark")),
-                        (Mode::Light, tr("Light")),
-                        (Mode::System, tr("Follow the OS")),
-                    ] {
-                        if ui.radio(self.c.s.look.mode == m, l).clicked() {
-                            cmd = Some(Cmd::Theme(m));
-                        }
-                    }
-                    ui.label(RichText::new(tr("Accent color")).small().color(weak));
-                    ui.horizontal(|ui| {
-                        for (i, a) in theme::ACCENTS.iter().enumerate() {
-                            let c = Color32::from_rgb(a[0], a[1], a[2]);
-                            let on = self.c.s.look.accent == *a;
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(if on { "●" } else { "○" })
-                                            .color(c)
-                                            .size(18.0),
-                                    )
-                                    .frame(false),
-                                )
-                                .clicked()
-                            {
-                                cmd = Some(Cmd::Accent(i));
-                            }
-                        }
-                        let mut c = Color32::from_rgb(
-                            self.c.s.look.accent[0],
-                            self.c.s.look.accent[1],
-                            self.c.s.look.accent[2],
-                        );
-                        if ui.color_edit_button_srgba(&mut c).changed() {
-                            self.c.s.look.accent = [c.r(), c.g(), c.b()];
-                            theme::apply(ctx, &self.c.s.look);
-                        }
-                    });
-                    if cfg!(not(target_arch = "wasm32")) {
-                        ui.checkbox(&mut self.c.s.os_titlebar, tr("Use the OS title bar"))
-                            .on_hover_text(tr(
-                                "When off, the top bar acts as the title bar (drag to move, double-click to maximize, drag edges to resize)",
-                            ));
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(tr("Language")).small().color(weak));
-                    for l in Lang::ALL {
-                        if ui.radio(self.c.s.lang == l, l.label()).clicked() {
-                            cmd = Some(Cmd::Lang(l));
-                        }
-                    }
-                    ui.separator();
-                    if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Help);
-                    }
-                });
-                ui.menu_button(tr("Help"), |ui| {
-                    for (label, page, tip) in HELP_PAGES {
-                        if ui
-                            .button(tr(label))
-                            .on_hover_text(tr(tip))
-                            .clicked()
-                        {
-                            ui.close_menu();
-                            ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
-                        }
-                    }
-                    ui.separator();
-                    if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Help);
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(version()).small().color(weak));
-                });
+                self.file_menu(ctx, ui, &mut cmd);
+                self.edit_menu(ui, &mut cmd);
+                self.panels_menu(ui, &mut cmd);
+                self.workspace_menu(ui, &mut cmd);
+                self.view_menu(ctx, ui, &mut cmd);
+                self.help_menu(ctx, ui, &mut cmd);
             }
             let shown = self.c.loc.shown(self.c.is_combo()).cloned();
             let dirty = self.c.dirty();
@@ -618,7 +289,10 @@ impl App {
                 let r = ui.label(RichText::new(format!("{name}{mark}")).strong());
                 let tip = shown.map(|f| f.display().to_string()).unwrap_or_default();
                 if dirty {
-                    r.on_hover_text(format!("{tip}\n{}", tr("● Unsaved changes (Ctrl+S to save)")));
+                    r.on_hover_text(format!(
+                        "{tip}\n{}",
+                        tr("● Unsaved changes (Ctrl+S to save)")
+                    ));
                 } else {
                     r.on_hover_text(tip);
                 }
@@ -639,7 +313,9 @@ impl App {
                     cmd = Some(Cmd::RunAll);
                 }
                 // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー）。押すと何を戻すかをホバーで
-                for (back, icon, key) in [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")] {
+                for (back, icon, key) in
+                    [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")]
+                {
                     let next = self.c.undo_list(back).into_iter().next();
                     let tip = match (&next, back) {
                         (Some(n), true) => trf("Undo ({}): {}", &[&key, n]),
@@ -650,8 +326,11 @@ impl App {
                     if ui
                         .add_enabled(
                             self.c.can_undo(back),
-                            egui::Button::new(RichText::new(crate::fonts::glyph_or(ui, icon[0], icon[1])).size(16.0))
-                                .min_size(egui::vec2(28.0, 28.0)),
+                            egui::Button::new(
+                                RichText::new(crate::fonts::glyph_or(ui, icon[0], icon[1]))
+                                    .size(16.0),
+                            )
+                            .min_size(egui::vec2(28.0, 28.0)),
                         )
                         .on_hover_text(tip.clone())
                         .on_disabled_hover_text(tip)
@@ -673,7 +352,9 @@ impl App {
                 if room >= 32.0 {
                     let search = egui::Button::new(RichText::new(label).color(weak))
                         .min_size(egui::vec2(room.min(300.0), 28.0));
-                    let r = ui.add(search).on_hover_text(tr("Search analyses, panels and commands (Ctrl+K)"));
+                    let r = ui
+                        .add(search)
+                        .on_hover_text(tr("Search analyses, panels and commands (Ctrl+K)"));
                     self.palette.anchor = Some(r.rect);
                     if r.clicked() {
                         self.palette.show();
@@ -689,6 +370,364 @@ impl App {
         if let Some(c) = cmd {
             self.exec(ctx, c);
         }
+    }
+
+    /// 上の帯の「File」メニュー
+    fn file_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        ui.menu_button(tr("File"), |ui| {
+            if ui.button(tr("New (Ctrl+N)")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::New);
+            }
+            if ui.button(tr("Open… (Ctrl+O)")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::Open);
+            }
+            if !self.c.samples.is_empty() {
+                ui.menu_button(tr("Samples"), |ui| {
+                    // 組合せ・プロジェクト・.zmx の系の間に区切り
+                    let group = |f: &str| {
+                        if f.contains("/examples/combos/") {
+                            0
+                        } else if f.ends_with(".json") {
+                            1
+                        } else {
+                            2
+                        }
+                    };
+                    let mut last = None;
+                    for f in &self.c.samples {
+                        let g = group(f);
+                        if last.is_some_and(|l| l != g) {
+                            ui.separator();
+                        }
+                        if last != Some(g) && g == 0 {
+                            ui.weak(tr("Combinations (open as a combination)"));
+                        }
+                        last = Some(g);
+                        let name = sample_name(f);
+                        if ui.button(name).on_hover_text(f).clicked() {
+                            ui.close_menu();
+                            *cmd = Some(Cmd::Recent(f.clone()));
+                        }
+                    }
+                });
+            }
+            ui.menu_button(tr("Recent files"), |ui| {
+                if self.c.s.recent.is_empty() {
+                    ui.label(tr("(none)"));
+                }
+                for f in &self.c.s.recent {
+                    if ui.button(f).clicked() {
+                        ui.close_menu();
+                        *cmd = Some(Cmd::Recent(f.clone()));
+                    }
+                }
+            });
+            if ui
+                .add_enabled(
+                    self.c.loc.file.is_some(),
+                    egui::Button::new(tr("Reload (Ctrl+R)")),
+                )
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::Reload);
+            }
+            ui.separator();
+            if ui
+                .add_enabled(
+                    self.c.sys.summary.is_some(),
+                    egui::Button::new(tr("Export to .zmx…")),
+                )
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::WriteZmx);
+            }
+            let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
+            // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す
+            let zmx = !self.c.is_combo()
+                && self.c.loc.doc_path.is_none()
+                && self.c.loc.file.as_ref().is_some_and(|f| {
+                    f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"))
+                });
+            let save_label = if zmx {
+                tr("Save as system file (.json)…(Ctrl+S)")
+            } else {
+                tr("Save (Ctrl+S)")
+            };
+            if ui
+                .add_enabled(can_save, egui::Button::new(save_label))
+                .on_hover_text(tr(
+                    "A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file",
+                ))
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::Save(false));
+            }
+            if ui
+                .add_enabled(
+                    can_save,
+                    egui::Button::new(tr("Save As… (Ctrl+Shift+S)")),
+                )
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::Save(true));
+            }
+            ui.separator();
+            if ui.button(tr("Catalog folders…")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::Folders);
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let (n, b) = crate::web_store::usage();
+                if ui
+                    .add_enabled(
+                        n > 0,
+                        egui::Button::new(trf(
+                            "Clear files kept in the browser ({} files, {} MB)…",
+                            &[&n, &format!("{:.1}", b as f64 / 1e6)],
+                        )),
+                    )
+                    .on_hover_text(tr(
+                        "Loaded files and user catalogs stay in the browser after the page is closed",
+                    ))
+                    .clicked()
+                {
+                    ui.close_menu();
+                    self.c.ask(
+                        "lensbench",
+                        tr("Delete all loaded files and user catalogs kept in the browser?"),
+                        |c, yes| {
+                            if yes {
+                                crate::web_store::clear();
+                                crate::web_store::prune_dirs(
+                                    &mut c.s.glass_dirs,
+                                    &mut c.s.lens_dirs,
+                                );
+                                c.refresh_catalog();
+                            }
+                        },
+                    );
+                }
+            }
+            // ブラウザ（Web 版）では閉じられないので出さない
+            if cfg!(not(target_arch = "wasm32")) {
+                ui.separator();
+                if ui.button(tr("Quit")).clicked() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        });
+    }
+
+    /// 上の帯の「Edit」メニュー
+    fn edit_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        ui.menu_button(tr("Edit"), |ui| {
+            let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
+            if ui
+                .add_enabled(u, egui::Button::new(tr("Undo (Ctrl+Z)")))
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::Undo(true, 1));
+            }
+            if ui
+                .add_enabled(r, egui::Button::new(tr("Redo (Ctrl+Y)")))
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Cmd::Undo(false, 1));
+            }
+            // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
+            for (back, title) in [(true, tr("Undo up to")), (false, tr("Redo up to"))] {
+                let list = self.c.undo_list(back);
+                ui.add_enabled_ui(!list.is_empty(), |ui| {
+                    ui.menu_button(title, |ui| {
+                        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                            for (i, l) in list.iter().enumerate() {
+                                if ui.button(format!("{}. {l}", i + 1)).clicked() {
+                                    ui.close_menu();
+                                    *cmd = Some(Cmd::Undo(back, i + 1));
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+            ui.label(
+                RichText::new(tr(
+                    "System changes (lens data, multi-config, optimization results, combination) and open, reload and new, up to 100 steps",
+                ))
+                .small()
+                .weak(),
+            );
+        });
+    }
+
+    /// 上の帯の「Panels」メニュー
+    fn panels_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける
+        ui.menu_button(tr("Panels"), |ui| {
+            let (single, many): (Vec<Kind>, Vec<Kind>) =
+                add_kinds().into_iter().partition(Kind::single);
+            for k in single {
+                let t = Pane {
+                    id: 0,
+                    kind: k.clone(),
+                }
+                .title();
+                if ui
+                    .button(t)
+                    .on_hover_text(tr("Single panel; brings it to the front if already open"))
+                    .clicked()
+                {
+                    ui.close_menu();
+                    *cmd = Some(Cmd::Add(k));
+                }
+            }
+            ui.separator();
+            ui.menu_button(tr("Add analysis"), |ui| {
+                for k in many {
+                    let t = Pane {
+                        id: 0,
+                        kind: k.clone(),
+                    }
+                    .title();
+                    if ui.button(trf("+ {}", &[&t])).clicked() {
+                        ui.close_menu();
+                        *cmd = Some(Cmd::Add(k));
+                    }
+                }
+            });
+        });
+    }
+
+    /// 上の帯の「Workspace」メニュー
+    fn workspace_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        let weak = theme::weak_text(ui.visuals());
+        ui.menu_button(tr("Workspace"), |ui| {
+            ui.label(RichText::new(tr("Preset workspaces")).small().color(weak));
+            for p in Preset::ALL {
+                if ui.button(p.label()).clicked() {
+                    ui.close_menu();
+                    *cmd = Some(Cmd::Preset(p));
+                }
+            }
+            ui.separator();
+            ui.label(RichText::new(tr("Saved workspaces")).small().color(weak));
+            if self.c.s.layouts.is_empty() {
+                ui.label(tr("(none)"));
+            }
+            let mut del = None;
+            for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.button(n).clicked() {
+                        ui.close_menu();
+                        *cmd = Some(Cmd::Layout(i));
+                    }
+                    if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
+                        del = Some(i);
+                    }
+                });
+            }
+            if let Some(i) = del {
+                self.c.s.layouts.remove(i);
+            }
+            ui.separator();
+            if ui.button(tr("Save current workspace…")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::SaveLayout);
+            }
+        });
+    }
+
+    /// 上の帯の「View」メニュー
+    fn view_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        let weak = theme::weak_text(ui.visuals());
+        ui.menu_button(tr("View"), |ui| {
+            ui.label(RichText::new(tr("Theme")).small().color(weak));
+            for (m, l) in [
+                (Mode::Dark, tr("Dark")),
+                (Mode::Light, tr("Light")),
+                (Mode::System, tr("Follow the OS")),
+            ] {
+                if ui.radio(self.c.s.look.mode == m, l).clicked() {
+                    *cmd = Some(Cmd::Theme(m));
+                }
+            }
+            ui.label(RichText::new(tr("Accent color")).small().color(weak));
+            ui.horizontal(|ui| {
+                for (i, a) in theme::ACCENTS.iter().enumerate() {
+                    let c = Color32::from_rgb(a[0], a[1], a[2]);
+                    let on = self.c.s.look.accent == *a;
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new(if on { "●" } else { "○" })
+                                    .color(c)
+                                    .size(18.0),
+                            )
+                            .frame(false),
+                        )
+                        .clicked()
+                    {
+                        *cmd = Some(Cmd::Accent(i));
+                    }
+                }
+                let mut c = Color32::from_rgb(
+                    self.c.s.look.accent[0],
+                    self.c.s.look.accent[1],
+                    self.c.s.look.accent[2],
+                );
+                if ui.color_edit_button_srgba(&mut c).changed() {
+                    self.c.s.look.accent = [c.r(), c.g(), c.b()];
+                    theme::apply(ctx, &self.c.s.look);
+                }
+            });
+            if cfg!(not(target_arch = "wasm32")) {
+                ui.checkbox(&mut self.c.s.os_titlebar, tr("Use the OS title bar"))
+                    .on_hover_text(tr(
+                        "When off, the top bar acts as the title bar (drag to move, double-click to maximize, drag edges to resize)",
+                    ));
+            }
+            ui.separator();
+            ui.label(RichText::new(tr("Language")).small().color(weak));
+            for l in Lang::ALL {
+                if ui.radio(self.c.s.lang == l, l.label()).clicked() {
+                    *cmd = Some(Cmd::Lang(l));
+                }
+            }
+            ui.separator();
+            if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::Help);
+            }
+        });
+    }
+
+    /// 上の帯の「Help」メニュー
+    fn help_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+        let weak = theme::weak_text(ui.visuals());
+        ui.menu_button(tr("Help"), |ui| {
+            for (label, page, tip) in HELP_PAGES {
+                if ui.button(tr(label)).on_hover_text(tr(tip)).clicked() {
+                    ui.close_menu();
+                    ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
+                }
+            }
+            ui.separator();
+            if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Cmd::Help);
+            }
+            ui.separator();
+            ui.label(RichText::new(version()).small().color(weak));
+        });
     }
 }
 

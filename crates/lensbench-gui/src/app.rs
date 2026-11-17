@@ -14,6 +14,7 @@ mod help;
 mod history;
 mod ld_combo;
 use history::{ComboHist, DocHist};
+mod frame;
 mod menus;
 mod open_doc;
 mod panels;
@@ -2495,18 +2496,12 @@ impl App {
             .add_filter("PNG", &["png"])
             .set_file_name(format!("{cmd}.png"));
         self.c.save_as(d, move |c, p| {
-            c.status = match crate::image_util::png_bytes(&part)
+            match crate::image_util::png_bytes(&part)
                 .and_then(|b| lensbench_core::vfs::write(&p, b).map_err(|e| e.to_string()))
             {
-                Ok(()) => Status {
-                    text: trf("Saved to {}", &[&p.display()]),
-                    error: false,
-                },
-                Err(e) => Status {
-                    text: format!("{}: {e}", p.display()),
-                    error: true,
-                },
-            };
+                Ok(()) => c.info(trf("Saved to {}", &[&p.display()])),
+                Err(e) => c.fail(format!("{}: {e}", p.display())),
+            }
         });
     }
 
@@ -2576,7 +2571,11 @@ impl App {
                 self.c.close_ok = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
-            Some(2) => self.c.close_ask = false,
+            Some(2) => {
+                // 保存して閉じるのを待っている間にやめた: 保存が終わっても閉じない
+                self.c.close_ask = false;
+                self.c.close_pending = false;
+            }
             _ => {}
         }
     }
@@ -2590,231 +2589,10 @@ impl eframe::App for App {
             return;
         }
         self.logic(ctx);
-        // 窓に落としたファイル
-        let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(crate::files::dropped)
-                .collect()
-        });
-        if let Some(p) = dropped.into_iter().next() {
-            self.c.open_doc(&p);
-        }
-        // キー
-        let (save_as, save) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::S),
-                i.consume_key(Modifiers::COMMAND, Key::S),
-            )
-        });
-        if save_as || save {
-            self.c.save(save_as);
-        }
-        let (new, open, palette, f5, reload, help, next, prev) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::COMMAND, Key::N),
-                i.consume_key(Modifiers::COMMAND, Key::O),
-                i.consume_key(Modifiers::COMMAND, Key::K),
-                i.consume_key(Modifiers::NONE, Key::F5),
-                i.consume_key(Modifiers::COMMAND, Key::R),
-                i.consume_key(Modifiers::NONE, Key::F1),
-                i.consume_key(Modifiers::COMMAND, Key::Tab),
-                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Tab),
-            )
-        });
-        if new {
-            self.c.new_system();
-        }
-        if open {
-            self.c.pick_and_open();
-        }
-        if palette {
-            if self.palette.open {
-                self.palette.open = false;
-            } else {
-                self.palette.show();
-            }
-        }
-        if f5 {
-            self.run_all(false);
-        }
-        if reload {
-            self.c.reload();
-        }
-        if help {
-            self.c.help_open = !self.c.help_open;
-        }
-        if next || prev {
-            self.cycle(prev);
-        }
-        // Ctrl+Z・Ctrl+Y（Ctrl+Shift+Z）: 系の変更を元に戻す・やり直す（入力欄の中では欄の文字の取り消し）
-        if !ctx.wants_keyboard_input() {
-            let (redo, undo) = ctx.input_mut(|i| {
-                (
-                    i.consume_key(Modifiers::COMMAND, Key::Y)
-                        || i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z),
-                    i.consume_key(Modifiers::COMMAND, Key::Z),
-                )
-            });
-            if undo || redo {
-                self.c.undo(undo, 1);
-            }
-        }
-        // Ctrl+A・Ctrl+Shift+A: 多重構成の次・前の構成（入力欄にフォーカスがあるときは全選択に使う）
-        if !ctx.wants_keyboard_input() {
-            let (back, fwd) = ctx.input_mut(|i| {
-                (
-                    i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A),
-                    i.consume_key(Modifiers::COMMAND, Key::A),
-                )
-            });
-            if back || fwd {
-                self.c.cycle_config(back);
-            }
-        }
-        // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
-        let shown = self.c.loc.shown(self.c.is_combo());
-        let mark = if self.c.dirty() { "● " } else { "" };
-        let title = match shown {
-            Some(f) => format!(
-                "lensbench — {mark}{}",
-                f.file_name()
-                    .map(|x| x.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            ),
-            None if !mark.is_empty() => format!("lensbench — {mark}{}", tr("(unsaved)")),
-            None => "lensbench".into(),
-        };
-        // 変わったときだけ送る（送ると次のフレームを描くので、毎フレーム送ると何もしていなくても描き続ける）
-        let changed = ctx.data_mut(|d| {
-            let k = egui::Id::new("lensbench-title");
-            let same = d.get_temp::<String>(k).is_some_and(|t| t == title);
-            if !same {
-                d.insert_temp(k, title.clone());
-            }
-            !same
-        });
-        if changed {
-            // Web 版はブラウザのタブの題にする（起動確認 scripts/web_smoke.mjs が開いたファイルの名前を見る）
-            #[cfg(target_arch = "wasm32")]
-            crate::web_tabs::set_title(&title);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let os = self.c.s.os_titlebar || self.tour.is_some();
-            if self.decorations != Some(os) {
-                self.decorations = Some(os);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(os));
-            }
-            if !os {
-                crate::chrome::resize_edges(ctx);
-            }
-        }
-        egui::TopBottomPanel::top("header")
-            .frame(
-                egui::Frame::side_top_panel(&ctx.style())
-                    .inner_margin(egui::Margin::symmetric(10, 6)),
-            )
-            .show(ctx, |ui| self.header(ctx, ui));
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| self.status_bar(ui));
-        let mut viewer = Viewer {
-            c: &mut self.c,
-            to_window: Vec::new(),
-            added: Vec::new(),
-            dragging: None,
-        };
-        let mut style = egui_dock::Style::from_egui(ctx.style().as_ref());
-        style.tab_bar.corner_radius = egui::CornerRadius::same(6);
-        style.tab.tab_body.inner_margin = egui::Margin::same(10);
-        DockArea::new(&mut self.dock)
-            .style(style)
-            .show_add_buttons(true)
-            .show_add_popup(true)
-            .show_leaf_collapse_buttons(false)
-            // フロートの窓を本体の外まで動かせるように（外に置くと別の OS の窓にする）
-            .window_bounds(egui::Rect::EVERYTHING)
-            .show(ctx, &mut viewer);
-        let Viewer {
-            to_window,
-            added,
-            dragging,
-            ..
-        } = viewer;
-        self.drag_out(ctx, dragging);
-        // カタログの行を引きずっている間は、ポインタの横に名前を出す
-        if let (Some(p), Some(q)) = (
-            egui::DragAndDrop::payload::<combo::DropPick>(ctx),
-            ctx.pointer_latest_pos(),
-        ) {
-            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-            egui::Area::new(egui::Id::new("lensbench-drop-pick"))
-                .order(egui::Order::Tooltip)
-                .fixed_pos(q + egui::vec2(14.0, 10.0))
-                .interactable(false)
-                .show(ctx, |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.label(trf("{} → layout", &[&p.0.label()]));
-                    });
-                });
-        }
-        for (s, n, k) in added {
-            // 1 枚だけのパネルがもうあれば、2 枚目を作らず表に出す
-            if k.single() {
-                let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
-                if let Some(id) = self.pane_of(same) {
-                    self.focus(id);
-                    continue;
-                }
-            }
-            let id = self.c.new_id();
-            self.dock.set_focused_node_and_surface((s, n));
-            self.dock.push_to_focused_leaf(Pane { id, kind: k });
-        }
-        for id in to_window {
-            self.detach(id);
-        }
-        self.float_out(ctx);
-        #[cfg(target_arch = "wasm32")]
-        self.web_tabs(ctx);
-        self.os_windows(ctx);
-        // 項目はパレットを開いているときだけ作る
-        if self.palette.open {
-            let items = self.palette_items();
-            if let Some(cmd) = self.palette.ui(ctx, &items) {
-                self.exec(ctx, cmd);
-            }
-        }
-        for cmd in std::mem::take(&mut self.c.cmds) {
-            self.exec(ctx, cmd);
-        }
-        if self.c.folders_open {
-            self.c.folders_window(ctx);
-        }
-        self.close_guard(ctx);
-        self.take_shot(ctx);
-        self.c.missing_glass_window(ctx);
-        if self.c.help_open {
-            self.c.help_window(ctx);
-        }
-        if self.c.p.cat_save.open {
-            self.c.cat_save_window(ctx);
-        }
-        self.c.fill_window(ctx);
-        self.save_layout_window(ctx);
-        // 別の窓で出た確かめはその窓に出す（窓が閉じていれば本体に）
-        #[cfg(target_arch = "wasm32")]
-        let elsewhere = self.c.ask_from().is_some_and(|id| {
-            self.windows.iter().any(|w| w.pane.id == id)
-                && self.tabs.as_ref().is_some_and(|t| t.is_open(id))
-        });
-        #[cfg(not(target_arch = "wasm32"))]
-        let elsewhere = false;
-        if !elsewhere {
-            self.c.ask_ui(ctx);
-        }
+        self.handle_input(ctx);
+        self.sync_window_chrome(ctx);
+        self.show_panels(ctx);
+        self.show_dialogs(ctx);
         self.tour_frame(ctx);
     }
 
