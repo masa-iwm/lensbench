@@ -147,17 +147,30 @@ fn open_blocks_show_their_surfaces_in_place() {
 
 #[test]
 fn parse_surface_reply() {
+    use lensbench_engine::session::views::SurfaceView;
+    let surf = |f: SurfaceView| serde_json::to_value(f).unwrap();
     let v = json!({
         "surfaces": [
-            {"type": "STANDARD", "comment": "", "r": {"$f": "inf"}, "t": {"$f": "inf"}, "material": "", "coating": "", "semi": 0.0, "k": 0.0, "stop": false},
-            {"type": "STANDARD", "comment": "front", "r": 50.0, "t": 4.0, "material": "N-BK7", "coating": "AR", "semi": 10.0, "k": -1.0, "stop": true},
+            surf(SurfaceView { typ: "STANDARD".into(), r: f64::INFINITY, t: f64::INFINITY, ..Default::default() }),
+            surf(SurfaceView {
+                typ: "STANDARD".into(), comment: "front".into(), r: 50.0, t: 4.0, material: "N-BK7".into(),
+                coating: "AR".into(), semi: 10.0, k: -1.0, stop: true, ..Default::default()
+            }),
         ],
         "units": [{"name": "lens1", "spans": [[1, 2]], "auto": true,
                    "motion": [0.0, 0.0, 0.0, 0.0, 0.0], "shift": 0.0, "dn": null, "disp": null}],
+        "mechanics": [],
     });
+    assert_eq!(v["surfaces"][0]["r"], json!({"$f": "inf"}));
+    // 面の鍵が足りなければ誤り
+    let mut short = v.clone();
+    short["surfaces"][1].as_object_mut().unwrap().remove("semi");
+    assert!(parse(&short).is_err());
     let (rows, units) = parse(&v).unwrap();
     // 玉・群の鍵が足りなければ黙って既定にせず誤り
-    assert!(parse(&json!({ "surfaces": [], "units": [{ "name": "lens1" }] })).is_err());
+    assert!(
+        parse(&json!({ "surfaces": [], "units": [{ "name": "lens1" }], "mechanics": [] })).is_err()
+    );
     assert_eq!(rows.len(), 2);
     assert!(rows[0].r.is_infinite());
     assert_eq!(Col::R.text(&rows[0]), "Infinity");

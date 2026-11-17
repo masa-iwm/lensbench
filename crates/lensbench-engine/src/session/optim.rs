@@ -350,9 +350,9 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             None => run(),
         }
     })?;
-    let mut out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
-    out["notes"] = json!(notes);
-    Ok(out)
+    let mut out = lensbench_design::tolerance::report(&ms, &r, &oo);
+    out.notes = Some(notes);
+    Ok(json!(out))
 }
 
 // ------------------------------------------------------------------------------------ ズーム軌跡

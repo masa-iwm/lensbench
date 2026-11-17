@@ -264,7 +264,8 @@ impl McSpec {
 /// 評価の結果（公称・試行・感度で共通）。一括実行のファイル（[`run_to`]）にも書く（有限でない値は null）
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Eval {
-    /// 評価関数の値（補償の後）
+    /// 評価関数の値（補償の後。有限でなければ null）
+    #[serde(deserialize_with = "nan_null::one")]
     pub merit: f64,
     /// 項ごとの値（[`Problem::term_values`]）
     #[serde(with = "nan_null")]
@@ -283,6 +284,11 @@ mod nan_null {
             .map(|x| x.is_finite().then_some(*x))
             .collect::<Vec<_>>()
             .serialize(s)
+    }
+
+    /// 1 つの値（null は NaN）
+    pub(super) fn one<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+        Ok(Option::<f64>::deserialize(d)?.unwrap_or(f64::NAN))
     }
 
     pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::Error> {

@@ -77,85 +77,58 @@ impl Row {
 /// 玉・群（serve の surface の units）
 pub use lensbench_engine::session::views::UnitView as Unit;
 
-/// JSON の数（inf は {"$f": "inf"}。数でなければ NaN）
-fn num(v: &Value) -> f64 {
-    crate::widgets::json_num(v).unwrap_or(f64::NAN)
-}
-
-fn nums(v: &Value) -> Vec<f64> {
-    v.as_array()
-        .map(|a| a.iter().map(num).collect())
-        .unwrap_or_default()
-}
-
 /// ソルブ（serve の solves の 1 つ）の量と説明
-fn solve_text(q: &Value) -> (String, String) {
-    let what = q["what"].as_str().unwrap_or("t").to_string();
-    let mut t = format!(
-        "{} {}",
-        q["kind"].as_str().unwrap_or_default(),
-        fmt_num(num(&q["value"]))
-    );
-    if let Some(o) = q["other"].as_u64() {
+fn solve_text(q: &views::SolveView) -> (String, String) {
+    let mut t = format!("{} {}", q.kind, fmt_num(q.value));
+    if let Some(o) = q.other {
         t += &trf("(surface {})", &[&o]);
     }
-    (what, t)
+    (q.what.clone(), t)
 }
 
 /// ピックアップ（serve の pickups の 1 つ）の量と説明
-fn pickup_text(p: &Value) -> (String, String) {
-    let what = p["what"].as_str().unwrap_or_default().to_string();
+fn pickup_text(p: &views::PickupView) -> (String, String) {
     let t = format!(
         "{} × {} {} + {}",
-        fmt_num(num(&p["scale"])),
-        trf("Surface {}", &[&p["src"]]),
-        p["from"].as_str().unwrap_or(&what),
-        fmt_num(num(&p["offset"])),
+        fmt_num(p.scale),
+        trf("Surface {}", &[&p.src]),
+        p.from.as_deref().unwrap_or(&p.what),
+        fmt_num(p.offset),
     );
-    (what, t)
+    (p.what.clone(), t)
 }
 
-/// serve の `surface`（全部の面）の結果。玉・群は engine の型で読む（読めなければ誤り）
+/// serve の `surface`（全部の面）の結果を engine の型で読む（鍵が足りない・綴りが違えば誤り）
 pub fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
-    let s = |x: &Value| x.as_str().unwrap_or_default().to_string();
-    let rows = v["surfaces"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|f| Row {
-                    typ: s(&f["type"]),
-                    comment: s(&f["comment"]),
-                    r: num(&f["r"]),
-                    t: num(&f["t"]),
-                    material: s(&f["material"]),
-                    coating: s(&f["coating"]),
-                    semi: num(&f["semi"]),
-                    semi_auto: f["semi_auto"] == true,
-                    k: num(&f["k"]),
-                    stop: f["stop"] == true,
-                    ignore: f["ignore"] == true,
-                    asph: nums(&f["asph"]),
-                    cx: num(&f["cx"]),
-                    cb: nums(&f["cb"]),
-                    cb_order: num(&f["cb_order"]),
-                    focal: num(&f["focal"]),
-                    jones: nums(&f["jones"]),
-                    dn: f["dn"].as_f64().unwrap_or(0.0),
-                    disp: f["disp"].as_f64().unwrap_or(0.0),
-                    solves: f["solves"]
-                        .as_array()
-                        .map(|a| a.iter().map(solve_text).collect())
-                        .unwrap_or_default(),
-                    pickups: f["pickups"]
-                        .as_array()
-                        .map(|a| a.iter().map(pickup_text).collect())
-                        .unwrap_or_default(),
-                })
-                .collect()
+    let r: views::SurfacesView = views::read(v).map_err(|e| format!("surface: {e}"))?;
+    let rows = r
+        .surfaces
+        .into_iter()
+        .map(|f| Row {
+            solves: f.solves.iter().map(solve_text).collect(),
+            pickups: f.pickups.iter().map(pickup_text).collect(),
+            typ: f.typ,
+            comment: f.comment,
+            r: f.r,
+            t: f.t,
+            material: f.material,
+            coating: f.coating,
+            semi: f.semi,
+            semi_auto: f.semi_auto,
+            k: f.k,
+            stop: f.stop,
+            ignore: f.ignore,
+            asph: f.asph,
+            cx: f.cx,
+            cb: f.cb,
+            cb_order: f.cb_order,
+            focal: f.focal,
+            jones: f.jones,
+            dn: f.dn,
+            disp: f.disp,
         })
-        .unwrap_or_default();
-    let units = views::read(&v["units"]).map_err(|e| format!("surface units: {e}"))?;
-    Ok((rows, units))
+        .collect();
+    Ok((rows, r.units))
 }
 
 /// 表のブロック（木の節）

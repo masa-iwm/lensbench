@@ -15,6 +15,8 @@ use crate::json_view::fmt_num;
 use crate::optim_panel::{self as op, section, small_edit, text_of, OptPanel};
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use lensbench_design::tol_report::StatsInfo;
+use lensbench_design::tolerance::ToleranceReport;
 
 /// 公差の組の選択肢（"" は既定 = 全体の組）
 const PRESETS: [(&str, &str); 5] = [
@@ -105,7 +107,7 @@ pub struct TolPanel {
     /// 補償子（vars）・評価関数（merit・terms）・構成（configs）
     pub opt: OptPanel,
     pub running: bool,
-    pub result: Option<std::sync::Arc<Value>>,
+    pub result: Option<std::sync::Arc<ToleranceReport>>,
     pub error: Option<String>,
     /// 結果の補償子の分布の図: 選んだ補償子（補償子、続いて傾きの大きさ）と、累積分布で出すか（false はヒストグラム）
     pub comp_sel: usize,
@@ -532,21 +534,22 @@ pub fn ui(
                 .default_open(true)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
+                        let to_json = || serde_json::to_value(&*r).unwrap_or_default();
                         if ui.button(tr("Save results…")).clicked() {
-                            acts.push(Action::SaveResult((*r).clone()));
+                            acts.push(Action::SaveResult(to_json()));
                         }
-                        let has_comp = r["compensators"].as_array().is_some_and(|a| !a.is_empty());
+                        let has_comp = !r.compensators.is_empty();
                         if ui
                             .add_enabled(has_comp, egui::Button::new(tr("Compensator CSV…")))
                             .on_hover_text(tr("Merit, compensators and tilt magnitudes [arcmin] for each trial"))
                             .clicked()
                         {
-                            match lensbench_design::tolerance::compensators_csv(&r) {
+                            match lensbench_design::tolerance::compensators_csv(&to_json()) {
                                 Ok(t) => acts.push(Action::SaveCsv(t)),
                                 Err(e) => p.error = Some(String::from(e)),
                             }
                         }
-                        if r.get("samples").is_none() {
+                        if r.samples.is_none() {
                             ui.label(
                                 RichText::new(tr("Turn on samples under Settings to include each trial's perturbations in the results"))
                                     .small()
@@ -839,46 +842,40 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     );
 }
 
-fn f(v: &Value) -> String {
-    v.as_f64().map_or("—".into(), fmt_num)
+fn f(v: Option<f64>) -> String {
+    v.map_or("—".into(), fmt_num)
 }
 
 /// 補償子の分布の 1 つ: 名前・公称・統計・試行の値（追跡できた試行だけ）
-struct CompDist {
+struct CompDist<'a> {
     name: String,
-    nominal: Value,
-    stats: Value,
+    nominal: Option<f64>,
+    stats: &'a StatsInfo,
     values: Vec<f64>,
 }
 
 /// 結果の補償子と傾きの大きさ（分）を並べる
-fn comp_dists(r: &Value) -> Vec<CompDist> {
-    let mut out = Vec::new();
-    let vals = |v: &Value| -> Vec<f64> {
-        v.as_array()
-            .into_iter()
+fn comp_dists(r: &ToleranceReport) -> Vec<CompDist<'_>> {
+    let vals = |v: &[Option<f64>]| -> Vec<f64> {
+        v.iter()
             .flatten()
-            .filter_map(Value::as_f64)
+            .copied()
             .filter(|x| x.is_finite())
             .collect()
     };
-    for c in r["compensators"].as_array().into_iter().flatten() {
-        out.push(CompDist {
-            name: text_of(&c["name"]),
-            nominal: c["nominal"].clone(),
-            stats: c["stats"].clone(),
-            values: vals(&c["values"]),
-        });
-    }
-    for t in r["tilt_magnitudes"].as_array().into_iter().flatten() {
-        out.push(CompDist {
-            name: format!("{} [′]", text_of(&t["name"])),
-            nominal: t["nominal"].clone(),
-            stats: t["stats"].clone(),
-            values: vals(&t["values"]),
-        });
-    }
-    out
+    let comps = r.compensators.iter().map(|c| CompDist {
+        name: c.name.clone(),
+        nominal: c.nominal,
+        stats: &c.stats,
+        values: vals(&c.values),
+    });
+    let tilts = r.tilt_magnitudes.iter().map(|t| CompDist {
+        name: format!("{} [′]", t.name),
+        nominal: t.nominal,
+        stats: &t.stats,
+        values: vals(&t.values),
+    });
+    comps.chain(tilts).collect()
 }
 
 /// ヒストグラムの区間: (下端, 幅, 数)。区間の数は √n（5〜50）
@@ -909,17 +906,23 @@ fn histogram(v: &[f64]) -> Vec<(f64, f64, usize)> {
 }
 
 /// 補償子の分布の表と図
-fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui::Color32) {
+fn comps_ui(
+    ui: &mut Ui,
+    r: &ToleranceReport,
+    sel: &mut usize,
+    cdf: &mut bool,
+    weak: egui::Color32,
+) {
     let ds = comp_dists(r);
     if ds.is_empty() {
         return;
     }
     ui.label(RichText::new(tr("Compensators")).strong());
-    let pcts: Vec<String> = ds[0].stats["percentiles"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|x| format!("{}%", f(&x[0])))
+    let pcts: Vec<String> = ds[0]
+        .stats
+        .percentiles
+        .iter()
+        .map(|x| format!("{}%", fmt_num(x.0)))
         .collect();
     egui::ScrollArea::horizontal()
         .id_salt("tol_comps_h")
@@ -941,21 +944,19 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
                 ui.end_row();
                 for d in &ds {
                     ui.label(&d.name);
-                    ui.label(f(&d.nominal));
-                    for k in ["mean", "std", "min", "max"] {
-                        ui.label(f(&d.stats[k]));
+                    ui.label(f(d.nominal));
+                    let st = d.stats;
+                    for x in [st.mean, st.std, st.min, st.max] {
+                        ui.label(f(x));
                     }
-                    for x in d.stats["percentiles"].as_array().into_iter().flatten() {
-                        ui.label(f(&x[1]));
+                    for x in &st.percentiles {
+                        ui.label(f(x.1));
                     }
                     ui.end_row();
                 }
             });
         });
-    if r["tilt_magnitudes"]
-        .as_array()
-        .is_some_and(|a| !a.is_empty())
-    {
+    if !r.tilt_magnitudes.is_empty() {
         ui.label(
             RichText::new(tr(
                 "\".tilt [′]\" is the magnitude √(tx² + ty²) of the tilt pair tx, ty of the same lens, group or surface (arcmin).",
@@ -980,7 +981,7 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
         ui.selectable_value(cdf, true, tr("Cumulative distribution"));
     });
     let d = &ds[*sel];
-    let nom = d.nominal.as_f64();
+    let nom = d.nominal;
     let plot = Plot::new("tol_comp_plot")
         .height(180.0)
         .x_axis_label(d.name.clone())
@@ -1014,26 +1015,34 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
     }
 }
 
-fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: egui::Color32) {
+fn result_ui(
+    ui: &mut Ui,
+    r: &ToleranceReport,
+    sel: &mut usize,
+    as_cdf: &mut bool,
+    weak: egui::Color32,
+) {
     ui.label(trf(
         "{} trials ({} failed to trace), seed {}",
-        &[&r["trials"], &r["failed"], &r["seed"]],
+        &[&r.trials, &r.failed, &r.seed],
     ));
-    if r["cancelled"].as_bool() == Some(true) {
+    if r.cancelled {
         ui.label(RichText::new(tr("Stopped (finished trials only)")).color(weak));
     }
-    for e in r["errors"].as_array().into_iter().flatten() {
-        ui.colored_label(ui.visuals().warn_fg_color, text_of(e));
+    for e in &r.errors {
+        ui.colored_label(ui.visuals().warn_fg_color, e);
     }
     // 統計の表（評価関数と項）
-    let mut rows: Vec<(String, Value, Value)> = vec![(
-        tr("Merit function").into(),
-        r["nominal"]["merit"].clone(),
-        r["merit"].clone(),
-    )];
-    for t in r["terms"].as_array().into_iter().flatten() {
+    let nom_merit = r
+        .nominal
+        .as_ref()
+        .map(|e| e.merit)
+        .filter(|x| x.is_finite());
+    let mut rows: Vec<(String, Option<f64>, &StatsInfo)> =
+        vec![(tr("Merit function").into(), nom_merit, &r.merit)];
+    for t in &r.terms {
         // 項の単位を名前に添える（spot・ray は mm、wavefront・opd は波）
-        let label = text_of(&t["label"]);
+        let label = t.label.clone();
         let unit = term_unit(&label);
         rows.push((
             if unit.is_empty() {
@@ -1041,15 +1050,15 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
             } else {
                 format!("{label} [{unit}]")
             },
-            t["nominal"].clone(),
-            t["stats"].clone(),
+            t.nominal.filter(|x| x.is_finite()),
+            &t.stats,
         ));
     }
-    let pcts: Vec<String> = r["merit"]["percentiles"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|x| format!("{}%", f(&x[0])))
+    let pcts: Vec<String> = r
+        .merit
+        .percentiles
+        .iter()
+        .map(|x| format!("{}%", fmt_num(x.0)))
         .collect();
     egui::ScrollArea::horizontal()
         .id_salt("tol_stats_h")
@@ -1064,18 +1073,18 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                 ui.end_row();
                 for (name, nom, st) in &rows {
                     ui.label(name);
-                    ui.label(f(nom));
-                    ui.label(f(&st["mean"]));
-                    ui.label(f(&st["std"]));
-                    ui.label(f(&st["max"]));
-                    for x in st["percentiles"].as_array().into_iter().flatten() {
-                        ui.label(f(&x[1]));
+                    ui.label(f(*nom));
+                    ui.label(f(st.mean));
+                    ui.label(f(st.std));
+                    ui.label(f(st.max));
+                    for x in &st.percentiles {
+                        ui.label(f(x.1));
                     }
                     ui.end_row();
                 }
             });
         });
-    if let Some(e) = r["rss_estimate"].as_f64() {
+    if let Some(e) = r.rss_estimate {
         ui.label(
             RichText::new(trf(
                 "Estimate from sensitivities (nominal + √Σ change²): {}",
@@ -1086,12 +1095,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
         );
     }
     // 累積分布
-    let cdf: Vec<f64> = r["cdf"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_f64)
-        .collect();
+    let cdf = &r.cdf;
     if !cdf.is_empty() {
         let n = cdf.len() as f64;
         let pts: PlotPoints = cdf
@@ -1099,7 +1103,6 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
             .enumerate()
             .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
             .collect();
-        let nom = r["nominal"]["merit"].as_f64();
         Plot::new("tol_cdf")
             .height(180.0)
             .x_axis_label(tr("Merit function"))
@@ -1107,14 +1110,14 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
             .allow_scroll(false)
             .show(ui, |pu| {
                 pu.line(Line::new(pts).name(tr("Cumulative distribution")));
-                if let Some(x) = nom {
+                if let Some(x) = nom_merit {
                     pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
                 }
             });
     }
     comps_ui(ui, r, sel, as_cdf, weak);
     // 感度（悪い順）
-    let sens = r["sensitivity"].as_array().cloned().unwrap_or_default();
+    let sens = &r.sensitivity;
     if !sens.is_empty() {
         egui::CollapsingHeader::new(
             RichText::new(tr("Largest contributors (sensitivity, worst first)")).strong(),
@@ -1134,11 +1137,11 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                 }
                 ui.end_row();
                 for s in sens.iter().take(20) {
-                    ui.label(item_name(&s["label"]));
-                    ui.label(f(&s["lo"]));
-                    ui.label(f(&s["hi"]));
-                    ui.label(f(&s["change_lo"]));
-                    ui.label(f(&s["change_hi"]));
+                    ui.label(item_name(&s.label));
+                    ui.label(f(Some(s.lo)));
+                    ui.label(f(Some(s.hi)));
+                    ui.label(f(s.change_lo));
+                    ui.label(f(s.change_hi));
                     ui.end_row();
                 }
             });
@@ -1151,8 +1154,8 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
             }
         });
     }
-    let corr = r["correlation"].as_array().cloned().unwrap_or_default();
-    if corr.iter().any(|c| c["r"].is_number()) {
+    let corr = &r.correlation;
+    if corr.iter().any(|c| c.r.is_some()) {
         egui::CollapsingHeader::new(RichText::new(tr("Correlation with trials")).strong())
             .id_salt("tol_corr")
             .default_open(false)
@@ -1167,9 +1170,9 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                     }
                     ui.end_row();
                     for c in corr.iter().take(15) {
-                        ui.label(item_name(&c["label"]));
-                        ui.label(f(&c["r"]));
-                        ui.label(f(&c["r_abs"]));
+                        ui.label(item_name(&c.label));
+                        ui.label(f(c.r));
+                        ui.label(f(c.r_abs));
                         ui.end_row();
                     }
                 });
@@ -1178,8 +1181,8 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
 }
 
 /// 公差の項目名（「L1 decenter x」など英語が元）を表示の言語で
-fn item_name(v: &Value) -> String {
-    lensbench_core::i18n::tr_item(&text_of(v))
+fn item_name(label: &str) -> String {
+    lensbench_core::i18n::tr_item(label)
 }
 
 /// 公差の項の名前（"spot #1"・"wavefront #2 (config 1)" など）から値の単位
@@ -1289,10 +1292,20 @@ mod tests {
 
     #[test]
     fn comp_dists_and_histogram() {
-        let r = json!({
-            "compensators": [{"name": "M.tx", "nominal": 0.0, "stats": {}, "values": [0.1, null, -0.2]}],
-            "tilt_magnitudes": [{"name": "M.tilt", "nominal": 0.0, "stats": {}, "values": [6.0, null, 12.0]}],
-        });
+        use lensbench_design::tol_report::{CompStats, TiltStats};
+        let r = ToleranceReport {
+            compensators: vec![CompStats {
+                name: "M.tx".into(),
+                values: vec![Some(0.1), None, Some(-0.2)],
+                ..Default::default()
+            }],
+            tilt_magnitudes: vec![TiltStats {
+                name: "M.tilt".into(),
+                values: vec![Some(6.0), None, Some(12.0)],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
         let d = comp_dists(&r);
         assert_eq!(d.len(), 2);
         assert_eq!(d[0].values, vec![0.1, -0.2]);

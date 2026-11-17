@@ -50,6 +50,10 @@ use lensbench_optim::{DefaultMerit, DlsOpts, Problem, Var};
 use serde_json::{json, Value};
 
 use crate::term_spec::RefName;
+pub use crate::tol_report::ToleranceReport;
+use crate::tol_report::{
+    fin, CompStats, CorrInfo, Sample, SensInfo, StatsInfo, TermStats, TiltStats, TolInfo,
+};
 use crate::tol_spec::{self, CatEntry, Face, MeritName, Radial, TolItem, TolSpec, VarSpec};
 use lensbench_project::lenient;
 
@@ -525,15 +529,6 @@ pub fn out_opts(v: &Value) -> lensbench_core::Result<OutOpts> {
     })
 }
 
-fn stats_json(v: &[f64], pcts: &[f64]) -> Value {
-    let st = tolerance::stats(v, pcts);
-    let f = |x: f64| if x.is_finite() { json!(x) } else { Value::Null };
-    json!({
-        "n": st.n, "mean": f(st.mean), "std": f(st.std), "min": f(st.min), "max": f(st.max),
-        "percentiles": st.percentiles.iter().map(|(p, x)| json!([p, f(*x)])).collect::<Vec<_>>(),
-    })
-}
-
 fn sorted(mut v: Vec<f64>) -> Vec<f64> {
     v.retain(|x| x.is_finite());
     v.sort_by(|a, b| a.total_cmp(b));
@@ -644,29 +639,43 @@ pub fn compensators_csv(result: &Value) -> lensbench_core::Result<String> {
     Ok(out)
 }
 
-/// 結果の JSON
+/// 結果の JSON（[`report`] を JSON に）
 pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
+    serde_json::to_value(report(spec, r, o)).unwrap_or_default()
+}
+
+fn stats_info(v: &[f64], pcts: &[f64]) -> StatsInfo {
+    let st = tolerance::stats(v, pcts);
+    StatsInfo {
+        n: st.n,
+        mean: fin(st.mean),
+        std: fin(st.std),
+        min: fin(st.min),
+        max: fin(st.max),
+        percentiles: st.percentiles.iter().map(|&(p, x)| (p, fin(x))).collect(),
+    }
+}
+
+/// 結果（CLI・serve・GUI で同じ型）
+pub fn report(spec: &McSpec, r: &McResult, o: &OutOpts) -> ToleranceReport {
     let s0 = &spec.problem.configs[0];
     let pc = &o.percentiles;
     let merits = r.merits();
     let nm = r.nominal.merit;
-    let tols: Vec<Value> = spec
+    let tolerances = spec
         .tols
         .iter()
-        .map(|t| {
-            json!({
-                "label": t.label,
-                "params": t.params.iter().map(|&p| s0.param_name(p)).collect::<Vec<_>>(),
-                "lo": t.lo, "hi": t.hi, "relative": t.relative, "dist": t.dist.name(),
-                "scale": if t.scale.is_empty() { Value::Null } else { json!(t.scale) },
-            })
+        .map(|t| TolInfo {
+            label: t.label.clone(),
+            params: t.params.iter().map(|&p| s0.param_name(p)).collect(),
+            lo: t.lo,
+            hi: t.hi,
+            relative: t.relative,
+            dist: t.dist.name(),
+            scale: (!t.scale.is_empty()).then(|| t.scale.clone()),
         })
         .collect();
-    let eval_json = |e: &Option<tolerance::Eval>| match e {
-        Some(e) => json!({ "merit": e.merit, "terms": e.terms, "comp": e.comp }),
-        None => Value::Null,
-    };
-    let mut sens: Vec<(f64, Value)> = r
+    let mut sens: Vec<(f64, SensInfo)> = r
         .sensitivity
         .iter()
         .map(|x| {
@@ -675,26 +684,27 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
             let w = x.worst(nm);
             (
                 w,
-                json!({
-                    "label": t.label, "lo": t.lo, "hi": t.hi,
-                    "merit_lo": x.lo.as_ref().map(|e| e.merit), "merit_hi": x.hi.as_ref().map(|e| e.merit),
-                    "change_lo": d(&x.lo), "change_hi": d(&x.hi),
-                    "worst": if w.is_finite() { json!(w) } else { Value::Null },
-                }),
+                SensInfo {
+                    label: t.label.clone(),
+                    lo: t.lo,
+                    hi: t.hi,
+                    merit_lo: x.lo.as_ref().map(|e| e.merit),
+                    merit_hi: x.hi.as_ref().map(|e| e.merit),
+                    change_lo: d(&x.lo),
+                    change_hi: d(&x.hi),
+                    worst: fin(w),
+                },
             )
         })
         .collect();
     sens.sort_by(|a, b| b.0.total_cmp(&a.0));
     // 感度の RSS による見積り（公称 + √Σ 変化²。片側の悪い方を使う）
-    let rss = if r.sensitivity.is_empty() {
-        Value::Null
-    } else {
+    let rss_estimate = (!r.sensitivity.is_empty()).then(|| {
         let s2: f64 = sens.iter().map(|x| x.0 * x.0).sum();
-        json!(nm + s2.sqrt())
-    };
+        nm + s2.sqrt()
+    });
     let corr = r.correlation(&spec.tols);
-    let fin = |x: f64| if x.is_finite() { json!(x) } else { Value::Null };
-    let mut cv: Vec<(f64, Value)> = corr
+    let mut cv: Vec<(f64, CorrInfo)> = corr
         .iter()
         .zip(&spec.tols)
         .map(|(&(r, ra), t)| {
@@ -704,20 +714,24 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
                 .fold(f64::NEG_INFINITY, f64::max);
             (
                 k,
-                json!({ "label": t.label, "r": fin(r), "r_abs": fin(ra) }),
+                CorrInfo {
+                    label: t.label.clone(),
+                    r: fin(r),
+                    r_abs: fin(ra),
+                },
             )
         })
         .collect();
     cv.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let terms: Vec<Value> = (0..spec.problem.terms.len())
+    let terms = (0..spec.problem.terms.len())
         .map(|k| {
             let v = r.term(k);
-            json!({
-                "label": term_label(&spec.problem, k),
-                "nominal": r.nominal.terms.get(k),
-                "stats": stats_json(&v, pc),
-                "cdf": sorted(v),
-            })
+            TermStats {
+                label: term_label(&spec.problem, k),
+                nominal: r.nominal.terms.get(k).copied(),
+                stats: stats_info(&v, pc),
+                cdf: sorted(v),
+            }
         })
         .collect();
     // 補償子の試行ごとの値（試行の順、追跡できなかった試行は None）
@@ -727,21 +741,15 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
             .map(|t| t.eval.as_ref().map(|e| e.comp[q]))
             .collect()
     };
-    let opt_json = |v: &[Option<f64>]| -> Value {
-        v.iter()
-            .map(|x| {
-                x.filter(|x| x.is_finite())
-                    .map_or(Value::Null, |x| json!(x))
-            })
-            .collect()
-    };
+    let opt =
+        |v: &[Option<f64>]| -> Vec<Option<f64>> { v.iter().map(|x| x.and_then(fin)).collect() };
     let names: Vec<String> = spec
         .problem
         .vars
         .iter()
         .map(|v| s0.param_name(v.param))
         .collect();
-    let comps: Vec<Value> = spec
+    let compensators = spec
         .problem
         .vars
         .iter()
@@ -749,17 +757,20 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
         .map(|(q, v)| {
             let vals = per_trial(q);
             let x: Vec<f64> = vals.iter().flatten().copied().collect();
-            json!({
-                "name": names[q],
-                "configs": v.configs.as_ref().map(|c| c.iter().map(|k| k + 1).collect::<Vec<_>>()),
-                "nominal": r.nominal.comp.get(q),
-                "stats": stats_json(&x, pc),
-                "values": opt_json(&vals),
-            })
+            CompStats {
+                name: names[q].clone(),
+                configs: v
+                    .configs
+                    .as_ref()
+                    .map(|c| c.iter().map(|k| k + 1).collect()),
+                nominal: r.nominal.comp.get(q).copied(),
+                stats: stats_info(&x, pc),
+                values: opt(&vals),
+            }
         })
         .collect();
     // 傾きの x・y の組（同じ玉・群・面の tx と ty、効く構成も同じ）は大きさ √(tx² + ty²) を分で
-    let tilts: Vec<Value> = tilt_pairs(&spec.problem.vars, &names)
+    let tilt_magnitudes = tilt_pairs(&spec.problem.vars, &names)
         .into_iter()
         .map(|(name, qx, qy)| {
             let (vx, vy) = (per_trial(qx), per_trial(qy));
@@ -769,19 +780,19 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
                 .map(|(a, b)| Some(60.0 * a.as_ref()?.hypot(*b.as_ref()?)))
                 .collect();
             let x: Vec<f64> = vals.iter().flatten().copied().collect();
-            let nom = match (r.nominal.comp.get(qx), r.nominal.comp.get(qy)) {
-                (Some(a), Some(b)) => json!(60.0 * a.hypot(*b)),
-                _ => Value::Null,
+            let nominal = match (r.nominal.comp.get(qx), r.nominal.comp.get(qy)) {
+                (Some(a), Some(b)) => Some(60.0 * a.hypot(*b)),
+                _ => None,
             };
-            json!({
-                "name": name,
-                "x": names[qx],
-                "y": names[qy],
-                "unit": "arcmin",
-                "nominal": nom,
-                "stats": stats_json(&x, pc),
-                "values": opt_json(&vals),
-            })
+            TiltStats {
+                name,
+                x: names[qx].clone(),
+                y: names[qy].clone(),
+                unit: "arcmin".into(),
+                nominal,
+                stats: stats_info(&x, pc),
+                values: opt(&vals),
+            }
         })
         .collect();
     let failed: Vec<&tolerance::Trial> = r.trials.iter().filter(|t| t.eval.is_none()).collect();
@@ -793,30 +804,38 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
             }
         }
     }
-    let mut out = json!({
-        "nominal": eval_json(&Some(r.nominal.clone())),
-        "trials": r.trials.len(),
-        "failed": failed.len(),
-        "errors": errors,
-        "cancelled": r.cancelled,
-        "seed": spec.seed,
-        "tolerances": tols,
-        "merit": stats_json(&merits, pc),
-        "cdf": sorted(merits),
-        "terms": terms,
-        "compensators": comps,
-        "tilt_magnitudes": tilts,
-        "merit_values": opt_json(&r.trials.iter().map(|t| t.eval.as_ref().map(|e| e.merit)).collect::<Vec<_>>()),
-        "sensitivity": sens.into_iter().map(|x| x.1).collect::<Vec<_>>(),
-        "rss_estimate": rss,
-        "correlation": cv.into_iter().map(|x| x.1).collect::<Vec<_>>(),
-    });
-    if o.samples {
-        out["samples"] = r
-            .trials
-            .iter()
-            .map(|t| json!({ "deltas": t.deltas, "eval": eval_json(&t.eval), "error": t.error }))
-            .collect();
+    let merit_values = opt(&r
+        .trials
+        .iter()
+        .map(|t| t.eval.as_ref().map(|e| e.merit))
+        .collect::<Vec<_>>());
+    ToleranceReport {
+        nominal: Some(r.nominal.clone()),
+        trials: r.trials.len(),
+        failed: failed.len(),
+        errors,
+        cancelled: r.cancelled,
+        seed: spec.seed,
+        tolerances,
+        merit: stats_info(&merits, pc),
+        cdf: sorted(merits),
+        terms,
+        compensators,
+        tilt_magnitudes,
+        merit_values,
+        sensitivity: sens.into_iter().map(|x| x.1).collect(),
+        rss_estimate,
+        correlation: cv.into_iter().map(|x| x.1).collect(),
+        samples: o.samples.then(|| {
+            r.trials
+                .iter()
+                .map(|t| Sample {
+                    deltas: t.deltas.clone(),
+                    eval: t.eval.clone(),
+                    error: t.error.clone(),
+                })
+                .collect()
+        }),
+        notes: None,
     }
-    out
 }

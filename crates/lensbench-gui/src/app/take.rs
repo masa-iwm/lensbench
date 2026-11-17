@@ -590,7 +590,11 @@ impl Core {
                     "Tolerance done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.p.tol.result = Some(std::sync::Arc::new(v));
+                (self.p.tol.result, self.p.tol.error) =
+                    match views::read::<lensbench_design::tolerance::ToleranceReport>(&v) {
+                        Ok(r) => (Some(std::sync::Arc::new(r)), None),
+                        Err(e) => (None, Some(format!("tolerance: {e}"))),
+                    };
             }
             Tag::Zoom => {
                 text = trf(

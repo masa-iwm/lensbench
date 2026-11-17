@@ -1059,16 +1059,17 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             };
             match p.get("surface") {
                 None | Some(Value::Null) => {
-                    let mut all = (0..s.surfaces.len())
-                        .map(one)
+                    // 面ごとのソルブ・ピックアップも（GUI の面の表の印。形は surface_data と同じ）
+                    let all = (0..s.surfaces.len())
+                        .map(|j| {
+                            let mut f = one(j)?;
+                            let sp = lensbench_project::edit_ops::surface_solves(&s, j);
+                            if let (Some(o), Value::Object(x)) = (f.as_object_mut(), sp) {
+                                o.extend(x);
+                            }
+                            views::read::<views::SurfaceView>(&f).map_err(RpcErr::app)
+                        })
                         .collect::<Result<Vec<_>, _>>()?;
-                    // 面ごとのソルブ・ピックアップ（GUI の面の表の印。形は surface_data と同じ）
-                    for (j, f) in all.iter_mut().enumerate() {
-                        let sp = lensbench_project::edit_ops::surface_solves(&s, j);
-                        if let (Some(o), Value::Object(x)) = (f.as_object_mut(), sp) {
-                            o.extend(x);
-                        }
-                    }
                     // 玉・群（ブロック）の面の範囲も（GUI の面の表の階層）
                     // 玉・群の偏心・傾き（motion: dx dy tx ty tz）・移動 shift・媒質の dn・disp（面ごとに違えば null）
                     let units: Vec<views::UnitView> = s
@@ -1091,10 +1092,12 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
                         .collect();
                     // 機構部品（系ファイルの mechanics と同じ形、GUI の面の表で編集）
                     let mechs = serde_json::to_value(&s.mechanics).unwrap_or_default();
-                    Ok((
-                        json!({ "surfaces": all, "units": units, "mechanics": mechs }),
-                        Vec::new(),
-                    ))
+                    let v = views::SurfacesView {
+                        surfaces: all,
+                        units,
+                        mechanics: mechs,
+                    };
+                    Ok((json!(v), Vec::new()))
                 }
                 Some(v) => {
                     let j = match v {
