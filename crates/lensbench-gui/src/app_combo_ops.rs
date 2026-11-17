@@ -262,6 +262,7 @@ mod tests {
                         &lensbench_project::Env::in_dir(&root, &glass, None),
                         &Default::default(),
                     )
+                    .map_err(lensbench_core::Error::from)
                 })
                 .map(|x| x.system)
                 .unwrap();

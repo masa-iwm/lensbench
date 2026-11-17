@@ -43,6 +43,7 @@ fn load_json(v: &serde_json::Value, tag: &str) -> lensbench_core::Result<System>
                 &lensbench_project::Env::for_file(&p, &[root().join("tests/glass")], Some(&look)),
                 &lensbench_project::ExpandOpts::default(),
             )
+            .map_err(lensbench_core::Error::from)
         })
         .map(|x| x.system);
     let _ = std::fs::remove_dir_all(&dir);

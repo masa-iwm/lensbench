@@ -48,6 +48,7 @@ impl Combo {
                     &lensbench_project::Env::in_dir(base, glass_dirs, None),
                     &Default::default(),
                 )
+                .map_err(lensbench_core::Error::from)
             })
             .map(|x| x.system)?;
         lensbench_project::same_system(&s, &t)?;

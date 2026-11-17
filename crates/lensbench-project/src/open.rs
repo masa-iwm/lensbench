@@ -380,7 +380,7 @@ impl Source {
                         ..Default::default()
                     },
                 )
-                .map_err(at)?;
+                .map_err(|e| at(e.into()))?;
                 let blocks = x.block_spans();
                 let faces = x.map.into_iter().map(|o| o.face).collect();
                 Ok(Opened {

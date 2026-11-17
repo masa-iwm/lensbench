@@ -549,6 +549,13 @@ impl From<lensbench_core::Error> for RpcErr {
     }
 }
 
+/// 展開の誤り（ブロックの名前を文の前に付ける）
+impl From<lensbench_project::ExpandError> for RpcErr {
+    fn from(e: lensbench_project::ExpandError) -> Self {
+        lensbench_core::Error::from(e).into()
+    }
+}
+
 impl From<RpcErr> for CallError {
     fn from(e: RpcErr) -> Self {
         CallError {

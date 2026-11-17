@@ -259,7 +259,9 @@ fn project_with(
         glass_dirs: vec![root().join("tests/glass")],
         catalog: Some(&look),
     };
-    expand(&p, &e, &ExpandOpts::default()).map(|x| x.system)
+    expand(&p, &e, &ExpandOpts::default())
+        .map_err(lensbench_core::Error::from)
+        .map(|x| x.system)
 }
 
 #[test]
@@ -403,6 +405,7 @@ fn example_projects_expand_and_all_rays_pass() {
                             ..Default::default()
                         },
                     )
+                    .map_err(lensbench_core::Error::from)
                 })
                 .map(|x| x.system)
                 .unwrap_or_else(|e| panic!("{} {st:?}: {e}", p.display()));
@@ -449,6 +452,7 @@ fn try_project(blocks: &str) -> lensbench_core::Result<System> {
         &env(),
         &ExpandOpts::default(),
     )
+    .map_err(lensbench_core::Error::from)
     .map(|x| x.system)
 }
 
@@ -661,6 +665,55 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
         "{e}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ブロックの中で起きた誤りは、そのブロックの位置と名前を持つ（群の中の id の無いブロックは「#番号」）
+#[test]
+fn expand_errors_carry_the_block() {
+    let txt = format!(
+        r#"{{ {HEAD} "blocks": [{{"type": "stop"}},
+            {{"type": "group", "id": "G1", "blocks": [{{"type": "air", "t": 1}}, {{"type": "zmx", "path": "no-such-file.zmx"}}]}},
+            {{"type": "air", "t": 5}}] }}"#
+    );
+    let e = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .unwrap_err();
+    let at = e.block.clone().expect("the block of the error");
+    assert_eq!(at.name, "G1/#2");
+    assert_eq!(
+        at.node,
+        lensbench_project::NodePath(vec![
+            lensbench_project::NodeStep::Block(1),
+            lensbench_project::NodeStep::Block(1)
+        ])
+    );
+    assert!(
+        e.message().unwrap_or_default().contains("no-such-file.zmx"),
+        "{e}"
+    );
+    // lensbench_core::Error に直すと名前が文の前に付く
+    let core: lensbench_core::Error = e.into();
+    assert!(
+        core.message()
+            .unwrap_or_default()
+            .starts_with("block G1/#2: "),
+        "{core}"
+    );
+    // 和訳はブロックの名前の前置きにも当たる（後ろの文が「パス: 文」でも）
+    let ja = lensbench_core::i18n::translate(core.message().unwrap_or_default());
+    assert!(ja.starts_with("ブロック G1/#2: "), "{ja}");
+    // ブロックの外の誤り（絞りが無い）は位置を持たない
+    let txt = format!(r#"{{ {HEAD} "blocks": [{{"type": "air", "t": 5}}] }}"#);
+    let e = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .unwrap_err();
+    assert!(e.block.is_none(), "{e}");
 }
 
 /// 取り込んだプロジェクトの循環は道を並べて止め、循環でない深い入れ子は通す。状態・BS の経路を選べる

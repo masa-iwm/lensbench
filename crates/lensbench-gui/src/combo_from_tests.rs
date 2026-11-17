@@ -278,6 +278,7 @@ fn zmx_files_become_combos() {
                     &lensbench_project::Env::in_dir(base, &gd, None),
                     &Default::default(),
                 )
+                .map_err(lensbench_core::Error::from)
             })
             .map(|x| x.system)
             .unwrap_or_else(|e| panic!("{name}: {e}"));

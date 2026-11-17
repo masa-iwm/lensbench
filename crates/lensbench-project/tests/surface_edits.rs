@@ -26,7 +26,9 @@ fn project(place: &str, edits: &str) -> lensbench_core::Result<lensbench_core::S
           {{"type": "air", "t": 30}}] }}"#
     );
     let txt = crate::put(&txt, "surface_edits", &[("L1", edits)]);
-    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default()).map(|x| x.system)
+    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default())
+        .map_err(lensbench_core::Error::from)
+        .map(|x| x.system)
 }
 
 #[test]

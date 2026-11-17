@@ -34,6 +34,9 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### プロジェクトの面の上書き・操作
+- Rust の `expand` の誤りを `ExpandError`（誤り `error` と、ブロックの中で起きたときの位置 `block: Option<BlockAt>`）にした
+  （PRJ-12）。`BlockAt` は木の中の位置 `node`（`NodePath`）と名前 `name`（各段の id、id の無いブロックは「#番号」、例 `G1/#2`）。
+  `?` で `lensbench_core::Error` に直せ、そのとき文の前に「block G1/#2: 」が付く。`message()`・`kind()`・`code()` はそのまま使える
 - Rust の `lensbench_project::open::Source` の `Zmx`・`SystemFile` を `{ path, text }` にした（CLI-21）。読んだときの中身を持ち、
   別の構成・波長の置き換え・構成の数（`configurations()`・`zmx_configs()`）はファイルを読み直さずにそこから作る（serve の
   config_table・config_diff・configs・重ね描き・swap も）。core に `zmx::load_text_with`・`zmx::load_configs_text` を足した

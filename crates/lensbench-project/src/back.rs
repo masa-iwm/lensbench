@@ -122,6 +122,7 @@ pub fn block_item(
         zenv: Vec::new(),
         nodes: HashMap::new(),
         leaf: Vec::new(),
+        failed: None,
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;

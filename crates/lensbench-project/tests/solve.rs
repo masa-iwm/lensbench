@@ -30,6 +30,7 @@ fn folded() -> System {
             ),
             &lensbench_project::ExpandOpts::default(),
         )
+        .map_err(lensbench_core::Error::from)
     })
     .map(|x| x.system)
     .unwrap();

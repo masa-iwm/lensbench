@@ -365,6 +365,7 @@ mod tests {
             .and_then(|q| {
                 let env = lensbench_project::Env::in_dir(&root(), &glass, None);
                 lensbench_project::expand(&q, &env, &Default::default())
+                    .map_err(lensbench_core::Error::from)
             })
             .unwrap()
             .system;

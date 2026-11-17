@@ -28,7 +28,10 @@ fn zmx_projects_rebuild_the_same_system() {
             step_files: None,
         };
         let t = lensbench_project::Project::from_json(&p.to_string())
-            .and_then(|q| lensbench_project::expand(&q, &env, &Default::default()))
+            .and_then(|q| {
+                lensbench_project::expand(&q, &env, &Default::default())
+                    .map_err(lensbench_core::Error::from)
+            })
             .unwrap_or_else(|e| panic!("{}: {e}", f.display()))
             .system;
         let name = f.parent().unwrap().file_name().unwrap().to_string_lossy();

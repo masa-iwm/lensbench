@@ -136,6 +136,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) nodes: HashMap<usize, NodePath>,
     /// たどっている木のブロック（外から内へ。アドレス）。足した面の出どころ [`SurfOrigin::leaf`] は最後のもの
     pub(crate) leaf: Vec<usize>,
+    /// 誤りが起きたいちばん内の木のブロック（[`ExpandError::block`]）
+    pub(crate) failed: Option<NodePath>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -327,7 +329,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// b が木のブロックなら、たどっている間は面の出どころにする（f の後に外す）
-    pub(crate) fn in_node<R>(&mut self, b: &Block, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub(crate) fn in_node<T>(
+        &mut self,
+        b: &Block,
+        f: impl FnOnce(&mut Self) -> lensbench_core::Result<T>,
+    ) -> lensbench_core::Result<T> {
         let k = b as *const Block as usize;
         let on = self.nodes.contains_key(&k);
         if on {
@@ -335,6 +341,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
         let r = f(self);
         if on {
+            // 誤りはいちばん内のブロックで覚える（外へ戻る間は上書きしない）
+            if r.is_err() && self.failed.is_none() {
+                self.failed = self.nodes.get(&k).cloned();
+            }
             self.leaf.pop();
         }
         r
@@ -743,7 +753,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         cache: self.cache,
                         within: &within,
                     };
-                    expand(&q, &env, &o).map(|x| x.system)
+                    expand(&q, &env, &o)
+                        .map(|x| x.system)
+                        .map_err(lensbench_core::Error::from)
                 })
                 .map_err(|e| e.at(p.display()))?;
             self.merge_glasses(&s);

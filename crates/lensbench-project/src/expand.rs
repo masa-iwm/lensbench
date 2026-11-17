@@ -511,8 +511,9 @@ pub(crate) fn fwd_run(map: &[SurfOrigin], id: &str) -> Option<[usize; 2]> {
 /// 往復で 2 回通る空気は 2 つ並ぶ。面の厚さには、同じ面に入る他の空気・群の移動も足されている
 pub type Gap = (String, usize, f64);
 
-/// プロジェクトを順次の面の列の系に展開する
-pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> lensbench_core::Result<Expansion> {
+/// プロジェクトを順次の面の列の系に展開する。誤りはブロックの中で起きたらその位置を持つ（[`ExpandError`]。
+/// `?` で [`lensbench_core::Error`] に直すとブロックの名前が文の前に付く）
+pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> Result<Expansion, ExpandError> {
     let with;
     let p = match o.state {
         Some(n) => {
@@ -529,7 +530,9 @@ pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> lensbench_core::Result<
         o.cache,
         o.within,
     )?
-    .ok_or("internal error: the BS path is short outside the path search")?)
+    .ok_or(lensbench_core::Error::from(
+        "internal error: the BS path is short outside the path search",
+    ))?)
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
@@ -547,7 +550,9 @@ pub fn paths_cached(
     let mut out = Vec::new();
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
-        match expand_inner(p, env, Some(&q), true, Some(cache), &[]) {
+        match expand_inner(p, env, Some(&q), true, Some(cache), &[])
+            .map_err(ExpandError::into_error)
+        {
             Ok(Some(_)) => out.push(q),
             Ok(None) => {
                 if out.len() + todo.len() > 1024 {
@@ -595,6 +600,22 @@ pub(crate) fn expand_inner(
     strict: bool,
     cache: Option<&SourceCache>,
     within: &[Loading],
+) -> Result<Option<Expansion>, ExpandError> {
+    let mut failed = None;
+    expand_body(p, env, path, strict, cache, within, &mut failed).map_err(|error| ExpandError {
+        error,
+        block: failed.map(|n| BlockAt::new(&p.blocks, n)),
+    })
+}
+
+fn expand_body(
+    p: &Project,
+    env: &Env,
+    path: Option<&str>,
+    strict: bool,
+    cache: Option<&SourceCache>,
+    within: &[Loading],
+    failed: &mut Option<NodePath>,
 ) -> lensbench_core::Result<Option<Expansion>> {
     {
         let mut ids = Vec::new();
@@ -665,6 +686,7 @@ pub(crate) fn expand_inner(
         zenv: Vec::new(),
         nodes: node_paths(&p.blocks),
         leaf: Vec::new(),
+        failed: None,
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -677,7 +699,11 @@ pub(crate) fn expand_inner(
         match c.block(b, &p.blocks, i) {
             // 経路の文字が足りない（strict のとき。paths が次の文字を試す）
             Err(_) if c.split.need => return Ok(None),
-            r => r?,
+            Err(e) => {
+                *failed = c.failed.take();
+                return Err(e);
+            }
+            Ok(()) => {}
         }
     }
     if c.split.pos < c.split.path.len() {

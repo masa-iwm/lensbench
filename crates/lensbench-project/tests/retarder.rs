@@ -26,7 +26,9 @@ fn try_system(surfs: &str) -> lensbench_core::Result<lensbench_core::System> {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    expand(&p, &env, &ExpandOpts::default()).map(|x| x.system)
+    expand(&p, &env, &ExpandOpts::default())
+        .map_err(lensbench_core::Error::from)
+        .map(|x| x.system)
 }
 
 /// 軸上の光線の、入力 x・y の偏光に対する出口の電場 (Ex, Ey)
@@ -125,7 +127,9 @@ fn spec_round_trip_and_errors() {
             catalog: None,
         };
         assert!(
-            p.and_then(|q| expand(&q, &env, &ExpandOpts::default()).map(|x| x.system))
+            p.and_then(|q| expand(&q, &env, &ExpandOpts::default())
+                .map_err(lensbench_core::Error::from)
+                .map(|x| x.system))
                 .is_err(),
             "{bad}"
         );

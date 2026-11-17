@@ -2148,6 +2148,7 @@ parameter {} is not on a surface	パラメータ {} は面のパラメータで�
 a loop of imports: {}	インポートが循環しています: {}
 {path}: state and beam_path are for a project file	{path}: state と beam_path はプロジェクトファイルのインポートにだけ使えます
 {} is a pickup quantity, not a parameter	{} はピックアップの量で、パラメータではありません
+block {at}: {e}	ブロック {at}: {e}
 this surface can't be written as a row	この面は行で書けません
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
 row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）

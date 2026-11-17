@@ -38,7 +38,9 @@ fn project(
           {{"type": "air", "t": 30}}] }}"#
     );
     let txt = crate::put(&txt, "surface_ops", ops);
-    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default()).map(|x| (x.system, x.notes))
+    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default())
+        .map_err(lensbench_core::Error::from)
+        .map(|x| (x.system, x.notes))
 }
 
 #[test]

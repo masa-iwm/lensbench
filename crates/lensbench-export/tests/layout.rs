@@ -35,6 +35,7 @@ fn project(name: &str) -> System {
                 ),
                 &lensbench_project::ExpandOpts::default(),
             )
+            .map_err(Into::into)
         })
         .map(|x| x.system)
         .unwrap()

@@ -136,6 +136,7 @@ fn system_file_matches_schema() {
                     &lensbench_project::Env::for_file(&p, &glass, None),
                     &lensbench_project::ExpandOpts::default(),
                 )
+                .map_err(lensbench_core::Error::from)
             })
             .map(|x| x.system)
         else {
