@@ -242,21 +242,23 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
     let mut nv = Vec::with_capacity(n);
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
-        s.flip_z();
+        if matches!(s.action(), Action::Jones(_)) {
+            invalid!("a lens with a Jones surface is not reversed");
+        }
+        // 利用者定義の面はモデルが裏返しに対応すれば反転できる（対応しなければ flip_z・mirror_x の誤り）
+        if !reversible(&s) && s.typ() != crate::surface::SurfType::User {
+            invalid!("a lens with a paraxial surface or a GRIN medium is not reversed");
+        }
+        if s.bire.is_some() {
+            invalid!("a lens with a birefringent plate is not reversed");
+        }
+        s.flip_z()?;
         if mirror {
-            s.mirror_x();
+            s.mirror_x()?;
             // 格子は映したので、元の .DAT とは違う
             if let Some(f) = s.grid_file_mut() {
                 f.clear();
             }
-        }
-        if matches!(s.action(), Action::Jones(_)) {
-            invalid!("a lens with a Jones surface is not reversed");
-        }
-        if !reversible(&s) {
-            invalid!(
-                "a lens with a paraxial or user-defined surface or a GRIN medium is not reversed"
-            );
         }
         if mirror {
             s.ap = match s.ap {
@@ -538,10 +540,10 @@ mod tests {
         for s in freeform_surfaces() {
             assert!(reversible(&s), "{:?}", s.typ());
             let mut r = s.clone();
-            r.flip_z();
-            r.mirror_x();
+            r.flip_z().unwrap();
+            r.mirror_x().unwrap();
             let mut f = s.clone();
-            f.flip_z();
+            f.flip_z().unwrap();
             for &(x, y) in &[(1.3, 0.7), (-2.1, 1.9), (0.4, -3.2), (-3.3, -1.1)] {
                 let (z, zx, zy) = sag_xy(&s, -x, y);
                 let (zr, zrx, zry) = sag_xy(&r, x, y);
@@ -560,8 +562,8 @@ mod tests {
                 assert_eq!((rc.c, rc.coef[0]), (-c.c, -c.coef[0]));
             }
             // 2 回で元に戻る
-            r.flip_z();
-            r.mirror_x();
+            r.flip_z().unwrap();
+            r.mirror_x().unwrap();
             assert_eq!(r, s);
         }
     }
@@ -588,7 +590,7 @@ mod tests {
             assert_eq!(rr.surfaces[0].asph(), l.surfaces[0].asph());
             // 復路: z について裏返すだけ。鏡の後の裏返しをもう一度掛けると往路と同じ形
             let mut b = reverse_folded(&l).unwrap();
-            b.surfaces[1].flip_z();
+            b.surfaces[1].flip_z().unwrap();
             assert_eq!(b.surfaces[1].zern(), l.surfaces[0].zern());
             assert_eq!(b.surfaces[1].grid(), l.surfaces[0].grid());
             assert_eq!(b.surfaces[1].asph(), l.surfaces[0].asph());

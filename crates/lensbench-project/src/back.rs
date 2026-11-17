@@ -110,6 +110,7 @@ pub fn block_item(
         map: Vec::new(),
         noted: Vec::new(),
         nflip: 0,
+        flip_err: None,
         zpicks: Vec::new(),
         lead: 0.0,
         parity: 1.0,
@@ -126,6 +127,9 @@ pub fn block_item(
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;
+    if let Some(e) = c.flip_err.take() {
+        return Err(e);
+    }
     Ok(UserItem {
         description: description.to_string(),
         glass_catalogs: cats,

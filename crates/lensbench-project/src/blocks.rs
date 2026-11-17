@@ -112,6 +112,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) noted: Vec<String>,
     /// 裏返して置いた玉の数（[`SurfOrigin::flip`] の番号）
     pub(crate) nflip: usize,
+    /// 鏡の後で面を裏返せなかった最初の誤り（裏返しに対応しない利用者定義の面）。ブロックを足し終えたら返す
+    pub(crate) flip_err: Option<lensbench_core::Error>,
     /// zmx ブロックの取り込みごとの、元の系のピックアップ
     /// zmx ブロックごとのピックアップと厚さのソルブ
     pub(crate) zpicks: Vec<ZmxLinks>,
@@ -363,10 +365,20 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
     }
 
+    /// 面を z について裏返す（[`Surface::flip_z`]）。裏返せなければ最初の誤りを覚える（面の番号を付けて）
+    fn flip(&mut self, s: &mut Surface) {
+        if let Err(e) = s.flip_z() {
+            if self.flip_err.is_none() {
+                let j = self.sf.len() + 1;
+                self.flip_err = Some(e.map_message(|e| format!("surface {j} after a mirror: {e}")));
+            }
+        }
+    }
+
     /// 光の進む向きで書いた面を、今の向きに直して足す（厚さ・曲率・非球面）
     pub(crate) fn push(&mut self, mut s: Surface) {
         if self.parity < 0.0 {
-            s.flip_z();
+            self.flip(&mut s);
             s.t = -s.t;
         }
         if s.stop {
@@ -461,7 +473,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         for (i, s) in e.surfaces.iter().enumerate() {
             let mut s = s.clone();
             if sign < 0.0 {
-                s.flip_z();
+                self.flip(&mut s);
                 s.t = -s.t;
             }
             if s.is_mirror() {
@@ -578,7 +590,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let tail = v.last().map(|s| s.t).unwrap_or(0.0);
                 let len: f64 = v.iter().map(|s| s.t).sum::<f64>() - tail;
                 self.gap(tail);
-                self.back_placed(place, len, &reverse_surfaces(&v))?;
+                self.back_placed(place, len, &reverse_surfaces(&v)?)?;
             }
             Block::Group {
                 blocks,

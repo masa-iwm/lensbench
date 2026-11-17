@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use crate::math::{dot, norm, scale, sub, V3};
+use crate::math::{dot, norm, sub, V3};
 use crate::plugin::{Config, ConfigReader, ParamSpec, ParamType, Value};
 use crate::{invalid, Result};
 
@@ -36,6 +36,102 @@ pub trait SurfaceModel: Send + Sync {
     }
     /// 設定を確かめて面を作る
     fn prepare(&self, config: &Config) -> Result<Arc<dyn SurfaceInstance>>;
+    /// 面を裏返した面の設定（鏡の後に置く・玉を反転するときに使う）。None は「対応しない」で、そのとき鏡の後や
+    /// 反転では誤りになる（既定）。
+    ///
+    /// 約束（[`check_flip`] で確かめられる）:
+    /// - 2 回裏返すと元の設定に戻る（`flip(flip(c, how), how) == c`）
+    /// - 裏返した面の [`SurfaceInstance::deflect`] は元の面を映したものと一致する: 映す行列 M（[`Flip::Z`] は
+    ///   z → −z、[`Flip::X`] は x → −x）で、裏返した面の deflect(p, k) の方向は M · (元の deflect(M p, M k) の方向)、
+    ///   OPD に足す光路長は同じ
+    /// - [`SurfaceInstance::paraxial_power`] は同じ（近軸の屈折力は理想レンズの焦点距離と同じく光の向きによらない）
+    fn flip(&self, config: &Config, how: Flip) -> Result<Option<Config>> {
+        let _ = (config, how);
+        Ok(None)
+    }
+}
+
+/// 面の裏返し方（[`SurfaceModel::flip`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Flip {
+    /// z → −z（x・y はそのまま）。鏡の後の座標で面を書くとき
+    Z,
+    /// x → −x。[`Flip::Z`] と合わせて y 軸のまわりに 180° 回した向き（玉の反転）
+    X,
+}
+
+impl Flip {
+    fn apply(self, v: V3) -> V3 {
+        match self {
+            Flip::Z => [v[0], v[1], -v[2]],
+            Flip::X => [-v[0], v[1], v[2]],
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Flip::Z => "z",
+            Flip::X => "x",
+        }
+    }
+}
+
+/// モデルの [`SurfaceModel::flip`] が約束を守るかを確かめる（拡張の試験から呼ぶ）: 対応する裏返し方ごとに、2 回で
+/// 元の設定に戻ること、裏返した面の deflect が元の面を映したものと合うこと（数本の光線、両方の向き）、近軸の
+/// 屈折力が同じこと。どの裏返し方にも対応しないモデルは何も確かめずに Ok
+pub fn check_flip(model: &dyn SurfaceModel, config: &Config) -> Result<()> {
+    let name = model.name();
+    let base = model.prepare(config)?;
+    for how in [Flip::Z, Flip::X] {
+        let Some(c1) = model.flip(config, how)? else {
+            continue;
+        };
+        let h = how.label();
+        let back = model.flip(&c1, how)?;
+        if back.as_ref() != Some(config) {
+            invalid!(
+                "user-defined surface model {name}: flipping twice in {h} does not give the original config"
+            );
+        }
+        let fl = model.prepare(&c1)?;
+        let tol = 1e-12;
+        if (fl.paraxial_power() - base.paraxial_power()).abs()
+            > tol * (1.0 + base.paraxial_power().abs())
+        {
+            invalid!(
+                "user-defined surface model {name}: the paraxial power changes when flipped in {h}"
+            );
+        }
+        for &(px, py) in &[(0.0, 0.0), (1.0, 0.0), (0.0, -2.0), (1.5, 0.7)] {
+            for &(kx, ky, kz) in &[
+                (0.0, 0.0, 1.0),
+                (0.1, -0.05, 1.0),
+                (-0.2, 0.15, 1.0),
+                (0.05, 0.1, -1.0),
+            ] {
+                let k = crate::math::normalize([kx, ky, kz]);
+                let p = [px, py, 0.0];
+                let a = base.deflect(how.apply(p), how.apply(k), 1.0, 1.0, 0.55);
+                let b = fl.deflect(p, k, 1.0, 1.0, 0.55);
+                let ok = match (a, b) {
+                    (None, None) => true,
+                    (Some((ka, oa)), Some((kb, ob))) => {
+                        let ka = how.apply(ka);
+                        (0..3).all(|i| (ka[i] - kb[i]).abs() <= tol)
+                            && (oa - ob).abs() <= tol * (1.0 + oa.abs())
+                    }
+                    _ => false,
+                };
+                if !ok {
+                    invalid!(
+                        "user-defined surface model {name}: the surface flipped in {h} does not deflect the ray at ({px}, {py}) in direction ({kx}, {ky}, {kz}) as the mirror image"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 設定の決まった利用者定義の面
@@ -130,6 +226,18 @@ impl UserSurf {
 
     pub fn instance(&self) -> &dyn SurfaceInstance {
         self.inst.as_ref()
+    }
+
+    /// 裏返した面（[`SurfaceModel::flip`]）。モデルが対応しなければ誤り
+    pub fn flipped(&self, how: Flip) -> Result<UserSurf> {
+        let m = crate::ext::current().surface_model(&self.model)?;
+        match m.flip(&self.config, how)? {
+            Some(c) => UserSurf::new(&self.model, c),
+            None => {
+                let (model, h) = (&self.model, how.label());
+                crate::notimpl!("the user-defined surface model {model} can't be flipped in {h} (it has no flip)")
+            }
+        }
     }
 }
 
@@ -328,6 +436,11 @@ impl SurfaceModel for IdealMapping {
         ]
     }
 
+    /// 回転対称で、光の向き（k の z の符号）によらない曲げ方なので、どちらに裏返しても同じ設定
+    fn flip(&self, config: &Config, _how: Flip) -> Result<Option<Config>> {
+        Ok(Some(config.clone()))
+    }
+
     fn prepare(&self, config: &Config) -> Result<Arc<dyn SurfaceInstance>> {
         let mut r = ConfigReader::new(config);
         let f = r.num("f", f64::NAN)?;
@@ -409,7 +522,8 @@ impl SurfaceInstance for IdealMappingInst {
         let d = [(ff[0] - r[0]) / f, (ff[1] - r[1]) / f];
         let nn = (1.0 + d[0] * d[0] + d[1] * d[1]).sqrt();
         let k2 = [d[0] / nn, d[1] / nn, sz / nn];
-        let kin = scale(kl, sz);
+        // 入ってくる平行光の面内の位相は実際の方向の k·r（光が −z へ進むときも x・y の成分はそのまま）
+        let kin = [kl[0], kl[1], kl[2].abs()];
         Some((k2, f.signum() * (norm(ff) - norm(sub(ff, r)) - dot(kin, r))))
     }
 
@@ -424,6 +538,94 @@ mod tests {
 
     fn cfg(kv: &[(&str, Value)]) -> Config {
         kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    /// x の向きに光を曲げる面（裏返しの試験用）。`flip` は「x について裏返すと曲げる向きが逆」を設定で表す。
+    /// `wrong` なら設定をそのまま返す（約束を破る）
+    struct Prism {
+        wrong: bool,
+        flips: bool,
+    }
+    struct PrismInst(f64);
+    impl SurfaceInstance for PrismInst {
+        fn deflect(&self, _p: V3, k: V3, _: f64, _: f64, _: f64) -> Option<(V3, f64)> {
+            let t = [k[0] / k[2].abs() + self.0, k[1] / k[2].abs()];
+            let n = (1.0 + t[0] * t[0] + t[1] * t[1]).sqrt();
+            Some(([t[0] / n, t[1] / n, k[2].signum() / n], 0.0))
+        }
+    }
+    impl SurfaceModel for Prism {
+        fn name(&self) -> &str {
+            "lbtest_prism"
+        }
+        fn prepare(&self, config: &Config) -> Result<Arc<dyn SurfaceInstance>> {
+            Ok(Arc::new(PrismInst(
+                ConfigReader::new(config).num("a", 0.0)?,
+            )))
+        }
+        fn flip(&self, config: &Config, how: Flip) -> Result<Option<Config>> {
+            if !self.flips {
+                return Ok(None);
+            }
+            let a = ConfigReader::new(config).num("a", 0.0)?;
+            let a = if how == Flip::X && !self.wrong { -a } else { a };
+            Ok(Some(cfg(&[("a", Value::Num(a))])))
+        }
+    }
+
+    /// 裏返しの約束: 同梱の ideal_mapping は守る。曲げる向きを映さないモデルは check_flip で見つかる。
+    /// flip の無いモデルの面は裏返すと誤り（面とモデルの名前つき）
+    #[test]
+    fn flips_follow_the_contract() {
+        for m in ["tan", "theta", "sin"] {
+            let c = cfg(&[("f", Value::Num(-40.0)), ("mapping", Value::Str(m.into()))]);
+            check_flip(&IdealMapping, &c).unwrap();
+        }
+        let c = cfg(&[("a", Value::Num(0.1))]);
+        check_flip(
+            &Prism {
+                wrong: false,
+                flips: true,
+            },
+            &c,
+        )
+        .unwrap();
+        let e = check_flip(
+            &Prism {
+                wrong: true,
+                flips: true,
+            },
+            &c,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("flipped in x"), "{e}");
+        check_flip(
+            &Prism {
+                wrong: false,
+                flips: false,
+            },
+            &c,
+        )
+        .unwrap();
+        let mut ext = crate::ext::Ext::default();
+        ext.add_surface_model(Arc::new(Prism {
+            wrong: false,
+            flips: false,
+        }));
+        crate::ext::with(Arc::new(ext), || {
+            let u = UserSurf::new("lbtest_prism", c.clone()).unwrap();
+            let e = u.flipped(Flip::Z).unwrap_err();
+            assert!(
+                e.to_string().contains("lbtest_prism can't be flipped in z"),
+                "{e}"
+            );
+            let mut s = crate::surface::Surface::default();
+            s.set_type(crate::surface::SurfType::User);
+            *s.user_mut().unwrap() = Some(u.clone());
+            let before = s.clone();
+            assert!(s.flip_z().is_err());
+            assert_eq!(s, before);
+        });
     }
 
     #[test]

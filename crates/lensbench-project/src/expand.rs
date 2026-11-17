@@ -50,15 +50,15 @@ pub(crate) fn cb_return(place: &Place, l: f64) -> (f64, f64, f64) {
 }
 
 /// 空気中の面の並びを逆向きに（厚さは 1 つ前の面のもの、曲率の符号を変える）。最後の面の厚さは 0
-pub(crate) fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
+pub(crate) fn reverse_surfaces(v: &[Surface]) -> lensbench_core::Result<Vec<Surface>> {
     let n = v.len();
     (0..n)
         .map(|i| {
             let mut s = v[n - 1 - i].clone();
-            s.flip_z();
+            s.flip_z()?;
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;
-            s
+            Ok(s)
         })
         .collect()
 }
@@ -672,6 +672,7 @@ fn expand_body(
         map: Vec::new(),
         noted: Vec::new(),
         nflip: 0,
+        flip_err: None,
         zpicks: Vec::new(),
         lead: 0.0,
         parity: 1.0,
@@ -706,6 +707,9 @@ fn expand_body(
                 return Err(e);
             }
             Ok(()) => {}
+        }
+        if let Some(e) = c.flip_err.take() {
+            return Err(e);
         }
     }
     if c.split.pos < c.split.path.len() {
@@ -782,7 +786,8 @@ fn expand_body(
         let known = (j > 0 && (d.is_mirror() || d.is_coord_break()))
             || is_air(&d.mat)
             || d.mat.glass().is_some_and(|g| c.glasses.contains_key(g))
-            || matches!(d.mat, Material::Index(_) | Material::Model { .. });
+            || matches!(d.mat, Material::Index(_) | Material::Model { .. })
+            || d.grin().is_some();
         if !known {
             return Err(glass_missing(j, &d.mat.name()));
         }

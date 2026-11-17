@@ -1111,3 +1111,119 @@ fn an_irregular_row_after_a_mirror_flips_only_its_tilt_and_terms() {
         )]
     );
 }
+
+/// 鏡の後の利用者定義の面: 裏返しに対応するモデル（ideal_mapping）はそのまま置け、対応しないモデルは面の番号と
+/// モデルの名前つきの誤り
+#[test]
+fn a_user_surface_after_a_mirror_needs_a_flip() {
+    use lensbench_core::plugin::{Config, ConfigReader};
+    use lensbench_core::usersurf::{SurfaceInstance, SurfaceModel};
+    use std::sync::Arc;
+    let row = |model: &str| {
+        format!(
+            r#"{{"type": "surfaces", "surfaces": [{{"row": {{"t": 5, "action": {{"user": {{"model": "{model}", "config": {{"f": 40}}}}}}}}}}]}}"#
+        )
+    };
+    let blocks = |model: &str| {
+        format!(
+            r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {{"type": "mirror"}}, {{"type": "air", "t": 10}}, {}, {{"type": "air", "t": 30}}]"#,
+            row(model)
+        )
+    };
+    let s = project(&blocks("ideal_mapping"));
+    assert!(s
+        .surfaces
+        .iter()
+        .any(|d| d.typ() == lensbench_core::surface::SurfType::User));
+
+    struct NoFlip;
+    struct Flat;
+    impl SurfaceInstance for Flat {
+        fn deflect(
+            &self,
+            _: [f64; 3],
+            k: [f64; 3],
+            _: f64,
+            _: f64,
+            _: f64,
+        ) -> Option<([f64; 3], f64)> {
+            Some((k, 0.0))
+        }
+    }
+    impl SurfaceModel for NoFlip {
+        fn name(&self) -> &str {
+            "lbtest_noflip"
+        }
+        fn prepare(&self, config: &Config) -> lensbench_core::Result<Arc<dyn SurfaceInstance>> {
+            ConfigReader::new(config).num("f", 0.0)?;
+            Ok(Arc::new(Flat))
+        }
+    }
+    let mut ext = lensbench_core::ext::Ext::default();
+    ext.add_surface_model(Arc::new(NoFlip));
+    lensbench_core::ext::with(Arc::new(ext), || {
+        let e = try_project(&blocks("lbtest_noflip")).unwrap_err();
+        let m = e.to_string();
+        assert!(
+            m.contains("after a mirror") && m.contains("lbtest_noflip"),
+            "{m}"
+        );
+        // 鏡の前なら置ける
+        try_project(&format!(
+            r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {}, {{"type": "air", "t": 30}}]"#,
+            row("lbtest_noflip")
+        ))
+        .unwrap();
+    });
+}
+
+/// GRIN の玉（Gradium、分布の軸を傾け偏心）はミラーの後に置いても、展開した光学系のように働く
+#[test]
+fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
+    use lensbench_core::grin::{GradiumProfile, GrinKind, Sgrin};
+    let kind = GrinKind::Gradium {
+        prof: GradiumProfile {
+            name: "LBTG1".into(),
+            family: "LBTGSF".into(),
+            zmax: 6.0,
+            coef: vec![
+                1.75, -0.12, 0.03, -0.01, 0.004, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ],
+            file: "LBTEST.GRD".into(),
+            flipped: false,
+        },
+        disp: Sgrin {
+            name: "LBTGSF".into(),
+            lmin: 0.4,
+            lmax: 1.0,
+            lref: 0.55,
+            k: [
+                vec![0.0331, 0.0, -0.0331],
+                vec![0.5, -0.2, 0.0],
+                vec![0.0, 0.0, 0.0],
+            ],
+            l: [vec![0.0095, 0.0003], vec![100.0, 0.0], vec![1.0, 0.0]],
+        },
+        dz: 1.0,
+        dec: [0.1, -0.05, 0.01, 0.02],
+        cap: 1,
+    };
+    let prof = serde_json::to_string(&kind).unwrap();
+    let lens = format!(
+        r#"{{"type": "lens", "source": {{"surfaces": [{{"row": {{"t": 4, "shape": {{"conic": {{"c": 0.02}}}}, "medium": {{"grin": {{"name": "LBTG1", "profile": {prof}, "dt": 0.5}}}}}}}}, {{"row": {{"shape": {{"conic": {{"c": -0.01}}}}}}}}]}}}}"#
+    );
+    let unf = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 30}}, {lens}, {{"type": "air", "t": 45}}]"#
+    ));
+    let fold = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}}, {{"type": "mirror"}}, {{"type": "air", "t": 20}}, {lens}, {{"type": "air", "t": 45}}]"#
+    ));
+    assert!(fold.surfaces.iter().any(|d| d.grin().is_some()));
+    assert!(
+        (unf.paraxial().efl - fold.paraxial().efl).abs() < 1e-9,
+        "{} {}",
+        unf.paraxial().efl,
+        fold.paraxial().efl
+    );
+    same_rays_xy(&unf, &fold);
+}

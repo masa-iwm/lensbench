@@ -566,6 +566,7 @@ surface {k}: Grid Sag interpolation {interp}	面 {k}: Grid Sag の補間 {interp
 a field set by a condition ({c:?}) can't be written to .zmx (OpticStudio has none)	条件で定める視野（{c:?}）は .zmx に書けません（OpticStudio にありません）
 surface {k}: an index offset (dn {}, disp {}) can't be written to .zmx	面 {k}: 屈折率オフセット（dn {}、disp {}）は .zmx に書けません
 surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)	面 {k}: ユーザー定義の面は .zmx に書けません（OpticStudio にありません）
+surface {k}: the Gradium profile {name} is flipped (after a mirror) and differs from the profile file, so it can't be written to .zmx	面 {k}: Gradium の分布 {name} はミラーの後で反転したもので分布のファイルと違うため、.zmx に書けません
 surface {k}: the birefringent plate surface is {t:?} (standard only)	面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）
 surface {k}: no Binary 2 phase	面 {k}: Binary 2 の位相がありません
 surface {k}: no Cylinder Fresnel surface	面 {k}: Cylinder Fresnel の面がありません
@@ -603,7 +604,8 @@ a system whose image space is not air is not split into lenses	像空間が空�
 only a lens can be reversed	反転できるのはレンズだけ
 a lens with surface tilts or decenters is not reversed	面のチルト・偏心があるレンズは反転しません
 a lens with a Jones surface is not reversed	Jones 面のあるレンズは反転しません
-a lens with a paraxial or user-defined surface or a GRIN medium is not reversed	理想レンズ・ユーザー定義の面や GRIN の媒質のあるレンズは反転しません
+a lens with a paraxial surface or a GRIN medium is not reversed	理想レンズや GRIN の媒質のあるレンズは反転しません
+a lens with a birefringent plate is not reversed	複屈折材の板のあるレンズは反転しません
 a lens with a spider aperture of an odd number of arms is not reversed	アームが奇数本のスパイダー開口のあるレンズは反転しません
 reversing a lens with a mirror or coordinate break	ミラー・座標ブレークを含むレンズの反転
 the rebuilt system has no stop	組み直したシステムに絞りがありません
@@ -2154,7 +2156,12 @@ a loop of imports: {}	インポートが循環しています: {}
 {path}: state and beam_path are for a project file	{path}: state と beam_path はプロジェクトファイルのインポートにだけ使えます
 {} is a pickup quantity, not a parameter	{} はピックアップの量で、パラメータではありません
 block {at}: {e}	ブロック {at}: {e}
+surface {j} after a mirror: {e}	ミラーの後の面 {j}: {e}
 this surface can't be written as a row	この面は行で書けません
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
 row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）
 image: stop, object, t, medium and coordinate_break can't be written	image には stop・object・t・medium・coordinate_break を書けません
+the user-defined surface model {model} can't be flipped in {h} (it has no flip)	ユーザー定義の面のモデル {model} は {h} について反転できません（flip がありません）
+user-defined surface model {name}: flipping twice in {h} does not give the original config	ユーザー定義の面のモデル {name}: {h} について 2 回反転しても元の設定に戻りません
+user-defined surface model {name}: the paraxial power changes when flipped in {h}	ユーザー定義の面のモデル {name}: {h} について反転すると近軸の屈折力が変わります
+user-defined surface model {name}: the surface flipped in {h} does not deflect the ray at ({px}, {py}) in direction ({kx}, {ky}, {kz}) as the mirror image	ユーザー定義の面のモデル {name}: {h} について反転した面が、点 ({px}, {py})・方向 ({kx}, {ky}, {kz}) の光線をミラー像と同じに曲げません

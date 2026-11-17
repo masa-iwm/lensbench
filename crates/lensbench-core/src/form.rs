@@ -426,10 +426,24 @@ impl Surface {
     /// 面を z について裏返す（矢高 z(x, y) → −z(x, y)）: 曲率・トロイダル面の回転の曲率・非球面の係数・Zernike の項・
     /// 格子・Tilted の傾き・Cylinder Fresnel の屈折の面の符号を変える。Irregular は傾きと Zs・Za・Zc の符号を変え、
     /// 偏心と項の角度はそのまま（P = d + Rx(tx) Ry(ty) Q を z について映すと Rx・Ry の角度の符号が変わる）。
-    /// 鏡の後の座標で面を書くときと、面の並びの復路に使う
-    pub fn flip_z(&mut self) {
+    /// 鏡の後の座標で面を書くときと、面の並びの復路に使う。面の後の媒質も裏返す（GRIN の分布、複屈折材の結晶軸の
+    /// z 成分）。Binary 2 の位相・理想レンズ・Jones の行列は面内の量なので変えない。利用者定義の面はモデルの
+    /// [`crate::usersurf::SurfaceModel::flip`] で裏返し、対応しないモデルなら誤り（面は変えない）
+    pub fn flip_z(&mut self) -> crate::Result<()> {
+        if let Form::User { user: Some(u) } = &self.form {
+            let f = u.flipped(crate::usersurf::Flip::Z)?;
+            self.form = Form::User { user: Some(f) };
+        }
         self.c = -self.c;
+        if let Some(crate::surface::Bire::In { axis, .. }) = &mut self.bire {
+            axis[2] = -axis[2];
+        }
         match &mut self.form {
+            Form::Gradium { grin } | Form::Gradient9 { grin } => {
+                if let Some(g) = grin {
+                    Arc::make_mut(g).flip_z();
+                }
+            }
             Form::Toroidal { cx, asph } => {
                 *cx = -*cx;
                 asph.iter_mut().for_each(|a| *a = -*a);
@@ -471,14 +485,28 @@ impl Surface {
                 }
             }
         }
+        Ok(())
     }
 
     /// 面を x について裏返す（矢高 z(x, y) → z(−x, y)）: Zernike の項・格子・Tilted の x の傾きを映し、Irregular は
     /// 偏心 x・傾き y・項の角度の符号を変える（Rx はそのまま、Ry・Rz は角度の符号が変わる）。開口はそのまま。
     /// [`Surface::flip_z`] と合わせて y 軸のまわりに 180° 回した向き（玉の反転）になる。回転対称な形と、x について
-    /// 対称な形（トロイダル面・Cylinder Fresnel）は何も変わらない
-    pub fn mirror_x(&mut self) {
+    /// 対称な形（トロイダル面・Cylinder Fresnel）は何も変わらない。GRIN の分布の軸・形の傾き、複屈折材の結晶軸の
+    /// x 成分も映す。利用者定義の面はモデルの [`crate::usersurf::SurfaceModel::flip`] で映し、対応しなければ誤り
+    pub fn mirror_x(&mut self) -> crate::Result<()> {
+        if let Form::User { user: Some(u) } = &self.form {
+            let f = u.flipped(crate::usersurf::Flip::X)?;
+            self.form = Form::User { user: Some(f) };
+        }
+        if let Some(crate::surface::Bire::In { axis, .. }) = &mut self.bire {
+            axis[0] = -axis[0];
+        }
         match &mut self.form {
+            Form::Gradium { grin } | Form::Gradient9 { grin } => {
+                if let Some(g) = grin {
+                    Arc::make_mut(g).mirror_x();
+                }
+            }
             Form::ZernikeStd { zern, .. } | Form::ZernikeFringe { zern, .. } => {
                 if let Some(z) = zern {
                     Arc::make_mut(z).mirror_x();
@@ -500,6 +528,7 @@ impl Surface {
             }
             _ => {}
         }
+        Ok(())
     }
 
     /// Tilted・Irregular の決まった数の値の置き場

@@ -299,7 +299,8 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     let rr = [r[0], r[1], 0.0];
     if crate::tol::infinite_dist(z_obj) {
         let ff = [f * t[0], f * t[1], f];
-        let kin = scale(kl, sz);
+        // 入ってくる平行光の面内の位相は実際の方向の k·r（光が −z へ進むときも x・y の成分はそのまま）
+        let kin = [kl[0], kl[1], kl[2].abs()];
         return (
             k2,
             f.signum() * (norm(ff) - norm(sub(ff, rr)) - dot(kin, rr)),

@@ -1828,6 +1828,10 @@
           "description": "読んだファイルの名前（PROFILE.GRD など。.zmx の COFN に書く）",
           "type": "string"
         },
+        "flipped": {
+          "description": "分布を z について裏返した（鏡の後に置いた）もの。係数はファイルの組と違うので .zmx には書けない",
+          "type": "boolean"
+        },
         "name": {
           "type": "string"
         },

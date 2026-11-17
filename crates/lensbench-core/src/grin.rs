@@ -55,6 +55,12 @@ pub struct GradiumProfile {
     pub coef: Vec<f64>,
     /// 読んだファイルの名前（PROFILE.GRD など。.zmx の COFN に書く）
     pub file: String,
+    /// 分布を z について裏返した（鏡の後に置いた）もの。係数はファイルの組と違うので .zmx には書けない
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub flipped: bool,
 }
 
 /// Gradient 9 の材料（GRADIENT_9.DAT の組）
@@ -108,6 +114,60 @@ impl Grin {
         match self.kind {
             GrinKind::Gradium { .. } => SurfType::Gradium,
             GrinKind::Grad9 { .. } => SurfType::Gradient9,
+        }
+    }
+
+    /// 媒質を z について裏返す（z → −z、x・y はそのまま。鏡の後に置くとき）。Gradium は分布の多項式を
+    /// u → 1 − u で書き直し（端の扱いの左右も入れ替える）、Δz を z_max / t_z − Δz に、分布の軸の傾き t_x・t_y の
+    /// 符号を変える（偏心はそのまま）。Gradient 9 は媒質が z によらないので、形の傾き tan だけ符号を変える
+    pub fn flip_z(&mut self) {
+        match &mut self.kind {
+            GrinKind::Gradium {
+                prof, dz, dec, cap, ..
+            } => {
+                // P(1 − v) = Σ_k (Σ_{i≥k} c_i C(i, k)) (−v)^k
+                let c = &prof.coef;
+                let n = c.len();
+                let mut out = vec![0.0; n];
+                for (k, o) in out.iter_mut().enumerate() {
+                    let mut b = 1.0; // C(i, k)、i = k から
+                    let mut acc = 0.0;
+                    for (i, ci) in c.iter().enumerate().skip(k) {
+                        if i > k {
+                            b = b * i as f64 / (i - k) as f64;
+                        }
+                        acc += ci * b;
+                    }
+                    *o = if k % 2 == 1 { -acc } else { acc };
+                }
+                prof.coef = out;
+                prof.flipped = !prof.flipped;
+                let tz = (1.0 - dec[2] * dec[2] - dec[3] * dec[3]).sqrt();
+                *dz = prof.zmax / tz - *dz;
+                dec[2] = -dec[2];
+                dec[3] = -dec[3];
+                *cap = match *cap {
+                    1 => 2,
+                    2 => 1,
+                    c => c,
+                };
+            }
+            GrinKind::Grad9 { tan, .. } => {
+                tan[0] = -tan[0];
+                tan[1] = -tan[1];
+            }
+        }
+    }
+
+    /// 媒質を x について裏返す（x → −x）。Gradium は分布の軸の偏心 d_x と傾き t_x の符号を、Gradient 9 は
+    /// 形の傾き tan α の符号を変える（屈折率は x について対称）
+    pub fn mirror_x(&mut self) {
+        match &mut self.kind {
+            GrinKind::Gradium { dec, .. } => {
+                dec[0] = -dec[0];
+                dec[2] = -dec[2];
+            }
+            GrinKind::Grad9 { tan, .. } => tan[0] = -tan[0],
         }
     }
 
@@ -765,6 +825,7 @@ pub(crate) fn parse_grd(txt: &str, file: &str) -> Result<HashMap<String, Gradium
                 zmax,
                 coef,
                 file: file.to_string(),
+                flipped: false,
             },
         );
     }
@@ -982,6 +1043,89 @@ mod tests {
         }
         // 範囲の外（z′ + Δz < 0）は止める
         assert!(g.eval(0.55, [0.0, 0.0, -1.6]).is_none());
+    }
+
+    /// z・x について裏返した媒質の屈折率と n∇n は、元の媒質を映した点のものと合い、2 回裏返すと元に戻る
+    #[test]
+    fn flipped_media_are_mirror_images() {
+        let pts = [[0.4, -0.3, 1.2], [-0.2, 0.5, 2.5], [0.1, 0.1, 0.4]];
+        for (dec, cap) in [
+            ([0.0; 4], 0u8),
+            ([0.1, -0.05, 0.01, 0.02], 1),
+            ([0.0, 0.2, -0.03, 0.0], 2),
+        ] {
+            let mut g = gradium(dec);
+            if let GrinKind::Gradium { cap: c, .. } = &mut g.kind {
+                *c = cap;
+            }
+            let mut f = g.clone();
+            f.flip_z();
+            let mut x = g.clone();
+            x.mirror_x();
+            for p in pts {
+                for lam in [0.48, 0.55, 0.65] {
+                    let a = g.eval(lam, p);
+                    let b = f.eval(lam, [p[0], p[1], -p[2]]);
+                    match (a, b) {
+                        (Some((na, da)), Some((nb, db))) => {
+                            assert!((na - nb).abs() < 1e-12, "{dec:?} {p:?} {na} {nb}");
+                            assert!((da[0] - db[0]).abs() < 1e-10 && (da[1] - db[1]).abs() < 1e-10);
+                            assert!((da[2] + db[2]).abs() < 1e-10, "{da:?} {db:?}");
+                        }
+                        (None, None) => {}
+                        (a, b) => panic!("{dec:?} {p:?} {a:?} {b:?}"),
+                    }
+                    let (na, da) = g.eval(lam, p).unwrap();
+                    let (nx, dx) = x.eval(lam, [-p[0], p[1], p[2]]).unwrap();
+                    assert!((na - nx).abs() < 1e-14);
+                    assert!((da[0] + dx[0]).abs() < 1e-12 && (da[1] - dx[1]).abs() < 1e-12);
+                }
+            }
+            // 端の扱い: 左を止めた分布は裏返すと右を止める（範囲の外は z の反対側）
+            let out = g.eval(0.55, [0.0, 0.0, -1.6]).is_none();
+            assert_eq!(f.eval(0.55, [0.0, 0.0, 1.6]).is_none(), out, "{cap}");
+            assert!(matches!(&f.kind, GrinKind::Gradium { prof, .. } if prof.flipped));
+            f.flip_z();
+            let (
+                GrinKind::Gradium {
+                    prof: p0,
+                    dz: z0,
+                    dec: d0,
+                    cap: c0,
+                    ..
+                },
+                GrinKind::Gradium {
+                    prof: p1,
+                    dz: z1,
+                    dec: d1,
+                    cap: c1,
+                    ..
+                },
+            ) = (&g.kind, &f.kind)
+            else {
+                unreachable!()
+            };
+            assert!(!p1.flipped && c0 == c1 && d0 == d1);
+            assert!((z0 - z1).abs() < 1e-12);
+            assert!(p0
+                .coef
+                .iter()
+                .zip(&p1.coef)
+                .all(|(a, b)| (a - b).abs() < 1e-12));
+        }
+        // Gradient 9 は媒質が z によらず、形の傾きだけが変わる
+        let mut g = g9();
+        if let GrinKind::Grad9 { tan, .. } = &mut g.kind {
+            *tan = [0.01, -0.02];
+        }
+        let mut f = g.clone();
+        f.flip_z();
+        f.mirror_x();
+        assert!(matches!(f.kind, GrinKind::Grad9 { tan, .. } if tan == [0.01, 0.02]));
+        assert_eq!(
+            g.eval(0.55, [0.3, 0.2, 1.0]),
+            f.eval(0.55, [0.3, 0.2, -1.0])
+        );
     }
 
     /// 軸方向の分布の速い経路は一般の経路（Runge–Kutta）と合う（曲がった出口の面）
