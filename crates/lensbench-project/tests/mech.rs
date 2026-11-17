@@ -343,6 +343,29 @@ fn catalog_item_frame_is_placed_on_the_glass() {
     assert!((b[1][0] - 3.1).abs() < 1e-12 && b[1][2] == 21.2, "{b:?}");
     let fit = lensbench_core::mech::fit_check(&s, &s.mechanics).unwrap();
     assert!(fit.is_empty(), "{fit:?}");
+    // 品の面は展開の出どころ（map）から引く: 空気にした群の中の品は枠も置かず、後ろの品の枠はその品の面を持つ（PRJ-04）
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+        "fields": {{"points": [[0, 0]]}},
+        "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 10}},
+          {{"type": "group", "id": "G", "on": false, "off": "air", "blocks": [
+            {{"type": "user", "id": "A", "catalog": {c:?}, "item": "F25"}}, {{"type": "air", "t": 3}}]}},
+          {{"type": "user", "id": "B", "catalog": {c:?}, "item": "F25", "decenter": [0.5, 0]}},
+          {{"type": "air", "t": 20}}]}}"#,
+        c = cat.to_str().unwrap()
+    ))
+    .unwrap();
+    let x = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let s = &x.system;
+    assert_eq!(s.mechanics.len(), 1, "{:?}", x.notes);
+    let m = &s.mechanics[0];
+    assert_eq!(m.name, "B mount");
+    assert_eq!(m.holds.len(), 2);
+    assert!(m
+        .holds
+        .iter()
+        .all(|&j| x.map[j].is_in("B") && !s.surfaces[j].is_coord_break()));
+    assert!(!s.surfaces[m.surface].mat.is_air());
     std::fs::remove_dir_all(&dir).ok();
 }
 

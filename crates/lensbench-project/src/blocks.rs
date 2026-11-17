@@ -125,8 +125,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) gaps: Vec<Gap>,
     /// ビームスプリッターの経路
     pub(crate) split: SplitState,
-    /// 枠付きのユーザーカタログの品（名前, 枠, sf の最初, 最後）。枠を機構部品として置く
-    pub(crate) frames: Vec<(String, MechSpec, usize, usize)>,
+    /// 枠付きのユーザーカタログの品（名前, 枠）。品の面は [`SurfOrigin::frame`] の番号で引く（面を巻き戻せば品も外れる）
+    pub(crate) frames: Vec<(String, MechSpec)>,
     /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
     pub(crate) zenv: Vec<(String, f64, f64, bool)>,
 }
@@ -363,12 +363,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 // 中身が足した面の範囲・記録は全部巻き戻す（残すと後ろの別のブロックの面を指す）
                 let start = self.sf.len();
                 let (p0, n0, lead0) = (self.parity, self.nstop, self.lead);
-                let lens = (
-                    self.noted.len(),
-                    self.gaps.len(),
-                    self.frames.len(),
-                    self.zpicks.len(),
-                );
+                let lens = (self.noted.len(), self.gaps.len(), self.zpicks.len());
                 body(self)?;
                 if self.parity != p0 {
                     return Err("a block with a mirror can't be 'kept as air'".into());
@@ -378,8 +373,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.map.truncate(start);
                 self.noted.truncate(lens.0);
                 self.gaps.truncate(lens.1);
-                self.frames.truncate(lens.2);
-                self.zpicks.truncate(lens.3);
+                self.zpicks.truncate(lens.2);
                 self.nstop = n0;
                 self.lead = lead0;
                 self.gap(l);
@@ -1129,7 +1123,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     } else {
                         f
                     };
-                    self.frames.push((name, f, start, self.sf.len() - 1));
+                    let k = self.frames.len();
+                    self.frames.push((name, f));
+                    for o in &mut self.map[start..] {
+                        o.frame = Some(k);
+                    }
                 }
             }
             Block::Splitter { id, spec, place } => {

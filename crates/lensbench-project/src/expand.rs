@@ -277,6 +277,8 @@ pub struct SurfOrigin {
     pub back: bool,
     /// 裏返して置いた玉（`reversed`）の面なら、その玉の番号（1 始まり、展開の中で数える）
     pub flip: Option<usize>,
+    /// 枠付きのユーザーカタログの品の面なら、その品の番号（[`Ctx::frames`]）
+    pub(crate) frame: Option<usize>,
     /// .zmx の取り込みの番号と、元の .zmx の面番号（ピックアップを付け替える）
     pub(crate) zmx: Option<(usize, usize)>,
     /// 面を足した、面の上書き・操作を持つブロック・群（[`Ctx::sites`] の番号）
@@ -805,7 +807,7 @@ pub(crate) fn expand_inner(
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
     let mut mech = place_mechanics(&s, &p.mechanics, env, &map, &mut warn)?;
-    mech.extend(place_frames(&s, &c.frames, &mut warn));
+    mech.extend(place_frames(&s, &c.frames, &map, &mut warn));
     s.edit_raw(|rx| {
         rx.mechanics = mech;
         Ok(())
@@ -1032,21 +1034,22 @@ pub(crate) fn place_mechanics(
 }
 
 /// 枠付きのユーザーカタログの品の枠を、ガラスの最初の面に置く（枠の座 `holds.seat_z` をガラスの前面に合わせる）。
-/// 保持する素子はその品の面
+/// 保持する素子はその品の面（map で品の番号を持つ面）
 pub(crate) fn place_frames(
     s: &System,
-    frames: &[(String, MechSpec, usize, usize)],
+    frames: &[(String, MechSpec)],
+    map: &[SurfOrigin],
     warn: &mut Vec<String>,
 ) -> Vec<lensbench_core::mech::MechPart> {
     let mut out = Vec::new();
-    for (name, f, a, b) in frames {
+    for (k, (name, f)) in frames.iter().enumerate() {
         let tag = format!("{name} mount");
         if let Err(e) = f.validate() {
             warn.push(format!("{tag}: {e} (not placed)"));
             continue;
         }
-        let faces: Vec<usize> = (a + 1..=b + 1)
-            .filter(|&j| j < s.surfaces.len() && !s.surfaces[j].is_coord_break())
+        let faces: Vec<usize> = (0..s.surfaces.len().min(map.len()))
+            .filter(|&j| map[j].frame == Some(k) && !s.surfaces[j].is_coord_break())
             .collect();
         let Some(&first) = faces.first() else {
             continue;
