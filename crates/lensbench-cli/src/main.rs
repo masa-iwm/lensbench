@@ -1431,12 +1431,29 @@ fn quiet_broken_pipe() {
 /// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足し、
 /// help（英語が元）を表示の言語に訳したもの
 fn cli_command() -> clap::Command {
+    cli_command_with(|_| true)
+}
+
+/// [`cli_command`] で、解析のサブコマンドの引数は `full` が真の名前だけ組む（ほかは名前と 1 行の説明だけ）。
+/// 引数は設定のスキーマから作るので、起動のたびに全部組むと数 ms かかる（`--version`・`info` などにも）
+fn cli_command_with(full: impl Fn(&str) -> bool) -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command().after_long_help(error::exit_code_help());
-    for a in analysis_commands() {
-        c = c.subcommand(a);
+    for a in analyses().iter() {
+        let m = a.meta();
+        c = c.subcommand(if full(m.name) {
+            analysis_cmd::command(a.as_ref())
+        } else {
+            clap::Command::new(m.name).about(m.about)
+        });
     }
-    help_json::localize(negative_numbers(c), &lensbench_core::i18n::tr_doc)
+    let c = negative_numbers(c);
+    // 英語の表示では訳さない（元が英語なので、木を回すだけ無駄になる）
+    if lensbench_core::i18n::is_ja() {
+        help_json::localize(c, &lensbench_core::i18n::translate_doc)
+    } else {
+        c
+    }
 }
 
 /// `--dist -5`・`--pmag -0.5` のような負の数を値として受ける（入れ子のサブコマンドも）
@@ -1450,14 +1467,6 @@ pub(crate) fn analyses() -> std::sync::Arc<lensbench_analysis::Analyses> {
     lensbench_engine::analyses()
 }
 
-/// 解析の登録簿のサブコマンド（設定のスキーマから）
-fn analysis_commands() -> Vec<clap::Command> {
-    analyses()
-        .iter()
-        .map(|a| analysis_cmd::command(a.as_ref()))
-        .collect()
-}
-
 /// 引数を解釈する（解析の登録簿のサブコマンドも）
 fn parse_cli<I, T>(argv: I) -> Result<Cli, clap::Error>
 where
@@ -1465,14 +1474,18 @@ where
     T: Into<std::ffi::OsString> + Clone,
 {
     use clap::FromArgMatches;
-    let m = cli_command().try_get_matches_from(argv)?;
+    let argv: Vec<std::ffi::OsString> = argv.into_iter().map(Into::into).collect();
+    // 引数のどこかに名前が出る解析だけ引数まで組む（`spot …`・`help spot`・`--threads 2 spot …`）。
+    // 名前の出ない解析は呼ばれないので、名前と説明（`--help` の一覧・候補の提案に使う）だけでよい
+    let named = |n: &str| argv.iter().any(|a| a.as_os_str() == n);
+    let m = cli_command_with(named).try_get_matches_from(&argv)?;
     if let Some((name, sub)) = m.subcommand() {
         if let Some(a) = analyses().get(name).cloned() {
             let threads = m.try_get_one::<usize>("threads").ok().flatten().copied();
             let cmd = analysis_cmd::parse(a.as_ref(), sub).map_err(|x| {
                 // clap が「error: 」を付けるので、種類の前置きを付けない文（訳す）
                 let m = lensbench_core::i18n::tr(&String::from(x));
-                cli_command().error(clap::error::ErrorKind::ValueValidation, m)
+                cli_command_with(named).error(clap::error::ErrorKind::ValueValidation, m)
             })?;
             return Ok(Cli {
                 threads,

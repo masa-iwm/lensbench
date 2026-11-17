@@ -80,12 +80,13 @@ pub fn is_ja() -> bool {
 
 /// One piece of a template: literal text or a `{...}` slot
 #[derive(Debug, Clone, PartialEq)]
-enum Piece {
-    Text(String),
-    Slot(String),
+enum Piece<'a> {
+    Text(&'a str),
+    Slot(&'a str),
 }
 
-fn pieces(t: &str) -> Vec<Piece> {
+/// The pieces of a template (slices of the template: the tables are read at each start, so no copies)
+fn pieces(t: &str) -> Vec<Piece<'_>> {
     let mut out = Vec::new();
     let mut rest = t;
     while let Some(a) = rest.find('{') {
@@ -93,20 +94,21 @@ fn pieces(t: &str) -> Vec<Piece> {
             break;
         };
         if a > 0 {
-            out.push(Piece::Text(rest[..a].to_string()));
+            out.push(Piece::Text(&rest[..a]));
         }
-        out.push(Piece::Slot(rest[a..=b].to_string()));
+        out.push(Piece::Slot(&rest[a..=b]));
         rest = &rest[b + 1..];
     }
     if !rest.is_empty() {
-        out.push(Piece::Text(rest.to_string()));
+        out.push(Piece::Text(rest));
     }
     out
 }
 
+#[derive(Clone)]
 struct Entry {
-    en: Vec<Piece>,
-    ja: Vec<Piece>,
+    en: Vec<Piece<'static>>,
+    ja: Vec<Piece<'static>>,
 }
 
 const JA: &str = include_str!("../lang/ja.tsv");
@@ -125,7 +127,7 @@ fn table_lines(text: &str) -> impl Iterator<Item = (bool, &str)> + '_ {
     })
 }
 
-fn entries(text: &str, items: bool) -> impl Iterator<Item = Entry> + '_ {
+fn entries(text: &'static str, items: bool) -> impl Iterator<Item = Entry> {
     table_lines(text)
         .filter(move |(i, _)| *i == items)
         .filter_map(|(_, l)| l.split_once('\t'))
@@ -135,47 +137,84 @@ fn entries(text: &str, items: bool) -> impl Iterator<Item = Entry> + '_ {
         })
 }
 
-/// The table: `lang/ja.tsv` and the tables added with [`add_table`]
-fn table() -> &'static RwLock<Vec<Entry>> {
-    static T: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
-    T.get_or_init(|| RwLock::new(entries(JA, false).collect()))
+/// One kind of table built from `lang/ja.tsv` and the tables added with [`add_table`]. A text is read the
+/// first time this kind is used (`pending` until then), so a start in English, or one that shows no
+/// message, does not parse the tables
+struct Lazy<T> {
+    built: T,
+    /// Texts added but not read yet, in the order they were added
+    pending: Vec<&'static str>,
+    read: fn(&mut T, &'static str),
+}
+
+impl<T> Lazy<T> {
+    fn new(built: T, read: fn(&mut T, &'static str)) -> RwLock<Self> {
+        RwLock::new(Lazy {
+            built,
+            pending: vec![JA],
+            read,
+        })
+    }
+}
+
+/// The table with every added text read
+fn get<T>(l: &'static RwLock<Lazy<T>>) -> std::sync::RwLockReadGuard<'static, Lazy<T>> {
+    let t = l.read().unwrap_or_else(|e| e.into_inner());
+    if t.pending.is_empty() {
+        return t;
+    }
+    drop(t);
+    {
+        let mut w = l.write().unwrap_or_else(|e| e.into_inner());
+        let w = &mut *w;
+        for text in std::mem::take(&mut w.pending) {
+            (w.read)(&mut w.built, text);
+        }
+    }
+    l.read().unwrap_or_else(|e| e.into_inner())
+}
+
+type Entries = RwLock<Lazy<Vec<Entry>>>;
+
+/// Message templates
+fn table() -> &'static Entries {
+    static T: OnceLock<Entries> = OnceLock::new();
+    T.get_or_init(|| Lazy::new(Vec::new(), |v, t| v.extend(entries(t, false))))
 }
 
 /// The names of the `# items` sections ([`translate_item`])
-fn item_table() -> &'static RwLock<Vec<Entry>> {
-    static T: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
-    T.get_or_init(|| RwLock::new(entries(JA, true).collect()))
+fn item_table() -> &'static Entries {
+    static T: OnceLock<Entries> = OnceLock::new();
+    T.get_or_init(|| Lazy::new(Vec::new(), |v, t| v.extend(entries(t, true))))
 }
 
-/// Add a table of the same format as `lang/ja.tsv` (an exe that adds plugins adds the Japanese of their
-/// messages at start-up). Check it with [`check_table`] in a test
-pub fn add_table(text: &'static str) {
-    table()
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .extend(entries(text, false));
-    item_table()
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .extend(entries(text, true));
-    whole_lines()
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .extend(lines(text));
-}
-
-fn lines(text: &str) -> impl Iterator<Item = (String, String)> + '_ {
-    table_lines(text)
-        .filter(|(i, _)| !i)
-        .filter_map(|(_, l)| l.split_once('\t'))
-        .map(|(en, ja)| (en.to_string(), ja.to_string()))
-}
+type Lines = RwLock<Lazy<HashMap<&'static str, &'static str>>>;
 
 /// The table by whole English line for [`translate_doc`] (later lines win). The help of every command is
 /// translated at each start, so this is a hash lookup rather than a pass over the templates
-fn whole_lines() -> &'static RwLock<HashMap<String, String>> {
-    static T: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
-    T.get_or_init(|| RwLock::new(lines(JA).collect()))
+fn whole_lines() -> &'static Lines {
+    static T: OnceLock<Lines> = OnceLock::new();
+    T.get_or_init(|| Lazy::new(HashMap::new(), |m, t| m.extend(lines(t))))
+}
+
+/// Add a table of the same format as `lang/ja.tsv` (an exe that adds plugins adds the Japanese of their
+/// messages at start-up; the text is read when it is first needed). Check it with [`check_table`] in a test
+pub fn add_table(text: &'static str) {
+    fn add<T>(l: &RwLock<Lazy<T>>, text: &'static str) {
+        l.write()
+            .unwrap_or_else(|e| e.into_inner())
+            .pending
+            .push(text);
+    }
+    add(table(), text);
+    add(item_table(), text);
+    add(whole_lines(), text);
+}
+
+fn lines(text: &'static str) -> impl Iterator<Item = (&'static str, &'static str)> {
+    table_lines(text)
+        .filter(|(i, _)| !i)
+        .filter_map(|(_, l)| l.split_once('\t'))
 }
 
 /// Check a table: each line has a tab, the same `{…}` in English and Japanese, unnamed `{}` in the same
@@ -191,7 +230,9 @@ pub fn check_table(text: &str) -> Result<(), String> {
             let mut v: Vec<String> = pieces(t)
                 .into_iter()
                 .filter_map(|p| match p {
-                    Piece::Slot(s) if !unnamed || s == "{}" || s.starts_with("{:") => Some(s),
+                    Piece::Slot(s) if !unnamed || s == "{}" || s.starts_with("{:") => {
+                        Some(s.to_string())
+                    }
                     _ => None,
                 })
                 .collect();
@@ -226,14 +267,12 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
 fn matches_at(p: &[Piece], s: &str, open: bool) -> Option<Vec<String>> {
     match p.split_first() {
         None => s.is_empty().then(Vec::new),
-        Some((Piece::Text(t), rest)) => {
-            matches_at(rest, s.strip_prefix(t.as_str())?, t.ends_with('('))
-        }
+        Some((Piece::Text(t), rest)) => matches_at(rest, s.strip_prefix(*t)?, t.ends_with('(')),
         Some((Piece::Slot(name), rest)) => {
             // shortest slot text first; a slot never takes an empty string, except a whole
             // parenthesis "({})" (an empty list: "no state x ()")
             let next = match rest.first() {
-                Some(Piece::Text(t)) => Some(t.as_str()),
+                Some(Piece::Text(t)) => Some(*t),
                 _ => None,
             };
             let empty = open && next.is_some_and(|t| t.starts_with(')'));
@@ -248,7 +287,7 @@ fn matches_at(p: &[Piece], s: &str, open: bool) -> Option<Vec<String>> {
             };
             // 値の欄は「: 」を跨がない（跨ぐのは入れ子の誤り {e} と添え書き {why} だけ。「surface 3: cancelled」は「surface {}」に
             // 当てず、「: 」で分けて訳す）
-            let nested = name == "{e}" || name == "{why}";
+            let nested = *name == "{e}" || *name == "{why}";
             // ラベルの欄（{what}・{hint}）は句（「incidence angle」）が入るので長い方から。ほかは短い方から
             let mut ends = ends;
             if matches!(name.to_ascii_lowercase().as_str(), "{what}" | "{hint}") {
@@ -279,7 +318,7 @@ fn is_text_slot(s: &str) -> bool {
 
 /// Fill the Japanese template with the slot texts (by slot token, in order for repeated tokens)
 fn fill(e: &Entry, vals: Vec<String>) -> String {
-    let slots: Vec<&String> =
+    let slots: Vec<&&str> =
         e.en.iter()
             .filter_map(|p| match p {
                 Piece::Slot(s) => Some(s),
@@ -332,12 +371,19 @@ fn lookup(s: &str) -> Option<String> {
     lookup_in(table(), s)
 }
 
-fn lookup_in(t: &RwLock<Vec<Entry>>, s: &str) -> Option<String> {
-    let t = t.read().unwrap_or_else(|e| e.into_inner());
-    t.iter()
-        .filter_map(|e| matches(&e.en, s).map(|v| (literal_len(&e.en), e, v)))
-        .max_by_key(|(n, _, _)| *n)
-        .map(|(_, e, v)| fill(e, v))
+/// The best entry of table `t` for `s`, filled. The lock is released before filling: [`fill`] translates the
+/// text slots again ([`translate`]), and a nested read while another thread waits to write (the first use of a
+/// table reads the added texts) would wait for ever
+fn lookup_in(t: &'static Entries, s: &str) -> Option<String> {
+    let (e, v) = {
+        let t = get(t);
+        t.built
+            .iter()
+            .filter_map(|e| matches(&e.en, s).map(|v| (literal_len(&e.en), e, v)))
+            .max_by_key(|(n, _, _)| *n)
+            .map(|(_, e, v)| (e.clone(), v))?
+    };
+    Some(fill(&e, v))
 }
 
 /// The Japanese of an English message (the whole message, otherwise each `": "`-separated part,
@@ -371,8 +417,7 @@ pub fn tr(s: &str) -> String {
 /// The Japanese of a line only when a table line is exactly that text (descriptions: an
 /// English text with no line of its own must not be taken apart by message templates such as `surface {}`)
 fn exact(s: &str) -> Option<String> {
-    let t = whole_lines().read().unwrap_or_else(|e| e.into_inner());
-    t.get(s).cloned()
+    get(whole_lines()).built.get(s).map(|j| j.to_string())
 }
 
 /// Japanese of a description of several lines (help, analysis settings): each line from its own table line
@@ -422,7 +467,7 @@ pub fn warning(w: impl AsRef<str>) -> String {
 mod tests {
     use super::*;
 
-    fn entry(en: &str, ja: &str) -> Entry {
+    fn entry(en: &'static str, ja: &'static str) -> Entry {
         Entry {
             en: pieces(en),
             ja: pieces(ja),

@@ -77,7 +77,8 @@ fn command_json(c: &mut Command) -> Value {
     })
 }
 
-/// help を `f` で訳す（about・long_about・引数の help・long_help、入れ子のサブコマンドも）
+/// help を `f` で訳す（about・long_about・引数の help・long_help、入れ子のサブコマンドも）。
+/// 引数・サブコマンドは名前で 1 つずつ探して差し替えず（clap の `mut_arg` は毎回取り出して足し直すので、起動のたびに数 ms かかった）、まとめて 1 回で回す
 pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Command {
     if let Some(t) = c.get_about().map(|x| f(&x.to_string())) {
         c = c.about(t);
@@ -85,26 +86,16 @@ pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Comma
     if let Some(t) = c.get_long_about().map(|x| f(&x.to_string())) {
         c = c.long_about(t);
     }
-    let ids: Vec<clap::Id> = c.get_arguments().map(|a| a.get_id().clone()).collect();
-    for id in ids {
-        c = c.mut_arg(id, |mut a| {
-            if let Some(t) = a.get_help().map(|x| f(&x.to_string())) {
-                a = a.help(t);
-            }
-            if let Some(t) = a.get_long_help().map(|x| f(&x.to_string())) {
-                a = a.long_help(t);
-            }
-            a
-        });
-    }
-    let subs: Vec<String> = c
-        .get_subcommands()
-        .map(|s| s.get_name().to_string())
-        .collect();
-    for n in subs {
-        c = c.mut_subcommand(n, |s| localize(s, f));
-    }
-    c
+    c.mut_args(|mut a| {
+        if let Some(t) = a.get_help().map(|x| f(&x.to_string())) {
+            a = a.help(t);
+        }
+        if let Some(t) = a.get_long_help().map(|x| f(&x.to_string())) {
+            a = a.long_help(t);
+        }
+        a
+    })
+    .mut_subcommands(|s| localize(s, f))
 }
 
 /// `lensbench plugins` の doc（英語が元）を文字の出力では表示の言語に訳す。JSON は英語のまま
