@@ -340,9 +340,15 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
     Ok(())
 }
 
+/// 面を前後反転できるか（[`lensbench_core::elements::reversible`]。読めない面は false）。GUI が玉の反転を
+/// 出すかを決める
+pub fn spec_reversible(q: &SurfSpec) -> bool {
+    crate::expand::surf(q).is_ok_and(|s| lensbench_core::elements::reversible(&s))
+}
+
 /// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。[`surf`] が作る面はすべて書け、
-/// `surface_spec` → `surf` で同じ面に戻る。書けない値（面の前後の傾き・偏心、[`SurfShape`] のほかの型、
-/// 鏡、ignore、dn・disp）は誤り
+/// `surface_spec` → `surf` で同じ面に戻る。欄で書けない面は行（[`SurfSpec::row`]）で書く。書けない値
+/// （面の前後の傾き・偏心、鏡、ゴーストの反射）は誤り
 pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     surface_fields(f, last).or_else(|e| row_spec(f, last).map_err(|_| e))
 }

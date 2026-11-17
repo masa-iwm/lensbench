@@ -890,7 +890,7 @@ tilt is not supported on a birefringent waveplate	複屈折材の波長板に ti
 a block with a mirror can't be 'kept as air'	ミラーを含むブロックは「空気で残す」にできません
 a mirror can't go in a decentered or tilted block (tilt the mirror itself)	偏心・チルトをつけたブロックにミラーは入れられません（ミラーのチルトはミラーで）
 jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path	往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応
-only standard, even and odd asphere, toroidal, Fresnel and Binary 2 surfaces can be in a surface list on the return path	復路の面の並びに置けるのは標準面・偶数次と奇数次の非球面・トロイダル面・Fresnel・Binary 2 の面だけです
+only standard, even and odd asphere, toroidal, Fresnel, Binary 2 and paraxial surfaces can be in a surface list on the return path	復路の面の並びに置けるのは標準面・偶数次と奇数次の非球面・トロイダル面・Fresnel・Binary 2・理想レンズの面だけです
 decentered or tilted groups are not supported on the return path (put it on the lenses in the group)	往路を戻る範囲の、偏心・チルトをつけた群は未対応（群の中のレンズに付けてください）
 groups that are OFF are not supported on the return path	往路を戻る範囲の、OFF の群は未対応
 a mirror on the return path	往路を戻る範囲にミラーがあります

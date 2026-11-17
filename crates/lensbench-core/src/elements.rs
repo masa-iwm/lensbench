@@ -187,8 +187,8 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
 }
 
 /// 面を前後反転できるか（曲率・非球面の係数の符号を変えるだけで済む形: 標準面・偶数次・奇数次非球面・トロイダル面・
-/// Fresnel・Binary 2（位相は ρ だけの関数で、薄い位相の板の遅れは光の向きによらないので係数はそのまま）、GRIN でない
-/// 媒質）。Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズなどは、反転に形ごとの
+/// Fresnel・Binary 2（位相は ρ だけの関数で、薄い位相の板の遅れは光の向きによらないので係数はそのまま）、GRIN でない媒質）。理想レンズは前後の媒質で
+/// 屈折力が変わるので、玉の中にあれば反転しない（空気中の面の並びの復路では使える）。Zernike・Grid Sag・Irregular・Tilted・Cylinder Fresnel などは、反転に形ごとの
 /// 変換が要るので反転しない
 pub fn reversible(s: &Surface) -> bool {
     use crate::surface::SurfType as T;
@@ -371,7 +371,8 @@ mod tests {
         assert_eq!(a.paraxial().efl, s.paraxial().efl);
     }
 
-    /// Binary 2 の面のある玉は反転でき、焦点距離が変わらない（位相の係数はそのまま）。Zernike の面のある玉は反転しない
+    /// Binary 2 の面のある玉は反転でき、焦点距離が変わらない（位相の係数はそのまま）。Zernike・理想レンズの面のある玉は
+    /// 反転しない
     #[test]
     fn binary2_lens_reverses_and_zernike_does_not() {
         let s = two_lenses();
@@ -393,6 +394,11 @@ mod tests {
         assert!((efl(&b) - efl(&e[0])).abs() > 1e-3 * efl(&e[0]).abs());
         assert!((efl(&r) - efl(&b)).abs() < 1e-9 * efl(&b).abs());
         assert_eq!(r.surfaces[0].bin2, b.surfaces[1].bin2);
+        // 理想レンズの面のある玉は反転しない（前後の媒質で屈折力が変わる）
+        let mut q = e[0].clone();
+        q.surfaces[0].typ = crate::surface::SurfType::Paraxial;
+        q.surfaces[0].focal = 80.0;
+        assert!(reverse(&q).is_err());
         let mut z = e[0].clone();
         z.surfaces[0].typ = crate::surface::SurfType::ZernikeStd;
         assert!(reverse(&z).is_err());

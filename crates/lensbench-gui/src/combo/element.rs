@@ -36,12 +36,20 @@ impl Pick {
         }
     }
 
-    /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）
+    /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）。自作の玉は、係数の符号を変えるだけで
+    /// 反転できる面だけのとき（Zernike・Grid Sag・GRIN などの面があれば反転しない）。反転したものは戻せる
     pub fn can_reverse(&self) -> bool {
-        matches!(
+        let kind = matches!(
             self.kind,
             ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx
-        ) && !(self.kind == ElemKind::Catalog && !self.path.is_empty())
+        ) && !(self.kind == ElemKind::Catalog && !self.path.is_empty());
+        let faces = self.kind != ElemKind::Lens
+            || self.surfs.iter().all(|r| {
+                r.special().is_none()
+                    || serde_json::from_value::<lensbench_project::SurfSpec>(r.json())
+                        .is_ok_and(|q| lensbench_project::spec_reversible(&q))
+            });
+        kind && (faces || self.reversed)
     }
 }
 
@@ -147,5 +155,53 @@ pub(super) fn element_settings(
         .unwrap_or_default();
     if detail == Detail::Full && !g.is_empty() {
         ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, Some(&g)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 自作の玉は、Zernike など符号だけで反転できない面があれば反転を出さない（反転したものは戻せる）。
+    /// Binary 2 は反転できる
+    #[test]
+    fn lens_with_special_faces_reverses_only_when_it_can() {
+        let mut p = Pick::new(ElemKind::Lens);
+        p.surfs = vec![
+            SurfRow {
+                radius: 50.0,
+                t: 4.0,
+                glass: "N-BK7".into(),
+                ..Default::default()
+            },
+            SurfRow {
+                radius: -50.0,
+                ..Default::default()
+            },
+        ];
+        assert!(p.can_reverse());
+        let row = |shape: Value, action: Option<Value>| {
+            let mut r = json!({ "shape": shape });
+            if let Some(a) = action {
+                r["action"] = a;
+            }
+            r
+        };
+        p.surfs[1].more.insert(
+            "row".into(),
+            row(json!({ "zernike_standard": { "c": -0.02 } }), None),
+        );
+        assert!(!p.can_reverse());
+        p.reversed = true;
+        assert!(p.can_reverse());
+        p.reversed = false;
+        p.surfs[1].more.insert(
+            "row".into(),
+            row(
+                json!({ "even_asphere": { "c": -0.02 } }),
+                Some(json!({ "binary2": { "phase": { "order": 1.0, "norm": 10.0, "coef": [-20.0] } } })),
+            ),
+        );
+        assert!(p.can_reverse());
     }
 }
