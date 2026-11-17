@@ -161,6 +161,14 @@ fn nest_kind_fields(picks: &mut Value) {
                     .collect();
             o.insert("mirror".into(), Value::Object(m));
         }
+        // 自作の玉・平板の曲率半径・中心厚・硝材
+        if matches!(kind.as_str(), "lens" | "plate") && !o.contains_key("custom") {
+            let c: serde_json::Map<String, Value> = ["r1", "r2", "t", "glass", "semi_auto"]
+                .iter()
+                .filter_map(|k| o.remove(*k).map(|v| (k.to_string(), v)))
+                .collect();
+            o.insert("custom".into(), Value::Object(c));
+        }
         // .zmx の玉・取り込みの番号・面の範囲・群
         if matches!(kind.as_str(), "zmx" | "zmx_range") && !o.contains_key("zmx") {
             let z: serde_json::Map<String, Value> = ["lens", "config", "range", "zgroups"]
@@ -340,8 +348,8 @@ mod tests {
         assert_eq!(converted(&v).unwrap(), None);
     }
 
-    /// 前の版の BS・開口・鏡・.zmx の欄は要素に平たく書いてあった（form・ratio・ap・r1・conic・range など）。
-    /// 今の bs・ap・mirror・zmx へ移して読む
+    /// 前の版の BS・開口・鏡・.zmx・自作の玉の欄は要素に平たく書いてあった（form・ratio・ap・r1・conic・range など）。
+    /// 今の bs・ap・mirror・zmx・custom へ移して読む
     #[test]
     fn converts_flat_kind_fields() {
         let mut c = Combo::default();
@@ -361,7 +369,10 @@ mod tests {
         z.path = "a.zmx".into();
         z.zmx_mut().range = [2, 5];
         z.zmx_mut().config = 2;
-        c.picks = vec![b, combo::Pick::new(combo::ElemKind::Plate), a, m, z];
+        let mut l = combo::Pick::new(combo::ElemKind::Lens);
+        l.custom_mut().r2 = -80.0;
+        l.custom_mut().glass = "F2".into();
+        c.picks = vec![b, combo::Pick::new(combo::ElemKind::Plate), a, m, z, l];
         let mut cv = serde_json::to_value(&c).unwrap();
         for p in cv["picks"].as_array_mut().unwrap() {
             let o = p.as_object_mut().unwrap();
@@ -385,7 +396,14 @@ mod tests {
                 ("range", "range"),
                 ("zgroups", "zgroups"),
             ];
-            for (key, names) in [("mirror", mirror), ("zmx", zmx)] {
+            let custom: &[(&str, &str)] = &[
+                ("r1", "r1"),
+                ("r2", "r2"),
+                ("t", "t"),
+                ("glass", "glass"),
+                ("semi_auto", "semi_auto"),
+            ];
+            for (key, names) in [("mirror", mirror), ("zmx", zmx), ("custom", custom)] {
                 if let Some(m) = o.remove(key) {
                     for (n, k) in names {
                         o.insert(k.to_string(), m[*n].clone());

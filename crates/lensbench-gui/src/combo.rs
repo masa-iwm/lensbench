@@ -20,6 +20,7 @@ use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 mod ap_shape;
 mod bs;
+mod custom_lens;
 mod detector;
 mod element;
 mod figure;
@@ -31,6 +32,7 @@ mod write_face;
 mod zgroup;
 pub use ap_shape::{ApData, ApShape};
 pub use bs::{Bs, BsForm, BsSplit};
+pub use custom_lens::CustomLens;
 pub use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
@@ -295,16 +297,11 @@ pub struct Pick {
     pub reversed: bool,
     /// この要素の後の空気 [mm]（最後の要素では像面まで）
     pub air: f64,
-    /// 自作の玉の曲率半径 [mm]（0 は平面）
-    pub r1: f64,
-    pub r2: f64,
-    /// 自作の玉・平板の中心厚 [mm]
-    pub t: f64,
-    pub glass: String,
+    /// 自作の玉（2 面の単玉）・平板の曲率半径・中心厚・硝材（その種類だけが持つ。[`CustomLens`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<Box<CustomLens>>,
     /// 半径 [mm]
     pub semi: f64,
-    /// 自作の玉・平板の半径を光線から求める
-    pub semi_auto: bool,
     /// 偏心 x・y [mm]
     pub decenter: [f64; 2],
     /// 傾き x・y・z [deg]（鏡は x・y）
@@ -384,12 +381,8 @@ impl Default for Pick {
             part: String::new(),
             reversed: false,
             air: 5.0,
-            r1: 50.0,
-            r2: -50.0,
-            t: 4.0,
-            glass: "N-BK7".into(),
+            custom: None,
             semi: 12.7,
-            semi_auto: false,
             decenter: [0.0; 2],
             tilt: [0.0; 3],
             arm_r: false,
@@ -508,10 +501,15 @@ impl Pick {
             ..Pick::default()
         };
         match kind {
+            ElemKind::Lens => p.custom = Some(Box::default()),
             ElemKind::Plate => {
                 // 平板の面は平ら（ブロックにも半径を書かない。開き直しても同じ欄になるように）
-                (p.r1, p.r2) = (0.0, 0.0);
-                p.t = 3.0;
+                p.custom = Some(Box::new(CustomLens {
+                    r1: 0.0,
+                    r2: 0.0,
+                    t: 3.0,
+                    ..CustomLens::default()
+                }));
             }
             ElemKind::Mirror => {
                 p.mirror = Some(Box::default());
@@ -704,17 +702,18 @@ impl Pick {
                 b
             }
             ElemKind::Lens | ElemKind::Plate => {
+                let c = self.custom();
                 let (r1, r2) = if self.kind == ElemKind::Plate {
                     (0.0, 0.0)
                 } else {
-                    (self.r1, self.r2)
+                    (c.r1, c.r2)
                 };
                 json!({
                     "type": "lens", "id": id,
                     "source": { "surfaces": [
-                        { "radius": Self::radius(r1), "t": self.t, "glass": self.glass,
-                          "semi": semi_json(self.semi, self.semi_auto) },
-                        { "radius": Self::radius(r2), "semi": semi_json(self.semi, self.semi_auto) },
+                        { "radius": Self::radius(r1), "t": c.t, "glass": c.glass,
+                          "semi": semi_json(self.semi, c.semi_auto) },
+                        { "radius": Self::radius(r2), "semi": semi_json(self.semi, c.semi_auto) },
                     ] },
                 })
             }
@@ -788,17 +787,17 @@ impl Pick {
         }
         vec![
             SurfRow {
-                radius: self.r1,
-                t: self.t,
-                glass: self.glass.clone(),
+                radius: self.custom().r1,
+                t: self.custom().t,
+                glass: self.custom().glass.clone(),
                 semi: self.semi,
-                semi_auto: self.semi_auto,
+                semi_auto: self.custom().semi_auto,
                 ..Default::default()
             },
             SurfRow {
-                radius: self.r2,
+                radius: self.custom().r2,
                 semi: self.semi,
-                semi_auto: self.semi_auto,
+                semi_auto: self.custom().semi_auto,
                 ..Default::default()
             },
         ]
@@ -2552,12 +2551,16 @@ fn kind_fields(
             );
         }
         ElemKind::Lens => {
-            num(ui, "R1", &mut p.r1, " mm");
-            num(ui, "R2", &mut p.r2, " mm");
-            num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0);
+            num(ui, "R1", &mut p.custom_mut().r1, " mm");
+            num(ui, "R2", &mut p.custom_mut().r2, " mm");
+            num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
-            ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
-            semi_edit(ui, &mut p.semi, &mut p.semi_auto);
+            ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
+            semi_edit(
+                ui,
+                &mut p.semi,
+                &mut p.custom.get_or_insert_with(Box::default).semi_auto,
+            );
             if ui
                 .button(tr("+ Surface"))
                 .on_hover_text(tr(
@@ -2569,7 +2572,7 @@ fn kind_fields(
                 rows[1].t = 2.0;
                 rows[1].glass = "N-SF5".into();
                 rows.push(SurfRow {
-                    radius: -2.0 * p.r2,
+                    radius: -2.0 * p.custom().r2,
                     semi: p.semi,
                     ..Default::default()
                 });
@@ -2593,10 +2596,14 @@ fn kind_fields(
                 .on_hover_text(tr("Multi-configuration number of the .zmx"));
         }
         ElemKind::Plate => {
-            num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0);
+            num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
-            ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
-            semi_edit(ui, &mut p.semi, &mut p.semi_auto);
+            ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
+            semi_edit(
+                ui,
+                &mut p.semi,
+                &mut p.custom.get_or_insert_with(Box::default).semi_auto,
+            );
         }
         ElemKind::Mirror => {
             num(ui, "R", &mut p.mirror_mut().radius, " mm");

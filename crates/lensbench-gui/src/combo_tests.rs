@@ -631,9 +631,9 @@ fn multi_surface_blocks_build() {
         ..Default::default()
     };
     let mut l = Pick::new(ElemKind::Lens);
-    l.r1 = 40.0;
-    l.r2 = -30.0;
-    l.t = 5.0;
+    l.custom_mut().r1 = 40.0;
+    l.custom_mut().r2 = -30.0;
+    l.custom_mut().t = 5.0;
     l.surfs = l.lens_rows();
     l.surfs[1].t = 2.0;
     l.surfs[1].glass = "F2".into();

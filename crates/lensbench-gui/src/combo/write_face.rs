@@ -165,8 +165,11 @@ impl Pick {
                 }
             }
             ElemKind::Plate => match (rel, key) {
-                (0, "t") => v.as_f64().map(|t| self.t = t).is_some(),
-                (0, "material") => v.as_str().map(|g| self.glass = g.trim().into()).is_some(),
+                (0, "t") => v.as_f64().map(|t| self.custom_mut().t = t).is_some(),
+                (0, "material") => v
+                    .as_str()
+                    .map(|g| self.custom_mut().glass = g.trim().into())
+                    .is_some(),
                 _ => false,
             },
             ElemKind::Mirror => match (rel, key) {
@@ -231,12 +234,12 @@ impl Pick {
             && rows[0].semi == rows[1].semi
             && rows[0].semi_auto == rows[1].semi_auto;
         if simple {
-            self.r1 = rows[0].radius;
-            self.r2 = rows[1].radius;
-            self.t = rows[0].t;
-            self.glass = rows[0].glass.clone();
+            self.custom_mut().r1 = rows[0].radius;
+            self.custom_mut().r2 = rows[1].radius;
+            self.custom_mut().t = rows[0].t;
+            self.custom_mut().glass = rows[0].glass.clone();
             self.semi = rows[0].semi;
-            self.semi_auto = rows[0].semi_auto;
+            self.custom_mut().semi_auto = rows[0].semi_auto;
         } else {
             self.surfs = rows;
         }
@@ -437,10 +440,10 @@ mod tests {
 
     fn lens() -> Pick {
         let mut p = Pick::new(ElemKind::Lens);
-        p.r1 = 50.0;
-        p.r2 = -50.0;
-        p.t = 5.0;
-        p.glass = "N-BK7".into();
+        p.custom_mut().r1 = 50.0;
+        p.custom_mut().r2 = -50.0;
+        p.custom_mut().t = 5.0;
+        p.custom_mut().glass = "N-BK7".into();
         p.semi = 10.0;
         p
     }
@@ -453,17 +456,20 @@ mod tests {
         p.write_face(0, "r", json!(60.0));
         p.write_face(0, "t", json!(4.0));
         p.write_face(0, "material", json!("F2"));
-        assert_eq!((p.r1, p.t, p.glass.as_str()), (60.0, 4.0, "F2"));
+        assert_eq!(
+            (p.custom().r1, p.custom().t, p.custom().glass.as_str()),
+            (60.0, 4.0, "F2")
+        );
         assert!(p.edits.is_empty() && p.surfs.is_empty());
         // 平面
         p.write_face(1, "r", json!({ "$f": "inf" }));
-        assert_eq!(p.r2, 0.0);
+        assert_eq!(p.custom().r2, 0.0);
         p.write_face(1, "k", json!(-1.0));
         assert_eq!(p.surfs.len(), 2);
         assert_eq!((p.surfs[0].radius, p.surfs[1].conic), (60.0, -1.0));
         // 玉の中を空気にするのは上書き
         p.write_face(0, "material", json!(""));
-        assert_eq!((p.glass.as_str(), p.edits.len()), ("F2", 1));
+        assert_eq!((p.custom().glass.as_str(), p.edits.len()), ("F2", 1));
         p.edits.clear();
         // 最後の面の後（要素の後の空気）は上書き。欄の無い SurfSpec の値（膜）は面の more に
         p.write_face(1, "t", json!(9.0));
@@ -482,11 +488,11 @@ mod tests {
         let mut p = lens();
         p.reversed = true;
         p.write_face(0, "r", json!(40.0));
-        assert_eq!(p.r2, -40.0);
+        assert_eq!(p.custom().r2, -40.0);
         p.write_face(0, "t", json!(6.0));
-        assert_eq!(p.t, 6.0);
+        assert_eq!(p.custom().t, 6.0);
         p.write_face(1, "r", json!(-30.0));
-        assert_eq!(p.r1, 30.0);
+        assert_eq!(p.custom().r1, 30.0);
         assert!(p.edits.is_empty());
     }
 
@@ -544,7 +550,7 @@ mod tests {
         let mut lr = lens();
         lr.reversed = true;
         let mut plate = Pick::new(ElemKind::Plate);
-        plate.glass = "N-BK7".into();
+        plate.custom_mut().glass = "N-BK7".into();
         let mut surfs = Pick::new(ElemKind::Surfaces);
         surfs.surfs = vec![
             SurfRow {

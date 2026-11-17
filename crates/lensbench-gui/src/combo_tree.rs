@@ -558,9 +558,9 @@ impl Combo {
         bs.ports[0].picks = vec![
             {
                 let mut l = Pick::new(ElemKind::Lens);
-                l.r1 = 60.0;
-                l.r2 = -60.0;
-                l.t = 5.0;
+                l.custom_mut().r1 = 60.0;
+                l.custom_mut().r2 = -60.0;
+                l.custom_mut().t = 5.0;
                 l.semi = 10.0;
                 l.air = 40.0;
                 l

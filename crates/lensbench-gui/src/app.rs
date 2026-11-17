@@ -3302,8 +3302,8 @@ mod open_insert_tests {
         z.air = 0.0;
         // 差し込む要素: 厚さ 2 mm の平板
         let mut p = Pick::new(ElemKind::Plate);
-        p.t = 2.0;
-        p.glass = "N-BK7".into();
+        p.custom_mut().t = 2.0;
+        p.custom_mut().glass = "N-BK7".into();
         p.semi = 5.0;
         // 開いた系の玉（lens1 1–2、lens2 3–4、lens3 6–7）を群として残す
         let blk = |name: &str, surfs: Vec<usize>| lens_data::Block {

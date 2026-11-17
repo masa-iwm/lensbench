@@ -600,12 +600,12 @@ fn lens(ss: &[Value]) -> R<Pick> {
         && ss[0]["glass"].is_string()
         && ss.iter().all(|x| row(x).more.is_empty());
     if simple {
-        p.r1 = f(&ss[0]["radius"], 0.0);
-        p.r2 = f(&ss[1]["radius"], 0.0);
-        p.t = f(&ss[0]["t"], 0.0);
-        p.glass = s(&ss[0]["glass"]);
-        (p.semi, p.semi_auto) = semi(&ss[0]["semi"]);
-        if p.r1 == 0.0 && p.r2 == 0.0 {
+        p.custom_mut().r1 = f(&ss[0]["radius"], 0.0);
+        p.custom_mut().r2 = f(&ss[1]["radius"], 0.0);
+        p.custom_mut().t = f(&ss[0]["t"], 0.0);
+        p.custom_mut().glass = s(&ss[0]["glass"]);
+        (p.semi, p.custom_mut().semi_auto) = semi(&ss[0]["semi"]);
+        if p.custom().r1 == 0.0 && p.custom().r2 == 0.0 {
             p.kind = ElemKind::Plate;
         }
     } else {

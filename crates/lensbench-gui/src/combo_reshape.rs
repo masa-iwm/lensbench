@@ -227,6 +227,10 @@ impl Combo {
                     Pick::new(part.0)
                 };
                 q.kind = part.0;
+                // 面の並びから分けた玉・平板にも、自作の玉の欄を持たせる（面を減らして 2 面の単玉になったときに使う）
+                if q.custom.is_none() {
+                    q.custom = Pick::new(part.0).custom;
+                }
                 // 行は光の進む順なので、反転は持たない（面の並びは反転を無視するが、古い保存では残っていることがある）
                 q.reversed = false;
                 q.surfs = rows[part.1.clone()].to_vec();
@@ -396,6 +400,13 @@ mod tests {
         let z = |r: &[(f64, f64, String)]| r[1..r.len() - 1].iter().map(|x| x.1).sum::<f64>();
         assert_eq!(z(&after), z(&before));
         assert!(after.iter().any(|x| x.2 == "N-BK7"));
+        // 分けた玉も自作の玉の欄を持つ。面を消して 1 面にしても、厚さ 0・硝材なしの玉にならない
+        assert!(c.picks[0].custom.is_some());
+        let mut one = c.picks[0].clone();
+        one.surfs.truncate(1);
+        let b = one.block("L1");
+        assert_eq!(b["source"]["surfaces"][0]["glass"], "N-BK7");
+        assert!(b["source"]["surfaces"][0]["t"].as_f64() > Some(0.0));
         // 外すと 2 面の面の並びに
         c.glass_out_of_lens(0, 0).unwrap();
         let kinds: Vec<_> = c.picks.iter().map(|p| p.kind).collect();

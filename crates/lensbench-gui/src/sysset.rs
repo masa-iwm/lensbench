@@ -1054,7 +1054,7 @@ mod tests {
         let mut a = Pick::new(ElemKind::Lens);
         a.air = 10.0;
         let mut b = Pick::new(ElemKind::Lens);
-        b.glass = "S-FSL5".into();
+        b.custom_mut().glass = "S-FSL5".into();
         b.stop_front = true;
         b.air = 40.0;
         c.picks = vec![a, b];
