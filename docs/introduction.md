@@ -3,7 +3,7 @@
 カタログレンズを組み合わせた光学系の評価・最適化のための、順次光線追跡ツール（開発中）。
 A sequential ray-tracing tool for evaluating and optimizing systems built from stock lenses (work in progress).
 
-**ブラウザで試す: [Web 版](app/)**（GUI をそのままブラウザで動かす。見本の系だけ同梱）
+**ブラウザで試す: [Web 版](app/)**（GUI をそのままブラウザで動かす。見本のシステムだけ同梱）
 
 - Windows の GUI（インストール不要の単一 exe）、Linux・Windows の CLI、Python、ブラウザの Web 版
 - .zmx（面のまま、または玉ごと）と AGF のガラスカタログを読み、カタログのレンズをブロックで組む
@@ -17,7 +17,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | ディレクトリ | 中身 |
 |---|---|
 | `crates/lensbench-core` | 光線追跡・解析のライブラリ |
-| `crates/lensbench-formats` | core の上のファイルの形式（系の .zmx への書き出し）。.zmx の読込は core |
+| `crates/lensbench-formats` | core の上のファイルの形式（システムの .zmx への書き出し）。.zmx の読込は core |
 | `crates/lensbench-step` | STEP（ISO 10303-21）の読み取り。依存なし |
 | `crates/lensbench-catalog` | カタログの検索・絞り込み・品の項目の補完、STEP からの寸法の測定（project の上） |
 | `crates/lensbench-project` | ブロックで組むプロジェクトファイルと面への展開 |
@@ -26,9 +26,9 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `crates/lensbench-design` | 評価関数の項・モンテカルロ公差・差し替え探索（設定と結果の JSON、公差の計算）、膜のモデルの当てはめと設計 |
 | `crates/lensbench-export` | 書き出し（レイアウトの 2D・3D・STEP、追跡結果の CSV・JSON・npz） |
 | `crates/lensbench-cad` | メーカーの品の CAD データ（公式の STEP）の取得・置き場・形の測定、膜のモデルの取得 |
-| `crates/lensbench-analysis` | 同梱のプラグイン: 系を追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
+| `crates/lensbench-analysis` | 同梱のプラグイン: システムを追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
-| `crates/lensbench-engine` | 実行の層: 解析の登録簿・系の読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
+| `crates/lensbench-engine` | 実行の層: 解析の登録簿・システムの読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
 | `crates/lensbench-cli` | コマンドライン（`lensbench`）。引数の解釈と serve の要求を運ぶ道（TCP・パイプ） |
 | `crates/lensbench-gui` | GUI（`lensbench-gui`、eframe・egui）。計算は serve と同じ API をプロセス内で呼ぶ |
 | `crates/lensbench-web` | Web 版（GUI を wasm にしたもの） |

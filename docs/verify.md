@@ -28,7 +28,7 @@ lensbench verify --ci --json refs/        # CI 用（ci: false を飛ばす）�
 - `threads` を 2 つ以上書くと、各スレッド数の出力（全部の名前）がビット同じかも確かめる
 - 基準を作った側の版と作り方を `source` に残す（古い基準と今のコードの差を、置き換えの差と取り違えないため）
 - 入力・基準は npz（float64・complex128・bool）か JSON に直接（数・入れ子の並び・真偽、`{"re", "im"}` は complex、null は NaN）。
-  パスは記述のファイルからの相対。`runs` の `config` は上の `config` に重ねる。系は .zmx か系ファイル（.json）
+  パスは記述のファイルからの相対。`runs` の `config` は上の `config` に重ねる。システムは .zmx かシステムファイル（.json）
 - 登録のプラグイン（同梱・非公開版の exe が足した分）で回す。Python なら `lb.verify(path)`（`register_plugin` で足した分も）、
   比べ方だけなら `lb.verify_compare(actual, expected, checks)`。Rust の試験からは `lensbench_verify::assert_dir`
 - 例題は `tests/verify`（OpticStudio の Zernike 係数。`tests/verify/make_samples.py` で作る）

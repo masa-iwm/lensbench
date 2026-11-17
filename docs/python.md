@@ -67,7 +67,7 @@ CLI では単数形の旗を繰り返します。
 | --- | --- | --- | --- | --- |
 | `wave` | 波長の番号 1 つ（1 始まり） | `wave=` | `--wave` | `wave` |
 | `waves` | 波長の番号の並び | `waves=` | — | `wave`（並び） |
-| `wavelengths` | 波長の値 [µm] の並び（系の波長を置き換える） | `load(wavelengths=)` | — | — |
+| `wavelengths` | 波長の値 [µm] の並び（システムの波長を置き換える） | `load(wavelengths=)` | — | — |
 | `beam_path` | プロジェクトのビームスプリッターの経路（T・R） | `beam_path=` | `--beam-path` | `beam_path` |
 | `beam_paths` | 重ねる経路の並び（`all` で全部） | `System.beam_paths()` は一覧 | `--beam-paths` | `beam_paths`（layout） |
 | `glass_dirs` | ガラスカタログを探すフォルダ | `glass_dirs=` | `--glass-dir`（繰り返す） | `glass_dirs` |
@@ -83,7 +83,7 @@ CLI では単数形の旗を繰り返します。
 
 - **局所座標**（既定）: 各面の頂点を原点とし、その面の傾き・偏心を当てた後の座標。`trace` の `x, y, z, l, m, n` は
   最後の面（`last`、省くと像面）の局所座標です。
-- **大域座標**: `globals=True` で `gx, gy, gz, gl, gm, gn` も返します。基準の面は系の大域座標の基準面（OpticStudio の
+- **大域座標**: `globals=True` で `gx, gy, gz, gl, gm, gn` も返します。基準の面はシステムの大域座標の基準面（OpticStudio の
   Global Coordinate Reference Surface）。書き出し（STEP・glTF）も大域座標です。
 - 物体: 有限物体なら物体面の局所座標の物点 (x, y) [mm]、無限遠なら方向 (l, m, n)（`object=`、`object_of(field)`）。
 
@@ -92,18 +92,18 @@ CLI では単数形の旗を繰り返します。
 | 値 | 意味 |
 | --- | --- |
 | `"normalized"`（既定） | 正規化瞳座標（OpticStudio と同じ）。入射瞳が物体より前の有限物体系では px = 1 が絞りの −x 側を通る |
-| `"signed"` | 系によって符号を揃えた正規化瞳座標（px = 1 が常に絞りの同じ側。`System.pupil_reversed` が True の系で normalized と逆） |
+| `"signed"` | システムによって符号を揃えた正規化瞳座標（px = 1 が常に絞りの同じ側。`System.pupil_reversed` が True のシステムで normalized と逆） |
 | `"stop"` | 絞り面の局所座標 [mm]。その点を通る実光線を光線ごとに解く（エイミングによらない） |
 
 ## エラー
 
-- 計算の誤りは `lensbench.Error`（`ValueError` の子）です。種類ごとに `InvalidError`（値・構成が不正）・`UnsupportedError`（対応していない機能）・
-  `ReadError`（ファイルの読込）・`CancelledError`（中断した）に分かれます（どれも `lensbench.Error` の子）。範囲外の番号は `IndexError`、型の誤りは `TypeError` です。
-  `System.load` はファイルが無い・読めないとき `ReadError`、引数の組み合わせや中身の誤りは `InvalidError` です。
+- 計算のエラーは `lensbench.Error`（`ValueError` の子）です。種類ごとに `InvalidError`（値・構成が不正）・`UnsupportedError`（対応していない機能）・
+  `ReadError`（ファイルの読込）・`CancelledError`（中断した）に分かれます（どれも `lensbench.Error` の子）。範囲外の番号は `IndexError`、型のエラーは `TypeError` です。
+  `System.load` はファイルが無い・読めないとき `ReadError`、引数の組み合わせや中身のエラーは `InvalidError` です。
   例外の `code` は機械で見分ける符号です（例 `e.code == "glass.not_found"`。文は表示の言語で変わるので、判定には `code` を使う）。
   今ある符号: `file.not_found`（ファイルが無い）・`file.is_folder`（フォルダを渡した）・`glass.not_found`（ガラス・ガラスカタログが無い）・
 `project.state_not_found`（無い状態の名前）・`project.block_not_found`（無いブロックの id）・`catalog.lens_not_found`（カタログに無い品）・
-`argument.invalid`（構成・状態・経路の指定の誤り）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）。符号の無い誤りの `code` は種類と同じ。系の保存や編集などの一部の誤りは、まだ種類のない `lensbench.Error` になります（順に種類を付けていきます）。
+`argument.invalid`（構成・状態・経路の指定のエラー）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）。符号の無いエラーの `code` は種類と同じ。システムの保存や編集などの一部のエラーは、まだ種類のない `lensbench.Error` になります（順に種類を付けていきます）。
 - 文は「種類: 内容」の形です（`不正:`・`未対応:`・`読込:`）。**面に関わるエラーには面の名札が付きます**:
   `面 番号(種類, 材料, 膜 名前, 「コメント」)`（空の項は省く）。例:
 
@@ -138,7 +138,7 @@ r = s.analyze("mtf", field=1, max_freq=100)  # 結果は CLI の --json と同�
 
 ## 例題
 
-[`examples/python/`](https://github.com/masa-iwm/lensbench/tree/main/examples/python) にあります。リポジトリの中の公開のテスト用の系（`tests/refs/`）とガラス（`tests/glass/`）を使い、
+[`examples/python/`](https://github.com/masa-iwm/lensbench/tree/main/examples/python) にあります。リポジトリの中の公開のテスト用のシステム（`tests/refs/`）とガラス（`tests/glass/`）を使い、
 どれも数秒で終わります。CI でも毎回実行し、mypy で型も確かめています。
 
 | ファイル | 内容 |
@@ -194,7 +194,7 @@ exe に Python は入っていません。外の Python を見つけてスクリ
   `--out` があれば `<out>/run.log`）にも経過時間と出どころ（out・err・run）つきで書きます。`lb.progress(i, n, "文")` は
   `lensbench:progress i/n 文` の 1 行を標準エラーに出します（ログに残り、将来の GUI が進捗の表示に使います）。
 - **終了コード**: スクリプトの終了コードをそのまま返します（例外で終われば 1）。Python を起動できなければ 127、
-  設定・スクリプトのパスの誤りは 2。CI やスケジュール実行で成否を判断できます。
+  設定・スクリプトのパスのエラーは 2。CI やスケジュール実行で成否を判断できます。
 - GUI からも同じものを呼べるよう、本体は `lensbench_cli::run::run_script`（行ごとの受け取り口つき）です。
 
 ## 型スタブの更新

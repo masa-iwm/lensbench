@@ -9,7 +9,7 @@ A sequential ray-tracing tool for evaluating and optimizing systems built from s
 - .zmx（面のまま、または玉ごと）と AGF のガラスカタログを読み、カタログのレンズをブロックで組む
 - スポット・波面・Zernike・MTF・PSF・簡易 POP・ゴースト・干渉縞・膜と偏光、最適化・モンテカルロ公差・ズーム・カタログレンズの差し替え探索
 - 計算結果は OpticStudio の出力と数値で照合している（照合に使った基準データは `tests/` に置く）
-- 言語: 誤り・CLI の文言は英語が元で、日本語の訳を出来るだけ付ける（`LENSBENCH_LANG=ja`・`en`、無ければ OS の言語）。GUI は日本語と英語を選べる。ドキュメントは日本語。誤りの文の英語への移しかえは途中（まだ日本語だけの文がある）
+- 言語: エラー・CLI の文言は英語が元で、日本語の訳を出来るだけ付ける（`LENSBENCH_LANG=ja`・`en`、無ければ OS の言語）。GUI は日本語と英語を選べる。ドキュメントは日本語。エラーの文の英語への移しかえは途中（まだ日本語だけの文がある）
 
 Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansys とは関係がなく、その製品の互換品ではありません。
 

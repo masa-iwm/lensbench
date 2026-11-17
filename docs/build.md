@@ -7,7 +7,7 @@ python3 scripts/check_public.py --history
 ```
 
 速さ: `cargo bench -p lensbench-core --bench trace`（criterion。tests/refs の A0・C0・A2・C1 を 2 万本、1 スレッドと全コア）。
-ほかの実装と同じ系・光線数で比べるときは `cargo run --release --example bench -- system.zmx --rays 200000 --threads 4 --json`
+ほかの実装と同じシステム・光線数で比べるときは `cargo run --release --example bench -- system.zmx --rays 200000 --threads 4 --json`
 （瞳の点列は `examples/bench.rs` の xorshift64 で再現できる）。
 偏光なしの追跡と実光線エイミングは 16 本ずつまとめて追う（SIMD、x86_64 は AVX を実行時に選ぶ）。
 結果は 1 本ずつの追跡とビット単位で同じ（`tests/batch.rs`）。比較用に `lensbench_core::par::with_batch(false, || ..)` の中では切れる（計算の文脈。作業のスレッドにも引き継ぐ）。
@@ -17,7 +17,7 @@ python3 scripts/check_public.py --history
 
 ### 試験の環境変数（XCT-30）
 
-テストのふるまいを変える環境変数（`LB_*` など）はこれだけ（ほかに `LENSBENCH_LANG` は誤りの文の言語、`.cargo/config.toml` で `en`）。
+テストのふるまいを変える環境変数（`LB_*` など）はこれだけ（ほかに `LENSBENCH_LANG` はエラーの文の言語、`.cargo/config.toml` で `en`）。
 
 | 変数 | 効く所 | 意味 |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ CLI・serve・Python・GUI・プラグインで共通の約束。解析ごとの
 | 面 | 0（物体面が 0。OpticStudio と同じ） | `3.t`（面 3 の厚さ）、`surface: 5` |
 | 玉・構成（多重構成） | 1 | `lens: 2`、optimize の `vars[].configs: [1, 3]` |
 
-範囲の外の番号は「視野 9 はありません（1〜3）」の形の誤り（`data.kind = "invalid"`、Python は `lensbench.InvalidError`）。
+範囲の外の番号は「視野 9 はありません（1〜3）」の形のエラー（`data.kind = "invalid"`、Python は `lensbench.InvalidError`）。
 Rust の `lensbench_core` の中（`FieldSel::Index`・`Waves::One`・`System::fields` の添え字）だけは 0 始まり。
 利用者の波長の番号は `lensbench_core::waves::index`・`index_opt`（1 始まり → 0 始まり）を通し、どの口でも
 「波長 9 はありません（1〜3）」の同じ文にする。
@@ -35,6 +35,6 @@ Rust の `lensbench_core` の中（`FieldSel::Index`・`Waves::One`・`System::f
 | 周波数 | cycles/mm | `unit` は `"cycles/mm"` |
 | 角度（視野・傾き） | 度 | 解析の引数の説明に [deg] |
 
-アフォーカル像空間（`afocal`）では、像の位置は角度の単位（系の設定、既定は mrad）、周波数は cycles/角度の単位で、`unit` にその名前が入る。
+アフォーカル像空間（`afocal`）では、像の位置は角度の単位（システムの設定、既定は mrad）、周波数は cycles/角度の単位で、`unit` にその名前が入る。
 
 前の版はスポット・PSF の `unit` を `"lens"`（意味は mm）と書いていた（[壊れる変更](changes.md)）。
