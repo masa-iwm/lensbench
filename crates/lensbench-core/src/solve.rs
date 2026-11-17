@@ -12,7 +12,7 @@
 
 use crate::error::{Error, Result};
 use crate::invalid;
-use crate::system::{ObjSpec, RecSurf, Trace};
+use crate::system::{FieldCond, ObjSpec, Trace};
 use crate::System;
 
 /// 未知数
@@ -33,6 +33,17 @@ pub enum Residual {
     DirSum { s1: usize, s2: usize },
     /// 面 s1 と s2 での方向余弦 (l, m) の差（s1 − s2）
     DirDiff { s1: usize, s2: usize },
+}
+
+impl Residual {
+    /// 残差のもとになる光線の量（位置の目標は引く前）
+    fn quantity(self) -> FieldCond {
+        match self {
+            Residual::Position { surf, .. } => FieldCond::Position { surf },
+            Residual::DirSum { s1, s2 } => FieldCond::DirSum { s1, s2 },
+            Residual::DirDiff { s1, s2 } => FieldCond::DirDiff { s1, s2 },
+        }
+    }
 }
 
 /// 解く問題
@@ -79,11 +90,9 @@ pub struct RaySolution {
 impl System {
     /// 未知数 2 つ・残差 2 つの実光線を Newton 法で解く
     pub fn solve_ray(&self, prob: &RayProblem) -> Result<RaySolution> {
-        let (needs, last) = match prob.residual {
-            Residual::Position { surf, .. } => (vec![surf], surf),
-            Residual::DirSum { s1, s2 } | Residual::DirDiff { s1, s2 } => {
-                (vec![s1, s2], s1.max(s2))
-            }
+        let needs = match prob.residual {
+            Residual::Position { surf, .. } => vec![surf],
+            Residual::DirSum { s1, s2 } | Residual::DirDiff { s1, s2 } => vec![s1, s2],
         };
         for &j in &needs {
             if j == 0 || j > self.image() || self.surfaces[j].ignore {
@@ -109,34 +118,12 @@ impl System {
                 Unknown::Object => (ObjSpec::Point(u), prob.pupil),
                 Unknown::Pupil => (prob.object, u),
             };
-            let t = self.trace_spec(
-                spec,
-                &[pp[0]],
-                &[pp[1]],
-                w,
-                crate::TraceOpts::new()
-                    .vig([0.0; 5])
-                    .upto(last)
-                    .record()
-                    .hxy((0.0, 0.0)),
-            );
-            let at = |j: usize| -> &RecSurf { t.rec_at(j).expect("recorded surface") };
-            let bad = t.rays[0].status.surf().is_some();
+            let (t, q) = self.ray_quantity(spec, pp, w, prob.residual.quantity());
             let r = match prob.residual {
-                Residual::Position { surf, target } => {
-                    let x = at(surf).xyz[0];
-                    [x[0] - target[0], x[1] - target[1]]
-                }
-                Residual::DirSum { s1, s2 } => {
-                    let (a, b) = (at(s1).lmn[0], at(s2).lmn[0]);
-                    [a[0] + b[0], a[1] + b[1]]
-                }
-                Residual::DirDiff { s1, s2 } => {
-                    let (a, b) = (at(s1).lmn[0], at(s2).lmn[0]);
-                    [a[0] - b[0], a[1] - b[1]]
-                }
+                Residual::Position { target, .. } => [q[0] - target[0], q[1] - target[1]],
+                _ => q,
             };
-            (t, if bad { [f64::NAN; 2] } else { r })
+            (t, r)
         };
         let norm = |r: [f64; 2]| r[0].abs().max(r[1].abs());
         if !norm(run(start).1).is_finite() {
@@ -180,5 +167,42 @@ impl System {
             iterations: it,
             trace: t,
         })
+    }
+}
+
+impl System {
+    /// 物体 spec・瞳座標 pupil の光線（波長 w、ケラレ係数なし）の量 c: Position なら面 surf での位置 (x, y)（局所座標）、
+    /// DirSum・DirDiff なら面 s1・s2 での方向余弦 (l, m) の和・差。止まった光線は NaN。
+    /// 実像高・条件で定める視野（cond_spec）と [`System::solve_ray`] の残差はこれから作る（KRN-08）
+    pub(crate) fn ray_quantity(
+        &self,
+        spec: ObjSpec,
+        pupil: [f64; 2],
+        w: usize,
+        c: FieldCond,
+    ) -> (Trace, [f64; 2]) {
+        let last = match c {
+            FieldCond::Position { surf } => surf,
+            FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => s1.max(s2),
+        };
+        let o = crate::TraceOpts::new().vig([0.0; 5]).upto(last).record();
+        let t = self.trace_spec(spec, &[pupil[0]], &[pupil[1]], w, o.hxy((0.0, 0.0)));
+        if t.rays[0].status.surf().is_some() {
+            return (t, [f64::NAN; 2]);
+        }
+        let q = match c {
+            FieldCond::Position { surf } => t.rec_at(surf).map(|a| [a.xyz[0][0], a.xyz[0][1]]),
+            FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => {
+                t.rec_at(s1).zip(t.rec_at(s2)).map(|(a, b)| {
+                    let (a, b) = (a.lmn[0], b.lmn[0]);
+                    if matches!(c, FieldCond::DirSum { .. }) {
+                        [a[0] + b[0], a[1] + b[1]]
+                    } else {
+                        [a[0] - b[0], a[1] - b[1]]
+                    }
+                })
+            }
+        };
+        (t, q.unwrap_or([f64::NAN; 2]))
     }
 }

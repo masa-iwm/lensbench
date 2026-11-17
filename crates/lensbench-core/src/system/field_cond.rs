@@ -37,41 +37,7 @@ impl System {
                 ObjSpec::Point(v)
             }
         };
-        let img = |v: [f64; 2]| -> [f64; 2] {
-            match c {
-                FieldCond::Position { surf } => {
-                    let r = self.trace_spec(
-                        spec(v),
-                        &[0.0],
-                        &[0.0],
-                        self.field_wave.unwrap_or(self.primary),
-                        TraceOpts::new().vig([0.0; 5]).upto(surf),
-                    );
-                    [r.rays[0].xyz[0], r.rays[0].xyz[1]]
-                }
-                FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => {
-                    let r = self.trace_spec(
-                        spec(v),
-                        &[0.0],
-                        &[0.0],
-                        self.field_wave.unwrap_or(self.primary),
-                        TraceOpts::new().vig([0.0; 5]).upto(s1.max(s2)).record(),
-                    );
-                    if r.rays[0].status.surf().is_some() {
-                        return [f64::NAN; 2];
-                    }
-                    let (Some(a), Some(b)) = (r.rec_at(s1), r.rec_at(s2)) else {
-                        return [f64::NAN; 2];
-                    };
-                    let (a, b) = (a.lmn[0], b.lmn[0]);
-                    if matches!(c, FieldCond::DirSum { .. }) {
-                        [a[0] + b[0], a[1] + b[1]]
-                    } else {
-                        [a[0] - b[0], a[1] - b[1]]
-                    }
-                }
-            }
-        };
+        let img = |v: [f64; 2]| self.ray_quantity(spec(v), [0.0, 0.0], wave, c).1;
         // 収束は残差 < 1e-13（<= の幅は 1e-13 のすぐ下の数）
         let nw = crate::newton2::Newton2 {
             tol: f64::from_bits(1e-13f64.to_bits() - 1),
