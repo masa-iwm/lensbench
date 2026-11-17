@@ -444,7 +444,7 @@ pub fn swap_cancel() {
 /// [`swap_cancel`] で止められる
 pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     use lensbench_design::swap::{SwapReply, SwapSearch, SwapSpec};
-    let (_, ls) = sess.current()?;
+    let super::Current { spec: ls, src, .. } = sess.current_full()?;
     let proj = match p.get("project").filter(|v| !v.is_null()) {
         // 中の zmx・カタログ・膜のパスを check_path で確かめられないので、要求のファイルを制限するときは断る
         Some(_) if !matches!(sess.files, Files::Any) => {
@@ -454,12 +454,11 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         }
         Some(v) => serde_json::from_value::<lensbench_project::Project>(v.clone())
             .map_err(|e| RpcErr::params(format!("project: {e}")))?,
-        None => {
-            let txt = lensbench_core::vfs::read_to_string(&ls.file)
-                .map_err(|e| RpcErr::app(format!("{}: {e}", ls.file.display())))?;
-            lensbench_project::Project::from_json(&txt)
-                .map_err(|e| RpcErr::app(format!("the loaded system is not a project ({e})")))?
-        }
+        // 読み込んだときのプロジェクト（読み直さない）
+        None => src
+            .project()
+            .cloned()
+            .ok_or_else(|| RpcErr::app("the loaded system is not a project"))?,
     };
     let mut sp = p.clone();
     if let Some(o) = sp.as_object_mut() {

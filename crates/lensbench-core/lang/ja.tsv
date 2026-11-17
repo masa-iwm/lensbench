@@ -1221,7 +1221,7 @@ configs must be a list of .zmx configuration numbers (1-based)	configs は .zmx 
 no vars (the list of parameters to solve)	vars（解くパラメータの並び）がありません
 only one of efl and pmag	efl と pmag は一方だけ
 swap project can't be used with --allow-remote or --root (the paths inside can't be checked; run on the loaded file)	swap の project は --allow-remote・--root では使えません（中のパスを確かめられません。読み込んだファイルで回してください）
-the loaded system is not a project ({e})	読み込んだシステムがプロジェクトではありません（{e}）
+the loaded system is not a project	読み込んだシステムがプロジェクトではありません
 swap search settings: {e}	差し替え探索の設定: {e}
 plugin needs name	plugin には name
 config must be an object	config はオブジェクト

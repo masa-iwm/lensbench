@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
-use lensbench_core::{glass, zmx, System};
+use lensbench_core::{zmx, System};
 use lensbench_export::table;
 use lensbench_project::open::{FileKind, OpenSpec, Source};
 use serde_json::{json, Value};
@@ -310,13 +310,21 @@ pub(crate) fn overlay_in(
             catalog_dirs: c.glass_dir.clone(),
             ..Default::default()
         };
-        let txt = glass::read_text(&c.file).map_err(|x| format!("{}: {x}", c.file.display()))?;
-        let n = zmx::parse_text(&txt)?.configurations();
+        // 読み込んだときのファイルの中身から（serve で読み込んでいなければ読む）
+        let read;
+        let src = match loaded {
+            Some((s, _)) => s,
+            None => {
+                read = Source::read(&c.file)?;
+                &read
+            }
+        };
+        let n = src.configurations()?;
         let ks: Vec<usize> = index_list(v, n, "configuration")?
             .into_iter()
             .map(|k| k + 1)
             .collect();
-        let ss = zmx::load_configs(&c.file, &opt, &ks)?;
+        let ss = src.zmx_configs(&opt, &ks)?;
         return Ok((
             ks.iter()
                 .map(|k| format!("C{k}"))

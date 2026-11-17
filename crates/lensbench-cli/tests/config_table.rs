@@ -183,3 +183,27 @@ fn config_table_from_zmx_and_edit() {
     assert_eq!(t["n"], 3);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 読み込んだ後にファイルが書き換わっても、構成の数と構成ごとの系は読み込んだときの中身から引く（読み直さない）
+#[test]
+fn config_table_uses_the_loaded_file() {
+    let sv = Session::new();
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let d = std::env::temp_dir().join(format!("lb-config-loaded-{}", std::process::id()));
+    std::fs::create_dir_all(&d).unwrap();
+    let f = d.join("two.zmx");
+    std::fs::write(&f, ZMX).unwrap();
+    ok(
+        &sv,
+        "load",
+        json!({ "file": f, "glass_dirs": [format!("{root}/tests/glass")], "cfg": 1 }),
+    );
+    // 別のアプリが 1 構成のファイルに書き換えた
+    let one = ZMX.split("MNUM").next().unwrap();
+    std::fs::write(&f, one).unwrap();
+    let t = ok(&sv, "config_table", json!({}));
+    assert_eq!(t["zmx_cfgs"].as_u64(), Some(2), "{t}");
+    let d2 = ok(&sv, "config_diff", json!({}));
+    assert_eq!(d2["rows"], 2, "{d2}");
+    let _ = std::fs::remove_dir_all(&d);
+}

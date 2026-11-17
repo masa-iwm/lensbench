@@ -34,6 +34,9 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### プロジェクトの面の上書き・操作
+- Rust の `lensbench_project::open::Source` の `Zmx`・`SystemFile` を `{ path, text }` にした（CLI-21）。読んだときの中身を持ち、
+  別の構成・波長の置き換え・構成の数（`configurations()`・`zmx_configs()`）はファイルを読み直さずにそこから作る（serve の
+  config_table・config_diff・configs・重ね描き・swap も）。core に `zmx::load_text_with`・`zmx::load_configs_text` を足した
 - Rust の `ExpandOpts` に `within`（外側で展開中のファイル・項目、ふつうは空）を足した。欄を全部並べて作っていたら
   `..Default::default()` を足す（PRJ-28）。プロジェクトのインポートの循環は深さ 8 の上限でなく循環の道で見つけ、
   エラーの文は「a loop of imports: a.json → b.json → a.json」になった（ユーザーカタログの項目の循環も同じ文）

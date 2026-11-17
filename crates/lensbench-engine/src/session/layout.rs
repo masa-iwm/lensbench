@@ -197,11 +197,8 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
             // 多重構成の表を読めていれば表の構成の数（読み込んだ後に set_config_count で変えたものも）
             t.n
         } else {
-            let txt = lensbench_core::glass::read_text(&spec.file)
-                .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
-            lensbench_core::zmx::parse_text(&txt)
-                .map_err(|x| RpcErr::app(x.to_string()))?
-                .configurations()
+            // 読み込んだときのファイルの中身から（読み直さない）
+            src.configurations()?
         };
         let cfg = active_cfg(&sys, &spec);
         return Ok(json!({ "cfgs": n, "cfg": cfg, "states": [], "paths": [] }));

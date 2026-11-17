@@ -164,8 +164,10 @@ pub fn open_with(
 /// 状態ごとの系をそこから引く（CLI・serve・Python の共通の入口）。系ファイル・.zmx は種類とパスだけ持ち、[`Source::open`] で読む
 #[derive(Clone, Debug)]
 pub enum Source {
-    Zmx(PathBuf),
-    SystemFile(PathBuf),
+    /// .zmx（中身は読んだときのもの。別の構成もここから作り、ファイルは読み直さない）
+    Zmx { path: PathBuf, text: String },
+    /// 系ファイル（中身は読んだときのもの）
+    SystemFile { path: PathBuf, text: String },
     Project {
         path: PathBuf,
         /// ファイルの中身（状態は当てない）
@@ -192,12 +194,20 @@ impl Source {
         }
         let path_buf = path.to_path_buf();
         if !is_json(path) {
-            return Ok(Source::Zmx(path_buf));
+            let text = lensbench_core::glass::read_text(path)
+                .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+            return Ok(Source::Zmx {
+                path: path_buf,
+                text,
+            });
         }
         let txt = lensbench_core::vfs::read_to_string(path)
             .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
         if crate::sysfile::is_system_json(&txt) {
-            return Ok(Source::SystemFile(path_buf));
+            return Ok(Source::SystemFile {
+                path: path_buf,
+                text: txt,
+            });
         }
         let project = crate::Project::from_json(&txt).map_err(|e| e.at(path.display()))?;
         Ok(Source::Project {
@@ -211,8 +221,8 @@ impl Source {
     /// ファイルの種類
     pub fn kind(&self) -> FileKind {
         match self {
-            Source::Zmx(_) => FileKind::Zmx,
-            Source::SystemFile(_) => FileKind::SystemFile,
+            Source::Zmx { .. } => FileKind::Zmx,
+            Source::SystemFile { .. } => FileKind::SystemFile,
             Source::Project { .. } => FileKind::Project,
         }
     }
@@ -220,7 +230,29 @@ impl Source {
     /// ファイルのパス
     pub fn path(&self) -> &Path {
         match self {
-            Source::Zmx(p) | Source::SystemFile(p) | Source::Project { path: p, .. } => p,
+            Source::Zmx { path: p, .. }
+            | Source::SystemFile { path: p, .. }
+            | Source::Project { path: p, .. } => p,
+        }
+    }
+
+    /// .zmx の構成 cfgs（1 始まり、空なら全部）の系（読んだときの中身から。.zmx でなければ誤り）
+    pub fn zmx_configs(
+        &self,
+        opt: &zmx::LoadOptions,
+        cfgs: &[usize],
+    ) -> Result<Vec<System>, Error> {
+        match self {
+            Source::Zmx { path, text } => zmx::load_configs_text(text, path, opt, cfgs),
+            _ => Err(bad_arg("configurations are only for .zmx".into())),
+        }
+    }
+
+    /// .zmx の構成の数（.zmx でなければ 1）
+    pub fn configurations(&self) -> Result<usize, Error> {
+        match self {
+            Source::Zmx { text, .. } => Ok(zmx::parse_text(text)?.configurations()),
+            _ => Ok(1),
         }
     }
 
@@ -298,7 +330,7 @@ impl Source {
             return Err(bad_arg(format!("{cfg} must be 1 or more")));
         }
         match self {
-            Source::SystemFile(path) => {
+            Source::SystemFile { path, text } => {
                 if o.cfg != 1 || o.state.is_some() || o.split_path.is_some() {
                     return Err(bad_arg(format!(
                         "{cfg}, {state} and {split} can't be used with a system file"
@@ -307,7 +339,8 @@ impl Source {
                 if o.wavelengths.is_some() {
                     return Err(bad_arg("wavelengths is only for .zmx".into()));
                 }
-                let (system, m, warnings) = crate::sysfile::load_with(path, o.glass_dirs)?;
+                let (system, m, warnings) =
+                    crate::sysfile::load_text_with(path, text, o.glass_dirs)?;
                 Ok(Opened {
                     system,
                     warnings,
@@ -358,7 +391,7 @@ impl Source {
                     faces,
                 })
             }
-            Source::Zmx(path) => {
+            Source::Zmx { path, text } => {
                 if o.state.is_some() {
                     return Err(bad_arg(format!(
                         "{state} is only for project files (.json) (.zmx uses {cfg})"
@@ -376,7 +409,7 @@ impl Source {
                     ..Default::default()
                 };
                 Ok(Opened {
-                    system: zmx::load_with(path, &opt)?,
+                    system: zmx::load_text_with(text, path, &opt)?,
                     warnings: Vec::new(),
                     coatings: Vec::new(),
                     blocks: Vec::new(),

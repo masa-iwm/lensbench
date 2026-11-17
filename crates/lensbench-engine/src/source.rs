@@ -145,13 +145,10 @@ impl lensbench_analysis::Source for FileSource<'_> {
                         "only .zmx can be read with replaced trace wavelengths".into(),
                     ));
                 }
-                let opt = lensbench_core::zmx::LoadOptions {
-                    cfg,
-                    catalog_dirs: c.glass_dir.clone(),
-                    wavelengths: Some(wl.clone()),
-                    ..Default::default()
-                };
-                let s = lensbench_core::zmx::load_with(&c.file, &opt)?;
+                // 読んだときの中身から（ファイルは読み直さない）
+                let mut o = c.open_spec();
+                o.wavelengths = Some(wl.clone());
+                let s = self.src()?.open(&o)?.system;
                 let n = crate::load::system_notes(&s);
                 (s, n)
             }

@@ -832,25 +832,40 @@ pub fn load(path: &Path) -> Result<System> {
 }
 
 pub fn load_with(path: &Path, opt: &LoadOptions) -> Result<System> {
-    let txt = glass::read_text(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-    let raw = parse_text(&txt)?;
+    load_text_with(&read_zmx(path)?, path, opt)
+}
+
+/// [`load_with`] で、ファイル path の中身 txt をもう読んであるとき（読み直さない。相対パスは path のフォルダから）
+pub fn load_text_with(txt: &str, path: &Path, opt: &LoadOptions) -> Result<System> {
+    build(&parse_text(txt)?, opt, &file_dirs(opt, path), path.parent())
+}
+
+fn read_zmx(path: &Path) -> Result<String> {
+    glass::read_text(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))
+}
+
+/// ガラスのカタログを探すフォルダ（opt の後にファイルのフォルダ）
+fn file_dirs(opt: &LoadOptions, path: &Path) -> Vec<PathBuf> {
     let mut dirs = opt.catalog_dirs.clone();
-    if let Some(p) = path.parent() {
-        dirs.push(p.to_path_buf());
-    }
-    build(&raw, opt, &glass::catalog_dirs(&dirs), path.parent())
+    dirs.extend(path.parent().map(Path::to_path_buf));
+    glass::catalog_dirs(&dirs)
 }
 
 /// 多重構成の .zmx から構成 cfgs（1 始まり、空なら全部）の系をまとめて作る（ファイルは 1 回だけ読む）。
 /// opt.cfg は使わない。結果は構成ごとに `load_with` で読んだものと同じ
 pub fn load_configs(path: &Path, opt: &LoadOptions, cfgs: &[usize]) -> Result<Vec<System>> {
-    let txt = glass::read_text(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-    let raw = parse_text(&txt)?;
-    let mut dirs = opt.catalog_dirs.clone();
-    if let Some(p) = path.parent() {
-        dirs.push(p.to_path_buf());
-    }
-    let dirs = glass::catalog_dirs(&dirs);
+    load_configs_text(&read_zmx(path)?, path, opt, cfgs)
+}
+
+/// [`load_configs`] で、ファイル path の中身 txt をもう読んであるとき
+pub fn load_configs_text(
+    txt: &str,
+    path: &Path,
+    opt: &LoadOptions,
+    cfgs: &[usize],
+) -> Result<Vec<System>> {
+    let raw = parse_text(txt)?;
+    let dirs = file_dirs(opt, path);
     let all: Vec<usize>;
     let cfgs = if cfgs.is_empty() {
         all = (1..=raw.configurations()).collect();

@@ -20,7 +20,7 @@ use lensbench_export::d2::Plane;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
-use crate::load::{load_file, read_file_notes, Faces, ReadFile, SysSpec as LoadSpec};
+use crate::load::{read_file_notes, Faces, ReadFile, SysSpec as LoadSpec};
 use lensbench_project::open::Source;
 use lensbench_project::retarget::Retarget;
 use lensbench_project::{BlockSpans, FaceId};
@@ -1121,7 +1121,9 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             Ok((json!({ "data": v }), Vec::new()))
         }
         "config_table" => {
-            let (s, spec) = sess.current()?;
+            let Current {
+                sys: s, spec, src, ..
+            } = sess.current_full()?;
             let rows: Vec<views::ConfigRow> = s
                 .configs()
                 .map(|c| {
@@ -1136,15 +1138,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
                 })
                 .unwrap_or_default();
             let (n, active) = s.configs().map_or((1, 1), |c| (c.n, c.active));
-            let zmx_cfgs = if is_zmx(&spec.file) {
-                let txt = lensbench_core::glass::read_text(&spec.file)
-                    .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
-                lensbench_core::zmx::parse_text(&txt)
-                    .map_err(|x| RpcErr::app(x.to_string()))?
-                    .configurations()
-            } else {
-                1
-            };
+            // 読み込んだときのファイルの中身から（.zmx でなければ 1）
+            let zmx_cfgs = src.configurations()?;
             let t = views::ConfigTable {
                 n,
                 active,
@@ -1157,8 +1152,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         // .zmx の多重構成を表にする edit の操作: 各構成を読み、構成で違うパラメータを行にする。
         // 表にできない違い（硝材・無視・面の数・半径以外の値）は notes に
         "config_diff" => {
-            let (_, spec) = sess.current()?;
-            let v = config_diff(&spec)?;
+            let Current { spec, src, .. } = sess.current_full()?;
+            let v = config_diff(&spec, &src)?;
             Ok((v, Vec::new()))
         }
         // 系ファイルに保存する（編集・set の後の系をそのまま）
@@ -1346,16 +1341,13 @@ fn is_zmx(f: &Path) -> bool {
 }
 
 /// .zmx の多重構成を、表（set_config_count・set_config_row・set_config の edit の操作）にする
-fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
+fn config_diff(spec: &LoadSpec, src: &Source) -> Result<Value, RpcErr> {
     use lensbench_core::param::{Kind, Param};
     if !is_zmx(&spec.file) {
         return Err(RpcErr::params("config_diff is only for .zmx systems"));
     }
-    let txt = lensbench_core::glass::read_text(&spec.file)
-        .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
-    let n = lensbench_core::zmx::parse_text(&txt)
-        .map_err(|x| RpcErr::app(x.to_string()))?
-        .configurations();
+    // 読み込んだときのファイルの中身から（読み直さない）
+    let n = src.configurations()?;
     if n < 2 {
         return Err(RpcErr::app("this .zmx has no multiple configurations"));
     }
@@ -1363,7 +1355,9 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
     for k in 1..=n {
         let mut c = spec.clone();
         c.cfg = k;
-        systems.push(load_file(&c).map_err(|e| e.at(format!("configuration {k}")))?);
+        systems.push(
+            crate::load::load_source(src, &c).map_err(|e| e.at(format!("configuration {k}")))?,
+        );
     }
     let m = systems[0].surfaces.len();
     if systems.iter().any(|s| s.surfaces.len() != m) {
