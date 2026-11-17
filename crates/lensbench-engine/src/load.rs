@@ -56,13 +56,23 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
 
 /// ファイルから系を読み、読んだときの注意（[`load_source_notes`]）と一緒に返す
 pub fn load_file_notes(c: &SysSpec) -> Result<(System, Vec<String>), lensbench_core::Error> {
-    Ok(read_file_notes(c)?.1)
+    let r = read_file_notes(c)?;
+    Ok((r.sys, r.notes))
 }
 
-/// [`load_file_notes`] で、読んだファイルも返す（serve が持っておき、別の状態・経路をそこから引く。CLI-21）
-pub fn read_file_notes(
-    c: &SysSpec,
-) -> Result<(Source, (System, Vec<String>)), lensbench_core::Error> {
+/// [`read_file_notes`] で読んだもの
+pub struct ReadFile {
+    /// 読んだファイル（serve が持っておき、別の状態・経路をそこから引く。CLI-21）
+    pub src: Source,
+    pub sys: System,
+    /// 読んだときの注意（[`load_source_notes`]）
+    pub notes: Vec<String>,
+    /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（プロジェクトでなければ空）
+    pub blocks: Vec<lensbench_project::BlockSpans>,
+}
+
+/// [`load_file_notes`] で、読んだファイルとブロックの面の範囲も返す
+pub fn read_file_notes(c: &SysSpec) -> Result<ReadFile, lensbench_core::Error> {
     if c.cfg == 0 {
         return Err(lensbench_core::Error::Invalid(format!(
             "{} must be 1 or more",
@@ -70,8 +80,13 @@ pub fn read_file_notes(
         )));
     }
     let src = Source::read(&c.file)?;
-    let l = load_source_notes(&src, c)?;
-    Ok((src, l))
+    let (sys, notes, blocks) = open_source(&src, c)?;
+    Ok(ReadFile {
+        src,
+        sys,
+        notes,
+        blocks,
+    })
 }
 
 /// 読んだファイル src から、c の構成・状態・経路の系を読む（注意は捨てる）
@@ -91,6 +106,13 @@ pub fn load_source_notes(
     src: &Source,
     c: &SysSpec,
 ) -> Result<(System, Vec<String>), lensbench_core::Error> {
+    let (s, notes, _) = open_source(src, c)?;
+    Ok((s, notes))
+}
+
+/// [`load_source_notes`] で、ブロックの面の範囲も返す
+type Opened = (System, Vec<String>, Vec<lensbench_project::BlockSpans>);
+fn open_source(src: &Source, c: &SysSpec) -> Result<Opened, lensbench_core::Error> {
     let o = src.open(&c.open_spec())?;
     if c.strict_macros {
         // 注意の文は 1 つずつ訳せるよう、最初の 1 つだけを {e} に入れる（数は前に）
@@ -106,7 +128,7 @@ pub fn load_source_notes(
     }
     let mut notes = o.warnings;
     notes.extend(system_notes(&o.system));
-    Ok((o.system, notes))
+    Ok((o.system, notes, o.blocks))
 }
 
 /// 系そのものが持つ注意: 分散式・マクロ・取り込み（.zmx の読めなかった行・同梱のカタログなど）

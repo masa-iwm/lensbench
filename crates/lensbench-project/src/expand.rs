@@ -290,6 +290,44 @@ impl SurfOrigin {
     }
 }
 
+/// id のあるブロック・群 1 つの系の面の範囲（[`Expansion::block_spans`]）
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct BlockSpans {
+    pub id: String,
+    /// 往路の範囲（系の面の番号 [最初, 最後]、たどった順）
+    pub forward: Vec<[usize; 2]>,
+    /// 鏡の `back` で復路にたどった範囲
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub back: Vec<[usize; 2]>,
+}
+
+/// id のあるブロック・群（BS・開口・絞り・群も。面を足さない空気は出ない）ごとの系の面の範囲。並びは最初の面の順
+pub fn block_spans(map: &[SurfOrigin]) -> Vec<BlockSpans> {
+    let mut ids: Vec<&str> = Vec::new();
+    for o in map {
+        // 内から外への並びを、外（群）が先に出るように逆にたどる
+        for b in o.blocks.iter().rev() {
+            if !ids.contains(&b.as_str()) {
+                ids.push(b);
+            }
+        }
+    }
+    ids.into_iter()
+        .map(|id| BlockSpans {
+            id: id.to_string(),
+            forward: block_runs(map, id, Some(false)),
+            back: block_runs(map, id, Some(true)),
+        })
+        .collect()
+}
+
+impl Expansion {
+    /// [`block_spans`]
+    pub fn block_spans(&self) -> Vec<BlockSpans> {
+        block_spans(&self.map)
+    }
+}
+
 /// id のブロック・群の面の範囲（系の面の番号 [最初, 最後]）。続けて同じ向きにたどった範囲ごとに、たどった順。
 /// back が Some なら往路（false）か復路（true）の範囲だけ
 pub fn block_runs(map: &[SurfOrigin], id: &str, back: Option<bool>) -> Vec<[usize; 2]> {

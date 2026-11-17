@@ -129,6 +129,8 @@ pub struct Opened {
     pub warnings: Vec<String>,
     /// 系ファイルに書いてあった膜の実測表・モデルのパス
     pub coatings: Vec<PathBuf>,
+    /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（[`crate::block_spans`]。プロジェクトでなければ空）
+    pub blocks: Vec<crate::BlockSpans>,
 }
 
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む（[`Source::read`] と [`Source::open`]）。
@@ -307,6 +309,7 @@ impl Source {
                     system,
                     warnings,
                     coatings: m.coatings,
+                    blocks: Vec::new(),
                 })
             }
             Source::Project {
@@ -341,10 +344,12 @@ impl Source {
                     },
                 )
                 .map_err(at)?;
+                let blocks = x.block_spans();
                 Ok(Opened {
                     system: x.system,
                     warnings: x.notes,
                     coatings: Vec::new(),
+                    blocks,
                 })
             }
             Source::Zmx(path) => {
@@ -368,6 +373,7 @@ impl Source {
                     system: zmx::load_with(path, &opt)?,
                     warnings: Vec::new(),
                     coatings: Vec::new(),
+                    blocks: Vec::new(),
                 })
             }
         }

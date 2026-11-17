@@ -20,8 +20,9 @@ use lensbench_export::d2::Plane;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
-use crate::load::{load_file, read_file_notes, SysSpec as LoadSpec};
+use crate::load::{load_file, read_file_notes, ReadFile, SysSpec as LoadSpec};
 use lensbench_project::open::Source;
+use lensbench_project::BlockSpans;
 
 /// 要求で与えたパスの扱い
 pub enum Files {
@@ -124,6 +125,8 @@ struct Served {
     spec: LoadSpec,
     /// 読んだときのファイル（別の構成・状態・経路はファイルを読み直さずにここから。CLI-21）
     src: Arc<Source>,
+    /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（読んだときのもの。面を足す・消す edit の後は空）
+    blocks: Arc<Vec<BlockSpans>>,
     /// 読んだときの注意（load・reload の返事の notes。CLI-10）
     notes: Vec<String>,
     log: Vec<Change>,
@@ -155,6 +158,7 @@ struct Snap {
     sys: Arc<System>,
     spec: LoadSpec,
     src: Arc<Source>,
+    blocks: Arc<Vec<BlockSpans>>,
     notes: Vec<String>,
     log: Vec<Change>,
 }
@@ -217,8 +221,8 @@ impl Session {
 
     /// 系を読んで場に置く（起動の引数で与えた系。要求で与えたパスの扱いは当てない）
     pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> lensbench_core::Result<()> {
-        let (src, (s, notes)) = lensbench_core::with_threads(threads, || read_file_notes(&spec))?;
-        store(self, s, spec, Arc::new(src), notes);
+        let r = lensbench_core::with_threads(threads, || read_file_notes(&spec))?;
+        store(self, r, spec);
         Ok(())
     }
 
@@ -269,12 +273,13 @@ impl Session {
 }
 
 /// 読み込んだ系を置く（変更の記録・元に戻す段は空にする）
-fn store(sess: &Session, sys: System, spec: LoadSpec, src: Arc<Source>, notes: Vec<String>) {
+fn store(sess: &Session, r: ReadFile, spec: LoadSpec) {
     *sess.served() = Some(Served {
-        sys: Arc::new(sys),
+        sys: Arc::new(r.sys),
         spec,
-        src,
-        notes,
+        src: Arc::new(r.src),
+        blocks: Arc::new(r.blocks),
+        notes: r.notes,
         log: Vec::new(),
         hist: History::default(),
         last_set: None,
@@ -306,18 +311,11 @@ fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
 }
 
 /// 読み込んだ系を置く。h が Push なら前の系を段に積み、Keep なら段はそのまま
-fn store_loaded(
-    sess: &Session,
-    (src, (sys, notes)): (Source, (System, Vec<String>)),
-    spec: LoadSpec,
-    h: LoadHistory,
-    reload: bool,
-) {
-    let src = Arc::new(src);
+fn store_loaded(sess: &Session, r: ReadFile, spec: LoadSpec, h: LoadHistory, reload: bool) {
     let mut g = sess.served();
     let Some(mut x) = g.take().filter(|_| h != LoadHistory::Clear) else {
         drop(g);
-        store(sess, sys, spec, src, notes);
+        store(sess, r, spec);
         return;
     };
     if h == LoadHistory::Push {
@@ -333,10 +331,11 @@ fn store_loaded(
         };
         push_undo(&mut x, what);
     }
-    x.sys = Arc::new(sys);
+    x.sys = Arc::new(r.sys);
     x.spec = spec;
-    x.src = src;
-    x.notes = notes;
+    x.src = Arc::new(r.src);
+    x.blocks = Arc::new(r.blocks);
+    x.notes = r.notes;
     x.log = Vec::new();
     x.last_set = None;
     *g = Some(x);
@@ -371,6 +370,7 @@ fn snap(x: &Served) -> Snap {
         sys: x.sys.clone(),
         spec: x.spec.clone(),
         src: x.src.clone(),
+        blocks: x.blocks.clone(),
         notes: x.notes.clone(),
         log: x.log.clone(),
     }
@@ -399,11 +399,21 @@ fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
         && (n[..] == [CONFIG_KEY] || now.duration_since(*t).as_secs_f64() < SET_MERGE_S));
     let s = snap(&x);
     x.hist.record_or_merge(s, change_label(Some(&c)), merge);
+    // 面を足す・消すと面の番号がずれるので、ブロックの面の範囲は捨てる
+    if sys.surfaces.len() != x.sys.surfaces.len() || moves_surfaces(&c) {
+        x.blocks = Arc::default();
+    }
     x.last_set = names.map(|n| (n, now));
     x.log.push(c);
     x.sys = Arc::new(sys);
     x.spec = spec;
     *g = Some(x);
+}
+
+/// 面を足す・消す edit か（面の番号がずれる）
+fn moves_surfaces(c: &Change) -> bool {
+    use lensbench_project::edit_ops::EditOp as O;
+    matches!(c, Change::Edit(ops) if ops.iter().any(|o| matches!(o, O::InsertSurface { .. } | O::DeleteSurface { .. })))
 }
 
 /// 元に戻す（back）・やり直す。戻した後の系の面の数と、残りの段の数
@@ -423,6 +433,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     let file0 = std::mem::replace(&mut x.spec, snap.spec).file;
     x.sys = snap.sys;
     x.src = snap.src;
+    x.blocks = snap.blocks;
     x.notes = snap.notes;
     x.log = snap.log;
     x.last_set = None;
@@ -432,7 +443,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     v["system_hash"] = json!(hash);
     // 開く・読み直すを戻したら、戻した系の概要（ファイルが変わる）
     if x.spec.file != file0 || snap_was_load(&v, back) {
-        v["loaded"] = summary(&x.sys, &x.spec, &x.notes);
+        v["loaded"] = summary(&x.sys, &x.spec, &x.notes, &x.blocks);
     }
     Ok(v)
 }
@@ -468,7 +479,7 @@ fn step_history_n(sess: &Session, back: bool, p: &Value) -> Result<Value, RpcErr
     // 途中で開く・読み直すを越えたら、最後の系の概要
     if loaded && v.get("loaded").is_none() {
         if let Some(x) = sess.served().as_ref() {
-            v["loaded"] = summary(&x.sys, &x.spec, &x.notes);
+            v["loaded"] = summary(&x.sys, &x.spec, &x.notes, &x.blocks);
         }
     }
     Ok(v)
@@ -971,7 +982,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let h = load_history(p)?;
             let spec = load_spec(sess, p)?;
             let l = read_file_notes(&spec)?;
-            let mut v = summary(&l.1 .0, &spec, &l.1 .1);
+            let mut v = summary(&l.sys, &spec, &l.notes, &l.blocks);
             store_loaded(sess, l, spec, h, false);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
@@ -981,7 +992,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let h = load_history(p)?;
             let (_, spec) = sess.current()?;
             let l = read_file_notes(&spec)?;
-            let mut v = summary(&l.1 .0, &spec, &l.1 .1);
+            let mut v = summary(&l.sys, &spec, &l.notes, &l.blocks);
             store_loaded(sess, l, spec, h, true);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
@@ -991,7 +1002,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let x = g
                 .as_ref()
                 .ok_or_else(|| RpcErr::app("no system (load first)"))?;
-            Ok((summary(&x.sys, &x.spec, &x.notes), Vec::new()))
+            Ok((summary(&x.sys, &x.spec, &x.notes, &x.blocks), Vec::new()))
         }
         // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
         // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる。history: "push" で読めば読む前の系も 1 段）

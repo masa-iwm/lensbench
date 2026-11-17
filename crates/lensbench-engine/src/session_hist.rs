@@ -64,8 +64,14 @@ pub(super) fn config_only(ops: &[EditOp]) -> bool {
 }
 
 /// 読み込んだ系の概要
-pub(super) fn summary(s: &System, spec: &LoadSpec, notes: &[String]) -> Value {
+pub(super) fn summary(
+    s: &System,
+    spec: &LoadSpec,
+    notes: &[String],
+    blocks: &[lensbench_project::BlockSpans],
+) -> Value {
     json!({
+        "blocks": blocks,
         "notes": notes,
         "file": spec.file.display().to_string(),
         "name": s.name,

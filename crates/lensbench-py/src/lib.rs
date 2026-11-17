@@ -991,6 +991,7 @@ impl PySystem {
             system: mut sys,
             warnings: warn,
             coatings: saved_coatings,
+            ..
         } = o.map_err(err)?;
         warn_all(py, &warn)?;
         if coating_file.is_some() {

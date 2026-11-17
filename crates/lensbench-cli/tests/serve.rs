@@ -1410,6 +1410,25 @@ fn project_states_come_from_the_loaded_file() {
             "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
         }),
     );
+    // id のあるブロック・群ごとの面の範囲（群 front が中の玉より先）
+    let sys = sv.call("system", json!({}));
+    let ids: Vec<&str> = sys["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["front", "L1", "L2", "L3"], "{sys}");
+    let l1 = &sys["blocks"][1]["forward"][0];
+    assert_eq!(sys["blocks"][0]["forward"][0][0], l1[0]);
+    // 面を足すと番号がずれるので空、元に戻せば戻る
+    sv.call(
+        "edit",
+        json!({ "ops": [{ "op": "insert_surface", "at": 1, "surface": { "t": 1.0 } }] }),
+    );
+    assert_eq!(sv.call("system", json!({}))["blocks"], json!([]));
+    sv.call("undo", json!({}));
+    assert_eq!(sv.call("system", json!({}))["blocks"], sys["blocks"]);
     let states = sv.call("configs", json!({}))["states"].clone();
     assert!(
         states.as_array().unwrap().contains(&json!("near")),

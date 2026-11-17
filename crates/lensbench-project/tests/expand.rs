@@ -859,6 +859,14 @@ fn the_expansion_maps_each_surface_to_its_blocks() {
     assert_eq!((g[0][0], g[0][1]), (a[0][0], b[0][1]));
     assert_eq!(runs("A", Some(true)).len(), 1);
     assert_eq!(runs("G", None).len(), 2);
+    // ブロックごとの範囲の一覧: 群が中の玉より先、往路と復路を分ける
+    let bs = x.block_spans();
+    let ids: Vec<&str> = bs.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(ids, ["G", "A", "B", "M"]);
+    assert_eq!(bs[0].forward, g);
+    assert_eq!(bs[0].back, runs("G", Some(true)));
+    assert_eq!(bs[1].forward, a);
+    assert!(bs[3].back.is_empty() && bs[3].forward == runs("M", None));
     // 偏心の座標ブレークもブロックの面。中の面は 2 つ
     let faces = (a[0][0]..=a[0][1])
         .filter(|&j| !s.surfaces[j].is_coord_break())
