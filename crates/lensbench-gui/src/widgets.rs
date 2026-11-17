@@ -12,9 +12,11 @@ pub mod menu;
 mod ui_tests;
 
 /// 自前で描く図（レイアウト・スポット・ガラスマップなど）に名前を付ける（AccessKit の木に画像として出て、
-/// 読み上げ・画面の試験が図を探せる）。name は図の種類と、何の図かが分かる短い文
-pub fn name_figure(r: &egui::Response, name: &str) {
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, r.enabled(), name));
+/// 読み上げ・画面の試験が図を探せる）。name は図の種類と、何の図かが分かる短い文を作る関数（AccessKit が
+/// 要るときだけ呼ばれ、要らない exe では文字列を作らない）。name は egui の Context を握ったまま呼ばれるので、中で
+/// ui・ctx（data・style など）を読まない（読むと止まる）
+pub fn name_figure(r: &egui::Response, name: impl Fn() -> String) {
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, r.enabled(), name()));
 }
 
 /// 見出しの無い入力欄（薄い字の例だけのもの）に名前を付ける（AccessKit の木に出て、読み上げ・画面の試験が欄を

@@ -1763,10 +1763,9 @@ pub fn ui(
     );
     let ui = &mut top;
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
-    crate::widgets::name_figure(
-        &resp,
-        fig_name(data.as_ref().is_some_and(|d| d.d3.is_some())),
-    );
+    crate::widgets::name_figure(&resp, || {
+        fig_name(data.as_ref().is_some_and(|d| d.d3.is_some())).to_owned()
+    });
     let id = resp.id;
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
@@ -1934,7 +1933,7 @@ pub fn view_only(
         Sense::hover()
     };
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), sense);
-    crate::widgets::name_figure(&resp, fig_name(d.d3.is_some()));
+    crate::widgets::name_figure(&resp, || fig_name(d.d3.is_some()).to_owned());
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
     }

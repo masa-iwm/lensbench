@@ -55,6 +55,9 @@ web-time = "1"
 
 # ネイティブだけ（wasm の Web 版では使えない）
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# 配る exe で読み上げ（Windows の UI Automation・Linux の AT-SPI）に画面の木を渡す（eframe の accesskit 機能）。
+# Web 版は eframe 0.31 では使わないので入れない
+eframe = { version = "0.31", default-features = false, features = ["accesskit"] }
 # 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）
 mimalloc = { version = "0.1", default-features = false }
 

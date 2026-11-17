@@ -241,10 +241,9 @@ pub fn spot(
                 ui.vertical(|ui| {
                     let (resp, painter) =
                         ui.allocate_painter(egui::vec2(cell, cell), Sense::click_and_drag());
-                    crate::widgets::name_figure(
-                        &resp,
-                        &trf("Spot diagram, {}", &[&field_namer(ui)(f)]),
-                    );
+                    // 名前の関数は Context を握ったまま呼ばれるので、中で ui・ctx を読まない（読むと止まる）
+                    let fname = field_namer(ui)(f);
+                    crate::widgets::name_figure(&resp, || trf("Spot diagram, {}", &[&fname]));
                     let rect = resp.rect;
                     painter.rect_filled(rect, 8.0, vis.extreme_bg_color);
                     let painter = painter.with_clip_rect(rect.intersect(ui.clip_rect()));
@@ -306,7 +305,7 @@ pub fn spot(
                         ));
                     }
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(field_namer(ui)(f)).color(theme::weak_text(&vis)));
+                        ui.label(RichText::new(fname.as_str()).color(theme::weak_text(&vis)));
                         if let Some(rms) = spot_rms(result, f) {
                             let um = rms * 1e3;
                             ui.label(

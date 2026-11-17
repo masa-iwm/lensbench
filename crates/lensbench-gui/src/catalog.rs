@@ -2098,7 +2098,7 @@ fn glass_map(
         ui.available_width().min(ui.available_height()) * 0.8,
     );
     let (resp, painter) = ui.allocate_painter(size, Sense::click_and_drag());
-    crate::widgets::name_figure(&resp, &trf("Glass map ({} glasses)", &[&idx.len()]));
+    crate::widgets::name_figure(&resp, || trf("Glass map ({} glasses)", &[&idx.len()]));
     let r = resp.rect;
     let rect = egui::Rect::from_min_max(
         r.min + egui::vec2(40.0, 22.0),
