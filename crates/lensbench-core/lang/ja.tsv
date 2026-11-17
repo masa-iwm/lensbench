@@ -762,7 +762,6 @@ RAYTRACE arguments must be numbers	RAYTRACE の引数は数
 {name} takes one surface number	{name} の引数は面の番号 1 つ
 {name}({k}): no such surface	{name}({k}): 面がありません
 SOSO argument {a:?} (only 0)	SOSO の引数 {a:?}（0 だけ）
-RADI of a flat surface (surface {k})	平面（面 {k}）の RADI
 surface {k} PARM {n}	面 {k} の PARM {n}
 PARM takes (number, surface)	PARM の引数は (番号, 面)
 no {name}({})	{name}({}) がありません

@@ -407,3 +407,26 @@ fn runaway_and_deep_macros_do_not_hang_or_crash() {
     assert_eq!(s.surfaces[2].c, 0.0);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// RADI は曲率半径。平面・無い面の番号は 0 で、止まらない（OpticStudio 26.1.1 の値）
+#[test]
+fn radi_of_a_flat_surface_is_zero() {
+    let d = macro_dir(
+        "radi",
+        &[
+            ("LBRAD1", "SOLVERETURN 1 / RADI(1) / 2\n"),
+            ("LBRAD0", "SOLVERETURN RADI(3) + 0.01\n"),
+            ("LBRAD9", "SOLVERETURN RADI(9) + 0.02\n"),
+        ],
+    );
+    for (name, c) in [("LBRAD1", 0.01), ("LBRAD0", 0.01), ("LBRAD9", 0.02)] {
+        let s = load(&singlet(name, -0.0123), &d);
+        assert!(
+            s.macro_warnings().is_empty(),
+            "{name}: {:?}",
+            s.macro_warnings()
+        );
+        assert_eq!(s.surfaces[2].c, c, "{name}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}

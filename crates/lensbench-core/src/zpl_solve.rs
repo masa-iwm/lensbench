@@ -342,13 +342,19 @@ impl Host for SysHost<'_> {
             "THIC" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].t))),
             "CONI" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].k))),
             "SDIA" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].semi))),
-            // 曲率半径（平面は未対応: OpticStudio の値を確かめていない）
-            "RADI" => Some(surf(self).and_then(|k| match s.surfaces[k].c {
-                0.0 => Err(Error::NotImplemented(format!(
-                    "RADI of a flat surface (surface {k})"
-                ))),
-                c => Ok(Value::Num(1.0 / c)),
-            })),
+            // 曲率半径。平面と、無い面の番号は 0（OpticStudio 26.1.1 の値。止まらない）
+            "RADI" => Some(match a {
+                [Value::Num(x)] => {
+                    let k = x.trunc();
+                    let c = if k >= 0.0 {
+                        s.surfaces.get(k as usize).map_or(0.0, |d| d.c)
+                    } else {
+                        0.0
+                    };
+                    Ok(Value::Num(if c == 0.0 { 0.0 } else { 1.0 / c }))
+                }
+                _ => Err(Error::Invalid(format!("{name} takes one surface number"))),
+            }),
             "RAYX" | "RAYY" | "RAYZ" | "RAYL" | "RAYM" | "RAYN" | "RANX" | "RANY" | "RANZ"
             | "RAYT" | "RAYO" | "OPTH" | "RAGX" | "RAGY" | "RAGZ" | "RAGL" | "RAGM" | "RAGN" => {
                 Some(surf(self).map(|k| {
