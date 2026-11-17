@@ -146,6 +146,5 @@ pub fn frames(s: &System) -> Frames {
             o: mv(&gt, scale(g.o, -1.0)),
             r: gt,
         },
-        fres_ref: Vec::new(),
     }
 }

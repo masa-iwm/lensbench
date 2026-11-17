@@ -197,6 +197,38 @@ fn bend(k: V3, nv: V3, n1: f64, n2: f64, mirror: bool) -> Option<V3> {
     ))
 }
 
+/// [`fresnel_opl`] の線分上の積分の点: 5 点 Gauss–Legendre を 16 区間（被積分関数は滑らか。区間を倍にしても
+/// 1e-13 以下しか変わらない）。(線分上の位置 0..1, 重みの半分)。和を区間の数で割るのは足した後
+const FRESNEL_NP: usize = 16;
+const FRESNEL_NODES: [(f64, f64); 5 * FRESNEL_NP] = {
+    const GX: [f64; 5] = [
+        -0.906_179_845_938_664,
+        -0.538_469_310_105_683,
+        0.0,
+        0.538_469_310_105_683,
+        0.906_179_845_938_664,
+    ];
+    const GW: [f64; 5] = [
+        0.236_926_885_056_189,
+        0.478_628_670_499_366,
+        0.568_888_888_888_889,
+        0.478_628_670_499_366,
+        0.236_926_885_056_189,
+    ];
+    const NP: usize = FRESNEL_NP;
+    let mut out = [(0.0, 0.0); 5 * NP];
+    let mut i = 0;
+    while i < NP {
+        let mut g = 0;
+        while g < 5 {
+            out[i * 5 + g] = ((i as f64 + 0.5 + 0.5 * GX[g]) / NP as f64, 0.5 * GW[g]);
+            g += 1;
+        }
+        i += 1;
+    }
+    out
+};
+
 /// Fresnel・Cylinder Fresnel の面の光路長の足し分。基準点 a から交点 b への線分上の
 /// ∫ (n2 k2 − n1 k1)·dr（k1 は入射の方向で一定、k2 は線分上の各点の傾きでの屈折の方向）。
 /// 平面の上の段差の高さを位相に置き換えたもので、OpticStudio 26.1 と一致する（合成系 F1・C1 で 1e-10。
@@ -214,33 +246,14 @@ pub(crate) fn fresnel_opl(
     if ux == 0.0 && uy == 0.0 {
         return Some(0.0);
     }
-    // 5 点 Gauss–Legendre を 16 区間（被積分関数は滑らか。区間を倍にしても 1e-13 以下しか変わらない）
-    const GX: [f64; 5] = [
-        -0.906_179_845_938_664,
-        -0.538_469_310_105_683,
-        0.0,
-        0.538_469_310_105_683,
-        0.906_179_845_938_664,
-    ];
-    const GW: [f64; 5] = [
-        0.236_926_885_056_189,
-        0.478_628_670_499_366,
-        0.568_888_888_888_889,
-        0.478_628_670_499_366,
-        0.236_926_885_056_189,
-    ];
-    const NP: usize = 16;
     let mut t = 0.0;
-    for i in 0..NP {
-        for (gx, gw) in GX.iter().zip(GW) {
-            let f = (i as f64 + 0.5 + 0.5 * gx) / NP as f64;
-            let (x, y) = (a[0] + ux * f, a[1] + uy * f);
-            let nv = normalize(fb.normal(x, y));
-            let k2 = bend(k1, nv, n1, n2, mirror)?;
-            t += 0.5 * gw * ((n2 * k2[0] - n1 * k1[0]) * ux + (n2 * k2[1] - n1 * k1[1]) * uy);
-        }
+    for &(f, w) in FRESNEL_NODES.iter() {
+        let (x, y) = (a[0] + ux * f, a[1] + uy * f);
+        let nv = normalize(fb.normal(x, y));
+        let k2 = bend(k1, nv, n1, n2, mirror)?;
+        t += w * ((n2 * k2[0] - n1 * k1[0]) * ux + (n2 * k2[1] - n1 * k1[1]) * uy);
     }
-    let t = t / NP as f64;
+    let t = t / FRESNEL_NP as f64;
     t.is_finite().then_some(t)
 }
 

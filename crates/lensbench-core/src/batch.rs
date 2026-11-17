@@ -116,8 +116,6 @@ struct Step {
     grin: Option<GrinIn>,
     /// この面の後ろから GRIN の媒質（屈折率は交点で求める）
     grin_eval: bool,
-    /// Fresnel の基準点（[`Frames::fres_ref`]）
-    fres_ref: [f64; 2],
 }
 
 /// 面の後ろの屈折率が前の値を引き継ぐか（座標ブレーク、鏡。理想レンズ・利用者定義の面の鏡は表の値）
@@ -134,6 +132,9 @@ pub struct Plan<'a> {
     /// Floating 開口でけるか（開口は追跡のたびに面から読む。自動の半直径は changed() なしで変わる）
     floating_clip: bool,
     steps: Arc<[Step]>,
+    /// Fresnel・Cylinder Fresnel の面の光路長の基準点（面の番号ごとの局所座標 (x, y)。空か範囲外なら頂点）。
+    /// 追跡ごとに違う（同じ視野・波長の主光線の交点）ので、面ごとの準備とは別に持つ（[`Plan::with_fresnel_ref`]）
+    fres_ref: Vec<[f64; 2]>,
 }
 
 /// 系に持つ追跡の準備（(波長, 最後の面, Floating 開口でけるか), 面ごとの準備）の並び
@@ -180,7 +181,20 @@ impl<'a> Plan<'a> {
             n_first: sys.index_before(1, w),
             floating_clip,
             steps,
+            fres_ref: Vec::new(),
         }
+    }
+
+    /// Fresnel の面の光路長の基準点を与える（面の番号ごと）
+    pub(crate) fn with_fresnel_ref(mut self, r: Vec<[f64; 2]>) -> Self {
+        self.fres_ref = r;
+        self
+    }
+
+    /// 面 j の Fresnel の基準点
+    #[inline]
+    pub(crate) fn fresnel_ref(&self, j: usize) -> [f64; 2] {
+        self.fres_ref.get(j).copied().unwrap_or([0.0; 2])
     }
 
     fn steps(sys: &System, fr: &Frames, w: usize, last: usize) -> Vec<Step> {
@@ -252,7 +266,6 @@ impl<'a> Plan<'a> {
                 },
                 grin,
                 grin_eval,
-                fres_ref: fr.fres_ref.get(j).copied().unwrap_or([0.0; 2]),
             });
             // 座標ブレークの後ろも同じ GRIN の媒質
             if let Some(g) = steps.last().expect("at least one step").grin {

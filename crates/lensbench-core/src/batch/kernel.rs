@@ -614,7 +614,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                                 get(&kin, i),
                                 nprev[i],
                                 nn[i],
-                                st.fres_ref,
+                                plan.fresnel_ref(st.j),
                                 a,
                             ) {
                                 Some(e) => opl[i] += e,

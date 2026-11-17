@@ -254,15 +254,12 @@ pub struct Rel {
 
 #[derive(Debug, Clone)]
 pub struct Frames {
-    /// 面ごと（無視する面と、無限遠の物体面は None）。Fresnel の基準点だけ違う写しを安く作れるよう共有で持つ
+    /// 面ごと（無視する面と、無限遠の物体面は None）
     pub surf: Arc<Vec<Option<Frame>>>,
     /// 面ごとの、直前の有効な面の局所座標からこの面の局所座標への変換（追跡の内側で大域座標を経ずに進むため）
     pub rel: Arc<Vec<Option<Rel>>>,
     /// 面 1 の変換の前の座標系（入射瞳を測る物体空間の軸）
     pub obj: Frame,
-    /// Fresnel・Cylinder Fresnel の面の光路長の基準点（面ごとの局所座標 (x, y)。空か範囲外なら頂点）。
-    /// OpticStudio と同じく、同じ視野・波長の主光線の交点にする（[`System::trace_launch`] が入れる）
-    pub fres_ref: Vec<[f64; 2]>,
 }
 
 #[derive(Debug, Clone)]

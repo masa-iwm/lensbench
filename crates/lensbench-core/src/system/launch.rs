@@ -290,9 +290,9 @@ impl System {
     }
 
     /// Fresnel・Cylinder Fresnel の面（面 last まで）があれば、同じ物体・視野・波長の主光線（瞳座標 0、絞りの中心）の
-    /// 交点をその面の光路長の基準点にした座標系（[`Frames::fres_ref`]）。OpticStudio と同じ約束。
+    /// 交点を、その面の光路長の基準点にする（面の番号ごとの局所座標 (x, y)）。OpticStudio と同じ約束。
     /// 光線を直接与えたとき（主光線がない）と主光線が通らないときは頂点
-    pub(super) fn fresnel_frames(&self, l: &Launch, w: usize, last: usize) -> Option<Frames> {
+    pub(super) fn fresnel_refs(&self, l: &Launch, w: usize, last: usize) -> Option<Vec<[f64; 2]>> {
         let is_f = |j: usize| {
             let d = &self.surfaces[j];
             !d.ignore && matches!(d.action(), crate::action::Action::Fresnel(_))
@@ -325,10 +325,9 @@ impl System {
         };
         let (st, fail) = self.launch_rays(&chief, w);
         let fr = self.frames();
-        let mut f = fr.clone();
-        f.fres_ref = vec![[0.0; 2]; self.surfaces.len()];
+        let mut refs = vec![[0.0; 2]; self.surfaces.len()];
         if fail[0] {
-            return Some(f);
+            return Some(refs);
         }
         let nrec = (1..=last).filter(|&j| !self.surfaces[j].ignore).count();
         let mut rec = vec![trace::RecEntry::NAN; nrec];
@@ -338,11 +337,11 @@ impl System {
         if r.status.is_ok() {
             for e in &rec {
                 if is_f(e.surf) {
-                    f.fres_ref[e.surf] = [e.xyz[0], e.xyz[1]];
+                    refs[e.surf] = [e.xyz[0], e.xyz[1]];
                 }
             }
         }
-        Some(f)
+        Some(refs)
     }
 
     #[allow(clippy::type_complexity)]
@@ -447,8 +446,8 @@ impl System {
             Launch::Rays { .. } => (None, None),
         };
         let last = last.unwrap_or(self.image());
-        let fres_fr = self.fresnel_frames(l, w, last);
-        let fr = fres_fr.as_ref().unwrap_or(self.frames());
+        let fres_ref = self.fresnel_refs(l, w, last);
+        let fr = self.frames();
         let clip = self.floating_clip;
         let st = self.stop();
         let kw = self.wave(w).k_mm();
@@ -511,7 +510,10 @@ impl System {
             }
         };
         // 面ごとの準備（光線によらない量）は 1 回だけ
-        let plan = batch::Plan::new(self, fr, w, last, clip);
+        let mut plan = batch::Plan::new(self, fr, w, last, clip);
+        if let Some(r) = fres_ref {
+            plan = plan.with_fresnel_ref(r);
+        }
         // 結果の書き先（無限遠物体の opl_os は面 1 の原点を通り軸に垂直な面から測る。面 1 が無視（IGNR）なら、
         // その次の有効な面（大域座標の基準と同じ））
         let os = match spec {
