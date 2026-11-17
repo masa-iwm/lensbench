@@ -6,6 +6,7 @@ use crate::coating::{Iface, C64};
 use crate::math::*;
 use crate::surface::Aperture;
 use crate::system::System;
+use crate::tol::{APERTURE_EDGE, PARALLEL_SIN};
 use crate::Error;
 
 pub use crate::shape::{powi, sag, sag_toroidal};
@@ -83,7 +84,7 @@ fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
     let s = norm(ep);
     if c.mode == 0 {
         // 常光の成分（k と a を含む面に垂直）だけ
-        let es = if s > 1e-12 {
+        let es = if s > PARALLEL_SIN {
             normalize(cross(k, scale(ep, 1.0 / s)))
         } else {
             return;
@@ -94,7 +95,7 @@ fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
         }
         return;
     }
-    if !(s > 1e-12) {
+    if !(s > PARALLEL_SIN) {
         // 結晶軸に沿って進む光線は常光と同じ
         return;
     }
@@ -170,7 +171,7 @@ pub(crate) fn pol_surface(
         }
         PolKind::Iface(f) => {
             let mut sv = cross(kin, nv);
-            if !(norm(sv) > 1e-12) {
+            if !(norm(sv) > PARALLEL_SIN) {
                 sv = cross(kin, [1.0, 0.0, 0.0]);
             }
             let sv = normalize(sv);
@@ -213,14 +214,14 @@ fn pol_surface_crystal(
     let ca = dot(a, k);
     let ep = sub(a, scale(k, ca));
     let sn = norm(ep);
-    if !(sn > 1e-12) {
+    if !(sn > PARALLEL_SIN) {
         return pol_surface(ps, e, kin, kl, nv, cosi, false);
     }
     let ee = scale(ep, 1.0 / sn);
     let eo = normalize(cross(k, ee));
     let nth = 1.0 / (ca * ca / (no * no) + (1.0 - ca * ca) / (ne * ne)).sqrt();
     let mut sv = cross(kin, nv);
-    if !(norm(sv) > 1e-12) {
+    if !(norm(sv) > PARALLEL_SIN) {
         sv = cross(kin, [1.0, 0.0, 0.0]);
     }
     let sv = normalize(sv);
@@ -250,7 +251,7 @@ fn crystal_basis(axis: V3, k: V3, no: f64, ne: f64) -> (V3, V3, f64) {
     let ca = dot(a, k);
     let ep = sub(a, scale(k, ca));
     let sn = norm(ep);
-    if !(sn > 1e-12) {
+    if !(sn > PARALLEL_SIN) {
         let mut u = cross(k, [1.0, 0.0, 0.0]);
         if !(norm(u) > 1e-6) {
             u = cross(k, [0.0, 1.0, 0.0]);
@@ -285,7 +286,7 @@ fn pol_surface_cement(
     let (eo1, ee1, n1e) = crystal_basis(a.0, kin, a.1, a.2);
     let (eo2, ee2, n2e) = crystal_basis(b.0, kl, b.1, b.2);
     let mut sv = cross(kin, nv);
-    if !(norm(sv) > 1e-12) {
+    if !(norm(sv) > PARALLEL_SIN) {
         sv = cross(kin, [1.0, 0.0, 0.0]);
     }
     let sv = normalize(sv);
@@ -539,34 +540,34 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
     match a {
         Aperture::Circular { min, max, dx, dy } => {
             let (u, v) = (pl[0] - dx, pl[1] - dy);
-            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+            match ring_side(u, v, min - APERTURE_EDGE, max + APERTURE_EDGE) {
                 Some(inside) => !inside,
                 None => {
                     let r = u.hypot(v);
-                    r > max + 1e-9 || r < min - 1e-9
+                    r > max + APERTURE_EDGE || r < min - APERTURE_EDGE
                 }
             }
         }
-        Aperture::Floating { semi } => match ring_side(pl[0], pl[1], 0.0, semi + 1e-9) {
+        Aperture::Floating { semi } => match ring_side(pl[0], pl[1], 0.0, semi + APERTURE_EDGE) {
             Some(inside) => !inside,
-            None => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+            None => (pl[0]).hypot(pl[1]) > semi + APERTURE_EDGE,
         },
         Aperture::Obsc { min, max, dx, dy } => {
             let (u, v) = (pl[0] - dx, pl[1] - dy);
-            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+            match ring_side(u, v, min - APERTURE_EDGE, max + APERTURE_EDGE) {
                 Some(inside) => inside,
                 None => {
                     let r = u.hypot(v);
-                    r <= max + 1e-9 && r >= min - 1e-9
+                    r <= max + APERTURE_EDGE && r >= min - APERTURE_EDGE
                 }
             }
         }
         Aperture::Rect { hx, hy, dx, dy } => {
-            (pl[0] - dx).abs() > hx + 1e-9 || (pl[1] - dy).abs() > hy + 1e-9
+            (pl[0] - dx).abs() > hx + APERTURE_EDGE || (pl[1] - dy).abs() > hy + APERTURE_EDGE
         }
         Aperture::Ellipse { hx, hy, dx, dy } => {
             let (u, v) = ((pl[0] - dx) / hx, (pl[1] - dy) / hy);
-            u * u + v * v > 1.0 + 1e-9
+            u * u + v * v > 1.0 + APERTURE_EDGE
         }
         Aperture::Spider {
             width,

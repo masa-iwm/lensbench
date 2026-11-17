@@ -272,15 +272,32 @@ pub(super) fn aperture_out_l<V: Lanes>(a: Aperture, pl: &VL<V>) -> V::B {
         out
     }
     match a {
-        Aperture::Circular { min, max, dx, dy } => {
-            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), false)
-        }
-        Aperture::Obsc { min, max, dx, dy } => {
-            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), true)
-        }
+        Aperture::Circular { min, max, dx, dy } => ring(
+            a,
+            pl,
+            (dx, dy),
+            (
+                min - crate::tol::APERTURE_EDGE,
+                max + crate::tol::APERTURE_EDGE,
+            ),
+            false,
+        ),
+        Aperture::Obsc { min, max, dx, dy } => ring(
+            a,
+            pl,
+            (dx, dy),
+            (
+                min - crate::tol::APERTURE_EDGE,
+                max + crate::tol::APERTURE_EDGE,
+            ),
+            true,
+        ),
         // [`trace::aperture_out`] と同じ比較を光線ごとに（NaN は外にならない）
         Aperture::Rect { hx, hy, dx, dy } => {
-            let (bx, by) = (hx + 1e-9, hy + 1e-9);
+            let (bx, by) = (
+                hx + crate::tol::APERTURE_EDGE,
+                hy + crate::tol::APERTURE_EDGE,
+            );
             (pl[0] - dx).abs().gt(bx) | (pl[1] - dy).abs().gt(by)
         }
         _ => V::B::from_fn(|i| trace::aperture_out(a, get(pl, i))),

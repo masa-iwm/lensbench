@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::newton2;
+use crate::tol::{AIM_FAIL, AIM_LINE_MIN, AIM_STEP, AIM_TOL};
 
 impl System {
     /// 物体 spec から絞り面の局所座標 (x, y) を通る実光線を光線ごとに解く（[`Launch::Stop`]）。
@@ -38,8 +39,8 @@ impl System {
             [r.xyz[0], r.xyz[1]]
         };
         let h = match spec {
-            ObjSpec::Point(_) => 1e-7,
-            ObjSpec::Dir(_) => 1e-7 * (self.paraxial().epd / 2.0).max(1.0),
+            ObjSpec::Point(_) => AIM_STEP,
+            ObjSpec::Dir(_) => AIM_STEP * (self.paraxial().epd / 2.0).max(1.0),
         };
         let jac = |v: [f64; 2], q: [f64; 2]| -> [f64; 4] {
             let qx = at_stop([v[0] + h, v[1]]);
@@ -57,7 +58,7 @@ impl System {
             diff: newton2::Diff::fwd(h),
             line: newton2::Line::Full,
         };
-        let lim = |t: [f64; 2]| 1e-12 * t[0].abs().max(t[1].abs()).max(1.0);
+        let lim = |t: [f64; 2]| AIM_TOL * t[0].abs().max(t[1].abs()).max(1.0);
         // 絞りの中心を通る光線を解き、その点のヤコビアンで光線ごとの初期値を作る
         let v0 = match spec {
             ObjSpec::Dir(_) => [0.0, 0.0],
@@ -85,7 +86,7 @@ impl System {
         };
         let result = |t: [f64; 2], s: &newton2::Sol| -> ((V3, V3), bool) {
             let fail = !(t[0].is_finite() && t[1].is_finite())
-                || !(s.err() <= 1e-9 * t[0].abs().max(t[1].abs()).max(1.0));
+                || !(s.err() <= AIM_FAIL * t[0].abs().max(t[1].abs()).max(1.0));
             (start(s.v), fail)
         };
         let one = |i: usize| -> ((V3, V3), bool) {
@@ -164,15 +165,15 @@ impl System {
         let s = self.stop();
         let fr = self.frames();
         let plan = batch::Plan::new(self, fr, w, s, false);
-        let tol = 1e-12;
+        let tol = AIM_TOL;
         // 絞りの半径は符号つき（像が反転する向きなら負）なので大きさで
         let rmax = rx.abs().max(ry.abs()).max(1.0);
-        let fail_tol = 1e-9 * rmax;
+        let fail_tol = AIM_FAIL * rmax;
         let scale_ = ex
             .iter()
             .chain(ey.iter())
             .fold(1.0f64, |m, v| m.max(v.abs()));
-        let h = 1e-7 * scale_;
+        let h = AIM_STEP * scale_;
         let lim = tol * rmax;
         let geom = StartGeom::new(self, spec);
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
@@ -451,11 +452,11 @@ impl System {
         };
         let (rx, ry) = self.stop_radius();
         let nw = newton2::Newton2 {
-            tol: 1e-12 * rx.abs().max(ry.abs()).max(1.0),
+            tol: AIM_TOL * rx.abs().max(ry.abs()).max(1.0),
             max_it: 60,
-            diff: newton2::Diff::fwd(1e-7 * (self.paraxial().epd / 2.0).max(1.0)),
+            diff: newton2::Diff::fwd(AIM_STEP * (self.paraxial().epd / 2.0).max(1.0)),
             // 光線が面から外れたら刻みを半分に
-            line: newton2::Line::Finite { min: 1e-6 },
+            line: newton2::Line::Finite { min: AIM_LINE_MIN },
         };
         let newton = |sp: ObjSpec, v: [f64; 2]| -> Option<[f64; 2]> {
             let s = nw.solve(|v| at(sp, v), v, [0.0; 2]);
@@ -553,10 +554,10 @@ impl System {
         };
         let (rx, ry) = self.stop_radius();
         let nw = newton2::Newton2 {
-            tol: 1e-12 * rx.abs().max(ry.abs()).max(1.0),
+            tol: AIM_TOL * rx.abs().max(ry.abs()).max(1.0),
             max_it: 60,
-            diff: newton2::Diff::fwd(1e-7 * (self.paraxial().epd / 2.0).abs().max(1.0)),
-            line: newton2::Line::Finite { min: 1e-6 },
+            diff: newton2::Diff::fwd(AIM_STEP * (self.paraxial().epd / 2.0).abs().max(1.0)),
+            line: newton2::Line::Finite { min: AIM_LINE_MIN },
         };
         let newton = |v: [f64; 2], tg: [f64; 2]| -> Option<[f64; 2]> {
             let s = nw.solve(|v| at(v, tg), v, [0.0; 2]);
