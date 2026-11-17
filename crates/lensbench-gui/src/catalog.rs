@@ -2834,8 +2834,8 @@ mod tests {
                 assert!(max < 0.1 * max_in, "{part}: {max} / {max_in}");
                 // 絞りは玉の前
                 let stop = lay.stop.unwrap();
-                let lens_first = lay.units[0].1[0][0];
-                assert!(stop < lens_first, "{part}: stop {stop} {:?}", lay.units);
+                let lens_first = lay.solids[0].surfaces[0];
+                assert!(stop < lens_first, "{part}: stop {stop} {:?}", lay.blocks);
             } else {
                 assert!(max > 0.02, "{part}: {max}");
             }

@@ -1138,6 +1138,7 @@ impl Core {
                 .unwrap_or_default();
         }
         self.loc.file = new_file;
+        self.sys.elem_blocks = crate::combo::block_spans(&v);
         self.sys.summary = Some(v);
         self.sys.info = None;
         self.refresh();

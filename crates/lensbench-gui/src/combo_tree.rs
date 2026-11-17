@@ -859,7 +859,12 @@ mod tests {
             let d = LayoutData::parse(&v);
             let spans = d.spans_for(&c.ids(), c.lead_stop());
             // 経路に沿った要素は全部図の面に当たり、前から順に並ぶ（戻りの面は当てない）
-            assert!(spans.iter().all(Option::is_some), "{path}: {spans:?}");
+            assert!(
+                spans.iter().all(Option::is_some),
+                "{path}: {spans:?} {:?} {:?}",
+                c.ids(),
+                d.blocks
+            );
             let starts: Vec<usize> = spans.iter().map(|s| s.unwrap()[0]).collect();
             assert!(starts.windows(2).all(|w| w[0] < w[1]), "{path}: {spans:?}");
         }

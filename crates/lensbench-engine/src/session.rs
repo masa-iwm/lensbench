@@ -870,8 +870,11 @@ impl Session {
         let sess = self;
         let f = || -> Result<Value, RpcErr> {
             let spec = load_spec(sess, load)?;
-            let s = load_file(&spec)?;
-            layout_with(&s, &spec, opts, None)
+            let r = read_file_notes(&spec)?;
+            let mut v = layout_with(&r.sys, &spec, opts, None)?;
+            // 要素ごとの面の範囲（GUI の組合せの図・レンズデータの要素の行。GPN-01）
+            v["blocks"] = json!(r.blocks);
+            Ok(v)
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))

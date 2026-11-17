@@ -213,7 +213,7 @@ impl App {
                 let ids = self.c.doc.combo.span_ids();
                 let spans = lens_data::elem_spans(
                     &ids,
-                    &self.c.sys.ld_units,
+                    &self.c.sys.elem_blocks,
                     self.c.doc.combo.lead_stop(),
                     &self.c.sys.ld_rows,
                 );

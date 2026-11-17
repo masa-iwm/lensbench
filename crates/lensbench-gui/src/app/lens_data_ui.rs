@@ -52,7 +52,7 @@ impl Core {
         let lead = self.doc.combo.lead_stop();
         let spans = if is_combo {
             let live = self.doc.combo.span_ids();
-            lens_data::elem_spans(&live, &self.sys.ld_units, lead, &self.sys.ld_rows)
+            lens_data::elem_spans(&live, &self.sys.elem_blocks, lead, &self.sys.ld_rows)
         } else {
             Vec::new()
         };

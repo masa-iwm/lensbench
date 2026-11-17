@@ -208,21 +208,17 @@ pub fn tree(units: &[Unit]) -> Vec<Block> {
         .collect()
 }
 
-/// 組合せの要素ごとの面の範囲（最初・最後）。決め方は組合せの図と同じ（[`crate::combo::LayoutData::spans_for`]）
+/// 組合せの要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（組合せの図と同じ、
+/// [`crate::combo::LayoutData::spans_for`]）
 pub fn elem_spans(
     ids: &[String],
-    units: &[Unit],
+    blocks: &[(String, Vec<[usize; 2]>)],
     lead_stop: bool,
     rows: &[Row],
 ) -> Vec<Option<[usize; 2]>> {
     let d = crate::combo::LayoutData {
-        vertices: vec![None; rows.len()],
-        plates: vec![("image".into(), rows.len().saturating_sub(1), Vec::new())],
         stop: rows.iter().position(|r| r.stop),
-        units: units
-            .iter()
-            .map(|u| (u.name.clone(), u.spans.clone()))
-            .collect(),
+        blocks: blocks.to_vec(),
         ..Default::default()
     };
     d.spans_for(ids, lead_stop)

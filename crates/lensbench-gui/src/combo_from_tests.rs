@@ -177,10 +177,11 @@ fn examples_build_the_same() {
         for st in std::iter::once(None).chain(c.states.iter().map(Some)) {
             let (a, b) = (build(&f, st), build(&g, st));
             assert!(a.is_ok(), "{} {st:?}: {:?}", f.display(), a);
-            // 玉の単位（units）は id の無かった要素に組合せが id を付けるので増える。系の面・図は同じ
+            // 玉の単位（units）・ブロックの範囲（blocks）は id の無かった要素に組合せが id を付けるので増える。系の面・図は同じ
             let (mut a, mut b) = (a.unwrap(), b.unwrap());
             for x in [&mut a, &mut b] {
-                x.as_object_mut().map(|o| o.remove("units"));
+                x.as_object_mut()
+                    .map(|o| (o.remove("units"), o.remove("blocks")));
             }
             assert!(
                 a == b,
@@ -221,7 +222,8 @@ fn raw_blocks_build_the_same() {
         let load = json!({ "file": f.display().to_string(),
             "glass_dirs": [r.join("tests/glass").display().to_string()] });
         let mut v = lensbench_engine::preview_layout(&load, &json!({})).unwrap();
-        v.as_object_mut().map(|o| o.remove("units"));
+        v.as_object_mut()
+            .map(|o| (o.remove("units"), o.remove("blocks")));
         v
     };
     let (a, b) = (build("a.json", &v), build("b.json", &c.project()));

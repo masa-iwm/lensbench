@@ -529,24 +529,32 @@ fn xz_plane_moves_x() {
     View::default().nudge(&mut p, None, 0.5, 2.0);
     assert_eq!((p.decenter, p.tilt), ([0.5, 0.5], [2.0, -2.0, 0.0]));
 }
-/// 名前の無い要素（BS）が続くとき、自動の玉を順に当てる
+/// 要素の面の範囲はブロックの id で引く（名前の無い BS が続いても、群の中でも）。OFF の要素（空の id）は None、
+/// 往路で 2 度通るブロックは前の要素より後の通り
 #[test]
-fn spans_for_consecutive_splitters() {
+fn spans_for_uses_block_ids() {
     let d = LayoutData {
-        vertices: vec![None; 17],
-        plates: vec![("image".into(), 16, vec![])],
-        units: vec![
-            ("lens1".into(), vec![[2, 3]]),
-            ("lens2".into(), vec![[4, 8]]),
-            ("lens3".into(), vec![[10, 14]]),
+        blocks: vec![
             ("L1".into(), vec![[2, 3]]),
+            ("BS1".into(), vec![[4, 8]]),
+            ("BS2".into(), vec![[10, 14]]),
+            ("M1".into(), vec![[15, 15], [1, 1]]),
         ],
         ..Default::default()
     };
-    let ids: Vec<String> = ["L1", "BS1", "BS2"].iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = ["L1", "", "BS1", "BS2", "M1"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         d.spans_for(&ids, false),
-        vec![Some([2, 3]), Some([4, 8]), Some([10, 14])]
+        vec![
+            Some([2, 3]),
+            None,
+            Some([4, 8]),
+            Some([10, 14]),
+            Some([15, 15])
+        ]
     );
 }
 
@@ -739,7 +747,11 @@ fn multi_surface_blocks_build() {
     lensbench_core::vfs::remove_file(&f).ok();
     let d = LayoutData::parse(&v);
     let spans = d.spans_for(&c.ids(), c.lead_stop());
-    assert!(spans.iter().all(Option::is_some), "{spans:?} {:?}", d.units);
+    assert!(
+        spans.iter().all(Option::is_some),
+        "{spans:?} {:?}",
+        d.blocks
+    );
     let mut sp = short.project();
     sp["glass_catalogs"] = json!(["SCHOTT"]);
     lensbench_core::vfs::write(&f, sp.to_string()).unwrap();

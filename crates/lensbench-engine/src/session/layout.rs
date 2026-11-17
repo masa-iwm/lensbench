@@ -11,7 +11,12 @@ use crate::layout::{Draw, Pick, RaySel, View};
 /// （構成で値の違うパラメータの set は当てずに `notes` に書く）。`surfaces`・`units` は読み込んだ系のもの
 pub(super) fn layout(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let c = sess.current_full()?;
-    layout_with(&c.sys, &c.spec, p, Some(&c))
+    let mut v = layout_with(&c.sys, &c.spec, p, Some(&c))?;
+    // ブロックごとの面の範囲（読んだときのもの。面を足す・消す edit の後は空。GUI の組合せの図、GPN-01）
+    if let Some(b) = sess.served().as_ref().map(|x| x.blocks.clone()) {
+        v["blocks"] = json!(*b);
+    }
+    Ok(v)
 }
 
 /// [`layout`]。loaded は読み込んだ系（None は s をファイルから読んだばかりの系として、重ねる構成もファイルから）

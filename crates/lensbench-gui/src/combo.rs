@@ -1240,8 +1240,8 @@ pub struct LayoutData {
     pub stop: Option<usize>,
     /// 絞りの面の半径 [mm]（layout の surfaces の semi。無ければ組合せの epd/2）
     pub stop_semi: Option<f64>,
-    /// 玉・群の名前と面の範囲
-    pub units: Vec<(String, Vec<[usize; 2]>)>,
+    /// id のあるブロック・群と、その往路の面の範囲（serve の `blocks`。要素の面の範囲は id でここから引く、GPN-01）
+    pub blocks: Vec<(String, Vec<[usize; 2]>)>,
     /// xz 面の図（縦は x）。偏心・傾きの操作も x の向き
     pub xz: bool,
     /// 光路に沿って展開した図。光軸に沿う操作だけ（偏心・傾きは向きが裏返る区間があるので止める）
@@ -1255,6 +1255,27 @@ pub struct Solid {
     pub mirror: bool,
     pub surfaces: [usize; 2],
     pub pts: Vec<[f64; 2]>,
+}
+
+/// serve の `blocks`（load・layout の返事）: id のあるブロック・群と、その往路の面の範囲
+pub fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
+    let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
+    v["blocks"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|b| {
+                    (
+                        b["id"].as_str().unwrap_or_default().to_string(),
+                        b["forward"]
+                            .as_array()
+                            .map(|a| a.iter().map(|x| [us(&x[0]), us(&x[1])]).collect())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn pts(v: &Value) -> Vec<[f64; 2]> {
@@ -1347,18 +1368,7 @@ impl LayoutData {
                 .find(|s| s["stop"] == true)
                 .and_then(|s| s["semi"].as_f64())
                 .filter(|r| r.is_finite() && *r > 0.0),
-            units: arr("units")
-                .iter()
-                .map(|u| {
-                    (
-                        u["name"].as_str().unwrap_or_default().to_string(),
-                        u["spans"]
-                            .as_array()
-                            .map(|a| a.iter().map(|x| [us(&x[0]), us(&x[1])]).collect())
-                            .unwrap_or_default(),
-                    )
-                })
-                .collect(),
+            blocks: block_spans(v),
             xz: v["plane"] == "xz",
             unfold: v["unfold"] == true,
             d3: (v["plane"] == "3d")
@@ -1366,110 +1376,45 @@ impl LayoutData {
         }
     }
 
-    /// 要素ごとの面の範囲。玉・群として名前の無い要素（BS など）は、前後の要素の間の面とする
+    /// 要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（GPN-01: 前後の面からの推定は
+    /// しない）。往路で同じブロックを 2 度通る系は、前の要素より後の通りを当てる
     pub fn spans_for(&self, ids: &[String], lead_stop: bool) -> Vec<Option<[usize; 2]>> {
-        // 空の id（OFF の要素）は系に無いので除いて決める
-        if ids.iter().any(String::is_empty) {
-            let live: Vec<usize> = (0..ids.len()).filter(|&k| !ids[k].is_empty()).collect();
-            let sub: Vec<String> = live.iter().map(|&k| ids[k].clone()).collect();
-            let mut out = vec![None; ids.len()];
-            for (j, sp) in self.spans_for(&sub, lead_stop).into_iter().enumerate() {
-                out[live[j]] = sp;
-            }
-            return out;
-        }
-        // 名前の玉は前の要素より後の通り（往路を戻る系は同じ玉を 2 度通る。往きの通りを当てる）
         let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
         let mut prev = if lead_stop { self.stop } else { None };
         for id in ids {
-            let s = self.span_after(id, prev, ids);
+            // 空の id（OFF の要素）は系に無い
+            let s = (!id.is_empty())
+                .then(|| self.block_after(id, prev, ids))
+                .flatten();
             if let Some(s) = s {
                 prev = Some(s[1]);
             }
             v.push(s);
         }
-        let img = self.image_surface().unwrap_or(self.vertices.len());
-        // 要素の名前に当たらない玉（serve が自動で付けた lens2 など。BS のキューブも玉になる）
-        let mut spare: Vec<[usize; 2]> = self
-            .units
-            .iter()
-            .filter(|(n, _)| !ids.contains(n))
-            .filter_map(|(n, _)| self.span(n))
-            .collect();
-        spare.sort();
-        let mut k = 0;
-        while k < v.len() {
-            if v[k].is_some() {
-                k += 1;
-                continue;
-            }
-            // 名前で決まらない要素の並び k..e と、その前後の面
-            let e = (k..v.len()).find(|&j| v[j].is_some()).unwrap_or(v.len());
-            let prev_end = if k == 0 {
-                if lead_stop {
-                    self.stop
-                } else {
-                    Some(0)
-                }
-            } else {
-                v[k - 1].map(|s| s[1])
-            };
-            let next_start = if e == v.len() {
-                Some(img)
-            } else {
-                v[e].map(|s| s[0])
-            };
-            if let (Some(a), Some(b)) = (prev_end, next_start) {
-                let inside: Vec<[usize; 2]> = spare
-                    .iter()
-                    .copied()
-                    .filter(|s| a < s[0] && s[1] < b)
-                    .collect();
-                if inside.len() == e - k {
-                    // 並び（BS が続くときなど）の玉が要素と同じ数なら順に当てる
-                    for (j, s) in (k..e).zip(inside) {
-                        v[j] = Some(s);
-                    }
-                } else if e - k == 1 && a + 1 < b {
-                    // 間がこの要素だけ
-                    v[k] = Some([a + 1, b - 1]);
-                }
-            }
-            k = e;
-        }
         v
     }
 
-    /// 名前の玉・群の面の範囲（最初・最後）
-    fn span(&self, name: &str) -> Option<[usize; 2]> {
-        let (_, s) = self.units.iter().find(|(n, _)| n == name)?;
-        Some([s.iter().map(|x| x[0]).min()?, s.iter().map(|x| x[1]).max()?])
-    }
-
-    /// 名前の玉・群の、面 after より後の通りの範囲。ほかの要素（ids）の面が間に入ったら、そこまで（復路は入れない）
-    fn span_after(&self, name: &str, after: Option<usize>, ids: &[String]) -> Option<[usize; 2]> {
-        let (_, all) = self.units.iter().find(|(n, _)| n == name)?;
-        let mut sp: Vec<[usize; 2]> = all
+    /// id のブロックの、面 after より後の往路の通りの範囲。続く通りは、ほかの要素（ids）の面が間に入るまでつなぐ
+    fn block_after(&self, id: &str, after: Option<usize>, ids: &[String]) -> Option<[usize; 2]> {
+        let (_, all) = self.blocks.iter().find(|(n, _)| n == id)?;
+        let mut sp: Vec<[usize; 2]> = all.clone();
+        sp.sort();
+        let first = sp
             .iter()
             .copied()
-            .filter(|s| after.is_none_or(|a| s[0] > a))
-            .collect();
-        if sp.is_empty() {
-            return self.span(name);
-        }
-        sp.sort();
-        let first = sp[0];
+            .find(|s| after.is_none_or(|a| s[0] > a))
+            .or_else(|| sp.first().copied())?;
         let limit = self
-            .units
+            .blocks
             .iter()
-            .filter(|(n, _)| n != name && ids.contains(n))
+            .filter(|(n, _)| n != id && ids.contains(n))
             .flat_map(|(_, s)| s.iter().map(|x| x[0]))
             .filter(|&x| x > first[0])
             .min()
             .unwrap_or(usize::MAX);
         let end = sp
             .iter()
-            .filter(|s| s[0] < limit)
+            .filter(|s| s[0] >= first[0] && s[0] < limit)
             .map(|s| s[1])
             .max()
             .unwrap_or(first[1]);

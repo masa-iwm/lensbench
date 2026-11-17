@@ -177,18 +177,26 @@ fn parse_input() {
     assert_eq!(Col::Material.parse(" F2 ").unwrap(), json!("F2"));
 }
 
+/// 要素の行の範囲はブロックの id で引く（名前の無い BS も id を持つ。推定はしない）
 #[test]
-fn element_spans_fill_unnamed_elements() {
+fn element_spans_from_block_ids() {
     let rows: Vec<Row> = (0..12)
         .map(|j| Row {
             stop: j == 1,
             ..Default::default()
         })
         .collect();
-    let units = vec![unit("L1", &[[2, 5]], false), unit("L2", &[[9, 10]], false)];
-    let ids: Vec<String> = ["L1", "BS1", "L2"].iter().map(|s| s.to_string()).collect();
-    let v = elem_spans(&ids, &units, true, &rows);
-    assert_eq!(v, vec![Some([2, 5]), Some([6, 8]), Some([9, 10])]);
+    let blocks = vec![
+        ("L1".to_string(), vec![[2, 5]]),
+        ("BS1".to_string(), vec![[6, 8]]),
+        ("L2".to_string(), vec![[9, 10]]),
+    ];
+    let ids: Vec<String> = ["L1", "BS1", "L2", "X"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let v = elem_spans(&ids, &blocks, true, &rows);
+    assert_eq!(v, vec![Some([2, 5]), Some([6, 8]), Some([9, 10]), None]);
 }
 
 #[test]

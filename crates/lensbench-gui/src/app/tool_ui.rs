@@ -370,7 +370,7 @@ impl Core {
         }
         let ids = self.doc.combo.span_ids();
         let lead = self.doc.combo.lead_stop();
-        let spans = lens_data::elem_spans(&ids, &self.sys.ld_units, lead, &self.sys.ld_rows);
+        let spans = lens_data::elem_spans(&ids, &self.sys.elem_blocks, lead, &self.sys.ld_rows);
         for (j, key, value) in edits {
             if !self.combo_surface_edit(&spans, j, key, value) {
                 return false;
