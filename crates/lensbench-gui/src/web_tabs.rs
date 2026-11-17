@@ -4,8 +4,9 @@
 //!   元のタブがそのパネルを別の egui の画面（[`Host`]）で描いて網を送り、別の窓（[`Viewer`]）は網を描いて
 //!   入力を返すだけ。解析のパネルもそれ以外も同じ 1 つの方式
 //! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない。
-//!   画面のバイト列だけは窓ごとの BroadcastChannel（[`frame_channel`]）で送る（共有の口だと別の窓すべてが
-//!   ほかの窓の画面まで受けて、頭を見て捨てることになる）
+//!   画面のバイト列だけは、元のタブが開いた窓（`window.open` の戻り）へ `postMessage` で直に送り、バッファを
+//!   写さずに渡す（transfer。BroadcastChannel は写すうえ、共有の口だと別の窓すべてがほかの窓の画面まで受ける）。
+//!   別の窓は自分の窓の `message` で、同じ origin から来たものだけを受ける（[`Frames`]）
 //!   - 窓 → 元: `{sid, from, hello, input}`（始めたとき）、`{sid, from, input}`（入力・大きさ。ほかは 2 秒ごと）、
 //!     `{sid, from, bye}`（閉じた。pagehide で送る）
 //!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
@@ -26,11 +27,6 @@ use wasm_bindgen::JsCast;
 /// BroadcastChannel の名前
 pub const CHANNEL: &str = "lensbench-panels";
 
-/// 元のタブ sid から別の窓のパネル id へ画面を送る BroadcastChannel の名前
-fn frame_channel(sid: &str, id: u64) -> String {
-    format!("{CHANNEL}-{sid}-{id}")
-}
-
 /// ページの URL の `?panel=<id>&main=<sid>`（別のタブのパネルのとき）
 pub fn panel_of_location() -> Option<(u64, String)> {
     let q = web_sys::window()?.location().search().ok()?;
@@ -43,8 +39,6 @@ pub fn panel_of_location() -> Option<(u64, String)> {
 struct Chan {
     ch: web_sys::BroadcastChannel,
     inbox: Rc<RefCell<Vec<Value>>>,
-    /// バイト列の知らせ（別の窓のパネルの画面、[`crate::remote_frame`]）
-    bins: Rc<RefCell<Vec<Vec<u8>>>>,
     _on: Closure<dyn FnMut(web_sys::MessageEvent)>,
     _hide: Option<Closure<dyn FnMut()>>,
 }
@@ -65,8 +59,7 @@ impl Chan {
     fn new(ctx: &egui::Context, name: &str, bye: Option<Value>) -> Option<Chan> {
         let ch = web_sys::BroadcastChannel::new(name).ok()?;
         let inbox: Rc<RefCell<Vec<Value>>> = Rc::default();
-        let bins: Rc<RefCell<Vec<Vec<u8>>>> = Rc::default();
-        let (i, b, c) = (inbox.clone(), bins.clone(), ctx.clone());
+        let (i, c) = (inbox.clone(), ctx.clone());
         let on = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
             let d = e.data();
             if let Some(v) = d.as_string().and_then(|s| serde_json::from_str(&s).ok()) {
@@ -74,11 +67,6 @@ impl Chan {
                 c.request_repaint();
                 // 元のタブが裏に回っていても、別の窓の入力で描く（別の窓のタブでは何もしない）
                 crate::web_bg::kick();
-            } else if d.is_instance_of::<js_sys::Uint8Array>()
-                || d.is_instance_of::<js_sys::ArrayBuffer>()
-            {
-                b.borrow_mut().push(js_sys::Uint8Array::new(&d).to_vec());
-                c.request_repaint();
             }
         });
         ch.set_onmessage(Some(on.as_ref().unchecked_ref()));
@@ -98,7 +86,6 @@ impl Chan {
         Some(Chan {
             ch,
             inbox,
-            bins,
             _on: on,
             _hide: hide,
         })
@@ -111,14 +98,52 @@ impl Chan {
     fn take(&self) -> Vec<Value> {
         std::mem::take(&mut *self.inbox.borrow_mut())
     }
+}
 
-    fn post_bytes(&self, b: &[u8]) {
-        let a = js_sys::Uint8Array::from(b);
-        let _ = self.ch.post_message(&a);
+/// この窓の origin（画面を送る相手・受ける相手を同じ origin に限る）
+fn origin() -> Option<String> {
+    web_sys::window()?.location().origin().ok()
+}
+
+/// 別の窓: 元のタブから `postMessage` で届く画面のバイト列を受ける口（窓の `message`）
+struct Frames {
+    bins: Rc<RefCell<Vec<Vec<u8>>>>,
+    on: Closure<dyn FnMut(web_sys::MessageEvent)>,
+}
+
+impl Frames {
+    fn new(ctx: &egui::Context) -> Option<Frames> {
+        let w = web_sys::window()?;
+        let me = origin()?;
+        let bins: Rc<RefCell<Vec<Vec<u8>>>> = Rc::default();
+        let (b, c) = (bins.clone(), ctx.clone());
+        let on = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
+            if e.origin() != me {
+                return;
+            }
+            let d = e.data();
+            if d.is_instance_of::<js_sys::ArrayBuffer>() || d.is_instance_of::<js_sys::Uint8Array>()
+            {
+                b.borrow_mut().push(js_sys::Uint8Array::new(&d).to_vec());
+                c.request_repaint();
+            }
+        });
+        w.add_event_listener_with_callback("message", on.as_ref().unchecked_ref())
+            .ok()?;
+        Some(Frames { bins, on })
     }
 
-    fn take_bins(&self) -> Vec<Vec<u8>> {
+    fn take(&self) -> Vec<Vec<u8>> {
         std::mem::take(&mut *self.bins.borrow_mut())
+    }
+}
+
+impl Drop for Frames {
+    fn drop(&mut self) {
+        if let Some(w) = web_sys::window() {
+            let _ =
+                w.remove_event_listener_with_callback("message", self.on.as_ref().unchecked_ref());
+        }
     }
 }
 
@@ -171,9 +196,8 @@ pub struct Tabs {
     chan: Option<Chan>,
     sid: String,
     open: HashMap<u64, Open>,
-    /// 別の窓ごとの画面の口（[`frame_channel`]）
-    frames: HashMap<u64, Chan>,
-    ctx: egui::Context,
+    /// 画面を送る相手の origin（自分と同じ）
+    origin: String,
     /// 開けなかった（ポップアップを止められた）パネル。本体の中の窓にする
     pub blocked: std::collections::HashSet<u64>,
 }
@@ -185,8 +209,7 @@ impl Tabs {
             chan: Chan::new(ctx, CHANNEL, Some(json!({ "sid": sid, "closed": true }))),
             sid,
             open: HashMap::new(),
-            frames: HashMap::new(),
-            ctx: ctx.clone(),
+            origin: origin().unwrap_or_default(),
             blocked: Default::default(),
         }
     }
@@ -216,9 +239,6 @@ impl Tabs {
         let r = w.open_with_url_and_target_and_features(&url, &target, &features);
         match r {
             Ok(Some(win)) => {
-                if let Some(c) = Chan::new(&self.ctx, &frame_channel(&self.sid, id), None) {
-                    self.frames.insert(id, c);
-                }
                 self.open.insert(
                     id,
                     Open {
@@ -281,7 +301,6 @@ impl Tabs {
         for e in &out {
             if let Ev::Gone(id) = e {
                 self.open.remove(id);
-                self.frames.remove(id);
             }
         }
         out
@@ -289,14 +308,19 @@ impl Tabs {
 
     /// 別の窓のパネルに画面（[`crate::remote_frame`] のバイト列）を送る
     pub fn send_frame(&mut self, id: u64, frame: &[u8]) {
-        if let Some(o) = self.open.get_mut(&id) {
-            o.ack = false;
-        }
-        if let Some(c) = self.frames.get(&id) {
-            let mut b = frame_head(&self.sid, id);
-            b.extend_from_slice(frame);
-            c.post_bytes(&b);
-        }
+        let Some(o) = self.open.get_mut(&id) else {
+            return;
+        };
+        o.ack = false;
+        // 頭と画面を 1 つの JS のバッファに置き、写さずに渡す（送った後このタブからは使えなくなる）
+        let head = frame_head(&self.sid, id);
+        let a = js_sys::Uint8Array::new_with_length((head.len() + frame.len()) as u32);
+        a.subarray(0, head.len() as u32).copy_from(&head);
+        a.subarray(head.len() as u32, a.length()).copy_from(frame);
+        let buf = a.buffer();
+        let _ = o
+            .win
+            .post_message_with_transfer(&buf, &self.origin, &js_sys::Array::of1(&buf));
     }
 
     /// 別の窓のパネルに画面の外の出力（カーソル・写した文字・IME の位置）を送る
@@ -330,7 +354,6 @@ impl Tabs {
 
     /// keep に無いパネルのタブを閉じる（並びを呼び出して窓のパネルが無くなったときなど）
     pub fn retain(&mut self, keep: &[u64]) {
-        self.frames.retain(|id, _| keep.contains(id));
         self.open.retain(|id, o| {
             let k = keep.contains(id);
             if !k {
@@ -517,8 +540,8 @@ impl Host {
 /// 別の窓: 元のタブから届く画面を描き、入力を返す（解析以外のパネル）
 pub struct Viewer {
     chan: Option<Chan>,
-    /// このパネルの画面の口（[`frame_channel`]）
-    frames: Option<Chan>,
+    /// このパネルの画面を受ける口（[`Frames`]）
+    frames: Option<Frames>,
     pub id: u64,
     sid: String,
     pub closed: bool,
@@ -549,7 +572,7 @@ impl Viewer {
                 CHANNEL,
                 Some(json!({ "sid": sid, "from": id, "bye": true })),
             ),
-            frames: Chan::new(ctx, &frame_channel(&sid, id), None),
+            frames: Frames::new(ctx),
             id,
             sid,
             closed: false,
@@ -575,11 +598,7 @@ impl Viewer {
         for id in self.free.drain(..) {
             tm.write().free(id);
         }
-        let bins = self
-            .frames
-            .as_ref()
-            .map(Chan::take_bins)
-            .unwrap_or_default();
+        let bins = self.frames.as_ref().map(Frames::take).unwrap_or_default();
         for b in bins {
             let Some((sid, to, rest)) = split_head(&b) else {
                 continue;
