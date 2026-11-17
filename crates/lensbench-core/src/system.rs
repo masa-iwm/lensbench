@@ -44,6 +44,8 @@ struct Cache {
     plans: crate::batch::PlanCache,
     /// 像面だけをずらした系の追跡の共有の表（[`crate::focus`]。changed() で外れる）
     pub(crate) focus: Option<crate::focus::FocusShift>,
+    /// 瞳の格子の光線と OPD（[`crate::pupil::PupilFunction::trace`]）
+    pupils: crate::pupil::PupilCache,
 }
 
 /// これ以上の本数で並列に追う
@@ -547,6 +549,12 @@ impl System {
     /// 像面だけをずらした系の追跡に共有の表を使う（[`crate::sweep::defocus_shared`]）
     pub(crate) fn set_focus(&mut self, f: crate::focus::FocusShift) {
         self.cache.focus = Some(f);
+        self.cache.pupils.clear();
+    }
+
+    /// 瞳の格子の光線と OPD のしまい場所
+    pub(crate) fn pupil_cache(&self) -> &crate::pupil::PupilCache {
+        &self.cache.pupils
     }
 
     /// 文書を書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てて系を確かめる）

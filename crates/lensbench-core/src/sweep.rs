@@ -385,7 +385,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     let (px, py, wt) = (&smp.px, &smp.py, &smp.wt);
     let poly = w.is_none();
     // OPD を求めた波長は Ok（瞳関数）、重み 0 の波長は Err（スポット用の追跡だけ）
-    type Traced = std::result::Result<PupilFunction, RayBuf>;
+    type Traced = std::result::Result<std::sync::Arc<PupilFunction>, RayBuf>;
     let mut rs: Vec<(usize, Traced)> = Vec::with_capacity(ws.len());
     for &wi in &ws {
         rs.push(if ks.iter().any(|k| k.0 == wi) {
@@ -399,7 +399,10 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
             (wi, Err(b))
         });
     }
-    let os: Vec<&PupilFunction> = rs.iter().filter_map(|(_, r)| r.as_ref().ok()).collect();
+    let os: Vec<&PupilFunction> = rs
+        .iter()
+        .filter_map(|(_, r)| r.as_ref().ok().map(|p| &**p))
+        .collect();
     // スポットの主光線は単色ならその波長、多色なら主波長（OPD の参照の主光線と同じ）
     let rc = &os[0].chief;
     let tr: Vec<(usize, &RayBuf)> = rs

@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::invalid;
 use crate::math::V3;
 use crate::system::{FieldSel, RayBuf, System, Trace};
+use std::sync::{Arc, Mutex};
 
 /// 単位円の判定（境界の点の扱い）。格子によって決まっていて、変えると縁の点が増減する
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,6 +286,7 @@ impl RefSurface {
 }
 
 /// 1 つの視野・波長の瞳関数: 格子の標本ごとの光線と OPD [波]
+#[derive(Debug)]
 pub struct PupilFunction {
     pub field: FieldSel,
     /// 波長の番号
@@ -310,18 +312,18 @@ pub struct PupilFunction {
 
 impl PupilFunction {
     /// 視野 field・波長 wave（None で主波長）の格子 grid の光線を追い、OPD を求める。解析が瞳の格子の光線を追うのは
-    /// ここだけ
+    /// ここだけ。結果は系の中にしまい（[`PupilCache`]）、同じ系・同じ引数ならもう 1 度は追わない（系を直すと捨てる）
     pub fn trace(
         s: &System,
         field: FieldSel,
         wave: Option<usize>,
         grid: PupilGrid,
         ref_primary: bool,
-    ) -> Result<PupilFunction> {
+    ) -> Result<Arc<PupilFunction>> {
         Self::trace_amp(s, field, wave, grid, ref_primary, None)
     }
 
-    /// [`Self::trace`] に、膜・偏光の振幅 extra（[`PupilAmp`]）を足す
+    /// [`Self::trace`] に、膜・偏光の振幅 extra（[`PupilAmp`]）を足す。extra があるときはしまわない
     pub fn trace_amp(
         s: &System,
         field: FieldSel,
@@ -329,8 +331,42 @@ impl PupilFunction {
         grid: PupilGrid,
         ref_primary: bool,
         extra: Option<&dyn PupilAmp>,
-    ) -> Result<PupilFunction> {
+    ) -> Result<Arc<PupilFunction>> {
         grid.check()?;
+        if extra.is_some() {
+            return Ok(Arc::new(Self::trace_new(
+                s,
+                field,
+                wave,
+                grid,
+                ref_primary,
+                extra,
+            )?));
+        }
+        let key = PupilKey {
+            field,
+            wave: wave.unwrap_or(s.primary),
+            grid,
+            ref_primary,
+        };
+        let cache = s.pupil_cache();
+        if let Some(p) = cache.get(&key) {
+            return Ok(p);
+        }
+        let p = Arc::new(Self::trace_new(s, field, wave, grid, ref_primary, None)?);
+        cache.put(key, &p);
+        Ok(p)
+    }
+
+    /// 瞳の格子の光線を追う（しまわない）
+    fn trace_new(
+        s: &System,
+        field: FieldSel,
+        wave: Option<usize>,
+        grid: PupilGrid,
+        ref_primary: bool,
+        extra: Option<&dyn PupilAmp>,
+    ) -> Result<PupilFunction> {
         let samples = grid.samples();
         let (op, chief) = opd_chief(s, field, &samples.px, &samples.py, wave, ref_primary)?;
         let mask = (0..samples.len())
@@ -387,6 +423,72 @@ impl PupilFunction {
             }
         }
         g
+    }
+}
+
+/// [`PupilCache`] の鍵
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PupilKey {
+    field: FieldSel,
+    wave: usize,
+    grid: PupilGrid,
+    ref_primary: bool,
+}
+
+/// 系にしまう瞳関数（[`PupilFunction::trace`]）。系を直すと系のほかのキャッシュと一緒に捨てる。同じ視野・波長・
+/// 格子で波面・Zernike・PSF などを続けて求めるときに、格子の光線を 1 度だけ追う。しまうのは標本が
+/// [`PupilCache::MAX_SAMPLES`] 以下の格子だけで、全部で [`PupilCache::MAX_TOTAL`] 標本・[`PupilCache::MAX_ENTRIES`] 個を超えたら
+/// 古いものから捨てる
+#[derive(Default)]
+pub(crate) struct PupilCache {
+    entries: Mutex<Vec<(PupilKey, Arc<PupilFunction>)>>,
+}
+
+impl std::fmt::Debug for PupilCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.entries.lock().map_or(0, |e| e.len());
+        write!(f, "PupilCache({n})")
+    }
+}
+
+impl PupilCache {
+    /// しまう格子の標本の数の上限（512 × 512）
+    const MAX_SAMPLES: usize = 1 << 18;
+    /// しまう標本の合計の上限
+    const MAX_TOTAL: usize = 1 << 20;
+    /// しまう数の上限
+    const MAX_ENTRIES: usize = 8;
+
+    fn get(&self, k: &PupilKey) -> Option<Arc<PupilFunction>> {
+        let mut e = self.entries.lock().ok()?;
+        let i = e.iter().position(|(q, _)| q == k)?;
+        // 最後に使ったものを末尾に（捨てるのは先頭から）
+        let hit = e.remove(i);
+        let p = hit.1.clone();
+        e.push(hit);
+        Some(p)
+    }
+
+    fn put(&self, k: PupilKey, p: &Arc<PupilFunction>) {
+        if p.len() > Self::MAX_SAMPLES {
+            return;
+        }
+        let Ok(mut e) = self.entries.lock() else {
+            return;
+        };
+        e.retain(|(q, _)| *q != k);
+        e.push((k, p.clone()));
+        while e.len() > Self::MAX_ENTRIES
+            || e.iter().map(|(_, p)| p.len()).sum::<usize>() > Self::MAX_TOTAL
+        {
+            e.remove(0);
+        }
+    }
+
+    pub(crate) fn clear(&self) {
+        if let Ok(mut e) = self.entries.lock() {
+            e.clear();
+        }
     }
 }
 

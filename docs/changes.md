@@ -107,6 +107,8 @@
   `lensbench_analysis::interference::opd_grid` は格子の座標の並びでなく `PupilGrid` を受ける（前の `pupil_grid(n)` の並びは
   `PupilGrid::Interferogram(n)`）。`analysis::pupil_grid`・`wavefront_grid`・`pupil_gauss`・`interference::pupil_grid`・
   `mech::pupil_grid` は残し、`PupilGrid` の値を返す。値は同じ。
+  `PupilFunction::trace`・`trace_amp` は `Arc<PupilFunction>` を返す。結果は系にしまい、同じ系・視野・波長・格子なら追い直さない
+  （系を直すと捨てる。膜・偏光の振幅つきはしまわない）。
 - GUI の組合せの保存は、ブロックが元になった（文書モデル）。`gui.combo`（組合せの編集状態の写し）は書かず、読まない。前の版で
   保存したファイルはブロックから組合せに戻るので、システムはそのまま開けるが、ロック・今の状態・カタログのミラーや平板の品名は外れる。前の版で保存したファイルは `lensbench-gui --convert-combo ファイル…` で一度だけ今の形に直す（元は `.bak` に残す。この変換は次の版で消す）。
 - 最適化（`optimize`）とズーム軌跡（`zoom`）の設定を CLI・serve・Python・GUI で 1 つの型にした（XCT-02）。serve の `optimize`・`zoom` の
