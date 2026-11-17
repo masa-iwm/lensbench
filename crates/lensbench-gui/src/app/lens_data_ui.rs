@@ -175,7 +175,9 @@ impl Core {
                 Act::Ops(ops) => {
                     if is_combo {
                         match self.combo_ops(&spans, &ids, &ops) {
-                            Ok(()) => {
+                            // ソルブ・ピックアップは serve の返事で要素に当ててから組み直す
+                            Ok(true) => {}
+                            Ok(false) => {
                                 if !self.s.auto_build {
                                     self.build_combo(self.doc.combo.project());
                                 }

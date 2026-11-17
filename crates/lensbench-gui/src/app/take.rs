@@ -384,6 +384,24 @@ impl Core {
                     &[&v["rows"]],
                 );
             }
+            Tag::WriteBack => {
+                match self.take_write_back(&v) {
+                    Ok(true) if !self.s.auto_build => self.build_combo(self.doc.combo.project()),
+                    Ok(_) => {}
+                    Err(e) => self.fail(e),
+                }
+                let notes: Vec<String> = v["notes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
+                    .collect();
+                if notes.is_empty() {
+                    self.set_done_status(&d.tag, String::new());
+                    return;
+                }
+                text = notes.join("\n");
+            }
             Tag::SaveRange => {
                 text = trf(
                     "Exported to {}",

@@ -200,6 +200,16 @@ fn remove_thickness_solve() {
             .map(|(i, _)| i)
             .collect()
     };
+    let solve_ops = |h: &Harness<'static, App>| -> usize {
+        let c = &h.state().c.doc.combo;
+        c.all()
+            .iter()
+            .filter_map(|l| c.get(l))
+            .flat_map(|p| p.ops.iter())
+            .filter(|o| matches!(o, lensbench_project::edit_ops::SurfaceOp::AddSolve(_)))
+            .count()
+    };
+    let n_ops = solve_ops(&h);
     let j = *solved(&h).last().expect("A0 has a thickness solve");
     let t = h.state().c.sys.ld_rows[j].t;
     // セルは AccessKit の木に「Surface 面 列」の名前で出る
@@ -213,6 +223,8 @@ fn remove_thickness_solve() {
     assert!(!solved(&h).contains(&j), "{st}");
     assert_eq!(st["status_error"], false, "{st}");
     assert!((h.state().c.sys.ld_rows[j].t - t).abs() < 1e-9 * t.abs().max(1.0));
+    // 外す操作は serve の書き戻し（write_back）で要素の面の操作になる（要素に分けたときのソルブを外す）
+    assert_eq!(solve_ops(&h), n_ops - 1, "{st}");
     // 元に戻すとソルブも戻る
     h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);

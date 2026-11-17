@@ -46,6 +46,8 @@ pub enum Tag {
     Surfaces,
     /// 面の表で変えた値（serve の edit）
     Edit,
+    /// 組合せの面の表のソルブ・ピックアップを要素のブロックへ書き戻す（serve の write_back）
+    WriteBack,
     /// 系ファイルに保存（serve の save）
     Save,
     /// 選んだ面の範囲を系ファイルに書き出す（serve の save_range）

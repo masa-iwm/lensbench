@@ -11,6 +11,9 @@ use serde_json::{Map, Value};
 pub struct Edited<'a> {
     pub system: &'a System,
     pub faces: &'a [Option<FaceId>],
+    /// 編集する前の系（プロジェクトを展開したまま。面の並びは system と同じ）。置くソルブ・ピックアップがブロックの
+    /// 元（.zmx など）から出ていたかをこれで見る（編集した系では、編集で置いたものも出ている）
+    pub before: &'a System,
 }
 
 /// 木の位置のブロック
@@ -114,10 +117,47 @@ fn faces<'p>(p: &'p mut Project, n: &NodePath) -> Result<&'p mut FaceMods, Strin
         .ok_or_else(|| "this kind of block can't hold surface edits".into())
 }
 
-/// 書き戻す 1 つ: 面の上書きか操作
+/// 書き戻す 1 つ: 面の上書きか操作。ソルブ・ピックアップを置く操作は、系にその面のソルブ・ピックアップが
+/// 出ていたか（ブロックの元のものを置き換えるか、[`crate::surface_ops`]）も持つ
 enum Mod {
     Edit(SurfaceEdit),
-    Op(SurfaceOp),
+    Op(SurfaceOp, bool),
+}
+
+/// 面の番号（名前の面は系で引く）
+fn sys_index(x: Edited, r: &Ref) -> Option<usize> {
+    match r {
+        Ref::Index(j) => Some(*j),
+        Ref::Name(n) => x.system.find_surface(n).ok(),
+    }
+}
+
+/// ブロックの面の上書きに 1 つ足す。同じ面の同じ欄の前の上書きは外す（空になった上書きも）
+fn put_edit(edits: &mut Vec<SurfaceEdit>, e: SurfaceEdit) {
+    for q in edits.iter_mut().filter(|q| q.surface == e.surface) {
+        q.fields.retain(|k, _| !e.fields.contains_key(k));
+    }
+    edits.retain(|q| !q.fields.is_empty());
+    edits.push(e);
+}
+
+/// ブロックの面の操作に 1 つ足す。ソルブ・ピックアップは同じ面・量のものを 1 つにまとめ、元のものを置き換える・
+/// 外すときは外す操作も置く（[`crate::surface_ops`]）
+fn put_op(ops: &mut Vec<SurfaceOp>, o: SurfaceOp, shown: bool) {
+    use crate::surface_ops as so;
+    match o {
+        SurfaceOp::AddSolve(o) => so::put_solve(ops, o, shown),
+        SurfaceOp::AddPickup(o) => so::put_pickup(ops, o, shown),
+        SurfaceOp::RemoveSolve {
+            surface: BlockRef::Sys(Ref::Index(i)),
+            what,
+        } => so::drop_solve(ops, i, what),
+        SurfaceOp::RemovePickup {
+            dst: BlockRef::Sys(Ref::Index(i)),
+            what,
+        } => so::drop_pickup(ops, i, what),
+        o => ops.push(o),
+    }
 }
 
 /// 操作 1 つを、書き戻す先のブロックと上書き・操作に
@@ -165,56 +205,84 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             let (n, r) = own(&o.surface)?;
             (
                 n,
-                Mod::Op(SurfaceOp::SetStop(crate::edit_spec::StopOp { surface: r })),
+                Mod::Op(
+                    SurfaceOp::SetStop(crate::edit_spec::StopOp { surface: r }),
+                    false,
+                ),
             )
         }
         E::AddSolve(o) => {
             let (n, r) = own(&o.surface)?;
             let other = o.other.as_ref().map(|q| other_ref(p, x, q)).transpose()?;
+            let j = sys_index(x, &o.surface);
+            let shown = x
+                .before
+                .solves
+                .iter()
+                .any(|q| Some(q.surf) == j && q.kind.is_curv() == o.is_curv());
             (
                 n,
-                Mod::Op(SurfaceOp::AddSolve(crate::edit_spec::SolveOp {
-                    surface: r,
-                    kind: o.kind.clone(),
-                    value: o.value,
-                    other,
-                    param: o.param,
-                })),
+                Mod::Op(
+                    SurfaceOp::AddSolve(crate::edit_spec::SolveOp {
+                        surface: r,
+                        kind: o.kind.clone(),
+                        value: o.value,
+                        other,
+                        param: o.param,
+                    }),
+                    shown,
+                ),
             )
         }
         E::AddPickup(o) => {
             let (n, r) = own(&o.dst)?;
             let src = other_ref(p, x, &o.src)?;
+            let j = sys_index(x, &o.dst);
+            let w = lensbench_core::pickup::pick_kind_parse(&o.what).ok();
+            let shown = x
+                .before
+                .pickups
+                .iter()
+                .any(|q| Some(q.dst) == j && Some(q.what) == w);
             (
                 n,
-                Mod::Op(SurfaceOp::AddPickup(crate::edit_spec::PickupOp {
-                    dst: r,
-                    src,
-                    what: o.what.clone(),
-                    scale: o.scale,
-                    offset: o.offset,
-                    from: o.from.clone(),
-                })),
+                Mod::Op(
+                    SurfaceOp::AddPickup(crate::edit_spec::PickupOp {
+                        dst: r,
+                        src,
+                        what: o.what.clone(),
+                        scale: o.scale,
+                        offset: o.offset,
+                        from: o.from.clone(),
+                    }),
+                    shown,
+                ),
             )
         }
         E::RemoveSolve { surface, what } => {
             let (n, r) = own(surface)?;
             (
                 n,
-                Mod::Op(SurfaceOp::RemoveSolve {
-                    surface: r,
-                    what: *what,
-                }),
+                Mod::Op(
+                    SurfaceOp::RemoveSolve {
+                        surface: r,
+                        what: *what,
+                    },
+                    false,
+                ),
             )
         }
         E::RemovePickup { dst, what } => {
             let (n, r) = own(dst)?;
             (
                 n,
-                Mod::Op(SurfaceOp::RemovePickup {
-                    dst: r,
-                    what: what.clone(),
-                }),
+                Mod::Op(
+                    SurfaceOp::RemovePickup {
+                        dst: r,
+                        what: what.clone(),
+                    },
+                    false,
+                ),
             )
         }
         E::SetParam { param, .. } => {
@@ -224,6 +292,31 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
         }
         _ => return Err("only surface edits can be written back to blocks".into()),
     })
+}
+
+/// id のあるブロックの面の上書き・操作（木の全部のブロック、群の中・BS の口の先も）。書き戻しの前後で比べて、
+/// 変わったブロックだけを返すのに使う（GUI の組合せの要素へ当てる）
+pub fn face_mods(p: &Project) -> Vec<(&str, &FaceMods)> {
+    fn walk<'p>(bs: &'p [Block], out: &mut Vec<(&'p str, &'p FaceMods)>) {
+        for b in bs {
+            let id = crate::block_id(b);
+            if let (false, Some(f)) = (id.is_empty(), b.faces()) {
+                out.push((id, f));
+            }
+            match b {
+                Block::Group { blocks, .. } => walk(blocks, out),
+                Block::Splitter { spec, .. } => {
+                    for arm in [&spec.t, &spec.r, &spec.d] {
+                        walk(arm, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&p.blocks, &mut out);
+    out
 }
 
 /// 展開した系 x（プロジェクト p の展開。状態・経路は問わない、ブロックの木が同じこと）にした編集 ops を、面を足した
@@ -253,19 +346,14 @@ pub fn write_back(
         let r = to_mod(p, x, op).and_then(|(n, m)| {
             let rt = matches!(m, Mod::Edit(_))
                 && x.faces.iter().flatten().any(|g| g.node == n && g.back);
-            let edit = matches!(m, Mod::Edit(_));
             let f = faces(p, &n)?;
+            let before = f.clone();
             match m {
-                Mod::Edit(e) => f.surface_edits.push(e),
-                Mod::Op(o) => f.surface_ops.push(o),
+                Mod::Edit(e) => put_edit(&mut f.surface_edits, e),
+                Mod::Op(o, shown) => put_op(&mut f.surface_ops, o, shown),
             }
             if let Err(e) = check(p) {
-                let f = faces(p, &n)?;
-                if edit {
-                    f.surface_edits.pop();
-                } else {
-                    f.surface_ops.pop();
-                }
+                *faces(p, &n)? = before;
                 return Err(format!("the project would not expand: {e}"));
             }
             Ok(rt)

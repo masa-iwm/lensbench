@@ -1163,6 +1163,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         }
         // 系ファイルに保存する（編集・set の後の系をそのまま）
         "save_project" => save_project::save_project(sess, p),
+        // 面の操作をプロジェクトのブロックへ書き戻した結果（保存しない、GUI の組合せの面の表）
+        "write_back" => save_project::write_back(sess, p),
         "save" => {
             let (s, _) = sess.current()?;
             let path = p["path"]

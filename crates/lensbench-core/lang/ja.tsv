@@ -2125,6 +2125,7 @@ a surface deleted by name can't be found in this system	名前で消した面は
 holds must be surface numbers	holds は面の番号にしてください
 save_project needs path	save_project には path が要ります
 save_project is only for project files (use save for a system file)	save_project はプロジェクトファイルだけです（システムファイルは save で）
+write_back is only for project files	write_back はプロジェクトファイルだけです
 the project is written to another folder; relative paths in it are kept as written	プロジェクトを別のフォルダに書きました。中の相対パスは書いたままです
 edit {}: {} and the later edits are not written back (surfaces of blocks can't be inserted or deleted here)	変更 {}: {} とその後の変更はブロックへ書き戻しません（ここではブロックの面を入れる・消すことはできません）
 edit {}: {} is not written back ({e})	変更 {}: {} はブロックへ書き戻しません（{e}）

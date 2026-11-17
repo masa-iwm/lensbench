@@ -1559,8 +1559,21 @@ fn save_project_writes_surface_edits_to_blocks() {
     let notes = r["notes"].to_string();
     assert!(notes.contains("edit 4") && notes.contains("air"), "{notes}");
     let edited = sv.call("surface", json!({}));
+    // edit で置いたピックアップは置く操作だけ（ブロックの元に無いので外す操作は置かない）
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let b = saved["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["id"] == "B")
+        .unwrap();
+    assert_eq!(b["surface_ops"].as_array().map(Vec::len), Some(1), "{b}");
     let mut sv2 = Server::start(&[]);
-    sv2.call("load", load(&out));
+    let loaded = sv2.call("load", load(&out));
+    assert!(
+        !loaded["notes"].to_string().contains("nothing to remove"),
+        "{loaded}"
+    );
     let again = sv2.call("surface", json!({}));
     sv2.stop();
     sv.stop();
@@ -1573,6 +1586,60 @@ fn save_project_writes_surface_edits_to_blocks() {
             assert_eq!(a[j], b[j], "surface {j}");
         }
     }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// write_back: 面の操作をブロックへ書き戻した結果を返し、保存も読み込んだ系の変更もしない。同じ面・量のソルブは
+/// 1 つにまとめ、ブロックに無いソルブを外すと外す操作を置く
+#[test]
+fn write_back_returns_changed_blocks() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-writeback-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let lens = |id: &str| {
+        format!(
+            r#"{{"type": "lens", "id": "{id}", "source": {{"surfaces": [{{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}}"#
+        )
+    };
+    let txt = format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 6}},
+        "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}}, {a}, {{"type": "air", "t": 5}}, {b}, {{"type": "air", "t": 30}}]}}"#,
+        a = lens("A"),
+        b = lens("B"),
+    );
+    let f = dir.join("p.json");
+    std::fs::write(&f, txt).unwrap();
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    // 面 2・3 は A、面 4・5 は B
+    let solve =
+        |v: f64| json!({ "op": "add_solve", "surface": 2, "kind": "marginal_height", "value": v });
+    let r = sv.call(
+        "write_back",
+        json!({ "ops": [solve(1.0), solve(2.0), { "op": "remove_solve", "surface": 4, "what": "t" }] }),
+    );
+    let blocks = r["blocks"].as_array().unwrap();
+    let ids: Vec<&str> = blocks.iter().map(|b| b["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["A", "B"], "{r}");
+    let ops = |k: usize| {
+        blocks[k]["faces"]["surface_ops"]
+            .as_array()
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(ops(0).len(), 1, "{r}");
+    assert_eq!(ops(0)[0]["value"], json!(2.0), "{r}");
+    assert_eq!(ops(1).len(), 1, "{r}");
+    assert_eq!(ops(1)[0]["op"], "remove_solve", "{r}");
+    // 読み込んだ系は変わらない
+    let d = sv.call("surface_data", json!({ "surface": 2 }));
+    assert_eq!(d["solves"], json!([]), "{d}");
+    sv.stop();
     std::fs::remove_dir_all(&dir).ok();
 }
 

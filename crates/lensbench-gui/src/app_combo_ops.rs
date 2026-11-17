@@ -2,17 +2,18 @@
 //! （app.rs から分けた）
 
 use super::*;
-use lensbench_project::edit_ops::{BlockFace, BlockRef, EditOp, PickupOp, Ref, SolveOp};
-use lensbench_project::surface_ops;
+use lensbench_project::edit_ops::{EditOp, Ref};
 
 impl Core {
-    /// 組合せの系の絞り・ソルブ・ピックアップ: serve の edit の操作を組合せの要素の surface_ops にする
+    /// 組合せの系の面の操作（serve の edit の操作）を組合せの要素にする。絞り・面の挿入削除はここで、ソルブ・
+    /// ピックアップは serve の write_back でブロックの面の操作にして、返事で要素に当てる（[`Self::take_write_back`]）。
+    /// write_back を頼んだら true（組み直すのは返事の後）
     pub(super) fn combo_ops(
         &mut self,
         spans: &[Option<[usize; 2]>],
         ids: &[String],
         ops: &[Value],
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let lead0 = self.doc.combo.lead_stop();
         let r = self.combo_ops_inner(spans, ids, ops);
         // 前の絞りが出入りすると面の番号がずれるので、選んだ面も合わせる
@@ -34,8 +35,9 @@ impl Core {
         spans: &[Option<[usize; 2]>],
         ids: &[String],
         ops: &[Value],
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let outside = || tr("Surface outside the combination elements").to_string();
+        let mut remote = Vec::new();
         for op in ops {
             // 絞りをやめる（GUI だけの操作）
             if op["op"] == "unset_stop" {
@@ -126,41 +128,9 @@ impl Core {
                 }
                 continue;
             }
+            let raw = op;
             let name = op["op"].as_str().unwrap_or_default().to_string();
             let op = EditOp::deserialize(op).map_err(|e| format!("{name}: {e}"))?;
-            let face = |r: &Ref| -> Result<(usize, usize), String> {
-                let (k, i) = match r {
-                    Ref::Index(j) => self.combo_face(spans, *j),
-                    Ref::Name(_) => None,
-                }
-                .ok_or_else(outside)?;
-                if self.doc.combo.el(k).is_some_and(|p| p.locked) {
-                    return Err(tr("A locked element cannot be changed").into());
-                }
-                Ok((k, i))
-            };
-            // ほかの要素の面は {"block": id, "surface": i}
-            let other = |r: &Ref| -> Result<BlockRef, String> {
-                let (k, i) = match r {
-                    Ref::Index(j) => self.combo_face(spans, *j),
-                    Ref::Name(_) => None,
-                }
-                .ok_or_else(outside)?;
-                Ok(BlockRef::Block(BlockFace {
-                    block: ids[k].clone(),
-                    surface: i,
-                }))
-            };
-            let here = |i: usize| BlockRef::Sys(Ref::Index(i));
-            // 面の表で今そのソルブ（solve）・ピックアップが出ているか
-            let rows = &self.sys.ld_rows;
-            let shown = |r: &Ref, w: &str, solve: bool| match r {
-                Ref::Index(j) => rows.get(*j).is_some_and(|r| {
-                    let l = if solve { &r.solves } else { &r.pickups };
-                    l.iter().any(|x| x.0 == w)
-                }),
-                Ref::Name(_) => false,
-            };
             match op {
                 EditOp::SetStop(o) => {
                     let j = match o.surface {
@@ -192,66 +162,86 @@ impl Core {
                         None => return Err(outside()),
                     }
                 }
-                EditOp::AddSolve(o) => {
-                    let (k, i) = face(&o.surface)?;
-                    let shown = shown(&o.surface, if o.is_curv() { "c" } else { "t" }, true);
-                    let o = SolveOp {
-                        surface: here(i),
-                        other: o.other.as_ref().map(other).transpose()?,
-                        kind: o.kind,
-                        value: o.value,
-                        param: o.param,
-                    };
-                    surface_ops::put_solve(
-                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
-                        o,
-                        shown,
-                    );
-                }
-                EditOp::RemoveSolve { surface, what } => {
-                    let (k, i) = face(&surface)?;
-                    surface_ops::drop_solve(
-                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
-                        i,
-                        what,
-                    );
-                }
-                EditOp::AddPickup(o) => {
-                    let (k, i) = face(&o.dst)?;
-                    let shown = shown(&o.dst, &o.what, false);
-                    let o = PickupOp {
-                        dst: here(i),
-                        src: other(&o.src)?,
-                        what: o.what,
-                        scale: o.scale,
-                        offset: o.offset,
-                        from: o.from,
-                    };
-                    surface_ops::put_pickup(
-                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
-                        o,
-                        shown,
-                    );
-                }
-                EditOp::RemovePickup { dst, what } => {
-                    let (k, i) = face(&dst)?;
-                    surface_ops::drop_pickup(
-                        &mut self.doc.combo.el_mut(k).ok_or_else(outside)?.ops,
-                        i,
-                        what,
-                    );
-                }
+                // ソルブ・ピックアップ: serve で要素のブロックの面の操作にする（面の名前で要素と面を決める）
+                EditOp::AddSolve(_)
+                | EditOp::RemoveSolve { .. }
+                | EditOp::AddPickup(_)
+                | EditOp::RemovePickup { .. } => remote.push(raw.clone()),
                 _ => return Err(trf("{} is not available in a combination", &[&name])),
             }
         }
-        Ok(())
+        if remote.is_empty() {
+            return Ok(false);
+        }
+        self.worker
+            .send(Tag::WriteBack, "write_back", json!({ "ops": remote }));
+        Ok(true)
+    }
+
+    /// serve の write_back の返事: 面の操作が変わったブロックを、同じ id の要素の edits・ops にする。固定した要素は
+    /// 変えない
+    pub(super) fn take_write_back(&mut self, v: &Value) -> Result<bool, String> {
+        let ids = self.doc.combo.ids_all();
+        let mut changed = false;
+        let mut locked = false;
+        for b in v["blocks"].as_array().into_iter().flatten() {
+            let Some(loc) = ids
+                .iter()
+                .find(|(_, id)| b["id"].as_str() == Some(id.as_str()))
+                .map(|(l, _)| l.clone())
+            else {
+                continue;
+            };
+            let Some(p) = self.doc.combo.get_mut(&loc) else {
+                continue;
+            };
+            if p.locked {
+                locked = true;
+                continue;
+            }
+            let f = &b["faces"];
+            let ops = match f.get("surface_ops") {
+                Some(x) => serde_json::from_value(x.clone()).map_err(|e| e.to_string())?,
+                None => Vec::new(),
+            };
+            let mut edits = Vec::new();
+            for e in f["surface_edits"].as_array().into_iter().flatten() {
+                let surface = e["surface"].as_u64().unwrap_or(0) as usize;
+                for (k, x) in e["fields"].as_object().into_iter().flatten() {
+                    edits.push(combo::SurfEdit {
+                        surface,
+                        field: k.clone(),
+                        value: x.clone(),
+                    });
+                }
+            }
+            // 上書きは面ごとにまとめて返るので、並びだけ違うなら今のままに
+            let key = |e: &combo::SurfEdit| (e.surface, e.field.clone(), e.value.to_string());
+            let mut a: Vec<_> = p.edits.iter().map(key).collect();
+            let mut b: Vec<_> = edits.iter().map(key).collect();
+            a.sort();
+            b.sort();
+            if a != b {
+                p.edits = edits;
+                changed = true;
+            }
+            if p.ops != ops {
+                p.ops = ops;
+                changed = true;
+            }
+        }
+        if locked {
+            return Err(tr("A locked element cannot be changed").into());
+        }
+        Ok(changed)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lensbench_project::edit_ops::SolveWhat;
+    use lensbench_project::edit_ops::{BlockRef, SolveOp, SolveWhat};
+    use lensbench_project::surface_ops;
 
     /// .zmx を取り込んだ要素（A0）の、元の .zmx にある最後の厚さのソルブを外せる。置き直したソルブを外しても
     /// 元のソルブには戻らない（1 回で外れる）。保存して開き直しても同じ

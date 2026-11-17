@@ -704,6 +704,7 @@ fn surface_edits_write_back_to_blocks() {
     let ed = lensbench_project::writeback::Edited {
         system: &x.system,
         faces: &faces,
+        before: &x.system,
     };
     let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
     assert_eq!(notes.len(), 3, "{notes:?}");
@@ -753,6 +754,7 @@ fn round_trip_blocks_write_back_with_notes() {
     let ed = lensbench_project::writeback::Edited {
         system: &x.system,
         faces: &faces,
+        before: &x.system,
     };
     let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
     assert_eq!(notes.len(), 3, "{notes:?}");
