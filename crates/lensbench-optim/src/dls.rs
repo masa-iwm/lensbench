@@ -9,7 +9,7 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::pupil::{exit_pupil_near, RefSurface};
 use lensbench_core::surface::SurfType;
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::system::{FieldSel, System, Trace};
+use lensbench_core::system::{Cols, FieldSel, RayBuf, System};
 use lensbench_core::{invalid, Waves};
 use std::sync::Arc;
 
@@ -58,6 +58,10 @@ pub use lm::*;
 #[path = "dls_jac.rs"]
 mod jac;
 use jac::{pupil_d, JacCache, PupilCache};
+
+#[path = "dls_trace.rs"]
+mod trace;
+use trace::{launch_of, trace_ok, trace_pupil, trace_pupil_xyz};
 
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
@@ -838,59 +842,6 @@ fn supports_analytic(s: &System, k: &TermKind) -> bool {
 /// 開始の光線を比べる瞳の点
 const PROBE: [(f64, f64); 4] = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (-0.7, -0.7)];
 
-/// 物体の座標系での開始の光線（位置・方向を並べたもの）
-fn launch_of(s: &System, field: FieldSel, w: usize) -> Result<Vec<f64>> {
-    let px: Vec<f64> = PROBE.iter().map(|p| p.0).collect();
-    let py: Vec<f64> = PROBE.iter().map(|p| p.1).collect();
-    let t = s.try_trace(field, &px, &py, Some(w), Some(1.min(s.image())), false)?;
-    let f = s.object_frame();
-    let rt = transpose(&f.r);
-    let mut v = Vec::new();
-    for i in 0..t.p0.len() {
-        v.extend(mv(&rt, sub(t.p0[i], f.o)));
-        v.extend(mv(&rt, t.k0[i]));
-    }
-    Ok(v)
-}
-
-/// 追跡（止まった光線があればエラー）
-fn trace_ok(
-    s: &System,
-    field: FieldSel,
-    px: &[f64],
-    py: &[f64],
-    w: usize,
-    record: bool,
-) -> Result<Trace> {
-    let t = s.try_trace(field, px, py, Some(w), None, record)?;
-    if let Some(i) = t.rays.iter().position(|r| r.status.surf().is_some()) {
-        invalid!(
-            "the ray stopped (wavelength {w}, pupil ({:.3}, {:.3}), surface {})",
-            px[i],
-            py[i],
-            t.rays[i].status.code()
-        );
-    }
-    Ok(t)
-}
-
-/// 瞳の光線の追跡。keep なら止まった光線も残す（[`Trace::ok`] が偽なので、けられた光線と同じく除かれる）
-fn trace_pupil(
-    s: &System,
-    field: FieldSel,
-    px: &[f64],
-    py: &[f64],
-    w: usize,
-    record: bool,
-    keep: bool,
-) -> Result<Trace> {
-    if keep {
-        s.try_trace(field, px, py, Some(w), None, record)
-    } else {
-        trace_ok(s, field, px, py, w, record)
-    }
-}
-
 /// 項の残差（重みを掛ける前）。ps を与えると、その列の解析的なヤコビアンも
 fn eval_term(
     s: &System,
@@ -1142,14 +1093,19 @@ fn spot_term(
     let ws = waves(s, wave);
     let rec = ps.is_some();
     let np = ps.map_or(0, |p| p.len());
-    let mut traces = Vec::with_capacity(ws.len());
+    // 像面の位置とけられ（微分が要るときだけ記録つきの Trace から写す）
+    let mut traces: Vec<RayBuf> = Vec::with_capacity(ws.len());
     let mut grads = Vec::with_capacity(ws.len());
     for &w in &ws {
-        let t = trace_pupil(s, field, px, py, w, rec, keep)?;
         if let Some(ps) = ps {
+            let t = trace_pupil(s, field, px, py, w, rec, keep)?;
             grads.push(s.land_grad(&t, w, ps, None)?);
+            let mut b = RayBuf::with_cols(Cols::XYZ);
+            b.fill_from(&t);
+            traces.push(b);
+        } else {
+            traces.push(trace_pupil_xyz(s, field, px, py, w, keep)?);
         }
-        traces.push(t);
     }
     // 重み（spot() と同じ: 単色は波長の重みによらない）
     let mut wt = vec![0.0; ws.len() * n];
@@ -1165,7 +1121,7 @@ fn spot_term(
     if !(sw > 0.0) {
         invalid!("no valid rays (all vignetted)");
     }
-    let xy = |k: usize, i: usize| (traces[k].rays[i].xyz[0], traces[k].rays[i].xyz[1]);
+    let xy = |k: usize, i: usize| (traces[k].xyz[i][0], traces[k].xyz[i][1]);
     // 基準とその微分
     let (cx, cy, dc): (f64, f64, Vec<[f64; 2]>) = match reference {
         RmsRef::Centroid => {
@@ -1256,10 +1212,15 @@ fn centroid_term(
     let (mut sw, mut sc) = (0.0, 0.0);
     let mut dc = vec![0.0; np];
     for &w in &ws {
-        let t = trace_pupil(s, field, px, py, w, ps.is_some(), keep)?;
-        let g = match ps {
-            Some(ps) => Some(s.land_grad(&t, w, ps, None)?),
-            None => None,
+        let (t, g) = match ps {
+            Some(ps) => {
+                let tr = trace_pupil(s, field, px, py, w, true, keep)?;
+                let g = s.land_grad(&tr, w, ps, None)?;
+                let mut b = RayBuf::with_cols(Cols::XYZ);
+                b.fill_from(&tr);
+                (b, Some(g))
+            }
+            None => (trace_pupil_xyz(s, field, px, py, w, keep)?, None),
         };
         let kw = if ws.len() == 1 { 1.0 } else { s.weights[w] };
         for i in 0..n {
@@ -1268,7 +1229,7 @@ fn centroid_term(
             }
             let a = wts[i] * kw;
             sw += a;
-            sc += a * t.rays[i].xyz[c];
+            sc += a * t.xyz[i][c];
             if let Some(g) = &g {
                 for (q, d) in dc.iter_mut().enumerate() {
                     *d += a * g[(i * np + q) * 4 + c];
