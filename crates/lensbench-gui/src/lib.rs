@@ -3,7 +3,7 @@
 //!
 //! ライブラリとしても使える: 別の exe（カタログの形式・プラグインを足した版）は、起動の最初に
 //! `lensbench_engine::Extensions` の install（拡張の表 [`lensbench_core::ext`] の既定に足す）をしてから [`main`] を呼ぶ。
-#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（計算の中身のクレートは検査の内）
 
 mod app;
 mod argform;
@@ -130,7 +130,7 @@ pub fn main() -> std::process::ExitCode {
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {
-        // 通し確認は利用者の設定（窓の配置・残した状態）を読まず、書き換えもしない（公開 #236）
+        // 通し確認は利用者の設定（窓の配置・残した状態）を読まず、書き換えもしない
         persistence_path: if args.tour.is_some() {
             None
         } else {
@@ -185,7 +185,7 @@ pub async fn start_web(
 }
 
 /// Web 版: 品の STEP の共有の置き場の URL（例 `/cad`）。別の入口（`lensbench-web` の `Extra::cad_store`）が起動の前に決める。
-/// 決めてあれば、カタログの詳細の「詳しい形（STEP）を取る」で置き場から取る（#158）
+/// 決めてあれば、カタログの詳細の「詳しい形（STEP）を取る」で置き場から取る
 #[cfg(target_arch = "wasm32")]
 pub fn set_web_cad_store(url: Option<String>) {
     cad_fetch::set_web_store(url);
@@ -210,7 +210,7 @@ async fn run_web(
                 let panel = web_panel();
                 let a = std::rc::Rc::new(std::cell::RefCell::new(app::App::new(cc, args)));
                 TEST_APP.with(|t| *t.borrow_mut() = std::rc::Rc::downgrade(&a));
-                // 元のタブ: 裏に回っている間も別の窓のパネルを動かす（#237）
+                // 元のタブ: 裏に回っている間も別の窓のパネルを動かす
                 if !panel {
                     web_bg::install(std::rc::Rc::downgrade(&a), cc.egui_ctx.clone());
                 }
@@ -228,7 +228,7 @@ thread_local! {
 }
 
 /// Web 版の試験用の口: 画面の今の様子の JSON（待っている要求の数・開いている系・解析パネルの結果の有無）。
-/// 起動前は `{"started": false}`、画面を描いている最中は `{"busy": true}`（GAR-25、scripts/web_smoke.mjs）
+/// 起動前は `{"started": false}`、画面を描いている最中は `{"busy": true}`（scripts/web_smoke.mjs）
 #[cfg(target_arch = "wasm32")]
 pub fn web_test_state() -> String {
     let v = TEST_APP.with(|t| match t.borrow().upgrade() {

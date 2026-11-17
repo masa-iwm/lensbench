@@ -1,4 +1,4 @@
-//! 系を読んだときの注意が serve の load・reload・system の返事に届く（CLI-10。前は標準エラーに書いて捨てていた）
+//! 系を読んだときの注意が serve の load・reload・system の返事に届く（前は標準エラーに書いて捨てていた）
 
 use lensbench_engine::Session;
 use serde_json::{json, Value};

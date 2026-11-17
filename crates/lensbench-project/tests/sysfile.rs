@@ -222,7 +222,7 @@ fn roundtrip_examples() {
 }
 
 /// 版 2 の形: 内部の値（屈折率・ガラスの式・自動の半直径の値）は書かず、曲率は c、ガラスは名前とカタログの hash
-/// 瞳のアポダイゼーション（ANA-05）も系ファイル v2 に残る（一様なら書かない）
+/// 瞳のアポダイゼーションも系ファイル v2 に残る（一様なら書かない）
 #[test]
 fn apodization_roundtrip() {
     use lensbench_core::pupil::Apodization;
@@ -359,7 +359,7 @@ fn catalog_without_hash() {
     );
 }
 
-/// 実数の欄を整数の書き方（`3`）で書いても読める（Python・手で書いた系ファイル）。誤りには欄の道が付く（IOO-32）。
+/// 実数の欄を整数の書き方（`3`）で書いても読める（Python・手で書いた系ファイル）。誤りには欄の道が付く。
 /// 知らないキーは誤り
 #[test]
 fn integers_in_float_fields() {

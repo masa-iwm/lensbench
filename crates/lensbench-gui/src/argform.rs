@@ -46,7 +46,7 @@ impl ArgSpec {
             ty: v["type"].as_str().unwrap_or("str").to_string(),
             default: v["default"].clone(),
             unit: v["unit"].as_str().unwrap_or_default().to_string(),
-            // 解析の設定の説明は英語が元。表示の言語に訳す（XCT-20）
+            // 解析の設定の説明は英語が元。表示の言語に訳す
             doc: lensbench_core::i18n::tr_doc(doc),
             choices: v["choices"]
                 .as_array()
@@ -187,7 +187,7 @@ impl ArgSpec {
                     _ => Value::Array(v.into_iter().map(num_json).collect()),
                 }
             }
-            // JSON の設定（センサなど）は値にして渡す（serve は文字列の JSON を読み替えない、XCT-34）
+            // JSON の設定（センサなど）は値にして渡す（serve は文字列の JSON を読み替えない）
             "json" => serde_json::from_str(t).map_err(|_| bad())?,
             _ if self.repeat => json!(split(t).map(str::to_string).collect::<Vec<_>>()),
             _ => json!(t),
@@ -741,7 +741,7 @@ mod tests {
         }
     }
 
-    /// 下限のある数（リング数 0 など）は欄で止める（GUX-08）
+    /// 下限のある数（リング数 0 など）は欄で止める
     #[test]
     fn min_refuses_below() {
         let mut s = spec("rings", "count", None);

@@ -261,7 +261,7 @@ impl Array {
     }
 
     /// 2 次元の格子の値（[`crate::grid::Grid2`]）→ 形 (ny, nx) の配列（行優先のまま写す。座標は別の配列で渡す）。
-    /// 解析・拡張の 2 次元の出力はこれで作る（ANA-18）
+    /// 解析・拡張の 2 次元の出力はこれで作る
     pub fn grid<T: Clone>(g: &crate::grid::Grid2<T>) -> Self
     where
         Data: From<Vec<T>>,
@@ -400,7 +400,7 @@ pub fn check_wave(s: &System, w: Option<usize>) -> Result<()> {
 }
 
 /// 入出力の名前・形の説明（一覧・ヘルプ用。呼び出しの確かめは [`Instance::run`] が行う）。設定の説明は
-/// [`Plugin::params`] だけに書く（型・既定・単位つき、ANA-19）
+/// [`Plugin::params`] だけに書く（型・既定・単位つき）
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spec {
     /// 1 行の説明
@@ -413,7 +413,7 @@ pub struct Spec {
     pub needs_system: bool,
 }
 
-/// 出力の 1 つの配列の説明（ANA-19）
+/// 出力の 1 つの配列の説明
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct OutputSpec {
     pub name: String,
@@ -826,7 +826,7 @@ mod tests {
         assert_eq!(o.shape, "(ax, ay, curv)");
     }
 
-    /// 真偽は true・false か 0・1、整数の欄に NaN を書くと「省略」でなく誤り（ANA-19）
+    /// 真偽は true・false か 0・1、整数の欄に NaN を書くと「省略」でなく誤り
     #[test]
     fn flags_and_counts() {
         let c = Config::from([

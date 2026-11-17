@@ -2,7 +2,7 @@
 #   /      ドキュメント（mdBook。scripts/build_docs.sh）。/api/rust/ に cargo doc
 #   /app/  Web 版（公開側のビルド: 同梱は公開用の見本だけ。docs/web.md）
 # 中身は CI が作って検査した成果物（docs ジョブの site-book、web ジョブの lensbench-web）をそのまま載せる
-# （同じものを作り直さない・検査したものと載せるものを同じにする。#216 BLD-21）。main の CI が「PR と同じ木」で
+# （同じものを作り直さない・検査したものと載せるものを同じにする）。main の CI が「PR と同じ木」で
 # 検査を飛ばしたときは、その PR の CI の成果物を使う。どちらも取れなければ（手動実行・成果物の期限切れ）ここで作る
 name: Pages
 
@@ -127,7 +127,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # 書き込みの権限は配備のジョブだけに渡す（ビルドのジョブでは第三者の action とスクリプトが走る。#216 BLD-18）
+    # 書き込みの権限は配備のジョブだけに渡す（ビルドのジョブでは第三者の action とスクリプトが走る）
     permissions:
       pages: write
       id-token: write

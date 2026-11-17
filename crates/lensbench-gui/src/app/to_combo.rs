@@ -33,7 +33,7 @@ impl Core {
     }
 
     /// 開いた系を組合せにする: 系の取り込み（zmx ブロック、.zmx も lensbench の .json も）1 つと、系の設定。keep は今の
-    /// 組合せの要素をその後ろに残す。系の設定がまだ無ければ読みに行き、届いた後の画面でもう一度呼ぶ（#135）
+    /// 組合せの要素をその後ろに残す。系の設定がまだ無ければ読みに行き、届いた後の画面でもう一度呼ぶ
     pub(super) fn open_to_combo(&mut self, keep: bool) {
         self.open_to_combo_with(keep, false);
     }

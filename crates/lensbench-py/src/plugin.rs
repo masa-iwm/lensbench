@@ -33,7 +33,7 @@ fn register_builtin(reg: &mut Registry) {
 }
 
 /// Add the built-in plugins whose names are not in reg yet. A plugin an extension module installed
-/// with the same name stays, so the order of `init_module` and the extension's install does not matter (PRV-30)
+/// with the same name stays, so the order of `init_module` and the extension's install does not matter
 fn add_missing_builtin(reg: &mut Registry) {
     let mut b = Registry::new();
     register_builtin(&mut b);

@@ -345,7 +345,7 @@ fn rms_vs_focus_with_the_image_inside_grin() {
     let (mut s, _) = load("G9A");
     s.delete_surface(2).unwrap();
     // GRIN の面と像面の間に何もしない座標ブレークを挟んだ系も（媒質は GRIN のまま）。像面を手前へずらすと
-    // 座標ブレークの後ろの厚さが負になり、像面は媒質の中で光線の後ろにある（KRN-31: 前は射出瞳の補助の光線が
+    // 座標ブレークの後ろの厚さが負になり、像面は媒質の中で光線の後ろにある（前は射出瞳の補助の光線が
     // 像面に届かず求まらなかった）
     let mut cb = s.clone();
     let im = cb.image();

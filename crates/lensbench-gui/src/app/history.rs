@@ -10,7 +10,7 @@ pub(super) struct ComboHist {
     hist: History<Combo>,
     /// 最後に段に積んだ（落ち着いた）組合せ
     last: Option<Combo>,
-    /// last が今の組合せと同じと確かめた版（GPN-13: 版が同じ間は比べない）
+    /// last が今の組合せと同じと確かめた版（版が同じ間は比べない）
     last_at: std::cell::Cell<Option<u64>>,
     /// 前の画面の組合せの版と、最後に変わった時刻（入力・ドラッグの途中は積まない）
     seen_rev: u64,
@@ -530,7 +530,7 @@ mod tests {
         assert_eq!(h.step(&f, true, 2).map(|c| c.name), Some(name0.clone()));
     }
 
-    /// 写しが今の組合せと同じかは、版が同じ間は比べ直さず、組合せが変わって版が進めば比べ直す（GPN-13）
+    /// 写しが今の組合せと同じかは、版が同じ間は比べ直さず、組合せが変わって版が進めば比べ直す
     #[test]
     fn gpn13_snap_follows_rev() {
         use crate::combo_doc::{ComboDoc, Snap};

@@ -265,7 +265,7 @@ impl Combo {
 
     /// [`Self::snap`] の値を当てる
     /// 開いた系の設定（serve の `system_data` の data）を組合せの設定にする。obj_t は物体面の厚さ（無限遠は inf）。
-    /// 条件で定める視野は組合せの欄に移せないので断る（#135）
+    /// 条件で定める視野は組合せの欄に移せないので断る
     pub fn take_system_data(&mut self, d: &Value, obj_t: f64) -> Result<(), String> {
         let empty = serde_json::Map::new();
         let f = form::SysForm::from_data(d.as_object().unwrap_or(&empty))?;
@@ -879,7 +879,7 @@ const PRESETS: &[(&str, &[f64])] = &[
 mod tests {
     use super::*;
 
-    /// 開いた系（.zmx）を組合せ（系の取り込み 1 つ＋系の設定）にすると、同じ系になる（#135）
+    /// 開いた系（.zmx）を組合せ（系の取り込み 1 つ＋系の設定）にすると、同じ系になる
     #[test]
     fn open_system_becomes_a_combo() {
         let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));

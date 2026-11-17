@@ -303,7 +303,7 @@ const JONES_LABELS: [&str; 8] = [
 /// レンズデータの左の帯のアイコン
 const ICONS: [&str; 11] = ["🗀", "▶", "▼", "▦", "▣", "▭", "＋", "－", "⚙", "⊞", "📤"];
 
-/// レンズデータの左の帯のアイコンの字（帯の幅があるとき、GUX-24）
+/// レンズデータの左の帯のアイコンの字（帯の幅があるとき）
 fn icon_label(t: &str) -> Option<&'static str> {
     Some(match t {
         "🗀" => "Drill-down",
@@ -646,7 +646,7 @@ pub enum Act {
     NeedData(usize),
     /// 硝材の候補（ガラスカタログ）を読む
     NeedGlasses,
-    /// 最適化の変数に足す（名前は serve の set と同じ 4.t など、GUX-21）
+    /// 最適化の変数に足す（名前は serve の set と同じ 4.t など）
     OptVar(String),
     /// 面 j の列 col の面の上書きを外す（組合せの系、要素の元の値に戻す）
     DropOverride { j: usize, col: Col },
@@ -684,10 +684,10 @@ struct Editing {
     filtered: bool,
     /// 候補を ↑↓ で選んだ（硝材は選ばなければ打った文字のまま決める）
     moved: bool,
-    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc で取り消し、GPN-10）
+    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc で取り消し）
     error: Option<String>,
     /// 候補の一覧（打った文字・絞るか・ガラスの数・行の数が変わったときだけ作り直す。毎フレーム全ガラスを
-    /// 写さない、GPN-11）
+    /// 写さない）
     choices: Option<ChoiceCache>,
     /// 選んでいる候補まで一覧を送る
     scroll: bool,
@@ -809,7 +809,7 @@ struct RowMenu {
 }
 
 impl RowMenu {
-    /// 右クリックの欄（4 か所）の結果をこのフレームの操作に足す。何か選んだら true（GPN-03）
+    /// 右クリックの欄（4 か所）の結果をこのフレームの操作に足す。何か選んだら true
     fn merge(&mut self, m: RowMenu) -> bool {
         let any = !m.acts.is_empty() || m.insert || m.delete || m.detail || m.paste.is_some();
         self.acts.extend(m.acts);
@@ -852,7 +852,7 @@ fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), 
 
 /// 書き換えた文字を、面 j（今の値 r）の列 col の変更に（今と同じなら None）
 fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
-    // パラメータの列を空で決めたら変えない（焦点距離・非球面係数などに 0 を入れない、GPN-30）
+    // パラメータの列を空で決めたら変えない（焦点距離・非球面係数などに 0 を入れない）
     if matches!(col, Col::Par(_)) && text.trim().is_empty() {
         return None;
     }
@@ -1442,7 +1442,7 @@ fn popup(ui: &mut Ui, r: &egui::Response, id: &str, add: impl FnOnce(&mut Ui)) {
 pub struct LensData {
     /// 右クリックの貼り付けを頼んだ（Some(true) は面を挿入して）。次の Paste で使う
     paste_insert: Option<bool>,
-    /// 貼り付けを頼んだ画面の回（届かなければ数回で忘れる。次の Ctrl+V が挿入にならない、GPN-30）
+    /// 貼り付けを頼んだ画面の回（届かなければ数回で忘れる。次の Ctrl+V が挿入にならない）
     paste_asked: u64,
     /// 入っているブロックの名前（外から順。空は系の全部）
     pub scope: Vec<String>,
@@ -1480,7 +1480,7 @@ pub struct LensData {
     pub tree: bool,
     /// 折りたたみ表示で開いたブロック
     pub open: BTreeSet<String>,
-    /// 一度でも見たブロック（新しいブロックは開いた状態で出す。たたむのは利用者が選んだときだけ、GUX-05）
+    /// 一度でも見たブロック（新しいブロックは開いた状態で出す。たたむのは利用者が選んだときだけ）
     seen: BTreeSet<String>,
     /// 最後に見える所へスクロールした面（選んだ面が変わったときだけスクロールし、手で動かせるように）
     scrolled: Option<usize>,

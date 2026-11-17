@@ -1,4 +1,4 @@
-//! 最適化の引数（変数・既定の評価関数）を設定の型（`lensbench_design::dls_spec`）にする（XCT-02）
+//! 最適化の引数（変数・既定の評価関数）を設定の型（`lensbench_design::dls_spec`）にする
 
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -158,7 +158,7 @@ fn surface_edits_follow_the_element() {
     c.picks[2].edits.clear();
     assert_eq!(edits_of(&c.project(), "L3"), Value::Null);
 }
-/// 面の数・順・元が変わったら、面番号の上書き（edits・ops）を外す。値だけの変更では残す（GPN-02）
+/// 面の数・順・元が変わったら、面番号の上書き（edits・ops）を外す。値だけの変更では残す
 #[test]
 fn stale_surface_edits_are_dropped() {
     let mut c = Combo::default();
@@ -787,7 +787,7 @@ mod lock_tests {
 mod nav_tests {
     use super::*;
 
-    /// カーソルの下の点は拡大縮小しても動かない（#124）
+    /// カーソルの下の点は拡大縮小しても動かない
     #[test]
     fn zoom_keeps_point_under_cursor() {
         let mut v = View::default();

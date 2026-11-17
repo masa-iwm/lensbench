@@ -64,7 +64,7 @@ fn spot_and_zernike() {
 
 #[test]
 fn errors() {
-    // ガラスのフォルダが無くても同梱の SCHOTT で開き、同梱から取ったガラスを知らせる（CLI-31）
+    // ガラスのフォルダが無くても同梱の SCHOTT で開き、同梱から取ったガラスを知らせる
     let (ok, _, err) = run(&["spot", ZMX]);
     assert!(
         ok && err.contains("N-SK16") && err.contains("built-in catalog"),
@@ -591,7 +591,7 @@ fn convert_to_system_file() {
         serde_json::from_str::<serde_json::Value>(&out).unwrap()
     };
     assert_eq!(spot(ZMX, &[])["spot"], spot(fs, &[])["spot"]);
-    // 系ファイルはガラスを名前と hash で持つ。フォルダに無ければ同梱のカタログで開き、注意（渡し方の案内・hash の違い）を出す（CLI-31）
+    // 系ファイルはガラスを名前と hash で持つ。フォルダに無ければ同梱のカタログで開き、注意（渡し方の案内・hash の違い）を出す
     let (ok, _, err) = run(&["info", fs, "--json"]);
     assert!(
         ok && err.contains("built-in catalog")
@@ -897,7 +897,7 @@ fn mtf_max_freq_steps() {
     assert!(!run(&a).0);
 }
 
-/// 終了コードは誤りの種類で分かれ、案内が付く（見直し CLI-25）
+/// 終了コードは誤りの種類で分かれ、案内が付く
 #[test]
 fn exit_codes_by_kind() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -915,7 +915,7 @@ fn exit_codes_by_kind() {
         )
     };
     let code = |args: &[&str]| code_in("en", args);
-    // 引数の誤り（clap・値の検査）は 2。clap の誤りは英語、日本語の表示では訳す（XCT-20）
+    // 引数の誤り（clap・値の検査）は 2。clap の誤りは英語、日本語の表示では訳す
     let (c, err) = code(&["spot", ZMX, "--bogus"]);
     assert_eq!(c, Some(2), "{err}");
     assert!(err.contains("unexpected argument '--bogus'"), "{err}");
@@ -935,7 +935,7 @@ fn exit_codes_by_kind() {
         "--merit",
         "x",
     ]);
-    // 選べる値は clap が確かめる（設定の型の綴り、XCT-02）
+    // 選べる値は clap が確かめる（設定の型の綴り）
     assert_eq!(c, Some(2), "{err}");
     assert!(
         err.contains("spot, wavefront, none") && err.contains("--help"),
@@ -1007,7 +1007,7 @@ fn exit_codes_by_kind() {
     assert!(err.contains("--glass-dir"), "{err}");
 }
 
-/// `help --json` は clap の定義（登録簿の解析も）と終了コードの表を出す（見直し CLI-29、マニュアルの CLI のページの元）
+/// `help --json` は clap の定義（登録簿の解析も）と終了コードの表を出す（マニュアルの CLI のページの元）
 #[test]
 fn help_json_lists_commands() {
     let (ok, out, err) = run(&["help", "--json"]);

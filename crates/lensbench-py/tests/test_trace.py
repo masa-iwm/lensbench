@@ -917,7 +917,7 @@ def test_load_error_classes(tmp_path):
 
 
 def test_renamed_arguments():
-    """CLI-17 で名前をそろえた引数（beam_path・waves・wave）。旧名（split_path・wavelengths・wavelength）は受けない"""
+    """名前をそろえた引数（beam_path・waves・wave）。旧名（split_path・wavelengths・wavelength）は受けない"""
     prj = str(ROOT / "examples" / "projects" / "P16_twyman_green.json")
     paths = lb.System.beam_paths(prj, glass_dirs=GLASS)
     assert paths and not hasattr(lb.System, "split_paths")

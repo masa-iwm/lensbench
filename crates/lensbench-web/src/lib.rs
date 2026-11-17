@@ -10,7 +10,7 @@
 //! カタログの形式・プラグインを登録して [`set_extra`] でファイルを足す（JS の口・ページはこの crate のまま）。
 //! スレッドありの版では、同じ wasm・同じメモリの見張りのスレッド（`monitor.js`）が、計算の途中で
 //! 中断・停止・進み具合の問い合わせを受ける（`monitor_*`）。
-#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（計算の中身のクレートは検査の内）
 
 /// 並列: rayon のスレッドを Web Worker で作る（JS の initThreadPool(n)）。作った後に threads_ready
 #[cfg(all(target_arch = "wasm32", feature = "threads"))]
@@ -24,7 +24,7 @@ pub struct Extra {
     /// 起動のときに読んで置き場に入れる、ファイルの束（ページからの相対の URL）。大きいデータを wasm に
     /// 入れずに配る（Cloudflare Pages は 1 ファイル 25 MiB まで）。計算の Web Worker（serve と同じ要求・下書き）が
     /// それぞれ読む（2 回目からはブラウザのキャッシュ）。画面はカタログを読まない（一覧・フォルダの様子・STEP の
-    /// 照合は下書きの Worker に頼む）ので読まない（GAR-11）。束の形は [`unpack`]
+    /// 照合は下書きの Worker に頼む）ので読まない。束の形は [`unpack`]
     pub packs: Vec<&'static str>,
     /// 硝材のフォルダ（置き場のパス）
     pub glass_dirs: Vec<String>,
@@ -35,12 +35,12 @@ pub struct Extra {
     /// （`lensbench_engine::set_prepared_lens_list`）。ビルドのときに `lensbench catalog-search --json` で作る
     pub lens_index: Option<&'static str>,
     /// 品の STEP の共有の置き場の URL（例 `/cad`。同じサイトの口なら Access のログインがそのまま効く）。
-    /// あれば、カタログの詳細から品の STEP を取り、3D・書き出しで機構部品を詳しい形で描ける（#158）
+    /// あれば、カタログの詳細から品の STEP を取り、3D・書き出しで機構部品を詳しい形で描ける
     pub cad_store: Option<&'static str>,
 }
 
 /// 別の入口（この crate を依存にした wasm の crate）が、起動より前（`#[wasm_bindgen(start)]`）に、同梱する
-/// ファイルとフォルダを足す（拡張の表 `lensbench_core::ext::Ext` の欄、XCT-07）。カタログの形式・プラグインの登録も同じ所で行う
+/// ファイルとフォルダを足す（拡張の表 `lensbench_core::ext::Ext` の欄）。カタログの形式・プラグインの登録も同じ所で行う
 pub fn set_extra(e: Extra) {
     lensbench_core::ext::update_default(|x| *x.slot_mut::<Extra>() = e);
 }
@@ -143,7 +143,7 @@ mod web {
     }
 
     /// 同梱のファイル・足したファイルを置き場に入れる。packs はファイルの束も（計算の Web Worker だけ。画面は
-    /// カタログを読まないので要らない、GAR-11）
+    /// カタログを読まないので要らない）
     async fn insert_all(extra: &super::Extra, packs: bool) -> Result<(), JsValue> {
         let err = |e: std::io::Error| JsValue::from_str(&e.to_string());
         for (p, b) in FILES.iter().chain(extra.files.iter()) {
@@ -242,7 +242,7 @@ mod web {
 
     #[cfg(feature = "gui")]
     /// 試験用の口: 画面の今の様子の JSON（待っている要求・開いている系・解析パネルの結果の有無）。
-    /// 起動確認（scripts/web_smoke.mjs）が要求の片付くのを待って結果を確かめる（GAR-25）
+    /// 起動確認（scripts/web_smoke.mjs）が要求の片付くのを待って結果を確かめる
     #[wasm_bindgen]
     pub fn test_state() -> String {
         lensbench_gui::web_test_state()

@@ -1,4 +1,4 @@
-//! 結合テストが共通に使う基準データの場所（公開 #216 BLD-26）。
+//! 結合テストが共通に使う基準データの場所。
 //! 基準（tests/refs）・テスト用ガラス（tests/glass）は LB_REFS_DIR・LB_GLASS_DIR で差し替えられる
 //! （別の基準・ガラスで同じ照合をかけるため。lensbench_verify::zemax_refs と同じ約束）。
 

@@ -1,6 +1,6 @@
 //! 同梱する見本（公開用ガラス tests/glass、例題のレンズ・組合せ・プロジェクト、tests/refs の系）の一覧を作る。
 //! ファイルを足せば自動で同梱される
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
 use std::fmt::Write;
 use std::path::{Path, PathBuf};

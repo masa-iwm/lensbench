@@ -1,4 +1,4 @@
-//! 要素の設定欄（図の下の欄とレンズデータの下の欄の 1 つの作り、GPN-17）。図の下は置き方を偏心 y・傾き x
+//! 要素の設定欄（図の下の欄とレンズデータの下の欄の 1 つの作り）。図の下は置き方を偏心 y・傾き x
 //! だけにした [`Detail::Compact`]、レンズデータの下は置き方を全部と群の欄を出す [`Detail::Full`]
 
 use egui::{RichText, Ui};
@@ -16,7 +16,7 @@ pub enum Detail {
 
 impl Pick {
     /// 種類を変えた要素。置き方・後の空気・ON/OFF・状態ごとの値・群・id・ロックは残し、種類ごとの欄は新しい種類の
-    /// 既定にする（前の種類のファイル・面・上書きなどを持ち越さない、GPN-04）
+    /// 既定にする（前の種類のファイル・面・上書きなどを持ち越さない）
     pub fn retyped(&self, kind: ElemKind) -> Pick {
         Pick {
             air: self.air,
@@ -79,7 +79,7 @@ pub(super) fn element_settings(
                 "Also lock the position (drag, keys, decenter, tilt) and the air after",
             ));
         }
-        // 上書きの中身はレンズデータの表のセルの印で見る（#453）
+        // 上書きの中身はレンズデータの表のセルの印で見る
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
                 RichText::new(trf(
@@ -140,7 +140,7 @@ pub(super) fn element_settings(
     if p.kind == ElemKind::Splitter {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
     }
-    // 要素の群の役割・移動（レイアウトのパネルの「群」と同じ、#136）
+    // 要素の群の役割・移動（レイアウトのパネルの「群」と同じ）
     let g = combo
         .get(&step.loc)
         .map(|p| p.group.trim().to_string())

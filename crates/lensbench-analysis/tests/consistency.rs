@@ -1,8 +1,8 @@
-//! 解析どうしの整合の試験（ANA-32）。OpticStudio の基準値に頼らず、物理の関係だけで確かめる。
-//! - 回折 MTF = |PSF のフーリエ変換| / PSF の総和（軸上と、像面の上の PSF（既定）なら斜めの視野も。ANA-08）
-//! - 中心遮蔽の系でも Huygens PSF と FFT PSF が合う（ANA-01 で Huygens が遮蔽の系で止まっていた）
+//! 解析どうしの整合の試験。OpticStudio の基準値に頼らず、物理の関係だけで確かめる。
+//! - 回折 MTF = |PSF のフーリエ変換| / PSF の総和（軸上と、像面の上の PSF（既定）なら斜めの視野も）
+//! - 中心遮蔽の系でも Huygens PSF と FFT PSF が合う（以前は Huygens が遮蔽の系で止まっていた）
 //! - 中心遮蔽の系の PSF の MTF は輪帯瞳の式と合う
-//! - 瞳の標本不足・像の格子の外の光量を PSF・Huygens PSF が知らせ、自動の格子では知らせない（ANA-02）
+//! - 瞳の標本不足・像の格子の外の光量を PSF・Huygens PSF が知らせ、自動の格子では知らせない
 
 use lensbench_analysis::huygens::{huygens_psf, HuygensOpts};
 use lensbench_core::analysis;
@@ -113,7 +113,7 @@ fn psf_transform_is_mtf() {
 }
 
 /// 斜めの視野: 既定（像面の上）の PSF のフーリエ変換は回折 MTF と合い、主光線に垂直な面の PSF は子午の周波数が
-/// 1/cos ずれる（ANA-08。E1 の視野 3 は主光線の N = 0.8835）
+/// 1/cos ずれる（E1 の視野 3 は主光線の N = 0.8835）
 #[test]
 fn psf_transform_is_mtf_off_axis() {
     for (name, fi, tol) in [("A0", 2, 1e-3), ("B0", 2, 1e-3), ("D1", 2, 1e-3)] {

@@ -139,7 +139,7 @@ impl Analysis for Rays {
             )
         }))
     }
-    /// 書き出すときは表を全部作らずに書く（CSV・npz、PRJ-27）
+    /// 書き出すときは表を全部作らずに書く（CSV・npz）
     fn run_to_file(&self, cx: &Cx<'_>, p: &RaysParams, path: &Path) -> Option<Result<Saved>> {
         Some(
             ray_options(cx.system, p)

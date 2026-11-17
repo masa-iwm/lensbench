@@ -303,7 +303,7 @@ fn beam_from_rays_through_ideal_lens_focuses_to_airy() {
     }
 }
 
-/// 絞り面の開口が遮蔽・スパイダー（外の縁が無い）でも、光は絞りの円（瞳の縁）の外を通らない（公開 #62）。
+/// 絞り面の開口が遮蔽・スパイダー（外の縁が無い）でも、光は絞りの円（瞳の縁）の外を通らない。
 /// 遮蔽・スパイダーの分だけパワーが減る
 #[test]
 fn obscuration_and_spider_on_the_stop_keep_the_stop_circle() {

@@ -1,4 +1,4 @@
-//! パネルが共有する小さな部品（GPN-08）。文字の欄・表のセルの数の読み、補完の並べ方、JSON の数の読み、図の拡大・移動の操作（GPN-09）
+//! パネルが共有する小さな部品。文字の欄・表のセルの数の読み、補完の並べ方、JSON の数の読み、図の拡大・移動の操作
 
 use egui::{Pos2, Response, Ui, Vec2};
 use serde_json::Value;
@@ -12,7 +12,7 @@ pub mod menu;
 mod ui_tests;
 
 /// 折り返す行（`horizontal_wrapped`）で、幅 w の塊が行の残りに入らなければ先に折り返す。ComboBox や組にした
-/// 部品は行の端で折り返されず、パネルの右で切れるので、その前に呼ぶ（GUX-14）
+/// 部品は行の端で折り返されず、パネルの右で切れるので、その前に呼ぶ
 pub fn wrap_before(ui: &mut egui::Ui, w: f32) {
     // 折り返す行の available_width は折り返した後の幅（行の全幅）を返すので、行の残りはカーソルから測る
     // 行の先頭（左端）では折り返さない（塊がパネルより広いと空の行ができる）
@@ -56,7 +56,7 @@ pub fn parse_cell(s: &str) -> Result<f64, String> {
 }
 
 /// 候補の並べ方: 前方一致なら Some(true)、名前か説明の部分一致なら Some(false)、合わなければ None。
-/// 名前・説明・打った文字は同じ大小（小文字か大文字）に揃えて渡す（補完つきの欄で共通、GPN-08）
+/// 名前・説明・打った文字は同じ大小（小文字か大文字）に揃えて渡す（補完つきの欄で共通）
 pub fn match_rank(name: &str, desc: &str, q: &str) -> Option<bool> {
     if name.starts_with(q) {
         Some(true)
@@ -80,7 +80,7 @@ pub fn json_num(v: &Value) -> Option<f64> {
 }
 
 /// 図の上の拡大・移動の操作（1 フレーム分）。図ごとに同じ操作にそろえる: ホイール（ピンチ）＝ポインタの所で
-/// 拡大縮小、中・右ドラッグと Space+左ドラッグ＝移動、ダブルクリック・Home＝全体（GPN-09）
+/// 拡大縮小、中・右ドラッグと Space+左ドラッグ＝移動、ダブルクリック・Home＝全体
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PanZoom {
     /// 拡大の倍率（1 は変えない、1 より大きいと拡大）
@@ -167,7 +167,7 @@ mod tests {
     }
 }
 
-/// 見るだけの図の拡大（対数）と移動（パネルの状態に持つ、GPN-28）
+/// 見るだけの図の拡大（対数）と移動（パネルの状態に持つ）
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub struct Nav {
     pub zoom_log: f32,

@@ -1,4 +1,4 @@
-//! 面の形（[`Shape`]）: 矢高と勾配、法線、交点の求め方、近軸の曲率（KRN-05）。
+//! 面の形（[`Shape`]）: 矢高と勾配、法線、交点の求め方、近軸の曲率。
 //!
 //! 形に依る計算はここに集める。[`Surface::shape`] は今の平たい [`Surface`] の値から形を借りて作る見方で、
 //! 面の種類ごとに `asph` などの値の意味（偶数次非球面の係数、Odd Asphere の β、Tilted の tan、Irregular の偏心・
@@ -10,7 +10,7 @@
 //!
 //! 結果は面の種類ごとに書いていた以前の計算と同じビットにしている。そのため、形に効かない残りの値で求め方が
 //! 変わる従来の扱い（[`Shape::isect_kind`] の `filled`、[`Shape::Tilted`] の `c`・`k`、[`Shape::Zernike`] の
-//! `stray_grid`）もそのまま残す。値の置き場を enum に替えるとき（KRN-05 の続き）に見直す
+//! `stray_grid`）もそのまま残す。値の置き場を enum に替えるときに見直す
 
 use crate::action::Action;
 use crate::freeform::{isect_with, GridSag, ZernSag};
@@ -188,7 +188,7 @@ impl Surface {
         matches!(self.typ, SurfType::Standard | SurfType::EvenAsph) || self.shape().is_freeform()
     }
 
-    /// 形のパラメータ kind を変数・微分にできるか（[`Surface::shape_params`] の面で、形に効くもの。KRN-32）
+    /// 形のパラメータ kind を変数・微分にできるか（[`Surface::shape_params`] の面で、形に効くもの）
     pub(crate) fn takes_shape_param(&self, kind: crate::param::Kind) -> bool {
         self.shape_params() && self.shape().takes(kind)
     }
@@ -549,7 +549,7 @@ impl Shape<'_> {
 
     /// 近軸の曲率のうち c に依らない分 e（[`Shape::paraxial_curv`] が c + e のとき）: 二次曲面・Irregular 0、
     /// 偶数次非球面・トロイダル面・Cylinder Fresnel の基板 2 a₁、Odd Asphere 2 β₂。曲率のソルブ（c = 目標の近軸の
-    /// 曲率 − e）を近軸の追跡と同じ規則にするためのもの（KRN-33）。c だけで近軸の曲率が決まらない面（平面・Tilted・
+    /// 曲率 − e）を近軸の追跡と同じ規則にするためのもの。c だけで近軸の曲率が決まらない面（平面・Tilted・
     /// Zernike Sag・Grid Sag）は None
     pub fn paraxial_extra(&self) -> Option<f64> {
         match *self {

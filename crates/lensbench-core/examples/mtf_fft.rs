@@ -1,6 +1,6 @@
 //! MTF の FFT（[`MtfMethod::Fft`]）と補間（既定）の比べ: OpticStudio の値（tests/refs/<系>/mtf.json）との差、
 //! 2 つの方法の差、時間。`cargo run --release --example mtf_fft -- [系 ...]`（既定は mtf.json のある全系）
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;

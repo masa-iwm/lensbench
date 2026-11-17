@@ -1,4 +1,4 @@
-//! 形のパラメータ（c・R・k・`asph`・Zernike の項）による矢高と勾配の微分（[`Shape::dsag`]、KRN-32）。
+//! 形のパラメータ（c・R・k・`asph`・Zernike の項）による矢高と勾配の微分（[`Shape::dsag`]）。
 //!
 //! 光路長の微分（[`crate::fermat`]）・着地点の微分（[`crate::landing`]）・パラメータの検査（[`crate::param`]）は
 //! ここを通す。`asph` の意味は形ごとに違う（偶数次非球面の r², r⁴, … の係数、Odd Asphere の r¹, r², … の β、

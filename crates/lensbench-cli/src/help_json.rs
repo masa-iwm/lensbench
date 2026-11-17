@@ -1,4 +1,4 @@
-//! `lensbench help --json`（隠し）: clap の定義（解析の登録簿のサブコマンドも）を JSON で出す（見直し CLI-29）。
+//! `lensbench help --json`（隠し）: clap の定義（解析の登録簿のサブコマンドも）を JSON で出す。
 //!
 //! マニュアルの CLI のページ（`scripts/gen_docs.py`）はこの JSON から作る。`--help` の文字を読み解かない。
 
@@ -77,7 +77,7 @@ fn command_json(c: &mut Command) -> Value {
     })
 }
 
-/// help を `f` で訳す（about・long_about・引数の help・long_help、入れ子のサブコマンドも。XCT-20）
+/// help を `f` で訳す（about・long_about・引数の help・long_help、入れ子のサブコマンドも）
 pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Command {
     if let Some(t) = c.get_about().map(|x| f(&x.to_string())) {
         c = c.about(t);
@@ -107,7 +107,7 @@ pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Comma
     c
 }
 
-/// `lensbench plugins` の doc（英語が元）を文字の出力では表示の言語に訳す。JSON は英語のまま（XCT-20）
+/// `lensbench plugins` の doc（英語が元）を文字の出力では表示の言語に訳す。JSON は英語のまま
 pub fn localize_docs(mut v: Value, json: bool) -> Value {
     fn walk(v: &mut Value) {
         match v {
@@ -198,7 +198,7 @@ mod tests {
             .iter()
             .any(|a| a["long"] == "threads" && a["global"] == json!(true)));
         assert_eq!(v["exit_codes"][0]["code"], json!(0));
-        // 書き出し先の --out は手書きのサブコマンドも登録簿の解析も -o でも渡せる（CLI-14）
+        // 書き出し先の --out は手書きのサブコマンドも登録簿の解析も -o でも渡せる
         for s in subs {
             for a in s["args"].as_array().unwrap() {
                 if a["long"] == "out" {

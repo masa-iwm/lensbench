@@ -340,7 +340,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
 }
 
 /// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。[`surf`] が作る面はすべて書け、
-/// `surface_spec` → `surf` で同じ面に戻る（PRJ-15）。書けない値（面の前後の傾き・偏心、[`SurfShape`] のほかの型、
+/// `surface_spec` → `surf` で同じ面に戻る。書けない値（面の前後の傾き・偏心、[`SurfShape`] のほかの型、
 /// 鏡、ignore、dn・disp）は誤り
 pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     let shape = match f.typ {

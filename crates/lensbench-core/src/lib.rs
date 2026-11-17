@@ -4,10 +4,10 @@
 //! 別クレートから差し込む。公開版にはその実装を含めない。
 //!
 //! ライブラリとして使うときの入口は [`prelude`]（系の読込・追跡・主な解析・結果の型）。それ以外の `pub` のモジュールは
-//! 上の層のクレート（analysis・project・engine など）と拡張のための口で、安定の度合いは低い（XCT-22）。
+//! 上の層のクレート（analysis・project・engine など）と拡張のための口で、安定の度合いは低い。
 
 #![warn(unreachable_pub)]
-// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
+// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（試験は対象外）
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方。
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -93,7 +93,7 @@ pub mod prelude {
 pub use error::{Error, Result};
 pub use par::with_threads;
 
-/// 環境変数から決める既定（CLI・GUI の起動・Python の import で呼ぶ。core のほかの所は環境変数を読まない、XCT-08）:
+/// 環境変数から決める既定（CLI・GUI の起動・Python の import で呼ぶ。core のほかの所は環境変数を読まない）:
 /// スレッド数（LENSBENCH_THREADS、[`par::default_threads_from_env`]）、ガラスのフォルダ（LENSBENCH_GLASSCAT、
 /// [`glass::set_default_dirs`]）、マクロのフォルダ（LENSBENCH_MACROS、[`zpl_solve::set_default_dirs`]）。フォルダは OS の
 /// パス区切りで並べる。消した環境変数が設定されていれば標準エラーに 1 回注意を出す

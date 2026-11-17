@@ -510,7 +510,7 @@ fn afocal_and_telecentric_settings() {
     assert_eq!(s.afocal_unit, AfocalUnit::Degrees);
 }
 
-/// PRJ-10: 書き出しで省かれる項目（鏡の aperture、系の coatings・mechanics）も状態で変えられる。型が読まない項目は誤り
+/// 書き出しで省かれる項目（鏡の aperture、系の coatings・mechanics）も状態で変えられる。型が読まない項目は誤り
 #[test]
 fn states_change_values_that_are_left_out_when_default() {
     let p = parse(
@@ -539,7 +539,7 @@ fn states_change_values_that_are_left_out_when_default() {
 }
 
 /// 面の名前（FaceId）: 状態で玉を外しても、ほかのブロックの面は同じ名前で見つかる。復路の面は back、
-/// 偏心の座標ブレークは番号なし（PRJ-04・CLI-21）
+/// 偏心の座標ブレークは番号なし
 #[test]
 fn faces_keep_their_names_across_states() {
     let lens = |id: &str, extra: &str| {
@@ -664,7 +664,7 @@ fn retarget_keeps_cbs_and_skips_resized_blocks() {
     assert!(r.op(&set(l2)).is_err(), "L2 は面の数が違う");
 }
 
-/// 展開した系にした面の編集をブロックへ書き戻すと、書き戻したプロジェクトの展開が編集した系と同じ（PRJ-04）。
+/// 展開した系にした面の編集をブロックへ書き戻すと、書き戻したプロジェクトの展開が編集した系と同じ。
 /// 書き戻せない編集（ブロックの最後の面の厚さ・座標ブレーク・面を入れる）は注意
 #[test]
 fn surface_edits_write_back_to_blocks() {
@@ -722,7 +722,7 @@ fn surface_edits_write_back_to_blocks() {
 }
 
 /// 往復するブロックの書き戻し: 最後の面の厚み・材料は書かない（後ろが戻しの座標ブレークでも）、面の値は復路にも
-/// 当たるので注意を出す（PRJ-04）
+/// 当たるので注意を出す
 #[test]
 fn round_trip_blocks_write_back_with_notes() {
     use lensbench_project::edit_spec::EditOp;

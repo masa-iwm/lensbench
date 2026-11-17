@@ -2,7 +2,7 @@
 //!
 //! ユーザーカタログ（[`crate::UserCatalog`]）の品は `kind`・`url`・`specs`・`tags`・出典を持てる。
 //! カタログ全体の `url_template` と `overlay` は、同じメーカーのほかのカタログ（ZMF・.zmx の玉など）の品にも
-//! 仕様とリンクを足す（元のファイルは書き換えない）。足し方・仕様での絞り込み・検索は lensbench-catalog（PRJ-05）。
+//! 仕様とリンクを足す（元のファイルは書き換えない）。足し方・仕様での絞り込み・検索は lensbench-catalog。
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

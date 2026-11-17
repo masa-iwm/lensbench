@@ -307,7 +307,7 @@ impl System {
             _ => {}
         }
         // 形に効かない値（Tilted の c・k、Tilted の 3 番目からの asph、ほかの型の面に残った Zernike の項など）は
-        // 変数・微分にしない（KRN-32）
+        // 変数・微分にしない
         if matches!(
             p.kind,
             Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)

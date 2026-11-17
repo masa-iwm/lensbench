@@ -1,11 +1,11 @@
-//! フォルダに無い膜のモデルを取る口（拡張の表の欄、XCT-07）
+//! フォルダに無い膜のモデルを取る口（拡張の表の欄）
 
 use std::path::{Path, PathBuf};
 
 /// フォルダに無い膜のモデルを取る口（膜ファイルのフォルダ、膜の名前）→ 取ったファイル（`.lbcb` など）
 pub type RemoteLoader = fn(&Path, &str) -> Option<PathBuf>;
 
-/// 拡張の表（[`crate::ext::Ext`]）の欄: フォルダに無い膜のモデルを取る口（XCT-07）
+/// 拡張の表（[`crate::ext::Ext`]）の欄: フォルダに無い膜のモデルを取る口
 #[derive(Clone, Copy, Default)]
 pub struct RemoteCoatings(pub Option<RemoteLoader>);
 

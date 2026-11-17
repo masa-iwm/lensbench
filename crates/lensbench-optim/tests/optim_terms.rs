@@ -445,7 +445,7 @@ impl UserTerm for FailSecondJac {
     }
 }
 
-/// IOO-07: 途中のヤコビアンが失敗しても、それまでに良くなった x と評価関数・系を返す（初めの値に戻さない）
+/// 途中のヤコビアンが失敗しても、それまでに良くなった x と評価関数・系を返す（初めの値に戻さない）
 #[test]
 fn ioo07_dls_keeps_best_x_when_a_later_jacobian_fails() {
     let s = load("A0");
@@ -525,7 +525,7 @@ fn centroid_value_and_jacobian() {
     }
 }
 
-/// 項の値の意味（IOO-28）: 目標のある項は量そのもの、ない項は RMS
+/// 項の値の意味: 目標のある項は量そのもの、ない項は RMS
 #[test]
 fn term_value_kinds() {
     use lensbench_core::sweep::RmsRef;
@@ -558,7 +558,7 @@ fn term_value_kinds() {
 }
 
 /// 止まった光線（面に届かない）: 既定は評価できない誤り、stopped_as_vignetted ではけられた光線と同じく除いて
-/// 評価し、数を ray_counts で出す（IOO-28）
+/// 評価し、数を ray_counts で出す
 #[test]
 fn stopped_rays_as_vignetted() {
     use lensbench_core::param::Kind;

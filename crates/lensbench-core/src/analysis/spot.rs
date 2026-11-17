@@ -20,7 +20,7 @@ pub struct Spot {
 
 /// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
 /// 系のアポダイゼーション（[`System::apodization`]）の強度を光線の重みに掛ける（重心・RMS。OpticStudio の RSCE・CENY・
-/// スポット図の RMS と同じ、ANA-33）。腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
+/// スポット図の RMS と同じ）。腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
 pub fn spot(s: &System, field: FieldSel, w: Waves, rings: usize) -> Result<Spot> {
     let w = w.one();
     spot_arms(s, field, Waves::all_or(w), rings, None)
@@ -61,7 +61,7 @@ pub fn spot_arms(
     Ok(spot_of(s, &rs, &wts, &rc))
 }
 
-/// 求積の重み wts に、系のアポダイゼーションの強度 A(px, py)² を掛ける（一様なら wts のまま。ANA-33）
+/// 求積の重み wts に、系のアポダイゼーションの強度 A(px, py)² を掛ける（一様なら wts のまま）
 pub fn apodized(
     s: &System,
     field: FieldSel,

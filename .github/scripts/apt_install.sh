@@ -65,7 +65,7 @@ for attempt in 1 2; do
     use_direct_mirrors
   fi
   # update は一部の取得の失敗（W:）でも 0 を返すので続け、落とす段を timeout で区切る（DNS の障害中は deb ごとに
-  # 再試行を重ねて数十分止まるため。#169 のレビュー）。落とし終えてから入れる（dpkg の途中で切らない）
+  # 再試行を重ねて数十分止まるため）。落とし終えてから入れる（dpkg の途中で切らない）
   inst=(sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -y -q --no-install-recommends
         -o Dir::Cache::archives="$arch" -o APT::Keep-Downloaded-Packages=true)
   timeout 240 sudo apt-get "${opts[@]}" update -q

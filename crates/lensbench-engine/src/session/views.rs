@@ -1,4 +1,4 @@
-//! serve の結果のうち GUI が型で受けるもの（GAR-04 の一歩目）。serve はこの型を JSON にし、GUI は同じ型で読む
+//! serve の結果のうち GUI が型で受けるもの（型で受ける一歩目）。serve はこの型を JSON にし、GUI は同じ型で読む
 //! （鍵の綴りをコンパイラが見る。JSON の鍵の並びはフィールドの並び）
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;

@@ -1,5 +1,5 @@
 //! 解析の登録簿（[`lensbench_analysis::Analyses`]）のサブコマンド: 引数は設定のスキーマから作り、
-//! 解釈した引数を設定の JSON にして [`lensbench_analysis::DynAnalysis::run_json`] に渡す（見直し CLI-02・XCT-02）。
+//! 解釈した引数を設定の JSON にして [`lensbench_analysis::DynAnalysis::run_json`] に渡す。
 
 use std::path::PathBuf;
 
@@ -52,7 +52,7 @@ fn arg_of(p: &Param) -> Arg {
     let mut a = Arg::new(leak(p.name.clone()))
         .long(leak(flag_of(&p.name)))
         .help(help);
-    // 書き出し先は手書きのサブコマンドと同じく -o でも（CLI-14）
+    // 書き出し先は手書きのサブコマンドと同じく -o でも
     if p.name == "out" {
         a = a.short('o');
     }

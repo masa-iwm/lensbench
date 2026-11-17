@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """同梱するガラスカタログ crates/lensbench-core/assets/glass/*.AGF を refractiveindex.info のデータベース（CC0）から作る
-（GUX-01: 何も設定していなくても普通の .zmx が開けるように）。
+（何も設定していなくても普通の .zmx が開けるように）。
 
     git clone --depth 1 https://github.com/polyanskiy/refractiveindex.info-database ri
     python3 scripts/make_builtin_glass.py ri

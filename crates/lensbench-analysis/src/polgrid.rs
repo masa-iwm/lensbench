@@ -32,7 +32,7 @@ pub const MIN_POINTS: usize = 4;
 /// 粗い瞳格子での偏光追跡の結果と、補間の係数
 #[derive(Debug, Clone)]
 pub struct PolGrid {
-    /// 格子点の値（座標は正規化瞳座標 px・py の [`axis`]、行 = py。欠けた点は最も近い有効な点の値、ANA-18）
+    /// 格子点の値（座標は正規化瞳座標 px・py の [`axis`]、行 = py。欠けた点は最も近い有効な点の値）
     f: Grid2<[C64; NV]>,
     /// ∂f/∂px・∂f/∂py・∂²f/∂px∂py（スプラインの節点での微分）
     fx: Vec<[C64; NV]>,

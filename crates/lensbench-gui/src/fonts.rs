@@ -90,7 +90,7 @@ pub fn install(ctx: &egui::Context) -> Option<String> {
 static DEFS: std::sync::Mutex<Option<FontDefinitions>> = std::sync::Mutex::new(None);
 
 /// 文章のフォントの順を今の言語に合わせる: 日本語は日本語のフォントを先に、英語は欧文のフォントを先に
-/// （日本語のフォントの英字は字間が広く、英語の文が切れ・折り返しやすい、GUX-32）。日本語のフォントが無ければ何もしない
+/// （日本語のフォントの英字は字間が広く、英語の文が切れ・折り返しやすい）。日本語のフォントが無ければ何もしない
 pub fn follow_lang(ctx: &egui::Context) {
     let Some(mut fonts) = DEFS.lock().ok().and_then(|d| d.clone()) else {
         return;
@@ -115,7 +115,7 @@ fn reorder(fam: &mut Vec<String>, ja: bool) -> bool {
     true
 }
 
-/// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない、GUX-24・GUX-29）
+/// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない）
 pub fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
     let id = egui::FontId::proportional(16.0);
     if ui.fonts(|f| f.has_glyphs(&id, sym)) {
@@ -152,7 +152,7 @@ pub fn center_tweak(bytes: &[u8], index: u32) -> Option<f32> {
 mod tests {
     use super::*;
 
-    /// GUX-32: 日本語は日本語のフォントを先に、英語は欧文を先に
+    /// 日本語は日本語のフォントを先に、英語は欧文を先に
     #[test]
     fn reorder_puts_japanese_first_or_last() {
         let mut f: Vec<String> = ["ja", "Ubuntu", "emoji"].map(String::from).to_vec();
@@ -164,7 +164,7 @@ mod tests {
         assert!(!reorder(&mut none, true));
     }
 
-    /// GUX-29: 無い記号は代わりの字に、ある記号はそのまま
+    /// 無い記号は代わりの字に、ある記号はそのまま
     #[test]
     fn gux29_glyph_or_falls_back_for_missing_symbols() {
         let ctx = egui::Context::default();

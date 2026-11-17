@@ -2,8 +2,8 @@
 //!
 //! - [`registry`] は 解析の約束（設定・結果の型と登録簿）。CLI・serve・GUI はここから作る
 //! - [`defs`] は 同梱の解析の定義
-//! - [`huygens`] は Huygens PSF・Huygens MTF の計算（core から外した解析の計算、XCT-04）
-//! - [`ghost`]・[`interference`]・[`polgrid`] は ゴーストの経路・単色の干渉縞・偏光の格子（core から外した解析、XCT-04）
+//! - [`huygens`] は Huygens PSF・Huygens MTF の計算（core から外した解析の計算）
+//! - [`ghost`]・[`interference`]・[`polgrid`] は ゴーストの経路・単色の干渉縞・偏光の格子（core から外した解析）
 //! - [`plugins`] は 解析のプラグイン（`lensbench_core::plugin`、評価関数の項・照合が使う名前つき配列の形）
 
 #![warn(unreachable_pub)]

@@ -124,13 +124,13 @@ enum Change {
 struct Served {
     sys: Arc<System>,
     spec: LoadSpec,
-    /// 読んだときのファイル（別の構成・状態・経路はファイルを読み直さずにここから。CLI-21）
+    /// 読んだときのファイル（別の構成・状態・経路はファイルを読み直さずにここから）
     src: Arc<Source>,
     /// プロジェクトの id のあるブロック・群ごとの系の面の範囲（読んだときのもの。面を足す・消す edit の後は空）
     blocks: Arc<Vec<BlockSpans>>,
     /// プロジェクトの読んだときの系の面ごとの名前（変更の記録 log はこの系からの変更。別の状態・経路へ当て直す）
     faces: Arc<Faces>,
-    /// 読んだときの注意（load・reload の返事の notes。CLI-10）
+    /// 読んだときの注意（load・reload の返事の notes）
     notes: Vec<String>,
     log: Vec<Change>,
     /// 元に戻す・やり直すための前の系と変更の記録。段の名前は変更の短い記述（GUI の一覧の名前）
@@ -173,7 +173,7 @@ const SET_MERGE_S: f64 = 1.0;
 
 /// serve の 1 つの場: 読み込んだ系・変更の記録・元に戻す段・走っている最適化などの進み具合と、要求で与えたパスの扱い。
 /// 系を変える要求は場ごとに 1 つずつ順に、読むだけの要求（[`Access::Read`]）は並行に処理する。
-/// 最適化などの長い要求（[`Access::Long`]）は始めたときの系で回し、その間も他の要求を止めない（GAR-20）。TCP・パイプの serve は 1 つの場を全部の接続で共有し、GUI は [`global`] の場を、
+/// 最適化などの長い要求（[`Access::Long`]）は始めたときの系で回し、その間も他の要求を止めない。TCP・パイプの serve は 1 つの場を全部の接続で共有し、GUI は [`global`] の場を、
 /// 試験は場を別々に作って使う
 pub struct Session {
     pub(crate) files: Files,
@@ -403,7 +403,7 @@ fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
         return;
     };
     let now = Instant::now();
-    // 構成の切り替えだけの edit が続くときは、間があいても 1 段にまとめる（名前は CONFIG_KEY、GAR-28）
+    // 構成の切り替えだけの edit が続くときは、間があいても 1 段にまとめる（名前は CONFIG_KEY）
     let names = match &c {
         Change::Set(v) => Some(v.iter().map(|r| r.0.clone()).collect::<Vec<_>>()),
         Change::Edit(o) => config_only(o).then(|| vec![CONFIG_KEY.to_string()]),
@@ -536,7 +536,7 @@ impl RpcErr {
     }
 }
 
-/// 文字列の誤り（project などの `Err(String)`）は英語で書いてあるので、表示の言語に訳す（XCT-20）
+/// 文字列の誤り（project などの `Err(String)`）は英語で書いてあるので、表示の言語に訳す
 impl From<String> for RpcErr {
     fn from(m: String) -> Self {
         RpcErr::app(lensbench_core::i18n::tr(&m))
@@ -778,7 +778,7 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let read_all = |v: Vec<PathBuf>| -> Result<Vec<PathBuf>, RpcErr> {
         v.iter().map(|x| sess.files.check_path(x, false)).collect()
     };
-    // 名前は Python と同じ（CLI-17）
+    // 名前は Python と同じ
     let keys = [
         "file",
         "glass_dirs",
@@ -873,7 +873,7 @@ impl Session {
             let spec = load_spec(sess, load)?;
             let r = read_file_notes(&spec)?;
             let mut v = layout_with(&r.sys, &spec, opts, None)?;
-            // 要素ごとの面の範囲（GUI の組合せの図・レンズデータの要素の行。GPN-01）
+            // 要素ごとの面の範囲（GUI の組合せの図・レンズデータの要素の行）
             v["blocks"] = json!(r.blocks);
             Ok(v)
         };

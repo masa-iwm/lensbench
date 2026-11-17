@@ -1,4 +1,4 @@
-//! BS（ビームスプリッター）だけが持つ欄（[`Bs`]）と splitter ブロック（GPN-04: 種類ごとの欄を分ける）
+//! BS（ビームスプリッター）だけが持つ欄（[`Bs`]）と splitter ブロック（種類ごとの欄を分ける）
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

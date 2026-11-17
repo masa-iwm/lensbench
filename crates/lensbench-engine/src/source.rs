@@ -16,7 +16,7 @@ pub(crate) type Replay<'a> = &'a dyn Fn(
 ) -> lensbench_core::Result<System>;
 
 /// 系のファイルの読み方。ファイルは初めに要るときに 1 回だけ読み（[`lensbench_project::open::Source`]）、状態・経路・
-/// プロジェクトの文字列・別の状態の系はそこから引く（CLI-13）
+/// プロジェクトの文字列・別の状態の系はそこから引く
 pub struct FileSource<'a> {
     pub c: &'a SysSpec,
     /// serve で読み込んだ後の変更を当てる（CLI は None）
@@ -37,7 +37,7 @@ impl<'a> FileSource<'a> {
         }
     }
 
-    /// serve: 読んだときのファイル src と、読み込んだ系 cur から引く（CLI-21）。今の構成・状態・経路は cur そのもの、
+    /// serve: 読んだときのファイル src と、読み込んだ系 cur から引く。今の構成・状態・経路は cur そのもの、
     /// .zmx の別の構成は cur の多重構成の表から（変更が入ったまま）、ほかは src から読んで replay で変更を当てる
     pub fn loaded(c: &'a SysSpec, src: Arc<Source>, cur: &'a System, replay: Replay<'a>) -> Self {
         Self {

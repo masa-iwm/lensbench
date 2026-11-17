@@ -41,7 +41,7 @@ fn swap_accepts_schema_key() {
     assert!(!v.is_valid(&bad));
 }
 
-/// 評価関数の項: 例の並びがスキーマに合い、知らないキー・種類はスキーマでも読みでも誤り（PRJ-11）
+/// 評価関数の項: 例の並びがスキーマに合い、知らないキー・種類はスキーマでも読みでも誤り
 #[test]
 fn terms_schema_matches_reader() {
     let v = jsonschema::validator_for(&schema::schema("terms").unwrap()).unwrap();
@@ -110,7 +110,7 @@ fn terms_schema_matches_reader() {
     );
 }
 
-/// 公差の設定: 例がスキーマに合い、知らないキーはスキーマでも読みでも誤りで、読みの誤りには欄の道が付く（PRJ-11）
+/// 公差の設定: 例がスキーマに合い、知らないキーはスキーマでも読みでも誤りで、読みの誤りには欄の道が付く
 #[test]
 fn tolerance_schema_matches_reader() {
     let v = jsonschema::validator_for(&schema::schema("tolerance").unwrap()).unwrap();

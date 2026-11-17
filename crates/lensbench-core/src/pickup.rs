@@ -151,7 +151,7 @@ impl Pickup {
 
 /// 面タイプの .zmx の PARM の番号のうち、係数の並び `Surface::asph` の最初に当たる番号（asph[k] は PARM base + k、
 /// PARM 8 まで）。偶数次非球面・フレネル・バイナリ 2・自由曲面（奇数次非球面・傾いた面・不規則面・Zernike・Grid Sag）は 1、
-/// トロイダルは 2（PARM 1 は回転半径）。係数を持たない面タイプは None（IOO-08: 面の量の対応はここ 1 か所）
+/// トロイダルは 2（PARM 1 は回転半径）。係数を持たない面タイプは None（面の量の対応はここ 1 か所）
 pub(crate) fn asph_parm_base(t: SurfType) -> Option<usize> {
     match t {
         SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2 => {
@@ -583,7 +583,7 @@ pub fn pick_kind_name(k: crate::pickup::PickKind) -> String {
 mod tests {
     use super::*;
 
-    /// 面の係数のパラメータ（a2・a4…）と .zmx の PARM の番号の対応は面タイプによらず 1 か所（IOO-08）:
+    /// 面の係数のパラメータ（a2・a4…）と .zmx の PARM の番号の対応は面タイプによらず 1 か所:
     /// 自由曲面でもピックアップの量になり、PARM の値が読み書きできる（前は偶数次非球面だけで、奇数次非球面などの
     /// PPAR のピックアップは読込で外れた）
     #[test]

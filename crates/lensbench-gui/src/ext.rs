@@ -75,7 +75,7 @@ impl ObjectArg {
     }
 }
 
-/// GUI の見せ方の表（拡張の表 `lensbench_core::ext::Ext` の欄、XCT-07）
+/// GUI の見せ方の表（拡張の表 `lensbench_core::ext::Ext` の欄）
 #[derive(Clone, Default)]
 pub struct GuiExt {
     analyses: Vec<Analysis>,

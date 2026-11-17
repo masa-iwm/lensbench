@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Web 版をビルドして配る形のフォルダ（既定 target/web）を作る。docs/web.md
 #
-# wasm は画面用と計算用に分ける（lensbench-web の feature gui・worker、GAR-11）。3 つ作る:
+# wasm は画面用と計算用に分ける（lensbench-web の feature gui・worker）。3 つ作る:
 # - そのまま（stable、gui）: 画面（index.html）。計算のコードは入らない
 # - worker/（stable、worker）: 計算の Web Worker の 1 スレッドの版。どこでも動く
 # - mt/（nightly、atomics、worker）: 計算の Web Worker の中で rayon のスレッドを使う版。ページが

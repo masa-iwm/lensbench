@@ -391,7 +391,7 @@ mod win {
         }
 
         pub fn read(&self, off: usize, buf: &mut [u8]) {
-            // 呼ぶ側（Shm::check）でも確かめるが、安全な関数なので中でも範囲を確かめる（XCT-28）
+            // 呼ぶ側（Shm::check）でも確かめるが、安全な関数なので中でも範囲を確かめる
             assert!(off.checked_add(buf.len()).is_some_and(|e| e <= self.size));
             // SAFETY: 範囲は上で size の中と確かめた
             unsafe { std::ptr::copy_nonoverlapping(self.p.add(off), buf.as_mut_ptr(), buf.len()) }

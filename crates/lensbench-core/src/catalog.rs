@@ -217,7 +217,7 @@ fn catalog_files(
 }
 
 /// メーカー名の鍵: 英数字だけを大文字にしたもの（"EDMUND OPTICS" と "Edmund_Optics" は同じ）。メーカー名を比べる所は
-/// 全部これを使う（XCT-12・PRJ-17: 以前は大文字にするだけ・英数字だけ・大文字の「含む」の 3 通りがあった）。
+/// 全部これを使う（以前は大文字にするだけ・英数字だけ・大文字の「含む」の 3 通りがあった）。
 /// 同じメーカーかは鍵の一致、人が書いた名前での絞り込み（検索・差し替え探索・公差）は [`VendorKey::matches`]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VendorKey(String);
@@ -269,7 +269,7 @@ impl LensCatalog {
     }
 
     /// [`load`](Self::load) を、今の拡張の表の形式（[`crate::ext::current`]）で。読んだものを読んだファイルの
-    /// 更新時刻・大きさと共に覚えておき、どれも変わっていなければ読み直さない（XCT-12: 以前は呼ぶたびにフォルダの
+    /// 更新時刻・大きさと共に覚えておき、どれも変わっていなければ読み直さない（以前は呼ぶたびにフォルダの
     /// 全カタログを読み直した）。フォルダにファイルが増えた・減ったときも読み直す
     pub fn load_registered(paths: &[std::path::PathBuf]) -> Result<std::sync::Arc<LensCatalog>> {
         use crate::sync::LockExt;

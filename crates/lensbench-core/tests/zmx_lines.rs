@@ -618,13 +618,13 @@ fn unread_lines_are_reported() {
     ))
     .unwrap();
     assert_eq!(s.import_notes.len(), 2, "{:?}", s.import_notes);
-    // GFAC は瞳のアポダイゼーションとして読む（ANA-05）
+    // GFAC は瞳のアポダイゼーションとして読む
     let g = load(&txt.replacen("GFAC 0 0", "GFAC 3 1", 1)).unwrap();
     assert_eq!(
         g.apodization,
         lensbench_core::pupil::Apodization::Gaussian(3.0)
     );
-    // 幾何の解析の重みにも入るので注意は出さない（ANA-33）
+    // 幾何の解析の重みにも入るので注意は出さない
     assert!(g.import_notes.is_empty(), "{:?}", g.import_notes);
     assert!(load(&txt.replacen("GFAC 0 0", "GFAC 0 5", 1)).is_err());
     // 種類が一様なら係数が残っていても一様（OpticStudio は種類を変えても係数を残す）

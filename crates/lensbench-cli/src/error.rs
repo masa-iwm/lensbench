@@ -1,4 +1,4 @@
-//! コマンドラインの誤り（見直し CLI-25）: 種類ごとに終了コードと次の手の案内を持つ。
+//! コマンドラインの誤り: 種類ごとに終了コードと次の手の案内を持つ。
 //!
 //! serve・Python は core の誤りの種類（[`lensbench_core::Error::kind`]）を `data.kind`・例外のクラスに写す。
 //! コマンドラインはこの型で終了コードに写す（表は [`EXIT_CODES`]、`lensbench --help` の末尾と docs/cli.md にも同じ表）。

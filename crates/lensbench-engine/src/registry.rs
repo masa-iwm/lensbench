@@ -34,7 +34,7 @@ pub const RESERVED: &[&str] = &[
     "verify",
 ];
 
-/// 足した拡張の解析（拡張の表 [`lensbench_core::ext::Ext`] の欄、XCT-07）
+/// 足した拡張の解析（拡張の表 [`lensbench_core::ext::Ext`] の欄）
 #[derive(Clone, Default)]
 pub struct ExtraAnalyses(Analyses);
 
@@ -107,7 +107,7 @@ mod plugin_defaults {
         }
     }
 
-    /// 同梱プラグインの設定の既定は、同じ解析の登録簿の既定と揃える（ANA-03）
+    /// 同梱プラグインの設定の既定は、同じ解析の登録簿の既定と揃える
     #[test]
     fn plugin_defaults_match_registry() {
         let mut r = Registry::default();

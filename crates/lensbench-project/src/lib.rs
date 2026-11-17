@@ -19,7 +19,7 @@
 //!   系の値（物体距離など）の変更の組に名前を付ける。[`expand`] に [`ExpandOpts::state`] を渡してその状態の系を展開する。
 
 #![warn(unreachable_pub)]
-// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
+// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（試験は対象外）
 
 pub mod catalog_spec;
 pub mod detectors;
@@ -205,7 +205,7 @@ mod surface_spec_all_tests {
         }
     }
 
-    /// PRJ-15: surf が読める面はすべて surface_spec で書け、書いたものから同じ面に戻る
+    /// surf が読める面はすべて surface_spec で書け、書いたものから同じ面に戻る
     #[test]
     fn every_readable_surface_round_trips() {
         let mut r = Rng(0x9e37_79b9_7f4a_7c15);

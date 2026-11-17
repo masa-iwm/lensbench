@@ -1,4 +1,4 @@
-//! 取った品の STEP を測る・詳しい形（三角形）にする（公開 #121）。ネイティブと Web 版の両方で使う
+//! 取った品の STEP を測る・詳しい形（三角形）にする。ネイティブと Web 版の両方で使う
 //! （取る・上げるのは [`crate`]、ネイティブだけ。Web 版は GUI が置き場から取って置き場（vfs）に入れる）。
 use lensbench_catalog::{fill, step};
 use lensbench_project::UserItem;
@@ -27,7 +27,7 @@ const DETAIL_TOL_MM: f64 = 0.2;
 pub fn detail_of_step(text: &str) -> lensbench_core::Result<lensbench_export::detail::Detail> {
     use truck_meshalgo::prelude::*;
     use truck_stepio::r#in::Table;
-    // 文字は 1 回だけ読み、置き方・単位・書き出しへの写しが同じ表を使う（PRJ-06）
+    // 文字は 1 回だけ読み、置き方・単位・書き出しへの写しが同じ表を使う
     let file = step::StepFile::parse(text)?;
     let poses = step::shell_poses(&file)?;
     let all_poses = poses.clone();
@@ -86,7 +86,7 @@ pub fn detail_of_step(text: &str) -> lensbench_core::Result<lensbench_export::de
     Ok(lensbench_export::detail::Detail {
         tris,
         step: Some(lensbench_export::step_embed::StepSource {
-            // 全文でなく、殻から辿れる実体だけを持つ（PRJ-21）
+            // 全文でなく、殻から辿れる実体だけを持つ
             file: std::sync::Arc::new(file.subset(all_poses.iter().map(|p| p.0))),
             unit_mm: upper_unit,
             shells: all_poses,
@@ -138,7 +138,7 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 #[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
 pub const MEMO_MAX: usize = 64;
 
-/// 詳しい形の読み手（書き出し・表示の設定 `mech_detail` に渡す。PRJ-21）。feature `mesh` が無いか、
+/// 詳しい形の読み手（書き出し・表示の設定 `mech_detail` に渡す）。feature `mesh` が無いか、
 /// `--cfg lensbench_no_mesh` で組んだときは None（詳しい形は描かない）
 pub fn details() -> Option<lensbench_export::detail::Details> {
     #[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]

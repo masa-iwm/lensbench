@@ -564,7 +564,7 @@ type ListKey = (u64, usize);
 type LensIdx = (ListKey, LensFilter, LensSort, bool, Arc<[usize]>);
 
 /// [`Browser`] の一覧から作るもの。`gen` は一覧を入れ替えた回数（[`Browser::set_lenses`]）。
-/// 毎フレーム渡すので中身は Arc（複製しない、GPN-24）
+/// 毎フレーム渡すので中身は Arc（複製しない）
 #[derive(Default)]
 pub struct ListCache {
     lens_gen: u64,
@@ -576,7 +576,7 @@ pub struct ListCache {
     lens_fit: Option<(ListKey, usize, Arc<[usize]>)>,
     glass_meta: Option<(ListKey, Arc<[String]>)>,
     glass_idx: Option<(ListKey, GlassFilter, Arc<[usize]>)>,
-    /// 選んだ行の写し（毎フレーム LensRow を複製しない、GPN-24）
+    /// 選んだ行の写し（毎フレーム LensRow を複製しない）
     lens_picked: Option<(ListKey, usize, Arc<LensRow>)>,
 }
 
@@ -959,7 +959,7 @@ fn num_cell(ui: &mut Ui, x: f64) {
 
 impl Browser {
     /// カタログレンズの一覧を入れ替える（絞り込みの結果を作り直させる）
-    /// 一覧を入れ替える。選んでいた品は (メーカー, 型番) で探し直す（無ければ外す。GPN-28）
+    /// 一覧を入れ替える。選んでいた品は (メーカー, 型番) で探し直す（無ければ外す）
     pub fn set_lenses(&mut self, v: Vec<LensRow>) {
         let key = self
             .lens_sel
@@ -972,7 +972,7 @@ impl Browser {
     }
 
     /// ガラスの一覧を入れ替える
-    /// 一覧を入れ替える。選んでいたガラスは (カタログ, 名前) で探し直す（GPN-28）
+    /// 一覧を入れ替える。選んでいたガラスは (カタログ, 名前) で探し直す
     pub fn set_glasses(&mut self, v: Vec<GlassRow>) {
         let key = self
             .glass_sel
@@ -1108,7 +1108,7 @@ impl Browser {
         n_lens_dirs: usize,
     ) -> Option<Action> {
         let mut act = None;
-        // 折り返す（1 行が幅を超えるとパネルの中身全体が広がり、下の折り返す行も切れる、GUX-14）
+        // 折り返す（1 行が幅を超えるとパネルの中身全体が広がり、下の折り返す行も切れる）
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(
                 &mut self.tab,
@@ -1186,7 +1186,7 @@ impl Browser {
             builder.size(Size::relative(0.45))
         };
         // 上下に並べるときの欄の幅はパネルの幅まで（StripBuilder の縦の欄は中身に合わせて広がり、折り返す行も
-        // パネルの外で折り返して切れる、GUX-14）
+        // パネルの外で折り返して切れる）
         let cap = |ui: &mut Ui| {
             if !wide {
                 ui.set_max_width(w);
@@ -1221,7 +1221,7 @@ impl Browser {
         let (vendors, kinds) = self.lens_meta();
         let q = &mut self.lens_q;
         // 検索の欄は 1 行に（欄の幅は行の残り。後ろに欄を続けると、狭いパネルで欄の枠の分だけはみ出し、
-        // 後ろの折り返す行もパネルの外で折り返して切れる、GUX-14）
+        // 後ろの折り返す行もパネルの外で折り返して切れる）
         ui.horizontal(|ui| {
             ui.label(tr("Search"));
             let w = (ui.available_width() - 2.0 * ui.spacing().button_padding.x).max(60.0);
@@ -1458,7 +1458,7 @@ impl Browser {
     /// 選んだ玉の断面（平行光が集まる様子）
     fn preview_ui(&self, ui: &mut Ui) {
         let h = 120.0;
-        // 選んでいないときも同じ高さを取る（1 回目のクリックで表が下へずれてダブルクリックが外れない、GUX-09）
+        // 選んでいないときも同じ高さを取る（1 回目のクリックで表が下へずれてダブルクリックが外れない）
         let Some(i) = self.lens_sel else {
             ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
                 ui.centered_and_justified(|ui| {
@@ -1590,7 +1590,7 @@ impl Browser {
         ui.label(tr("Double-click a row in the list (or \"Add to combination\") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch)."));
         ui.horizontal(|ui| {
             ui.label(tr("Name"));
-            // 欄はパネルの幅に合わせる（既定の幅だと狭いパネルで中身全体が広がる、GUX-14）
+            // 欄はパネルの幅に合わせる（既定の幅だと狭いパネルで中身全体が広がる）
             ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(ui.available_width()));
         });
         ui.horizontal_wrapped(|ui| {
@@ -1610,7 +1610,7 @@ impl Browser {
         }
         ui.separator();
         let ids: Vec<String> = c.ids().into_iter().filter(|x| !x.is_empty()).collect();
-        // 図・要素の設定と同じ経路に沿った並び（分岐の先も）。ロック・状態・分岐を尊重する（GPN-05）
+        // 図・要素の設定と同じ経路に沿った並び（分岐の先も）。ロック・状態・分岐を尊重する
         let chain = c.chain();
         let n = chain.len();
         let st = c.active_state().map(str::to_string);

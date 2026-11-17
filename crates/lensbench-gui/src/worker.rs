@@ -1,7 +1,7 @@
 //! 計算を GUI の外のスレッドで回す。要求は serve と同じ method・params（[`lensbench_engine::call_arrays`]）。
 //!
 //! 要求は 1 本のスレッドで順に処理する。最適化・公差・差し替え探索・ズーム軌跡（[`Tag::long`]）だけは別のスレッドで回し、
-//! その間も面の表・レイアウト・解析を止めない（serve は始めたときの系で回す。GAR-20）。
+//! その間も面の表・レイアウト・解析を止めない（serve は始めたときの系で回す）。
 //! 1 つの要求に複数の呼び出しをまとめられる（スポット図の視野・波長ごとの trace など）。終わると GUI を描き直させる。
 //!
 //! ブラウザ（wasm）にはスレッドが無いので、Web Worker の中の別の wasm のインスタンスで回す（[`remote`]）。
@@ -76,7 +76,7 @@ pub enum Tag {
     History,
     /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
     HistoryDepth,
-    /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける、GAR-05）
+    /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける）
     Refresh,
     /// カタログのフォルダの様子（下書きの folders。AGF の名前・見つからないフォルダ）
     Folders,
@@ -93,7 +93,7 @@ impl Tag {
     }
 
     /// 利用者の操作でなく、画面が自分で頼む要求（解析・一覧・表の読み直し）。うまくいっても下の行の文を
-    /// 上書きしない（「元に戻した」が続く解析の完了で消えない、GUX-27）
+    /// 上書きしない（「元に戻した」が続く解析の完了で消えない）
     pub fn quiet(&self) -> bool {
         matches!(
             self,
@@ -145,7 +145,7 @@ struct Job {
 }
 
 /// 呼び出しの誤り: 文と、計算の側の誤りの符号（`lensbench_core::error::code` の値か種類の名前、
-/// 無ければ None）。画面は符号で案内を選ぶ（GUX-06・XCT-06）
+/// 無ければ None）。画面は符号で案内を選ぶ
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CallErr {
     pub message: String,
@@ -239,7 +239,7 @@ impl Done {
         (&r.method, &r.params, r.result.as_ref().map(|x| &x.0))
     }
 
-    /// 最初の呼び出しの params と結果を取り出す（深い複製をしない。GAR-08）。エラーなら結果は null。
+    /// 最初の呼び出しの params と結果を取り出す（深い複製をしない）。エラーなら結果は null。
     /// 取り出した後の replies[0] の params・結果の値は null（method と配列は残る）。
     /// 光線（Rays・Focus）は返事ごとの params・配列を見るので取り出さず、null を返す
     pub fn take_first(&mut self) -> (Value, Value) {
@@ -374,12 +374,12 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
                 .map(|v| (v, Vec::new()))
                 .map_err(Into::into)
         }
-        // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる、GAR-11）
+        // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる）
         "folders" => Ok((folders(p), Vec::new())),
         "cad_measure" => crate::cad_fetch::measure_call(p)
             .map(|v| (v, Vec::new()))
             .map_err(Into::into),
-        // 開くファイルが組合せを同梱しているか（画面のスレッドで丸ごと読まない、GAR-30）
+        // 開くファイルが組合せを同梱しているか（画面のスレッドで丸ごと読まない）
         "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())).map_err(Into::into),
         _ => Err(format!("{m} is not available for drafts").into()),
     }
@@ -734,7 +734,7 @@ impl Worker {
             self.pending_core += core as usize;
             self.pending_long += long as usize;
             // ブラウザ: 要求を Web Worker に渡すのは次のフレームの pump。入力の無いまま（ファイルを落とした
-            // だけなど）だと次のフレームが来ず、要求が渡らないまま止まっていた（GAR-25 の起動確認で見つけた）
+            // だけなど）だと次のフレームが来ず、要求が渡らないまま止まっていた（起動確認で見つけた）
             #[cfg(target_arch = "wasm32")]
             self.remote.wake();
         }
@@ -1109,7 +1109,7 @@ mod remote {
                 threads,
                 jobs,
                 done,
-                // 元のタブが裏に回っていても、結果を受けて別の窓のパネルを描き直す（#237）
+                // 元のタブが裏に回っていても、結果を受けて別の窓のパネルを描き直す
                 repaint: Rc::new(move || {
                     repaint();
                     crate::web_bg::kick();
@@ -1187,7 +1187,7 @@ mod remote {
             });
             w.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
             w.set_onerror(Some(on_error.as_ref().unchecked_ref()));
-            // 誤りの文の言語も渡す（Worker は GUI の言語の設定を知らない、XCT-20）
+            // 誤りの文の言語も渡す（Worker は GUI の言語の設定を知らない）
             let lang = if lensbench_core::i18n::is_ja() {
                 LANG_JA
             } else {
@@ -1288,7 +1288,7 @@ mod remote {
 
         fn receive(&mut self, msg: Result<Vec<u8>, String>) {
             let resp = msg.and_then(|b| Response::decode(&b));
-            // 待っている要求の返事でないもの（エラーで先に片づけた要求の遅れた返事など）は捨てる（GAR-27）
+            // 待っている要求の返事でないもの（エラーで先に片づけた要求の遅れた返事など）は捨てる
             if let Ok(r) = &resp {
                 if r.id != 0 && (self.inflight.is_none() || r.id != self.inflight_id) {
                     return;
@@ -1435,7 +1435,7 @@ mod tests {
         );
         assert!(!w.busy());
         // 解析でない長い要求（最適化など）は系の変更で止めない（中の解析も止めない）。
-        // 別のスレッドで回るので、その間の系の変更・解析は先に終わる（GAR-20）
+        // 別のスレッドで回るので、その間の系の変更・解析は先に終わる
         w.send(Tag::Optimize, "spin", Value::Null);
         wait_started();
         assert!(w.busy() && !w.busy_short() && !w.busy_core());

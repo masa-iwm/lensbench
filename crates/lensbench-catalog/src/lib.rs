@@ -1,4 +1,4 @@
-//! カタログの品の検索と補完（PRJ-05。以前は lensbench-project の `catalog_spec`・`catalog_fill`）。
+//! カタログの品の検索と補完（以前は lensbench-project の `catalog_spec`・`catalog_fill`）。
 //!
 //! - [`spec`] は 仕様での絞り込み（[`spec::SpecFilter`]）・一覧の検索（[`spec::CatalogQuery`]）・ほかのカタログの品へ
 //!   仕様とリンクを足す（[`spec::apply_overlays`]）。品の種類・名前の決まった仕様の型はユーザーカタログの形の一部なので

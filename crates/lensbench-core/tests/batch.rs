@@ -3,7 +3,7 @@
 //!
 //! 同じ系・光線を、まとめ追跡を切って追った結果と比べる（交点・方向・光路長・止まった面・けられた面・
 //! 面ごとの記録、実光線エイミングを含む）。光線は瞳の外（けられ・追跡の失敗）まで含み、本数は L の倍数にしない。
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
 use std::path::PathBuf;
 
@@ -21,7 +21,7 @@ fn root() -> PathBuf {
 }
 
 fn load(name: &str) -> System {
-    // wasm（WASI）では系・ガラスの読み込みが vfs の置き場を見るので、ディスクから写す（公開 #99）
+    // wasm（WASI）では系・ガラスの読み込みが vfs の置き場を見るので、ディスクから写す
     #[cfg(target_arch = "wasm32")]
     for p in [
         root().join(format!("tests/refs/{name}/system.zmx")),

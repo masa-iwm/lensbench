@@ -12,7 +12,7 @@ use crate::layout::{Draw, Pick, RaySel, View};
 pub(super) fn layout(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let c = sess.current_full()?;
     let mut v = layout_with(&c.sys, &c.spec, p, Some(&c))?;
-    // ブロックごとの面の範囲（読んだときのもの。面を足す・消す edit の後は空。GUI の組合せの図、GPN-01）
+    // ブロックごとの面の範囲（読んだときのもの。面を足す・消す edit の後は空。GUI の組合せの図）
     if let Some(b) = sess.served().as_ref().map(|x| x.blocks.clone()) {
         v["blocks"] = json!(*b);
     }
@@ -298,7 +298,7 @@ fn plane_of(p: &Value) -> Result<Plane, RpcErr> {
     Ok(view_of(p)?.plane())
 }
 
-/// 要求の `mech_detail`（真なら機構部品を取った STEP の詳しい形で描く読み手、PRJ-21）
+/// 要求の `mech_detail`（真なら機構部品を取った STEP の詳しい形で描く読み手）
 fn mech_detail(p: &Value) -> Option<lensbench_export::detail::Details> {
     (p["mech_detail"] == true)
         .then(lensbench_cad::detail::details)

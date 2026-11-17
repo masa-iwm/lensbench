@@ -1,4 +1,4 @@
-//! レイアウトの描き方の設定（CLI の `layout` と serve の `layout`・`layout_export` で共通、CLI-02）
+//! レイアウトの描き方の設定（CLI の `layout` と serve の `layout`・`layout_export` で共通）
 //!
 //! 光線の選び方（[`RaySel`]）と書き出しの形（[`Draw`]）の既定値・範囲はここだけに書く。CLI は旗から、serve は params
 //! の JSON からこの型を作り、同じ関数で場面と書き出しの設定にする。

@@ -79,7 +79,7 @@ def test_grid():
 
 
 def test_numpy_values_and_nan_in_results(tmp_path):
-    # 結果に numpy の配列・スカラーを返せる（json モジュールを往復しない、CLI-20）。NaN は None になる
+    # 結果に numpy の配列・スカラーを返せる（json モジュールを往復しない）。NaN は None になる
     s = a0()
     p = lb.Sampler(s, {"3.t": 0.01}, seed=1)
 

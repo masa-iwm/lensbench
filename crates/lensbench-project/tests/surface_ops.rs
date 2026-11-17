@@ -145,7 +145,7 @@ fn ops_follow_their_block() {
     assert!(x.notes.is_empty(), "{:?}", x.notes);
 }
 
-/// surface_ops は set_stop・add_solve・add_pickup・remove_solve・remove_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
+/// surface_ops は set_stop・add_solve・add_pickup・remove_solve・remove_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り
 #[test]
 fn surface_ops_are_typed() {
     for (ops, want) in [

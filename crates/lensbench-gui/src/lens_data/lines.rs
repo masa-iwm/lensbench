@@ -1,4 +1,4 @@
-//! 表の行: 今の階層の面と、たたんだブロック・折りたたみ表示で開いたブロックの中の面（lens_data.rs から分けた、GPN-03）
+//! 表の行: 今の階層の面と、たたんだブロック・折りたたみ表示で開いたブロックの中の面（lens_data.rs から分けた）
 
 use super::Block;
 
@@ -44,7 +44,7 @@ pub(super) fn lines_of(
     open: &dyn Fn(usize) -> bool,
     depth: usize,
 ) -> Vec<Line> {
-    // 面 → 直下のブロック（最初のもの）。面ごとに全ブロックを探さない（GPN-23）
+    // 面 → 直下のブロック（最初のもの）。面ごとに全ブロックを探さない
     let mut owner: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     for (i, b) in blocks.iter().enumerate().rev() {
         if b.parent == scope {

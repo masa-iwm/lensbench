@@ -1,11 +1,11 @@
-//! ヘルプの窓（キーの一覧など。GAR-18 で app.rs から分けた）
+//! ヘルプの窓（キーの一覧など。app.rs から分けた）
 
 use super::*;
 
 impl Core {
     pub(super) fn help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.help_open;
-        // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール、GUX-22）
+        // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール）
         let screen = ctx.screen_rect();
         egui::Window::new(tr("Keyboard shortcuts"))
             .open(&mut open)

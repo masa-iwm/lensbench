@@ -1,7 +1,7 @@
 //! 瞳の格子（[`PupilGrid`]）と瞳関数（[`PupilFunction`]）。
 //!
 //! 解析ごとに書いていた「格子を作る → 単位円で切る → 光線と OPD を求める → 止まった点を除く」を 1 か所にまとめる
-//! （ANA-04）。格子の式と単位円の判定はここにだけあり、波面マップ・Zernike・FFT PSF・Huygens PSF・干渉縞・RMS 波面は
+//! 。格子の式と単位円の判定はここにだけあり、波面マップ・Zernike・FFT PSF・Huygens PSF・干渉縞・RMS 波面は
 //! [`PupilFunction::trace`] の結果を使う。格子の種類は OpticStudio の解析ごとの格子に合わせてあり、互いに 1 点ずれる
 //! など値が違う（同じ一辺でも点が同じとは限らない）ので、種類は型で区別する。
 //!
@@ -391,7 +391,7 @@ impl PupilFunction {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// 振幅（ANA-05）
+// 振幅
 
 /// 瞳のアポダイゼーション（系の設定。.zmx の系の行 GFAC 係数 種類、OpticStudio の System Explorer の Aperture の
 /// Apodization Type・Apodization Factor）。解析の瞳関数の振幅に常に入る（FFT PSF・Huygens PSF・回折 MTF）。

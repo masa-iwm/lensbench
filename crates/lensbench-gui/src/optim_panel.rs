@@ -255,7 +255,7 @@ pub struct OptPanel {
 
 impl OptPanel {
     pub fn new() -> OptPanel {
-        // 既定値は設定の型（CLI・serve・Python と同じ、XCT-02）
+        // 既定値は設定の型（CLI・serve・Python と同じ）
         let d = lensbench_design::dls_spec::OptimizeParams::default();
         OptPanel {
             merit: d.merit.to_string(),
@@ -525,11 +525,11 @@ pub struct Cands<'a> {
     pub combo: bool,
     /// 名前の欄の補完の候補
     pub sys: std::rc::Rc<crate::param_pick::Sys>,
-    /// 面の表の行（変数の今の値を出す、GUX-21）
+    /// 面の表の行（変数の今の値を出す）
     pub rows: &'a [crate::lens_data::Row],
 }
 
-/// 変数の今の値（面の値 `<面>.<t|r|c|k>` だけ。玉・群・ほかは None、GUX-21）
+/// 変数の今の値（面の値 `<面>.<t|r|c|k>` だけ。玉・群・ほかは None）
 pub fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
     let (j, f) = name.trim().split_once('.')?;
     let r = rows.get(j.parse::<usize>().ok()?)?;
@@ -579,7 +579,7 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                         } else {
                             check.clone().err().unwrap_or_default()
                         });
-                    // 押せない理由を横にも出す（GUX-21）
+                    // 押せない理由を横にも出す
                     if no_var {
                         ui.label(
                             RichText::new(tr("Add at least one variable to enable"))
@@ -907,7 +907,7 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
         .filter(|(_, v)| **v > 0.0)
         .map(|(i, v)| [i as f64, v.log10()])
         .collect();
-    // 縦軸の名前は図の上に書く（縦書きの名前は図の高さより長く、上の行に重なる、GUX-14）
+    // 縦軸の名前は図の上に書く（縦書きの名前は図の高さより長く、上の行に重なる）
     ui.label(RichText::new(tr("Merit (log10)")).small().weak());
     Plot::new("opt_history")
         .height(140.0)
@@ -1079,7 +1079,7 @@ pub fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Value), St
 mod tests {
     use super::*;
 
-    /// GUX-20: 評価関数の単位は項が同じ単位のときだけ（スポットは µm、波面は波、混ざると無し）
+    /// 評価関数の単位は項が同じ単位のときだけ（スポットは µm、波面は波、混ざると無し）
     #[test]
     fn gux20_merit_unit() {
         let mut p = OptPanel {
@@ -1098,7 +1098,7 @@ mod tests {
         assert_eq!(merit_unit(&p).1, "");
     }
 
-    /// GUX-21: 変数の行に面の値（t・r・c・k）の今の値を出す
+    /// 変数の行に面の値（t・r・c・k）の今の値を出す
     #[test]
     fn gux21_var_value_reads_surface_rows() {
         let row = |r: f64, t: f64| crate::lens_data::Row {

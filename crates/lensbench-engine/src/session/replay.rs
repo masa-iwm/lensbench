@@ -1,11 +1,11 @@
-//! 読み込んだ後の変更を別に読んだ系へ当て直す（CLI-21）
+//! 読み込んだ後の変更を別に読んだ系へ当て直す
 
 use super::*;
 
 /// 別に読んだ光束の系に、読み込んだ後の変更（set・edit）を順に当てる。set のパラメータの値が、読み込んだ系で
 /// 変える前の値と違うもの（構成・状態で値が違うもの）は当てずに notes に書く。
 /// プロジェクトの別の状態・経路では、面は番号でなく面の名前で探す（from は読み込んだ系、to は s の面の名前。
-/// [`lensbench_project::retarget::Retarget`]）。s に無い面への変更は当てずに notes に書く（CLI-21）
+/// [`lensbench_project::retarget::Retarget`]）。s に無い面への変更は当てずに notes に書く
 pub(super) fn replay(
     mut s: System,
     log: &[Change],

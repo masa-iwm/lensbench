@@ -343,7 +343,7 @@ fn mtf_waves_is_the_separate_mtfs() {
                     let o =
                         analysis::mtf_with(&s, f, Waves::One(wi), None, &FREQS, method).unwrap();
                     assert_eq!((&m.tan, &m.sag), (&o.tan, &o.sag), "{name} {fi} {wi}");
-                    // 遮断周波数はその波長の値（ANA-09。以前は常に主波長）
+                    // 遮断周波数はその波長の値（以前は常に主波長）
                     assert_eq!(m.cutoff, o.cutoff, "{name} {fi} {wi}");
                     let c = analysis::mtf_cutoff(&s, f, wi).unwrap();
                     assert_eq!(o.cutoff, c, "{name} {fi} {wi}");

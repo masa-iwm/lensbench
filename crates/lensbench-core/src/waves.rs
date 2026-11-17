@@ -1,4 +1,4 @@
-//! 多色を受ける解析の波長の選び方（ANA-07）
+//! 多色を受ける解析の波長の選び方
 
 /// 多色を受ける解析（スポット・MTF・PSF・RMS など）の波長。単色だけの解析（OPD・波面・Zernike・干渉縞）は
 /// `Option<usize>` で、None は主波長
@@ -24,7 +24,7 @@ impl Waves {
         }
     }
 
-    /// 多色で重みのある波長が無ければ誤り（全点が NaN の掃引にしない、ANA-23）
+    /// 多色で重みのある波長が無ければ誤り（全点が NaN の掃引にしない）
     pub fn weighted(self, s: &crate::system::System) -> crate::error::Result<Waves> {
         if self == Waves::All && !s.weights.iter().any(|&w| w > 0.0) {
             crate::invalid!("no weighted wavelength");
@@ -34,7 +34,7 @@ impl Waves {
 }
 
 /// 利用者の 1 始まりの番号 n（CLI・serve・Python・プラグイン・評価関数の項）を、波長が nw 個の系の 0 始まりの番号にする。
-/// 0・範囲外はどの口でも同じ誤り（XCT-18、docs/conventions.md）
+/// 0・範囲外はどの口でも同じ誤り（docs/conventions.md）
 pub fn index(n: usize, nw: usize) -> crate::Result<usize> {
     if n >= 1 && n <= nw {
         return Ok(n - 1);

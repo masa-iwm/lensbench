@@ -6,7 +6,7 @@
 //! 許容差: エイミングなしは丸め誤差まで（位置 1e-11 mm、方向 1e-12）、エイミングありは
 //! OpticStudio 自身のエイミングの収束（〜1e-7 mm）で位置 2e-7 mm・方向 1e-8。OPD [波] はエイミングなし 5e-6
 //! （理想レンズの積分モード D2 は 5e-5）、ありは 2e-3。ガラスはテスト用カタログ tests/glass（refractiveindex.info、CC0）。
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験から呼ぶ照合の中身。合わなければ panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験から呼ぶ照合の中身。合わなければ panic で知らせる
 
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::param::{Kind, Param};

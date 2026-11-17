@@ -46,7 +46,7 @@ impl System {
     /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）。
     ///
     /// 既定（[`VigInterp::Continuous`]）は段差のない補間。[`VigInterp::OpticStudio`] なら OpticStudio 2026 R1.01 と
-    /// 同じ規則（公開 #226、25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
+    /// 同じ規則（25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
     /// - 視野の物理座標 (X, Y) = 正規化視野 × 正規化の値（Radial は最大の半径、Rectangular は x・y それぞれの最大。
     ///   最大が 0 の向きは 0）
     /// - 全視野が x = 0 で y の符号がそろい、X² + Y² ≤ max|y|² なら、視野を |y| の順に並べ、r² = X² + Y² の区分線形で

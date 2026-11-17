@@ -1,4 +1,4 @@
-//! 計算の結果を受け取って状態に入れる（GAR-18 で app.rs から分けた）
+//! 計算の結果を受け取って状態に入れる（app.rs から分けた）
 
 use super::*;
 
@@ -72,7 +72,7 @@ impl Core {
                     self.p.oss = Default::default();
                     self.p.ld.insp.stale();
                 }
-                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）。ほかの理由で
+                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す。ほかの理由で
                 // 読めなければ開く前の文書に戻す
                 Tag::Load => {
                     if missing_glass_of(e).is_none() {
@@ -153,7 +153,7 @@ impl Core {
                 if d.replies[0].method == "reload" {
                     text = tr("Reloaded (Ctrl+Z to undo)").into();
                 }
-                // 読んだときの注意（プロジェクトの展開・分散式・.zmx の読めなかった行など）は履歴へ、下の行には数（CLI-10）
+                // 読んだときの注意（プロジェクトの展開・分散式・.zmx の読めなかった行など）は履歴へ、下の行には数
                 let notes: Vec<String> = v["notes"]
                     .as_array()
                     .map(|a| {
@@ -185,7 +185,7 @@ impl Core {
                 let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
                 let gen = self.rev;
                 let r = self.results.entry(id).or_default();
-                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない（GUX-19）
+                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない
                 r.prev = if r.cmd == cmd && r.params == params {
                     r.value.take()
                 } else {
@@ -318,7 +318,7 @@ impl Core {
                 self.p.ld.insp.stale();
                 self.sys.ld_rows = rows;
                 self.sys.ld_units = units;
-                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる（GUX-01）
+                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     let mats: Vec<&str> = self
@@ -524,7 +524,7 @@ impl Core {
     }
 
     /// 要求がうまくいったときの下の行。画面が自分で頼んだ要求（[`Tag::quiet`]）は、同じ要求が出した誤りを
-    /// 消すだけで、利用者の操作の結果（元に戻した・保存したなど）を上書きしない（GUX-27）
+    /// 消すだけで、利用者の操作の結果（元に戻した・保存したなど）を上書きしない
     pub(super) fn set_done_status(&mut self, tag: &Tag, text: String) {
         if !tag.quiet() {
             self.status_err = None;

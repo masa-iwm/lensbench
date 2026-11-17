@@ -4,7 +4,7 @@
 - glTF（.glb）: trimesh。網の数・頂点・面、閉じた立体の体積、光線の点
 - STEP: OpenCascade（cadquery-ocp）。立体の数・妥当性・体積・境界箱、面の点、光線の点
 - 追跡結果（CSV・JSON）: csv・json。OpticStudio の基準（tests/refs/*/rays.npz）と照合
-- OBJ・STL: trimesh。DXF: ezdxf。PNG・TIFF（干渉の格子）: Pillow（PRJ-27 (4)、npz は Rust の試験で numpy に読ませる）
+- OBJ・STL: trimesh。DXF: ezdxf。PNG・TIFF（干渉の格子）: Pillow（npz は Rust の試験で numpy に読ませる）
 
 面の位置と形は、.zmx をこのファイルの中で読んだ曲率・非球面・半径と、OpticStudio が書いた各面の大域座標
 （rays.npz の gmat、.zmx の大域基準面 = GLRS）から求める。lensbench の計算は使わないので、書き出しの座標が
@@ -615,7 +615,7 @@ def test_step(name: str, tmp_path: Path) -> None:
     assert nearest(global_points(t), np.concatenate(lines)).max() < 1e-9
 
 
-# ---------------------------------------------------------------- OBJ・STL・DXF・PNG（PRJ-27 (4)）
+# ---------------------------------------------------------------- OBJ・STL・DXF・PNG
 
 
 @pytest.mark.parametrize("name", SYSTEMS)

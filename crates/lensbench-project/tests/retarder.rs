@@ -278,7 +278,7 @@ fn birefringent_waveplate_by_wavelength() {
     );
 }
 
-/// 膜のない結晶板の境界の Fresnel は、常光の成分が no、異常光の成分が ne（公開 #52）: 垂直入射で片面の透過が
+/// 膜のない結晶板の境界の Fresnel は、常光の成分が no、異常光の成分が ne: 垂直入射で片面の透過が
 /// 2√n/(1+n)（入口・出口で 2 回）。結晶軸 x なので、x の入力が異常光、y が常光
 #[test]
 fn bare_plate_fresnel_by_ordinary_and_extraordinary() {
@@ -331,7 +331,7 @@ fn achromatic_waveplate_two_materials() {
         } else {
             assert!((net - 0.25).abs() < 0.05, "{l} {net}");
         }
-        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ位相。振幅は貼り合わせの境界 1 回の Fresnel（公開 #52・#73）:
+        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ位相。振幅は貼り合わせの境界 1 回の Fresnel:
         // 135°（MgF₂ の結晶軸 = 遅い軸）の向きは MgF₂ の異常光 → 水晶の常光、45° は MgF₂ の常光 → 水晶の異常光
         let t = |a: f64, b: f64| 2.0 * (a * b).sqrt() / (a + b);
         let (nom, nem) = (g("MGF2").n_cat(l), g("MGF2-E").n_cat(l));
@@ -352,7 +352,7 @@ fn achromatic_waveplate_two_materials() {
     }
 }
 
-/// 板どうしの貼り合わせの境界は 1 回（公開 #73）: 垂直入射で、前の板の o（e）が次の板の o（e）へ移る振幅は
+/// 板どうしの貼り合わせの境界は 1 回: 垂直入射で、前の板の o（e）が次の板の o（e）へ移る振幅は
 /// 2√(n₁n₂)/(n₁+n₂)。結晶軸が平行でない板は、前の板の o・e の成分を次の板の o・e の基底へ分けてから係数をかける
 #[test]
 fn cemented_plates_single_boundary() {

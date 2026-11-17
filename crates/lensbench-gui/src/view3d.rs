@@ -211,7 +211,7 @@ pub fn show(
         ey = ey.max(v[1].abs());
     }
     let base = (inner.width() / 2.0 / ex).min(inner.height() / 2.0 / ey);
-    // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom、GPN-09）。左ドラッグは回す（Shift+左は移動）
+    // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom）。左ドラッグは回す（Shift+左は移動）
     let pz = crate::widgets::pan_zoom(ui, resp, false);
     if resp.dragged() {
         let d = resp.drag_delta();

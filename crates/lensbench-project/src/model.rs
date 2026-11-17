@@ -18,7 +18,7 @@ pub struct ApertureSpec {
     pub value: f64,
 }
 
-/// 視野の種類（core の [`FieldKind`]、XCT-09）
+/// 視野の種類（core の [`FieldKind`]）
 pub use lensbench_core::system::FieldKind;
 
 /// 条件で定める視野の条件。面は番号か名前（面のコメント）
@@ -978,7 +978,7 @@ impl Project {
             _ => return Err(format!("two or more states named {name}").into()),
         };
         // 当てるのは変える項目を持つ所（系の値、id のブロック・群）だけで、プロジェクト全体を JSON に往復させない。
-        // 変えてよいかは型が読むか（unknown_keys）で決める（PRJ-10: 前は書き出した JSON にキーがあるかで決めたので、
+        // 変えてよいかは型が読むか（unknown_keys）で決める（前は書き出した JSON にキーがあるかで決めたので、
         // 既定値で省かれる項目は変えられなかった）
         let mut p = self.clone();
         if !st.project.is_empty() {

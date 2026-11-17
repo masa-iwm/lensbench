@@ -1,4 +1,4 @@
-//! レンズデータの表の左端の縦の帯（lens_data.rs の ui から分けた、GPN-03）
+//! レンズデータの表の左端の縦の帯（lens_data.rs の ui から分けた）
 
 use super::*;
 
@@ -24,7 +24,7 @@ pub(super) struct StripCtx<'a> {
     pub(super) tree: bool,
 }
 
-/// 左端の縦の帯: 階層・ブロック・面の挿入削除・詳細設定・玉群・保存のアイコン（[`ui`] から分けた、GPN-03）
+/// 左端の縦の帯: 階層・ブロック・面の挿入削除・詳細設定・玉群・保存のアイコン（[`ui`] から分けた）
 pub(super) fn strip_ui(
     ui: &mut Ui,
     st: &mut LensData,
@@ -58,7 +58,7 @@ pub(super) fn strip_ui(
                 .selected(on)
                 .min_size(egui::vec2(w, 26.0)),
         );
-        // AccessKit の名前は帯の幅・字形に依らず字（Insert など）に（記号だけのボタンに名前が無かった、GPN-22）
+        // AccessKit の名前は帯の幅・字形に依らず字（Insert など）に（記号だけのボタンに名前が無かった）
         if let Some(l) = icon_label(t) {
             r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, tr(l)));
         }

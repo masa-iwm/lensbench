@@ -208,7 +208,7 @@ fn huygens_once(
     let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * pixel.1).collect();
     let (cx, cy) = (pc[0], pc[1]);
     // 像面の上の格子の点（局所座標、z は像面の矢高）。矢高が求まらない点（像面の形の式の外）は z が NaN で、
-    // 強度も NaN（平面として計算しない。ANA-24）
+    // 強度も NaN（平面として計算しない）
     let img = &s.surfaces[s.image()];
     let pts: Vec<V3> = ys
         .iter()
@@ -463,7 +463,7 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
         freqs
             .iter()
             .map(|&f| {
-                // ナイキスト 1/(2Δ) を超える周波数は折り返した値になるので出さない（ANA-24）
+                // ナイキスト 1/(2Δ) を超える周波数は折り返した値になるので出さない
                 if f.abs() > 0.5 / d * (1.0 + 1e-12) {
                     return f64::NAN;
                 }

@@ -51,7 +51,7 @@ pub fn set(l: Lang) {
         x => x,
     };
     CURRENT.store(if l == Lang::En { 1 } else { 0 }, Ordering::Relaxed);
-    // 計算側の誤りの文も同じ言語に（XCT-20）
+    // 計算側の誤りの文も同じ言語に
     lensbench_core::i18n::set_lang(if l == Lang::En {
         lensbench_core::i18n::Lang::En
     } else {
@@ -92,7 +92,7 @@ pub fn add(pairs: &'static [(&'static str, &'static str)]) {
 }
 
 /// 訳す文字列の印（表の鍵の英語。表示するときに `tr` で引く）。何もしないで返す。
-/// 網羅の試験は `tr("…")`・`trf("…")` と同じくこの中の文字列も拾う（GAR-21・GPN-21）
+/// 網羅の試験は `tr("…")`・`trf("…")` と同じくこの中の文字列も拾う
 pub const fn n_(en: &'static str) -> &'static str {
     en
 }
@@ -113,7 +113,7 @@ pub fn tr(en: &'static str) -> &'static str {
 }
 
 /// 今の言語の文字列の穴を引数で埋める。英語（鍵）は `{}` を順に、訳は `{}`（順に）か `{0}`・`{1}`…（引数の位置。
-/// 語順の違う言語で入れ替える、GPN-21）で書く
+/// 語順の違う言語で入れ替える）で書く
 pub fn trf(en: &'static str, args: &[&dyn std::fmt::Display]) -> String {
     fill(tr(en), args)
 }

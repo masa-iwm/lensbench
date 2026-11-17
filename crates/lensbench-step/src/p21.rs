@@ -1,5 +1,5 @@
 //! ISO 10303-21（STEP の文字の形）の読み手。品の寸法の測り（[`crate::geom`]）と、書き出す STEP への写し
-//! （lensbench-export の `step_embed`）が同じ表を使う（PRJ-06。以前は読み手が 2 つあった。三角形にするのは truck）。
+//! （lensbench-export の `step_embed`）が同じ表を使う（以前は読み手が 2 つあった。三角形にするのは truck）。
 //!
 //! - 注釈 `/* … */` と文字 `'…'`（`''` は引用符 1 つ）の中は読まない（注釈の中の `#5=…` で実体を上書きしない、
 //!   文字の中の `;`・`#`・括弧を数えない）
@@ -148,7 +148,7 @@ impl StepFile {
         self.ents.iter().map(|(k, e)| (*k, e.parts.as_slice()))
     }
 
-    /// roots から参照で辿れる実体だけの写し（書き出しへの写しに要る分だけを持つ。PRJ-21）
+    /// roots から参照で辿れる実体だけの写し（書き出しへの写しに要る分だけを持つ）
     pub fn subset(&self, roots: impl IntoIterator<Item = u64>) -> StepFile {
         let mut seen = HashSet::new();
         let mut stack: Vec<u64> = roots.into_iter().collect();

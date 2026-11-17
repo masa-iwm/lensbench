@@ -31,7 +31,7 @@ lensbench-formats = { path = "../lensbench-formats" }
 # スキーマで例題を検査
 jsonschema = { version = "0.60", default-features = false }
 
-# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
+# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない）
 [[test]]
 name = "it"
 path = "tests/it.rs"

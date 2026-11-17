@@ -1,5 +1,5 @@
 //! 毎フレームの描かない処理（結果の受け取り・解析の回し直し・系の作り直しなど）と、Web 版の別の窓のパネル（web_tabs）・元のタブが
-//! 裏に回っている間の処理（#237）
+//! 裏に回っている間の処理
 
 use super::*;
 
@@ -78,7 +78,7 @@ impl App {
                 _ => {}
             }
         }
-        // 取った品の STEP と簡易外形の照合（Web 版。品の載ったカタログは下書きの Worker が持つ、GAR-11）
+        // 取った品の STEP と簡易外形の照合（Web 版。品の載ったカタログは下書きの Worker が持つ）
         for p in self.c.browser.cad.take_measure() {
             self.c.preview.send(Tag::CadMeasure, "cad_measure", p);
         }
@@ -99,7 +99,7 @@ impl App {
                 &[&dropped],
             ));
         }
-        // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない、GPN-20）
+        // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない）
         let census = self.c.doc.combo.census();
         if let Some(prev) = self.c.combo_census.replace(census) {
             let lost: Vec<String> = [
@@ -122,12 +122,12 @@ impl App {
                 ));
             }
         }
-        // 組合せの版をここで進める（以下と次の画面の「写しと同じか」は版で見る、GPN-13）
+        // 組合せの版をここで進める（以下と次の画面の「写しと同じか」は版で見る）
         self.c.doc.sync();
         self.c
             .combo_hist
             .track(&self.c.doc.combo, self.c.doc.rev, busy);
-        // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ（GUX-10）
+        // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ
         if self.c.doc.refocus
             && self.c.is_combo()
             && self.c.loc.built_combo.same(&self.c.doc)
@@ -141,7 +141,7 @@ impl App {
     }
 
     /// Web 版: 元のタブが裏に回っている間（ブラウザが画面を止める）に、別の窓の入力・計算の結果を合図に
-    /// 回す（[`crate::web_bg`]）。描かない処理を回し、別の窓に出したパネルを描いて送る（#237）。
+    /// 回す（[`crate::web_bg`]）。描かない処理を回し、別の窓に出したパネルを描いて送る。
     /// 別の窓が無ければ何もしない（タブが前に戻れば、いつもの画面で受け取る）
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn background(&mut self, ctx: &egui::Context) {
@@ -152,7 +152,7 @@ impl App {
         self.web_tabs(ctx);
     }
 
-    /// Web 版（元のタブ）: 別の窓に出したパネルを別の窓で開き、元のタブで描いた画面を送る（GAR-10）。
+    /// Web 版（元のタブ）: 別の窓に出したパネルを別の窓で開き、元のタブで描いた画面を送る。
     /// 窓を閉じたらドックに戻す
     #[cfg(target_arch = "wasm32")]
     pub(super) fn web_tabs(&mut self, ctx: &egui::Context) {
@@ -190,7 +190,7 @@ impl App {
                 }
             }
         }
-        // 別の窓のパネル: 元のタブで描いて、変わった画面を送る（解析のパネルも同じ。GAR-10）
+        // 別の窓のパネル: 元のタブで描いて、変わった画面を送る（解析のパネルも同じ）
         let App {
             c, windows, hosts, ..
         } = self;
@@ -219,7 +219,7 @@ impl App {
             if let Some(o) = out {
                 t.send_out(id, o);
             }
-            // 元のタブが裏に回っている間は、パネルの描き直しの頼みを別の窓からの合図に回す（#237）
+            // 元のタブが裏に回っている間は、パネルの描き直しの頼みを別の窓からの合図に回す
             if let Some(ms) = h.take_again().filter(|_| crate::web_bg::hidden()) {
                 t.send_again(id, ms);
             }

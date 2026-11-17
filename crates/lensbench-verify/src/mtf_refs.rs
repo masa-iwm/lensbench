@@ -1,7 +1,7 @@
 //! OpticStudio 26.1 の MTF 系の基準（tests/refs/<系>/mtf.json・mtf_weights.json・mtf_family.json・psf_os.npz）との照合。
 //!
 //! [`crate::zemax_refs`] と同じく、このクレートのテスト（`tests/mtf_refs.rs`）と、別の基準・ガラスで同じ照合を
-//! かけたい側の両方から呼ぶ（照合の中身を 1 か所に置く。PRJ-19）。各関数は合わなかった項目を返す（空なら合格）。
+//! かけたい側の両方から呼ぶ（照合の中身を 1 か所に置く）。各関数は合わなかった項目を返す（空なら合格）。
 //! `only` に系の名前（カンマ区切り）を渡すとそれだけ。
 //!
 //! # FFT MTF（mtf.json）
@@ -40,7 +40,7 @@
 //!   根拠がないので合わせない（で決定）。A6 の視野 4 は外す。
 //! - A6 の MTF vs 視野は OS が VDY・VCY を視野の間で補間して使うため端（h > 0.75）で最大 0.05 違うので外し、
 //!   口径食の係数をすべて 0 にした A6v で照合する（RMS vs 視野は A6 でも合う）。
-#![allow(clippy::unwrap_used, clippy::panic, clippy::neg_cmp_op_on_partial_ord)] // 試験から呼ぶ照合の中身（XCT-35）。NaN も不合格にする
+#![allow(clippy::unwrap_used, clippy::panic, clippy::neg_cmp_op_on_partial_ord)] // 試験から呼ぶ照合の中身。NaN も不合格にする
 
 use lensbench_core::psf;
 use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};

@@ -1,4 +1,4 @@
-//! Python の値 ⇄ serde の JSON の値の直接の変換（json モジュールを往復しない、CLI-20）。numpy の配列・
+//! Python の値 ⇄ serde の JSON の値の直接の変換（json モジュールを往復しない）。numpy の配列・
 //! スカラー（`np.int64`・`np.float32` など）も、`tolist()` で Python の数・並びにして受ける
 
 use crate::errors::{type_err, value_err};

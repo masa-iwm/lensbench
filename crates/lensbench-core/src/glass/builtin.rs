@@ -1,7 +1,7 @@
 //! 同梱のガラスカタログ（SCHOTT・OHARA の分散式のガラス、refractiveindex.info の CC0 のデータから
-//! `scripts/make_builtin_glass.py` で作る、GUX-01）。ガラスのフォルダのどこにも無いカタログの最後の候補にする
+//! `scripts/make_builtin_glass.py` で作る）。ガラスのフォルダのどこにも無いカタログの最後の候補にする
 //! （[`super::load_catalogs_shared`]）ので、何も設定していなくても GUI・CLI・serve・Python で普通の系が開ける
-//! （CLI-31）。屈折率だけ（内部透過率・熱膨張が無く、温度係数の無いガラスもある）なので、使ったら知らせる
+//! 。屈折率だけ（内部透過率・熱膨張が無く、温度係数の無いガラスもある）なので、使ったら知らせる
 //! （[`note`]）。同じ名前の AGF がフォルダにあればそちらが先。
 use super::Glass;
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ pub fn note_for(s: &crate::Prescription, names: &[String], dirs: &[PathBuf]) -> 
 mod tests {
     use super::*;
 
-    /// 同梱の AGF は読めて、基準の系のガラス（N-BK7・F2・N-SK16・N-LAK9・S-FSL5）を含む（GUX-01）
+    /// 同梱の AGF は読めて、基準の系のガラス（N-BK7・F2・N-SK16・N-LAK9・S-FSL5）を含む
     #[test]
     fn gux01_builtin_catalogs_parse_and_cover_common_glasses() {
         for (f, t) in FILES {
@@ -120,7 +120,7 @@ mod tests {
         assert!((n - 1.5168).abs() < 2e-5, "{n}");
     }
 
-    /// フォルダに無いカタログだけ同梱から取り、取ったガラスを知らせる（CLI-31）
+    /// フォルダに無いカタログだけ同梱から取り、取ったガラスを知らせる
     #[test]
     fn cli31_fallback_and_note() {
         let none = [PathBuf::from("/lensbench-no-such-glass-dir")];

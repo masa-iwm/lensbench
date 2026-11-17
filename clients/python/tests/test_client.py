@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-# 元は wheel に入れる crates/lensbench-py/lensbench_client.py（CLI-22）
+# 元は wheel に入れる crates/lensbench-py/lensbench_client.py
 sys.path.insert(0, str(ROOT / "crates" / "lensbench-py"))
 
 from lensbench_client import Client, RpcError  # noqa: E402
@@ -177,7 +177,7 @@ def test_interference_over_serve(tmp_path):
         f = lb.interference(n=16)
         assert f["nx"] == 16 and f["pv_waves"] > 0 and f["notes"] == []
         lb.set({"1.t": 100.5})  # 構成 1 だけの値
-        # 構成 2 は読み込んだ系の多重構成の表から作るので、当て直しの注意は出ない（CLI-21）
+        # 構成 2 は読み込んだ系の多重構成の表から作るので、当て直しの注意は出ない
         g = lb.interference(n=16)
         assert g["notes"] == [] and g["pv_waves"] != f["pv_waves"]
 
@@ -243,7 +243,7 @@ def test_progress_and_stop_from_another_connection(lb):
 
 
 def test_old_argument_names_are_gone():
-    """CLI-17 で名前をそろえた引数の旧名（glass_dir・lens_catalog・global_）は受けない"""
+    """名前をそろえた引数の旧名（glass_dir・lens_catalog・global_）は受けない"""
     with pytest.raises(TypeError):
         Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1)
     with Client.spawn(ZMX, exe=_exe(), glass_dirs=[GLASS], threads=1) as lb:

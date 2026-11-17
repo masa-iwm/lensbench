@@ -63,7 +63,7 @@ pub struct ZoomPanel {
 
 impl Default for ZoomPanel {
     fn default() -> Self {
-        // 既定値は設定の型（CLI・serve・Python と同じ、XCT-02）
+        // 既定値は設定の型（CLI・serve・Python と同じ）
         let d = lensbench_design::dls_spec::ZoomParams::default();
         ZoomPanel {
             states: BTreeMap::new(),
@@ -82,7 +82,7 @@ impl Default for ZoomPanel {
     }
 }
 
-/// 設定に残す欄（走らせた結果・走行中は残さない、GPN-14）
+/// 設定に残す欄（走らせた結果・走行中は残さない）
 #[derive(Serialize, Deserialize)]
 struct Saved {
     states: BTreeMap<String, StateRow>,
@@ -437,7 +437,7 @@ fn result_ui(ui: &mut Ui, r: &ZoomView, weak: egui::Color32) {
 mod tests {
     use super::*;
 
-    /// GPN-14: ズームの設定は設定・プロジェクトに残る（既定のままなら残さない、結果は残さない）
+    /// ズームの設定は設定・プロジェクトに残る（既定のままなら残さない、結果は残さない）
     #[test]
     fn gpn14_zoom_settings_round_trip() {
         assert!(ZoomPanel::default().saved().is_none());

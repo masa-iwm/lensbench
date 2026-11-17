@@ -1,3 +1,3 @@
-# 試験の中の unwrap・panic! は許す（XCT-35、ワークスペースの lint は public/Cargo.toml）
+# 試験の中の unwrap・panic! は許す（ワークスペースの lint は public/Cargo.toml）
 allow-unwrap-in-tests = true
 allow-panic-in-tests = true

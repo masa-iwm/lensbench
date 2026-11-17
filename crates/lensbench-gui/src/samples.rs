@@ -1,6 +1,6 @@
 //! アプリ版に同梱する見本（例題の組合せ・プロジェクトとそのレンズ、tests/refs の系、公開用ガラス）。
 //! 一覧は build.rs が作る。開くときに設定の隣（無ければ一時フォルダ）の `samples` に書き出して開く。
-//! Web 版は lensbench-web が同じものを置き場に入れて `Args::samples` で渡すので、ここは空（GUX-26）
+//! Web 版は lensbench-web が同じものを置き場に入れて `Args::samples` で渡すので、ここは空
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

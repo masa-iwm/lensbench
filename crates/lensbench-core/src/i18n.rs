@@ -1,4 +1,4 @@
-//! Message language (review XCT-20). Messages are written in English; a Japanese translation is shown
+//! Message language. Messages are written in English; a Japanese translation is shown
 //! when the language is Japanese.
 //!
 //! - Language: [`set_lang`] (the GUI setting), otherwise `LENSBENCH_LANG` (`ja`・`en`), otherwise the OS language
@@ -550,7 +550,7 @@ mod tests {
             translate("the ray stopped (wavelength 1, pupil (0.000, 1.000), surface 4)"),
             "光線が止まりました（波長 1、瞳 (0.000, 1.000)、面 4）"
         );
-        // ラベルの欄 {what} に 2 語以上の句（#381 のレビュー）
+        // ラベルの欄 {what} に 2 語以上の句
         assert_eq!(
             translate("surface 3: Grid Sag grid columns 1 (an integer 2 to 16000000)"),
             "面 3: Grid Sag のグリッドの列の数 1（2〜16000000 の整数）"

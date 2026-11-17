@@ -247,7 +247,7 @@ impl Combo {
         self.get_mut(&loc)
     }
 
-    /// 経路に沿った要素の借用のビュー（経路を 1 度だけ作り、要素を写さない。GPN-13）
+    /// 経路に沿った要素の借用のビュー（経路を 1 度だけ作り、要素を写さない）
     pub fn chain_view(&self) -> ChainView<'_> {
         let steps = self.chain();
         let picks = steps
@@ -811,7 +811,7 @@ mod tests {
         assert_eq!(c.picks[0].ports[0].air, 12.0);
         assert_eq!(c.picks[0].ports[0].picks.len(), 2);
         assert_eq!(c.len(), 3);
-        // 借用のビューは経路と同じ並び（GPN-13）
+        // 借用のビューは経路と同じ並び
         let v = c.chain_view();
         assert_eq!(v.picks.len(), v.steps.len());
         for (s, p) in v.steps.iter().zip(&v.picks) {

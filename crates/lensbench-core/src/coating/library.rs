@@ -447,7 +447,7 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
             d.mat.label()
         };
         // 名前の違う媒質は、ある波長で屈折率が同じでも境界にする（他の波長でフレネルが抜けないように）。
-        // 複屈折材の板の入口・出口も境界にする（同じ材料の常光どうしでも、異常光の成分に Fresnel がある。公開 #52）
+        // 複屈折材の板の入口・出口も境界にする（同じ材料の常光どうしでも、異常光の成分に Fresnel がある）
         if k > 0
             && (!d.coat.is_empty()
                 || d.is_mirror()

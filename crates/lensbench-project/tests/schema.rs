@@ -30,7 +30,7 @@ fn check(v: &jsonschema::Validator, what: &str, x: &Value) {
 fn schema_files_match_types() {
     let update = std::env::var_os("LENSBENCH_UPDATE_SCHEMA").is_some();
     let mut stale = Vec::new();
-    // 組み込みだけ（detector.rs が同じ exe で登録する試しの種類を入れない、XCT-32）
+    // 組み込みだけ（detector.rs が同じ exe で登録する試しの種類を入れない）
     for (name, v) in schema::all_with(&[]) {
         let p = schema_path(name);
         let want = schema::to_text(&v);
@@ -198,7 +198,7 @@ fn unknown_keys_are_errors() {
     .unwrap();
 }
 
-/// 系の編集の操作（PRJ-11）: どの操作もスキーマに合い、読める。知らない操作・キー・型の違いはスキーマでも読みでも誤り
+/// 系の編集の操作: どの操作もスキーマに合い、読める。知らない操作・キー・型の違いはスキーマでも読みでも誤り
 #[test]
 fn edit_ops_schema_matches_reader() {
     use lensbench_project::edit_ops::{self, EditOp};

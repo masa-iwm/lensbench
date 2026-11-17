@@ -47,7 +47,7 @@ pub fn glasses(dirs: &[PathBuf]) -> Value {
             }
         }
     }
-    // フォルダの AGF、続けてフォルダに無い同梱のカタログ（CLI-31。path は "(built-in)"）
+    // フォルダの AGF、続けてフォルダに無い同梱のカタログ（path は "(built-in)"）
     let mut sets: Vec<(String, String, glass::builtin::Glasses)> = Vec::new();
     for f in &files {
         let Ok(gs) = glass::load_agf(f) else {
@@ -264,7 +264,7 @@ fn lenses_cached(
 ) -> lensbench_core::Result<Value> {
     // 覚えた一覧: 同じフォルダの並びで、中のファイル（とこのプログラム）の更新時刻・大きさが同じで、
     // 一覧を作るときに読んだそのほかのファイル（ユーザーカタログの品が参照するフォルダの外の .zmx・
-    // カタログ・ガラスなど、公開 #67）も変わっていなければそれを使う
+    // カタログ・ガラスなど）も変わっていなければそれを使う
     let (key, covered) = cache_key(paths, glass_dirs);
     let file = dir.join(CACHE_FILE);
     let deps_same = |v: &Value| {
@@ -789,7 +789,7 @@ mod tests {
     }
 
     /// 覚えた一覧: ユーザーカタログの品が見ているフォルダの外の .zmx を参照していても、その .zmx が変われば
-    /// 読み直す（公開 #67）。変わらなければ覚えたものを返す
+    /// 読み直す。変わらなければ覚えたものを返す
     #[test]
     fn lens_list_cache_follows_files_outside_the_folders() {
         let tmp = std::env::temp_dir().join(format!("lensbench-lcache-out-{}", std::process::id()));
@@ -1087,7 +1087,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// レンズカタログの玉を参照する品（source: {vendor, part}）は、一覧のレンズカタログから玉を引いて要約する（#90）
+    /// レンズカタログの玉を参照する品（source: {vendor, part}）は、一覧のレンズカタログから玉を引いて要約する
     #[test]
     fn json_item_refers_to_catalog_lens() {
         let dir = std::env::temp_dir().join(format!("lensbench-catref-{}", std::process::id()));

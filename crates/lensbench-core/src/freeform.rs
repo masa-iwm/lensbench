@@ -513,7 +513,7 @@ pub fn is_freeform(t: SurfType) -> bool {
 /// 面の矢高と (∂z/∂x, ∂z/∂y)（面の局所座標）。面の外（基準の面の平方根が負、値のない格子点）は NaN。
 /// 形どおり（[`crate::shape::Shape::sag`]、追跡と同じ形）: トロイダル面は x・y の曲線、Cylinder Fresnel は y だけの
 /// 基板、Fresnel・理想レンズ・Jones などは頂点の平面（Fresnel の曲率は屈折の傾きだけで、面は平らな基板）。
-/// 以前は回転対称でない面のほかを c・k・asph の偶数次非球面として求めていた（KRN-34）
+/// 以前は回転対称でない面のほかを c・k・asph の偶数次非球面として求めていた
 pub fn sag_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
     d.shape().sag(x, y)
 }
@@ -602,7 +602,7 @@ mod tests {
     #[test]
     fn radial_terms_are_accurate_up_to_order_20() {
         // 動径多項式 R_n^m（n ≤ 20、Standard の 231 項）の ρ^m を除いた部分を、整数の係数（u128 で厳密）の
-        // double-double の Horner と比べる。ρ² のべきで f64 の Horner にすると ρ → 1 で 3e-10 ずれた（KRN-24）
+        // double-double の Horner と比べる。ρ² のべきで f64 の Horner にすると ρ → 1 で 3e-10 ずれた
         fn two_sum(a: f64, b: f64) -> (f64, f64) {
             let s = a + b;
             let bb = s - a;

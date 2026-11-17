@@ -216,7 +216,7 @@ fn bounds_hold() {
     }
 }
 
-/// 解けない状態があっても残りを続け、その点を failed として残す（IOO-27）
+/// 解けない状態があっても残りを続け、その点を failed として残す
 #[test]
 fn failed_point_does_not_stop_the_track() {
     use lensbench_core::param::{Kind, Param};
@@ -259,7 +259,7 @@ fn failed_point_does_not_stop_the_track() {
     assert!(matches!(e, Err(lensbench_core::Error::Cancelled)));
 }
 
-/// 拡大ラグランジュ法: 重みを上げずに目標に合わせる（IOO-27）
+/// 拡大ラグランジュ法: 重みを上げずに目標に合わせる
 #[test]
 fn lagrange_reaches_targets() {
     use lensbench_optim::zoom::TargetMethod;

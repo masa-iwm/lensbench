@@ -343,7 +343,7 @@ fn catalog_item_frame_is_placed_on_the_glass() {
     assert!((b[1][0] - 3.1).abs() < 1e-12 && b[1][2] == 21.2, "{b:?}");
     let fit = lensbench_core::mech::fit_check(&s, &s.mechanics).unwrap();
     assert!(fit.is_empty(), "{fit:?}");
-    // 品の面は展開の出どころ（map）から引く: 空気にした群の中の品は枠も置かず、後ろの品の枠はその品の面を持つ（PRJ-04）
+    // 品の面は展開の出どころ（map）から引く: 空気にした群の中の品は枠も置かず、後ろの品の枠はその品の面を持つ
     let p = Project::from_json(&format!(
         r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
         "fields": {{"points": [[0, 0]]}},

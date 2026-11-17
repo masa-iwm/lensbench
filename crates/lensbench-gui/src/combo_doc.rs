@@ -1,5 +1,5 @@
 //! 組合せ（GUI が持つ文書）と、カタログから足す位置。カタログのパネルは一覧だけを持ち、
-//! 組合せは [`crate::app`] の Core が持つ（GPN-28）
+//! 組合せは [`crate::app`] の Core が持つ
 
 use crate::catalog::{pick_from, LensRow, RowKind};
 use crate::combo::Combo;
@@ -12,9 +12,9 @@ pub struct ComboDoc {
     pub insert_after: Option<usize>,
     /// 最後に足した要素（経路の番号。呼び手が受け取る）
     pub added: Option<usize>,
-    /// 最後に玉を足した: 系ができたら像面を近軸の焦点へ動かす（GUX-10）
+    /// 最後に玉を足した: 系ができたら像面を近軸の焦点へ動かす
     pub refocus: bool,
-    /// 組合せの版。[`ComboDoc::sync`] が前の画面から変わったのを見たら 1 つ進める（GPN-13: 写しと同じかは版で見て、
+    /// 組合せの版。[`ComboDoc::sync`] が前の画面から変わったのを見たら 1 つ進める（写しと同じかは版で見て、
     /// 毎フレーム組合せを丸ごと比べない）
     pub rev: u64,
     /// 版を進めたときの組合せ
@@ -140,7 +140,7 @@ impl ComboDoc {
         let n = self.combo.len();
         let at = if at >= n && n > 0 {
             // 最後に足す: 前の最後の要素の後（像面までだった空気）は小さな間隔にし、足した玉の後の空気は
-            // 系ができたら近軸の焦点まで（2 枚目で像面が遠くに残って像が崩れない、GUX-10）
+            // 系ができたら近軸の焦点まで（2 枚目で像面が遠くに残って像が崩れない）
             let chain = self.combo.chain();
             if let Some(g) = chain.last().and_then(|s| s.after.clone()) {
                 if matches!(g, crate::combo_tree::Gap::Air(_)) {

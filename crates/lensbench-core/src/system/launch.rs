@@ -379,7 +379,7 @@ impl System {
         (t, es, err)
     }
 
-    /// 光線の始め方 l で追跡し、結果を buf の列（`buf.cols()` の列と状態・けられ）に書く（KRN-09）。
+    /// 光線の始め方 l で追跡し、結果を buf の列（`buf.cols()` の列と状態・けられ）に書く。
     /// 値は [`Self::trace_launch`] と同じビット。buf は呼び出しをまたいで使い回せる
     pub fn trace_launch_into(&self, l: &Launch, w: usize, last: Option<usize>, buf: &mut RayBuf) {
         let mut dst = Dst::Buf(buf);

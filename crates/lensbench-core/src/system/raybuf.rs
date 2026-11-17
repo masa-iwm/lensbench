@@ -1,4 +1,4 @@
-//! 追跡の結果を列（SoA）で受ける再利用の入れ物（KRN-09）
+//! 追跡の結果を列（SoA）で受ける再利用の入れ物
 //!
 //! [`System::try_trace_into`]・[`System::trace_launch_into`] は要る列（[`Cols`]）だけを書く。入れ物は呼び出しをまたいで使い回せる（確保は増えたときだけ）。
 //! 値は [`System::trace_launch`] の [`Trace`] と同じビット。

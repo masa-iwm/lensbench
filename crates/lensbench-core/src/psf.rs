@@ -234,7 +234,7 @@ pub fn plane_slopes(s: &System, jm: [[f64; 2]; 2], k: [f64; 3], plane: PsfPlane)
     }
 }
 
-/// 像面の上の FFT PSF の瞳の写像（ANA-08）。像面の点 (x, y) の位相は x ΔL + y ΔM = (x, y)·J p で、J に非対角の項
+/// 像面の上の FFT PSF の瞳の写像。像面の点 (x, y) の位相は x ΔL + y ΔM = (x, y)·J p で、J に非対角の項
 /// （x・y の両方に角度のある視野で出る）があると x と y の変換に分かれない。瞳の格子の点 c（区間の中心、[−1, 1]²）を
 /// p = Q c、Q = J⁻¹ diag(ga, gb)（ga・gb は [`plane_slopes`] の値）で追うと J Q = diag(ga, gb) なので位相は
 /// x ga c_x + y gb c_y に分かれ、行列の DFT がそのまま使える。単位円は c の上で [−1, 1]² に内接する楕円になる。
@@ -591,7 +591,7 @@ pub fn geometric_mtf(
     };
     let gl = LensGl::new(n);
     let (t, u, wq) = lens_quad(0.0, &gl);
-    // 求積の重みにアポダイゼーションの強度 A² を掛ける（ANA-33、OpticStudio の GMTT と同じ）。瞳の点は (x, y) = (u, t)
+    // 求積の重みにアポダイゼーションの強度 A² を掛ける（OpticStudio の GMTT と同じ）。瞳の点は (x, y) = (u, t)
     let wa = crate::analysis::apodized(s, field, &u, &t, &wq)?;
     // 波長ごとの (重み / 有効な光線の重みの和, 光線の位置と求積の重み, 遮断周波数)
     let mut sets = Vec::new();

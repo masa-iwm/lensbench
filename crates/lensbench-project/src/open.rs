@@ -1,5 +1,5 @@
 //! 系のファイル（.zmx・プロジェクトファイル・系ファイル）を拡張子で見分けて読む。CLI・serve・Python
-//! の共通の入口（XCT-06・CLI-16）。誤りは core の [`Error`] で、種類（読込・不正・未対応）が付く
+//! の共通の入口。誤りは core の [`Error`] で、種類（読込・不正・未対応）が付く
 
 use std::path::{Path, PathBuf};
 
@@ -160,7 +160,7 @@ pub fn open_with(
     )
 }
 
-/// 1 回だけ読んだ系のファイル（CLI-13）。プロジェクトは JSON を 1 回読んで解釈し、状態の名前・ビームスプリッターの経路・
+/// 1 回だけ読んだ系のファイル。プロジェクトは JSON を 1 回読んで解釈し、状態の名前・ビームスプリッターの経路・
 /// 状態ごとの系をそこから引く（CLI・serve・Python の共通の入口）。系ファイル・.zmx は種類とパスだけ持ち、[`Source::open`] で読む
 #[derive(Clone, Debug)]
 pub enum Source {
@@ -171,7 +171,7 @@ pub enum Source {
         /// ファイルの中身（状態は当てない）
         text: String,
         project: Box<crate::Project>,
-        /// 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す（PRJ-13）
+        /// 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す
         cache: std::sync::Arc<crate::SourceCache>,
     },
 }
@@ -441,7 +441,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// CLI-13: プロジェクトは 1 回読んで、状態・経路・状態ごとの系をそこから引く（ファイルから直に読んだものと同じ）
+    /// プロジェクトは 1 回読んで、状態・経路・状態ごとの系をそこから引く（ファイルから直に読んだものと同じ）
     #[test]
     fn source_reads_the_project_once() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -470,7 +470,7 @@ mod tests {
         }
     }
 
-    /// XCT-06: 誤りの符号は読む所を通っても残る（状態の名前・ガラス）
+    /// 誤りの符号は読む所を通っても残る（状態の名前・ガラス）
     #[test]
     fn codes_survive_open() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -488,7 +488,7 @@ mod tests {
             ("invalid", code::STATE_NOT_FOUND),
             "{e}"
         );
-        // ガラスのフォルダが空で、同梱にも無いカタログ（SCHOTT・OHARA は同梱から取る、CLI-31）
+        // ガラスのフォルダが空で、同梱にも無いカタログ（SCHOTT・OHARA は同梱から取る）
         let empty = std::env::temp_dir().join(format!("lb_open_code_{}", std::process::id()));
         std::fs::create_dir_all(&empty).unwrap();
         let src = std::fs::read_to_string(root.join("examples/projects/P5_triplet_blocks.json"))

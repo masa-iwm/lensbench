@@ -202,7 +202,7 @@ fn rejects_bad_grids() {
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
 }
 
-/// 像の格子のナイキスト 1/(2Δ) を超える周波数は、折り返した値でなく NaN（ANA-24）
+/// 像の格子のナイキスト 1/(2Δ) を超える周波数は、折り返した値でなく NaN
 #[test]
 fn huygens_mtf_above_nyquist_is_nan() {
     let s = load("D0");
@@ -219,7 +219,7 @@ fn huygens_mtf_above_nyquist_is_nan() {
     assert!(h.sag[1].is_nan() && h.tan[1].is_nan(), "{:?}", h.sag);
 }
 
-/// 像面の形の外（矢高が求まらない）格子の点は平面として計算せず、強度を NaN にして注意を出す（ANA-24）
+/// 像面の形の外（矢高が求まらない）格子の点は平面として計算せず、強度を NaN にして注意を出す
 #[test]
 fn huygens_points_outside_the_image_surface_are_nan() {
     let mut s = load("D0");
@@ -287,7 +287,7 @@ SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\nSURF 2\n  TYPE STANDA
 #[test]
 fn skew_fields_match_huygens() {
     // x・y の両方に角度のある視野では J = ∂(L, M)/∂(px, py) に非対角の項が出る。像面の上の FFT PSF は瞳の格子を
-    // 写してそれを位相に入れる（ANA-08、psf::image_shear）。同じ画角の y だけの視野と同じくらい Huygens に合う
+    // 写してそれを位相に入れる（psf::image_shear）。同じ画角の y だけの視野と同じくらい Huygens に合う
     let o = PsfOpts {
         pupil: Some(64),
         image: 64,

@@ -23,7 +23,7 @@ pub fn fmt_num(x: f64) -> String {
     }
 }
 
-/// 表の列の名前と、結果の `unit`（位置・長さの単位、波など）で数える列か（GUX-20）。ここに無い鍵はそのまま出す
+/// 表の列の名前と、結果の `unit`（位置・長さの単位、波など）で数える列か。ここに無い鍵はそのまま出す
 const COLS: &[(&str, &str, bool)] = &[
     ("field", n_("Field #"), false),
     ("wave", n_("Wave #"), false),
@@ -173,7 +173,7 @@ fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
 }
 
 /// 一様なオブジェクトの並びを表に。見える行だけ描くので行の上限は無い。見出しのクリックで並べ替え、
-/// 数は右寄せ（GPN-16）
+/// 数は右寄せ
 fn table(ui: &mut Ui, u: Units, id: egui::Id, cols: &[String], rows: &[Value]) {
     let heads: Vec<(String, f64)> = cols.iter().map(|c| u.of(c)).collect();
     use egui_extras::{Column, TableBuilder};

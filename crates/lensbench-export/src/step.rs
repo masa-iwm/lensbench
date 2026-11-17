@@ -1,7 +1,7 @@
 //! STEP（ISO 10303-21、AP214）の書き出し: 玉と鏡は B-rep の立体、光線は折れ線、像面などは縁の円。
 //!
 //! - 球面は SPHERICAL_SURFACE、平面は PLANE、円錐係数・非球面係数のある面は、断面の曲線（3 次の B スプラインで
-//!   補間した B_SPLINE_CURVE_WITH_KNOTS）を軸のまわりに回した SURFACE_OF_REVOLUTION（PRJ-20）。断面の区間の数は
+//!   補間した B_SPLINE_CURVE_WITH_KNOTS）を軸のまわりに回した SURFACE_OF_REVOLUTION。断面の区間の数は
 //!   区間の中点のずれが [`OptionsStep::profile_tol`] 以下になるまで倍にする。側面は CYLINDRICAL_SURFACE。
 //! - 立体の 2 面が同じ軸の上にないもの（玉の中で偏心・傾きのあるもの）は、側面を 2 つの縁の円を結ぶ線織面
 //!   （有理 B スプライン）にする。
@@ -22,7 +22,7 @@ pub struct StepReport {
     /// 機構部品の輪の立体
     pub mechs: usize,
     pub rays: usize,
-    /// 利用者に見せる注意（写した品の STEP の長さを直せなかった実体など。PRJ-22）
+    /// 利用者に見せる注意（写した品の STEP の長さを直せなかった実体など）
     pub notes: Vec<String>,
 }
 

@@ -1,4 +1,4 @@
-//! 解析パネルの結果（見せ方の選択・時間・書き出しと、図・表・JSON）。計算中は図を薄くしてスピナーを重ねる（GUX-27）
+//! 解析パネルの結果（見せ方の選択・時間・書き出しと、図・表・JSON）。計算中は図を薄くしてスピナーを重ねる
 
 use super::*;
 
@@ -16,12 +16,12 @@ pub(super) struct AnaRes {
     pub(super) prev: Option<Value>,
     pub(super) ms: f64,
     pub(super) rays: Vec<SpotRays>,
-    /// 光線の世代（届いたときの rev。スポット図の中心・縮尺を作り直す目安、GPN-07）
+    /// 光線の世代（届いたときの rev。スポット図の中心・縮尺を作り直す目安）
     pub(super) rays_gen: u64,
     pub(super) error: Option<String>,
-    /// 結果の世代（届くたびに変わる。図の格子を作り直す目安、GPN-07）
+    /// 結果の世代（届くたびに変わる。図の格子を作り直す目安）
     pub(super) gen: u64,
-    /// 返事を待っている要求の数と、待ち始めた時刻（GUX-27）
+    /// 返事を待っている要求の数と、待ち始めた時刻
     pub(super) inflight: u32,
     pub(super) since: Option<web_time::Instant>,
 }
@@ -101,7 +101,7 @@ impl Core {
             ui.spinner();
             return;
         };
-        // 狭いパネルでは折り返す（GUX-14）
+        // 狭いパネルでは折り返す
         ui.horizontal_wrapped(|ui| {
             view_row(ui, cfg);
             ui.separator();
@@ -199,7 +199,7 @@ impl Core {
                     ui.separator();
                     json_view::show(ui, v);
                 } else if cfg.view == View::Json {
-                    // 文字列は結果が変わったときだけ作る。大きい結果は頭だけ見せる（全文はコピー・保存で、GAR-09）
+                    // 文字列は結果が変わったときだけ作る。大きい結果は頭だけ見せる（全文はコピー・保存で）
                     let key = egui::Id::new(("res-json", id));
                     let t = match ui.data(|d| d.get_temp::<(u64, std::sync::Arc<String>)>(key)) {
                         Some((r, t)) if r == self.rev => t,

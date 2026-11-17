@@ -39,7 +39,7 @@ OVERRIDES: dict[str, dict[str, str]] = {
 }
 
 F64 = "NDArray[np.float64]"
-# 結果の dict の形（TypedDict、CLI-16）。名前: (説明, 必ずある鍵, 条件で付く鍵)。鍵の一致は tests/test_stubs_examples.py で確かめる
+# 結果の dict の形（TypedDict）。名前: (説明, 必ずある鍵, 条件で付く鍵)。鍵の一致は tests/test_stubs_examples.py で確かめる
 RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
     "_TanSag": ("A tangential and sagittal pair", {"tangential": "float", "sagittal": "float"}, {}),
     "_TraceResult": (

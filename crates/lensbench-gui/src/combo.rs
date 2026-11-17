@@ -988,7 +988,7 @@ impl Default for Combo {
 }
 
 impl Combo {
-    /// 要素の数（分岐の先も）・状態の数・面の上書きの数（消す操作の後に「Ctrl+Z で戻す」を出す、GPN-20）
+    /// 要素の数（分岐の先も）・状態の数・面の上書きの数（消す操作の後に「Ctrl+Z で戻す」を出す）
     pub fn census(&self) -> [usize; 3] {
         fn walk(ps: &[Pick], n: &mut [usize; 3]) {
             for p in ps {
@@ -1004,7 +1004,7 @@ impl Combo {
         n
     }
 
-    /// 面の並びが変わった要素（分岐の先も）の面の上書きを外す（GPN-02）。外した数
+    /// 面の並びが変わった要素（分岐の先も）の面の上書きを外す。外した数
     pub fn drop_stale_edits(&mut self) -> usize {
         fn walk(ps: &mut [Pick]) -> usize {
             let mut n = 0;
@@ -1238,7 +1238,7 @@ pub struct LayoutData {
     pub stop: Option<usize>,
     /// 絞りの面の半径 [mm]（layout の surfaces の semi。無ければ組合せの epd/2）
     pub stop_semi: Option<f64>,
-    /// id のあるブロック・群と、その往路の面の範囲（serve の `blocks`。要素の面の範囲は id でここから引く、GPN-01）
+    /// id のあるブロック・群と、その往路の面の範囲（serve の `blocks`。要素の面の範囲は id でここから引く）
     pub blocks: Vec<(String, Vec<[usize; 2]>)>,
     /// xz 面の図（縦は x）。偏心・傾きの操作も x の向き
     pub xz: bool,
@@ -1374,7 +1374,7 @@ impl LayoutData {
         }
     }
 
-    /// 要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（GPN-01: 前後の面からの推定は
+    /// 要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（前後の面からの推定は
     /// しない）。往路で同じブロックを 2 度通る系は、前の要素より後の通りを当てる
     pub fn spans_for(&self, ids: &[String], lead_stop: bool) -> Vec<Option<[usize; 2]>> {
         let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
@@ -1496,7 +1496,7 @@ pub struct View {
     /// 2D の図の拡大率の対数（0 で全体表示）と、画面の上の移動 [pt]
     zoom_log: f32,
     pan: Vec2,
-    /// 面の表で選んだ面（図で目立たせる、#125）
+    /// 面の表で選んだ面（図で目立たせる）
     pub hl_surf: Option<usize>,
     /// ポインタの下の玉の面の範囲（開いた系の図のクリックで面の表の行を選ぶ）
     pub hover_surfs: Option<[usize; 2]>,
@@ -1621,7 +1621,7 @@ pub fn ui(
     let mut act = None;
     let weak = theme::weak_text(ui.visuals());
     combo.normalize();
-    // 要素のパレット: 足すものは 1 つのメニューに（図の高さを取らない、GUX-30）
+    // 要素のパレット: 足すものは 1 つのメニューに（図の高さを取らない）
     const ZMX: [ElemKind; 2] = [ElemKind::Zmx, ElemKind::ZmxRange];
     let mut zmx_start = [false; 2];
     ui.horizontal_wrapped(|ui| {
@@ -1673,7 +1673,7 @@ pub fn ui(
         {
             act = Some(Act::Focus);
         }
-        // 経路を変えたら、選んでいた要素を新しい経路の中で探し直す（無ければ外す。GPN-28）
+        // 経路を変えたら、選んでいた要素を新しい経路の中で探し直す（無ければ外す）
         let sel_id = view.sel.and_then(|k| combo.ids().get(k).cloned());
         if path_select(ui, combo, paths) {
             view.sel = sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id));
@@ -1689,7 +1689,7 @@ pub fn ui(
     for (i, kind) in ZMX.into_iter().enumerate() {
         let key = format!("combo-zmx-{:?}", kind);
         if let Some(p) = crate::files::open(&key, zmx_start[i], || {
-            // lensbench の系（系ファイル・プロジェクトの .json）も取り込める（#132）
+            // lensbench の系（系ファイル・プロジェクトの .json）も取り込める
             crate::files::FileDialog::new()
                 .add_filter(tr("System (.zmx / .json)"), &["zmx", "json"])
         }) {
@@ -1725,7 +1725,7 @@ pub fn ui(
     // 図の下に、選んだ要素・寸法の設定
     let sel = view.sel.and_then(|k| combo.el(k));
     let bs_sel = sel.is_some_and(|p| p.kind == ElemKind::Splitter);
-    // 面の表（面の並び。自作の玉の面はレンズデータの表で編集、GPN-19）を出すときはその分も
+    // 面の表（面の並び。自作の玉の面はレンズデータの表で編集）を出すときはその分も
     let rows = sel
         .filter(|p| p.kind == ElemKind::Surfaces)
         .map_or(0, |p| p.surfs.len() + 1);
@@ -1735,7 +1735,7 @@ pub fn ui(
     let (mut top, mut bottom) = crate::split::two(
         ui,
         "combo_fig",
-        // 図は少なくとも 200 px（GUX-30）
+        // 図は少なくとも 200 px
         (
             ((avail - editor_h).max(200.0) / avail).clamp(0.5, 0.85),
             0.6,
@@ -1895,7 +1895,7 @@ pub fn view_only(
     mut nav: Option<&mut crate::widgets::Nav>,
     hl_surf: Option<usize>,
 ) -> Option<OpenAct> {
-    // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける（#124）
+    // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける
     let sense = if d.d3.is_some() || nav.is_some() {
         Sense::click_and_drag()
     } else {
@@ -2048,7 +2048,7 @@ fn insert(combo: &mut Combo, view: &mut View, p: Pick) {
 }
 
 /// キーボード: [ ] で要素を選ぶ、← → で光軸に沿って動かす（寸法を選んでいればその間隔）、↑ ↓ で偏心、
-/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Ctrl+L でロック（表と同じ、GPN-15）、Esc でやめる。Ctrl で 10 倍、Alt で 1/10
+/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Ctrl+L でロック（表と同じ）、Esc でやめる。Ctrl で 10 倍、Alt で 1/10
 fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
     let n = combo.len();
     // 経路に沿った要素（ロックしていない）。ロックは中身だけを止め、動かすのはできる
@@ -2266,7 +2266,7 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
 }
 
 /// 群の役割と移動。群の名前は要素の設定の「群」で付ける。状態を選んでいれば移動はその状態の値。
-/// only は 1 つの群だけ（面の表の要素の設定、#136）
+/// only は 1 つの群だけ（面の表の要素の設定）
 fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) {
     let mut names: Vec<String> = Vec::new();
     let ids: Vec<String> = combo.ids_all().into_iter().map(|x| x.1).collect();
@@ -2413,7 +2413,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
     }
 }
 
-/// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値。k は欄の id（GPN-18）
+/// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値。k は欄の id
 pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
     if p.kind.has_on() {
         let mut on = p.on_in(st);
@@ -2519,7 +2519,7 @@ fn num(ui: &mut Ui, label: &str, v: &mut f64, unit: &str) {
     num_in(ui, label, v, unit, f64::NEG_INFINITY);
 }
 
-/// 下限のある数の欄（厚さ ≥ 0・半径 > 0 など。負や 0 を入れて系を作る段で誤りにしない、GPN-10）
+/// 下限のある数の欄（厚さ ≥ 0・半径 > 0 など。負や 0 を入れて系を作る段で誤りにしない）
 fn num_in(ui: &mut Ui, label: &str, v: &mut f64, unit: &str, min: f64) {
     let weak = theme::weak_text(ui.visuals());
     ui.label(RichText::new(label).color(weak));
@@ -3020,7 +3020,7 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
 }
 
 /// .zmx の絞りの面と像面の番号（読めなければ None）。ファイルの更新時刻ごとに覚えておく（図を描くたびに呼ぶので）。
-/// 更新時刻の読み出し（stat）も 1 秒に 1 回まで（1 フレームに何十回も呼ばれ、ネットワークの上では遅い、GPN-12）
+/// 更新時刻の読み出し（stat）も 1 秒に 1 回まで（1 フレームに何十回も呼ばれ、ネットワークの上では遅い）
 pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
@@ -3062,7 +3062,7 @@ pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     v
 }
 
-/// 面の並びの面の並びと種類（GPN-19）。半径・コーニック・厚さ・ガラス・半直径はレンズデータの表で編集し、
+/// 面の並びの面の並びと種類。半径・コーニック・厚さ・ガラス・半直径はレンズデータの表で編集し、
 /// ここでは面の種類・足す・消すと、偏光子・波長板・Jones・座標ブレークの値（表の列に無いもの）だけを出す
 fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
     let n = p.surfs.len();
@@ -3123,7 +3123,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
         if r.kind == SurfKind::Standard {
             continue;
         }
-        // 種類ごとの値は 1 行に 1 つ（GPN-19: 波長板の 11 個を横に並べない）
+        // 種類ごとの値は 1 行に 1 つ（波長板の 11 個を横に並べない）
         ui.indent(("surf_vals", k, i), |ui| {
             egui::Grid::new(("surf_vals", k, i))
                 .num_columns(2)

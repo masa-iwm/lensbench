@@ -1,4 +1,4 @@
-//! レンズデータの表・多重構成・機構の設定のパネルと、組合せの系の面の書き換え（app.rs から分けた、GAR-07）
+//! レンズデータの表・多重構成・機構の設定のパネルと、組合せの系の面の書き換え（app.rs から分けた）
 
 use super::*;
 
@@ -127,7 +127,7 @@ impl Core {
                         } else {
                             self.p.ld.locked.remove(&name);
                         }
-                        // ファイルごとに設定へ残す（空になったら消す、GPN-14）
+                        // ファイルごとに設定へ残す（空になったら消す）
                         if let Some(f) = self.loc.file.as_ref().map(|f| f.display().to_string()) {
                             if self.p.ld.locked.is_empty() {
                                 self.ses.locked.remove(&f);
@@ -283,7 +283,7 @@ impl Core {
                     }
                 });
         }
-        // 開いた系の玉・群を足す・機構部品は別の小窓（面の表の下では、面の設定の欄に押し出されて見えないことがあった、#136）
+        // 開いた系の玉・群を足す・機構部品は別の小窓（面の表の下では、面の設定の欄に押し出されて見えないことがあった）
         if !is_combo && self.um_open {
             let mut open = true;
             let n = self.sys.ld_rows.len();

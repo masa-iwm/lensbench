@@ -1,10 +1,10 @@
-//! 薄膜の物理の不変量（ANA-32 (d)）。OpticStudio の基準値に頼らない。吸収のない膜の R + T = 1・1/4 波長・
+//! 薄膜の物理の不変量。OpticStudio の基準値に頼らない。吸収のない膜の R + T = 1・1/4 波長・
 //! 向きの相反性は coating/tests.rs の単体試験と polarization.rs、k の符号の誤りを断るのは polarization.rs
 
 use lensbench_core::coating::stack;
 use num_complex::Complex64 as C64;
 
-/// 吸収のある層・基板でも R + T ≤ 1（吸収 A = 1 − R − T ≥ 0）、k → 0 で R + T → 1（ANA-32 (d)）。
+/// 吸収のある層・基板でも R + T ≤ 1（吸収 A = 1 − R − T ≥ 0）、k → 0 で R + T → 1。
 /// 層の数・屈折率・厚さ・入射角は決まった種の擬似乱数で選ぶ
 #[test]
 fn absorbing_stack_does_not_create_energy() {

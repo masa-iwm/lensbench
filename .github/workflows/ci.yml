@@ -40,7 +40,7 @@ jobs:
             tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || return 1
             before=$(gh api "repos/$REPO/commits/$SHA" --jq '.parents[0].sha') || return 1
             # Cargo の依存・設定・ツールチェーンが変わったマージは全部回して main のキャッシュを作り直す（飛ばすと main の
-            # キャッシュが古いままになり、以後の PR が毎回作り直す。#216 BLD-12）
+            # キャッシュが古いままになり、以後の PR が毎回作り直す）
             changed=$(gh api --paginate "repos/$REPO/compare/$before...$SHA" --jq '.files[].filename') || return 1
             if grep -qE '(^|/)(Cargo\.lock|Cargo\.toml|rust-toolchain(\.toml)?)$|^\.cargo/' <<<"$changed"; then
               echo "::notice::Cargo の依存・設定が変わったので、全部回して main のキャッシュを保存し直す"
@@ -81,9 +81,9 @@ jobs:
     timeout-minutes: 40
     env:
       # ワークスペース自身のクレートは rust-cache に乗らない（毎回作り直し）ので、sccache（GHA のキャッシュ）で拾う。
-      # 当たるのは incremental なしの ci プロファイルのテストのビルド（公開 #216 BLD-16）
+      # 当たるのは incremental なしの ci プロファイルのテストのビルド
       SCCACHE_GHA_ENABLED: "true"
-      # Windows のテストはアプリ内のブラウザ（wry・tao と windows クレート一式）を切る。gui-windows の exe は入れる（BLD-22）
+      # Windows のテストはアプリ内のブラウザ（wry・tao と windows クレート一式）を切る。gui-windows の exe は入れる
       FEAT: ${{ startsWith(matrix.os, 'windows') && '--no-default-features' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -110,7 +110,7 @@ jobs:
 
   # GUI の exe（インストール不要の 1 ファイル、配る形の release）を成果物に置く。PR も release で作る
   # （rust-cache は main で保存したものしか PR から使えず、main は release なので、PR を ci プロファイルにすると
-  # 毎回 7 分の全ビルドになっていた。release なら main のキャッシュに当たる。#216 BLD-11）。テストと並行の別ジョブ
+  # 毎回 7 分の全ビルドになっていた。release なら main のキャッシュに当たる）。テストと並行の別ジョブ
   gui-windows:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -207,7 +207,7 @@ jobs:
           rustup toolchain install
           rustup target add wasm32-unknown-unknown wasm32-wasip1
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
-      # wasm-opt（binaryen）。無いと build_web.sh が黙って飛ばしていた（REQUIRE_WASM_OPT で失敗にする。#216 BLD-17）
+      # wasm-opt（binaryen）。無いと build_web.sh が黙って飛ばしていた（REQUIRE_WASM_OPT で失敗にする）
       - run: |
           v=version_123
           curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/$v/binaryen-$v-x86_64-linux.tar.gz" | tar xz -C "$RUNNER_TEMP"
@@ -220,11 +220,11 @@ jobs:
         with:
           tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN }}
       - run: cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web -p lensbench-gui -- -D warnings
-      # 画面用・計算用の wasm は feature を片方だけにして作る（scripts/build_web.sh、GAR-11）。片方だけでも通るか
+      # 画面用・計算用の wasm は feature を片方だけにして作る（scripts/build_web.sh）。片方だけでも通るか
       - run: |
           cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web --no-default-features --features gui -- -D warnings
           cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web --no-default-features --features worker -- -D warnings
-      # simd128 の経路（AᵀA の gram_block_simd128 など）: core を wasm32-wasip1 ＋ simd128 で検査（#28）
+      # simd128 の経路（AᵀA の gram_block_simd128 など）: core を wasm32-wasip1 ＋ simd128 で検査
       - run: cargo clippy --locked -p lensbench-core --target wasm32-wasip1 --all-targets -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+simd128
@@ -237,17 +237,17 @@ jobs:
         with:
           node-version: "22"
       # wasm32-wasip1 の試験は wasmtime で回す（Node 22 の WASI は .wasm によって SIGSEGV で落ち続けることがあり、
-      # 手元では再現しない。#181）。試験は env!("CARGO_MANIFEST_DIR") からの絶対パスで tests/ を読むので、
+      # 手元では再現しない）。試験は env!("CARGO_MANIFEST_DIR") からの絶対パスで tests/ を読むので、
       # リポジトリの根を同じパスで見せる
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: wasmtime@29.0.1
-      # gram_block_simd128 が gram_tiles とビットまで同じこと（試験 1 本を WASI で。#28）
+      # gram_block_simd128 が gram_tiles とビットまで同じこと（試験 1 本を WASI で）
       - run: cargo test -p lensbench-core --lib --target wasm32-wasip1 column_basis_and_gram_match_the_row_forms
         env:
           RUSTFLAGS: -C target-feature=+simd128
           CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime run --dir . --dir ${{ github.workspace }}::${{ github.workspace }}
-      # まとめ追跡（wasm は f64x2 を名指し、8 本ずつ）が 1 本ずつの追跡とビットまで同じこと（#99）
+      # まとめ追跡（wasm は f64x2 を名指し、8 本ずつ）が 1 本ずつの追跡とビットまで同じこと
       - run: cargo test --release -p lensbench-core --target wasm32-wasip1 --test batch
         env:
           RUSTFLAGS: -C target-feature=+simd128
@@ -280,7 +280,7 @@ jobs:
       run:
         shell: bash
     env:
-      # PR は ci プロファイル（LTO なし）、配る wheel を作る main への push は release（#216 BLD-16）
+      # PR は ci プロファイル（LTO なし）、配る wheel を作る main への push は release
       P: ${{ github.event_name == 'push' && 'release' || 'ci' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -300,7 +300,7 @@ jobs:
       - run: maturin build --locked --profile "$P" -m crates/lensbench-py/Cargo.toml -o dist
       - run: python -m pip install --no-index --find-links dist lensbench
       - run: python -m pytest -q crates/lensbench-py/tests
-      # serve のクライアントが wheel に入っているか（CLI-22）
+      # serve のクライアントが wheel に入っているか
       - run: cd "$RUNNER_TEMP" && python -c "import lensbench_client"
       # 型スタブ: 実行時のモジュールとの照合と、例題の型検査
       - run: python -m mypy.stubtest lensbench --allowlist crates/lensbench-py/stubtest-allowlist.txt

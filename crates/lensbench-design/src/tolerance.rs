@@ -429,7 +429,7 @@ pub fn spec_from_json_with(
         p.vars.push(var_from(x, &s0)?);
     }
     let rings = m.rings.unwrap_or(3);
-    // 名前は CLI・Python と同じ reference（CLI-17）
+    // 名前は CLI・Python と同じ reference
     let reference = match m.reference.unwrap_or_default() {
         RefName::Centroid => RmsRef::Centroid,
         RefName::Chief => RmsRef::Chief,
@@ -541,7 +541,7 @@ fn sorted(mut v: Vec<f64>) -> Vec<f64> {
 }
 
 /// 項の説明（"wavefront f1" など）
-/// 項の種類の名前（評価関数の JSON の type と同じ）。型の名前（Debug）から作らない（PRJ-11）
+/// 項の種類の名前（評価関数の JSON の type と同じ）。型の名前（Debug）から作らない
 fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
     use lensbench_optim::TermKind as K;
     match k {

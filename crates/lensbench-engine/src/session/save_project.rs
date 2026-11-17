@@ -1,5 +1,5 @@
 //! `save_project`: 読み込んだプロジェクトに、読み込んだ後の面の変更をブロックの面の上書き・操作として書き戻して
-//! 保存する（PRJ-04、[`lensbench_project::writeback`]）
+//! 保存する（[`lensbench_project::writeback`]）
 
 use super::*;
 use lensbench_project::edit_ops::EditOp;

@@ -320,7 +320,7 @@ fn interferogram_matches_core_with_the_configurations() {
     assert_eq!(bits(get(&o, "delta")), bits(&w.concat()));
 }
 
-/// 説明の出力（名前・型）が実際の出力と合う（ANA-19）
+/// 説明の出力（名前・型）が実際の出力と合う
 #[test]
 fn declared_outputs_match_the_run() {
     let s = sys();

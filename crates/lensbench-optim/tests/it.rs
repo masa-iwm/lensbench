@@ -1,7 +1,7 @@
-//! 結合テストを 1 つの exe にまとめる（ファイルごとに exe を作るとリンクが 100 回になり、Windows のビルドが 6 分かかっていた。
-//! 公開 #216 BLD-03）。tests/ の .rs は各ファイルが 1 つのモジュール。テストを足すときは下の一覧にも足す
+//! 結合テストを 1 つの exe にまとめる（ファイルごとに exe を作るとリンクが 100 回になり、Windows のビルドが 6 分かかっていた）。
+//! tests/ の .rs は各ファイルが 1 つのモジュール。テストを足すときは下の一覧にも足す
 //! （足し忘れは `every_test_file_is_listed` が落とす）。1 ファイルだけ回すときは `cargo test --test it <モジュール名>::`。
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
 mod common;
 mod optim;

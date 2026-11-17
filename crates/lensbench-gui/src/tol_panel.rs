@@ -486,7 +486,7 @@ pub fn ui(
                 }
                 ui.spinner();
             } else {
-                // 欄の誤りがあれば押せなくして理由を出す（GPN-10）
+                // 欄の誤りがあれば押せなくして理由を出す
                 let check = p.spec();
                 let r = ui
                     .add_enabled(
@@ -618,7 +618,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             ui.selectable_value(&mut p.dist, k.to_string(), tr(l));
         }
     });
-    // チェックの文が長いので、選択は次の行に字下げして置く（折り返しの中の入れ子で縦 1 文字に崩れない、GUX-13）
+    // チェックの文が長いので、選択は次の行に字下げして置く（折り返しの中の入れ子で縦 1 文字に崩れない）
     ui.checkbox(
         &mut p.radial,
         tr("Pair x/y of decenters, tilts and wedges within a circle (magnitude at most the tolerance)"),
@@ -1032,7 +1032,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
         r["merit"].clone(),
     )];
     for t in r["terms"].as_array().into_iter().flatten() {
-        // 項の単位を名前に添える（spot・ray は mm、wavefront・opd は波、GUX-20）
+        // 項の単位を名前に添える（spot・ray は mm、wavefront・opd は波）
         let label = text_of(&t["label"]);
         let unit = term_unit(&label);
         rows.push((
@@ -1177,7 +1177,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
     }
 }
 
-/// 公差の項目名（「L1 decenter x」など英語が元）を表示の言語で（XCT-20）
+/// 公差の項目名（「L1 decenter x」など英語が元）を表示の言語で
 fn item_name(v: &Value) -> String {
     lensbench_core::i18n::tr_item(&text_of(v))
 }

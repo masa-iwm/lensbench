@@ -1,4 +1,4 @@
-//! 取った品の STEP のキャッシュ（フォルダ・ファイルの名前）。以前は lensbench-project の `catalog_fill` にあった（XCT-11）
+//! 取った品の STEP のキャッシュ（フォルダ・ファイルの名前）。以前は lensbench-project の `catalog_fill` にあった
 
 /// 取った品の STEP のキャッシュのフォルダ（[`set_cad_cache_dir`] で決めたもの。無ければ環境変数
 /// `LENSBENCH_CAD_CACHE`、なければ OS の設定の場所: Windows は `%APPDATA%\lensbench\cad`、ほかは
@@ -66,7 +66,7 @@ pub fn cad_cache_path(dir: &std::path::Path, item: &str, url: &str) -> std::path
 }
 
 /// キャッシュにある品 `item`（STEP の公式の URL `url`）の STEP。プロジェクトの展開に機構部品の詳しい形の
-/// ファイルを渡す口（`lensbench_project::Env::step_files`）に、そのまま渡せる（PRJ-21）
+/// ファイルを渡す口（`lensbench_project::Env::step_files`）に、そのまま渡せる
 pub fn cached_step(item: &str, url: &str) -> Option<std::path::PathBuf> {
     cad_cache_find(&cad_cache_dir(), item, url)
 }

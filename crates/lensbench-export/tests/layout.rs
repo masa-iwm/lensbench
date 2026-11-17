@@ -273,7 +273,7 @@ fn step_has_solids_and_rays() {
 }
 
 /// 書いた STEP を読み直し、非球面の回転面（SURFACE_OF_REVOLUTION の断面の B スプライン）の点がサグと
-/// 許容差の中で合う（PRJ-20）。読みは lensbench-step（品の STEP の読み手と同じ）
+/// 許容差の中で合う。読みは lensbench-step（品の STEP の読み手と同じ）
 #[test]
 fn step_revolved_asphere_follows_the_sag() {
     let s = zmx("E0");

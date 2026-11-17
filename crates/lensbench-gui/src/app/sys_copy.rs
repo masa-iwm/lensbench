@@ -1,4 +1,4 @@
-//! serve の系の写し（GAR-01 の 1 段目）。serve から読んだ結果で、GUI はこれを見て描く。
+//! serve の系の写し（文書モデルの 1 段目）。serve から読んだ結果で、GUI はこれを見て描く。
 //! 書き換えるのは返事を受けたとき（[`Core::take`]）と、系を開き直す・新規にするときだけ
 
 use super::*;
@@ -16,7 +16,7 @@ pub(super) struct SysCopy {
     pub(super) ld_rows: Vec<lens_data::Row>,
     pub(super) ld_units: Vec<lens_data::Unit>,
     pub(super) ld_blocks: Vec<lens_data::Block>,
-    /// 組合せの要素のブロックの id と往路の面の範囲（load の `blocks`。要素の行の範囲、GPN-01）
+    /// 組合せの要素のブロックの id と往路の面の範囲（load の `blocks`。要素の行の範囲）
     pub(super) elem_blocks: Vec<(String, Vec<[usize; 2]>)>,
     /// 開いた系の元に戻せる段・やり直せる段の数（serve の set・edit・undo・redo の結果）
     pub(super) hist: (usize, usize),

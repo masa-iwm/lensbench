@@ -1,5 +1,5 @@
 //! dOPL/dp を全パラメータ・全系で書き出す（実装の新旧比較用）: `grad_dump [--glass-dir D] [zmx ...]`
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 use std::path::PathBuf;
 
 use lensbench_core::zmx::{self, LoadOptions};

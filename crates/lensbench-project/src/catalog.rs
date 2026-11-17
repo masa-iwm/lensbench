@@ -92,7 +92,7 @@ pub struct UserItem {
     pub notes: Vec<String>,
 }
 
-/// 品の中身（[`UserItem::body`]）。欄の組み合わせのうち意味のあるものだけ（PRJ-17）
+/// 品の中身（[`UserItem::body`]）。欄の組み合わせのうち意味のあるものだけ
 #[derive(Debug, Clone, Copy)]
 pub enum ItemBody<'a> {
     /// 光学の面。枠付きの品は枠（[`UserItem::frame`]）とその向き（`frame_reversed`）も
@@ -532,7 +532,7 @@ pub fn is_catalog_file(p: &Path) -> bool {
 mod tests {
     use super::*;
 
-    /// 品の欄の組み合わせ: 意味のあるものだけ通し、ほかは読むときに誤り（PRJ-17）
+    /// 品の欄の組み合わせ: 意味のあるものだけ通し、ほかは読むときに誤り
     #[test]
     fn item_body_rejects_meaningless_combinations() {
         let read = |items: &str| UserCatalog::from_json(&format!(r#"{{"items": {items}}}"#));

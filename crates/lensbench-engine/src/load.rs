@@ -27,7 +27,7 @@ pub struct SysSpec {
     /// 誤りの文に書く引数の名前（既定は CLI の旗。serve の load は [`lensbench_project::open::ArgNames::SERVE`]）
     pub names: lensbench_project::open::ArgNames,
     /// マクロのソルブを解けなかったら（途中で止まった・外して保存された値で固定した）誤りにする。既定（false）は
-    /// OpticStudio と同じ値で読み、注意を出す（IOO-22、11/17 の決定）
+    /// OpticStudio と同じ値で読み、注意を出す（11/17 の決定）
     pub strict_macros: bool,
 }
 
@@ -42,7 +42,7 @@ impl SysSpec {
             split_path: self.path.as_deref(),
             wavelengths: None,
             names: self.names,
-            // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+            // 機構部品の詳しい形の STEP は取った STEP のキャッシュから
             step_files: Some(&lensbench_cad::cached_step),
         }
     }
@@ -62,7 +62,7 @@ pub fn load_file_notes(c: &SysSpec) -> Result<(System, Vec<String>), lensbench_c
 
 /// [`read_file_notes`] で読んだもの
 pub struct ReadFile {
-    /// 読んだファイル（serve が持っておき、別の状態・経路をそこから引く。CLI-21）
+    /// 読んだファイル（serve が持っておき、別の状態・経路をそこから引く）
     pub src: Source,
     pub sys: System,
     /// 読んだときの注意（[`load_source_notes`]）
@@ -116,7 +116,7 @@ pub(crate) fn load_source_faces(
 }
 
 /// 読んだファイル src から、c の構成・状態・経路の系を読む。注意（プロジェクトの展開・分散式・マクロ・
-/// 取り込み）は返す（CLI は標準エラーへ、serve は load の返事と解析の notes へ、GUI は履歴へ。CLI-10）
+/// 取り込み）は返す（CLI は標準エラーへ、serve は load の返事と解析の notes へ、GUI は履歴へ）
 pub fn load_source_notes(
     src: &Source,
     c: &SysSpec,
@@ -277,7 +277,7 @@ impl OverlaidSys {
 pub(crate) type Loaded<'a> = (&'a Source, &'a System);
 
 /// [`overlay_systems`] の重ね描きの系。loaded があればファイルを読み直さずに src から引き、.zmx の多重構成の表を
-/// 読めていれば cur の表から、今の状態・経路は cur そのものを使う（CLI-21）。系ごとの bool はそうして読み込んだ後の
+/// 読めていれば cur の表から、今の状態・経路は cur そのものを使う。系ごとの bool はそうして読み込んだ後の
 /// 変更がもう入っているか（false なら呼ぶ側が当て直す）
 pub(crate) fn overlay_in(
     c: &SysSpec,
@@ -360,7 +360,7 @@ pub(crate) fn overlay_in(
     let cat = LensCatalog::load_registered(&c.lens_catalog)?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
-        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから
         step_files: Some(&lensbench_cad::cached_step),
         base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
         glass_dirs: c.glass_dir.clone(),
@@ -565,7 +565,7 @@ pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> lensbench_core::Result
 mod strict_tests {
     use super::*;
 
-    /// 途中で止まるマクロのソルブ: 既定は注意だけで読み、strict_macros なら誤り（IOO-22）
+    /// 途中で止まるマクロのソルブ: 既定は注意だけで読み、strict_macros なら誤り
     #[test]
     fn strict_macros_turns_the_macro_warning_into_an_error() {
         let d = std::env::temp_dir().join(format!("lb_strict_macros_{}", std::process::id()));

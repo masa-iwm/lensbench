@@ -113,7 +113,7 @@ fn write_roundtrip() {
 }
 
 /// sag_xy は追跡と同じ形（Shape::sag）: トロイダル面・Cylinder Fresnel の基板・Fresnel（平らな基板）でも、追跡した
-/// 光線の面の上の交点（局所座標）の z と合う（KRN-34。以前は回転対称でない面のほかを偶数次非球面として求めていた）
+/// 光線の面の上の交点（局所座標）の z と合う（以前は回転対称でない面のほかを偶数次非球面として求めていた）
 #[test]
 fn sag_xy_is_the_traced_shape() {
     use lensbench_core::FieldSel;

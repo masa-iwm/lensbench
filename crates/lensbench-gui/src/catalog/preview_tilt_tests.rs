@@ -1,9 +1,9 @@
-//! 傾いた鏡のカタログのプレビュー（#130）
+//! 傾いた鏡のカタログのプレビュー
 
 use super::*;
 use serde_json::json;
 
-/// 45° の平面鏡のプレビュー: 絞りは鏡の手前の端より前、光線は絞りを通ってから鏡で折れる（#130）
+/// 45° の平面鏡のプレビュー: 絞りは鏡の手前の端より前、光線は絞りを通ってから鏡で折れる
 #[test]
 fn tilted_mirror_preview_stop_before_mirror() {
     let r = LensRow {
@@ -37,7 +37,7 @@ fn tilted_mirror_preview_stop_before_mirror() {
     }
 }
 
-/// カタログの玉は既定でロック、鏡・BS はロックしない（#123）
+/// カタログの玉は既定でロック、鏡・BS はロックしない
 #[test]
 fn catalog_lens_locked_by_default() {
     let lens = LensRow {

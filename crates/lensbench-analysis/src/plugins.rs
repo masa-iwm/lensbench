@@ -665,7 +665,7 @@ impl Plugin for Analysis {
         }
     }
 
-    /// 設定の項目。登録簿に同じ解析・同じ名前の項目があれば、既定値はそちらから取る（既定値を 1 か所に、ANA-03・XCT-02）
+    /// 設定の項目。登録簿に同じ解析・同じ名前の項目があれば、既定値はそちらから取る（既定値を 1 か所に）
     fn params(&self) -> Vec<ParamSpec> {
         let mut v = self.own_params();
         let Some(a) = self
@@ -1152,7 +1152,7 @@ mod defaults_tests {
     use super::*;
 
     /// どの同梱プラグインも、prepare が既定値を使う項目に既定値がある（省いた設定で準備できる）。
-    /// 登録簿にある項目は登録簿の既定値になる（ANA-03）
+    /// 登録簿にある項目は登録簿の既定値になる
     #[test]
     fn every_plugin_prepares_with_defaults_from_the_registry() {
         let mut r = Registry::new();

@@ -452,7 +452,7 @@ fn wedge_face_follows_lens_orientation() {
         };
         assert_eq!(flat1(&r), [true, true]);
         assert_eq!(flat1(&HashSet::new()), [!rev, !rev]);
-        // id の無い裏返した玉（lens2 …）も同じ（#192）
+        // id の無い裏返した玉（lens2 …）も同じ
         let src2 = src.replace(r#""id": "L2", "#, "");
         let p2 = Project::from_json(&src2).unwrap();
         let s2 = expand(&p2, &env, &ExpandOpts::default())
@@ -543,7 +543,7 @@ fn explicit_tol_scale() {
 
 #[test]
 fn compensator_values_tilt_magnitude_and_csv() {
-    // 補償子の試行ごとの値（試行の順）・傾き tx・ty の組の大きさ（分）・試行ごとの CSV（#164）
+    // 補償子の試行ごとの値（試行の順）・傾き tx・ty の組の大きさ（分）・試行ごとの CSV
     let (_, s) = sys();
     let v = json!({
         "preset": "none", "trials": 5, "seed": 2, "dist": "uniform", "sensitivity": false,
@@ -598,7 +598,7 @@ fn compensator_values_tilt_magnitude_and_csv() {
     assert!(compensators_csv(&json!({"compensators": []})).is_err());
 }
 
-/// 光源の波長のずれ（#163）: "wave" はすべての波長、"wave1" は 1 つ
+/// 光源の波長のずれ: "wave" はすべての波長、"wave1" は 1 つ
 #[test]
 fn wavelength_tolerance_param() {
     let (_, s) = sys();

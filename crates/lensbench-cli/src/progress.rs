@@ -1,4 +1,4 @@
-//! 長い計算（最適化・公差・差し替え探索・runs）の進み具合を標準エラーに出す受け手（IOO-26・CLI-10）。
+//! 長い計算（最適化・公差・差し替え探索・runs）の進み具合を標準エラーに出す受け手。
 //! 計算は進み具合を文脈（[`lensbench_core::par::with_progress`]）へ知らせるだけで、出し方は呼んだ側が決める
 
 use lensbench_core::par::{self, Event};

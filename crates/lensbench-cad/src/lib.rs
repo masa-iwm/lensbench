@@ -1,6 +1,6 @@
 //! 品の CAD データ（メーカーの STEP）を取る・置き場に上げる・測る・詳しい形（三角形）にする。
 //!
-//! 以前は CLI クレートの中にあり、GUI・Web 版が CLI ごと（clap など）依存していた（見直し BLD-08・BLD-10）。
+//! 以前は CLI クレートの中にあり、GUI・Web 版が CLI ごと（clap など）依存していた。
 //! - [`detail`] は STEP を測る・三角形にする・gzip（ネイティブと Web 版の両方）。三角形にする部分（truck）は
 //!   feature `mesh`（既定で有効）。外すか `--cfg lensbench_no_mesh` で組むと
 //!   [`detail::details`] は None（詳しい形は描かない）

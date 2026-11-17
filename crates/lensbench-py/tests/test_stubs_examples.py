@@ -137,7 +137,7 @@ def _typed_dicts():
 
 
 def test_result_typed_dicts_match_the_results(tmp_path):
-    """型スタブの結果の TypedDict（CLI-16）と、実際の結果の dict の鍵が合う"""
+    """型スタブの結果の TypedDict と、実際の結果の dict の鍵が合う"""
     s = lb.System.load(str(ROOT / "tests" / "refs" / "A0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
     td = _typed_dicts()
     b0 = lb.System.load(str(ROOT / "tests" / "refs" / "B0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
@@ -208,7 +208,7 @@ def test_result_typed_dicts_match_the_results(tmp_path):
 
 
 def test_builtin_errors_are_translated_in_japanese():
-    # IndexError・ValueError に直に渡す英語の文も、日本語の表示では訳の表から日本語に（XCT-20）
+    # IndexError・ValueError に直に渡す英語の文も、日本語の表示では訳の表から日本語に
     code = (
         "import lensbench as lb\n"
         f"s = lb.System.load({str(ROOT / 'tests' / 'refs' / 'A0' / 'system.zmx')!r}, glass_dirs=[{str(ROOT / 'tests' / 'glass')!r}])\n"

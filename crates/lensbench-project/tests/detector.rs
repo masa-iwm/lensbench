@@ -27,7 +27,7 @@ fn check_toy(m: &Map<String, Value>) -> lensbench_core::Result<()> {
     Ok(())
 }
 
-/// 試しの検出器を足した表の中で f を回す（プロセスの既定の表は変えない、XCT-30）
+/// 試しの検出器を足した表の中で f を回す（プロセスの既定の表は変えない）
 fn with_toy<R>(f: impl FnOnce() -> R) -> R {
     let mut e = (*ext::current()).clone();
     detectors::add(

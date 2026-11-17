@@ -108,7 +108,7 @@ fn macro_errors_like_opticstudio() {
         ("LBNONE", -0.0123),
     ] {
         let s = load(&singlet(name, -0.0123), &d);
-        // 値は OpticStudio と同じだが、止まったことは黙らない（IOO-22）。0 で割るのは止まらない
+        // 値は OpticStudio と同じだが、止まったことは黙らない。0 で割るのは止まらない
         let w = s.macro_warnings();
         if name == "LBNONE" || name == "LBDIV" {
             assert!(w.is_empty(), "{name}: {w:?}");
@@ -123,7 +123,7 @@ fn macro_errors_like_opticstudio() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 解き直せないマクロのソルブ（自分の値を読んで収まらない）だけを外し、同じ系のほかのマクロのソルブは残す（IOO-22）
+/// 解き直せないマクロのソルブ（自分の値を読んで収まらない）だけを外し、同じ系のほかのマクロのソルブは残す
 #[test]
 fn one_bad_macro_keeps_the_other_macro_solves() {
     let d = macro_dir(

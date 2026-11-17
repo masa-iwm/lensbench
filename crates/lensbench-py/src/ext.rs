@@ -25,7 +25,7 @@ pub trait NativeTask: Send + Sync {
 /// A function that takes a [`NativeTask`] out of a Python value (None if the value is not one)
 pub type NativeTaskFrom = fn(&Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>>;
 
-/// The registered functions that take out a [`NativeTask`] (a slot of the extension table `lensbench_core::ext::Ext`, XCT-07)
+/// The registered functions that take out a [`NativeTask`] (a slot of the extension table `lensbench_core::ext::Ext`)
 #[derive(Clone, Default)]
 pub struct NativeTasks(Vec<NativeTaskFrom>);
 

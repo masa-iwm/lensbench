@@ -1,4 +1,4 @@
-//! 取った品の STEP の立体を、書き出す STEP に写す（#121）。
+//! 取った品の STEP の立体を、書き出す STEP に写す。
 //!
 //! 品の STEP の殻（`CLOSED_SHELL`）から辿れる実体を番号を付け直して写し、点（`CARTESIAN_POINT`）は置き方の
 //! 変換で動かし、向き（`DIRECTION`）は回し、長さ（円・円柱の半径、`VECTOR` の大きさなど）は単位の倍率を掛ける
@@ -11,7 +11,7 @@ use std::collections::{BTreeSet, HashMap};
 /// 品の STEP（[`crate::detail::Detail::step`]）
 #[derive(Debug, Clone)]
 pub struct StepSource {
-    /// 読んだ STEP（殻から辿れる実体だけ。[`StepFile::subset`]、PRJ-21）。部品ごとに読み直さない（PRJ-06）
+    /// 読んだ STEP（殻から辿れる実体だけ。[`StepFile::subset`]）。部品ごとに読み直さない
     pub file: std::sync::Arc<StepFile>,
     /// 長さの単位の倍率（mm へ）
     pub unit_mm: f64,
@@ -100,7 +100,7 @@ fn has_real(args: &str) -> bool {
     false
 }
 
-/// 単位を直す表に無く、実数を持つ型（長さの引数かもしれないのに直さなかった。PRJ-22）なら Some(型の名前)
+/// 単位を直す表に無く、実数を持つ型（長さの引数かもしれないのに直さなかった）なら Some(型の名前)
 fn unscaled_type<'a>(ty: &'a str, args: &[&str], own: bool) -> Option<&'a str> {
     let known = if own {
         !own_length_args(ty).is_empty()
@@ -159,7 +159,7 @@ pub trait Sink {
 
 /// 殻を 1 つ写し、`MANIFOLD_SOLID_BREP` の番号を返す。`place` は部品の座標 [mm] から書き出す座標への変換
 /// （回転の行列の列が軸、原点）。写せなければ None。単位の倍率 k が 1 でないとき、長さを直す表に無く実数を持つ
-/// 型の名前を `unscaled` に足す（長さなら mm に直っていない。PRJ-22）
+/// 型の名前を `unscaled` に足す（長さなら mm に直っていない）
 #[allow(clippy::too_many_arguments)]
 pub fn embed_shell(
     sink: &mut impl Sink,
@@ -265,7 +265,7 @@ pub fn embed_shell(
                 }
                 scaled(ty, &args, length_args(ty), k, real)
             }
-            // 複合の実体: 部分ごとに長さを直す（PRJ-22）
+            // 複合の実体: 部分ごとに長さを直す
             None => match complex_parts(body) {
                 Some(parts) => {
                     let v: Vec<String> = parts
@@ -323,7 +323,7 @@ mod tests {
         format!("{x:?}")
     }
 
-    /// 双曲線・放物線と、複合の実体の部分の長さにも単位の倍率を掛ける（PRJ-22）
+    /// 双曲線・放物線と、複合の実体の部分の長さにも単位の倍率を掛ける
     #[test]
     fn lengths_in_conics_and_complex_entities_are_scaled() {
         let (ty, a) = split("HYPERBOLA('',#5,2.,1.5)").unwrap();
@@ -351,7 +351,7 @@ mod tests {
         );
     }
 
-    /// 長さを直す表に無く実数を持つ型を拾う。B スプラインの節点・参照の番号・文字列の中の数は数えない（PRJ-22）
+    /// 長さを直す表に無く実数を持つ型を拾う。B スプラインの節点・参照の番号・文字列の中の数は数えない
     #[test]
     fn unknown_types_with_reals_are_reported() {
         let t = |b: &str, own: bool| {

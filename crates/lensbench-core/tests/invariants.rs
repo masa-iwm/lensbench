@@ -278,7 +278,7 @@ fn bad_inputs_are_errors() {
     }
 }
 
-/// 多色の MTF で重みが全部 0 なら、NaN でなく誤り（ANA-23。psf・幾何 MTF と同じ）
+/// 多色の MTF で重みが全部 0 なら、NaN でなく誤り（psf・幾何 MTF と同じ）
 #[test]
 fn mtf_with_all_zero_weights_is_an_error() {
     let mut s = load("A0");

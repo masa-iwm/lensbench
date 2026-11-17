@@ -1,5 +1,5 @@
 //! 面の表を描く（[`ui`]）。1 つの関数だった描画・キー・編集の確定・メニューを、表の段（[`View`]・[`Out`]）と
-//! セル・キー・確定・詳細設定の関数に分けた（lens_data.rs から分けた、GPN-03）
+//! セル・キー・確定・詳細設定の関数に分けた（lens_data.rs から分けた）
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -20,7 +20,7 @@ struct View {
     /// 入っているブロック
     scope: Option<usize>,
     lines: Vec<Line>,
-    /// 面 → 行（行ごとに何度も引くので表にする、GPN-23）
+    /// 面 → 行（行ごとに何度も引くので表にする）
     line_ix: HashMap<usize, usize>,
     /// 行の鍵の面
     keys: Vec<usize>,
@@ -229,7 +229,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     // 左端の縦の帯: 階層・ブロック・面の挿入削除・詳細設定・玉群・保存のアイコン。押したときだけ中身（一覧・ドロップダウン）を出す
     let full = ui.available_rect_before_wrap();
     ui.allocate_rect(full, Sense::hover());
-    // 幅があるときは帯のアイコンに字も出す（絵だけでは意味が分からない、GUX-24）
+    // 幅があるときは帯のアイコンに字も出す（絵だけでは意味が分からない）
     // 記号がフォントに無い（豆腐 □ になる）ときも字を出す
     let tofu = |t: &&str| !ui.fonts(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
     let wide = full.width() >= 760.0 || ICONS.iter().any(tofu);
@@ -419,7 +419,7 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
         .show(top, |ui| {
             // 文字を選べるラベルはクリックを取ってしまう（セルの空き・行のクリックが行に届かない）
             ui.style_mut().interaction.selectable_labels = false;
-            // 面の列の幅は見出しが入る幅から（英語の「Surface」が切れない、GUX-32）
+            // 面の列の幅は見出しが入る幅から（英語の「Surface」が切れない）
             let surf_w =
                 ui.fonts(|f| {
                     f.layout_no_wrap(
@@ -461,7 +461,7 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
             }
             table
                 .header(22.0, |mut h| {
-                    // 見出しは折り返さない（2 行に折れて行に重ならない、GUX-15）
+                    // 見出しは折り返さない（2 行に折れて行に重ならない）
                     h.col(|ui| {
                         ui.add(egui::Label::new(RichText::new(tr("Surface")).strong()).truncate());
                     });

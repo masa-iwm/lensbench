@@ -1,4 +1,4 @@
-//! 差し替え探索の同じ形の候補（置いた玉の面が同じ選び方）をまとめる（PRJ-07、[`super`]）
+//! 差し替え探索の同じ形の候補（置いた玉の面が同じ選び方）をまとめる（[`super`]）
 
 use super::Pick;
 use lensbench_core::catalog::LensCatalog;

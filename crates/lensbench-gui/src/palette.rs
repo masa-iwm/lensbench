@@ -26,7 +26,7 @@ pub struct Palette {
     pub recent: Vec<String>,
 }
 
-/// 何も打っていないときの並び: 最近使った操作 → ほか → 捨てる操作（GUX-25: Enter で新規が走らない）
+/// 何も打っていないときの並び: 最近使った操作 → ほか → 捨てる操作（Enter で新規が走らない）
 fn order<'a, C>(items: &'a [Item<C>], query: &str, recent: &[String]) -> Vec<&'a Item<C>> {
     let mut hits: Vec<&Item<C>> = items
         .iter()
@@ -162,7 +162,7 @@ impl Palette {
 mod tests {
     use super::*;
 
-    /// 何も打っていないときは、最近使った操作が先頭、捨てる操作（新規）は最後（GUX-25）
+    /// 何も打っていないときは、最近使った操作が先頭、捨てる操作（新規）は最後
     #[test]
     fn empty_query_puts_danger_last() {
         let it = |l: &str, danger: bool| Item {

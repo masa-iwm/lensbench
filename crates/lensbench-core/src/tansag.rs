@@ -1,5 +1,5 @@
-//! 子午・球欠の組（ANA-09）
-/// 子午（像面の y 方向の周波数）と球欠（x 方向）の組。順を取り違えないよう名前で持つ（ANA-09）
+//! 子午・球欠の組
+/// 子午（像面の y 方向の周波数）と球欠（x 方向）の組。順を取り違えないよう名前で持つ
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct TanSag<T> {
     pub tan: T,

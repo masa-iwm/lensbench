@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
-// 入口の exe（XCT-35。計算の中身のクレートは検査の内）
+// 入口の exe（計算の中身のクレートは検査の内）
 // リリースでは Windows でコンソールの窓を出さない
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

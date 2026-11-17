@@ -1,4 +1,4 @@
-//! 画面の振る舞いのテスト（GAR-07）。egui_kittest で窓も GPU も使わずに App を回し、
+//! 画面の振る舞いのテスト。egui_kittest で窓も GPU も使わずに App を回し、
 //! AccessKit の木（ボタンの文言）で探して押す。計算は本物の Worker（serve と同じ method をスレッドで回す）。
 //!
 //! `--tour` は画面を撮るだけで、押した結果を確かめない。ここでは押した後の文書と表の中身を確かめる
@@ -106,7 +106,7 @@ fn open_zmx_shows_system() {
     assert_eq!(st["system"], true, "{st}");
     assert_eq!(st["status_error"], false, "{st}");
     assert!(!h.state().c.sys.ld_rows.is_empty());
-    // 書ける .zmx は要素に分けて開く（#486）
+    // 書ける .zmx は要素に分けて開く
     assert!(h.state().c.is_combo(), "{st}");
     assert!(!h.state().c.doc.combo.picks.is_empty());
 }
@@ -141,7 +141,7 @@ fn free_edit_insert_delete() {
     let mut h = harness(Args::default());
     click(&mut h, "+ Add a surface");
     let rows0 = h.state().c.sys.ld_rows.len();
-    // 帯のアイコンの名前は字形・帯の幅に依らず字だけ（GPN-22）
+    // 帯のアイコンの名前は字形・帯の幅に依らず字だけ
     assert!(h.query_by_label("Insert").is_some());
     click_icon(&mut h, "＋", "Insert");
     assert_eq!(
@@ -251,7 +251,7 @@ fn solve_kind_pick_keeps_menu() {
 }
 
 /// 見るパラメータの get は 1 つの要求に束ねる。先頭のパラメータが誤り（無い面）で止まっても、残りは 1 つずつ
-/// 頼み直して値が入る（GAR-05）
+/// 頼み直して値が入る
 #[test]
 fn bundled_gets_survive_first_error() {
     let _g = serial();

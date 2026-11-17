@@ -1,5 +1,5 @@
 //! The analysis registry from Python: `lensbench.analyses()` and `lensbench.defaults()` (the settings come from the one
-//! definition of each analysis, the same as the CLI subcommands, serve's analyze and the GUI, XCT-02).
+//! definition of each analysis, the same as the CLI subcommands, serve's analyze and the GUI).
 //! Running one is `System.analyze(name, **settings)`.
 
 use pyo3::prelude::*;

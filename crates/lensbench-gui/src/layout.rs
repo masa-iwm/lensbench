@@ -131,7 +131,7 @@ pub struct AnaCfg {
     pub view: View,
     /// 系の値が変わったら計算し直す
     pub live: bool,
-    /// 図の見せ方（干渉縞・対数・選んだ視野・拡大など、GPN-28。大きいので箱に）
+    /// 図の見せ方（干渉縞・対数・選んだ視野・拡大など。大きいので箱に）
     pub fig: Box<crate::figures::FigState>,
 }
 
@@ -187,7 +187,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// 1 枚だけ置くパネル（解析のほかは全部）。足す操作は、あれば表に出す（GUX-16）
+    /// 1 枚だけ置くパネル（解析のほかは全部）。足す操作は、あれば表に出す
     pub fn single(&self) -> bool {
         !matches!(self, Kind::Analysis(_))
     }
@@ -198,7 +198,7 @@ impl Kind {
     }
 }
 
-/// 解析でないパネル（1 枚だけ）の定義。メニュー・パレット・タブの名前はここから作る（GAR-16）
+/// 解析でないパネル（1 枚だけ）の定義。メニュー・パレット・タブの名前はここから作る
 pub struct Tool {
     pub kind: Kind,
     /// 名前（tr の鍵）
@@ -492,7 +492,7 @@ impl Preset {
         match self {
             Preset::Analysis => {
                 // 左: 系（カタログはタブ）、中央上: レイアウト図、中央下: レンズデータ（多重構成はタブ）、
-                // 右上: スポット、右下: MTF（波面はタブ）（GUX-04）
+                // 右上: スポット、右下: MTF（波面はタブ）
                 let lay = pane(Kind::Layout);
                 let mut dock = DockState::new(vec![lay]);
                 let sys = pane(Kind::System);
@@ -506,7 +506,7 @@ impl Preset {
                 let [center, _] = m.split_left(NodeIndex::root(), 0.22, vec![sys, catalog]);
                 let [center, right] = m.split_right(center, 0.6, vec![spot]);
                 m.split_below(right, 0.5, vec![mtf, wf]);
-                // レイアウト図を広く（既定の窓で図が潰れない、GUX-30）
+                // レイアウト図を広く（既定の窓で図が潰れない）
                 m.split_below(center, 0.62, vec![lens, mce]);
                 Layout {
                     dock,

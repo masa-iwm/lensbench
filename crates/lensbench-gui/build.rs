@@ -1,5 +1,5 @@
 //! 版の欄に出す git のハッシュ（LENSBENCH_GIT_HASH で上書き。git が無ければ空）と、Windows の exe のアイコン
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
 use std::path::Path;
 use std::process::Command;
@@ -23,7 +23,7 @@ fn main() {
     if let Some(dir) = git(&["rev-parse", "--git-dir"]) {
         let dir = Path::new(&dir);
         // index は見ない（git add のたびに GUI のクレートが作り直しになる。手元の変更の印「+」はコミット・
-        // ブランチの切り替えのときに付け直す。公開 #216 GAR-22）
+        // ブランチの切り替えのときに付け直す）
         for f in ["HEAD", "packed-refs"] {
             println!("cargo:rerun-if-changed={}", dir.join(f).display());
         }
@@ -55,7 +55,7 @@ fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>, keep: &dyn Fn(&Path) -> b
 }
 
 /// アプリ版に同梱する見本（例題の組合せ・プロジェクトとそのレンズ、tests/refs の系、公開用ガラス）の一覧。
-/// Web 版は lensbench-web が同じものを置き場に入れるので、ここでは空にする（GUX-26）
+/// Web 版は lensbench-web が同じものを置き場に入れるので、ここでは空にする
 fn samples() {
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("samples.rs");
     let mut src =

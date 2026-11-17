@@ -1,4 +1,4 @@
-//! モンテカルロ公差の設定の JSON の型（PRJ-11）。キーの意味は [`crate::tolerance`] の表。知らないキーは誤りで、
+//! モンテカルロ公差の設定の JSON の型。キーの意味は [`crate::tolerance`] の表。知らないキーは誤りで、
 //! 誤りの文には欄の道（`tolerance.lenses.L1: …`）が付く。`docs/schema/tolerance.schema.json` はこの型から作る。
 
 use crate::montecarlo::{Dist, GroupTol, LensTol};

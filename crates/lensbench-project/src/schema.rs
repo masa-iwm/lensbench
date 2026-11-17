@@ -110,7 +110,7 @@ pub fn all() -> Vec<(&'static str, Value)> {
 }
 
 /// すべてのスキーマで、検出器は `kinds` だけ。docs/schema は `all_with(&[])`（同じプロセスの試験・プラグインが
-/// 登録した種類に左右されない、XCT-32）
+/// 登録した種類に左右されない）
 pub fn all_with(kinds: &[detectors::DetectorKind]) -> Vec<(&'static str, Value)> {
     NAMES
         .iter()

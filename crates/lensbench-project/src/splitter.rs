@@ -694,7 +694,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let t = self.letter(spec.arm)?;
         let start = self.sf.len();
         let out = self.split_pass(&key, A, t)?;
-        // BS の面に BS の id を付ける（口の先の面は入れない。GUI の要素の面の範囲、GPN-01）。玉・群の
+        // BS の面に BS の id を付ける（口の先の面は入れない。GUI の要素の面の範囲）。玉・群の
         // パラメータ（System::units）は増やさないので note は使わない
         if !id.is_empty() {
             for o in &mut self.map[start..] {

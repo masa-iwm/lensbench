@@ -10,7 +10,7 @@
 //! 引き継がれず、止まる）。子で並列にしたいときは forkserver・spawn で子プロセスを作る。
 
 #![warn(unreachable_pub)]
-#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（計算の中身のクレートは検査の内）
 
 mod edit;
 mod errors;
@@ -552,7 +552,7 @@ const REC_COLS: [(&str, RecGet); 10] = [
 impl Soa {
     fn new(traces: &[Trace], n: usize, globals: bool, record: bool) -> Soa {
         let nw = traces.len();
-        // 光線を 1 回だけ走査して全部の列を埋める（CLI-28）
+        // 光線を 1 回だけ走査して全部の列を埋める
         let ng = if globals { GLOBAL_COLS.len() } else { 0 };
         let mut cols: Vec<Vec<f64>> = (0..COLS.len() + ng)
             .map(|_| Vec::with_capacity(nw * n))

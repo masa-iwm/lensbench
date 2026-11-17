@@ -17,7 +17,7 @@ workspace = true
 lensbench-core = { path = "../lensbench-core" }
 png = "0.17"
 serde_json = { version = "1", features = ["preserve_order"] }
-# 品の STEP の読み（測りと同じ表で写す、PRJ-06）
+# 品の STEP の読み（測りと同じ表で写す）
 lensbench-step = { path = "../lensbench-step" }
 
 [dev-dependencies]
@@ -25,7 +25,7 @@ ndarray = "0.16"
 ndarray-npy = "0.9"
 lensbench-project = { path = "../lensbench-project" }
 
-# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
+# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない）
 [[test]]
 name = "it"
 path = "tests/it.rs"

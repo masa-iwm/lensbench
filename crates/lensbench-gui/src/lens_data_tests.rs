@@ -323,7 +323,7 @@ fn commit_only_changed_values() {
         commit_act(&cb, 2, Col::Par(4), "10"),
         Some(Act::Fields { j: 2, .. })
     ));
-    // パラメータの列を空で決めても 0 を入れない（GPN-30）
+    // パラメータの列を空で決めても 0 を入れない
     let cb1 = Row {
         cb: vec![0.0, 0.0, 0.0, 3.0, 0.0],
         ..cb.clone()
@@ -537,8 +537,7 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert!(range_src("x", &b, 2).is_err());
 }
 
-/// 表を egui の画面で回す: 1 フレームずつ入力（events）を渡し、出た Act を集める（画面の振る舞いの試験、
-/// GPN-29・GAR-07）
+/// 表を egui の画面で回す: 1 フレームずつ入力（events）を渡し、出た Act を集める（画面の振る舞いの試験）
 fn drive(st: &mut LensData, rows: &[Row], frames: Vec<Vec<egui::Event>>) -> Vec<Act> {
     drive_with(st, rows, &[], &BTreeSet::new(), frames)
 }

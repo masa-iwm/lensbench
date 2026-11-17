@@ -20,7 +20,7 @@ def test_builtin_analysis_listed():
     s = lb.plugin_spec("rms")
     assert s["kind"] == "analysis" and s["needs_system"]
     assert "field" in [k for k, _ in s["inputs"]]
-    # 設定の項目は型・既定つき（ANA-19）
+    # 設定の項目は型・既定つき
     cfg = {p["name"]: p for p in s["config"]}
     assert cfg["rings"]["type"] == "count" and cfg["rings"]["default"] == 6
     assert cfg["reference"]["choices"] == ["centroid", "chief"]

@@ -451,7 +451,7 @@ fn propagate_with(
     let hmin = hmax * 1e-9;
     let mut len = 0.0;
     for i in 0..1_000_000u32 {
-        // 長い媒質（刻みが小さいまま進む光線）でも中断を見る（KRN-15 の印。光線は誤りになり、解析が中断を返す）
+        // 長い媒質（刻みが小さいまま進む光線）でも中断を見る（中断の印。光線は誤りになり、解析が中断を返す）
         if i % 4096 == 4095 && crate::par::cancelled() {
             return None;
         }

@@ -242,7 +242,7 @@ fn pupil_orientation_matches_opticstudio_and_signed_is_continuous() {
     }
 }
 
-/// 解けない絞りの点（絞りの半径の 1e3 倍）はエイミングの失敗。数値・記録・開始の位置はすべて NaN（KRN-10）
+/// 解けない絞りの点（絞りの半径の 1e3 倍）はエイミングの失敗。数値・記録・開始の位置はすべて NaN
 #[test]
 fn aim_failure_is_reported_and_nan() {
     use lensbench_core::trace::RayStatus;
@@ -283,7 +283,7 @@ fn aim_failure_is_reported_and_nan() {
     }
 }
 
-/// 列の入れ物への追跡（KRN-09）は Trace と同じビット。書かない列は空、入れ物は使い回せる
+/// 列の入れ物への追跡は Trace と同じビット。書かない列は空、入れ物は使い回せる
 #[test]
 fn trace_into_matches_trace() {
     use lensbench_core::system::{Cols, RayBuf};

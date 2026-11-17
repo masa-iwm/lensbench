@@ -1276,7 +1276,7 @@ mod tests {
         }
     }
 
-    /// 保持する素子の選び方（#182）: ねじ → 座（溝を除く） → 最も長い穴
+    /// 保持する素子の選び方: ねじ → 座（溝を除く） → 最も長い穴
     #[test]
     fn pick_hold_order() {
         let b = |z0: f64, z1: f64, diameter: f64| lensbench_project::BoreSpec { z0, z1, diameter };

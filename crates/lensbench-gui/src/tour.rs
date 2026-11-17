@@ -15,7 +15,7 @@ use web_time::Instant;
 /// 通し確認が失敗したか（main が終了コードにする）
 pub static FAILED: AtomicBool = AtomicBool::new(false);
 
-/// 全体の時間の上限の既定（`--tour-timeout` で変えられる。ソフト描画では足りないことがある、公開 #236）
+/// 全体の時間の上限の既定（`--tour-timeout` で変えられる。ソフト描画では足りないことがある）
 const TIMEOUT: Duration = Duration::from_secs(240);
 /// 計算が終わってから撮るまでに待つフレーム数（配置が落ち着くまで）
 const SETTLE: u32 = 6;
@@ -35,7 +35,7 @@ pub struct Args {
     pub tour_timeout: Option<Duration>,
     /// 起動時に出す知らせ（設定の取り込みなど）
     pub notice: Option<crate::portable::Notice>,
-    /// --help・-h: 使い方を出して終わる（GUX-32）
+    /// --help・-h: 使い方を出して終わる
     pub help: bool,
 }
 
@@ -82,7 +82,7 @@ impl Args {
 }
 
 /// 通し確認の設定: 日本語、確かめる窓で止まらない（答えは「いいえ」）、引数でフォルダを渡さなければ通常の起動と
-/// 同じく exe の隣の catalogs/ を使う（配る版の確認、公開 #236）
+/// 同じく exe の隣の catalogs/ を使う（配る版の確認）
 pub fn prepare(args: &Args, s: &mut crate::app::Settings) {
     s.lang = crate::i18n::Lang::Ja;
     crate::files::set_unattended(true);
@@ -93,7 +93,7 @@ pub fn prepare(args: &Args, s: &mut crate::app::Settings) {
     }
 }
 
-/// ズームの段の例の系（P17）。例のフォルダの無い配る版でも回るように、exe に埋めた系を出力先に書く（公開 #236）
+/// ズームの段の例の系（P17）。例のフォルダの無い配る版でも回るように、exe に埋めた系を出力先に書く
 pub fn zoom_sample(dir: &Path) -> PathBuf {
     let p = dir.join("P17_zoom_three_groups.json");
     let _ = lensbench_core::vfs::write(

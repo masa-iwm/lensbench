@@ -13,13 +13,13 @@ rust-version = "1.100"
 
 # ワークスペース共通の lint（各クレートは [lints] workspace = true）。clippy の -D warnings は CI のコマンドライン
 [workspace.lints.rust]
-# truck（STEP の三角形化）を組まない印（RUSTFLAGS="--cfg lensbench_no_mesh"。lensbench-cad、XCT-17）
+# truck（STEP の三角形化）を組まない印（RUSTFLAGS="--cfg lensbench_no_mesh"。lensbench-cad）
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(lensbench_no_mesh)"] }
 
 [workspace.lints.clippy]
-# 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める（BLD-30）
+# 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める
 needless_range_loop = "allow"
-# 試験の外の unwrap・panic! を見つける（XCT-21。クレートを分けても検査から外れないようワークスペースに置く、XCT-35）。
+# 試験の外の unwrap・panic! を見つける（クレートを分けても検査から外れないようワークスペースに置く）。
 # 試験の中は public/clippy.toml の allow-*-in-tests で許す。入口の exe（GUI・Web 版・CLI・Python）はクレートの根で allow
 unwrap_used = "warn"
 panic = "warn"

@@ -1,6 +1,6 @@
 //! serve の method の名前・書式の版と、method ごとの鍵の取り方
 
-/// serve の method の名前（`describe` が返す。`handle` の match と試験で突き合わせる、CLI-22）
+/// serve の method の名前（`describe` が返す。`handle` の match と試験で突き合わせる）
 pub const METHODS: &[&str] = &[
     "ping",
     "progress",

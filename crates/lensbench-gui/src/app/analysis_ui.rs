@@ -1,4 +1,4 @@
-//! 系の設定・物体・解析のパネル（app.rs から分けた、GAR-07）
+//! 系の設定・物体・解析のパネル（app.rs から分けた）
 
 use super::*;
 
@@ -81,7 +81,7 @@ impl Core {
                 .num_columns(2)
                 .striped(true)
                 .show(ui, |ui| {
-                    // 値は折り返す（視野が多くてもパネルの右で切れない、GUX-14）
+                    // 値は折り返す（視野が多くてもパネルの右で切れない）
                     let mut row = |k: &str, v: RichText| {
                         ui.label(RichText::new(k).color(weak));
                         ui.add(egui::Label::new(v).wrap());
@@ -241,7 +241,7 @@ impl Core {
             .count()
             + cfg.sensor.len()
             + usize::from(!cfg.extra.trim().is_empty());
-        // 変えた数はボタンの中の小さい印にして幅を変えない（押そうとした欄が動かない、GUX-23）
+        // 変えた数はボタンの中の小さい印にして幅を変えない（押そうとした欄が動かない）
         let head = if set > 0 {
             format!("{} ●{set}", tr("⚙ Settings"))
         } else {
@@ -531,7 +531,7 @@ impl Core {
         let mut rerun = false;
         ui.horizontal_wrapped(|ui| {
             Self::analysis_picker(ui, id, cfg);
-            // 視野・波長の 2 つの選択は 1 つの塊なので、行の残りに入らなければ先に折り返す（塊の中で折り返すと右が切れる、GUX-14）
+            // 視野・波長の 2 つの選択は 1 つの塊なので、行の残りに入らなければ先に折り返す（塊の中で折り返すと右が切れる）
             let need = crate::widgets::combos_width(ui, 2, 60.0);
             crate::widgets::wrap_before(ui, need);
             ui.add_enabled_ui(layout::takes_sel(&cfg.cmd), |ui| {

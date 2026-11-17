@@ -1,4 +1,4 @@
-//! 上の帯のメニュー・コマンドパレット・操作の実行（GAR-18 で app.rs から分けた）
+//! 上の帯のメニュー・コマンドパレット・操作の実行（app.rs から分けた）
 
 use super::*;
 
@@ -16,7 +16,7 @@ impl App {
             Cmd::RunAll => self.run_all(false),
             Cmd::WriteZmx => self.c.write_zmx(),
             Cmd::Save(as_new) => self.c.save(as_new),
-            // 1 枚だけのパネルは、あれば表に出す（GUX-16）
+            // 1 枚だけのパネルは、あれば表に出す
             Cmd::Add(k) if k.single() => self.exec(ctx, Cmd::FocusKind(k)),
             Cmd::Add(k) => {
                 let id = self.add_pane(k);
@@ -123,7 +123,7 @@ impl App {
             Cmd::Undo(false, 1),
         );
         push(tr("Reload the system").into(), "reload", Cmd::Reload);
-        // 実行系（GUX-16）。設定はそれぞれのパネルのまま
+        // 実行系。設定はそれぞれのパネルのまま
         if self.c.sys.summary.is_some() {
             push(
                 tr("Optimize (current settings)").into(),
@@ -342,7 +342,7 @@ impl App {
                         cmd = Some(Cmd::WriteZmx);
                     }
                     let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
-                    // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す（GUX-26）
+                    // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す
                     let zmx = !self.c.is_combo()
                         && self.c.loc.doc_path.is_none()
                         && self.c.loc.file.as_ref().is_some_and(|f| {
@@ -459,7 +459,7 @@ impl App {
                         .weak(),
                     );
                 });
-                // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける（GUX-16）
+                // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける
                 ui.menu_button(tr("Panels"), |ui| {
                     let (single, many): (Vec<Kind>, Vec<Kind>) =
                         add_kinds().into_iter().partition(Kind::single);
@@ -638,7 +638,7 @@ impl App {
                 if ui.add_enabled(self.c.sys.summary.is_some(), run).clicked() {
                     cmd = Some(Cmd::RunAll);
                 }
-                // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー、GAR-15）。押すと何を戻すかをホバーで
+                // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー）。押すと何を戻すかをホバーで
                 for (back, icon, key) in [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")] {
                     let next = self.c.undo_list(back).into_iter().next();
                     let tip = match (&next, back) {
@@ -660,7 +660,7 @@ impl App {
                         cmd = Some(Cmd::Undo(back, 1));
                     }
                 }
-                // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない、GUX-03）
+                // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない）
                 let room = ui.available_width() - 8.0;
                 let label = if room >= 300.0 {
                     format!("🔍  {}    Ctrl K", tr("Search analyses, panels, actions"))
@@ -692,7 +692,7 @@ impl App {
     }
 }
 
-/// ファイルの「見本」の一覧: Web 版は置き場に入れたもの（引数）、アプリ版は exe に同梱したもの（GUX-26）
+/// ファイルの「見本」の一覧: Web 版は置き場に入れたもの（引数）、アプリ版は exe に同梱したもの
 pub(super) fn samples(args: &Args) -> Vec<String> {
     #[cfg(not(target_arch = "wasm32"))]
     if args.samples.is_empty() {
@@ -702,7 +702,7 @@ pub(super) fn samples(args: &Args) -> Vec<String> {
 }
 
 impl Core {
-    /// アプリ版で同梱の見本を開く前に: 書き出し、見本のガラス・レンズのフォルダを設定に足す（GUX-26）
+    /// アプリ版で同梱の見本を開く前に: 書き出し、見本のガラス・レンズのフォルダを設定に足す
     fn prepare_sample(&mut self, _f: &str) {
         #[cfg(not(target_arch = "wasm32"))]
         if crate::samples::is_sample(_f) {
@@ -762,7 +762,7 @@ const HELP_PAGES: &[(&str, &str, &str)] = &[
 ];
 
 /// パネルを外に出す操作の名前。Web 版はブラウザの別の窓（ポップアップ）に出し、元のタブで描いた画面を送って
-/// 別の窓で操作する（#137・GAR-10）
+/// 別の窓で操作する
 pub(super) fn detach_label(web: bool) -> &'static str {
     if web {
         tr("Move to another window")

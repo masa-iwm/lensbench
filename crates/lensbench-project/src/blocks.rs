@@ -5,7 +5,7 @@ use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
 pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> lensbench_core::Result<String>;
 
-/// 展開でファイル・カタログから読んだものの使い回し（[`ExpandOpts::cache`]、PRJ-13）。
+/// 展開でファイル・カタログから読んだものの使い回し（[`ExpandOpts::cache`]）。
 /// - カタログの玉: (メーカー, 型番) → (玉, 玉の .zmx のガラス)
 /// - `.zmx`・系ファイルのブロック: (正規化したパス, 構成番号) → 系。ファイルの更新時刻と大きさが変われば読み直す
 ///
@@ -66,7 +66,7 @@ pub struct Env<'a> {
     pub glass_dirs: Vec<PathBuf>,
     pub catalog: Option<CatalogLookup<'a>>,
     /// カタログの機構部品の詳しい形の STEP（[`lensbench_core::mech::MechPart::step`]）を引く口。None なら引かない
-    /// （描画・書き出しは簡易外形。PRJ-21: 以前はキャッシュのフォルダをこのクレートの中で決めて探していた）
+    /// （描画・書き出しは簡易外形。以前はキャッシュのフォルダをこのクレートの中で決めて探していた）
     pub step_files: Option<StepLookup<'a>>,
 }
 
@@ -672,7 +672,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 c.files.lock_ok().insert(key, (st, s.clone()));
             }
         };
-        // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む（#132）
+        // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む
         if p.extension()
             .is_some_and(|x| x.eq_ignore_ascii_case("json"))
         {

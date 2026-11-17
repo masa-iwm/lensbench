@@ -797,7 +797,7 @@ fn vals(v: Vec<lensbench_design::swap::SwapResult>) -> Vec<serde_json::Value> {
     v.iter().map(|x| x.to_value()).collect()
 }
 
-/// 同じ形の候補（型番違いの同じ玉）は 1 回だけ最適化し、結果を使い回す（PRJ-07）。結果はまとめないときと同じ
+/// 同じ形の候補（型番違いの同じ玉）は 1 回だけ最適化し、結果を使い回す。結果はまとめないときと同じ
 #[test]
 fn same_shaped_candidates_share_one_fit() {
     let tmp = std::env::temp_dir().join(format!("lb-swap-same-{}", std::process::id()));

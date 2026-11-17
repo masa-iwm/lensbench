@@ -1,7 +1,7 @@
-//! 形のパラメータ（c・R・k・asph・Zernike の項）の微分を、形ごとに本当の矢高・光路長の中心差分と照合する（KRN-32）。
+//! 形のパラメータ（c・R・k・asph・Zernike の項）の微分を、形ごとに本当の矢高・光路長の中心差分と照合する。
 //! asph の意味は形ごとに違う（Odd Asphere の β、Tilted の tan、Irregular の偏心・傾き・Zs・Za・Zc・角度）。
 //! 形に効かない値（Tilted の c・k、ほかの型の面に残った Zernike の項など）はパラメータにできないことも確かめる。
-//! 曲率のソルブがトロイダル面の y² の項を近軸の追跡と同じに扱うこと（KRN-33）もここで見る。
+//! 曲率のソルブがトロイダル面の y² の項を近軸の追跡と同じに扱うこともここで見る。
 
 use crate::common::root;
 use lensbench_core::freeform::ZernSag;
@@ -338,7 +338,7 @@ fn opl_and_landing_derivatives_on_every_shape() {
     }
 }
 
-/// トロイダル面の y² の項がある面の曲率のソルブ（周辺光線の角度）が、近軸の追跡で目標に丸め誤差まで届く（KRN-33）
+/// トロイダル面の y² の項がある面の曲率のソルブ（周辺光線の角度）が、近軸の追跡で目標に丸め誤差まで届く
 #[test]
 fn toroid_curvature_solve_meets_its_target() {
     let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
@@ -371,7 +371,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
 }
 
 /// 曲率のソルブは標準面・偶数次非球面・トロイダル面だけ。Odd Asphere（paraxial_extra に 2β₂ が入る）は
-/// 解かずに断るので、KRN-33 で値は変わらない（#456 レビュー）
+/// 解かずに断るので、値は変わらない
 #[test]
 fn odd_asphere_curvature_solve_is_rejected() {
     let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\

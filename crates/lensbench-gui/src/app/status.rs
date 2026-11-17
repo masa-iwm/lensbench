@@ -1,4 +1,4 @@
-//! 下の行（状態・系の数値）と状態の履歴（GAR-18 で app.rs から分けた）
+//! 下の行（状態・系の数値）と状態の履歴（app.rs から分けた）
 
 use super::*;
 
@@ -29,7 +29,7 @@ impl App {
             } else {
                 self.c.status.text.clone()
             };
-            // 今の誤りへの案内と符号（文が変わっていれば出さない、GUX-06）
+            // 今の誤りへの案内と符号（文が変わっていれば出さない）
             let hint = self
                 .c
                 .status_hint
@@ -49,11 +49,11 @@ impl App {
                     self.c.status_log.remove(0);
                 }
             }
-            // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る（GUX-06）
+            // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る
             let right_w: f32 = ui
                 .data(|d| d.get_temp(egui::Id::new("status-right-w")))
                 .unwrap_or(320.0);
-            // 右の数値との間は 16 px 空ける（前は 180 px 引いていて、右に空きがあっても短く切れた、GUX-33）
+            // 右の数値との間は 16 px 空ける（前は 180 px 引いていて、右に空きがあっても短く切れた）
             let room = (ui.available_width() - right_w - 16.0).max(80.0);
             let rich = if self.c.status.error {
                 RichText::new(text.clone()).color(theme::error(ui.visuals()))
@@ -105,7 +105,7 @@ impl App {
                     );
                 }
                 // 系の数値と面・視野・波長の数。左の状態の文に 260 px を残し、入らない分は大事でない方から出さない
-                // （系のパネルと同じ名前にして長くなったので、狭い窓で重ならないように。GUX-28）
+                // （系のパネルと同じ名前にして長くなったので、狭い窓で重ならないように）
                 let mut parts: Vec<(String, String)> = Vec::new();
                 if self.c.sys.info.is_some() {
                     let n = |k: &str, d: f64| {
@@ -213,7 +213,7 @@ impl App {
     }
 }
 
-/// 計算の側の誤りの符号ごとの案内（GUX-06）。符号の無い誤り・案内の要らない符号は None
+/// 計算の側の誤りの符号ごとの案内。符号の無い誤り・案内の要らない符号は None
 pub(super) fn error_hint(e: &crate::worker::CallErr) -> Option<String> {
     use lensbench_core::error::code;
     let h = match e.code.as_deref()? {
@@ -263,7 +263,7 @@ mod tests {
     use crate::worker::CallErr;
     use lensbench_core::error::code;
 
-    /// GUX-33: 瞳がけられて MTF を計算できない誤りの案内は「未対応」でなく開口・視野を確かめる案内
+    /// 瞳がけられて MTF を計算できない誤りの案内は「未対応」でなく開口・視野を確かめる案内
     #[test]
     fn gux33_pupil_vignetted_hint() {
         let h = error_hint(&CallErr::coded("MTF: …", code::PUPIL_VIGNETTED)).unwrap();

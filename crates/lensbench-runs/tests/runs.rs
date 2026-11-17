@@ -219,7 +219,7 @@ fn run_stops_on_error() {
     std::fs::remove_file(&f).unwrap();
 }
 
-/// keep_going: 失敗は結果 {"error": …} の行にして続ける。結果のファイルは vfs を通す（メモリの置き場でも書ける。IOO-24）
+/// keep_going: 失敗は結果 {"error": …} の行にして続ける。結果のファイルは vfs を通す（メモリの置き場でも書ける）
 #[test]
 fn run_keeps_going_and_uses_vfs() {
     let fs = std::sync::Arc::new(lensbench_core::vfs::MemFs::new());
@@ -266,7 +266,7 @@ fn run_keeps_going_and_uses_vfs() {
     });
 }
 
-/// 抽選の End・円の中の組（IOO-14・30）: 値の範囲・割合・形、組の約束の誤り
+/// 抽選の End・円の中の組: 値の範囲・割合・形、組の約束の誤り
 #[test]
 fn draws_end_and_disc() {
     use lensbench_runs::{Draws, Joint};

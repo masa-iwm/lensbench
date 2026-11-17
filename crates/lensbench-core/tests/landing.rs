@@ -29,7 +29,7 @@ fn ps(s: &System, names: &[&str]) -> Vec<Param> {
 }
 
 fn step(s: &System, p: Param) -> f64 {
-    // asph が偶数次の係数でない面（Odd Asphere・Tilted・Irregular）の刻み（KRN-32）
+    // asph が偶数次の係数でない面（Odd Asphere・Tilted・Irregular）の刻み
     if let Some(h) = crate::shape_params::asph_step(s, p) {
         return h;
     }

@@ -1,4 +1,4 @@
-//! 定義した視野以外の点のケラレ係数（公開 #226）。OpticStudio 互換（VigInterp::OpticStudio）は OpticStudio 2026 R1.01 を
+//! 定義した視野以外の点のケラレ係数。OpticStudio 互換（VigInterp::OpticStudio）は OpticStudio 2026 R1.01 を
 //! ZOS-API で測った値と同じ（25 系 5010 点。ここはその代表値）。
 //! 既定の連続（VigInterp::Continuous）は視野の間で段差がない
 

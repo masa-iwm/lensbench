@@ -1,4 +1,4 @@
-//! 最適化・ズーム・公差・差し替え・系の設定のパネル（app.rs から分けた、GAR-07）
+//! 最適化・ズーム・公差・差し替え・系の設定のパネル（app.rs から分けた）
 
 use super::*;
 
@@ -42,7 +42,7 @@ impl Core {
                     let Some(r) = self.p.opt.result.clone() else {
                         continue;
                     };
-                    // 最適化の間・後に系が変わっていれば、古い系の値なので当てない（GAR-20）
+                    // 最適化の間・後に系が変わっていれば、古い系の値なので当てない
                     if self.p.opt.gen != self.sys_gen || self.worker.busy_core() {
                         self.p.opt.error = Some(
                             tr("The system changed after the optimization started, so the result was not applied (optimize again)")

@@ -1,4 +1,4 @@
-//! panic の記録（GAR-19）。リリースの exe はコンソールが無いので、panic の文・場所・バックトレース・版を設定の
+//! panic の記録。リリースの exe はコンソールが無いので、panic の文・場所・バックトレース・版を設定の
 //! フォルダの `crash.log` に足し、画面のスレッドならメッセージの窓も出す。計算のスレッドの panic（serve が
 //! `catch_unwind` で受ける）は、文と場所を [`lensbench_engine::note_panic`] に渡して「内部エラー: …」に載せる。
 //! Web 版はブラウザのコンソール（console.error）に出す。

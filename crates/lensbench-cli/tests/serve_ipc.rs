@@ -316,7 +316,7 @@ fn interference_like_cli() {
     assert_eq!(got_fg, cli_json(&args));
     assert_eq!(got_fg["grid"].as_array().unwrap().len(), 16 * 16);
 
-    // 構成 1 だけの値（1.t）: 多重構成の表の構成 1 の列が変わり、構成 2 は表のまま（読み直して当て直さないので notes は無い。CLI-21）
+    // 構成 1 だけの値（1.t）: 多重構成の表の構成 1 の列が変わり、構成 2 は表のまま（読み直して当て直さないので notes は無い）
     c.call("set", json!({ "values": { "1.t": 100.5 } }));
     let got = c.call("analyze", params.clone());
     assert_eq!(got["notes"], json!([]));
@@ -563,7 +563,7 @@ fn pipe_keeps_regular_file() {
 }
 
 /// 読み込んだ後に別アプリがファイルを書き換えても、別の構成の系は読んだときのもの（読み込んだ系の多重構成の表から。
-/// reload で初めて読み直す）。読み込んだ後に構成を足すと、configs・重ね描きにも出る（CLI-21）
+/// reload で初めて読み直す）。読み込んだ後に構成を足すと、configs・重ね描きにも出る
 #[test]
 fn other_configs_come_from_the_loaded_system() {
     let d = tmp_dir("loaded");

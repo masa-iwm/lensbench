@@ -113,7 +113,7 @@ pub fn weak_text(v: &Visuals) -> Color32 {
     }
 }
 
-/// 誤りの文字・印（GPN-22: 色は場所ごとに書かずここから取る）
+/// 誤りの文字・印（色は場所ごとに書かずここから取る）
 pub fn error(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0xFF7A6B)

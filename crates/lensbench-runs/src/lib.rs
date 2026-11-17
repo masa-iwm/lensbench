@@ -633,7 +633,7 @@ pub struct RunOpts<'a> {
     pub resume: bool,
     /// 進み具合の段の名前（[`Progress::stage`]。`""` は段なし）
     pub stage: &'static str,
-    /// タスクが失敗しても止めない（IOO-24）: 失敗は結果 `{"error": "…"}` の行として書いて次へ進み、
+    /// タスクが失敗しても止めない: 失敗は結果 `{"error": "…"}` の行として書いて次へ進み、
     /// [`RunSummary::failed`] に数える。false（既定）なら新しいタスクを始めず最初のエラーを返す
     pub keep_going: bool,
 }

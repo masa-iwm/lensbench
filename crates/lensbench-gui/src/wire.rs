@@ -24,7 +24,7 @@ pub struct Request {
 #[derive(Debug, PartialEq)]
 pub struct Response {
     /// 答えた要求の番号（[`Request::id`]。要求が読めなかったときは 0）。画面の側は待っている要求の番号と
-    /// 合わない返事を捨てる（GAR-27）
+    /// 合わない返事を捨てる
     pub id: u32,
     pub results: Vec<Result<(Value, Arrays), CallErr>>,
     pub ms: f64,

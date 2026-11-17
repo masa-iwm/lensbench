@@ -1,4 +1,4 @@
-//! 評価関数の項の JSON の型（PRJ-11）。`type` で種類を選び、種類ごとに使えるキーだけを受ける（知らないキーは誤り）。
+//! 評価関数の項の JSON の型。`type` で種類を選び、種類ごとに使えるキーだけを受ける（知らないキーは誤り）。
 //! 共通のキー `weight`・`config`・`min`・`max` は [`crate::merit::term_from_json`] が先に外し、ここには種類の
 //! キーだけが来る。番号・面・目標の意味は [`crate::merit`] の表。`docs/schema/terms.schema.json` はこの型から作る。
 

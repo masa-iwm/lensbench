@@ -1,4 +1,4 @@
-//! 表のセル（面の番号・ブロック・値・書き換え中）と行の残り（table.rs から分けた、GPN-03）
+//! 表のセル（面の番号・ブロック・値・書き換え中）と行の残り（table.rs から分けた）
 
 use super::*;
 
@@ -361,7 +361,7 @@ fn value_cell(
     // クリックを取らない（取ると、文字の上と外で選ばれるセルが変わる）
     let cell_rect = ui.max_rect();
     let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), Sense::click());
-    // AccessKit の木に名前（面の番号と列）と値を出す（読み上げ・画面の試験がセルを文言で探せる。公開 #254 の依頼）
+    // AccessKit の木に名前（面の番号と列）と値を出す（読み上げ・画面の試験がセルを文言で探せる）
     resp.widget_info(|| {
         let mut w = egui::WidgetInfo::labeled(
             egui::WidgetType::Button,

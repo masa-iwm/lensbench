@@ -22,7 +22,7 @@ pub(crate) fn pupil_gauss_shared(rings: usize) -> Rc<PupilPts> {
     })
 }
 
-/// [`pupil_gauss_shared`] の点と、系のアポダイゼーションの強度 A² を掛けた重み（解析と同じ、ANA-33）
+/// [`pupil_gauss_shared`] の点と、系のアポダイゼーションの強度 A² を掛けた重み（解析と同じ）
 pub(crate) fn apodized_gauss(
     s: &lensbench_core::System,
     field: lensbench_core::system::FieldSel,

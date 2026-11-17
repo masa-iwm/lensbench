@@ -10,7 +10,7 @@ use lensbench_design::swap::{SwapSearch, SwapSpec};
 use lensbench_project::{Env, Project};
 use serde_json::{json, Value};
 
-/// ズーム軌跡の設定の既定値（旗の既定はここから、XCT-02）
+/// ズーム軌跡の設定の既定値（旗の既定はここから）
 static ZOOM: std::sync::LazyLock<ZoomParams> = std::sync::LazyLock::new(ZoomParams::default);
 
 #[derive(Args)]

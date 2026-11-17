@@ -1,6 +1,6 @@
 //! Huygens PSF の時間: `cargo run --release --example huygens_bench -- [系 ...]`（tests/refs の名前、既定 A0 D0）。
 //! 瞳/像の格子 64/128・128/128・256/256、視野 1、主波長
-#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;

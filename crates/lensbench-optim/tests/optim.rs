@@ -56,7 +56,7 @@ const SYSTEMS: [&str; 6] = ["A0", "A3", "B0", "B2", "C0", "E0"];
 
 #[test]
 fn merit_matches_rms() {
-    // 系のアポダイゼーション（ガウス）も解析と同じ重みになる（ANA-33）
+    // 系のアポダイゼーション（ガウス）も解析と同じ重みになる
     let apods = [Apodization::Uniform, Apodization::Gaussian(1.5)];
     for (name, apod) in SYSTEMS.iter().flat_map(|n| apods.map(|a| (*n, a))) {
         let mut s = load(name);
@@ -178,7 +178,7 @@ fn check_jac(name: &str, s: &System, kind: TermKind) {
 fn analytic_jacobian_matches_fd() {
     for name in SYSTEMS {
         let mut s = load(name);
-        // 重みがアポダイゼーションで変わっても解析的な微分は合う（ANA-33。一部の系だけ）
+        // 重みがアポダイゼーションで変わっても解析的な微分は合う（一部の系だけ）
         if matches!(name, "A3" | "C0") {
             s.edit_raw(|rx| {
                 rx.apodization = Apodization::Gaussian(1.5);
@@ -481,7 +481,7 @@ fn optimizer_leaves_ineffective_vars() {
     assert!(r.merit <= r.merit0);
 }
 
-/// 一歩の解き方（IOO-13）: QR（正規方程式を作らない）は Cholesky と同じ解に着く。勾配の判定・減衰を強めて一歩が
+/// 一歩の解き方: QR（正規方程式を作らない）は Cholesky と同じ解に着く。勾配の判定・減衰を強めて一歩が
 /// 小さくなったときの止まり方
 #[test]
 fn dls_qr_and_stops() {
@@ -516,7 +516,7 @@ fn dls_qr_and_stops() {
     assert_eq!(d.x, d.x0);
 }
 
-/// 有効制約法（IOO-13）: 範囲を出る変数を境界に固定して残りを解き直す。境界を守り、評価関数は減る
+/// 有効制約法: 範囲を出る変数を境界に固定して残りを解き直す。境界を守り、評価関数は減る
 #[test]
 fn dls_active_set_bounds() {
     let s = load("A0");
@@ -541,7 +541,7 @@ fn dls_active_set_bounds() {
     }
 }
 
-/// 境界にある変数の差分は範囲の内側の片側差分（IOO-30）: 下限なら前進、上限なら後退の差分と同じ列
+/// 境界にある変数の差分は範囲の内側の片側差分: 下限なら前進、上限なら後退の差分と同じ列
 #[test]
 fn fd_at_bounds_is_one_sided() {
     let s = load("A0");
@@ -566,7 +566,7 @@ fn fd_at_bounds_is_one_sided() {
     }
 }
 
-/// 縮退した問題（IOO-30）: 同じパラメータの変数 2 つは誤り、残差が初めから 0 の問題は動かずに止まる
+/// 縮退した問題: 同じパラメータの変数 2 つは誤り、残差が初めから 0 の問題は動かずに止まる
 #[test]
 fn degenerate_problems() {
     use lensbench_optim::{ParaxQ, Stop};

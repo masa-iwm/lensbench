@@ -703,7 +703,7 @@ fn split_coating_reflection_matches_opticstudio() {
     assert!(wr < 1e-6 && wph < 1e-3, "R {wr:.1e} 位相 {wph:.1e}");
 }
 
-/// BS の腕の中のブロック（id 無し）も面の上書き・操作を持て、その腕を通る経路だけに当たる（PRJ-04）
+/// BS の腕の中のブロック（id 無し）も面の上書き・操作を持て、その腕を通る経路だけに当たる
 #[test]
 fn faces_of_blocks_in_arms() {
     let lens = r#"{"type": "lens", "source": {"surfaces": [

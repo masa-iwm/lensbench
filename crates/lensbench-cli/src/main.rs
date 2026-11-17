@@ -3,7 +3,7 @@
 //! 引数の解釈・文字の出力・serve の要求を運ぶ道（TCP・パイプ）を持ち、解析・系の読み方・serve の場は lensbench-engine。
 //! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ（非公開版などは拡張の解析を
 //! [`lensbench_engine::register`] してから呼ぶ）。
-#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（計算の中身のクレートは検査の内）
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -36,7 +36,7 @@ use lensbench_engine::layout::{self, Draw, Pick, RaySel, View};
 use lensbench_engine::load::{coat_interfaces, plugins_json, save_value, AutoCoat, CoatInterfaces};
 use lensbench_engine::{builtin_plugins, provenance};
 
-/// 最適化の設定の既定値（旗の既定はここから。設定の型 1 か所、XCT-02）
+/// 最適化の設定の既定値（旗の既定はここから。設定の型 1 か所）
 static OPT: std::sync::LazyLock<OptimizeParams> = std::sync::LazyLock::new(OptimizeParams::default);
 /// レイアウトの書き出しの既定値（serve の layout_export と同じ）
 static D2: std::sync::LazyLock<d2::Options2D> = std::sync::LazyLock::new(d2::Options2D::default);
@@ -911,7 +911,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 let sc = scenes[usize::from(!f.is_2d())].as_ref().unwrap();
                 let w = lensbench_export::write_layout(p, sc, &o2, &o3)?;
                 let mut row = json!({ "file": p.display().to_string(), "format": format!("{f:?}").to_lowercase() });
-                // 写した品の STEP の長さを直せなかった実体など（PRJ-22）
+                // 写した品の STEP の長さを直せなかった実体など
                 if !w.notes.is_empty() {
                     row["notes"] = json!(w.notes);
                 }
@@ -1429,7 +1429,7 @@ fn quiet_broken_pipe() {
 }
 
 /// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足し、
-/// help（英語が元）を表示の言語に訳したもの（XCT-20）
+/// help（英語が元）を表示の言語に訳したもの
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command().after_long_help(error::exit_code_help());
@@ -1485,7 +1485,7 @@ where
 
 pub fn main() -> ExitCode {
     quiet_broken_pipe();
-    // 隠し: clap の定義を JSON で（マニュアルの CLI のページの元、CLI-29）
+    // 隠し: clap の定義を JSON で（マニュアルの CLI のページの元）
     let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if help_json::wants(&argv[1.min(argv.len())..]) {
         print_out(true, &help_json::help_json(cli_command()));

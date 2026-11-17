@@ -85,7 +85,7 @@ pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
 mod tests {
     use super::CadStore;
 
-    /// 置き場の Client Secret は設定ファイルに書かず、読まない（前の版の設定に書いてあっても捨てる、XCT-34）
+    /// 置き場の Client Secret は設定ファイルに書かず、読まない（前の版の設定に書いてあっても捨てる）
     #[test]
     fn secret_is_not_saved() {
         let st = CadStore {

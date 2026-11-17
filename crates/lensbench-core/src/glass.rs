@@ -251,7 +251,7 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
     Ok(g)
 }
 
-/// 読込の使い回しの表の大きさの上限（KRN-15。長く動く serve・GUI でフォルダ・カタログの組を変え続けても
+/// 読込の使い回しの表の大きさの上限（長く動く serve・GUI でフォルダ・カタログの組を変え続けても
 /// 増え続けない）。超えたら空にする（次から読み直すだけで、結果は変わらない）
 const CACHE_MAX: usize = 64;
 
@@ -409,7 +409,7 @@ pub fn load_catalogs_shared(
     let mut complete = true;
     for name in names {
         let Some(e) = find_agf(name, dirs) else {
-            // フォルダのどこにも無ければ同梱のカタログ（CLI-31）。後でフォルダに置かれたら読み直すよう使い回さない
+            // フォルダのどこにも無ければ同梱のカタログ。後でフォルダに置かれたら読み直すよう使い回さない
             match builtin::catalog(name) {
                 Some(g) => {
                     for (k, v) in g.iter() {
@@ -445,7 +445,7 @@ pub fn load_catalogs_shared(
 }
 
 /// [`load_catalogs_shared`] の見つからない・読めなかったカタログを、ガラスが無いときの誤りに添える文にする
-/// （空なら空。読めなかった理由が「カタログにない」の誤りに出るように、XCT-01）
+/// （空なら空。読めなかった理由が「カタログにない」の誤りに出るように）
 pub(crate) fn missing_note(missing: &[String]) -> String {
     if missing.is_empty() {
         String::new()
@@ -455,7 +455,7 @@ pub(crate) fn missing_note(missing: &[String]) -> String {
     }
 }
 
-/// ガラスがカタログに無いときの文の後ろに足す案内（CLI-14）
+/// ガラスがカタログに無いときの文の後ろに足す案内
 pub const DIRS_HINT: &str =
     ". Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT";
 
@@ -463,7 +463,7 @@ pub const DIRS_HINT: &str =
 static DEFAULT_DIRS: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
 
 /// 引数の後に探す既定のガラスのフォルダを決める。CLI・Python・GUI の入口が [`crate::init_from_env`] で
-/// LENSBENCH_GLASSCAT から決める（core は環境変数を読まない、XCT-08）
+/// LENSBENCH_GLASSCAT から決める（core は環境変数を読まない）
 pub fn set_default_dirs(dirs: Vec<PathBuf>) {
     *DEFAULT_DIRS.write_ok() = dirs;
 }
@@ -484,7 +484,7 @@ pub fn catalog_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
 mod tests {
     use super::*;
 
-    /// 検索パスは引数の後に既定のフォルダ（入口が決める）。core は環境変数を読まない（XCT-08）
+    /// 検索パスは引数の後に既定のフォルダ（入口が決める）。core は環境変数を読まない
     #[test]
     fn default_dirs_follow_the_arguments() {
         let none = PathBuf::from("/lensbench-no-such-glass-dir");
@@ -570,7 +570,7 @@ mod tests {
         assert!(g.n_cat(0.55).is_nan());
     }
 
-    /// XCT-01: AGF が読めなかったときは、ガラスが無いという誤りに読めなかった理由が出る
+    /// AGF が読めなかったときは、ガラスが無いという誤りに読めなかった理由が出る
     #[test]
     fn xct01_unreadable_catalog_reason_reaches_missing_glass_error() {
         let d = std::env::temp_dir().join(format!("lb-xct01-{}", std::process::id()));

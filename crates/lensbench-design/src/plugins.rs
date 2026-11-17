@@ -25,7 +25,7 @@ pub fn builtin() -> Registry {
 }
 
 /// 名前のプラグインを設定で用意する（今の拡張の表に足したものが先、無ければ同梱のもの）。評価関数の項を作るたびに
-/// 表を作り直さない（XCT-07）
+/// 表を作り直さない
 pub fn prepare(name: &str, config: &Config) -> Result<Box<dyn Instance>> {
     let e = lensbench_core::ext::current();
     if e.plugins().get(name).is_ok() {

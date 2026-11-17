@@ -1,7 +1,7 @@
 //! 解析の約束: 解析ごとに「設定の型（serde ＋ スキーマ）→ 結果の型（serde）」を 1 回だけ書き、登録簿に並べる。
 //!
 //! CLI の引数・serve の `analyze`・GUI の設定欄・ドキュメントは、どれもここ（[`DynAnalysis::params`] と
-//! [`DynAnalysis::run_json`]）から作る。既定値は設定の型の `Default` だけに書く（見直し ANA-03・XCT-02）。
+//! [`DynAnalysis::run_json`]）から作る。既定値は設定の型の `Default` だけに書く。
 //!
 //! 名前は CLI のサブコマンドと同じ（`mtf-focus` のようにハイフン）。設定の鍵は下線（`max_freq`）で、CLI の旗は
 //! 下線をハイフンにしたもの（`--max-freq`）。視野・波長の番号は 1 始まり。
@@ -103,7 +103,7 @@ pub trait Analysis: Send + Sync + 'static {
     fn save(&self, _out: &Self::Output, _path: &Path) -> Option<Result<Saved>> {
         None
     }
-    /// 結果を作らずに解析しながら書き出す（大きな表を全部はメモリに持たない解析だけ、PRJ-27）。書き出すときは
+    /// 結果を作らずに解析しながら書き出す（大きな表を全部はメモリに持たない解析だけ）。書き出すときは
     /// [`Analysis::run`]・[`Analysis::save`] の代わりにこれを先に呼ぶ。None なら run してから save
     fn run_to_file(&self, _cx: &Cx<'_>, _p: &Self::Params, _path: &Path) -> Option<Result<Saved>> {
         None

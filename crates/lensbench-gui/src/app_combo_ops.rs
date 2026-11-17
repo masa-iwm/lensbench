@@ -42,7 +42,7 @@ impl Core {
                 self.doc.combo.set_stop_face(None);
                 continue;
             }
-            // 面の挿入・削除: 自作の玉・面の並びの中身の面を足し引きする（GPN-19）。"after" は面 at−1 の後に足す
+            // 面の挿入・削除: 自作の玉・面の並びの中身の面を足し引きする。"after" は面 at−1 の後に足す
             // （GUI だけの欄。要素の境目でどちらの要素に足すかを決める）
             if op["op"] == "insert_surface" || op["op"] == "delete_surface" {
                 let ins = op["op"] == "insert_surface";

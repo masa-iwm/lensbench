@@ -1802,7 +1802,7 @@ pub fn mtf_amp(
         }
     }
     if otfs.is_empty() {
-        crate::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない（ANA-23）
+        crate::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
     let cut = mtf_cutoff(s, field, w.unwrap_or(s.primary))?;

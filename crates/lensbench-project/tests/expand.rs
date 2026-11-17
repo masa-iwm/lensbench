@@ -611,7 +611,7 @@ fn a_mirror_block_can_have_a_rect_aperture() {
     );
 }
 
-/// zmx ブロックは lensbench の系（系ファイル・プロジェクトの .json）も取り込む（#132）
+/// zmx ブロックは lensbench の系（系ファイル・プロジェクトの .json）も取り込む
 #[test]
 fn a_zmx_block_takes_a_lensbench_system_json() {
     let a = a0();
@@ -758,7 +758,7 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// 使い回し（PRJ-13）: 同じファイルは読み直さず、書き換えれば読み直す。入れ子のプロジェクトは中の葉だけ覚える
+/// 使い回し: 同じファイルは読み直さず、書き換えれば読み直す。入れ子のプロジェクトは中の葉だけ覚える
 #[test]
 fn source_cache_reuses_files_until_they_change() {
     let dir = std::env::temp_dir().join(format!("lb-src-cache-{}", std::process::id()));
@@ -829,7 +829,7 @@ fn source_cache_reuses_files_until_they_change() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// PRJ-04: 展開の結果は面ごとの出どころ（ブロック・群、往路・復路、裏返した玉）を持つ
+/// 展開の結果は面ごとの出どころ（ブロック・群、往路・復路、裏返した玉）を持つ
 #[test]
 fn the_expansion_maps_each_surface_to_its_blocks() {
     let lens = |id: &str, rev: bool| {
@@ -888,7 +888,7 @@ fn the_expansion_maps_each_surface_to_its_blocks() {
         .all(|o| o.is_in("B") && !o.back));
     let ua = s.units.iter().find(|u| u.name == "A").unwrap();
     assert!(!ua.flipped);
-    // PRJ-31: 偏心つきの裏返した玉 B も flipped（範囲は偏心の座標ブレークを含む）。B を含む群 G は立たない
+    // 偏心つきの裏返した玉 B も flipped（範囲は偏心の座標ブレークを含む）。B を含む群 G は立たない
     let u = s.units.iter().find(|u| u.name == "B").unwrap();
     assert!(u.flipped, "{:?}", u.spans);
     assert!(!s.units.iter().find(|u| u.name == "G").unwrap().flipped);

@@ -68,7 +68,7 @@ pub fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
     }
 }
 
-/// 結果の世代 gen ごとに 1 度だけ作る（図の格子など。毎フレーム JSON から作り直さない、GPN-07）
+/// 結果の世代 gen ごとに 1 度だけ作る（図の格子など。毎フレーム JSON から作り直さない）
 pub(crate) fn memo<T: Send + Sync + 'static>(
     ui: &Ui,
     key: impl std::hash::Hash,
@@ -283,7 +283,7 @@ pub fn heatmap(
 ) {
     let id = ui.make_persistent_id(&salt);
     // 図の画像は値が変わったときだけ作り直す
-    // 毎フレーム全画素を通すので、SipHash ではなく 64 ビットずつ混ぜる軽いもの（GPN-07）
+    // 毎フレーム全画素を通すので、SipHash ではなく 64 ビットずつ混ぜる軽いもの
     let key = {
         let mix = |h: u64, x: u64| (h.rotate_left(5) ^ x).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
         let mut h = 0u64;
@@ -382,7 +382,7 @@ pub fn f64s(v: &Value) -> Vec<f64> {
         .unwrap_or_default()
 }
 
-/// 解析パネルの図の見せ方（パネルごと。[`crate::layout::AnaCfg`] に入れて並びと一緒に保存する、GPN-28）
+/// 解析パネルの図の見せ方（パネルごと。[`crate::layout::AnaCfg`] に入れて並びと一緒に保存する）
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct FigState {

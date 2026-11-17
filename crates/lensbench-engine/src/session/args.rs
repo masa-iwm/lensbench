@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::RpcErr;
 
-/// params の鍵が keys のどれかか（知らない鍵は誤り。打ち間違い・前の名前を黙って捨てない、XCT-34）
+/// params の鍵が keys のどれかか（知らない鍵は誤り。打ち間違い・前の名前を黙って捨てない）
 pub(super) fn known_keys(p: &Value, keys: &[&str]) -> Result<(), RpcErr> {
     let bad = p
         .as_object()

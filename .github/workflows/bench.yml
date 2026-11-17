@@ -66,7 +66,7 @@ jobs:
           nproc 2>/dev/null || echo "$NUMBER_OF_PROCESSORS"
       - name: run
         shell: bash
-        # 入力はシェルに直に展開せず env で渡す（#216 BLD-18）
+        # 入力はシェルに直に展開せず env で渡す
         env:
           SYSTEMS: ${{ inputs.systems }}
           THREADS: ${{ inputs.threads }}

@@ -115,7 +115,7 @@ pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -
     }
 }
 
-/// ファイルを選ぶ窓が出せなかった（やめたのとは別、GUX-26）。[`take_failed`] で読んで戻す
+/// ファイルを選ぶ窓が出せなかった（やめたのとは別）。[`take_failed`] で読んで戻す
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 static FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -150,7 +150,7 @@ pub fn set_ctx(ctx: &egui::Context) {
 }
 
 /// 人の答えを待たない運転（画面の通し確認 `--tour`）。確かめる窓は出さずに「いいえ」（CI の Linux で
-/// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない（公開 #236）
+/// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない
 static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 人の答えを待たない運転にする（確かめ（`Core::ask`）は「いいえ」、[`error_box`] は出さない）
@@ -179,7 +179,7 @@ pub fn error_box(title: &str, text: &str) {
 }
 
 /// Linux: rfd の代わりに zenity（GTK の窓）を呼ぶ。zenity が無ければ何も選ばない（「いいえ」）。
-/// rfd の xdg-portal（zbus など）をビルドに乗せないため（Linux の GUI は CI 用。公開 #216 BLD-23）
+/// rfd の xdg-portal（zbus など）をビルドに乗せないため（Linux の GUI は CI 用）
 #[cfg(target_os = "linux")]
 mod zenity {
     use std::path::PathBuf;

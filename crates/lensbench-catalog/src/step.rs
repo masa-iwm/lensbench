@@ -1,16 +1,16 @@
-//! 品の STEP を測る（以前は lensbench-project の `step_geom`・`catalog_fill` の一部、PRJ-05・XCT-11）。
+//! 品の STEP を測る（以前は lensbench-project の `step_geom`・`catalog_fill` の一部）。
 //!
 //! - [`read_step`]・[`measure`] は品の厚さ・径・枠・機構部品の寸法を測る
 //! - [`step_shell_poses`]・[`shell_poses`] は立体の殻ごとの、STEP の座標から部品の座標への置き方
 //!
-//! 文字の読みは lensbench-step（[`StepFile`]。書き出しへの写しと同じ表、PRJ-06）。
+//! 文字の読みは lensbench-step（[`StepFile`]。書き出しへの写しと同じ表）。
 
 mod geom;
 
 pub use lensbench_step::StepFile;
 use serde_json::Value;
 
-/// 測る関数の結果（誤りは core の Error、XCT-06）
+/// 測る関数の結果（誤りは core の Error）
 pub(crate) type Res<T> = lensbench_core::Result<T>;
 
 /// STEP から測った大きさ

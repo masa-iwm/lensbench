@@ -1,4 +1,4 @@
-//! 通し確認（--tour）の各段の操作（GAR-18 で app.rs から分けた）
+//! 通し確認（--tour）の各段の操作（app.rs から分けた）
 
 use super::*;
 
@@ -9,7 +9,7 @@ impl App {
             return;
         };
         ctx.request_repaint();
-        // 窓の大きさ（LENSBENCH_TOUR_SIZE=1024x700 など。狭い窓での崩れを撮る、GUX-14）
+        // 窓の大きさ（LENSBENCH_TOUR_SIZE=1024x700 など。狭い窓での崩れを撮る）
         if t.step == Step::Open && !t.acted {
             if let Some([w, h]) = crate::tour::size_from_env() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));

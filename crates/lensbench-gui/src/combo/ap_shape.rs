@@ -1,4 +1,4 @@
-//! 開口・遮蔽の形（[`ApShape`]）と開口の要素だけが持つ欄（[`ApData`]、GPN-04）
+//! 開口・遮蔽の形（[`ApShape`]）と開口の要素だけが持つ欄（[`ApData`]）
 
 use super::Pick;
 use crate::i18n::tr;

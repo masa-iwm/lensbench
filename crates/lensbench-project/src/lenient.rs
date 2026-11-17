@@ -1,4 +1,4 @@
-//! 系ファイルの JSON の値を型に読む（IOO-32）。
+//! 系ファイルの JSON の値を型に読む。
 //!
 //! JSON は inf・NaN を書けないので、系ファイルは `{"$f": "inf"}` で書き、読むときは CBOR の値を経由する
 //! （[`crate::sysfile::from_json`]）。ciborium の値の読み手は整数を実数の欄に入れないので、手や Python が `"t": 3` と

@@ -1,5 +1,5 @@
 """解析の登録簿を Python から使う（System.analyze・analyses・defaults）と、Python の関数の既定値が設定の型の
-既定値（CLI・serve・GUI と同じ 1 か所）と合うこと（XCT-02・ANA-03）。"""
+既定値（CLI・serve・GUI と同じ 1 か所）と合うこと。"""
 
 import inspect
 from pathlib import Path

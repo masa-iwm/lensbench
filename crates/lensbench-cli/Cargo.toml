@@ -57,7 +57,7 @@ mimalloc = { version = "0.1", default-features = false }
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
-# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
+# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない）
 [[test]]
 name = "it"
 path = "tests/it.rs"

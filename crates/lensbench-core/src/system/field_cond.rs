@@ -1,7 +1,7 @@
 //! 実像高・条件で定める視野の主光線の物体を解く（system.rs から分けた）
 use super::*;
 
-/// 視野の解のキャッシュの件数の上限（視野の掃引で増え続けないよう、超えたら捨てて解き直す。KRN-23）
+/// 視野の解のキャッシュの件数の上限（視野の掃引で増え続けないよう、超えたら捨てて解き直す）
 const REALH_MAX: usize = 4096;
 
 impl System {
@@ -64,7 +64,7 @@ impl System {
         }
         let s = spec(v);
         let mut m = self.cache.realh.lock_ok();
-        // 視野の掃引で増え続けないよう、上限で捨てる（解き直せばよい、KRN-23）
+        // 視野の掃引で増え続けないよう、上限で捨てる（解き直せばよい）
         if m.len() >= REALH_MAX {
             m.clear();
         }

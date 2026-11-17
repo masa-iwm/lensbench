@@ -1,4 +1,4 @@
-//! STEP（ISO 10303-21）の文字の読み手（PRJ-06）。依存の無い小さなクレートで、品の寸法の測り（lensbench-catalog の
+//! STEP（ISO 10303-21）の文字の読み手。依存の無い小さなクレートで、品の寸法の測り（lensbench-catalog の
 //! `step`）と、書き出す STEP への立体の写し（lensbench-export の `step_embed`）が同じ表 [`StepFile`] を使う。
 //! 三角形にするのは truck（lensbench-cad）。
 //!

@@ -1,4 +1,4 @@
-//! レイアウト図の当たり判定とクリック・ドラッグ・キーの試験（GPN-25・GPN-29）
+//! レイアウト図の当たり判定とクリック・ドラッグ・キーの試験
 
 use super::*;
 
@@ -11,7 +11,7 @@ fn sq(x0: f32, y0: f32, w: f32) -> Vec<Pos2> {
     ]
 }
 
-/// 当たり判定は描かずに決まり、後に描くもの（BS → 玉 → 開口・絞り・名前）ほど上（GPN-25）
+/// 当たり判定は描かずに決まり、後に描くもの（BS → 玉 → 開口・絞り・名前）ほど上
 #[test]
 fn hits_follow_paint_order() {
     let ctx = egui::Context::default();
@@ -265,7 +265,7 @@ fn close(a: Option<f64>, b: f64) -> bool {
     a.is_some_and(|a| (a - b).abs() < 1e-9)
 }
 
-/// クリックで要素・寸法を選ぶ、ダブルクリックで面の表を開く、何も無い所で外す（GPN-29）
+/// クリックで要素・寸法を選ぶ、ダブルクリックで面の表を開く、何も無い所で外す
 #[test]
 fn click_selects_and_double_click_opens() {
     let mut f = Fig::new();
@@ -289,7 +289,7 @@ fn click_selects_and_double_click_opens() {
     assert_eq!((f.view.sel, f.view.open), (Some(0), Some(0)));
 }
 
-/// 寸法の数字をクリックして打ち、Enter で決める。負の値は欄を残し、Esc でやめる（GPN-10・GPN-29）
+/// 寸法の数字をクリックして打ち、Enter で決める。負の値は欄を残し、Esc でやめる
 #[test]
 fn dim_number_edit() {
     let mut f = Fig::new();
@@ -338,7 +338,7 @@ fn drag_moves_along_axis() {
 }
 
 /// 図のキー: [ ] で選ぶ、矢印で動かす（Ctrl は 1、Alt は 0.01）、↑ で偏心・Shift+↑ で傾き、
-/// 寸法は ← → で変える・Enter で書き換え、Ctrl+L・R・Delete（GPN-29）
+/// 寸法は ← → で変える・Enter で書き換え、Ctrl+L・R・Delete
 #[test]
 fn figure_keys() {
     let mut f = Fig::new();

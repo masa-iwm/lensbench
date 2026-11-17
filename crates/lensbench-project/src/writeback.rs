@@ -1,5 +1,5 @@
 //! 展開した系にした面の編集（serve の `edit`・GUI の面の表）を、面を足したブロックの面の上書き・操作
-//! （[`FaceMods`]）としてプロジェクトに書き戻す（PRJ-04）。面は展開の面の名前（[`FaceId`]）でブロックへ戻す
+//! （[`FaceMods`]）としてプロジェクトに書き戻す。面は展開の面の名前（[`FaceId`]）でブロックへ戻す
 
 use crate::edit_spec::{BlockFace, BlockRef, EditOp, Ref};
 use crate::{Block, FaceId, FaceMods, NodePath, NodeStep, Project, SurfaceEdit, SurfaceOp};

@@ -2,14 +2,14 @@
 //!
 //! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別の窓で開く。
 //!   元のタブがそのパネルを別の egui の画面（[`Host`]）で描いて網を送り、別の窓（[`Viewer`]）は網を描いて
-//!   入力を返すだけ。解析のパネルもそれ以外も同じ 1 つの方式（GAR-10）
+//!   入力を返すだけ。解析のパネルもそれ以外も同じ 1 つの方式
 //! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない
 //!   - 窓 → 元: `{sid, from, hello, input}`（始めたとき）、`{sid, from, input}`（入力・大きさ。ほかは 2 秒ごと）、
 //!     `{sid, from, bye}`（閉じた。pagehide で送る）
 //!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
 //!     `{sid, to, ack}`（入力を受けたが画面は変わらない）、`{sid, closed}`（元のタブを閉じた）
 //! - 元のタブが裏に回るとブラウザはその画面（requestAnimationFrame）を止めるが、メッセージは届くので、
-//!   別の窓の入力・計算の結果を合図に元のタブが描いて送る（[`crate::web_bg`]、#237）。それでも返事が
+//!   別の窓の入力・計算の結果を合図に元のタブが描いて送る（[`crate::web_bg`]）。それでも返事が
 //!   3 秒より長く無ければ（ブラウザがタブごと止めたときなど）、窓にその旨と「元の窓を前へ」を出す
 //! - 窓を閉じると、パネルは元のタブのドックに戻る。元のタブを閉じると、窓にその知らせを出す
 
@@ -54,7 +54,7 @@ impl Chan {
             if let Some(v) = d.as_string().and_then(|s| serde_json::from_str(&s).ok()) {
                 i.borrow_mut().push(v);
                 c.request_repaint();
-                // 元のタブが裏に回っていても、別の窓の入力で描く（#237。別の窓のタブでは何もしない）
+                // 元のタブが裏に回っていても、別の窓の入力で描く（別の窓のタブでは何もしない）
                 crate::web_bg::kick();
             } else if d.is_instance_of::<js_sys::Uint8Array>()
                 || d.is_instance_of::<js_sys::ArrayBuffer>()
@@ -280,7 +280,7 @@ impl Tabs {
         }
     }
 
-    /// 元のタブが裏に回っている間: 別の窓に、ms のあとに入力（空でも）を送って合図するよう頼む（#237）。
+    /// 元のタブが裏に回っている間: 別の窓に、ms のあとに入力（空でも）を送って合図するよう頼む。
     /// 動き続けるもの（計算中の印など）で回り続けないよう、100 ms より短くはしない
     pub fn send_again(&mut self, id: u64, ms: f64) {
         if let Some(c) = &self.chan {
@@ -333,7 +333,7 @@ pub fn set_title(t: &str) {
     }
 }
 
-// ---- 解析以外のパネル: 元のタブで描いて画面を送る（#137）
+// ---- 解析以外のパネル: 元のタブで描いて画面を送る
 
 /// 元のタブ: 別の窓に出した解析以外のパネルを描く別の画面（egui の Context）。入力は別の窓から届く
 pub struct Host {
@@ -352,7 +352,7 @@ pub struct Host {
     pub title: String,
     /// このパネルの egui が頼んだ描き直しまでの時間 [ms]（一番短いもの。[`Host::take_again`]）
     again: std::sync::Arc<std::sync::Mutex<Option<f64>>>,
-    /// フォントを並べた言語（日本語か。変わったら並べ直す、GUX-32）
+    /// フォントを並べた言語（日本語か。変わったら並べ直す）
     ja: Option<bool>,
 }
 
@@ -386,7 +386,7 @@ impl Host {
     }
 
     /// このパネルの egui が描き直しを頼んでいれば、その時間 [ms]（取ると消える）。元のタブが裏に回っている間は
-    /// 元のタブの画面（rAF）が回らないので、別の窓にこの時間のあとの合図を頼む（[`Tabs::send_again`]、#237）
+    /// 元のタブの画面（rAF）が回らないので、別の窓にこの時間のあとの合図を頼む（[`Tabs::send_again`]）
     pub fn take_again(&self) -> Option<f64> {
         self.again.lock().ok().and_then(|mut a| a.take())
     }
@@ -494,7 +494,7 @@ pub struct Viewer {
     tex: HashMap<egui::TextureId, egui::TextureId>,
     /// 次の画面の前に消すテクスチャ（描いた後に消す）
     free: Vec<egui::TextureId>,
-    /// 届いた網（テクスチャ id はこのタブのものに替えて Arc で持ち、描くたびに複製しない。GAR-26）
+    /// 届いた網（テクスチャ id はこのタブのものに替えて Arc で持ち、描くたびに複製しない）
     meshes: Vec<(egui::Rect, std::sync::Arc<egui::epaint::Mesh>)>,
     cursor: egui::CursorIcon,
     ime: Option<egui::Rect>,

@@ -60,7 +60,7 @@ pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
     lensbench_core::waves::index_opt(w, s.wavelengths.len())
 }
 
-/// スポット・PSF の位置の単位: mm、アフォーカル像空間では角度の単位（前は mm を "lens" と書いた、XCT-18）
+/// スポット・PSF の位置の単位: mm、アフォーカル像空間では角度の単位（前は mm を "lens" と書いた）
 fn spot_unit(s: &System) -> String {
     s.image_unit().to_string()
 }

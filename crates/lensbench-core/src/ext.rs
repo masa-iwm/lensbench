@@ -1,5 +1,5 @@
 //! 拡張の表（レンズカタログの形式・利用者定義の面のモデル・プラグイン）を 1 つの値 [`Ext`] にまとめる
-//! （XCT-07・IOO-29・KRN-15）。
+//! 。
 //!
 //! 計算は今の文脈（[`crate::par::Ctx`]）の表を使う。文脈に無ければプロセスの既定（[`set_default`]。入口の exe・
 //! Python が起動時に 1 回決める）を使う。[`with`] で表を計算ごとに渡せるので、同じプロセスで 2 つの構成を同時に
@@ -8,7 +8,7 @@
 //! 表は読むだけの値（`Arc<Ext>`）で、足すときは写して足したものを置き直す（[`update_default`]）。
 //!
 //! 上の層の拡張（プロジェクトの検出器の種類・拡張の解析・GUI の見せ方・Python の模擬の組など）も、型ごとの欄
-//! （[`Ext::slot`]・[`Ext::slot_mut`]）として同じ表に載せる。拡張の登録はこの表 1 つ（XCT-07）。
+//! （[`Ext::slot`]・[`Ext::slot_mut`]）として同じ表に載せる。拡張の登録はこの表 1 つ。
 
 use crate::catalog::{LbcatSource, LensCatalogSource, ZmxFileSource};
 use crate::error::Result;

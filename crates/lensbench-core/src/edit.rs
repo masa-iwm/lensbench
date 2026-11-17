@@ -349,7 +349,7 @@ impl System {
                 }
             }
         }
-        // 種類・材料・値を 1 つの複製に当て、後始末は最後に 1 回（IOO-17）
+        // 種類・材料・値を 1 つの複製に当て、後始末は最後に 1 回
         let typ = match fields.iter().find(|(n, _)| n == "type") {
             Some((_, v)) => {
                 let t = surf_type_parse(&v.text("type")?)?;

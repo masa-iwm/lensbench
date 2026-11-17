@@ -1,4 +1,4 @@
-//! 文書の所在（GAR-01 の 2 段目）: 開いた系のファイル・保存先・最後に作った組合せ。
+//! 文書の所在（文書モデルの 2 段目）: 開いた系のファイル・保存先・最後に作った組合せ。
 //! 新規にする前の状態（[`NewSnap`]）にも同じ欄を写す
 
 use super::*;
@@ -18,13 +18,13 @@ pub(super) struct DocLoc {
     pub(super) built: Option<Value>,
     /// 最後に系を作った組合せ（今の組合せと違えば作り直す）
     pub(super) built_combo: crate::combo_doc::Snap,
-    /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり、GUX-02）
+    /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり）
     pub(super) saved_combo: crate::combo_doc::Snap,
     /// 開いた系を面の表で変えて、まだ保存していない
     pub(super) ld_dirty: bool,
 }
 
-/// 組合せの系・カタログの下書きを置くフォルダ。中身はプロセスの中のメモリ（[`crate::work_fs`]、GAR-03）。
+/// 組合せの系・カタログの下書きを置くフォルダ。中身はプロセスの中のメモリ（[`crate::work_fs`]）。
 /// ネイティブはプロセスごとに分ける。Web 版の置き場はページごとなので分けない
 pub(super) fn work_dir() -> PathBuf {
     crate::work_fs::work_dir()

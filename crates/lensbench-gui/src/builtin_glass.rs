@@ -1,5 +1,5 @@
 //! 同梱のガラスカタログ（[`lensbench_core::glass::builtin`]、SCHOTT・OHARA の分散式のガラス）から取ったガラスを
-//! 知らせる（GUX-01）。カタログはフォルダに無いときに core が使う（CLI-31）ので、GUI はフォルダを足さない。
+//! 知らせる。カタログはフォルダに無いときに core が使うので、GUI はフォルダを足さない。
 use lensbench_core::glass::builtin::FILES;
 use std::sync::OnceLock;
 
@@ -39,7 +39,7 @@ pub fn used(materials: &[&str], user_agf: &[String]) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// 同梱から取ったガラス（設定に SCHOTT.AGF が無いとき）だけを知らせる（GUX-01）
+    /// 同梱から取ったガラス（設定に SCHOTT.AGF が無いとき）だけを知らせる
     #[test]
     fn gux01_used_lists_builtin_glasses() {
         assert_eq!(

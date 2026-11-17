@@ -292,7 +292,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // （Ghost Focus Generator が保存するゴーストの系の戻りの面など。名前と nd・vd は保存時の値で、使わない）
             "GLAS" => {
                 s.glas = Some(t.get(1).unwrap_or(&"").to_string());
-                // ソルブ 4 は Offset（#10 Δnd、#11 Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
+                // ソルブ 4 は Offset（欄 10 が Δnd、欄 11 が Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
                 if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
                     let (surf, dnd, dvd) = (s.n, num(10)?, num(11)?);
                     notimpl!("zmx surface {surf}: material Offset solve (Δnd {dnd}, Δvd {dvd})");
@@ -1006,7 +1006,7 @@ pub fn build(
         let (pw, nw) = (primary + 1, wl.len());
         invalid!("primary wavelength {pw} (there are {nw} wavelengths)");
     }
-    // ガラス。見つからない・読めなかったカタログ（理由つき）は、ガラスが無いときの誤りに添える（XCT-01）
+    // ガラス。見つからない・読めなかったカタログ（理由つき）は、ガラスが無いときの誤りに添える
     let cats: Vec<String> = raw
         .sysl
         .get("GCAT")
@@ -1598,7 +1598,7 @@ pub fn build(
         .import_notes
         .extend(raw.system_notes(opt.fixed_semi)?);
     if opt.glasses.is_none() {
-        let n = glass::builtin::note_for(&s, &cats, dirs); // 同梱のガラスの知らせ（CLI-31）
+        let n = glass::builtin::note_for(&s, &cats, dirs); // 同梱のガラスの知らせ
         s.rx_mut().import_notes.extend(n);
     }
     if ncfg > 1 {
@@ -1682,7 +1682,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
             });
             match got {
                 Ok((m, o)) => {
-                    // 途中で止まったマクロ: 値は OpticStudio と同じ（それまでの値か 0、または変えない）だが黙らない（IOO-22）
+                    // 途中で止まったマクロ: 値は OpticStudio と同じ（それまでの値か 0、または変えない）だが黙らない
                     if let Some(e) = &o.error {
                         s.rx_mut().macro_notes.push(match o.value {
                             Some(v) => format!(

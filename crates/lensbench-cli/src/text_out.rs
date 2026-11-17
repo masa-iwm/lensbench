@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-/// 1 行を表示の言語で出す（先頭の字下げはそのまま、残りを訳す。XCT-20）
+/// 1 行を表示の言語で出す（先頭の字下げはそのまま、残りを訳す）
 pub(crate) fn say(s: &str) {
     let body = s.trim_start();
     let pad = &s[..s.len() - body.len()];

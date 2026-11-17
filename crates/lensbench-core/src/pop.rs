@@ -57,7 +57,7 @@ pub struct Beam {
     /// 局所座標の z の向きに対する伝搬の向き（+1 / −1。鏡の後は −1）
     pub dir: f64,
     /// パイロットを除いた場（行優先: [iy·nx + ix]）。伝搬の途中の作業用の形（間隔 dx・dy が伝搬で変わるので
-    /// 座標は x0・dx から作る）。結果として渡すときは [`Beam::grid`]（座標の並びつきの [`crate::grid::Grid2`]、ANA-18）
+    /// 座標は x0・dx から作る）。結果として渡すときは [`Beam::grid`]（座標の並びつきの [`crate::grid::Grid2`]）
     pub u: Vec<C64>,
 }
 
@@ -895,7 +895,7 @@ pub fn beam_from_rays(
         None
     };
     // 瞳を広げるのは外の縁のある開口（円・矩形・楕円）だけ。遮蔽・スパイダーは外の縁が無いので、光の外の縁は
-    // 開口の無いときと同じ瞳の縁（絞り面なら絞りの円。公開 #62: 広げると光が絞り半径の外まで通っていた）
+    // 開口の無いときと同じ瞳の縁（絞り面なら絞りの円。以前は広げると光が絞り半径の外まで通っていた）
     let rim = ap.is_some_and(|a| aperture_reach(a, 0.0, 0.0) > 0.0);
     let of = o.overfill.unwrap_or(if rim { 1.05 } else { 1.0 });
     let mut px = Vec::with_capacity(nr * nr);

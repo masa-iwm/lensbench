@@ -1116,7 +1116,7 @@ mod tests {
         let mut e = c.clone();
         assert!(insert_row(&mut e, &ids, &bad).is_err());
         assert_eq!(e.picks[0].air, 5.0);
-        // .zmx の玉・ユーザーカタログの項目からの差し替えは、前のファイルを持ち越さずカタログの玉のブロックに（GPN-04）
+        // .zmx の玉・ユーザーカタログの項目からの差し替えは、前のファイルを持ち越さずカタログの玉のブロックに
         let mut z = Pick::new(ElemKind::Zmx);
         z.path = "a.zmx".into();
         z.zmx_mut().lens = 2;

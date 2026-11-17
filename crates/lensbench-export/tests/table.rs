@@ -88,7 +88,7 @@ fn npz_is_readable() {
     assert_eq!(wl.to_vec(), s.wavelengths);
 }
 
-/// 全体を持たずに書く光線の表（save_rays）が、表を作ってから書いたもの（rays → save）とバイトまで同じ（PRJ-27）。
+/// 全体を持たずに書く光線の表（save_rays）が、表を作ってから書いたもの（rays → save）とバイトまで同じ。
 /// 全視野・全波長・けられる光線を含む
 #[test]
 fn streamed_ray_table_is_the_same_file() {

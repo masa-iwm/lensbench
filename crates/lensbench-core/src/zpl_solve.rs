@@ -99,7 +99,7 @@ pub fn macro_dirs(extra: &[PathBuf], zmx_dir: Option<&Path>) -> Vec<PathBuf> {
 static DEFAULT_DIRS: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
 
 /// 最後に探す既定のマクロのフォルダを決める。入口が [`crate::init_from_env`] で LENSBENCH_MACROS から決める
-/// （core は環境変数を読まない、XCT-08）
+/// （core は環境変数を読まない）
 pub fn set_default_dirs(dirs: Vec<PathBuf>) {
     *DEFAULT_DIRS.write_ok() = dirs;
 }
@@ -536,7 +536,7 @@ impl System {
 }
 
 /// 読込でマクロのソルブを解き直す。解き直せなければ、マクロのソルブを 1 つずつ足して解けなくするものだけ外し
-/// （IOO-22）、マクロのないところでも解けなければすべて外す。外したものは `macro_notes` に残す
+/// 、マクロのないところでも解けなければすべて外す。外したものは `macro_notes` に残す
 pub(crate) fn resolve_on_load(s: &mut System) {
     use crate::solves::SolveKind;
     let is_macro = |k: &SolveKind| {
@@ -549,7 +549,7 @@ pub(crate) fn resolve_on_load(s: &mut System) {
         let before = s.clone();
         let mut first = s.solve_thickness();
         if first.is_err() {
-            // 1 つのマクロの誤りでほかのマクロのソルブまで外さない（IOO-22）: マクロのないところから 1 つずつ足し、
+            // 1 つのマクロの誤りでほかのマクロのソルブまで外さない: マクロのないところから 1 つずつ足し、
             // 解けなくなるものだけ外す（前のソルブで値が変わって初めて誤りになる・収まらないものも見つかる）
             let ns = before.solves.len();
             let np = before.macro_parms.len();

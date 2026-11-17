@@ -280,7 +280,7 @@ const ZIP_LIMITS: ZipLimits = ZipLimits {
     u16: u16::MAX as usize,
 };
 
-/// 無圧縮の zip（npz 用）を足すそばから書く（中身を全部は持たない、PRJ-27）。4 GB・65,535 個を超える分は zip64 で書く
+/// 無圧縮の zip（npz 用）を足すそばから書く（中身を全部は持たない）。4 GB・65,535 個を超える分は zip64 で書く
 /// （numpy の np.load も読む）
 struct Zip {
     lim: ZipLimits,
@@ -474,7 +474,7 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
 }
 
 /// [`rays`] の表を、視野・波長の組ごとの塊（同じ列の [`Table`]、meta は空）で `f` に渡す。返すのは表の meta。
-/// 全体を持たずに書き出すため（[`save_rays`]、PRJ-27）
+/// 全体を持たずに書き出すため（[`save_rays`]）
 pub fn rays_each(
     s: &System,
     o: &RayOptions,
@@ -603,7 +603,7 @@ impl Drop for Parts {
     }
 }
 
-/// [`rays`] の表を、全体をメモリに作らずにファイルへ書く（PRJ-27）。CSV は塊ごとに末尾へ、npz は列ごとの一時ファイル
+/// [`rays`] の表を、全体をメモリに作らずにファイルへ書く。CSV は塊ごとに末尾へ、npz は列ごとの一時ファイル
 /// （書き出し先の隣の `<名前>.part<k>`）に溜めて最後に 1 列ずつ zip に写す。JSON は列ごとの形なので [`rays`] で作ってから書く。
 /// 中身は `rays(s, o)?.save(path)` と同じ。返すのは行の数
 pub fn save_rays(s: &System, o: &RayOptions, path: &Path) -> Result<usize> {
@@ -750,7 +750,7 @@ pub fn from_json(v: &Value) -> Table {
             .iter()
             .map(|r| r.iter().find(|(k, _)| *k == n).map(|x| &x.1))
             .collect();
-        // 整数の列は取り出しと同じ式で判定する（XCT-21）
+        // 整数の列は取り出しと同じ式で判定する
         let ints: Option<Vec<i64>> = vals.iter().map(|x| x.and_then(Value::as_i64)).collect();
         let all_num = vals
             .iter()
@@ -799,7 +799,7 @@ fn flatten(k: &str, x: &Value, out: &mut Vec<(String, Value)>) {
 mod tests {
     use super::*;
 
-    /// 上限を小さくして zip64 の欄（大きさ・位置・数）を書かせ、npz の読み手で読み直す（PRJ-27）
+    /// 上限を小さくして zip64 の欄（大きさ・位置・数）を書かせ、npz の読み手で読み直す
     #[test]
     fn npz_over_limits_is_zip64() {
         let cols = [

@@ -1,4 +1,4 @@
-//! 表のキー・キーボードの欄・面の挿入削除と、決めたことを当てる（table.rs から分けた、GPN-03）
+//! 表のキー・キーボードの欄・面の挿入削除と、決めたことを当てる（table.rs から分けた）
 
 use super::*;
 
@@ -128,7 +128,7 @@ pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: 
             _ => None,
         })
     });
-    // Ctrl+A: 表の全部の行を選ぶ（表を使っているとき。多重構成の次の構成より先に取る、GAR-28）
+    // Ctrl+A: 表の全部の行を選ぶ（表を使っているとき。多重構成の次の構成より先に取る）
     let all = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::A));
     if all && !v.keys.is_empty() {
         let col = st.cur.map_or(Col::R, |x| x.1);
@@ -351,7 +351,7 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                         tr("The object and image surfaces cannot be deleted").into(),
                     ));
                 } else if c.rows[j].stop {
-                    // 範囲で消すときと同じく絞りの面は残す（GPN-15）
+                    // 範囲で消すときと同じく絞りの面は残す
                     out.acts.push(Act::Refused(
                         tr("The stop surface cannot be deleted (move the stop to another surface first)").into(),
                     ));
@@ -396,7 +396,7 @@ pub(super) fn apply(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &mut
     if let Some((j, col, text)) = out.commit.take() {
         st.active = true;
         let mut act = commit_act(&c.rows[j], j, col, &text);
-        // カタログに無いガラスは serve に送る前に止める（Enter で欄を閉じて黙って戻らない、GUX-07）
+        // カタログに無いガラスは serve に送る前に止める（Enter で欄を閉じて黙って戻らない）
         if col == Col::Material && matches!(act, Some(Act::Edit { .. })) {
             if let Err(e) = material_ok(&text, c.glasses, c.rows) {
                 act = Some(Act::Refused(e));
@@ -407,7 +407,7 @@ pub(super) fn apply(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &mut
             _ => None,
         };
         if let Some(e) = refused {
-            // 誤りなら欄を閉じず、打った文字を残して赤枠と理由を出す（Esc で取り消し、GPN-10）
+            // 誤りなら欄を閉じず、打った文字を残して赤枠と理由を出す（Esc で取り消し）
             st.edit = Some(Editing {
                 j,
                 col,

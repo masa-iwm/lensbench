@@ -173,7 +173,7 @@ impl System {
 impl System {
     /// 物体 spec・瞳座標 pupil の光線（波長 w、ケラレ係数なし）の量 c: Position なら面 surf での位置 (x, y)（局所座標）、
     /// DirSum・DirDiff なら面 s1・s2 での方向余弦 (l, m) の和・差。止まった光線は NaN。
-    /// 実像高・条件で定める視野（cond_spec）と [`System::solve_ray`] の残差はこれから作る（KRN-08）
+    /// 実像高・条件で定める視野（cond_spec）と [`System::solve_ray`] の残差はこれから作る
     pub(crate) fn ray_quantity(
         &self,
         spec: ObjSpec,

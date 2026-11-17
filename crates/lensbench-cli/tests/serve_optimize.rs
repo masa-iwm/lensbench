@@ -122,7 +122,7 @@ fn optimize_serve() {
     );
 }
 
-/// 最適化は始めたときの系で回し、その間も読む・変える要求を止めない。回している間に系が変われば結果を当てない（GAR-20）
+/// 最適化は始めたときの系で回し、その間も読む・変える要求を止めない。回している間に系が変われば結果を当てない
 #[test]
 fn optimize_does_not_block_and_skips_stale_apply() {
     let sv = std::sync::Arc::new(Session::new());

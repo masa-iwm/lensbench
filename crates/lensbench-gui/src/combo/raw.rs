@@ -1,5 +1,5 @@
 //! 組合せの欄で書けないブロックをそのまま持つ要素（[`ElemKind::Raw`]）。開いたプロジェクトのブロックを失わない
-//! ために使う（文書モデル 1 段目、GAR-02）。中身は [`Pick::extra`]（id を除くブロックの JSON）
+//! ために使う（文書モデル 1 段目）。中身は [`Pick::extra`]（id を除くブロックの JSON）
 
 use egui::{RichText, Ui};
 use serde_json::{json, Value};
@@ -64,7 +64,7 @@ pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
                 v
             })
     };
-    // 欄はパネルの下に隠れやすいので、JSON は別の窓で直す（GPN-17 で要素の欄を 1 つにするまで）
+    // 欄はパネルの下に隠れやすいので、JSON は別の窓で直す（要素の欄を 1 つにするまで）
     let open_id = id.with("open");
     let mut open: bool = ui.data_mut(|d| d.get_temp(open_id)).unwrap_or(false);
     // 狭い行でも押せるように、説明はボタンのホバーに

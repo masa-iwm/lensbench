@@ -78,7 +78,7 @@ struct CellEdit {
     started: bool,
     /// 全部を選んで始める（Enter・F2・ダブルクリック）
     select_all: bool,
-    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc でやめる、レンズデータと同じ GPN-10）
+    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc でやめる、レンズデータと同じ）
     error: Option<String>,
 }
 
@@ -528,7 +528,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         h.col(|ui| {
                             let rt = RichText::new(trf("Config {}", &[&k])).strong();
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
-                            // AccessKit の木に名前を出す（自前の当たり判定。GPN-22）
+                            // AccessKit の木に名前を出す（自前の当たり判定）
                             r.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::Button,
@@ -601,7 +601,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         for k in 0..t.n {
                             row.col(|ui| {
                                 if let Some(e) = st.edit.as_mut().filter(|e| e.i == i && e.k == k) {
-                                    // レンズデータと同じ入力欄（Enter・F2・ダブルクリックは全部を選ぶ、GPN-08）
+                                    // レンズデータと同じ入力欄（Enter・F2・ダブルクリックは全部を選ぶ）
                                     let (resp, keys) = crate::widgets::cell::input(
                                         ui,
                                         &mut e.text,
@@ -639,7 +639,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 let resp = ui
                                     .interact(ui.max_rect(), ui.id().with(("mce", i, k)), Sense::click())
                                     .on_hover_text(hover);
-                                // AccessKit の木に名前（パラメータと構成）と値を出す（レンズデータのセルと同じ、GPN-22）
+                                // AccessKit の木に名前（パラメータと構成）と値を出す（レンズデータのセルと同じ）
                                 resp.widget_info(|| {
                                     let mut w = egui::WidgetInfo::labeled(
                                         egui::WidgetType::Button,

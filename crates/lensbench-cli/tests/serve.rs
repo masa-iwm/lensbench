@@ -172,7 +172,7 @@ fn loop_thickness() {
         json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
     );
     assert_eq!(sum["image_surface"], 9);
-    // 名前は Python と同じ glass_dirs。知らない鍵（前の名前 glass_dir・path・ref も）は誤り（XCT-34）
+    // 名前は Python と同じ glass_dirs。知らない鍵（前の名前 glass_dir・path・ref も）は誤り
     assert!(sv
         .error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }))
         .contains("unknown key glass_dir (one of file, glass_dirs"));
@@ -355,7 +355,7 @@ fn undo_redo_history() {
     assert!(sv
         .error("load", json!({ "file": ZMX, "history": "x" }))
         .contains("history"));
-    // 無いファイルは誤りの種類 io（XCT-06）
+    // 無いファイルは誤りの種類 io
     let (h, _) = sv.call_bin("load", json!({ "file": "nosuch.zmx" }), &[]);
     assert_eq!(h["error"]["data"]["kind"], "io", "{h}");
     sv.stop();
@@ -540,7 +540,7 @@ fn watch_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// watch: プロジェクトが参照する .zmx も、--also で並べなくても見張る（CLI-30）
+/// watch: プロジェクトが参照する .zmx も、--also で並べなくても見張る
 #[test]
 fn watch_follows_files_read_by_the_project() {
     let dir: PathBuf =
@@ -1316,7 +1316,7 @@ fn analyze_registered_params_and_save_hash() {
     for bad in [
         json!({ "cmd": "spot", "nope": 1 }),
         json!({ "cmd": "spot", "rings": "x" }),
-        // 数の文字列・カンマ区切りの文字列は受けない（値は JSON の型で、XCT-34）
+        // 数の文字列・カンマ区切りの文字列は受けない（値は JSON の型で）
         json!({ "cmd": "mtf", "field": "2" }),
         json!({ "cmd": "mtf", "freqs": "10,20" }),
     ] {
@@ -1345,7 +1345,7 @@ fn analyze_registered_params_and_save_hash() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// describe の method の一覧はどれも serve が知っている（-32601 にならない）。ヘッダの行が上限を超えると接続を切る（CLI-22）
+/// describe の method の一覧はどれも serve が知っている（-32601 にならない）。ヘッダの行が上限を超えると接続を切る
 #[test]
 fn describe_lists_every_method() {
     let mut sv = Server::start(&[]);
@@ -1385,7 +1385,7 @@ fn describe_lists_every_method() {
 }
 
 /// プロジェクトの別の状態は、読んだときのプロジェクトから展開する（読み込んだ後にファイルを書き換えても、reload まで
-/// 前のまま。CLI-21）
+/// 前のまま）
 #[test]
 fn project_states_come_from_the_loaded_file() {
     let dir = std::env::temp_dir().join(format!("lb-serve-states-{}", std::process::id()));
@@ -1447,7 +1447,7 @@ fn project_states_come_from_the_loaded_file() {
 }
 
 /// 別の状態の系へは、読み込んだ後の変更を面の名前で当て直す: 状態で前の玉を外して面の番号がずれても、変えた玉の
-/// 面に当たる。外した玉の面への変更は当てずに notes に出す（CLI-21）
+/// 面に当たる。外した玉の面への変更は当てずに notes に出す
 #[test]
 fn edits_follow_the_surface_into_other_states() {
     let dir = std::env::temp_dir().join(format!("lb-serve-retarget-{}", std::process::id()));
@@ -1518,7 +1518,7 @@ fn edits_follow_the_surface_into_other_states() {
 }
 
 /// save_project: 読み込んだ後の面の変更をブロックへ書き戻して保存すると、保存したプロジェクトを読んだ系が
-/// 変更した系と同じ（PRJ-04）
+/// 変更した系と同じ
 #[test]
 fn save_project_writes_surface_edits_to_blocks() {
     let dir = std::env::temp_dir().join(format!("lb-serve-saveproj-{}", std::process::id()));
@@ -1577,7 +1577,7 @@ fn save_project_writes_surface_edits_to_blocks() {
 }
 
 /// 展開で断る上書き（往復するブロックの面の前後の偏心、鏡のブロックの面の dn）は書き戻さずに notes。保存した
-/// プロジェクトは必ず読める（PRJ-04）
+/// プロジェクトは必ず読める
 #[test]
 fn save_project_keeps_the_project_expandable() {
     let dir = std::env::temp_dir().join(format!("lb-serve-saveproj2-{}", std::process::id()));

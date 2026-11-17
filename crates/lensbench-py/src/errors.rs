@@ -88,7 +88,7 @@ pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
             });
             pe
         }
-        // 文字列の誤りは英語で書いてあるので、表示の言語に訳す（XCT-20）
+        // 文字列の誤りは英語で書いてあるので、表示の言語に訳す
         ErrSrc::Text(m) => Error::new_err(lensbench_core::i18n::tr(&m)),
     }
 }
@@ -103,7 +103,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// Make a Python built-in exception, translating the English message into the display language (XCT-20)
+/// Make a Python built-in exception, translating the English message into the display language
 pub(crate) fn value_err(m: impl AsRef<str>) -> PyErr {
     PyValueError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }

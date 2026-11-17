@@ -3,7 +3,7 @@
 //! レイアウトは [`scene::build`] で系から場面（玉の立体・鏡・面・光線）を作り、各形式の書き手に渡す。
 
 #![warn(unreachable_pub)]
-// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
+// 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（試験は対象外）
 // 添字で回す数値計算のループはそのままにする
 #![allow(clippy::needless_range_loop)]
 
@@ -100,7 +100,7 @@ impl LayoutFormat {
 #[derive(Debug, Clone)]
 pub struct Written {
     pub format: LayoutFormat,
-    /// 利用者に見せる注意（STEP に写した品の長さを直せなかった実体など。PRJ-22）
+    /// 利用者に見せる注意（STEP に写した品の長さを直せなかった実体など）
     pub notes: Vec<String>,
 }
 

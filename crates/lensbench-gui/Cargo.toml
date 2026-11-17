@@ -14,7 +14,7 @@ workspace = true
 
 [features]
 # Windows のアプリ内のブラウザ（wry・tao。webview.rs）。切ると品ページは既定のブラウザで開く。
-# CI の Windows のテストは --no-default-features で切る（windows クレート一式をテストのビルドに乗せない。公開 #216 BLD-22）
+# CI の Windows のテストは --no-default-features で切る（windows クレート一式をテストのビルドに乗せない）
 default = ["webview"]
 webview = ["dep:wry", "dep:tao"]
 
@@ -38,7 +38,7 @@ lensbench-cad = { path = "../lensbench-cad" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 serde = { version = "1", features = ["derive"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence", "x11"] }
-# Linux の GUI は CI（xvfb の x11）用なので wayland は入れない（Wayland の机でも XWayland で動く。公開 #216 BLD-23）
+# Linux の GUI は CI（xvfb の x11）用なので wayland は入れない（Wayland の机でも XWayland で動く）
 egui = { version = "0.31", default-features = false }
 egui_extras = { version = "0.31", default-features = false }
 # パネルのドッキング・タブ・フロート（並びは serde で保存）
@@ -68,7 +68,7 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlC
 sys-locale = { version = "0.3", features = ["js"] }
 
 # ファイルを選ぶ窓（wasm はブラウザのファイル選択、files.rs）。Linux は zenity を呼ぶ（rfd の xdg-portal は
-# zbus など 55 クレートを引く。Linux の GUI は CI 用。公開 #216 BLD-23）
+# zbus など 55 クレートを引く。Linux の GUI は CI 用）
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 rfd = "0.15"
 
@@ -82,7 +82,7 @@ tao = { version = "0.36", default-features = false, features = ["rwh_06"], optio
 winresource = "0.1"
 
 [dev-dependencies]
-# 画面の振る舞いのテスト（GAR-07）。窓も GPU も使わず、AccessKit の木でボタンを探して押す
+# 画面の振る舞いのテスト。窓も GPU も使わず、AccessKit の木でボタンを探して押す
 egui_kittest = { version = "0.31", features = ["eframe"] }
 # 並びの保存（eframe の保存と同じ RON。並びには無限大の矩形が入るので JSON では読み直せない）
 ron = "0.8"

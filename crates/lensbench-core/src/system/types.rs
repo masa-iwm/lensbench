@@ -15,8 +15,8 @@ pub enum FieldType {
     Solve(FieldCond),
 }
 
-/// 視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前、
-/// XCT-09）。JSON の名前は "angle"・"object_height"・"paraxial_image_height"・"real_image_height"・"solve"
+/// 視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前）。
+/// JSON の名前は "angle"・"object_height"・"paraxial_image_height"・"real_image_height"・"solve"
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

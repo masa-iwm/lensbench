@@ -178,7 +178,7 @@ pub struct Polarized<'a> {
     pub coat: &'a Coatings,
 }
 
-/// 像面上の干渉縞。値は n × n の画素の格子（[`Grid2`]、座標は画素の中心 [mm]、行 = y。ANA-18）
+/// 像面上の干渉縞。値は n × n の画素の格子（[`Grid2`]、座標は画素の中心 [mm]、行 = y）
 #[derive(Debug, Clone)]
 pub struct DetectorFringe {
     /// 画素の間隔 [mm]（x・y で同じ）
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn circular_input_turns_the_same_way_as_the_ray_grid() {
         // 像面を「λ/4（diag(1, i)）→ 45° の直線偏光子」の Jones 面にすると、円偏光の片方だけが通る。
-        // 干渉縞の試料の強度が光線の格子（raygrid::trace_path）と同じ向きの円偏光で通る（ANA-13 で直した向き）
+        // 干渉縞の試料の強度が光線の格子（raygrid::trace_path）と同じ向きの円偏光で通る（以前は逆向きだったのを直した）
         let mut s = lens(2.0, &[0.0]);
         let img = s.image();
         s.edit_raw(|p| {

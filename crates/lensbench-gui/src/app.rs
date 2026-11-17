@@ -68,7 +68,7 @@ use crate::theme::{self, Look, Mode};
 use crate::tour::{Args, Step, Tour};
 use crate::worker::{Done, Tag, Worker};
 
-/// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける（GAR-17）
+/// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -85,7 +85,7 @@ pub struct Settings {
     pub rays: crate::layout_rays::RaySet,
     /// カタログレンズの一覧で隠す列（[`catalog::LensCol::key`]）
     pub lens_hide: Vec<String>,
-    /// アプリ版で OS のタイトルバーを使う（false は上の帯をタイトルバーにする、#138）
+    /// アプリ版で OS のタイトルバーを使う（false は上の帯をタイトルバーにする）
     pub os_titlebar: bool,
     /// 品の STEP の共有の置き場（アプリ版。空なら環境変数 LENSBENCH_CAD_STORE、なければ配布元だけ）
     pub cad_store: crate::cad_store::CadStore,
@@ -193,7 +193,7 @@ impl Default for Settings {
     }
 }
 
-/// 次に開いたときに戻す、開いていた文書と画面の様子（GAR-17: 好みの [`Settings`] と分ける）。
+/// 次に開いたときに戻す、開いていた文書と画面の様子（好みの [`Settings`] と分ける）。
 /// 保存するときだけ今の文書と画面から作る（毎フレーム写さない）
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -211,9 +211,9 @@ pub struct Session {
     pub ld_detail: bool,
     /// レンズデータの表を面単位で選ぶ（ブロックを自動で選ばない）
     pub ld_by_surface: bool,
-    /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
+    /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す）
     pub panels: Value,
-    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す、GPN-14）
+    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す）
     pub locked: std::collections::BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -224,7 +224,7 @@ impl Default for Session {
             layout: None,
             params: Vec::new(),
             view_plane: ViewPlane::Yz,
-            // 既定は折りたたみ表示で全部開く（曲率半径・硝材がすぐ見える、GUX-05）
+            // 既定は折りたたみ表示で全部開く（曲率半径・硝材がすぐ見える）
             ld_tree: true,
             ld_detail: false,
             ld_by_surface: false,
@@ -264,7 +264,7 @@ impl Core {
         }
     }
 
-    /// 下の行に知らせを出す（利用者の操作の結果、GAR-16）
+    /// 下の行に知らせを出す（利用者の操作の結果）
     fn info(&mut self, text: impl Into<String>) {
         self.status = Status {
             text: text.into(),
@@ -272,10 +272,10 @@ impl Core {
         };
     }
 
-    /// 下の行に誤りを出す（GAR-16）
+    /// 下の行に誤りを出す
     fn fail(&mut self, text: impl Into<String>) {
         self.status = Status {
-            text: lensbench_core::i18n::tr(&text.into()), // 計算側の英語の文を訳す（XCT-20）
+            text: lensbench_core::i18n::tr(&text.into()), // 計算側の英語の文を訳す
             error: true,
         };
     }
@@ -284,7 +284,7 @@ impl Core {
 /// 結果の JSON の表示で見せる長さ（字数。これより長い分は切る）
 const JSON_VIEW_MAX: usize = 200_000;
 
-/// serve の要求の名前を画面の言葉に（状態の行、GUX-06）
+/// serve の要求の名前を画面の言葉に（状態の行）
 fn method_label(m: &str) -> String {
     let ja = match m {
         "load" => "Load",
@@ -306,7 +306,7 @@ fn method_label(m: &str) -> String {
     tr(ja).to_string()
 }
 
-/// カタログに無いガラスで開けなかった系（GUX-01）
+/// カタログに無いガラスで開けなかった系
 #[derive(Default, Clone)]
 struct MissingGlass {
     /// 開こうとしたファイル
@@ -345,7 +345,7 @@ enum Cmd {
     Lang(Lang),
     Folders,
     Help,
-    /// 最適化を今の設定で回す・公差を回す・像面を近軸の焦点へ（パレットの実行系、GUX-16）
+    /// 最適化を今の設定で回す・公差を回す・像面を近軸の焦点へ（パレットの実行系）
     RunOpt,
     RunTol,
     FocusImage,
@@ -353,7 +353,7 @@ enum Cmd {
 
 /// パネルの外の状態（パネルの中から触る）
 struct Core {
-    /// パネルの状態（GAR-01）
+    /// パネルの状態
     p: Panels,
     s: Settings,
     /// 系を変える要求の返事に付けた読み直しを受け取っている間（[`Core::refresh`] で頼み直さない）
@@ -373,12 +373,12 @@ struct Core {
     /// カタログの玉の断面を頼んだ行
     preview_req: Option<usize>,
     status: Status,
-    /// 下の行の誤りを出した要求とその文（同じ要求がうまくいったら消す、GUX-27）
+    /// 下の行の誤りを出した要求とその文（同じ要求がうまくいったら消す）
     status_err: Option<(Tag, String)>,
-    /// 文書の所在（開いた系のファイル・保存先・最後に作った組合せ、GAR-01）
+    /// 文書の所在（開いた系のファイル・保存先・最後に作った組合せ）
     loc: DocLoc,
     _work: doc_loc::WorkDir,
-    /// serve の系の写し（概要・面の表・元に戻す段など、GAR-01）
+    /// serve の系の写し（概要・面の表・元に戻す段など）
     sys: SysCopy,
     results: HashMap<u64, AnaRes>,
     new_param: String,
@@ -387,12 +387,12 @@ struct Core {
     /// 開いている解析をすべて計算し直す（true は live の解析だけ）
     rerun: Option<bool>,
     browser: Browser,
-    /// 組合せ（GUI が持つ文書）と、カタログから足す位置（GPN-28）
+    /// 組合せ（GUI が持つ文書）と、カタログから足す位置
     doc: crate::combo_doc::ComboDoc,
     folders_open: bool,
     help_open: bool,
     save_layout_open: bool,
-    /// 答えを待っている「はい・いいえ」の確かめ（[`Core::ask`]、GAR-24）
+    /// 答えを待っている「はい・いいえ」の確かめ（[`Core::ask`]）
     ask: Option<ask::Ask>,
     /// Web 版: 今描いている別の窓のパネル（確かめをその窓に出す）
     drawing_in: Option<u64>,
@@ -405,7 +405,7 @@ struct Core {
     rays_open: bool,
     /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
     combo_sel_prev: Option<usize>,
-    /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す（#135）
+    /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す
     to_combo: Option<bool>,
     /// 開いた系を組合せにするとき差し込む要素と、差し込む間隔（その前の面の番号。None は系の後ろ）
     open_insert: Option<(Option<usize>, combo::Pick)>,
@@ -437,10 +437,10 @@ struct Core {
     last_set: Option<web_time::Instant>,
     /// 状態の行の履歴（文、誤りか、誤りの案内）と、その窓を開いているか
     status_log: Vec<(String, bool, Option<String>)>,
-    /// 今の誤りの文への案内（誤りの文、案内と符号）。文が変われば出さない（GUX-06）
+    /// 今の誤りの文への案内（誤りの文、案内と符号）。文が変われば出さない
     status_hint: Option<(String, String)>,
     status_log_open: bool,
-    /// 開けなかった系の、カタログに無いガラス（案内の窓、GUX-01）
+    /// 開けなかった系の、カタログに無いガラス（案内の窓）
     missing_glass: Option<MissingGlass>,
     /// 未保存の確認の後に閉じる（もう聞かない）
     close_ok: bool,
@@ -453,7 +453,7 @@ struct Core {
     swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
-    /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す、GAR-09）
+    /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す）
     param_sys_cache: std::cell::RefCell<Option<(u64, std::rc::Rc<crate::param_pick::Sys>)>>,
     /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
     sys_gen: u64,
@@ -477,7 +477,7 @@ pub struct App {
     /// Web 版: 別の窓に出したパネル（元のタブ）
     #[cfg(target_arch = "wasm32")]
     tabs: Option<crate::web_tabs::Tabs>,
-    /// Web 版: このタブが別の窓に出した解析以外のパネルなら、元のタブで描いた画面を受けて描く口（#137）
+    /// Web 版: このタブが別の窓に出した解析以外のパネルなら、元のタブで描いた画面を受けて描く口
     #[cfg(target_arch = "wasm32")]
     viewer: Option<crate::web_tabs::Viewer>,
     /// Web 版（元のタブ）: 別の窓に出した解析以外のパネルを描く画面（パネル id ごと）
@@ -558,7 +558,7 @@ fn dirs(v: &[String]) -> Value {
 
 impl Core {
     /// 最適化・公差・差し替えのパネルの設定（変数・項・公差の表。serve の optimize・tolerance・swap と同じ形）。
-    /// 空のパネルは入れない（GPN-14）
+    /// 空のパネルは入れない
     fn panels_value(&self) -> Value {
         let mut v = serde_json::Map::new();
         if self.p.opt.vars.iter().any(|x| !x.name.trim().is_empty()) || !self.p.opt.terms.is_empty()
@@ -636,7 +636,7 @@ impl Core {
     }
 
     /// 最近のファイルの先頭に足す。Web 版の保存先（`/downloads/`、ダウンロードにして置き場から消える）は
-    /// 開き直せないので足さない（GAR-12）
+    /// 開き直せないので足さない
     fn push_recent(&mut self, file: &str) {
         if file.starts_with("/downloads/") {
             return;
@@ -719,7 +719,7 @@ impl Core {
     }
 
     /// パラメータの名前の欄の補完・階層選択の候補（面・玉・群・波長の数）
-    /// 変数名の補完の候補を作る系の面・玉・群（6 つのパネルが毎フレーム呼ぶので rev ごとに 1 回だけ作る、GAR-09）
+    /// 変数名の補完の候補を作る系の面・玉・群（6 つのパネルが毎フレーム呼ぶので rev ごとに 1 回だけ作る）
     fn param_sys(&self) -> std::rc::Rc<crate::param_pick::Sys> {
         if let Some((r, s)) = &*self.param_sys_cache.borrow() {
             if *r == self.rev {
@@ -751,7 +751,7 @@ impl Core {
     }
 
     fn waves_um(&self) -> Vec<f64> {
-        // 配列を複製せずに読む（GAR-09）
+        // 配列を複製せずに読む
         self.sys
             .summary
             .as_ref()
@@ -836,7 +836,7 @@ impl Core {
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
                 self.worker.send(Tag::Analyze(id), "analyze", p);
-                // 下の行は操作の結果だけ。計算中は要求の数を横に出す（GUX-31）
+                // 下の行は操作の結果だけ。計算中は要求の数を横に出す
                 self.ana_sent(id);
             }
             Err(e) => {
@@ -871,7 +871,7 @@ impl Core {
         }
     }
 
-    /// 見るパラメータの値を 1 つの要求でまとめて読む（GAR-05。途中の誤りで止まれば残りは take が 1 つずつ頼み直す）
+    /// 見るパラメータの値を 1 つの要求でまとめて読む（途中の誤りで止まれば残りは take が 1 つずつ頼み直す）
     fn read_params(&mut self) {
         let calls = self
             .ses
@@ -940,7 +940,7 @@ impl Core {
 
     /// 保存（Ctrl+S）・名前を付けて保存（Ctrl+Shift+S）。組合せの系は組合せを同梱したプロジェクトの .json に、
     /// 開いた系は系ファイル（.json）に書く。書き先は開いた・前に保存した .json（.zmx から開いた系・Web 版・
-    /// as_new は書き先を選ぶ）（#129）
+    /// as_new は書き先を選ぶ）
     fn save(&mut self, as_new: bool) {
         let combo =
             self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
@@ -1060,7 +1060,7 @@ impl Core {
 
     /// 値の変更を送る（計算中なら終わってからまとめて）
     /// 値の変更を送る。解析でない要求（読み込み・前の値の変更）を待っている間だけ待つ。解析が回っている間は
-    /// 送れば中断する（Set は系を変える）が、動かし続けると解析が 1 つも出ないので 250 ms に 1 回まで（GAR-06）
+    /// 送れば中断する（Set は系を変える）が、動かし続けると解析が 1 つも出ないので 250 ms に 1 回まで
     fn flush_set(&mut self) {
         if self.pending_set.is_empty() || self.worker.busy_core() {
             return;
@@ -1152,7 +1152,7 @@ impl Core {
         self.rerun = Some(false);
     }
 
-    /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）。系を変える要求に
+    /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない）。系を変える要求に
     /// 付けて読み直す途中（[`Core::send_change`]）なら頼まない
     fn refresh(&mut self) {
         if self.bundled_refresh {
@@ -1162,7 +1162,7 @@ impl Core {
     }
 
     /// 系を変える要求（set・edit・undo/redo）に、面の表・多重構成の表・要約の読み直しを続けて付けて 1 つの要求で
-    /// 送る（返事を受けてから読み直しを頼む往復をなくす、GAR-05）。返事は [`Core::take`] が分ける
+    /// 送る（返事を受けてから読み直しを頼む往復をなくす）。返事は [`Core::take`] が分ける
     fn send_change(&mut self, tag: Tag, method: &str, params: Value) {
         let mut calls = vec![(method.to_string(), params)];
         calls.extend(take::refresh_calls());
@@ -1316,7 +1316,7 @@ impl Core {
             .filter(|x| x.0 == "paths")
             .map(|x| x.1.clone())
             .collect();
-        // 面の表で選んだ面を図で目立たせる（#125）
+        // 面の表で選んだ面を図で目立たせる
         self.p.combo_view.hl_surf = if is_combo {
             self.p.ld.cur.map(|x| x.0)
         } else {
@@ -1363,7 +1363,7 @@ impl Core {
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
         // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
-        // 置き換わらないように、#135）
+        // 置き換わらないように）
         let n = self.doc.combo.picks.len();
         if self.loc.file.is_some()
             && !self.is_combo()
@@ -1471,7 +1471,7 @@ impl Core {
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.doc.added.take() {
             if self.loc.file.is_some() && !self.is_combo() {
-                // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直し（GUX-10）は要らない。立てたままだと
+                // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直しは要らない。立てたままだと
                 // 組合せにした後に開いた系の像面までの距離を書き換える
                 self.doc.refocus = false;
                 // 組合せでない系を開いているときは開いた系に足す: レンズデータで選んでいる面の後（空気の間隔なら）、
@@ -1595,7 +1595,7 @@ impl Core {
         }
     }
 
-    /// カタログに無いガラスで開けなかったときの案内（GUX-01）
+    /// カタログに無いガラスで開けなかったときの案内
     fn missing_glass_window(&mut self, ctx: &egui::Context) {
         let Some(m) = self.missing_glass.clone() else {
             return;
@@ -1846,7 +1846,7 @@ fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>, missing: &[String]
     let mut start = false;
     ui.horizontal(|ui| {
         start = ui.button(tr("➕ Add folder…")).clicked();
-        // パスを打つ・貼る（GUX-01）
+        // パスを打つ・貼る
         let id = egui::Id::new(("dir-typed", title));
         let mut t: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
         let r = ui.add(
@@ -1977,7 +1977,7 @@ impl App {
                 .unwrap_or_default()
         };
         // 開いていた文書と画面の様子。前の版は好みと同じ値に入れていたので、鍵が無ければそこから一度だけ読む
-        // （同じ欄の名前。次に保存すると分かれる。この読み替えは XCT-34 でほかの移行と一緒に消す）
+        // （同じ欄の名前。次に保存すると分かれる。この読み替えはほかの移行と一緒に消す）
         let mut ses: Session = if args.tour.is_some() {
             Session::default()
         } else {
@@ -2134,10 +2134,10 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             hosts: HashMap::new(),
         };
-        // 前に閉じたときの最適化・公差・差し替えの設定（GPN-14）
+        // 前に閉じたときの最適化・公差・差し替えの設定
         let panels = std::mem::take(&mut app.c.ses.panels);
         app.c.set_panels(&panels);
-        // レンズデータの見せ方は表の状態が持ち、保存するときだけ写す（GPN-28）
+        // レンズデータの見せ方は表の状態が持ち、保存するときだけ写す
         app.c.p.ld.tree = app.c.ses.ld_tree;
         app.c.p.ld.detail = app.c.ses.ld_detail;
         app.c.p.ld.by_surface = app.c.ses.ld_by_surface;
@@ -2235,7 +2235,7 @@ impl App {
 
     fn add_pane(&mut self, kind: Kind) -> u64 {
         let id = self.c.new_id();
-        // いちばん広い葉にタブで足す（フォーカスのある小さな所に入って図が潰れない、GUX-04）
+        // いちばん広い葉にタブで足す（フォーカスのある小さな所に入って図が潰れない）
         let big = self
             .dock
             .main_surface()
@@ -2504,7 +2504,7 @@ impl App {
 }
 
 impl App {
-    /// 画面の写しが届いたら、頼んだ図の所を切り出して写す・PNG で保存する（GUX-18）
+    /// 画面の写しが届いたら、頼んだ図の所を切り出して写す・PNG で保存する
     fn take_shot(&mut self, ctx: &egui::Context) {
         let Some((id, copy, cmd)) = self.c.shot.clone() else {
             return;
@@ -2551,7 +2551,7 @@ impl App {
         };
     }
 
-    /// 窓を閉じる前に、保存していない変更があれば「保存 / 保存しない / やめる」を聞く（GUX-02）
+    /// 窓を閉じる前に、保存していない変更があれば「保存 / 保存しない / やめる」を聞く
     fn close_guard(&mut self, ctx: &egui::Context) {
         if cfg!(target_arch = "wasm32") || self.tour.is_some() {
             return;
@@ -2799,7 +2799,7 @@ impl eframe::App for App {
                 });
         }
         for (s, n, k) in added {
-            // 1 枚だけのパネルがもうあれば、2 枚目を作らず表に出す（GUX-16）
+            // 1 枚だけのパネルがもうあれば、2 枚目を作らず表に出す
             if k.single() {
                 let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
                 if let Some(id) = self.pane_of(same) {
@@ -2818,7 +2818,7 @@ impl eframe::App for App {
         #[cfg(target_arch = "wasm32")]
         self.web_tabs(ctx);
         self.os_windows(ctx);
-        // 項目はパレットを開いているときだけ作る（GAR-09）
+        // 項目はパレットを開いているときだけ作る
         if self.palette.open {
             let items = self.palette_items();
             if let Some(cmd) = self.palette.ui(ctx, &items) {
@@ -2877,7 +2877,7 @@ impl eframe::App for App {
         if self.viewer.is_some() {
             return;
         }
-        // 好み（設定）と、開いていた文書と画面の様子（Session）を別の鍵に書く（GAR-17）
+        // 好み（設定）と、開いていた文書と画面の様子（Session）を別の鍵に書く
         let mut ses = Session {
             combo: self.c.doc.combo.clone(),
             layout: Some(self.layout()),
@@ -3085,7 +3085,7 @@ enum ResOut {
     Error(String),
 }
 
-/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128。図の画像、GUX-18）
+/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV。図の画像）
 fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -> Option<ResOut> {
     use crate::export_table::{delimited, tables};
     let mut out = None;
@@ -3165,7 +3165,7 @@ fn docs_urls() {
     assert!(!docs_url("gui.html").contains("//gui"));
 }
 
-/// 見本の組合せ（examples/combos。Web 版の「見本」に出る、#134）
+/// 見本の組合せ（examples/combos。Web 版の「見本」に出る）
 #[cfg(test)]
 fn sample_combos() -> Vec<(&'static str, Combo)> {
     use crate::sysset::{ApKind, FieldKind, FieldPt};

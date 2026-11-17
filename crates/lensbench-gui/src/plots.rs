@@ -169,7 +169,7 @@ fn spot_scale(rays: &[SpotRays], primary: usize) -> (Vec<usize>, Vec<(f64, f64)>
     (fields, centers, rmax)
 }
 
-/// スポット図。rays_gen は光線の世代（届くたびに変わる。中心・縮尺はそのときだけ求める、GPN-07）
+/// スポット図。rays_gen は光線の世代（届くたびに変わる。中心・縮尺はそのときだけ求める）
 pub fn spot(
     ui: &mut Ui,
     rays: &[SpotRays],
@@ -203,7 +203,7 @@ pub fn spot(
     let cell = ((avail - 8.0 * cols as f32) / cols as f32).clamp(90.0, 260.0);
     let vis = ui.visuals().clone();
     // 拡大・移動（全視野で共通。倍率と中心のずれ µm）。ホイール＝拡大、右・中ドラッグ＝移動、
-    // ダブルクリック・Home＝全体（GPN-09）
+    // ダブルクリック・Home＝全体
     let mut view: (f32, egui::Vec2) = (st.spot_zoom, egui::Vec2::from(st.spot_pan));
     ui.horizontal(|ui| {
         ui.label(
@@ -330,7 +330,7 @@ pub fn spot(
 /// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）
 pub const FIELD_LABELS: &str = "lensbench-field-labels";
 
-/// 視野の名前「視野 2 (0, 14)」を作る関数（座標が分かれば添える、GUX-28）。視野の番号は 1 から
+/// 視野の名前「視野 2 (0, 14)」を作る関数（座標が分かれば添える）。視野の番号は 1 から
 pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
     let coords: Vec<String> = ui
         .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
@@ -354,7 +354,7 @@ pub fn mtf(
 }
 
 /// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
-/// （曲線はそのときだけ JSON から作る、GPN-07）
+/// （曲線はそのときだけ JSON から作る）
 pub fn mtf_curves(
     ui: &mut Ui,
     result: &Value,
@@ -394,7 +394,7 @@ pub fn mtf_curves(
         (lines(result), prev.map(lines).unwrap_or_default())
     });
     let (now, prev_lines) = (&both.0, &both.1);
-    // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない、GUX-19）
+    // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない）
     let xmax = now
         .iter()
         .flat_map(|(_, _, p)| p.iter().map(|q| q[0]))

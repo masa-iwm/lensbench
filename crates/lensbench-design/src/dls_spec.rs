@@ -1,4 +1,4 @@
-//! 最適化（DLS）とズーム軌跡の設定の型（CLI の旗・serve の params・Python の引数の元、XCT-02・CLI-02）
+//! 最適化（DLS）とズーム軌跡の設定の型（CLI の旗・serve の params・Python の引数の元）
 //!
 //! 既定値は [`OptimizeParams`]・[`ZoomParams`] の `Default` だけに書く。CLI の `default_value_t`、Python の引数の既定は
 //! ここから取り（Python は試験で突き合わせる）、serve は JSON をこの型に読む。
@@ -392,7 +392,7 @@ pub struct OptimizeParams {
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
-    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り、IOO-28）
+    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り）
     pub stopped_as_vignetted: bool,
 }
 
@@ -530,7 +530,7 @@ pub struct ZoomParams {
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
-    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り、IOO-28）
+    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り）
     pub stopped_as_vignetted: bool,
 }
 
@@ -644,7 +644,7 @@ mod tests {
         assert!(serde_json::from_value::<OptimizeParams>(json!({"ring": 3})).is_err());
         assert!(serde_json::from_value::<OptimizeParams>(json!({"jac": "x"})).is_err());
         assert_eq!("Wavefront".parse::<Merit>().unwrap(), Merit::Wavefront);
-        // 別名 wfe は受けない（XCT-34）
+        // 別名 wfe は受けない
         assert!("wfe".parse::<Merit>().is_err());
         assert!("x"
             .parse::<Jac>()
@@ -652,7 +652,7 @@ mod tests {
             .contains("auto, fd, forward"));
     }
 
-    /// 止まった光線の扱いは JSON（serve）から問題とズームの設定まで届く（IOO-28）
+    /// 止まった光線の扱いは JSON（serve）から問題とズームの設定まで届く
     #[test]
     fn stopped_as_vignetted_reaches_the_problem() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

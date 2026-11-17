@@ -22,7 +22,7 @@ pub struct DetectorKind {
     pub schema: Option<fn() -> Value>,
 }
 
-/// 登録した種類の表（拡張の表 [`Ext`] の欄、XCT-07）
+/// 登録した種類の表（拡張の表 [`Ext`] の欄）
 #[derive(Clone, Default)]
 pub struct DetectorKinds(Vec<DetectorKind>);
 

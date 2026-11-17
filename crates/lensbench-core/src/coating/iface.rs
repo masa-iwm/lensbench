@@ -527,7 +527,7 @@ impl Iface {
         self.eval_sc(((1.0 - c0) * (1.0 + c0)).sqrt(), c0)
     }
 
-    /// 複屈折材の板の境界で、板の側の屈折率を `n` に置き換えた [`Self::eval_cos`]（公開 #52: 異常光の成分の係数）。
+    /// 複屈折材の板の境界で、板の側の屈折率を `n` に置き換えた [`Self::eval_cos`]（異常光の成分の係数）。
     /// `entering` = true は板へ入る面（後ろの媒質が板）、false は板から出る面（前の媒質が板）。
     /// 屈折率で決まる係数（膜なし・膜ファイルの層）だけ置き換え、理想膜・実測表・表・モデル・鏡は [`Self::eval_cos`] と同じ
     pub fn eval_cos_crystal(&self, c0: f64, entering: bool, n: f64) -> Result<[C64; 2]> {
@@ -539,7 +539,7 @@ impl Iface {
     }
 
     /// 前の媒質の屈折率を `n1`、後ろの媒質の屈折率を `n2` に置き換えた [`Self::eval_cos`]（None は置き換えない）。
-    /// 複屈折材の板の境界（公開 #52）と、板どうしの貼り合わせの境界（前の板の o・e → 次の板の o・e、公開 #73）に使う。
+    /// 複屈折材の板の境界と、板どうしの貼り合わせの境界（前の板の o・e → 次の板の o・e）に使う。
     /// 置き換えるのは [`Self::eval_cos_crystal`] と同じく屈折率で決まる係数だけ
     pub fn eval_cos_media(&self, c0: f64, n1: Option<f64>, n2: Option<f64>) -> Result<[C64; 2]> {
         if self.mirror {

@@ -164,7 +164,7 @@ def gen_python() -> str:
         d = ast.get_docstring(node, clean=True) or ""  # type: ignore[arg-type]
         s = d.strip().split("\n\n")[0].replace("\n", " ")
         depth = 0
-        for i, ch in enumerate(s):  # 括弧の外の最初の「。」か「. 」まで（説明は英語が元、XCT-20）
+        for i, ch in enumerate(s):  # 括弧の外の最初の「。」か「. 」まで（説明は英語が元）
             depth += ch in "（("
             depth -= ch in "）)"
             if depth <= 0 and (ch == "。" or (ch == "." and s[i + 1 : i + 2] == " ")):

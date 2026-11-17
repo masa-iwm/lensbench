@@ -1,4 +1,4 @@
-//! レイアウト図（2D）を描き、クリック・ドラッグを扱う（GPN-25）。段に分ける:
+//! レイアウト図（2D）を描き、クリック・ドラッグを扱う。段に分ける:
 //!
 //! 1. [`xform`]：図の範囲から画面への写し方（拡大縮小・移動を含む）
 //! 2. [`scene`]：画面の上の形（BS・玉・機構部品・開口・要素の名前・寸法線）を求める。描かず、ポインタも見ない
@@ -16,7 +16,7 @@ fn panning(ui: &Ui, resp: &egui::Response) -> bool {
     crate::widgets::pan_zoom_pans(ui, resp, false)
 }
 
-/// 2D の図の拡大縮小・移動・全体表示（#124）。操作はほかの図と同じ [`crate::widgets::pan_zoom`]（GPN-09）:
+/// 2D の図の拡大縮小・移動・全体表示。操作はほかの図と同じ [`crate::widgets::pan_zoom`]:
 /// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、Home キー・
 /// 何も無い所のダブルクリック（[`interact`]）・「全体」で全体表示。fit_center は全体表示のときの図の中心（画面）
 fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
@@ -74,7 +74,7 @@ pub(super) fn figure(
     view: &mut View,
     accent: Color32,
 ) {
-    // 開いた系・カタログのプレビュー（combo なし）は描くだけ。読むのは空の組合せ（毎フレーム作らない、GPN-09）
+    // 開いた系・カタログのプレビュー（combo なし）は描くだけ。読むのは空の組合せ（毎フレーム作らない）
     static EMPTY: std::sync::LazyLock<Combo> = std::sync::LazyLock::new(|| Combo {
         picks: Vec::new(),
         ..Default::default()
@@ -248,7 +248,7 @@ pub(super) struct Dim {
 pub(super) struct Scene {
     pub(super) cubes: Vec<Cube>,
     pub(super) bodies: Vec<Body>,
-    /// 面の表で選んだ面を持つ玉の縁（閉じた線）と、その面の頂点（#125）
+    /// 面の表で選んだ面を持つ玉の縁（閉じた線）と、その面の頂点
     hl: Vec<Vec<Pos2>>,
     hl_vertex: Option<(Pos2, usize)>,
     /// 機構部品の名前と壁の断面
@@ -799,7 +799,7 @@ fn paint(
         }
         painter.add(egui::Shape::line(closed, outline(sel(b.k))));
     }
-    // 面の表で選んだ面: その面を持つ玉の縁と、面の頂点の印（#125）
+    // 面の表で選んだ面: その面を持つ玉の縁と、面の頂点の印
     let hl = theme::highlight(vis);
     for line in &sc.hl {
         painter.add(egui::Shape::line(line.clone(), Stroke::new(2.0_f32, hl)));
@@ -996,7 +996,7 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
                     .margin(egui::Margin::symmetric(4, 2)),
             );
             if !*focused || te.gained_focus() {
-                // 全選択（打てば今の数字が置き換わる。表のセルと同じ、GPN-08）
+                // 全選択（打てば今の数字が置き換わる。表のセルと同じ）
                 crate::widgets::cell::start(ui, &te, text, true);
                 *focused = true;
             } else if te.lost_focus() {
@@ -1010,7 +1010,7 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
                     .filter(|v| v.is_finite() && *v >= 0.0);
                 let err_id = te_id.with("err");
                 if !esc && v.is_none() {
-                    // 数でない・負の値は黙って捨てず、欄を残して赤枠にする（Esc でやめる、GPN-10）
+                    // 数でない・負の値は黙って捨てず、欄を残して赤枠にする（Esc でやめる）
                     ui.data_mut(|d| d.insert_temp(err_id, true));
                     *focused = false;
                 } else {

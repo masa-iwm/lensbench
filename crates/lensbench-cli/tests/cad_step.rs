@@ -1,4 +1,4 @@
-//! 品の STEP を 1 件だけ取ってキャッシュする（公開 #120）: 手元の HTTP の口から、lensbench が書き出した角の
+//! 品の STEP を 1 件だけ取ってキャッシュする: 手元の HTTP の口から、lensbench が書き出した角の
 //! ケージ板の STEP を返し、1 回目は取りに行き、2 回目はキャッシュを使うこと・簡易外形と比べること・
 //! STEP でない中身（HTML）は誤りで品ページを示すことを確かめる
 
@@ -171,7 +171,7 @@ fn step_is_fetched_once_and_cached() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 詳しい形（#121）: キャッシュに STEP のある品を置き、layout --mech-detail で STL・STEP に取った STEP の形を書く
+/// 詳しい形: キャッシュに STEP のある品を置き、layout --mech-detail で STL・STEP に取った STEP の形を書く
 fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::path::Path) {
     let p = dir.join("placed.json");
     std::fs::write(
@@ -646,7 +646,7 @@ fn coating_models_come_from_the_store_when_missing() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// XCT-14: 読み取り専用の置き場（配る exe に組み込む読み取り用のトークン）は、配布元から取った STEP を上げない
+/// 読み取り専用の置き場（配る exe に組み込む読み取り用のトークン）は、配布元から取った STEP を上げない
 #[test]
 fn xct14_read_only_store_reads_but_never_uploads() {
     let dir = std::env::temp_dir().join(format!("lensbench-cad-ro-{}", std::process::id()));

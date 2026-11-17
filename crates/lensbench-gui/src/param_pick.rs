@@ -210,7 +210,7 @@ fn complete(all: Vec<(String, String)>, text: &str) -> Vec<(String, String)> {
 type Cands = std::sync::Arc<Vec<(String, String, String, String)>>;
 
 /// 打った文字に合う候補。候補の一覧は系（と言語）が変わったときだけ、絞り込みは打った文字が変わったときだけ
-/// 作り直す（フォーカス中に毎フレーム全候補を作らない、GPN-27）
+/// 作り直す（フォーカス中に毎フレーム全候補を作らない）
 fn cached_complete(
     ui: &Ui,
     sid: egui::Id,
@@ -481,7 +481,7 @@ mod tests {
         }
     }
 
-    /// 小文字を先に作った絞り込みは、前の complete と同じ結果（GPN-27）
+    /// 小文字を先に作った絞り込みは、前の complete と同じ結果
     #[test]
     fn complete_lower_matches_complete() {
         let all = names(&sys(), Set::Any);

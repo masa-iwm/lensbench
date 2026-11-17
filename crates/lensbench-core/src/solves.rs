@@ -550,7 +550,7 @@ impl System {
         let (y, u) = (f * y[k], f * u[self.prev_live(k)]);
         let n = self.index_before(k, pw);
         let n2 = self.n(k)[pw];
-        // 近軸の曲率のうち c に依らない分（偶数次非球面の r²・トロイダル面の y² の項。近軸の追跡と同じ、KRN-33）
+        // 近軸の曲率のうち c に依らない分（偶数次非球面の r²・トロイダル面の y² の項。近軸の追跡と同じ）
         let a1 = d.shape().paraxial_extra().unwrap_or(0.0);
         if y == 0.0 {
             invalid!("surface {k}: the ray height is 0, so the curvature solve can't be solved");

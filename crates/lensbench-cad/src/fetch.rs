@@ -1,4 +1,4 @@
-//! 品の CAD データ（公式の STEP）を 1 件だけ取って、キャッシュに置く（公開 #120）。
+//! 品の CAD データ（公式の STEP）を 1 件だけ取って、キャッシュに置く。
 //!
 //! カタログには機構部品の簡易外形（`mech`）だけを入れ、詳しい形の STEP はメーカーの配布元の URL（品の `cad.step`）
 //! から、ユーザーが品を選んで求めたときにその 1 ファイルだけを取る。裏でまとめて取りには行かない。
@@ -198,7 +198,7 @@ pub struct Store {
     /// Access のサービストークンの Client Secret
     pub secret: String,
     /// 読むだけ（[`Store::put`] は誤り、品の STEP を取ったときも上げない）。配る exe に組み込む読み取り用の
-    /// トークンはこれにする（exe から取り出しても置き場には書けない、XCT-14）
+    /// トークンはこれにする（exe から取り出しても置き場には書けない）
     pub read_only: bool,
 }
 
@@ -219,7 +219,7 @@ pub fn set_store(s: Option<Store>) {
 /// 今の置き場: [`set_store`] で決めたもの、無ければ環境変数 `LENSBENCH_CAD_STORE`（URL）・
 /// `LENSBENCH_CAD_STORE_ID`・`LENSBENCH_CAD_STORE_SECRET`、無ければ組み込みの置き場（[`set_default_store`]）。
 /// 組み込みの置き場は、URL の環境変数が無くトークン（ID・SECRET）の環境変数があれば、そのトークンで読み書きする
-/// （組み込みは読み取り用、書き込み用のトークンは手元の環境変数だけに置く、XCT-14）。
+/// （組み込みは読み取り用、書き込み用のトークンは手元の環境変数だけに置く）。
 /// どれも無ければ None（配布元だけ）
 pub fn store() -> Option<Store> {
     let env = |k: &str| std::env::var(k).unwrap_or_default().trim().to_string();
@@ -495,7 +495,7 @@ fn is_decoration(dropped: &str, kept: &str) -> bool {
 /// 全体が品の名前と英数字だけで一致すればそれを当てる。全体で当たらない品には、区切り（`_`・`-`・空白）で切った
 /// 前の部分・後ろの部分が一致し、切り落とした側がメーカーの付け足しだけ（[`is_decoration`]）のファイルを当てる
 /// （`edm_11-211`・`CM1L03_ttn170465-e0w`・`C16_AP_12.7_STP__C16-AP-12.7`・`Newport-M-100.zip` など）。
-/// `CFS1-B` を `CFS1` に、`PH-20-ARS-N` を `PH-20-ARS` に当てることはしない（公開 #195）。
+/// `CFS1-B` を `CFS1` に、`PH-20-ARS-N` を `PH-20-ARS` に当てることはしない。
 /// 1 つのファイルに品が 2 つ当たれば長い名前の方、1 つの品にファイルが 2 つ当たれば全体で一致した方、
 /// 同じなら名前順で先の方。返すのは（品の名前、ファイル）の名前順の並びと、当たらなかったファイル
 pub fn match_files<'a>(
@@ -906,7 +906,7 @@ mod tests {
         assert_eq!(store_key(&p), store_key(&p.with_extension("")));
         assert!(store_key(&p).ends_with(".step"));
         assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), None);
-        // gzip でない以前の形の .step は使わない（XCT-24）
+        // gzip でない以前の形の .step は使わない
         std::fs::write(p.with_extension(""), b"ISO-10303-21;").unwrap();
         assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), None);
         std::fs::write(&p, crate::detail::gzip(b"ISO-10303-21;")).unwrap();
@@ -981,7 +981,7 @@ mod tests {
 
     #[test]
     fn match_files_does_not_take_longer_part_numbers() {
-        // 公開 #195: 正しいファイルが同じフォルダにあっても、長い別品番のファイルを当てていた
+        // 正しいファイルが同じフォルダにあっても、長い別品番のファイルを当てていた
         let items = [
             "CFS1",
             "KC1T",
@@ -1041,7 +1041,7 @@ mod tests {
         );
     }
 
-    /// XCT-14: 組み込みの読み取り用の置き場には上げない。書き込みは手元の環境変数のトークンだけ
+    /// 組み込みの読み取り用の置き場には上げない。書き込みは手元の環境変数のトークンだけ
     #[test]
     fn xct14_read_only_store_does_not_put_and_env_token_overrides_default() {
         let ro = Store {

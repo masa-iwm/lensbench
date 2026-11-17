@@ -268,7 +268,7 @@ pub struct Expansion {
     pub map: Vec<SurfOrigin>,
 }
 
-/// 展開した系の面 1 つの出どころ（[`Expansion::map`]、PRJ-04）
+/// 展開した系の面 1 つの出どころ（[`Expansion::map`]）
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SurfOrigin {
     /// 面を足した id のあるブロック・群（内から外へ。.zmx の取り込みの群も）
@@ -771,7 +771,7 @@ pub(crate) fn expand_inner(
     )?
     .into_prescription();
     s.name = p.name.clone();
-    // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる（CLI-31）
+    // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる
     let b = glass::builtin::note_for(&s, &p.glass_catalogs, &dirs);
     s.import_notes.extend(b);
     s.temperature = envr.temperature_c;
@@ -855,7 +855,7 @@ pub(crate) fn expand_inner(
         }
     }
     // 裏返して置いた玉（id の無い玉の lens1 … も）: 最初の範囲の面（偏心・傾きの座標ブレークを除く）が、ちょうど
-    // 1 つの裏返した玉の面すべて（PRJ-31: 前は座標ブレークを含めて範囲を比べたので、偏心した玉は立たなかった）
+    // 1 つの裏返した玉の面すべて（前は座標ブレークを含めて範囲を比べたので、偏心した玉は立たなかった）
     let flipped = |s: &System, r: &[usize; 2]| -> bool {
         let faces: Vec<usize> = (r[0]..=r[1].min(map.len() - 1))
             .filter(|&j| !s.surfaces[j].is_coord_break())
@@ -936,7 +936,7 @@ pub(crate) fn place_mechanics(
     let mut specs: Vec<MechSpec> = Vec::new();
     for (k, m) in ms.iter().enumerate() {
         let tag = format!("mechanics {}", k + 1);
-        // 取ってキャッシュにある品の STEP（詳しい形の描画に使う、#121）
+        // 取ってキャッシュにある品の STEP（詳しい形の描画に使う）
         let mut step_file = String::new();
         let (spec, item_name) = match (&m.mech, &m.catalog, &m.item) {
             (Some(x), None, None) => (x.clone(), String::new()),

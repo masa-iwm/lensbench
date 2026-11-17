@@ -1,4 +1,4 @@
-//! カタログの一覧の絞り込み（品・ガラス）。catalog.rs から分けた（GPN-24）
+//! カタログの一覧の絞り込み（品・ガラス）。catalog.rs から分けた
 
 use super::*;
 
@@ -54,7 +54,7 @@ pub(super) fn text_match(query: &str, fields: &[&str]) -> bool {
 pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: bool) -> Vec<usize> {
     // 読めない仕様の条件は無視する（欄の横に誤りを出す）
     let specs = parse_spec_filters(&q.spec).unwrap_or_default();
-    // 検索語は 1 度だけ小文字に。行の文字列は安い条件を通った行だけ、検索語があるときだけ作る（GPN-24）
+    // 検索語は 1 度だけ小文字に。行の文字列は安い条件を通った行だけ、検索語があるときだけ作る
     let words: Vec<String> = q.text.split_whitespace().map(str::to_lowercase).collect();
     let mut v: Vec<usize> = (0..rows.len())
         .filter(|&i| {

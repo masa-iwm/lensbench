@@ -1,5 +1,5 @@
 //! STEP の測りの説明（品の notes に書く）。英語が元で、文は「. 」でつなぐ（日本語の表示では文ごとに表で訳して
-//! 「。」でつなぐ。XCT-20）
+//! 「。」でつなぐ）
 
 use super::fmt;
 use crate::step::RetainingRing;
