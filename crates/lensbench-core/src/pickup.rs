@@ -149,19 +149,35 @@ impl Pickup {
     }
 }
 
+/// 面タイプの .zmx の PARM の番号のうち、係数の並び `Surface::asph` の最初に当たる番号（asph[k] は PARM base + k、
+/// PARM 8 まで）。偶数次非球面・フレネル・バイナリ 2・自由曲面（奇数次非球面・傾いた面・不規則面・Zernike・Grid Sag）は 1、
+/// トロイダルは 2（PARM 1 は回転半径）。係数を持たない面タイプは None（IOO-08: 面の量の対応はここ 1 か所）
+pub(crate) fn asph_parm_base(t: SurfType) -> Option<usize> {
+    match t {
+        SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2 => {
+            Some(1)
+        }
+        SurfType::Toroidal => Some(2),
+        t if crate::freeform::is_freeform(t) => Some(1),
+        _ => None,
+    }
+}
+
+/// パラメータ Kind::Asph（a2・a4…）を持てる面か（偶数次非球面と自由曲面）
+pub(crate) fn takes_asph(d: &Surface) -> bool {
+    d.typ == SurfType::EvenAsph || d.shape().is_freeform()
+}
+
 /// 面タイプのパラメータ i（.zmx の PARM の番号）の値。この面タイプで値を持たない番号は None
 pub fn surf_parm(d: &Surface, i: u8) -> Option<f64> {
     let i = i as usize;
     let at =
         |v: &[f64], j: usize| -> Option<f64> { (j < 8).then(|| v.get(j).copied().unwrap_or(0.0)) };
     match d.typ {
-        SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2
-            if (1..=8).contains(&i) =>
-        {
-            at(&d.asph, i - 1)
-        }
         SurfType::Toroidal if i == 1 => Some(if d.cx == 0.0 { 0.0 } else { 1.0 / d.cx }),
-        SurfType::Toroidal if (2..=8).contains(&i) => at(&d.asph, i - 2),
+        t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
+            at(&d.asph, i - asph_parm_base(t).unwrap_or(1))
+        }
         SurfType::CoordBrk if (1..=5).contains(&i) => Some(d.cb[i - 1]),
         SurfType::CoordBrk if i == 6 => Some(d.cb_order as f64),
         SurfType::Paraxial if i == 1 => Some(d.focal),
@@ -195,13 +211,11 @@ pub(crate) fn set_surf_parm(d: &mut Surface, i: u8, v: f64) -> bool {
         a[j] = v;
     };
     match d.typ {
-        SurfType::EvenAsph | SurfType::Fresnel | SurfType::CylFresnel | SurfType::Binary2
-            if (1..=8).contains(&i) =>
-        {
-            put(&mut d.asph, i - 1, 8)
-        }
         SurfType::Toroidal if i == 1 => d.cx = if v == 0.0 { 0.0 } else { 1.0 / v },
-        SurfType::Toroidal if (2..=8).contains(&i) => put(&mut d.asph, i - 2, 7),
+        t if asph_parm_base(t).is_some_and(|b| (b..=8).contains(&i)) => {
+            let b = asph_parm_base(t).unwrap_or(1);
+            put(&mut d.asph, i - b, 9 - b)
+        }
         SurfType::CoordBrk if (1..=5).contains(&i) => d.cb[i - 1] = v,
         SurfType::CoordBrk if i == 6 => d.cb_order = v as u8,
         SurfType::Paraxial if i == 1 => d.focal = v,
@@ -317,7 +331,9 @@ pub(crate) fn pick_kind(d: &Surface, kind: Kind) -> Option<PickKind> {
         Kind::Conic => Some(PickKind::Conic),
         Kind::Dn => Some(PickKind::Dn),
         Kind::Disp => Some(PickKind::Disp),
-        Kind::Asph(i) if d.typ == SurfType::EvenAsph => Some(PickKind::Parm(i + 1)),
+        Kind::Asph(i) if takes_asph(d) => {
+            asph_parm_base(d.typ).map(|b| PickKind::Parm(i + b as u8))
+        }
         k if d.is_coord_break() => k.tilt_index().map(|i| PickKind::Parm(i as u8 + 1)),
         k => k.tilt_index().map(|i| PickKind::Before(i as u8)),
     }
@@ -336,7 +352,11 @@ fn kind_of_pick(d: &Surface, what: PickKind) -> Option<Kind> {
             .get(i as usize)
             .copied(),
         PickKind::Parm(i) => match d.typ {
-            SurfType::EvenAsph if (1..=8).contains(&i) => Some(Kind::Asph(i - 1)),
+            t if takes_asph(d)
+                && asph_parm_base(t).is_some_and(|b| (b..=8).contains(&(i as usize))) =>
+            {
+                Some(Kind::Asph(i - asph_parm_base(t).unwrap_or(1) as u8))
+            }
             SurfType::CoordBrk => [Kind::Dx, Kind::Dy, Kind::Tx, Kind::Ty, Kind::Tz]
                 .get((i as usize).wrapping_sub(1))
                 .copied(),
@@ -556,5 +576,56 @@ pub fn pick_kind_name(k: crate::pickup::PickKind) -> String {
         PickKind::Radius => "r".into(),
         PickKind::Before(i) => format!("before{i}"),
         PickKind::After(i) => format!("after{i}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 面の係数のパラメータ（a2・a4…）と .zmx の PARM の番号の対応は面タイプによらず 1 か所（IOO-08）:
+    /// 自由曲面でもピックアップの量になり、PARM の値が読み書きできる（前は偶数次非球面だけで、奇数次非球面などの
+    /// PPAR のピックアップは読込で外れた）
+    #[test]
+    fn asphere_parms_follow_one_table() {
+        for (typ, base) in [
+            (SurfType::EvenAsph, 1u8),
+            (SurfType::OddAsph, 1),
+            (SurfType::Irregular, 1),
+            (SurfType::TiltSurf, 1),
+        ] {
+            let mut d = Surface {
+                typ,
+                asph: vec![0.1, 0.2, 0.3],
+                ..Default::default()
+            };
+            assert!(takes_asph(&d), "{typ:?}");
+            let w = pick_kind(&d, Kind::Asph(1)).unwrap();
+            assert_eq!(w, PickKind::Parm(base + 1), "{typ:?}");
+            assert_eq!(kind_of_pick(&d, w), Some(Kind::Asph(1)), "{typ:?}");
+            assert_eq!(pick_get(&d, w), Some(0.2), "{typ:?}");
+            assert!(pick_set(&mut d, w, 0.5));
+            assert_eq!(d.asph[1], 0.5);
+        }
+        // トロイダル: PARM 1 は回転半径、係数は PARM 2 から。a2 などのパラメータは持たない
+        let d = Surface {
+            typ: SurfType::Toroidal,
+            cx: 0.02,
+            asph: vec![0.1, 0.2],
+            ..Default::default()
+        };
+        assert_eq!(surf_parm(&d, 1), Some(50.0));
+        assert_eq!(surf_parm(&d, 3), Some(0.2));
+        assert_eq!(surf_parm(&d, 9), None);
+        assert!(!takes_asph(&d));
+        assert_eq!(pick_kind(&d, Kind::Asph(0)), None);
+        // フレネルは PARM 1〜8 が係数（パラメータ a2 は持たない）
+        let d = Surface {
+            typ: SurfType::Fresnel,
+            asph: vec![0.4],
+            ..Default::default()
+        };
+        assert_eq!(surf_parm(&d, 1), Some(0.4));
+        assert_eq!(kind_of_pick(&d, PickKind::Parm(1)), None);
     }
 }

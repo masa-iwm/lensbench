@@ -639,7 +639,15 @@ fn config_table(
             ("CRVT", Some(_)) => Some(Kind::Curv),
             ("CONN", Some(_)) => Some(Kind::Conic),
             ("PRAM", Some(k)) => match (s.surfaces[k].typ, parm) {
-                (SurfType::EvenAsph, 1..=8) => Some(Kind::Asph(parm as u8 - 1)),
+                // 係数の PARM（偶数次非球面・自由曲面、crate::pickup::asph_parm_base）
+                (t, 1..=8)
+                    if crate::pickup::takes_asph(&s.surfaces[k])
+                        && crate::pickup::asph_parm_base(t).is_some_and(|b| parm as usize >= b) =>
+                {
+                    Some(Kind::Asph(
+                        (parm as usize - crate::pickup::asph_parm_base(t).unwrap_or(1)) as u8,
+                    ))
+                }
                 (SurfType::CoordBrk, 1) => Some(Kind::Dx),
                 (SurfType::CoordBrk, 2) => Some(Kind::Dy),
                 (SurfType::CoordBrk, 3) => Some(Kind::Tx),

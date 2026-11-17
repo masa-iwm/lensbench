@@ -28,7 +28,7 @@
 use crate::error::Result;
 use crate::pickup::pick_kind;
 use crate::solves::solve_kind_info;
-use crate::surface::{After, SurfType, Tilt};
+use crate::surface::{After, Tilt};
 use crate::system::{Keep, System};
 use crate::units::UnitKind;
 use crate::{invalid, notimpl};
@@ -292,7 +292,7 @@ impl System {
             Kind::Curv | Kind::Radius | Kind::Conic if j == 0 || !curved => {
                 invalid!("surface {j} ({:?}) {}", d.typ, p.kind.name());
             }
-            Kind::Asph(_) if d.typ != SurfType::EvenAsph && !d.shape().is_freeform() => {
+            Kind::Asph(_) if !crate::pickup::takes_asph(d) => {
                 invalid!("surface {j} is not an even asphere ({})", p.kind.name());
             }
             Kind::Asph(i) if i >= 8 => invalid!("asphere coefficient {}", p.kind.name()),
