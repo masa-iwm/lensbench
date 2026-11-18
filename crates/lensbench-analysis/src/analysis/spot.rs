@@ -7,6 +7,7 @@ use lensbench_core::trace::RayCounts;
 use lensbench_core::Waves;
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Spot {
     pub x: Vec<f64>,
     pub y: Vec<f64>,

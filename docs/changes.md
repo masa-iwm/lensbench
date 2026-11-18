@@ -5,6 +5,15 @@
 
 ## 次の版（v0.5.0 の後）
 
+### 結果の型と設定の型
+- 結果の型に `#[non_exhaustive]` を付けた: `analysis::{Mtf, MtfWaves, Spot, Zernike, Wavefront}`・`psf::Psf`・`pop::{Prop, RayBeam}`・
+  `sweep::{MtfSweep, Rms, RmsSweep}`・`fiber::Coupling`・`raygrid::JonesGrid`（lensbench-analysis）、`opd::Opd`・`system::Paraxial`・
+  `trace::{RayCounts, RayOut, RecEntry}`（core）。フィールドは pub のまま読める。外のクレートでは構造体の式で作れない。
+- `raygrid::PupilGrid` のフィールド `g` を非公開にし、`PupilGrid::new(g)`（g ≥ 2）と `g()` にした。
+- 変えないもの: 設定の型（`PsfOpts`・`RmsOpts`・`FiberOpts`・`LoadOptions` など）は pub フィールドと `..Default::default()` で作る。
+  `raygrid::RayGrid` と `coating::Coatings` も外で組み立てる（プラグインの入力・試験の膜）ので同じ扱い。システムの文書の型
+  （`Prescription`・`Surface` など）は serde の形そのもので、直すのは `System::edit` を通す。
+
 ### 解析の場所
 - `lensbench_core::{analysis, psf, pop, sweep, fiber, raygrid}` を `lensbench_analysis::{…}` に移した。core に残るのは OPD と瞳の標本
   （`lensbench_core::opd`: `opd`・`to_ref`・`Opd`・`pupil_grid`・`pupil_gauss`・`gauss_legendre`）と、瞳の区画の面積（`pupil::cell_frac`）。

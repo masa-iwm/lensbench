@@ -347,6 +347,7 @@ pub(super) fn zern_pass(
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Zernike {
     pub coef: Vec<f64>,
     pub kind: ZernKind,

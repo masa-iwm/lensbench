@@ -298,6 +298,7 @@ pub struct OutGrid {
 
 /// 伝搬の結果
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Prop {
     pub beam: Beam,
     /// 積分の核の位相の、入力の隣り合う標本の間の差の最大 [rad]。π を超えると折り返しが出る。
@@ -854,6 +855,7 @@ impl Default for RayBeamOpts {
 
 /// 光線から作った場
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RayBeam {
     pub beam: Beam,
     /// 使えた光線の数 / 追跡した光線の数

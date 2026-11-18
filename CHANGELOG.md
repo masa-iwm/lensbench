@@ -9,6 +9,9 @@
 
 ### 互換が切れる所
 
+- **結果の型を外で組み立てない**: Rust の解析・追跡の結果の型（`Mtf`・`Psf`・`Spot`・`Zernike`・`Wavefront`・`Opd`・`Paraxial`・
+  `RayOut` など）に `#[non_exhaustive]` を付けた。フィールドは読めるが、構造体の式では作れない（後でフィールドを足しても互換が切れない）。
+  `raygrid::PupilGrid` は `PupilGrid::new(g)` で作り、`g()` で読む。設定の型（`PsfOpts`・`RmsOpts` など）は変わらない。
 - **解析を lensbench-analysis へ**: Rust の `lensbench_core::{analysis, psf, pop, sweep, fiber, raygrid}` は `lensbench_analysis::…` になった。
   OPD と瞳の標本（`opd`・`gauss_legendre` など）は core の `lensbench_core::opd` に残り、`lensbench_analysis::analysis` からも引ける。
   `lensbench_analysis::prelude` は .zmx の読込と解析まで含む。CLI・GUI・Python は変わらない。

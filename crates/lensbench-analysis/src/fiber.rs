@@ -59,6 +59,7 @@ impl Default for FiberOpts {
 
 /// 結合の結果
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Coupling {
     /// 結合効率（偏光なし、膜の透過を含まない）
     pub eta: f64,

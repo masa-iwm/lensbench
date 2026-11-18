@@ -93,6 +93,7 @@ impl FieldAxis {
 // ------------------------------------------------------------------------------------------ MTF
 /// 横軸を振った MTF。tan・sag は格子（x = 横軸の点、y = 周波数。`tan[k][i]` は周波数 k・点 i）
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct MtfSweep {
     pub tan: lensbench_core::grid::Grid2,
     pub sag: lensbench_core::grid::Grid2,
@@ -250,6 +251,7 @@ impl Default for RmsOpts {
 
 /// 1 点の RMS
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Rms {
     /// スポット半径の RMS（√(x² + y²)）・x 方向・y 方向 [レンズ単位]
     pub spot: f64,
@@ -437,6 +439,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
 
 /// 横軸を振った RMS
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RmsSweep {
     pub x: Vec<f64>,
     pub rms: Vec<Rms>,

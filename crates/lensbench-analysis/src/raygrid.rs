@@ -27,10 +27,25 @@ fn czero() -> C64 {
 /// （[`trace_jones`] と、それと同じ光線を追い直す側・微分の計算が同じ点を指すように）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PupilGrid {
-    pub g: usize,
+    g: usize,
 }
 
 impl PupilGrid {
+    /// 一辺 g 点の格子（g ≥ 2 が前提。端の点が瞳の縁 ±1 に来る。入口の trace_jones などが g < 2 を誤りにしている）
+    pub fn new(g: usize) -> Self {
+        debug_assert!(
+            g >= 2,
+            "the pupil grid needs at least 2 points per side (got {g})"
+        );
+        Self { g }
+    }
+
+    /// 一辺の点の数
+    #[inline]
+    pub fn g(&self) -> usize {
+        self.g
+    }
+
     /// 格子点 q の正規化瞳座標 [px, py]
     #[inline]
     pub fn coords(&self, q: usize) -> [f64; 2] {
@@ -423,6 +438,7 @@ pub fn trace_path(
 /// [`trace_jones`] の結果: 光線の格子（場 `ex`・`ey` は 0 のまま）、光線ごとの Jones 行列（行 = 検出面の局所 x・y、
 /// 列 = ファイバ端の入射 x・y、中心波長、exp(−i k L) の約束）と、面 `surf` を指定したときのその面の局所座標の交点
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct JonesGrid {
     pub rays: RayGrid,
     pub jones: Vec<[[C64; 2]; 2]>,
@@ -536,7 +552,7 @@ fn trace_jones_in(
     }
     let nw = sys.wavelengths.len();
     let mut r = RayGrid::new(g, nw);
-    let pg = PupilGrid { g };
+    let pg = PupilGrid::new(g);
     let (idx, pxs, pys) = if with_edge { pg.rays_rim() } else { pg.rays() };
     // 縁を求めるときは、けられた光線も値を残す（追跡はけられても続く）
     let pass = |t: &lensbench_core::system::Trace, m: usize| {

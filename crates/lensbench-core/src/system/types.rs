@@ -274,6 +274,7 @@ pub struct Frames {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Paraxial {
     pub enpp: f64,
     pub epd: f64,

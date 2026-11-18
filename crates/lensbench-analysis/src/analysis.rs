@@ -28,6 +28,7 @@ pub fn wavefront_grid(n: usize) -> Vec<f64> {
     PupilGrid::WavefrontMap(n).axis().unwrap_or_default()
 }
 
+#[non_exhaustive]
 pub struct Wavefront {
     /// 波面 [波]（行優先、行 = y。座標は正規化瞳、x・y 共通の [`wavefront_grid`]。瞳の外・けられは NaN）
     pub w: lensbench_core::grid::Grid2,

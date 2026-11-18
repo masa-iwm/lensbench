@@ -25,6 +25,7 @@ use lensbench_core::{TanSag, Waves};
 
 /// 回折 PSF
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Psf {
     /// 強度（行優先、行 = y）。収差のない同じ瞳（けられ込み）の多色 PSF の中心の値を 1 とする（ピークはストレール比）。
     /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、[`Self::axes`] の向きに沿う）は `i.x()[m] = (m − M/2)·pixel.0`。

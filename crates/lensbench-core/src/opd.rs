@@ -66,6 +66,7 @@ pub fn pupil_gauss_os(rings: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
 }
 
 /// OPD [波] の結果（光線と一緒に）
+#[non_exhaustive]
 pub struct Opd {
     /// 光線の列（位置・方向・光路長・理想レンズの位相と状態・けられ、[`Cols::WAVE`]）
     pub rays: RayBuf,

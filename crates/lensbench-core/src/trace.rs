@@ -72,6 +72,7 @@ impl RayStatus {
 
 /// 追跡した光線の本数を、届いたか・止まった理由で数えたもの（解析の結果で、何本がなぜ除かれたかを示す）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub struct RayCounts {
     /// 追跡した本数
     pub total: usize,
@@ -117,6 +118,7 @@ impl RayCounts {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct RayOut {
     /// 最後の面の局所座標での位置・方向（方向は物理的な向き）
     pub xyz: V3,
@@ -136,6 +138,7 @@ pub struct RayOut {
 
 /// 面ごとの記録（追跡の内側で 1 本ずつ書く。結果は [`crate::system::RecSurf`] に並べ替える）
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct RecEntry {
     pub surf: usize,
     pub xyz: V3,

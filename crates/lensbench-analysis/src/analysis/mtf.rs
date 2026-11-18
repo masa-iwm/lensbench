@@ -103,6 +103,7 @@ pub(crate) const T: Tuning = Tuning {
 /// MTF（変調度）。freqs [cycles/mm] ごとに子午と球欠（向きは [`MtfAxes`]。既定は子午が視野の向き、y だけの視野では
 /// 子午が像面の y・球欠が x の向きの周波数）
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Mtf {
     pub freqs: Vec<f64>,
     pub tan: Vec<f64>,
@@ -634,6 +635,7 @@ pub fn mtf_amp(
 
 /// 多色と各波長の MTF（OpticStudio の表示と同じ組）
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct MtfWaves {
     /// 多色（[`mtf`] の w None と同じ値）
     pub poly: Mtf,
