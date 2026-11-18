@@ -545,7 +545,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
                 ui.label(trf("Detector {} is not available in this build (its settings are kept)", &[&d.kind]));
                 return;
             };
-            let specs = crate::argform::object_specs(&kind.object);
+            let specs = crate::argform::object_specs(&kind.object, None);
             let mut done = vec![false; specs.len()];
             let mut groups: Vec<(&str, Vec<&crate::argform::ArgSpec>)> = Vec::new();
             for (prefix, title) in kind.object.groups {

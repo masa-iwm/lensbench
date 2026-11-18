@@ -346,11 +346,15 @@ impl Core {
         cfg: &mut AnaCfg,
         o: &crate::ext::ObjectArg,
     ) -> bool {
-        let specs = argform::object_specs(o);
+        let chosen = o.chosen_plugin(&cfg.cmd, &cfg.args);
+        let specs = argform::object_specs(o, chosen.as_deref());
         let mut changed = false;
         ui.separator();
         ui.horizontal(|ui| {
-            ui.strong(tr(o.title));
+            match &chosen {
+                Some(p) => ui.strong(format!("{} ({p})", tr(o.title))),
+                None => ui.strong(tr(o.title)),
+            };
             let start = ui
                 .small_button(tr("Load JSON…"))
                 .on_hover_text(tr("JSON with the same items as the fields"))

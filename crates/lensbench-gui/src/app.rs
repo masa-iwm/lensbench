@@ -767,7 +767,8 @@ impl Core {
         m.extend(argform::to_map(&specs, &args)?);
         if let Some(o) = crate::ext::get(&cfg.cmd).and_then(|a| a.object) {
             if !cfg.sensor.is_empty() {
-                let specs = argform::object_specs(&o);
+                let specs =
+                    argform::object_specs(&o, o.chosen_plugin(&cfg.cmd, &cfg.args).as_deref());
                 let sm = argform::to_map(&specs, &cfg.sensor)?;
                 if !sm.is_empty() {
                     m.remove(o.arg);

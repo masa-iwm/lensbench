@@ -345,9 +345,9 @@ pub fn analysis_specs(cmd: &str) -> std::sync::Arc<[ArgSpec]> {
         .clone()
 }
 
-/// 設定のオブジェクトの欄の項目（拡張の解析の [`crate::ext::ObjectArg`]）
-pub fn object_specs(o: &crate::ext::ObjectArg) -> Vec<ArgSpec> {
-    ArgSpec::parse_list(&Value::Array((o.specs)()))
+/// 設定のオブジェクトの欄の項目（拡張の解析の [`crate::ext::ObjectArg`]。`chosen` は specs_from で選んだプラグイン）
+pub fn object_specs(o: &crate::ext::ObjectArg, chosen: Option<&str>) -> Vec<ArgSpec> {
+    ArgSpec::parse_list(&Value::Array(o.specs_for(chosen)))
 }
 
 /// 数を JSON に。整数の値は整数で（設定の JSON の整数の項目、画素の数など、が読めるように）

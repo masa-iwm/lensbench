@@ -41,6 +41,8 @@ pub struct ObjectArg {
     pub(crate) note: &'static str,
     /// 項目（`lensbench_engine::params::param_json` と同じ形の JSON の並び）
     pub(crate) specs: fn() -> Vec<Value>,
+    /// 項目を選んだプラグインの設定から作るときの、プラグインの名前を受ける解析の引数（[`ObjectArg::specs_from`]）
+    pub(crate) specs_from: Option<&'static str>,
     /// 項目の組（名前の頭, 見出し）。並べた順に、頭が合う項目を組に入れる（どれにも合わない項目は最後の組の後に）
     pub(crate) groups: &'static [(&'static str, &'static str)],
     /// 保存するファイルの既定の名前
@@ -98,6 +100,7 @@ impl ObjectArg {
             title,
             note: "",
             specs,
+            specs_from: None,
             groups: &[],
             file_name: "settings.json",
         }
@@ -117,8 +120,40 @@ impl ObjectArg {
         self.file_name = name;
         self
     }
-    /// 項目
+    /// 項目を、解析の引数 arg（値がプラグインの名前）で選んだプラグインの設定の項目にする。引数が空なら解析の
+    /// 既定値のプラグイン、プラグインが無ければ new に渡した specs。欄の見出しにはプラグインの名前を添える
+    pub fn specs_from(mut self, arg: &'static str) -> Self {
+        self.specs_from = Some(arg);
+        self
+    }
+    /// 項目（specs_from のときは選んだプラグインがないときの分）
     pub fn specs(&self) -> Vec<Value> {
+        (self.specs)()
+    }
+    /// 解析の引数の欄 args（解析 cmd）で選んだプラグインの名前（specs_from のときだけ）
+    pub fn chosen_plugin(
+        &self,
+        cmd: &str,
+        args: &std::collections::BTreeMap<String, String>,
+    ) -> Option<String> {
+        let from = self.specs_from?;
+        let v = args.get(from).map(|s| s.trim()).filter(|s| !s.is_empty());
+        let v = match v {
+            Some(v) => v.to_string(),
+            None => crate::argform::analysis_specs(cmd)
+                .iter()
+                .find(|s| s.name == from)
+                .map(|s| s.default_text())?,
+        };
+        (!v.is_empty()).then_some(v)
+    }
+    /// 項目（specs_from なら、選んだプラグイン `chosen` の設定の項目。無いプラグインなら new に渡した specs）
+    pub fn specs_for(&self, chosen: Option<&str>) -> Vec<Value> {
+        if self.specs_from.is_some() {
+            if let Some(v) = chosen.and_then(lensbench_engine::params::plugin_params) {
+                return v;
+            }
+        }
         (self.specs)()
     }
 }
@@ -136,7 +171,17 @@ impl ObjectArg {
         vals: &std::collections::BTreeMap<String, String>,
         defaults: bool,
     ) -> Result<Value, String> {
-        let specs = crate::argform::object_specs(self);
+        self.json_for(None, vals, defaults)
+    }
+
+    /// [`ObjectArg::json`] の、specs_from で選んだプラグイン `chosen`（[`ObjectArg::chosen_plugin`]）の項目で
+    pub fn json_for(
+        &self,
+        chosen: Option<&str>,
+        vals: &std::collections::BTreeMap<String, String>,
+        defaults: bool,
+    ) -> Result<Value, String> {
+        let specs = crate::argform::object_specs(self, chosen);
         let mut all = std::collections::BTreeMap::new();
         if defaults {
             for s in &specs {
@@ -310,13 +355,34 @@ mod tests {
         crate::figures::figure_params("toy-camera", &mut m, None, true);
         assert_eq!(m["grid"], json!(true));
         let o = get("toy-camera").unwrap().object.unwrap();
-        assert_eq!(crate::argform::object_specs(&o)[0].name, "a.b");
+        assert_eq!(crate::argform::object_specs(&o, None)[0].name, "a.b");
         assert_eq!(
             o.json(&Default::default(), true).unwrap(),
             json!({"a": {"b": 1.0}})
         );
         let v = [("a.b".to_string(), "2.5".to_string())].into();
         assert_eq!(o.json(&v, false).unwrap(), json!({"a": {"b": 2.5}}));
+    }
+
+    /// specs_from: 欄の項目は引数で選んだプラグインの設定。無いプラグイン・空の引数（既定の無い解析）なら new の specs
+    #[test]
+    fn object_fields_from_the_chosen_plugin() {
+        let o = ObjectArg::new("cfg", "Settings", Vec::new).specs_from("analysis");
+        let mut args = std::collections::BTreeMap::new();
+        assert_eq!(o.chosen_plugin("no-such-analysis", &args), None);
+        args.insert("analysis".into(), " geo_mtf ".into());
+        let p = o.chosen_plugin("no-such-analysis", &args);
+        assert_eq!(p.as_deref(), Some("geo_mtf"));
+        let names: Vec<String> = crate::argform::object_specs(&o, p.as_deref())
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert!(names.iter().any(|n| n == "freqs"), "{names:?}");
+        assert!(o.specs_for(Some("no-such-plugin")).is_empty());
+        // specs_from の無い欄は選んだプラグインに依らない
+        let plain = ObjectArg::new("cfg", "Settings", Vec::new);
+        assert_eq!(plain.chosen_plugin("x", &args), None);
+        assert!(plain.specs_for(Some("geo_mtf")).is_empty());
     }
 
     #[test]
