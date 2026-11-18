@@ -2168,6 +2168,11 @@ surface {j} after a mirror: {e}	ミラーの後の面 {j}: {e}
 this surface can't be written as a row	この面は行で書けません
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
 row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）
+a mirror written as row can't have radius, conic, semi, aperture or coat (write them in the row)	行で書いたミラーには radius・conic・semi・aperture・coat を書けません（行に書く）
+row of a mirror can't have stop, object, image, thickness or medium	ミラーの row には stop・object・image・厚み・媒質を書けません
+row of a mirror needs a reflecting action	ミラーの row には反射の働きが要ります
+row of a mirror can't tilt or decenter (use tilt of the block)	ミラーの row では傾け・偏心できません（ブロックの tilt で）
+this surface can't be written as a mirror row	この面はミラーの行で書けません
 image: stop, object, t, medium and coordinate_break can't be written	image には stop・object・t・medium・coordinate_break を書けません
 object: stop, image, t, coordinate_break, before and after can't be written	object には stop・image・t・coordinate_break・before・after を書けません
 the user-defined surface model {model} can't be flipped in {h} (it has no flip)	ユーザー定義の面のモデル {model} は {h} について反転できません（flip がありません）

@@ -1,6 +1,7 @@
 //! 開いた .zmx を組合せの要素（自作の玉・絞り・面の並びと空気）に分ける（11/16 masa 決定: 開いた .zmx の変更は
 //! 取り込みの上書きでなく中身へ）。ソルブ・ピックアップ・絞りは要素の操作にする。分けた組合せの系が元の系と
-//! 同じときだけ使い、書けない面（鏡・座標ブレーク・ゴーストの反射など）があれば今までどおり .zmx を取り込む。
+//! 同じときだけ使い、書けない面（玉の中の鏡・座標ブレーク・ゴーストの反射など）があれば今までどおり .zmx を取り込む。
+//! 空気中の鏡は鏡の要素（半径・コーニックで書けない形は行で）。鏡の後の面は光の進む向きに裏返して書く。
 //! SurfSpec の欄で書けない形（Zernike・Grid Sag など）はシステムファイルの行（SurfSpec の row）で書く
 
 use std::path::{Path, PathBuf};
@@ -55,6 +56,25 @@ fn radius_of(c: f64) -> Option<f64> {
     None
 }
 
+/// 鏡の面 a（光の進む向き）を鏡のブロックに。標準面で開口・膜・傾きが無ければ半径・コーニックで、ほかは行で
+fn mirror_block(a: &lensbench_core::surface::Surface, id: &str) -> Option<Value> {
+    use lensbench_core::surface::Aperture;
+    let plain = a.typ() == SurfType::Standard
+        && matches!(a.ap, Aperture::None)
+        && a.coat.is_empty()
+        && !a.semi_auto
+        && a.before.is_none()
+        && a.after == lensbench_core::surface::After::None;
+    if plain {
+        return Some(
+            json!({ "type": "mirror", "id": id, "radius": radius_of(a.c)?,
+            "conic": a.k, "semi": a.semi }),
+        );
+    }
+    let r = lensbench_project::mirror_row(a).ok()?;
+    Some(json!({ "type": "mirror", "id": id, "row": r }))
+}
+
 /// blocks（面の絞り・ソルブ・ピックアップはブロックの surface_ops）・glrs を要素で書いたプロジェクト
 fn split_project(s: &System, p: &Value) -> Option<Value> {
     if !s.macros.is_empty() || !s.macro_parms.is_empty() || s.surfaces.len() < 3 {
@@ -65,9 +85,23 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     // 系の面 → (ブロック id, ブロックの面)
     let mut face: Vec<Option<(String, usize)>> = vec![None; img + 1];
     let mut stop: Option<(String, usize)> = None;
+    // 面を光の進む向きで（ブロックは向きで書き、鏡の後は展開が裏返す）。鏡の後の面は裏返し、厚さの符号を返す
+    let mut dirs = Vec::with_capacity(img + 1);
+    let mut par = 1.0;
+    for a in &s.surfaces {
+        let mut a = a.clone();
+        if par < 0.0 {
+            a.flip_z().ok()?;
+            a.t = -a.t;
+        }
+        if a.is_mirror() {
+            par = -par;
+        }
+        dirs.push(a);
+    }
     // 面 j を SurfSpec の JSON に（書けない面は None）。玉の中の面は Jones にしない
     let surf = |j: usize, last: bool, in_lens: bool| -> Option<Value> {
-        let a = &s.surfaces[j];
+        let a = &dirs[j];
         if (in_lens && a.typ() == SurfType::Jones) || !a.mat.is_medium() {
             return None;
         }
@@ -84,12 +118,18 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         }
         Some(x)
     };
-    let (mut nl, mut ns) = (0, 0);
+    let (mut nl, mut ns, mut nm) = (0, 0, 0);
     let mut j = 1;
     while j < img {
         let id;
         let k;
-        if s.surfaces[j].mat.is_air() {
+        if s.surfaces[j].is_mirror() {
+            // 空気中の鏡: 鏡のブロック（半径・コーニックで書けなければ行で）
+            k = j;
+            nm += 1;
+            id = format!("M{nm}");
+            blocks.push(mirror_block(&dirs[j], &id)?);
+        } else if s.surfaces[j].mat.is_air() {
             // 空気中の面 1 つ: 面の並び（絞りなら set_stop で）
             k = j;
             ns += 1;
@@ -100,6 +140,9 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             // ガラスに入る面から、空気に出る面までが 1 つの玉
             let mut e = j;
             while e < img && !s.surfaces[e].mat.is_air() {
+                if s.surfaces[e].is_mirror() {
+                    return None;
+                }
                 e += 1;
             }
             if e >= img {
@@ -119,7 +162,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
                 stop = Some((id.clone(), i));
             }
         }
-        blocks.push(json!({ "type": "air", "t": s.surfaces[k].t }));
+        blocks.push(json!({ "type": "air", "t": dirs[k].t }));
         j = k + 1;
     }
     let at = |j: usize| -> Option<Value> {
@@ -219,6 +262,35 @@ mod tests {
             lensbench_project::edit_ops::SolveWhat::T,
         );
         assert!(c.picks[3].ops.is_empty());
+    }
+
+    /// 自由曲面の鏡（G3 の Grid Sag・Z2 の Zernike Standard Sag）も要素に分かれ、鏡は行の鏡になる
+    #[test]
+    fn freeform_mirrors_split() {
+        let glass = vec![root().join("tests/glass")];
+        for d in ["G3", "Z2"] {
+            let f = root().join(format!("tests/refs/{d}/system.zmx"));
+            let c = Combo::from_zmx(&f, &glass, &[]).unwrap();
+            assert!(
+                !c.picks
+                    .iter()
+                    .any(|p| matches!(p.kind, ElemKind::ZmxRange | ElemKind::Raw)),
+                "{d}"
+            );
+            let m: Vec<&crate::combo::Pick> = c
+                .picks
+                .iter()
+                .filter(|p| p.kind == ElemKind::Mirror)
+                .collect();
+            assert_eq!(m.len(), 1, "{d}");
+            assert!(m[0].mirror_row().is_some(), "{d}");
+            // 書き出したブロックは行の鏡（半径・半直径の欄は書かない）
+            let b = m[0].block("M1");
+            assert!(
+                b.get("radius").is_none() && b.get("semi").is_none(),
+                "{d}: {b}"
+            );
+        }
     }
 
     /// tests/refs の .zmx: 分けられたものは元の系と同じ（split の中で確かめる）。分けられない .zmx も開ける

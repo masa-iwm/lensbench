@@ -567,6 +567,11 @@ pub enum Block {
         /// 往路を戻る: 同じ並び（群）で鏡より前のブロックを、逆の順・逆の向きにたどる
         #[serde(default)]
         back: bool,
+        /// radius・conic で書けない鏡（Zernike・Grid Sag など）を、システムファイル（版 2）の面の行で書く。
+        /// 働きは鏡（reflect、または mirror の付く働き）。書くときは radius・conic・semi・aperture・coat を書かない
+        /// （行に書く）。厚さ・媒質・絞りの印は書かない（間隔は後の空気、絞りはブロックの set_stop で）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        row: Option<Box<crate::sysfile_v2::Row>>,
         #[serde(flatten)]
         faces: FaceMods,
     },

@@ -1056,6 +1056,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 coat,
                 on,
                 back,
+                row,
                 faces,
             } => {
                 if !on {
@@ -1064,20 +1065,38 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let start = self.sf.len();
                 let back = *back;
                 let fold = tilt[0] != 0.0 || tilt[1] != 0.0;
+                let m = match row {
+                    Some(r) => {
+                        if radius.is_some_and(|x| x != 0.0)
+                            || *conic != 0.0
+                            || *semi != 0.0
+                            || aperture.is_some()
+                            || !coat.is_empty()
+                        {
+                            return Err("a mirror written as row can't have radius, conic, semi, aperture or coat (write them in the row)".into());
+                        }
+                        mirror_row(r)?
+                    }
+                    None => Surface {
+                        mat: Material::Mirror,
+                        c: curv(*radius),
+                        k: *conic,
+                        semi: *semi,
+                        coat: coat.clone(),
+                        ap: surf_ap(*aperture, *semi),
+                        ..Default::default()
+                    },
+                };
                 if fold {
                     self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
                 }
-                let mut m = Surface {
-                    mat: Material::Mirror,
-                    c: curv(*radius),
-                    k: *conic,
-                    semi: *semi,
-                    coat: coat.clone(),
-                    ap: surf_ap(*aperture, *semi),
-                    ..Default::default()
-                };
+                let mut m = m;
                 if self.parity < 0.0 {
-                    m.c = -m.c;
+                    if row.is_some() {
+                        self.flip(&mut m);
+                    } else {
+                        m.c = -m.c;
+                    }
                 }
                 self.put(m);
                 self.parity = -self.parity;
@@ -1290,4 +1309,19 @@ pub(crate) fn block_id(b: &Block) -> &str {
         | Block::Splitter { id, .. }
         | Block::Group { id, .. } => id,
     }
+}
+
+/// 鏡のブロックの行（[`Block::Mirror`] の row）を面に。鏡の働きで、厚さ・媒質・絞り・傾きの無いもの
+fn mirror_row(r: &crate::sysfile_v2::Row) -> lensbench_core::Result<Surface> {
+    if r.stop || r.object || r.image || r.t != 0.0 || r.medium.is_some() {
+        return Err("row of a mirror can't have stop, object, image, thickness or medium".into());
+    }
+    let m = crate::sysfile_v2::read::surface(r.clone())?;
+    if !m.is_mirror() || m.reflect.is_some() {
+        return Err("row of a mirror needs a reflecting action".into());
+    }
+    if m.typ() == SurfType::CoordBrk || m.before.is_some() || m.after != After::None {
+        return Err("row of a mirror can't tilt or decenter (use tilt of the block)".into());
+    }
+    Ok(m)
 }

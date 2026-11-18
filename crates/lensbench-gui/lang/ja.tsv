@@ -684,6 +684,7 @@ OFF collapses	OFF は詰める
 Base	基本
 Use base values	基本の値に
 Return along the path	往路を戻る
+Shape, semi-diameter and coating as a system file row	形・クリア半径・コーティングはシステムファイルの行で
 ON/OFF in state {} (an OFF element is left out of the system)	状態 {} での ON/OFF（OFF の要素はシステムに入らない）
 Values of state {}	状態 {} の値
 Delete state {}	状態 {} を削除

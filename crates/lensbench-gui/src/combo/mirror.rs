@@ -21,3 +21,10 @@ impl MirrorData {
         back: false,
     };
 }
+
+impl super::Pick {
+    /// 行で書いた鏡（Zernike・Grid Sag など、.zmx を分けた鏡）の行。欄（半径・半直径・膜）は使わない
+    pub fn mirror_row(&self) -> Option<&serde_json::Value> {
+        self.extra.get("row").filter(|r| !r.is_null())
+    }
+}

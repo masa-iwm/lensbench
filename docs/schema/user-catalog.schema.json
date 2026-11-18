@@ -763,6 +763,17 @@
                 "null"
               ]
             },
+            "row": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Row"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "radius・conic で書けない鏡（Zernike・Grid Sag など）を、システムファイル（版 2）の面の行で書く。\n働きは鏡（reflect、または mirror の付く働き）。書くときは radius・conic・semi・aperture・coat を書かない\n（行に書く）。厚さ・媒質・絞りの印は書かない（間隔は後の空気、絞りはブロックの set_stop で）"
+            },
             "semi": {
               "default": 0.0,
               "format": "double",

@@ -713,10 +713,15 @@ impl Pick {
                     ] },
                 })
             }
-            ElemKind::Mirror => json!({
-                "type": "mirror", "id": id, "radius": Self::radius(self.mirror().radius), "conic": self.mirror().conic,
-                "tilt": [self.tilt[0], self.tilt[1]], "semi": self.semi,
-            }),
+            ElemKind::Mirror => match self.mirror_row() {
+                Some(r) => json!({
+                    "type": "mirror", "id": id, "tilt": [self.tilt[0], self.tilt[1]], "row": r,
+                }),
+                None => json!({
+                    "type": "mirror", "id": id, "radius": Self::radius(self.mirror().radius),
+                    "conic": self.mirror().conic, "tilt": [self.tilt[0], self.tilt[1]], "semi": self.semi,
+                }),
+            },
             ElemKind::Stop => json!({ "type": "stop", "id": id, "semi": self.semi }),
             ElemKind::Aperture => json!({
                 "type": "surfaces", "id": id,
@@ -725,7 +730,7 @@ impl Pick {
             ElemKind::Splitter => self.splitter_block(id),
         };
         if self.kind == ElemKind::Mirror {
-            if !self.coat.trim().is_empty() {
+            if !self.coat.trim().is_empty() && self.mirror_row().is_none() {
                 b["coat"] = json!(self.coat.trim());
             }
             if self.mirror().back {
@@ -2573,10 +2578,17 @@ fn kind_fields(
             }
         }
         ElemKind::Mirror => {
-            num(ui, "R", &mut p.mirror_mut().radius, " mm");
+            let row = p.mirror_row().is_some();
+            if row {
+                ui.label(tr("Shape, semi-diameter and coating as a system file row"));
+            } else {
+                num(ui, "R", &mut p.mirror_mut().radius, " mm");
+            }
             place_ui(ui, p, st, &[], &[0, 1]);
-            num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
-            crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
+            if !row {
+                num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
+                crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
+            }
             ui.checkbox(&mut p.mirror_mut().back, tr("Return along the path")).on_hover_text(tr(
                 "Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS",
             ));

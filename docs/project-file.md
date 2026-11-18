@@ -136,8 +136,13 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   （`shape`・`action`・`medium`・`aperture`・`semi`・`t`・`ignore`・`dn`・`disp`・`comment`・`coating` など）で面を書ける。
   Zernike Standard / Fringe Sag・Grid Sag・Irregular・Tilted・Binary 2・Cylinder Fresnel・理想レンズ・GRIN の媒質・無視する面などに使う。
   `row` を書いた面にはほかの鍵を書かない。行の `stop`（絞りはブロックの `set_stop`）・`object`・`image` は書けない。玉の最後の面の
-  厚さ・媒質は使わない（後ろの空気のブロック）。GUI が .zmx を要素に分けるときもこの形で書く（鏡・座標ブレーク・面の前後の
+  厚さ・媒質は使わない（後ろの空気のブロック）。GUI が .zmx を要素に分けるときもこの形で書く（玉の中の鏡・座標ブレーク・面の前後の
   傾き偏心のある .zmx は今までどおり取り込みのまま）。
+- radius・conic で書けない鏡（Zernike・Grid Sag など）: 鏡のブロックに `{"type": "mirror", "row": {…}}` と書くと、鏡の形を面の行で
+  書ける。働きは鏡（`"action": "reflect"`、または `mirror` の付く働き）。`row` を書くときは radius・conic・semi・aperture・coat を
+  書かず行に書く（`semi`・`aperture`・`coating`）。行の厚さ・媒質・`stop`（絞りはブロックの `set_stop`）・面の前後の傾き偏心は
+  書けない（間隔は後ろの空気のブロック、傾きはブロックの `tilt`）。鏡の後（向きが逆の所）に置くと、ほかの面と同じく裏返して置く。
+  GUI は .zmx の空気中の鏡を鏡の要素に分け、標準面でないものはこの形で書く（面の表で変えた r・k・semi は面の上書き）。
 - フィルタ・ダイクロイックの膜: プロジェクトかユーザーカタログの `"coatings": {名前: 膜}` に書いた膜を、面・BS の `coat`
   に名前で使う（TABLE 膜として偏光の追跡・透過に効く。プロジェクトの同じ名前がカタログより優先、膜ファイルの同じ名前より優先）。
   膜は `{"type": "table", "rows": [[入射角 deg, 波長 µm, Rs, Rp, Ts, Tp], …]}`（表そのまま）、`curve`（`wavelengths_nm`・`t`・`r`、

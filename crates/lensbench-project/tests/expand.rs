@@ -1243,6 +1243,42 @@ fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
     same_rays_xy(&unf, &fold);
 }
 
+/// 行で書いた鏡（radius・conic で書けない形）: 鏡より前なら行のまま、鏡の後（向きが逆の所）なら裏返して置き、
+/// 鏡の後で向きが戻る。欄と行を一緒に書く・鏡でない行・厚さのある行は誤り
+#[test]
+fn a_mirror_written_as_row_flips_after_a_mirror() {
+    let m = r#"{"type": "mirror", "row": {"semi": 6, "action": "reflect", "shape": {"irregular": {"c": 0.01, "tilt": [1, 2], "zs": 0.001}}}}"#;
+    let mirrors = |blocks: &str| -> Vec<(f64, f64, f64)> {
+        let s = project(blocks);
+        s.surfaces
+            .iter()
+            .filter(|f| f.typ() == lensbench_core::surface::SurfType::Irregular)
+            .inspect(|f| assert!(f.is_mirror() && f.semi == 6.0))
+            .map(|f| (f.c, f.asph()[2], f.t))
+            .collect()
+    };
+    let fwd = mirrors(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {m}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(fwd, vec![(0.01, 1.0, -30.0)]);
+    let back = mirrors(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {{"type": "mirror"}}, {{"type": "air", "t": 10}}, {m}, {{"type": "air", "t": 30}}]"#
+    ));
+    assert_eq!(back, vec![(-0.01, -1.0, 30.0)]);
+    for bad in [
+        r#"{"type": "mirror", "radius": 50, "row": {"action": "reflect"}}"#,
+        r#"{"type": "mirror", "semi": 5, "row": {"action": "reflect"}}"#,
+        r#"{"type": "mirror", "row": {"semi": 5}}"#,
+        r#"{"type": "mirror", "row": {"t": 5, "action": "reflect"}}"#,
+    ] {
+        let txt = format!(
+            r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {bad}, {{"type": "air", "t": 30}}] }}"#
+        );
+        let p = Project::from_json(&txt).unwrap();
+        assert!(expand(&p, &env(), &ExpandOpts::default()).is_err(), "{bad}");
+    }
+}
+
 /// 反転した GRIN の玉: 焦点距離は変わらず、平面鏡で往復する光学系は、展開して 2 つ目を反転した玉にした光学系と
 /// 同じに働く（分布の軸の偏心・傾きは y だけにして、鏡映と 180° 回転を同じにする）
 #[test]

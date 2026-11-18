@@ -383,6 +383,23 @@ fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     })
 }
 
+/// 鏡の面を、鏡のブロックの行（[`Block::Mirror`] の row）に。厚さ・絞りの印は書かない。傾き偏心のある鏡・
+/// ゴーストの反射は書けない
+pub fn mirror_row(f: &Surface) -> lensbench_core::Result<crate::sysfile_v2::Row> {
+    if !f.is_mirror()
+        || f.reflect.is_some()
+        || f.typ() == SurfType::CoordBrk
+        || f.before.is_some()
+        || f.after != After::None
+    {
+        return Err("this surface can't be written as a mirror row".into());
+    }
+    let mut r = crate::sysfile_v2::write::surface_row(f, false)?;
+    r.stop = false;
+    r.t = 0.0;
+    Ok(r)
+}
+
 /// 面を SurfSpec の欄で（書けなければ誤り）
 fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     let shape = match f.typ() {

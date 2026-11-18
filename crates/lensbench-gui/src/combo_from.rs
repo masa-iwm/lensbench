@@ -558,6 +558,10 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
                 return Err("mirror aperture".into());
             }
             let mut p = Pick::new(ElemKind::Mirror);
+            // 行で書いた鏡（Zernike など）は行をそのまま持つ
+            if let Some(r) = b.get("row").filter(|r| !r.is_null()) {
+                p.extra = json!({ "row": r });
+            }
             p.mirror_mut().radius = f(&b["radius"], 0.0);
             p.mirror_mut().conic = f(&b["conic"], 0.0);
             let t: [f64; 2] = arr(&b["tilt"]);

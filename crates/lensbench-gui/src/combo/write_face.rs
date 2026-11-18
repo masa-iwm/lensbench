@@ -181,6 +181,8 @@ impl Pick {
                     .is_some(),
                 _ => false,
             },
+            // 行で書いた鏡（Zernike など）は欄を使わないので、面の上書きに回す
+            ElemKind::Mirror if self.mirror_row().is_some() => false,
             ElemKind::Mirror => match (rel, key) {
                 (0, "r") => radius_of(v).map(|r| self.mirror_mut().radius = r).is_some(),
                 (0, "k") => v.as_f64().map(|k| self.mirror_mut().conic = k).is_some(),
@@ -608,6 +610,38 @@ mod tests {
                     b.set_edit(rel, key, v.clone());
                     assert_eq!(sys(&a), sys(&b), "{:?} 面 {rel} {key}={v}", base.kind);
                 }
+            }
+        }
+    }
+
+    /// 行で書いた鏡（.zmx を分けた自由曲面の鏡）の r・k・semi は欄に書かず面の上書きになり、系に効く
+    #[test]
+    fn row_mirror_takes_overrides() {
+        let mut m = Pick::new(ElemKind::Mirror);
+        m.extra = json!({ "row": { "semi": 6, "action": "reflect",
+            "shape": { "irregular": { "c": 0.01, "zs": 0.001 } } } });
+        for (key, v) in [("r", json!(80.0)), ("k", json!(-0.5)), ("semi", json!(7.0))] {
+            let mut a = m.clone();
+            a.write_face(0, key, v.clone());
+            assert_eq!(a.edits.len(), 1, "{key}");
+            assert_eq!(a.mirror(), m.mirror(), "{key}");
+            assert_eq!(a.semi, m.semi, "{key}");
+            assert!(a.block("M")["row"].is_object(), "{key}");
+            // 上書きは展開した系の鏡に効く
+            let c = Combo {
+                picks: vec![a],
+                ..Default::default()
+            };
+            let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+            let env = lensbench_project::Env::default();
+            let s = lensbench_project::expand(&pr, &env, &Default::default())
+                .unwrap()
+                .system;
+            let f = s.surfaces.iter().find(|f| f.is_mirror()).unwrap();
+            match key {
+                "r" => assert_eq!(f.c, 1.0 / 80.0),
+                "k" => assert_eq!(f.k, -0.5),
+                _ => assert_eq!(f.semi, 7.0),
             }
         }
     }

@@ -303,8 +303,8 @@ fn zmx_files_become_combos() {
         ok.len() >= 2 && split.contains(&"A0".to_string()),
         "{ok:?} {split:?}"
     );
-    // 作業フォルダからの相対パスで開いても（GUI の引数）。G3 は鏡があるので分けずに取り込む
-    let rel = Path::new("../../tests/refs/G3/system.zmx");
+    // 作業フォルダからの相対パスで開いても（GUI の引数）。C0 は面の傾きのある鏡があるので分けずに取り込む
+    let rel = Path::new("../../tests/refs/C0/system.zmx");
     let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
     assert!(
         Path::new(&c.picks[0].path).is_absolute(),
