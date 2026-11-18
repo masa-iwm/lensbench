@@ -28,6 +28,7 @@ use panels::Panels;
 use result::AnaRes;
 use sys_copy::SysCopy;
 mod analysis_ui;
+mod calc_panel;
 mod lens_data_ui;
 mod take;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -409,6 +410,8 @@ struct Core {
     next_id: u64,
     /// パネルの中から頼まれた操作
     cmds: Vec<Cmd>,
+    /// Web 版（元のタブ）: 解析のパネルを出した別の窓に写す系
+    popup_doc: calc_panel::PopupDoc,
     /// 最後に組合せを変えて系を作り直した時刻（動かしている間は解析を待たせる）
     combo_edit: Option<web_time::Instant>,
     /// 組合せの元に戻す・やり直す
@@ -476,6 +479,12 @@ pub struct App {
     /// Web 版（元のタブ）: 別の窓に出した解析以外のパネルを描く画面（パネル id ごと）
     #[cfg(target_arch = "wasm32")]
     hosts: HashMap<u64, crate::web_tabs::Host>,
+    /// Web 版: このタブが別の窓に出した解析のパネルなら、元のタブから系を受けて自分で計算する口
+    #[cfg(target_arch = "wasm32")]
+    calc: Option<crate::web_tabs::Calc>,
+    /// Web 版（解析のパネルの別の窓）: 今の系は平たい系ファイルで受けた（読めなくても送り直しを頼まない）
+    #[cfg(target_arch = "wasm32")]
+    calc_flat: bool,
 }
 
 /// 見本の名前（例題のプロジェクトはファイル名、tests/refs の系はフォルダの名前）
@@ -1721,6 +1730,11 @@ impl App {
                 })
                 .unwrap_or_default()
         };
+        // Web 版: 解析のパネルを出した別の窓は、開いていた文書・並びを使わない（元のタブから受ける）
+        #[cfg(target_arch = "wasm32")]
+        if crate::web_tabs::calc_panel() {
+            ses = Session::default();
+        }
         if args.tour.is_some() {
             crate::tour::prepare(&args, &mut s);
         } else {
@@ -1752,11 +1766,11 @@ impl App {
         crate::fonts::follow_lang(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, &s.look);
         s.cad_store.apply();
-        // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない
+        // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない（解析のパネルは自分で計算するので作る）
         #[cfg(target_arch = "wasm32")]
         let panel = crate::web_tabs::panel_of_location();
         #[cfg(target_arch = "wasm32")]
-        let (worker, preview) = if panel.is_some() {
+        let (worker, preview) = if panel.is_some() && !crate::web_tabs::calc_panel() {
             (Worker::idle(), Worker::idle())
         } else {
             let ctx = cc.egui_ctx.clone();
@@ -1850,6 +1864,7 @@ impl App {
                 font,
                 next_id,
                 cmds: Vec::new(),
+                popup_doc: Default::default(),
             },
             dock: lay.dock,
             windows: lay.windows,
@@ -1865,6 +1880,10 @@ impl App {
             viewer: None,
             #[cfg(target_arch = "wasm32")]
             hosts: HashMap::new(),
+            #[cfg(target_arch = "wasm32")]
+            calc: None,
+            #[cfg(target_arch = "wasm32")]
+            calc_flat: false,
         };
         // 前に閉じたときの最適化・公差・差し替えの設定
         let panels = std::mem::take(&mut app.c.ses.panels);
@@ -1877,7 +1896,11 @@ impl App {
         // Web 版: 別の窓のパネルなら、計算しないで元のタブで描いた画面を受けて描く
         #[cfg(target_arch = "wasm32")]
         if let Some((id, sid)) = panel {
-            app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
+            if crate::web_tabs::calc_panel() {
+                app.start_calc(&cc.egui_ctx, id, sid);
+            } else {
+                app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
+            }
             return app;
         }
         // Web 版: 別のタブ・窓に出していたパネルはドックに戻す（タブ・窓はクリックしないと開けない）
@@ -1949,7 +1972,12 @@ impl App {
         self.dock
             .iter_all_tabs()
             .map(|(_, p)| p)
-            .chain(self.windows.iter().map(|w| &w.pane))
+            .chain(
+                self.windows
+                    .iter()
+                    .map(|w| &w.pane)
+                    .filter(|p| !self.calc_window(p.id)),
+            )
             .filter_map(|p| match &p.kind {
                 Kind::Analysis(a) => Some((p.id, a.clone())),
                 _ => None,
@@ -2358,6 +2386,10 @@ impl eframe::App for App {
             v.update(ctx);
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        if self.calc.is_some() {
+            return self.calc_frame(ctx);
+        }
         self.logic(ctx);
         self.handle_input(ctx);
         self.sync_window_chrome(ctx);
@@ -2375,7 +2407,7 @@ impl eframe::App for App {
 
     #[cfg(target_arch = "wasm32")]
     fn persist_egui_memory(&self) -> bool {
-        self.viewer.is_none()
+        self.viewer.is_none() && self.calc.is_none()
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -2384,7 +2416,7 @@ impl eframe::App for App {
         }
         // 別のタブのパネルは元のタブの設定を上書きしない
         #[cfg(target_arch = "wasm32")]
-        if self.viewer.is_some() {
+        if self.viewer.is_some() || self.calc.is_some() {
             return;
         }
         // 好み（設定）と、開いていた文書と画面の様子（Session）を別の鍵に書く

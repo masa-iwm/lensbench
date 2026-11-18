@@ -4,6 +4,10 @@ use super::*;
 
 impl Core {
     pub(super) fn take(&mut self, mut d: Done) {
+        // 別の窓に写す系（下の行・解析の印は変えない）
+        if d.tag == Tag::PopupDoc {
+            return self.popup_doc.take(d);
+        }
         if d.tag == Tag::Refresh {
             let n = d.replies.len();
             if !d.skipped {
@@ -48,10 +52,20 @@ impl Core {
             return;
         }
         self.rev += 1;
-        if matches!(d.tag, Tag::Load | Tag::Set | Tag::History { .. }) {
+        let changes = matches!(d.tag, Tag::Load | Tag::Set | Tag::History { .. });
+        if changes {
             self.sys_gen += 1;
         }
         let ms = d.ms;
+        // 解析のパネルの別の窓に写すため、読んだ文書とその後の変更を覚える。系を変えたかは最初の呼び出しで
+        // 決める（後ろに付けた読み直しの誤りでは、系は変わっている）
+        if changes {
+            if d.replies.first().is_some_and(|r| r.result.is_ok()) {
+                self.popup_doc.track(&d);
+            } else {
+                self.popup_doc.failed();
+            }
+        }
         if d.error().is_some() {
             return self.take_error(&d);
         }
@@ -257,6 +271,8 @@ impl Core {
             Tag::Preview | Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => {
                 return None
             }
+            // 先頭で受け取る（ここには来ない）
+            Tag::PopupDoc => return None,
             Tag::Focus => {
                 self.focus_from(d);
                 return None;

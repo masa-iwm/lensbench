@@ -87,6 +87,8 @@ pub enum Tag {
     CadMeasure,
     /// 開くプロジェクトの .json の gui・blocks を見る（下書きの doc_peek）
     OpenDoc,
+    /// Web 版: 解析のパネルを出した別の窓に写す系を書き出す（serve の save。別の窓はそれを読んで自分で計算する）
+    PopupDoc,
 }
 
 /// ユーザーカタログへの操作
@@ -135,6 +137,7 @@ impl Tag {
             Tag::Folders => "folders",
             Tag::CadMeasure => "cad_measure",
             Tag::OpenDoc => "doc_peek",
+            Tag::PopupDoc => "save",
             Tag::Refresh => return None,
         })
     }
@@ -165,6 +168,7 @@ impl Tag {
                 | Tag::HistoryDepth
                 | Tag::Refresh
                 | Tag::Folders
+                | Tag::PopupDoc
         )
     }
 

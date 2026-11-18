@@ -204,10 +204,11 @@ pub fn set_web_cad_store(url: Option<String>) {
     cad_fetch::set_web_store(url);
 }
 
-/// Web 版: このページが別のタブのパネル（`?panel=`）か。そのときは同梱のデータも要らない
+/// Web 版: このページが計算しない別のタブのパネル（`?panel=`）か。そのときは同梱のデータも要らない。
+/// 解析のパネル（`&calc=1`）は自分で計算するので、元のタブと同じにデータを置く
 #[cfg(target_arch = "wasm32")]
 pub fn web_panel() -> bool {
-    web_tabs::panel_of_location().is_some()
+    web_tabs::panel_of_location().is_some() && !web_tabs::calc_panel()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -220,7 +221,7 @@ async fn run_web(
             canvas,
             eframe::WebOptions::default(),
             Box::new(move |cc| {
-                let panel = web_panel();
+                let panel = web_tabs::panel_of_location().is_some();
                 let a = std::rc::Rc::new(std::cell::RefCell::new(app::App::new(cc, args)));
                 TEST_APP.with(|t| *t.borrow_mut() = std::rc::Rc::downgrade(&a));
                 // 元のタブ: 裏に回っている間も別の窓のパネルを動かす

@@ -15,8 +15,11 @@ impl App {
             self.c.fail(tr("Could not open the file dialog (Linux needs zenity). You can also drop files onto the window"));
         }
         // Web 版: 読み込んだファイル・ユーザーカタログをブラウザに残す
+        // 解析のパネルの別の窓は残さない（元のタブが同じ所に後から書いたものを、古い写しで戻さない）
         #[cfg(target_arch = "wasm32")]
-        crate::web_store::flush();
+        if self.calc.is_none() {
+            crate::web_store::flush();
+        }
         let mut redo = Vec::new();
         while let Some(d) = self.c.worker.poll() {
             if let Tag::Analyze(id) = d.tag {
@@ -166,12 +169,33 @@ impl App {
             .retain(|id, _| self.windows.iter().any(|w| w.pane.id == *id));
         for w in &self.windows {
             let id = w.pane.id;
-            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, w.size) {
+            // 解析のパネルは別の窓が自分で計算する
+            let calc = matches!(w.pane.kind, Kind::Analysis(_));
+            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, w.size, calc) {
                 self.c.fail(tr("The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page"));
             }
         }
         for e in t.events() {
             match e {
+                // 解析のパネル: パネルの設定を送り、系を送り直す
+                Ev::Hello(id) if t.is_calc(id) => {
+                    if let Some(w) = self.windows.iter().find(|w| w.pane.id == id) {
+                        if let Ok(v) = serde_json::to_value(&w.pane) {
+                            t.send_pane(id, &v);
+                        }
+                    }
+                    self.c.popup_restarted(id);
+                }
+                Ev::Flat(id) => self.c.popup_wants_flat(id),
+                Ev::Pane(id, v) => {
+                    let p = serde_json::from_value::<Pane>(v)
+                        .ok()
+                        .filter(|p| p.id == id);
+                    let w = self.windows.iter_mut().find(|w| w.pane.id == id);
+                    if let (Some(w), Some(p)) = (w, p) {
+                        w.pane = p;
+                    }
+                }
                 Ev::Hello(id) => {
                     self.hosts.insert(id, crate::web_tabs::Host::new(ctx));
                 }
@@ -186,17 +210,32 @@ impl App {
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
                         self.win_init.remove(&id);
+                        // 別の窓で計算していた解析は、元のタブで回し直す
+                        if let Kind::Analysis(cfg) = &w.pane.kind {
+                            self.c.run(id, cfg);
+                        }
                         crate::layout::redock(&mut self.dock, w.pane, w.home.as_ref());
                     }
                 }
             }
         }
+        // 解析のパネルの別の窓に今の系を送る
+        let calc: Vec<u64> = self
+            .windows
+            .iter()
+            .map(|w| w.pane.id)
+            .filter(|id| t.is_calc(*id))
+            .collect();
+        self.c.send_popup_doc(t, &calc);
         // 別の窓のパネル: 元のタブで描いて、変わった画面を送る（解析のパネルも同じ）
         let App {
             c, windows, hosts, ..
         } = self;
         for w in windows.iter_mut() {
             let id = w.pane.id;
+            if t.is_calc(id) {
+                continue;
+            }
             let Some(h) = hosts.get_mut(&id) else {
                 continue;
             };
