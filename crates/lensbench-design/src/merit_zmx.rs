@@ -1020,6 +1020,46 @@ mod tests {
     }
 
     #[test]
+    fn more_calc_rows_become_terms() {
+        let rows = [
+            "EFFL 0 0 0 0 0 0 0 0 0 0",
+            "CONS 0 0 0 0 0 0 -2 0 0 0",
+            "MAXX 1 2 0 0 0 0 0 1 0 0",
+            "MINN 2 1 0 0 0 0 0 1 0 0",
+            "QSUM 2 1 0 0 0 0 0 1 0 0",
+            "SINE 2 1 0 0 0 0 0 1 0 0",
+            "ATAN 2 1 0 0 0 0 0 1 0 0",
+            "OPVA 1 0 0 0 0 0 90 1 0 0",
+            "ABGT 2 0 0 0 0 0 1 1 0 0",
+        ];
+        let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+        let z = terms_from_zmx(&mf, 2, 9);
+        assert!(z.notes.is_empty(), "{:?}", z.notes);
+        let efl = json!({"type": "paraxial", "q": "efl", "target": 0.0});
+        let k = std::f64::consts::PI / 180.0;
+        let calc = |op: &str, args: Value, t: f64| json!({"type": "calc", "op": op, "args": args, "target": t, "weight": 1.0});
+        let want = vec![
+            calc("max", json!([efl, -2.0]), 0.0),
+            // a > b なら行 a だけ（MAXX・MINN）、和は 0（QSUM）
+            calc("min", json!([-2.0]), 0.0),
+            calc("qsum", json!([0.0]), 0.0),
+            calc(
+                "sin",
+                json!([{"type": "calc", "op": "prod", "args": [-2.0, k], "target": 0.0}]),
+                0.0,
+            ),
+            calc(
+                "prod",
+                json!([{"type": "calc", "op": "atan", "args": [-2.0], "target": 0.0}, 1.0 / k]),
+                0.0,
+            ),
+            calc("sum", json!([efl]), 90.0),
+            json!({"type": "calc", "op": "abs", "args": [-2.0], "min": 1.0, "weight": 1.0}),
+        ];
+        assert_eq!(z.terms, want);
+    }
+
+    #[test]
     fn calc_rows_stop_growing() {
         // 前の 2 行を足す行を重ねると、入れ子の行の数は倍々に増える。上限を超えた行は注意にする
         let mut rows = vec![

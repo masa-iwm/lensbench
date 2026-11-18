@@ -42,8 +42,8 @@
   RSCE などと同じ腕 2·Ring 本を 90° 回した置き方）を足した。.zmx から読んだ RSCE・RSCH・RWCE・RWCH は `opticstudio` にする
 - **厚みの項**: 最適化の項 `thickness`（面 `surf` から `to` までの中心の厚みの和、`min`・`max` も可。`edge` で縁の厚み、`each` で面ごとの
   境界）。.zmx の CTGT・CTLT・CTVA・TTHI・ETGT・ETLT・ETVA と範囲の境界 MNCT〜MNEG をこの項にし、書き出しも同じオペランドにする
-- **計算の項**: 最適化の項 `calc`（数・1 つの値の項の和・差・積・商・絶対値・√|a|・逆数）。.zmx の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・
-  RECI・CONS をこの項にする
+- **計算の項**: 最適化の項 `calc`（数・1 つの値の項の和・差・積・商・絶対値・√|a|・逆数・最大・最小・√Σa²・三角関数）。.zmx の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・
+  RECI・CONS・MAXX・MINN・QSUM・SINE〜ATAN・OPVA・ABGT・ABLT をこの項にする
 - **近軸量の波長**: `paraxial` の項の `efl`・`pimh` に `wave`（その波長を主波長にした値）を足した。.zmx の EFFL・PIMH の Wave を読み書きする
 - **光線の収差・光路長**: `ray` の項の `q` に `trax`・`tray`・`trar`（主波長の主光線からのずれ）と `opth`（光路長）を足した。.zmx の TRAX・TRAY・TRAR・OPTH を読み書きする
 - **評価関数の Wizard の行**: .zmx の DMFS の後の光線の行（OPDX・TRAR・TRAC・TRAD・TRAE・TRCX・TRCY）を、視野ごとの

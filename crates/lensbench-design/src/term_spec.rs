@@ -329,7 +329,7 @@ pub struct CalcSpec {
     pub target: Option<f64>,
 }
 
-/// calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci）
+/// calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci、MAXX・MINN は max・min、QSUM は qsum（√Σa²）、SINE〜ATAN は sin〜atan（ラジアン））
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum CalcName {
@@ -340,6 +340,15 @@ pub enum CalcName {
     Abs,
     Sqrt,
     Reci,
+    Max,
+    Min,
+    Qsum,
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
 }
 
 /// calc の引数

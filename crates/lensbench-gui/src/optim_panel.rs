@@ -151,7 +151,10 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
         "calc" => &[
             (
                 "op",
-                Choice(&["sum", "diff", "prod", "div", "abs", "sqrt", "reci"]),
+                Choice(&[
+                    "sum", "diff", "prod", "div", "abs", "sqrt", "reci", "max", "min", "qsum",
+                    "sin", "cos", "tan", "asin", "acos", "atan",
+                ]),
             ),
             ("args", JsonList),
             ("target", Num),

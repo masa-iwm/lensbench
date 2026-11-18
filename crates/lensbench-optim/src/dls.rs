@@ -1060,24 +1060,7 @@ fn eval_term(
                     }
                 })
                 .collect::<Result<_>>()?;
-            let x = match op {
-                CalcOp::Sum => v.iter().sum(),
-                CalcOp::Diff => v[0] - v[1],
-                CalcOp::Prod => v.iter().product(),
-                CalcOp::Div | CalcOp::Reci => {
-                    let (a, b) = if *op == CalcOp::Div {
-                        (v[0], v[1])
-                    } else {
-                        (1.0, v[0])
-                    };
-                    if b == 0.0 {
-                        invalid!("division by zero in a calc term");
-                    }
-                    a / b
-                }
-                CalcOp::Abs => v[0].abs(),
-                CalcOp::Sqrt => v[0].abs().sqrt(),
-            };
+            let x = op.apply(&v)?;
             if !x.is_finite() {
                 invalid!("a calc term is not finite");
             }

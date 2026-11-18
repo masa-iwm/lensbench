@@ -30,7 +30,7 @@
       "description": "calc の引数"
     },
     "CalcName": {
-      "description": "calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci）",
+      "description": "calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci、MAXX・MINN は max・min、QSUM は qsum（√Σa²）、SINE〜ATAN は sin〜atan（ラジアン））",
       "enum": [
         "sum",
         "diff",
@@ -38,7 +38,16 @@
         "div",
         "abs",
         "sqrt",
-        "reci"
+        "reci",
+        "max",
+        "min",
+        "qsum",
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan"
       ],
       "type": "string"
     },

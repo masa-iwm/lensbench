@@ -107,6 +107,15 @@ fn calc_kind(c: crate::term_spec::CalcSpec, s: &System) -> lensbench_core::Resul
             CalcName::Abs => CalcOp::Abs,
             CalcName::Sqrt => CalcOp::Sqrt,
             CalcName::Reci => CalcOp::Reci,
+            CalcName::Max => CalcOp::Max,
+            CalcName::Min => CalcOp::Min,
+            CalcName::Qsum => CalcOp::Qsum,
+            CalcName::Sin => CalcOp::Sin,
+            CalcName::Cos => CalcOp::Cos,
+            CalcName::Tan => CalcOp::Tan,
+            CalcName::Asin => CalcOp::Asin,
+            CalcName::Acos => CalcOp::Acos,
+            CalcName::Atan => CalcOp::Atan,
         },
         args: c
             .args

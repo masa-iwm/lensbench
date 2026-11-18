@@ -10,7 +10,8 @@ use serde_json::{json, Map, Value};
 
 /// 計算の行の演算子
 pub(super) const OPS: &[&str] = &[
-    "SUMM", "OSUM", "DIFF", "PROD", "DIVI", "ABSO", "SQRT", "RECI", "CONS",
+    "SUMM", "OSUM", "DIFF", "PROD", "DIVI", "ABSO", "SQRT", "RECI", "CONS", "MAXX", "MINN", "QSUM",
+    "SINE", "COSI", "TANG", "ASIN", "ACOS", "ATAN", "OPVA", "ABGT", "ABLT",
 ];
 
 /// 1 行の項に入れ子にする行の数の上限（前の計算の行を 2 つずつ参照すると倍々に増える）
@@ -61,13 +62,46 @@ impl Rows<'_> {
             "ABSO" => ("abs", vec![arg(int(INT1)?)?]),
             "SQRT" => ("sqrt", vec![arg(int(INT1)?)?]),
             "RECI" => ("reci", vec![arg(int(INT1)?)?]),
-            "OSUM" => {
+            "OSUM" | "QSUM" => {
                 let (a, b) = (int(INT1)?.max(1), int(INT2)?);
                 let mut v = vec![json!(0.0)];
                 for n in a..=b.min(self.rows.len() as i64) {
                     v.push(arg(n)?);
                 }
-                ("sum", v)
+                (if r.op == "OSUM" { "sum" } else { "qsum" }, v)
+            }
+            // 行 a から b の最大・最小（a > b なら行 a だけ）
+            "MAXX" | "MINN" => {
+                let (a, b) = (int(INT1)?.max(1), int(INT2)?);
+                let mut v = vec![arg(a)?];
+                for n in a + 1..=b.min(self.rows.len() as i64) {
+                    v.push(arg(n)?);
+                }
+                (if r.op == "MAXX" { "max" } else { "min" }, v)
+            }
+            // Flag 1 は度（SINE・COSI・TANG の引数、ASIN・ACOS・ATAN の値）
+            "SINE" | "COSI" | "TANG" | "ASIN" | "ACOS" | "ATAN" => {
+                let deg = int(INT2)? == 1;
+                let x = arg(int(INT1)?)?;
+                let name = match r.op.as_str() {
+                    "SINE" => "sin",
+                    "COSI" => "cos",
+                    "TANG" => "tan",
+                    "ASIN" => "asin",
+                    "ACOS" => "acos",
+                    _ => "atan",
+                };
+                let calc = |op: &str, args: Vec<Value>| json!({"type": "calc", "op": op, "args": args, "target": 0.0});
+                let k = std::f64::consts::PI / 180.0;
+                match (deg, name.starts_with('a')) {
+                    (false, _) => (name, vec![x]),
+                    (true, false) => (name, vec![calc("prod", vec![x, json!(k)])]),
+                    (true, true) => ("prod", vec![calc(name, vec![x]), json!(1.0 / k)]),
+                }
+            }
+            "OPVA" | "ABGT" | "ABLT" => {
+                let x = arg(int(INT1)?)?;
+                (if r.op == "OPVA" { "sum" } else { "abs" }, vec![x])
             }
             _ => ("sum", vec![json!(target)]),
         };
@@ -75,7 +109,13 @@ impl Rows<'_> {
         m.insert("type".into(), json!("calc"));
         m.insert("op".into(), json!(op));
         m.insert("args".into(), Value::Array(args));
-        m.insert("target".into(), json!(target));
+        // ABGT・ABLT: |行の値| ≥・≤ 目標
+        let key = match r.op.as_str() {
+            "ABGT" => "min",
+            "ABLT" => "max",
+            _ => "target",
+        };
+        m.insert(key.into(), json!(target));
         Ok(m)
     }
 

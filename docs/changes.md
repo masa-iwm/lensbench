@@ -15,6 +15,7 @@
 - `TermKind` に計算の項 `Calc { op, args, target }` が増えた（`TermKind` を網羅する `match` は書き足す）。`TermKind::target()` は外から使える。
 - `TermKind::Thickness` に `edge: Option<f64>`（縁の厚みの高さ）と `each: Option<Each>`（面ごとの境界）を足した（どちらも `None` が前と同じ）。
 - `TermKind::Paraxial` に `wave: Option<usize>`（efl・pimh の波長、`None` が前と同じ主波長）を足した。
+- `CalcOp` に `Max`・`Min`・`Qsum`・`Sin`〜`Atan` が増えた（`CalcOp` を網羅する `match` は書き足す）。
 - `RayQ` に `TraX`・`TraY`・`TraR`・`Opth` が増えた（`RayQ` を網羅する `match` は書き足す）。
 
 ### ユーザーカタログの項目の型

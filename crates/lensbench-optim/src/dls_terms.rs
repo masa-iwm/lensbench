@@ -65,6 +65,18 @@ pub enum CalcOp {
     Sqrt,
     /// 1 / a（a = 0 は誤り）
     Reci,
+    /// 最大・最小（1 つ以上）
+    Max,
+    Min,
+    /// √(Σ a²)（1 つ以上）
+    Qsum,
+    /// 三角関数（角度はラジアン。asin・acos の定義域の外は誤り）
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
 }
 
 impl CalcOp {
@@ -78,15 +90,57 @@ impl CalcOp {
             CalcOp::Abs => "abs",
             CalcOp::Sqrt => "sqrt",
             CalcOp::Reci => "reci",
+            CalcOp::Max => "max",
+            CalcOp::Min => "min",
+            CalcOp::Qsum => "qsum",
+            CalcOp::Sin => "sin",
+            CalcOp::Cos => "cos",
+            CalcOp::Tan => "tan",
+            CalcOp::Asin => "asin",
+            CalcOp::Acos => "acos",
+            CalcOp::Atan => "atan",
         }
+    }
+
+    /// 引数の値 v に当てた値（引数の数は [`CalcOp::arity`] のとおりとする）
+    pub fn apply(self, v: &[f64]) -> Result<f64> {
+        Ok(match self {
+            CalcOp::Sum => v.iter().sum(),
+            CalcOp::Diff => v[0] - v[1],
+            CalcOp::Prod => v.iter().product(),
+            CalcOp::Div | CalcOp::Reci => {
+                let (a, b) = if self == CalcOp::Div {
+                    (v[0], v[1])
+                } else {
+                    (1.0, v[0])
+                };
+                if b == 0.0 {
+                    invalid!("division by zero in a calc term");
+                }
+                a / b
+            }
+            CalcOp::Abs => v[0].abs(),
+            CalcOp::Sqrt => v[0].abs().sqrt(),
+            CalcOp::Max => v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            CalcOp::Min => v.iter().copied().fold(f64::INFINITY, f64::min),
+            CalcOp::Qsum => v.iter().map(|a| a * a).sum::<f64>().sqrt(),
+            CalcOp::Sin => v[0].sin(),
+            CalcOp::Cos => v[0].cos(),
+            CalcOp::Tan => v[0].tan(),
+            CalcOp::Asin => v[0].asin(),
+            CalcOp::Acos => v[0].acos(),
+            CalcOp::Atan => v[0].atan(),
+        })
     }
 
     /// 引数の数（下限, 上限）
     pub fn arity(self) -> (usize, usize) {
         match self {
-            CalcOp::Sum | CalcOp::Prod => (1, usize::MAX),
+            CalcOp::Sum | CalcOp::Prod | CalcOp::Max | CalcOp::Min | CalcOp::Qsum => {
+                (1, usize::MAX)
+            }
             CalcOp::Diff | CalcOp::Div => (2, 2),
-            CalcOp::Abs | CalcOp::Sqrt | CalcOp::Reci => (1, 1),
+            _ => (1, 1),
         }
     }
 }
