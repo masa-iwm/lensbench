@@ -206,7 +206,9 @@ pub fn reversible(s: &Surface) -> bool {
             | T::CylFresnel
             | T::TiltSurf
             | T::Irregular
-    ) && s.grin().is_none()
+            | T::Gradium
+            | T::Gradient9
+    )
 }
 
 /// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 形は [`Surface::flip_z`] と [`Surface::mirror_x`]、開口の
@@ -247,7 +249,7 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
         }
         // 利用者定義の面はモデルが裏返しに対応すれば反転できる（対応しなければ flip_z・mirror_x の誤り）
         if !reversible(&s) && s.typ() != crate::surface::SurfType::User {
-            invalid!("a lens with a paraxial surface or a GRIN medium is not reversed");
+            invalid!("a lens with a paraxial surface is not reversed");
         }
         if s.bire.is_some() {
             invalid!("a lens with a birefringent plate is not reversed");
@@ -308,7 +310,8 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
                 a => a,
             };
         }
-        // 面の後の媒質と厚さは、反転前の 1 つ前の面の後のもの
+        // 面の後の媒質と厚さは、反転前の 1 つ前の面の後のもの。屈折率分布も媒質なので、1 つ前の面から移す
+        move_grin(&mut s, e, n, i, mirror)?;
         if i + 1 < n {
             let q = &e.surfaces[n - 2 - i];
             s.t = q.t;
@@ -328,6 +331,93 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
         reversed: !e.reversed,
         ..e.clone()
     })
+}
+
+/// 反転した玉の i 番目の面 s（元の n − 1 − i 番目、裏返し済み）に、後ろの媒質の屈折率分布を移す。媒質は元の
+/// 1 つ前の面 q の後ろにあったもの: q の局所座標で裏返し、q の厚さだけずらして s の局所座標に置く。形の傾き
+/// （Gradient 9 の tan）は面の形なので s のものを残す
+fn move_grin(s: &mut Surface, e: &Element, n: usize, i: usize, mirror: bool) -> Result<()> {
+    use crate::grin::GrinKind;
+    use crate::surface::SurfType as T;
+    let unresolved =
+        |q: &Surface| matches!(q.typ(), T::Gradium | T::Gradient9) && q.grin().is_none();
+    let medium = if i + 1 < n {
+        let q = &e.surfaces[n - 2 - i];
+        if unresolved(q) {
+            invalid!("a lens with a GRIN surface without a profile is not reversed");
+        }
+        q.grin().map(|g| {
+            let mut g = g.clone();
+            g.flip_z();
+            if mirror {
+                g.mirror_x();
+            }
+            if let GrinKind::Gradium { dz, .. } = &mut g.kind {
+                // 分布は z′ + Δz で決まる: q の局所座標 z は s の局所座標 z − t
+                *dz -= q.t;
+            }
+            g
+        })
+    } else {
+        let last = &e.surfaces[n - 1];
+        if last.grin().is_some() || unresolved(last) {
+            invalid!("a lens with a GRIN medium after its last surface is not reversed");
+        }
+        None
+    };
+    if unresolved(s) {
+        invalid!("a lens with a GRIN surface without a profile is not reversed");
+    }
+    // 面の形の傾き（裏返し済み）。Tilted は平面なので、曲率・コーニックは形に効かない
+    let (tan, plane) = match (s.typ(), s.grin().map(|g| &g.kind)) {
+        (T::TiltSurf, _) => ([s.asph()[0], s.asph()[1]], true),
+        (_, Some(GrinKind::Grad9 { tan, .. })) => (*tan, false),
+        _ => ([0.0; 2], false),
+    };
+    let tilted = tan != [0.0; 2];
+    match medium {
+        Some(mut g) => {
+            if !matches!(
+                s.typ(),
+                T::Standard | T::Gradium | T::Gradient9 | T::TiltSurf
+            ) {
+                invalid!(
+                    "a lens whose GRIN medium ends at a surface other than a standard or tilted one is not reversed"
+                );
+            }
+            match &mut g.kind {
+                GrinKind::Grad9 { tan: t, .. } => *t = tan,
+                GrinKind::Gradium { .. } if tilted => {
+                    invalid!("a lens whose Gradium medium ends at a tilted surface is not reversed")
+                }
+                GrinKind::Gradium { .. } => {}
+            }
+            if plane {
+                s.c = 0.0;
+                s.k = 0.0;
+            }
+            s.set_type(g.surf_type());
+            *s.grin_mut().expect("GRIN surface") = Some(std::sync::Arc::new(g));
+        }
+        None if s.grin().is_some() => {
+            if let Some(g) = s.grin_mut() {
+                *g = None;
+            }
+            if !tilted {
+                s.set_type(T::Standard);
+            } else if s.c == 0.0 {
+                // 傾けた平面は Tilted で書ける
+                s.set_type(T::TiltSurf);
+                s.set_asph(tan.to_vec());
+            } else {
+                invalid!(
+                    "a lens with a tilted curved Gradient 9 surface after a homogeneous medium is not reversed"
+                );
+            }
+        }
+        None => {}
+    }
+    Ok(())
 }
 
 fn notimpl_rev() -> Result<()> {
@@ -364,6 +454,7 @@ pub fn assemble(base: &System, els: &[Element]) -> Result<System> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn sys(txt: &str) -> System {
         let raw = crate::zmx::parse_text(txt).unwrap();
@@ -596,6 +687,117 @@ mod tests {
             assert_eq!(b.surfaces[1].asph(), l.surfaces[0].asph());
             assert_eq!(b.surfaces[1].grid_file(), l.surfaces[0].grid_file());
         }
+    }
+
+    fn lens(surfaces: Vec<Surface>) -> Element {
+        Element {
+            kind: Kind::Lens,
+            from: 0,
+            surfaces,
+            n: Vec::new(),
+            t: 0.0,
+            reversed: false,
+        }
+    }
+
+    fn grin_surface(t: crate::surface::SurfType, c: f64, th: f64, g: crate::grin::Grin) -> Surface {
+        let mut s = Surface {
+            c,
+            t: th,
+            ..Default::default()
+        };
+        s.set_type(t);
+        *s.grin_mut().unwrap() = Some(Arc::new(g));
+        s
+    }
+
+    /// GRIN の玉の反転: 媒質は後ろの面に移り、反転した玉の屈折率は元の玉を y 軸のまわりに 180° 回した点（復路は
+    /// z だけ映した点）のもの。2 回反転すると元に戻る
+    #[test]
+    fn a_grin_lens_is_reversed_with_its_medium() {
+        use crate::grin::tests::gradium;
+        use crate::surface::SurfType as T;
+        let th = 4.0;
+        let e = lens(vec![
+            grin_surface(T::Gradium, 0.02, th, gradium([0.1, -0.05, 0.01, 0.02])),
+            Surface {
+                c: -0.01,
+                ..Default::default()
+            },
+        ]);
+        let g = e.surfaces[0].grin().unwrap();
+        let r = reverse(&e).unwrap();
+        assert_eq!(r.surfaces[0].typ(), T::Gradium);
+        assert_eq!((r.surfaces[0].c, r.surfaces[0].t), (0.01, th));
+        assert_eq!((r.surfaces[1].typ(), r.surfaces[1].c), (T::Standard, -0.02));
+        assert!(r.surfaces[1].grin().is_none());
+        let b = reverse_folded(&e).unwrap();
+        let rr = reverse(&r).unwrap();
+        let (gr, gb, grr) = (
+            r.surfaces[0].grin().unwrap(),
+            b.surfaces[0].grin().unwrap(),
+            rr.surfaces[0].grin().unwrap(),
+        );
+        assert_eq!((rr.surfaces[0].c, rr.surfaces[1].c), (0.02, -0.01));
+        for p in [[0.4, -0.3, 1.2], [-0.2, 0.5, 2.5], [0.1, 0.1, 3.6]] {
+            for lam in [0.48, 0.55, 0.65] {
+                let (n, d) = g.eval(lam, p).unwrap();
+                let (nr, dr) = gr.eval(lam, [-p[0], p[1], th - p[2]]).unwrap();
+                assert!((n - nr).abs() < 1e-12, "{p:?} {n} {nr}");
+                assert!((d[0] + dr[0]).abs() < 1e-10 && (d[1] - dr[1]).abs() < 1e-10);
+                assert!((d[2] + dr[2]).abs() < 1e-10, "{d:?} {dr:?}");
+                let (nb, db) = gb.eval(lam, [p[0], p[1], th - p[2]]).unwrap();
+                assert!((n - nb).abs() < 1e-12 && (d[0] - db[0]).abs() < 1e-10);
+                let (n2, d2) = grr.eval(lam, p).unwrap();
+                assert!((n - n2).abs() < 1e-12 && (d[2] - d2[2]).abs() < 1e-10);
+            }
+        }
+        // 最後の面の後ろ（玉の外）の分布は移す先がない
+        let mut bad = e.clone();
+        bad.surfaces[1] = grin_surface(T::Gradium, -0.01, 0.0, gradium([0.0; 4]));
+        assert!(reverse(&bad).is_err());
+    }
+
+    /// Gradient 9 の面の形の傾きは面に残る: 傾けた平面は Tilted と行き来し、傾けた曲面の後ろが一様な媒質になる
+    /// 反転は書けない
+    #[test]
+    fn a_gradient9_lens_keeps_the_surface_tilts() {
+        use crate::grin::{tests::g9, GrinKind};
+        use crate::surface::SurfType as T;
+        let tilted = |c: f64, tan: [f64; 2]| {
+            let mut g = g9();
+            if let GrinKind::Grad9 { tan: t, .. } = &mut g.kind {
+                *t = tan;
+            }
+            grin_surface(T::Gradient9, c, 5.0, g)
+        };
+        let mut s1 = Surface {
+            c: 0.3,
+            ..Default::default()
+        };
+        s1.set_type(T::TiltSurf);
+        s1.set_asph(vec![0.03, 0.01]);
+        let e = lens(vec![tilted(0.0, [0.01, -0.02]), s1]);
+        let tan = |s: &Surface| match s.grin().map(|g| &g.kind) {
+            Some(GrinKind::Grad9 { tan, .. }) => *tan,
+            _ => panic!("{:?}", s.typ()),
+        };
+        let r = reverse(&e).unwrap();
+        assert_eq!(r.surfaces[0].typ(), T::Gradient9);
+        assert_eq!(tan(&r.surfaces[0]), [0.03, -0.01]);
+        assert_eq!((r.surfaces[0].c, r.surfaces[0].t), (0.0, 5.0));
+        assert_eq!(r.surfaces[1].typ(), T::TiltSurf);
+        assert_eq!(r.surfaces[1].asph(), &[0.01, 0.02]);
+        let rr = reverse(&r).unwrap();
+        assert_eq!(rr.surfaces[0].typ(), T::Gradient9);
+        assert_eq!(tan(&rr.surfaces[0]), [0.01, -0.02]);
+        assert_eq!(rr.surfaces[1].typ(), T::TiltSurf);
+        assert_eq!(rr.surfaces[1].asph(), &[0.03, 0.01]);
+        assert_eq!(rr.surfaces[0].grin(), e.surfaces[0].grin());
+        let e = lens(vec![tilted(0.02, [0.01, -0.02]), Surface::default()]);
+        assert!(reverse(&e).is_err());
+        let e = lens(vec![tilted(0.02, [0.0; 2]), Surface::default()]);
+        assert_eq!(reverse(&e).unwrap().surfaces[1].typ(), T::Standard);
     }
 
     #[test]

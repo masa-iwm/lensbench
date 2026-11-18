@@ -580,7 +580,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 }
                 // 面の並びは空気中なので、理想レンズも向きを変えずに使える
                 if v.iter().any(|s| {
-                    !lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial
+                    (!lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial)
+                        || s.grin().is_some()
                 }) {
                     return Err(
                         "GRIN and user-defined surfaces are not supported in a surface list on the return path".into(),

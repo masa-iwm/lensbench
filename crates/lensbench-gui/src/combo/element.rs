@@ -37,7 +37,7 @@ impl Pick {
     }
 
     /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）。自作の玉は、係数の符号を変えるだけで
-    /// 反転できる面だけのとき（Zernike・Grid Sag・GRIN などの面があれば反転しない）。反転したものは戻せる
+    /// 反転できる面だけのとき（Zernike・Grid Sag などの面があれば反転しない）。反転したものは戻せる
     pub fn can_reverse(&self) -> bool {
         let kind = matches!(
             self.kind,

@@ -383,7 +383,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     } => {
                         if prof.flipped {
                             let name = &prof.name;
-                            notimpl!("surface {k}: the Gradium profile {name} is flipped (after a mirror) and differs from the profile file, so it can't be written to .zmx");
+                            notimpl!("surface {k}: the Gradium profile {name} is flipped (after a mirror or in a reversed lens) and differs from the profile file, so it can't be written to .zmx");
                         }
                         w(&mut o, format!("  PARM 0 {}", f(prof.zmax)));
                         w(&mut o, format!("  PARM 1 {}", f(g.dt)));

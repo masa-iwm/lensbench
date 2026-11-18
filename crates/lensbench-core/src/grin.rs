@@ -377,13 +377,12 @@ fn poly_d(c: &[f64], x: f64) -> (f64, f64) {
 }
 
 /// GRIN の媒質の次の面にできる面か: 座標ブレーク（平面。その後ろも同じ媒質が続く）か、交点を求められる形の面
-/// （Odd Asphere・Tilted・Irregular と、形を持たない理想レンズ・利用者定義の面はまだ扱わない）
+/// （Odd Asphere・Irregular と、形を持たない理想レンズ・利用者定義の面はまだ扱わない）。Tilted は傾けた平面で、
+/// 矢高が x・y の 1 次なので交点はそのまま求まる（傾けた Gradient 9 の平面を反転すると媒質の次に来る）
 pub(crate) fn next_ok(d: &Surface) -> bool {
     d.is_coord_break()
-        || !matches!(
-            d.shape(),
-            Shape::OddAsphere { .. } | Shape::Tilted { .. } | Shape::Irregular(_)
-        ) && !d.action().is_ideal()
+        || !matches!(d.shape(), Shape::OddAsphere { .. } | Shape::Irregular(_))
+            && !d.action().is_ideal()
 }
 
 /// GRIN の媒質の次の面の形（交点は [`Shape::sag`] の矢高で求める）。[`next_ok`] でない面は None
@@ -987,11 +986,11 @@ impl GrinData {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::shape::sag;
 
-    fn g9() -> Grin {
+    pub(crate) fn g9() -> Grin {
         Grin {
             kind: GrinKind::Grad9 {
                 mat: Grad9Mat {
@@ -1011,7 +1010,7 @@ mod tests {
         "LBTG1 LBTGSF 6.000 4.5 0\n1.75\n-0.12\n0.03\n-0.01\n0.004\n0\n0\n0\n0\n0\n0\n0\n";
     const SGRIN: &str = "LBTGSF\n0.4 1.0\n0.55\n3 2\n0.0331 0 -0.0331\n0.5 -0.2 0\n0 0 0\n0.0095 0.0003\n100 0\n1 0\n";
 
-    fn gradium(dec: [f64; 4]) -> Grin {
+    pub(crate) fn gradium(dec: [f64; 4]) -> Grin {
         let d = GrinData {
             profiles: parse_grd(GRD, "LBTEST.GRD").unwrap(),
             sgrin: parse_sgrin(SGRIN).unwrap(),

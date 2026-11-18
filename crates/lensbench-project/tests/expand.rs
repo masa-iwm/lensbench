@@ -164,6 +164,10 @@ fn a_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
 }
 
 fn same_rays_xy(a: &System, b: &System) {
+    same_rays_xy_within(a, b, 1e-11);
+}
+
+fn same_rays_xy_within(a: &System, b: &System, tol: f64) {
     let (px, py) = (vec![0.0, 0.7, -0.5, 0.3], vec![0.0, 0.2, 0.6, -0.9]);
     for f in 0..a.fields.len() {
         let t0 = a
@@ -175,7 +179,7 @@ fn same_rays_xy(a: &System, b: &System) {
         for i in 0..px.len() {
             for k in 0..2 {
                 assert!(
-                    (t0.rays[i].xyz[k] - t1.rays[i].xyz[k]).abs() < 1e-11,
+                    (t0.rays[i].xyz[k] - t1.rays[i].xyz[k]).abs() < tol,
                     "{:?} {:?}",
                     t0.rays[i].xyz,
                     t1.rays[i].xyz
@@ -1183,9 +1187,8 @@ fn a_user_surface_after_a_mirror_needs_a_flip() {
     });
 }
 
-/// GRIN の玉（Gradium、分布の軸を傾け偏心）はミラーの後に置いても、展開した光学系のように働く
-#[test]
-fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
+/// Gradium の玉の段（分布の軸の偏心・傾き dec、reversed なら反転）
+fn grin_lens(dec: [f64; 4], reversed: bool) -> String {
     use lensbench_core::grin::{GradiumProfile, GrinKind, Sgrin};
     let kind = GrinKind::Gradium {
         prof: GradiumProfile {
@@ -1211,13 +1214,19 @@ fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
             l: [vec![0.0095, 0.0003], vec![100.0, 0.0], vec![1.0, 0.0]],
         },
         dz: 1.0,
-        dec: [0.1, -0.05, 0.01, 0.02],
+        dec,
         cap: 1,
     };
     let prof = serde_json::to_string(&kind).unwrap();
-    let lens = format!(
-        r#"{{"type": "lens", "source": {{"surfaces": [{{"row": {{"t": 4, "shape": {{"conic": {{"c": 0.02}}}}, "medium": {{"grin": {{"name": "LBTG1", "profile": {prof}, "dt": 0.5}}}}}}}}, {{"row": {{"shape": {{"conic": {{"c": -0.01}}}}}}}}]}}}}"#
-    );
+    format!(
+        r#"{{"type": "lens", "reversed": {reversed}, "source": {{"surfaces": [{{"row": {{"t": 4, "shape": {{"conic": {{"c": 0.02}}}}, "medium": {{"grin": {{"name": "LBTG1", "profile": {prof}, "dt": 0.5}}}}}}}}, {{"row": {{"shape": {{"conic": {{"c": -0.01}}}}}}}}]}}}}"#
+    )
+}
+
+/// GRIN の玉（Gradium、分布の軸を傾け偏心）はミラーの後に置いても、展開した光学系のように働く
+#[test]
+fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
+    let lens = grin_lens([0.1, -0.05, 0.01, 0.02], false);
     let unf = project(&format!(
         r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 30}}, {lens}, {{"type": "air", "t": 45}}]"#
     ));
@@ -1232,4 +1241,75 @@ fn a_grin_lens_after_a_fold_mirror_works_like_the_unfolded_one() {
         fold.paraxial().efl
     );
     same_rays_xy(&unf, &fold);
+}
+
+/// 反転した GRIN の玉: 焦点距離は変わらず、平面鏡で往復する光学系は、展開して 2 つ目を反転した玉にした光学系と
+/// 同じに働く（分布の軸の偏心・傾きは y だけにして、鏡映と 180° 回転を同じにする）
+#[test]
+fn a_reversed_grin_lens_works_like_the_turned_one() {
+    let sys = |lens: &str| {
+        project(&format!(
+            r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 30}}, {lens}, {{"type": "air", "t": 45}}]"#
+        ))
+    };
+    for dec in [[0.0; 4], [0.1, -0.05, 0.01, 0.02]] {
+        let (f, r) = (sys(&grin_lens(dec, false)), sys(&grin_lens(dec, true)));
+        let (ef, er) = (f.paraxial().efl, r.paraxial().efl);
+        assert!((ef - er).abs() < 1e-9 * ef.abs(), "{dec:?} {ef} {er}");
+    }
+    let dec = [0.0, -0.05, 0.0, 0.02];
+    let fold = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 20}}, {}, {{"type": "air", "t": 30}}, {{"type": "mirror", "back": true}}]"#,
+        grin_lens(dec, false)
+    ));
+    let unf = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 20}}, {}, {{"type": "air", "t": 60}}, {}, {{"type": "air", "t": 20}}]"#,
+        grin_lens(dec, false),
+        grin_lens(dec, true)
+    ));
+    assert_eq!(
+        fold.surfaces.iter().filter(|d| d.grin().is_some()).count(),
+        2
+    );
+    // 分布の軸を傾けた媒質は一般の積分（1 歩の許容 1e-8）で追うので、向きの違う 2 つの経路の差はその程度
+    same_rays_xy_within(&unf, &fold, 1e-8);
+}
+
+/// 傾けた Gradient 9 の平面と標準面の玉: 反転すると傾けた平面は Tilted になって媒質の次に来る。平面鏡で往復する
+/// 光学系は、展開して 2 つ目を反転した玉にした光学系と同じに働く（傾きは y だけにして鏡映と 180° 回転を同じにする）
+#[test]
+fn a_reversed_gradient9_lens_with_a_tilted_plane_traces() {
+    use lensbench_core::grin::{Grad9Mat, GrinKind};
+    let kind = GrinKind::Grad9 {
+        mat: Grad9Mat {
+            b: 1.6,
+            c: 0.01,
+            k0: 0.05,
+            k1: 0.004,
+            k2: 0.0002,
+        },
+        tan: [0.0, -0.02],
+    };
+    let prof = serde_json::to_string(&kind).unwrap();
+    let lens = |reversed: bool| {
+        format!(
+            r#"{{"type": "lens", "reversed": {reversed}, "source": {{"surfaces": [{{"row": {{"t": 5, "medium": {{"grin": {{"name": "LBG9", "profile": {prof}, "dt": 0.5}}}}}}}}, {{"row": {{"shape": {{"conic": {{"c": -0.02}}}}}}}}]}}}}"#
+        )
+    };
+    let fold = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 20}}, {}, {{"type": "air", "t": 30}}, {{"type": "mirror", "back": true}}]"#,
+        lens(false)
+    ));
+    let unf = project(&format!(
+        r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 20}}, {}, {{"type": "air", "t": 60}}, {}, {{"type": "air", "t": 20}}]"#,
+        lens(false),
+        lens(true)
+    ));
+    for s in [&fold, &unf] {
+        assert!(s
+            .surfaces
+            .iter()
+            .any(|d| d.typ() == lensbench_core::surface::SurfType::TiltSurf));
+    }
+    same_rays_xy_within(&unf, &fold, 1e-8);
 }
