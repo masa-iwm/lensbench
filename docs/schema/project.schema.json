@@ -4368,7 +4368,7 @@
       "type": "object"
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.6/project.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "$schema": {

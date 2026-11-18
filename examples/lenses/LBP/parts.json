@@ -1,5 +1,5 @@
 {
-  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.5/user-catalog.schema.json",
+  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.6/user-catalog.schema.json",
   "version": 1,
   "vendor": "LB",
   "url_template": "https://example.com/lb/{part}",

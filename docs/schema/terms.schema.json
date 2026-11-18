@@ -1066,7 +1066,7 @@
       ]
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.5/terms.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.6/terms.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {

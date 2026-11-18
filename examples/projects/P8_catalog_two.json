@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.6/project.schema.json",
  "name": "P8 two catalog lenses (the second reversed)",
  "glass_catalogs": [
   "SCHOTT"

@@ -255,7 +255,7 @@
       "description": "差し替え探索の変数: 文字の短い形 \"d1.t\"・\"d1.t=下限:上限\"（片側は空でよい）か、オブジェクトの形\n`{\"name\": \"d1.t\", \"min\": 0.5, \"max\": 40}`（min・max は省ける）"
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.5/swap.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.6/swap.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "差し替え探索の設定（CLI の --spec の JSON）",

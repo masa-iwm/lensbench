@@ -1,3 +1,3 @@
-{ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
+{ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.6/project.schema.json",
   "name": "P3 lens after a fold mirror", "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}], "primary": 2, "aperture": {"type": "epd", "value": 8}, "fields": {"type": "angle", "points": [[0, 0], [0, 3], [2, 2]]},
   "blocks": [{"type": "stop", "semi": 4}, {"type": "air", "t": 10}, {"type": "mirror", "tilt": [45, 0], "semi": 10}, {"type": "air", "t": 20}, {"type": "lens", "id": "L", "source": {"surfaces": [{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 6}, {"radius": -60, "semi": 6}]}}, {"type": "air", "t": 60}] }
