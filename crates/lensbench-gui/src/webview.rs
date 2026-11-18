@@ -25,7 +25,7 @@ const SCRIPT: &str = r#"(function () {
 
 /// 子のプロセスの入口: `--webview URL --download-dir DIR [--title T] [--hidden]`。
 /// `--hidden` は窓を見せずに開き、標準入力に `show` が来たら見せる（行を選んだときの裏の読み取り）
-pub fn run(args: &[String]) -> std::process::ExitCode {
+pub(crate) fn run(args: &[String]) -> std::process::ExitCode {
     use std::io::Write;
     use tao::event::{Event, WindowEvent};
     use tao::event_loop::{ControlFlow, EventLoopBuilder};
@@ -130,7 +130,7 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
 
 /// 子のプロセスから届いたもの
 #[derive(Debug, Clone, PartialEq)]
-pub enum Msg {
+pub(crate) enum Msg {
     /// ページの文字（読み込み・変化のたび）
     Page { url: String, text: String },
     /// 落としたファイル
@@ -140,14 +140,14 @@ pub enum Msg {
 }
 
 /// 開いている品ページの窓（子のプロセス）。落とすと窓も閉じる
-pub struct Child {
+pub(crate) struct Child {
     proc: std::process::Child,
     rx: std::sync::mpsc::Receiver<Msg>,
 }
 
 impl Child {
     /// この exe を `--webview` で起こす
-    pub fn spawn(
+    pub(crate) fn spawn(
         url: &str,
         title: &str,
         download_dir: &std::path::Path,
@@ -199,7 +199,7 @@ impl Child {
     }
 
     /// 見せずに開いた窓を見せる
-    pub fn show(&mut self) {
+    pub(crate) fn show(&mut self) {
         use std::io::Write;
         if let Some(i) = self.proc.stdin.as_mut() {
             let _ = writeln!(i, "show");
@@ -208,7 +208,7 @@ impl Child {
     }
 
     /// 届いたものを全部
-    pub fn poll(&mut self) -> Vec<Msg> {
+    pub(crate) fn poll(&mut self) -> Vec<Msg> {
         self.rx.try_iter().collect()
     }
 }

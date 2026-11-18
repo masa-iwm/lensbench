@@ -331,7 +331,7 @@ fn fill_params(
 
 /// 補う窓へ引き継ぐもの: 品・見せていないブラウザ・最後に届いたページ（URL と文字）
 #[cfg(all(windows, feature = "webview"))]
-pub type Handover = (LensRow, crate::webview::Child, Option<(String, String)>);
+pub(crate) type Handover = (LensRow, crate::webview::Child, Option<(String, String)>);
 
 /// 裏の読み取りの結果
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
@@ -541,7 +541,7 @@ impl FillWin {
 
     /// 裏の読み取り（[`AutoFill`]）で値が決まらなかった品を、開いているページのまま引き継ぐ
     #[cfg(all(windows, feature = "webview"))]
-    pub fn adopt(
+    pub(crate) fn adopt(
         &mut self,
         r: LensRow,
         mut child: crate::webview::Child,
