@@ -24,10 +24,16 @@ pub enum SurfQ {
     Gx,
     Gy,
     Gz,
+    /// 面のパワー (n′ − n) c（POWR）
+    Power,
+    /// 近軸周辺光線の y · n · i（高さ · 面の前の屈折率 · 入射角、YNIP）
+    Ynip,
+    /// 面の後の媒質の屈折率（INDX）
+    Index,
 }
 
 impl SurfQ {
-    pub const ALL: [SurfQ; 11] = [
+    pub const ALL: [SurfQ; 14] = [
         SurfQ::Curv,
         SurfQ::Conic,
         SurfQ::Sag,
@@ -39,6 +45,9 @@ impl SurfQ {
         SurfQ::Gx,
         SurfQ::Gy,
         SurfQ::Gz,
+        SurfQ::Power,
+        SurfQ::Ynip,
+        SurfQ::Index,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -53,6 +62,9 @@ impl SurfQ {
             SurfQ::Gx => "gx",
             SurfQ::Gy => "gy",
             SurfQ::Gz => "gz",
+            SurfQ::Power => "power",
+            SurfQ::Ynip => "ynip",
+            SurfQ::Index => "index",
         }
     }
     pub fn parse(s: &str) -> Result<SurfQ> {
@@ -67,7 +79,14 @@ impl SurfQ {
     }
     /// 長さの量か（目標をレンズ単位から mm に直す）
     pub fn is_length(self) -> bool {
-        !matches!(self, SurfQ::Curv | SurfQ::Conic)
+        !matches!(
+            self,
+            SurfQ::Curv | SurfQ::Conic | SurfQ::Power | SurfQ::Index
+        )
+    }
+    /// 波長を選べる量
+    pub fn has_wave(self) -> bool {
+        matches!(self, SurfQ::Power | SurfQ::Ynip | SurfQ::Index)
     }
 }
 
@@ -77,9 +96,25 @@ fn glass(s: &System, i: usize) -> bool {
     m.is_medium() && !m.is_air()
 }
 
-/// 面 j の量 q（(x, y) は Sag・Thick の点）
-pub(super) fn surface_value(s: &System, j: usize, q: SurfQ, x: f64, y: f64) -> Result<f64> {
+/// 面 j の量 q（(x, y) は Sag・Thick の点、w は Power・Ynip・Index の波長）
+pub(super) fn surface_value(
+    s: &System,
+    j: usize,
+    q: SurfQ,
+    x: f64,
+    y: f64,
+    w: usize,
+) -> Result<f64> {
     let f = &s.surfaces[j];
+    // 面の前の屈折率（物体面は物体空間、無視する面・座標ブレークを飛ばす）
+    let n_before = || s.index_before(j, w);
+    // ミラーの面のパワー・ミラーの後の符号は OpticStudio で確かめていない
+    if (q == SurfQ::Power && f.is_mirror()) || (q == SurfQ::Ynip && super::mirror_in(s, 1, j)) {
+        invalid!(
+            "{} of surface {j}: systems with mirrors are not supported yet",
+            q.name()
+        );
+    }
     let sag = |f: &lensbench_core::surface::Surface, x: f64, y: f64| f.shape().sag(x, y).0;
     let v = match q {
         SurfQ::Curv => f.c,
@@ -109,6 +144,14 @@ pub(super) fn surface_value(s: &System, j: usize, q: SurfQ, x: f64, y: f64) -> R
                 _ => 2,
             }]
         }
+        SurfQ::Power => (s.n(j)[w] - n_before()) * f.shape().paraxial_curv(),
+        SurfQ::Ynip => {
+            let p = s.paraxial();
+            let (ym, um) = s.ptrace(p.marginal.0[1], p.marginal.1[0], w, Some(j));
+            let i = um[j - 1] + ym[j] * f.shape().paraxial_curv();
+            ym[j] * n_before() * i
+        }
+        SurfQ::Index => s.n(j)[w],
     };
     if !v.is_finite() {
         invalid!("{} of surface {j} is not finite", q.name());
@@ -116,16 +159,35 @@ pub(super) fn surface_value(s: &System, j: usize, q: SurfQ, x: f64, y: f64) -> R
     Ok(v)
 }
 
-pub(super) fn check(i: usize, surf: usize, q: SurfQ, s: &System) -> Result<()> {
+pub(super) fn check(
+    i: usize,
+    surf: usize,
+    q: SurfQ,
+    wave: Option<usize>,
+    s: &System,
+) -> Result<()> {
     let last = if q == SurfQ::Thick {
         s.image() - 1
     } else {
         s.image()
     };
-    if surf > last {
-        invalid!("term {i}: surface {surf} (0 to {last})");
+    let first = usize::from(q == SurfQ::Ynip);
+    if surf < first || surf > last {
+        invalid!("term {i}: surface {surf} ({first} to {last})");
     }
-    surface_value(s, surf, q, 0.0, 0.0).map(|_| ())
+    if let Some(w) = wave {
+        if !q.has_wave() {
+            invalid!(
+                "term {i}: wave goes with power, ynip and index, not {}",
+                q.name()
+            );
+        }
+        if w >= s.wavelengths.len() {
+            invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
+        }
+    }
+    let w = wave.unwrap_or(s.primary);
+    surface_value(s, surf, q, 0.0, 0.0, w).map(|_| ())
 }
 
 pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
@@ -134,12 +196,14 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
         q,
         x,
         y,
+        wave,
         target,
     } = k
     else {
         unreachable!("not a surface term");
     };
-    Ok((vec![surface_value(s, *surf, *q, *x, *y)? - target], None))
+    let w = wave.unwrap_or(s.primary);
+    Ok((vec![surface_value(s, *surf, *q, *x, *y, w)? - target], None))
 }
 
 /// 半直径を読む項（自動の半直径は変数とともに動く）

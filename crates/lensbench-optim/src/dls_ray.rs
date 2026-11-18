@@ -1,7 +1,7 @@
 //! 光線の項（[`TermKind::Ray`]）の、面ごとの記録から求める量: 大域の位置・方向、面の法線、入射角・射出角など
 
 use super::*;
-use lensbench_core::system::Trace;
+use lensbench_core::system::{FieldType, Trace};
 
 /// 光線 t（面 1..=j を記録したもの）の、面 j での量 q
 pub(super) fn extra(s: &System, t: &Trace, j: usize, q: RayQ) -> Result<f64> {
@@ -244,6 +244,82 @@ pub(super) fn path_term(s: &System, k: &TermKind) -> Result<TermOut> {
     if !v.is_finite() {
         invalid!(
             "{} of the ray from surface {surf} to {to} is not finite",
+            q.name()
+        );
+    }
+    Ok((vec![v - target], None))
+}
+
+/// [`TermKind::ParaxRay`] の値: 近軸光線（x・y を別々に近軸で追う）の面 surf での量。位置は頂点面、方向は傾き
+/// (u_x, u_y, 1) を規格化したもの、法線は頂点面の位置での面の法線（OpticStudio の PARX〜PATY）
+pub(super) fn parax_term(s: &System, k: &TermKind) -> Result<TermOut> {
+    let &TermKind::ParaxRay {
+        field,
+        wave,
+        px,
+        py,
+        surf,
+        q,
+        target,
+    } = k
+    else {
+        unreachable!("not a paraxial ray term");
+    };
+    let w = wave.unwrap_or(s.primary);
+    let (hx, hy) = match field {
+        FieldSel::Index(i) if i < s.fields.len() => s.hxhy(i),
+        FieldSel::Index(i) => invalid!("field number {} ({} in all)", i + 1, s.fields.len()),
+        FieldSel::Norm(a, b) => (a, b),
+    };
+    let (nx, ny) = s.field_norm_values();
+    let p = s.paraxial();
+    let t0 = s.surfaces[0].t;
+    // 物体空間の傾きと面 1 の頂点面での高さ（入射瞳の点 (px, py) · EPD/2 を通る）
+    let launch = |h: f64, pp: f64| -> Result<(f64, f64)> {
+        let e = pp * p.epd / 2.0;
+        Ok(match s.field_type {
+            FieldType::Angle if s.infinite() => {
+                let u = h.to_radians().tan();
+                (e - u * p.enpp, u)
+            }
+            FieldType::ObjH if !s.infinite() => {
+                let u = (e - h) / (p.enpp + t0);
+                (h + u * t0, u)
+            }
+            _ => invalid!(
+                "a paraxial ray needs an angle field (object at infinity) or an object height field"
+            ),
+        })
+    };
+    let (x1, ux0) = launch(hx * nx, px)?;
+    let (y1, uy0) = launch(hy * ny, py)?;
+    let (xs, uxs) = s.ptrace(x1, ux0, w, Some(surf));
+    let (ys, uys) = s.ptrace(y1, uy0, w, Some(surf));
+    let (x, y, ux, uy) = (xs[surf], ys[surf], uxs[surf], uys[surf]);
+    let d = normalize([ux, uy, 1.0]);
+    let (_, zx, zy) = s.surfaces[surf].shape().sag(x, y);
+    let nrm = normalize([zx, zy, -1.0]);
+    let v = match q {
+        RayQ::X => x,
+        RayQ::Y => y,
+        RayQ::Z => 0.0,
+        RayQ::L => d[0],
+        RayQ::M => d[1],
+        RayQ::N => d[2],
+        RayQ::R => x.hypot(y),
+        RayQ::Nl => nrm[0],
+        RayQ::Nm => nrm[1],
+        RayQ::Nn => nrm[2],
+        RayQ::TanX => ux,
+        RayQ::TanY => uy,
+        _ => invalid!(
+            "paraxial ray quantity {} (x, y, z, l, m, n, r, nl, nm, nn, tanx, tany)",
+            q.name()
+        ),
+    };
+    if !v.is_finite() {
+        invalid!(
+            "{} of the paraxial ray at surface {surf} is not finite",
             q.name()
         );
     }

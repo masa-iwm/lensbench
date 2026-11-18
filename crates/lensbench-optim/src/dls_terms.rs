@@ -221,6 +221,17 @@ pub enum TermKind {
         q: RayQ,
         target: f64,
     },
+    /// 1 本の近軸光線の面 surf での量 − target（q は x・y・z・l・m・n・r・nl・nm・nn・tanx・tany。OpticStudio の
+    /// PARX〜PATY）。微分は差分
+    ParaxRay {
+        field: FieldSel,
+        wave: Option<usize>,
+        px: f64,
+        py: f64,
+        surf: usize,
+        q: RayQ,
+        target: f64,
+    },
     /// 1 本の光線の面 surf から to までの量 − target（微分は差分）。q は opth（面の間の光路長、OpticStudio の PLEN）か、
     /// aoi・aoe（面ごとの入射角・射出角 [度] を target と比べ、はみ出しの和 + target。upper は上限か。MXRI・MNRI・
     /// MXRE・MNRE）
@@ -276,6 +287,8 @@ pub enum TermKind {
         q: SurfQ,
         x: f64,
         y: f64,
+        /// 波長（power・ynip・index だけ。None は主波長）
+        wave: Option<usize>,
         target: f64,
     },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
@@ -449,10 +462,17 @@ pub enum ParaxQ {
     Obsn,
     /// 像空間の NA（ISNA）
     Isna,
+    /// 角倍率: 像空間と物体空間の近軸主光線の傾きの比（AMAG）
+    Amag,
+    /// ラグランジュ不変量: 絞りの後の n · 近軸主光線の傾き · 近軸周辺光線の高さ（LINV）
+    Linv,
+    /// ペッツバール和の曲率 −n′ Σ (n′ − n) c / (n n′) [1/レンズ単位]（PETC）と、その逆数の半径（PETZ）
+    Petc,
+    Petz,
 }
 
 impl ParaxQ {
-    pub const ALL: [ParaxQ; 13] = [
+    pub const ALL: [ParaxQ; 17] = [
         ParaxQ::Efl,
         ParaxQ::Pmag,
         ParaxQ::Enpp,
@@ -466,6 +486,10 @@ impl ParaxQ {
         ParaxQ::Totr,
         ParaxQ::Obsn,
         ParaxQ::Isna,
+        ParaxQ::Amag,
+        ParaxQ::Linv,
+        ParaxQ::Petc,
+        ParaxQ::Petz,
     ];
     pub fn parse(s: &str) -> Result<ParaxQ> {
         let t = s.trim().to_ascii_lowercase();
@@ -494,10 +518,17 @@ impl ParaxQ {
             ParaxQ::Totr => "totr",
             ParaxQ::Obsn => "obsn",
             ParaxQ::Isna => "isna",
+            ParaxQ::Amag => "amag",
+            ParaxQ::Linv => "linv",
+            ParaxQ::Petc => "petc",
+            ParaxQ::Petz => "petz",
         }
     }
     /// 波長 wave（0 始まり、None は主波長）を主波長にした系の値。主波長を変えた系を作れなければ NaN
     pub fn value_at(&self, s: &System, wave: Option<usize>) -> f64 {
+        if let Some(v) = self.at_wave(s, wave.unwrap_or(s.primary)) {
+            return v;
+        }
         match wave {
             Some(w) if w != s.primary => {
                 let mut d = s.clone();
@@ -512,9 +543,57 @@ impl ParaxQ {
             _ => self.value(s),
         }
     }
-    /// 波長を選べる量（efl・pimh。OpticStudio の EFFL・PIMH の Wave）
+    /// 波長を選べる量（efl・pimh・amag・linv・petc・petz。OpticStudio の Wave）
     pub fn has_wave(&self) -> bool {
-        matches!(self, ParaxQ::Efl | ParaxQ::Pimh)
+        matches!(
+            self,
+            ParaxQ::Efl | ParaxQ::Pimh | ParaxQ::Amag | ParaxQ::Linv | ParaxQ::Petc | ParaxQ::Petz
+        )
+    }
+    /// 波長 w で近軸光線を追って求める量（主波長の入射瞳・EPD のまま。OpticStudio 26.1 の実測どおり）
+    fn at_wave(&self, s: &System, w: usize) -> Option<f64> {
+        let p = s.paraxial();
+        let img = s.image();
+        // 近軸主光線（物体空間の傾き 1、または有限物体で高さ 1）は p.chief と同じ打ち出しを波長 w で
+        let chief = || {
+            let (y0, u0) = (p.chief.0[1], p.chief.1[0]);
+            s.ptrace(y0, u0, w, None)
+        };
+        Some(match self {
+            ParaxQ::Amag => {
+                let (_, uc) = chief();
+                uc[img - 1] / p.chief.1[0]
+            }
+            // ミラーの後の符号・ペッツバール和のミラーの項は OpticStudio で確かめていないので、ミラーのある系は値を持たない
+            ParaxQ::Linv if mirror_in(s, 1, s.stop()) => f64::NAN,
+            ParaxQ::Petc | ParaxQ::Petz if mirror_in(s, 1, img - 1) => f64::NAN,
+            ParaxQ::Linv => {
+                // 主光線は最大の視野へ（傾き・高さは視野に比例）
+                let (y0, u0) = (p.marginal.0[1], p.marginal.1[0]);
+                let (ym, _) = s.ptrace(y0, u0, w, None);
+                let (_, uc) = chief();
+                let st = s.stop();
+                s.n(st)[w] * uc[st] * ym[st] * chief_scale(s)
+            }
+            ParaxQ::Petc | ParaxQ::Petz => {
+                let mut sum = 0.0;
+                for j in 1..img {
+                    let f = &s.surfaces[j];
+                    if f.ignore || f.is_coord_break() {
+                        continue;
+                    }
+                    let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
+                    sum += (n2 - n1) * f.shape().paraxial_curv() / (n1 * n2);
+                }
+                let c = -s.image_index(w) * sum;
+                if *self == ParaxQ::Petc {
+                    c
+                } else {
+                    1.0 / c
+                }
+            }
+            _ => return None,
+        })
     }
     /// 系の値
     pub fn value(&self, s: &System) -> f64 {
@@ -609,6 +688,7 @@ impl TermKind {
             TermKind::Paraxial { target, .. }
             | TermKind::Ray { target, .. }
             | TermKind::RayPath { target, .. }
+            | TermKind::ParaxRay { target, .. }
             | TermKind::Centroid { target, .. }
             | TermKind::Opd { target, .. }
             | TermKind::Zernike { target, .. }
@@ -775,6 +855,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         TermKind::Paraxial { .. }
         | TermKind::Ray { .. }
         | TermKind::RayPath { .. }
+        | TermKind::ParaxRay { .. }
         | TermKind::Centroid { .. }
         | TermKind::Opd { .. }
         | TermKind::Zernike { .. }
@@ -783,5 +864,24 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Surface { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
+    }
+}
+
+/// 面 a から b までにミラーがあるか（無視する面を除く）
+pub(super) fn mirror_in(s: &System, a: usize, b: usize) -> bool {
+    s.surfaces
+        .get(a..=b)
+        .unwrap_or(&[])
+        .iter()
+        .any(|f| !f.ignore && f.is_mirror())
+}
+
+/// 近軸主光線（[`lensbench_core::system::Paraxial::chief`]、物体空間の傾き 1 か物体の高さ 1）を最大の視野に合わせる倍率
+fn chief_scale(s: &System) -> f64 {
+    use lensbench_core::system::FieldType;
+    let hmax = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
+    match s.field_type {
+        FieldType::Angle => hmax.to_radians().tan(),
+        _ => hmax,
     }
 }

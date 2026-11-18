@@ -522,7 +522,7 @@
               ]
             },
             "q": {
-              "description": "量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna、OpticStudio の名前も可）",
+              "description": "量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna・amag・linv・petc・petz、OpticStudio の名前も可）",
               "type": "string"
             },
             "target": {
@@ -538,7 +538,7 @@
               "type": "string"
             },
             "wave": {
-              "description": "波長の番号（efl・pimh だけ、その波長を主波長にした系の値）。null・省略は主波長",
+              "description": "波長の番号（efl・pimh はその波長を主波長にした系の値、amag・linv・petc・petz はその波長の近軸光線）。null・省略は主波長",
               "format": "uint",
               "minimum": 0,
               "type": [
@@ -585,6 +585,13 @@
               "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "paraxial": {
+              "description": "true で近軸光線（x・y を別々に近軸で追う。q は x・y・z・l・m・n・r・nl・nm・nn・tanx・tany、OpticStudio の PARX〜PATY）",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -1152,7 +1159,7 @@
               ]
             },
             "q": {
-              "description": "量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）",
+              "description": "量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・power・ynip・index）",
               "type": "string"
             },
             "surf": {
@@ -1172,6 +1179,15 @@
             "type": {
               "const": "surface",
               "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号（power・ynip・index だけ）。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "weight": {
               "description": "重み（既定 1）",

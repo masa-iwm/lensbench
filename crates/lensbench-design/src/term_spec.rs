@@ -141,9 +141,9 @@ pub struct MtfSpec {
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct ParaxSpec {
-    /// 量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna、OpticStudio の名前も可）
+    /// 量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna・amag・linv・petc・petz、OpticStudio の名前も可）
     pub q: String,
-    /// 波長の番号（efl・pimh だけ、その波長を主波長にした系の値）。null・省略は主波長
+    /// 波長の番号（efl・pimh はその波長を主波長にした系の値、amag・linv・petc・petz はその波長の近軸光線）。null・省略は主波長
     pub wave: Option<usize>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
@@ -161,6 +161,8 @@ pub struct RaySpec {
     pub py: Option<f64>,
     /// 面の番号（物体 0、既定は像面）
     pub surf: Option<usize>,
+    /// true で近軸光線（x・y を別々に近軸で追う。q は x・y・z・l・m・n・r・nl・nm・nn・tanx・tany、OpticStudio の PARX〜PATY）
+    pub paraxial: Option<bool>,
     /// 面 surf から to まで（q は opth で面の間の光路長、aoi・aoe は min・max と面ごとに比べてはみ出しを足す）
     pub to: Option<usize>,
     /// 量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長。gx〜gn はグローバル座標の交点と方向、
@@ -235,11 +237,13 @@ pub struct ThickSpec {
 pub struct SurfSpec {
     /// 面の番号（物体面 0）
     pub surf: usize,
-    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）
+    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・power・ynip・index）
     pub q: String,
     /// sag・thick を測る点 [レンズ単位]（既定 0）
     pub x: Option<f64>,
     pub y: Option<f64>,
+    /// 波長の番号（power・ynip・index だけ）。null・省略は主波長
+    pub wave: Option<usize>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }

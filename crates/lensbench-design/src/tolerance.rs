@@ -547,6 +547,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Centroid { .. } => "centroid",
         K::Ray { .. } => "ray",
         K::RayPath { .. } => "ray",
+        K::ParaxRay { .. } => "ray",
         K::Opd { .. } => "opd",
         K::Zernike { .. } => "zernike",
         K::Coupling { .. } => "coupling",

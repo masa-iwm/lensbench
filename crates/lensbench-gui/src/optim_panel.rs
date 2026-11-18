@@ -41,7 +41,7 @@ enum KeyKind {
 
 const PARAXIAL_Q: &[&str] = &[
     "efl", "pmag", "enpp", "epd", "expp", "expd", "wfno", "pwfn", "isfn", "pimh", "totr", "obsn",
-    "isna",
+    "isna", "amag", "linv", "petc", "petz",
 ];
 const RAY_Q: &[&str] = &[
     "x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth", "gx", "gy", "gz", "gl", "gm",
@@ -59,6 +59,9 @@ const SURF_Q: &[&str] = &[
     "gx",
     "gy",
     "gz",
+    "power",
+    "ynip",
+    "index",
 ];
 const REFERENCE: &[&str] = &["centroid", "chief"];
 /// スポット・波面の瞳の求積（arms は opticstudio、n は grid と使う）
@@ -121,6 +124,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("py", Num),
             ("surf", Int),
             ("to", Int),
+            ("paraxial", Bool),
             ("q", Choice(RAY_Q)),
             ("target", Num),
         ],
@@ -182,6 +186,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("q", Choice(SURF_Q)),
             ("x", Num),
             ("y", Num),
+            ("wave", Int),
             ("target", Num),
         ],
         "plugin" => &[

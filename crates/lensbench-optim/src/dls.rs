@@ -776,11 +776,25 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             }
             if let Some(w) = wave {
                 if !q.has_wave() {
-                    invalid!("term {i}: wave goes with efl and pimh, not {}", q.name());
+                    invalid!(
+                        "term {i}: wave goes with efl, pimh, amag, linv, petc and petz, not {}",
+                        q.name()
+                    );
                 }
                 if *w >= s.wavelengths.len() {
                     invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
                 }
+            }
+            let mirror = match q {
+                ParaxQ::Linv => mirror_in(s, 1, s.stop()),
+                ParaxQ::Petc | ParaxQ::Petz => mirror_in(s, 1, s.image() - 1),
+                _ => false,
+            };
+            if mirror {
+                invalid!(
+                    "term {i}: {} of systems with mirrors is not supported yet",
+                    q.name()
+                );
             }
             if !q.value_at(s, *wave).is_finite() {
                 invalid!("term {i}: {} of the system is not finite", q.name());
@@ -794,6 +808,14 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
                 if *j == 0 || *j > s.image() {
                     invalid!("term {i}: surface {j} (1 to {})", s.image());
                 }
+            }
+            (*field, Some(wave.unwrap_or(s.primary)))
+        }
+        TermKind::ParaxRay {
+            field, wave, surf, ..
+        } => {
+            if *surf == 0 || *surf > s.image() {
+                invalid!("term {i}: surface {surf} (1 to {})", s.image());
             }
             (*field, Some(wave.unwrap_or(s.primary)))
         }
@@ -846,7 +868,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             }
             return Ok(());
         }
-        TermKind::Surface { surf, q, .. } => return surf::check(i, *surf, *q, s),
+        TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
         TermKind::Calc { op, args, .. } => {
             let (lo, hi) = op.arity();
             let n = args.len();
@@ -995,6 +1017,7 @@ fn eval_term(
             target,
         } => ray::ray_term(s, *field, *wave, *px, *py, *surf, *q, *target, ps),
         TermKind::RayPath { .. } => ray::path_term(s, k),
+        TermKind::ParaxRay { .. } => ray::parax_term(s, k),
         TermKind::Opd {
             field,
             wave,

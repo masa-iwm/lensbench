@@ -226,6 +226,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         } | TermKind::Paraxial { .. }
             | TermKind::Ray { .. }
             | TermKind::RayPath { .. }
+            | TermKind::ParaxRay { .. }
             | TermKind::Centroid { .. }
             | TermKind::Opd { .. }
             | TermKind::Zernike { .. }
@@ -317,6 +318,20 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 .target
                 .ok_or("paraxial term has no target (or min and max)")?,
         },
+        TermSpec::Ray(t) if t.paraxial == Some(true) => {
+            if t.to.is_some() {
+                return Err("to does not go with paraxial".to_string().into());
+            }
+            TermKind::ParaxRay {
+                field: field(t.field, s)?,
+                wave: wave(t.wave, s)?,
+                px: t.px.unwrap_or(0.0),
+                py: t.py.unwrap_or(0.0),
+                surf: t.surf.unwrap_or(s.image()),
+                q: RayQ::parse(&t.q)?,
+                target: t.target.unwrap_or(0.0),
+            }
+        }
         TermSpec::Ray(t) => match t.to {
             Some(to) => TermKind::RayPath {
                 field: field(t.field, s)?,
@@ -415,6 +430,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 q,
                 x: t.x.unwrap_or(0.0),
                 y: t.y.unwrap_or(0.0),
+                wave: wave(t.wave, s)?,
                 target: t
                     .target
                     .ok_or("surface term has no target (or min and max)")?,
@@ -607,6 +623,7 @@ mod tests {
             r#"{"type": "thickness", "surf": 1, "zone": 0.5, "target": 1}"#,
             r#"{"type": "thickness", "surf": 1, "edge": true, "zone": 0, "target": 1}"#,
             r#"{"type": "ray", "field": 1, "to": 3, "q": "opth"}"#,
+            r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "paraxial": true, "q": "y"}"#,
             r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "q": "aoi", "target": 10}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
@@ -615,6 +632,34 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    /// ミラーのある系の近軸の量（OpticStudio で確かめていない）は項の誤り
+    #[test]
+    fn mirror_terms_rejected() {
+        let raw = lensbench_core::zmx::parse_text(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 1 1 0 0 0\n\
+YFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV -0.01\n  DISZ -50\n  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        )
+        .unwrap();
+        let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let check = |v: Value| {
+            let mut p = lensbench_optim::Problem::single(s.clone());
+            p.terms = terms_from_json(&serde_json::json!([v]), std::slice::from_ref(&s)).unwrap();
+            p.check()
+        };
+        for v in [
+            serde_json::json!({"type": "paraxial", "q": "petc", "target": 0}),
+            serde_json::json!({"type": "paraxial", "q": "petz", "target": 0}),
+            serde_json::json!({"type": "paraxial", "q": "linv", "target": 0}),
+            serde_json::json!({"type": "surface", "surf": 1, "q": "power", "target": 0}),
+            serde_json::json!({"type": "surface", "surf": 2, "q": "ynip", "target": 0}),
+        ] {
+            assert!(check(v.clone()).is_err(), "{v}");
+        }
+        check(serde_json::json!({"type": "paraxial", "q": "efl", "target": 0})).unwrap();
     }
 
     #[test]

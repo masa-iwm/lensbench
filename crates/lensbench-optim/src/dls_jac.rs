@@ -73,6 +73,7 @@ impl JacCache {
             | TermKind::Centroid { field, wave, .. }
             | TermKind::Ray { field, wave, .. }
             | TermKind::RayPath { field, wave, .. }
+            | TermKind::ParaxRay { field, wave, .. }
             | TermKind::Opd { field, wave, .. } => (*field, *wave),
             _ => return true,
         };
