@@ -6,6 +6,7 @@ use crate::action::Action;
 impl System {
     /// 偏光追跡での面ごとの処理を波長 w について用意する（境界の係数、Jones 行列、媒質の吸収）
     pub fn pol_surfaces(&self, w: usize, coat: &Coatings) -> Result<Vec<PolSurf>> {
+        self.check_crystals()?;
         let (keys, before) = coating::media_keys(self);
         let wl = self.wavelengths[w];
         let mut out = Vec::with_capacity(self.surfaces.len());
@@ -50,9 +51,6 @@ impl System {
             if !d.ignore && j > 0 {
                 ps.cry = match &d.bire {
                     Some(Bire::In { mode, axis, ne }) => {
-                        if !d.bire.as_ref().is_some_and(|b| b.traceable()) {
-                            self.check_crystals()?;
-                        }
                         let ne = ne.get(w).copied().ok_or_else(|| {
                             Error::Invalid(format!(
                                 "{}: no index for the extraordinary material {}",

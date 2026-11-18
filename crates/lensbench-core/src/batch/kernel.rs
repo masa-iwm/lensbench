@@ -2,13 +2,20 @@
 
 use super::lanes::{sel, Lanes, Mask};
 use super::pol::{aperture_out_l, pol_surface_l, PolLanes, PolSoa};
-use super::{LaneSink, Move, Plan, Sag, Step};
+use super::{ExtStep, LaneSink, Move, Plan, Sag, Step};
 use crate::action::{Act, Action};
 use crate::freeform::ZernSag;
 use crate::math::*;
 use crate::shape::{Isect, Norm, Shape};
 use crate::surface::Aperture;
-use crate::trace::{self, RayOut, RayStatus, RecEntry};
+use crate::trace::{self, uniaxial, RayOut, RayStatus, RecEntry};
+
+/// 異常光の道を進む板（複屈折材の板の Mode 1・3）の中の光線の状態（今の面の局所座標）
+#[derive(Debug, Clone, Copy)]
+struct ExtLane {
+    /// 波数ベクトル n(θ) k̂（k̂ は波面法線）
+    m: V3,
+}
 
 /// 3 成分の組
 pub(super) type VL<V> = [V; 3];
@@ -238,14 +245,12 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
     let mut kl = nan3;
     // GRIN の媒質に入ったときの方向（光線ごと、座標ブレークを挟んで進むあいだ持つ）
     let mut grin_k0: [Option<V3>; N] = [None; N];
+    // 異常光の道を進む板の中の光線（光線の向きは kl、光路長を数える屈折率 nprev は m·kl）
+    let mut ext: [Option<ExtLane>; N] = [None; N];
     for (ri, st) in plan.steps.iter().enumerate() {
         let j = st.j;
         let d = &sys.surfaces[j];
         let jf = j as f64;
-        // 追跡できない面（複屈折材の板の Mode 1・3）: 残りの光線もここで止める
-        if st.blocked {
-            err = mark(err, err.eq(0.0), jf);
-        }
         // ここまでに止まった光線（以後は NaN）
         let es: V::B = err.ne(0.0);
         // 複屈折材の板の中の光線があるか（その面の偏光は光線ごとのスカラーで）
@@ -306,6 +311,16 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     Move::Shift(_) => {}
                     Move::Rel(q) => e.mv(&q.r),
                     Move::First => e.mtv(&st.f.r),
+                }
+            }
+            // 異常光の板の中の波数ベクトルも方向と同じ変換で
+            if plan.ext_any {
+                for x in ext.iter_mut().flatten() {
+                    x.m = match st.mv {
+                        Move::Shift(_) => x.m,
+                        Move::Rel(q) => mv(&q.r, x.m),
+                        Move::First => mtv(&st.f.r, x.m),
+                    };
                 }
             }
             if cry_any {
@@ -485,6 +500,15 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             let ps = &pr.surf[j];
             cry_any || ps.cry.is_some() || ps.cement.is_some() || ps.cemented
         });
+        // 異常光の道の面: 屈折は下で光線ごとに求める（ふつうの屈折はさせない）。入口の前の屈折率は n_ext_before
+        let n_ext_before = nprev;
+        if st.ext != ExtStep::None {
+            for i in 0..N {
+                if err[i] == 0.0 && (ext[i].is_some() || matches!(st.ext, ExtStep::In { .. })) {
+                    nprev[i] = nn[i];
+                }
+            }
+        }
         match st.kind.act {
             Act::CoordBrk => nn = nprev,
             Act::Paraxial => {
@@ -643,6 +667,50 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         );
                     }
                 }
+                // 異常光の道の入口・出口の屈折
+                match st.ext {
+                    ExtStep::In { axis, no, ne } => {
+                        for i in 0..N {
+                            if err[i] != 0.0 {
+                                continue;
+                            }
+                            let u = get(&kin, i);
+                            match uniaxial::refract_in(
+                                u,
+                                n_ext_before[i],
+                                get(&nv, i),
+                                axis,
+                                no,
+                                ne,
+                            ) {
+                                Some((m, s)) => {
+                                    put(&mut kl, i, s);
+                                    nn[i] = dot(m, s);
+                                    ext[i] = Some(ExtLane { m });
+                                }
+                                None => {
+                                    err[i] = jf;
+                                    tir.set(i, true);
+                                }
+                            }
+                        }
+                    }
+                    ExtStep::Out => {
+                        for i in 0..N {
+                            let Some(x) = ext[i].filter(|_| err[i] == 0.0) else {
+                                continue;
+                            };
+                            match uniaxial::refract_out(x.m, get(&kin, i), get(&nv, i), nn[i]) {
+                                Some(k2) => put(&mut kl, i, k2),
+                                None => {
+                                    err[i] = jf;
+                                    tir.set(i, true);
+                                }
+                            }
+                        }
+                    }
+                    ExtStep::None | ExtStep::Inside => {}
+                }
                 if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
                     if pol_scalar {
                         for i in 0..N {
@@ -650,6 +718,16 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                                 continue;
                             }
                             let mut x = e.lane(i);
+                            // 異常光の道の板の境界の係数・位相は波面法線の向きで（入口は後ろ、出口は前）
+                            let (mut ki, mut ko, mut ci) = (get(&kin, i), get(&kl, i), cosi[i]);
+                            match (st.ext, ext[i]) {
+                                (ExtStep::In { .. }, Some(xl)) => ko = normalize(xl.m),
+                                (ExtStep::Out, Some(xl)) => {
+                                    ki = normalize(xl.m);
+                                    ci = dot(ki, get(&nv, i));
+                                }
+                                _ => {}
+                            }
                             trace::pol_step(
                                 sys,
                                 pr.surf,
@@ -657,10 +735,16 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                                 &mut x,
                                 &mut pr.cry[i],
                                 &mut pr.err[i],
-                                (get(&kin, i), get(&kl, i), get(&nv, i), cosi[i]),
+                                (ki, ko, get(&nv, i), ci),
                                 d.is_mirror(),
                                 plan.lam,
                             );
+                            // 異常光の道の板: 光線の長さを波面法線の向きの厚さに直す係数 k̂·ŝ
+                            if let (ExtStep::In { .. }, Some(xl), Some(c)) =
+                                (st.ext, ext[i], pr.cry[i].as_mut())
+                            {
+                                c.proj = dot(normalize(xl.m), get(&kl, i));
+                            }
                             e.set_lane(i, &x);
                         }
                     } else if !matches!(pr.surf[j].kind, trace::PolKind::None) {
@@ -718,6 +802,18 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     }
                 }
             }
+        }
+        // 異常光の道の板の中: 光路長を数える屈折率は m·ŝ のまま。出口を出た光線は等方な媒質へ
+        match st.ext {
+            ExtStep::Inside => {
+                for i in 0..N {
+                    if let Some(x) = ext[i].filter(|_| err[i] == 0.0) {
+                        nn[i] = dot(x.m, get(&kl, i));
+                    }
+                }
+            }
+            ExtStep::Out => ext = [None; N],
+            ExtStep::None | ExtStep::In { .. } => {}
         }
         // 面の中で方向・位置が有限でなくなった光線（理想レンズの kl[2] = 0、屈折率 NaN など）もこの面で止める
         // （最後の面でも「err = 0 なら有限」を守る）

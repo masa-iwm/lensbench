@@ -1024,7 +1024,8 @@ Mode	モード
 In	入口
 Out	出口
 Ordinary only (0)	常光だけ（0）
-Extraordinary ray path ({}), not traced	異常光の道（{}）、追跡しない
+Extraordinary path, wave plate (3)	異常光の道で波長板（3）
+Extraordinary only (1)	異常光だけ（1）
 Wave plate (2)	波長板（2）
 Crystal axis	結晶軸
 Birefringence	複屈折

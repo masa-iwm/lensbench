@@ -359,15 +359,18 @@ impl Retarder {
 }
 
 /// 複屈折材の板（OpticStudio の Birefringent In / Out の組）。入口の面の後の媒質（`mat`）が常光の材料、
-/// `mat`-E が異常光の材料。光線は常光の道を進み（屈折率 no）、出口の面で、板の中の光線の向き k と
+/// `mat`-E が異常光の材料。Mode 0・2 は光線が常光の道を進み（屈折率 no）、出口の面で、板の中の光線の向き k と
 /// 結晶軸 a から決まる異常光の成分（a の k に垂直な向き）に、常光の成分に対して
 /// exp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける（OpticStudio の Mode 2、波長板モード）。
-/// n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は k と a の角、L は板の中の光線の長さ。Mode 0 は常光の成分だけを通す
+/// n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は k と a の角、L は板の中の光線の長さ。Mode 0 は常光の成分だけを通す。
+/// Mode 1・3 は光線が異常光の道を進む（入口・出口で波面法線の向きの屈折率 n(θ) で屈折し、板の中は
+/// エネルギーの向きへ walk-off して進み、光路長は異常光で数える）。Mode 1 は異常光の成分だけを通し、Mode 3 は
+/// 常光の成分に異常光に対する位相を付ける（[`crate::trace`] の uniaxial）
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub enum Bire {
     In {
-        /// 0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は持つが追跡しない
-        /// （[`Bire::traceable`]、[`crate::System::check_crystals`]）
+        /// 0: 常光の成分だけ、1: 異常光の道で異常光の成分だけ、2: 常光の道で両方の位相（波長板）、
+        /// 3: 異常光の道で両方の位相
         mode: u8,
         /// 結晶軸の向き（入口の面の局所座標、規格化しなくてよい）
         axis: [f64; 3],
@@ -376,13 +379,6 @@ pub enum Bire {
         ne: Vec<f64>,
     },
     Out,
-}
-
-impl Bire {
-    /// 追跡できるか: 入口の Mode 1・3（異常光の道）は光線の屈折が常光と違い、未対応なので false
-    pub fn traceable(&self) -> bool {
-        !matches!(self, Bire::In { mode: 1 | 3, .. })
-    }
 }
 
 impl Bire {

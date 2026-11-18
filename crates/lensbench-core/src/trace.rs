@@ -4,6 +4,7 @@
 
 mod aperture;
 mod pol;
+pub(crate) mod uniaxial;
 
 #[doc(hidden)]
 pub use aperture::{aperture_margin, aperture_out};

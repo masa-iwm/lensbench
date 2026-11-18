@@ -153,7 +153,6 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     if let Some(b) = q.birefringent {
         s.bire = Some(match b {
             BireSpec::In { mode, axis } => {
-                // 1・3（異常光の道）も持つ。追跡は System::check_crystals が断る
                 if mode > 3 {
                     return Err(format!("birefringent plate mode {mode} (0 to 3)").into());
                 }

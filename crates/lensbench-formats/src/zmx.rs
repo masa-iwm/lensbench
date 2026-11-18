@@ -451,6 +451,24 @@ pub fn document(
         )),
         None => {}
     }
+    // 複屈折材の板で OpticStudio と値の数え方が違う所（物理の式を採る）を知らせる
+    for (j, d) in rx.surfaces.iter().enumerate() {
+        let Some(lensbench_core::surface::Bire::In { mode, axis, .. }) = &d.bire else {
+            continue;
+        };
+        let mode = *mode;
+        if matches!(mode, 1 | 3) {
+            rx.import_notes.push(format!(
+                "zmx surface {j}: Birefringent In Mode {mode}: the optical path along the extraordinary ray is counted from its wave vector (n(θ) cos ρ per ray length); OpticStudio counts no per ray length, so OPL and OPD differ from OpticStudio"
+            ));
+        }
+        let az = axis[2] / axis.iter().map(|v| v * v).sum::<f64>().sqrt();
+        if matches!(mode, 2 | 3) && az.abs() > 1e-12 && az.abs() < 1.0 - 1e-12 {
+            rx.import_notes.push(format!(
+                "zmx surface {j}: Birefringent In Mode {mode}: the crystal axis is tilted from the surface normal, so the retardance differs from OpticStudio, which adds 2π no t (1/cos ρ − 1)/λ for the walk-off"
+            ));
+        }
+    }
     rx.pickups = pickups;
     rx.solves = macros::solves(raw);
     Ok((rx, macros::requests(raw, opt, base)))

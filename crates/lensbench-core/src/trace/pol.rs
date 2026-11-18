@@ -69,15 +69,30 @@ pub(crate) struct CryState {
     pub no: f64,
     pub ne: f64,
     pub len: f64,
+    /// 異常光の道（Mode 1・3）で、光線の長さ len を波面法線の向きの長さに直す係数 k̂·ŝ（常光の道は 1）
+    pub proj: f64,
 }
 
-/// 板の出口で、板の中の方向 k の光線の電場に異常光の位相を付ける（[`crate::surface::Bire`]）。λ は µm、長さは mm
+/// 板の出口で、板の中の波面法線 k の光線の電場に、常光・異常光の位相の差を付ける（[`crate::surface::Bire`]）。
+/// λ は µm、長さは mm。Mode 0・2 は常光の道（光路長は no で数えてある）で異常光の成分に位相、Mode 1・3 は異常光の
+/// 道（光路長は異常光で数えてある）で常光の成分に位相。Mode 0 は常光、Mode 1 は異常光の成分だけを通す
 fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
     let k = normalize(k);
     let a = normalize(c.axis);
     let ca = dot(a, k);
     let ep = sub(a, scale(k, ca));
     let s = norm(ep);
+    if c.mode == 1 {
+        // 異常光の成分（k と a を含む面の中、k に垂直）だけ。軸に沿う光線は常光と区別がないのでそのまま
+        if s > PARALLEL_SIN {
+            let ep = scale(ep, 1.0 / s);
+            for x in e.iter_mut() {
+                let v = cdot(*x, ep);
+                *x = [0, 1, 2].map(|i| v * ep[i]);
+            }
+        }
+        return;
+    }
     if c.mode == 0 {
         // 常光の成分（k と a を含む面に垂直）だけ
         let es = if s > PARALLEL_SIN {
@@ -98,11 +113,17 @@ fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
     let ep = scale(ep, 1.0 / s);
     let sa2 = 1.0 - ca * ca;
     let nth = 1.0 / (ca * ca / (c.no * c.no) + sa2 / (c.ne * c.ne)).sqrt();
-    let ph = -2.0 * std::f64::consts::PI * (nth - c.no) * c.len * 1e3 / lam;
+    let ph = -2.0 * std::f64::consts::PI * (nth - c.no) * c.len * c.proj * 1e3 / lam;
+    // 位相を付ける成分: 常光の道は異常光の成分 ep、異常光の道は常光の成分（k × ep）に逆の位相
+    let (u, ph) = if c.mode == 3 {
+        (normalize(cross(k, ep)), -ph)
+    } else {
+        (ep, ph)
+    };
     let f = C64::from_polar(1.0, ph) - C64::new(1.0, 0.0);
     for x in e.iter_mut() {
-        let v = cdot(*x, ep) * f;
-        *x = [0, 1, 2].map(|i| x[i] + v * ep[i]);
+        let v = cdot(*x, u) * f;
+        *x = [0, 1, 2].map(|i| x[i] + v * u[i]);
     }
 }
 
@@ -363,6 +384,7 @@ pub(crate) fn pol_step(
             no,
             ne,
             len: 0.0,
+            proj: 1.0,
         });
     }
 }

@@ -514,6 +514,9 @@ impl System {
                 notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ());
             }
         }
+        if let Some(j) = self.extraordinary_entry(t.last) {
+            notimpl!("dOPL/dp of rays through the extraordinary path of a birefringent plate (surface {j})");
+        }
         let owner = self.medium_owner();
         let pre: Vec<PrepParam> = params
             .iter()

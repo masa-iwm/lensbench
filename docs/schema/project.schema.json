@@ -647,7 +647,7 @@
                 },
                 "mode": {
                   "default": 2,
-                  "description": "2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ、1・3: 異常光の道（持つが追跡しない）。OpticStudio の Mode",
+                  "description": "2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ、1: 異常光の道で異常光の成分だけ、3: 異常光の道で両方の位相（異常光の道は walk-off して進む）。OpticStudio の Mode",
                   "format": "uint8",
                   "maximum": 255,
                   "minimum": 0,

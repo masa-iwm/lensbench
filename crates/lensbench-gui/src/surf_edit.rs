@@ -109,18 +109,13 @@ pub(crate) fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
         if k == 1 {
             ui.horizontal_wrapped(|ui| {
                 ui.label(tr("Mode"));
-                for (m, l) in [(2, tr("Wave plate (2)")), (0, tr("Ordinary only (0)"))] {
+                for (m, l) in [
+                    (2, tr("Wave plate (2)")),
+                    (0, tr("Ordinary only (0)")),
+                    (3, tr("Extraordinary path, wave plate (3)")),
+                    (1, tr("Extraordinary only (1)")),
+                ] {
                     changed |= ui.selectable_value(&mut mode, m, l).changed();
-                }
-                // 取り込んだ .zmx の Mode 1・3（異常光の道）は持つが追跡しない
-                if matches!(mode, 1 | 3) {
-                    ui.label(
-                        RichText::new(trf(
-                            "Extraordinary ray path ({}), not traced",
-                            &[&mode],
-                        ))
-                        .color(ui.visuals().warn_fg_color),
-                    );
                 }
                 ui.label(tr("Crystal axis"));
                 for (i, a) in axis.iter_mut().enumerate() {

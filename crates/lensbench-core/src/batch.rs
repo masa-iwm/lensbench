@@ -116,8 +116,25 @@ struct Step {
     grin: Option<GrinIn>,
     /// この面の後ろから GRIN の媒質（屈折率は交点で求める）
     grin_eval: bool,
-    /// 追跡できない面（複屈折材の板の Mode 1・3）: 光線はここで止まる（常光の道で黙って追わない）
-    blocked: bool,
+    /// 異常光の道（複屈折材の板の Mode 1・3）の入口・中・出口
+    ext: ExtStep,
+}
+
+/// 異常光の道を進む板（複屈折材の板の Mode 1・3）での面の役目。板の中では光線の向きと波面法線が違い、
+/// 屈折率も向きで変わるので、光線ごとの状態（[`kernel`] の ExtLane）で進める
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum ExtStep {
+    None,
+    /// 入口: 結晶軸（入口の面の局所座標、単位）、常光・異常光の屈折率
+    In {
+        axis: V3,
+        no: f64,
+        ne: f64,
+    },
+    /// 板の中の面（屈折しない）
+    Inside,
+    /// 出口
+    Out,
 }
 
 /// 面の後ろの屈折率が前の値を引き継ぐか（座標ブレーク、鏡。理想レンズ・利用者定義の面の鏡は表の値）
@@ -134,6 +151,8 @@ pub struct Plan<'a> {
     /// Floating 開口でけるか（開口は追跡のたびに面から読む。自動の半直径は changed() なしで変わる）
     floating_clip: bool,
     steps: Arc<[Step]>,
+    /// 異常光の道を進む板がある（光線ごとの板の状態を持つ）
+    ext_any: bool,
     /// Fresnel・Cylinder Fresnel の面の光路長の基準点（面の番号ごとの局所座標 (x, y)。空か範囲外なら頂点）。
     /// 追跡ごとに違う（同じ視野・波長の主光線の交点）ので、面ごとの準備とは別に持つ（[`Plan::with_fresnel_ref`]）
     fres_ref: Vec<[f64; 2]>,
@@ -182,6 +201,7 @@ impl<'a> Plan<'a> {
             lam: sys.wavelengths[w],
             n_first: sys.index_before(1, w),
             floating_clip,
+            ext_any: steps.iter().any(|s| s.ext != ExtStep::None),
             steps,
             fres_ref: Vec::new(),
         }
@@ -210,6 +230,8 @@ impl<'a> Plan<'a> {
         let mut grin_from: Option<usize> = None;
         // 直前の面
         let mut prev: Option<usize> = None;
+        // 異常光の道の板の中
+        let mut in_ext = false;
         for j in 1..=last {
             let d = &sys.surfaces[j];
             if d.ignore {
@@ -250,12 +272,35 @@ impl<'a> Plan<'a> {
             let n_tab = sys.n(j)[w];
             let nn = if takes_prev(d) { nprev } else { n_tab };
             let n_var_after = grin_eval || (n_var_before && takes_prev(d));
+            let ext = match &d.bire {
+                Some(crate::surface::Bire::In {
+                    mode: 1 | 3,
+                    axis,
+                    ne,
+                }) => {
+                    in_ext = true;
+                    ExtStep::In {
+                        axis: normalize(*axis),
+                        no: n_tab,
+                        // 異常光の屈折率が無ければ（読込で埋める）光線は入口で止まる
+                        ne: ne.get(w).copied().unwrap_or(f64::NAN),
+                    }
+                }
+                Some(crate::surface::Bire::Out) if in_ext => {
+                    in_ext = false;
+                    ExtStep::Out
+                }
+                _ if in_ext => ExtStep::Inside,
+                _ => ExtStep::None,
+            };
             steps.push(Step {
                 j,
                 f,
                 mv,
                 n_tab,
-                n_uniform: (!n_var_before && !n_var_after).then_some((nprev, nn)),
+                // 異常光の道の面は光線ごとの屈折率で
+                n_uniform: (!n_var_before && !n_var_after && ext == ExtStep::None)
+                    .then_some((nprev, nn)),
                 kind: kinds[j],
                 sag: Sag::new(d),
                 k1: 1.0 + d.k,
@@ -268,7 +313,7 @@ impl<'a> Plan<'a> {
                 },
                 grin,
                 grin_eval,
-                blocked: d.bire.as_ref().is_some_and(|b| !b.traceable()),
+                ext,
             });
             // 座標ブレークの後ろも同じ GRIN の媒質
             if let Some(g) = steps.last().expect("at least one step").grin {

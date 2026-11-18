@@ -341,7 +341,6 @@ fn birefringent(
 ) -> Result<()> {
     if name == "BIRE__IN" {
         let mode = p(1);
-        // Mode 1・3（異常光の道）も読んで持つ。追跡は System::check_crystals が断る
         if !matches!(mode, 0.0 | 1.0 | 2.0 | 3.0) {
             invalid!("surface {k}: Birefringent In Mode {mode} (0 to 3)");
         }

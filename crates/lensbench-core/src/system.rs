@@ -580,16 +580,54 @@ impl System {
 
     // ---------------------------------------------------------------------------------- 近軸
 
-    /// 追跡できるか: 複屈折材の板の Mode 1・3（異常光の道）は持てるが追跡しない（光線の屈折が常光と違う）。
-    /// 光線の追跡の入口（[`System::try_trace`]・[`System::try_trace_into`]・偏光）がこれで断り、
-    /// 誤りを返さない入口でも光線はその面で止まる（常光の道で黙って追わない）
+    /// 面 1..=last にある、異常光の道で追跡する板（複屈折材の Mode 1・3）の最初の入口の面。解析的な微分は
+    /// 板の中を表の屈折率の等方な媒質として扱うので、この板を通る光線では断る
+    pub(crate) fn extraordinary_entry(&self, last: usize) -> Option<usize> {
+        (1..=last.min(self.surfaces.len().saturating_sub(1))).find(|&j| {
+            let d = &self.surfaces[j];
+            !d.ignore && matches!(d.bire, Some(crate::surface::Bire::In { mode: 1 | 3, .. }))
+        })
+    }
+
+    /// 追跡できるか: 複屈折材の板の Mode 1・3（異常光の道）の中に、鏡・GRIN の媒質・屈折する面があると追跡しない
+    /// （板の中は光線ごとの異常光の状態で進め、面での屈折・反射は入口と出口だけ扱う）。光線の追跡の入口
+    /// （[`System::try_trace`]・[`System::try_trace_into`]・偏光）がこれで断る
     pub fn check_crystals(&self) -> Result<()> {
         for (j, d) in self.surfaces.iter().enumerate() {
-            if let (Some(b @ crate::surface::Bire::In { mode, .. }), false) = (&d.bire, d.ignore) {
-                // 追跡の準備（batch::Plan の blocked）と同じ判定
-                if !b.traceable() {
+            let Some(crate::surface::Bire::In {
+                mode: mode @ (1 | 3),
+                ..
+            }) = &d.bire
+            else {
+                continue;
+            };
+            if d.ignore || d.is_mirror() {
+                if d.is_mirror() {
                     notimpl!(
-                        "{}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)",
+                        "{}: a mirror at the entrance of a birefringent plate Mode {mode} can't be traced",
+                        self.surf_label(j)
+                    );
+                }
+                continue;
+            }
+            for (k, e) in self.surfaces.iter().enumerate().skip(j + 1) {
+                if e.ignore {
+                    continue;
+                }
+                if matches!(e.bire, Some(crate::surface::Bire::Out)) {
+                    if e.is_mirror() {
+                        notimpl!(
+                            "{}: a mirror at the exit of a birefringent plate Mode {mode} can't be traced",
+                            self.surf_label(k)
+                        );
+                    }
+                    break;
+                }
+                let refracts = !e.is_coord_break() && e.mat != d.mat;
+                if e.is_mirror() || e.grin().is_some() || refracts || e.bire.is_some() {
+                    notimpl!(
+                        "{}: a mirror, GRIN medium or refracting surface inside the birefringent plate Mode {mode} of {} can't be traced",
+                        self.surf_label(k),
                         self.surf_label(j)
                     );
                 }

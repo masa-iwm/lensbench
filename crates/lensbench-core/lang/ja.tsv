@@ -629,6 +629,7 @@ analytic derivatives of a system with ZPL macro solves on parameters	パラメ�
 dOPL/dp needs a trace that records all surfaces (record)	dOPL/dp には全面の記録（record）つきの追跡が必要です
 dOPL/dp of rays through a paraxial lens or user-defined surface (surface {j})	理想レンズ・ユーザー定義の面（面 {j}）を通る光線の dOPL/dp
 dOPL/dp of rays through surface {j} ({:?})	面 {j}（{:?}）を通る光線の dOPL/dp
+dOPL/dp of rays through the extraordinary path of a birefringent plate (surface {j})	複屈折材の板の異常光の道（面 {j}）を通る光線の dOPL/dp
 fiber coupling needs a finite object	ファイバ結合は有限物体のシステムだけ
 grid must be an odd number 3 or more	grid は 3 以上の奇数
 NA must be positive	NA は正
@@ -656,6 +657,7 @@ no Gradient 9 material {name} (GRADIENT_9.DAT)	Gradient 9 の材料 {name} が�
 landing derivatives need a trace that records all surfaces (record)	着地点の微分には全面の記録（record）つきの追跡が必要です
 landing derivatives of rays through a paraxial lens or user-defined surface (surface {j})	理想レンズ・ユーザー定義の面（面 {j}）を通る光線の着地点の微分
 landing derivatives of rays through surface {j} ({:?})	面 {j}（{:?}）を通る光線の着地点の微分
+landing derivatives of rays through the extraordinary path of a birefringent plate (surface {j})	複屈折材の板の異常光の道（面 {j}）を通る光線の着地点の微分
 landing derivatives of the shape parameters of a toroidal surface (surface {})	トロイダル面（面 {}）の形のパラメータの着地点の微分
 landing derivatives: no surface to trace	着地点の微分: 追跡する面がありません
 dz is not finite ({dz})	dz が有限ではありません（{dz}）
@@ -732,7 +734,9 @@ wavelength number {wn} ({nw} in all)	波長の番号 {wn}（全 {nw}）
 field number {} ({} in all)	視野の番号 {}（全 {}）
 vignetting factors of field ({hx}, {hy})	視野 ({hx}, {hy}) のケラレ係数
 angle field ({x}°, {y}°): a field of exactly 90°	角度の視野 ({x}°, {y}°): ちょうど 90° の視野
-{}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)	{}: 複屈折材の板の Mode {mode}（異常光の道）は追跡できません（0 と 2 だけ）
+{}: a mirror at the entrance of a birefringent plate Mode {mode} can't be traced	{}: 複屈折材の板の Mode {mode} の入口のミラーは追跡できません
+{}: a mirror at the exit of a birefringent plate Mode {mode} can't be traced	{}: 複屈折材の板の Mode {mode} の出口のミラーは追跡できません
+{}: a mirror, GRIN medium or refracting surface inside the birefringent plate Mode {mode} of {} can't be traced	{}: {} の複屈折材の板の Mode {mode} の中のミラー・GRIN の媒質・屈折する面は追跡できません
 {}: no index for the extraordinary material {}	{}: 異常光 {} の屈折率がありません
 user-defined surface (surface {j}) has no model (user)	ユーザー定義の面（面 {j}）にモデル（user）がありません
 user-defined shape (surface {j}) has no model (shape)	ユーザー定義の形（面 {j}）にモデル（shape）がありません
@@ -1654,6 +1658,8 @@ OpticStudio needs a field number here (not a normalized field)	OpticStudio で�
 only a ZPL macro given by number can be written as ZPLM	番号で指定した ZPL マクロだけ ZPLM として書けます
 {t} terms have no OpticStudio operand	{t} の項に当たる OpticStudio のオペランドはありません
 only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)	多重構成は構成 {cfg}（全 {ncfg}）だけを読みました（{why} が多重構成の表で表せません）
+zmx surface {j}: Birefringent In Mode {mode}: the optical path along the extraordinary ray is counted from its wave vector (n(θ) cos ρ per ray length); OpticStudio counts no per ray length, so OPL and OPD differ from OpticStudio	zmx の面 {j}: Birefringent In の Mode {mode}: 異常光の道の光路長は波数ベクトルから数えます（光線の長さあたり n(θ) cos ρ）。OpticStudio は光線の長さあたり no で数えるので、光路長・OPD は OpticStudio と違います
+zmx surface {j}: Birefringent In Mode {mode}: the crystal axis is tilted from the surface normal, so the retardance differs from OpticStudio, which adds 2π no t (1/cos ρ − 1)/λ for the walk-off	zmx の面 {j}: Birefringent In の Mode {mode}: 結晶軸が面の法線から傾いているので、位相差は OpticStudio と違います（OpticStudio は walk-off の分として 2π no t (1/cos ρ − 1)/λ を足します）
 removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} のマクロのソルブ {name} を外して、保存された値で固定しました: 解き直せません（{e}）
 surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)	面 {k} の材料 {}（{}）: 波長 {l} µm が分散式の範囲 {lo}〜{hi} µm の外（式を延ばして計算）
 {what}: the phase changes by up to {step:.2} rad between neighboring pupil samples (pupil grid {np}); above π/2 the value depends on the pupil grid (increase the pupil grid)	{what}: 瞳の隣り合う標本の位相差が最大 {step:.2} rad（瞳のグリッド {np}）。π/2 を超えると値が瞳のグリッドで変わります（瞳のグリッドを増やしてください）

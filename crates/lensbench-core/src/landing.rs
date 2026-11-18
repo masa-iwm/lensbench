@@ -228,6 +228,9 @@ impl System {
                 );
             }
         }
+        if let Some(j) = self.extraordinary_entry(t.last) {
+            notimpl!("landing derivatives of rays through the extraordinary path of a birefringent plate (surface {j})");
+        }
         for p in params {
             if p.surface()
                 .and_then(|j| sf.get(j))
@@ -756,6 +759,9 @@ impl System {
         let j = t.last;
         if rl.surf != j {
             invalid!("dOPL/dp with dz needs a record of all surfaces up to the last");
+        }
+        if let Some(j) = self.extraordinary_entry(j) {
+            notimpl!("dOPL/dp of rays through the extraordinary path of a birefringent plate (surface {j})");
         }
         let owner = self.medium_owner();
         let d = &self.surfaces[j];
