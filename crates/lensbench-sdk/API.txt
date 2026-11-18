@@ -49,6 +49,7 @@ py: PyPlugin = lensbench::ext::PyPlugin
 py: PySystem = lensbench::ext::PySystem
 py: arrays_to_py = lensbench::ext::arrays_to_py
 py: pyo3 = pyo3
+py: system_method = lensbench::ext::system_method
 surface: Flip = lensbench_core::usersurf::Flip
 surface: SurfaceInstance = lensbench_core::usersurf::SurfaceInstance
 surface: SurfaceModel = lensbench_core::usersurf::SurfaceModel

@@ -346,7 +346,8 @@
     置き換えは後の方に `replacing()`）。
   - `Extensions` に `named`・`replacing`・`with_ext`（表に足す関数）・`on_install`・`messages`（誤りの文の訳）。
   - GUI の `lensbench_gui::ext::GuiExtensions` と `lensbench_gui::main_with`、Python の `lensbench::ext::PyExtensions`
-    と `module_with`、CLI の `lensbench_cli::main_with`。
+    と `module_with`、CLI の `lensbench_cli::main_with`。Python の `lensbench::ext::system_method`（系を最初の引数に取る
+    関数を `lb.System` のメソッドにする。説明と引数の並びはその関数のもの）。
   - `SurfaceModel::example_config`（既定は `params` の既定値。`check` が `check_flip` に渡す）。
   - **壊す変更**: GUI の見せ方の型 `Analysis`・`ObjectArg`・`Detector` はフィールドを隠し、`Analysis::new(cmd, label)` と
     `select`・`figure`・`figure_params`・`object` などのビルダーで作る。大域の `register`・`register_detector`・

@@ -7,7 +7,8 @@
 //! [`register_native_task`] で Python の値から取り出す関数を登録する。
 //!
 //! 外のクレートは [`PyExtensions`] で `lensbench_engine::Extensions` に関数・クラスを足す関数を足し、入口の
-//! `#[pymodule]` から [`module_with`] を呼ぶ（計算の登録と同じ値 1 つ）。
+//! `#[pymodule]` から [`module_with`] を呼ぶ（計算の登録と同じ値 1 つ）。`lb.System` のメソッドを足すときは、
+//! 系を最初の引数に取る関数を作り [`system_method`] で付ける（説明と引数の並びはその関数の 1 か所）。
 
 use std::sync::Arc;
 
@@ -96,4 +97,53 @@ pub fn module_with(m: &Bound<'_, PyModule>, ext: lensbench_engine::Extensions) -
 pub(crate) fn native_task(v: &Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>> {
     let e = lensbench_core::ext::current();
     e.slot::<NativeTasks>()?.0.iter().find_map(|f| f(v))
+}
+
+/// Makes a method of `lb.System` out of a function whose first argument is the system (docstring and signature are the function's)
+const SYSTEM_METHOD: &std::ffi::CStr = c"
+import inspect
+def make(f, name):
+    def method(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+    method.__name__ = name
+    method.__qualname__ = 'System.' + name
+    method.__doc__ = f.__doc__
+    method.__lensbench_system_method__ = True
+    try:
+        s = inspect.signature(f)
+    except (TypeError, ValueError):
+        return method
+    p = list(s.parameters.values())
+    if p:
+        method.__signature__ = s.replace(parameters=[p[0].replace(name='self')] + p[1:])
+    return method
+";
+
+/// Add the function `f` (its first argument is the system, an `lb.System`) to `lb.System` as the method `name`.
+/// `help(System.name)` shows `f`'s docstring and arguments. An error if `lb.System` already has `name`, unless that
+/// is a method an earlier `system_method` added (the module initializes again when it is imported again, and the
+/// class `System` is one per process): that one is replaced
+pub fn system_method(m: &Bound<'_, PyModule>, name: &str, f: &Bound<'_, PyAny>) -> PyResult<()> {
+    let py = m.py();
+    let cls = m.getattr("System")?;
+    let ours = match cls.getattr(name) {
+        Ok(old) => old
+            .getattr("__lensbench_system_method__")
+            .and_then(|v| v.is_truthy())
+            .unwrap_or(false),
+        Err(_) => true,
+    };
+    if !ours {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "System already has {name}"
+        )));
+    }
+    let h = PyModule::from_code(
+        py,
+        SYSTEM_METHOD,
+        c"lensbench_system_method.py",
+        c"lensbench_system_method",
+    )?;
+    let meth = h.getattr("make")?.call1((f, name))?;
+    cls.setattr(name, meth)
 }

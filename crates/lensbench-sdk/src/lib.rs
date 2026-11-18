@@ -140,7 +140,8 @@ pub mod gui {
 #[cfg(feature = "py")]
 pub mod py {
     pub use lensbench::ext::{
-        arrays_to_py, ModuleFn, NativeTask, NativeTaskFrom, PyExtensions, PyPlugin, PySystem,
+        arrays_to_py, system_method, ModuleFn, NativeTask, NativeTaskFrom, PyExtensions, PyPlugin,
+        PySystem,
     };
     pub use pyo3;
 
