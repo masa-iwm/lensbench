@@ -398,6 +398,38 @@ impl<'a, 'b> Ctx<'a, 'b> {
         self.put(s);
     }
 
+    /// 間隔を媒質で満たす: 前の面の後の媒質を空気から m に（液浸）
+    fn fill_gap(&mut self, m: &str) -> lensbench_core::Result<()> {
+        let s = self
+            .sf
+            .last_mut()
+            .ok_or("a gap filled with a medium needs a surface before it")?;
+        if !s.mat.is_air() {
+            return Err(format!(
+                "a gap filled with {m}: the medium before it is not air (the gap after a mirror or a glass)"
+            )
+            .into());
+        }
+        s.mat = match m.trim().parse::<f64>() {
+            Ok(nd) => Material::Index(nd),
+            Err(_) => Material::parse(m),
+        };
+        Ok(())
+    }
+
+    /// 玉の中の鏡（裏面鏡・プリズムの反射）を足す: 形は鏡の前の向き、厚さ（次の面まで、光の進む向きで正）は鏡の後の向きで
+    pub(crate) fn push_mirror(&mut self, mut s: Surface) {
+        if self.parity < 0.0 {
+            self.flip(&mut s);
+        }
+        self.parity = -self.parity;
+        s.t *= self.parity;
+        if s.stop {
+            self.nstop += 1;
+        }
+        self.put(s);
+    }
+
     /// sf の start 以降に鏡があるか。鏡を含む群の移動は枚数によらず断る:
     /// 偶数枚で向きが戻っても、出ていく軸が入ってくる軸からずれると間隔の補正では表せない
     pub(crate) fn has_mirror_since(&self, start: usize) -> bool {
@@ -538,7 +570,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
 
     pub(crate) fn back_block_inner(&mut self, b: &Block) -> lensbench_core::Result<()> {
         match b {
-            Block::Air { id, t } => {
+            Block::Air { id, t, medium } => {
+                if medium.is_some() {
+                    return Err(
+                        "a gap filled with a medium (air with medium) on the return path".into(),
+                    );
+                }
                 self.note_gap(id);
                 self.gap(*t)
             }
@@ -1010,6 +1047,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let mut v = Vec::new();
                 for (i, q) in surfaces.iter().enumerate() {
                     let mut s = surf(q)?;
+                    // 玉の中の鏡（裏面鏡・プリズムの反射）は書ける。光が入る面・出る面は鏡にできない
+                    if s.is_mirror() && (i == 0 || i + 1 == n) {
+                        return Err(format!(
+                            "lens surface {}: the first and last surfaces of a lens can't be mirrors",
+                            i + 1
+                        )
+                        .into());
+                    }
                     if i + 1 == n {
                         s.t = 0.0;
                         s.mat = Material::Air;
@@ -1052,7 +1097,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
         idx: usize,
     ) -> lensbench_core::Result<()> {
         match b {
-            Block::Air { id, t } => {
+            Block::Air { id, t, medium } => {
+                if let Some(m) = medium {
+                    self.fill_gap(m)?;
+                }
                 self.note_gap(id);
                 self.gap(*t)
             }
@@ -1084,7 +1132,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.placed(place, &mut |c: &mut Self| {
                     let start = c.sf.len();
                     for s in &e.surfaces {
-                        c.push(s.clone());
+                        if s.is_mirror() {
+                            c.push_mirror(s.clone());
+                        } else {
+                            c.push(s.clone());
+                        }
                     }
                     if rev && c.sf.len() > start {
                         c.nflip += 1;
@@ -1100,6 +1152,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 surfaces, place, ..
             } => {
                 let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
+                if v.iter().any(Surface::is_mirror) {
+                    return Err("a surface list can't have a mirror (use a mirror block)".into());
+                }
                 let v = self.crystal_plates(v)?;
                 check_crystal_order(&v)?;
                 self.placed(place, &mut |c: &mut Self| {

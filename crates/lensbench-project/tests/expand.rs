@@ -1349,3 +1349,61 @@ fn a_reversed_gradient9_lens_with_a_tilted_plane_traces() {
     }
     same_rays_xy_within(&unf, &fold, 1e-8);
 }
+
+/// 玉の中の鏡（裏面鏡）: 鏡の後の面は鏡の後の向きで置き、厚さは負になる。最初・最後の面の鏡と、面の並びの鏡は誤り
+#[test]
+fn a_mirror_inside_a_lens_folds_the_rest_of_it() {
+    let lens = |ss: &str| {
+        format!(
+            r#"[{{"type": "stop", "semi": 4}}, {{"type": "air", "t": 10}},
+            {{"type": "lens", "source": {{"surfaces": [{ss}]}}}}, {{"type": "air", "t": 30}}]"#
+        )
+    };
+    let mangin = r#"{"radius": 0, "t": 3, "glass": "N-BK7", "semi": 5},
+        {"row": {"shape": {"conic": {"c": -0.01}}, "action": "reflect", "semi": 5.0, "t": 3}},
+        {"radius": 0, "semi": 5}"#;
+    let s = project(&lens(mangin));
+    let t: Vec<f64> = s.surfaces.iter().map(|x| x.t).collect();
+    assert_eq!(&t[2..5], &[3.0, -3.0, -30.0], "{t:?}");
+    assert!(s.surfaces[3].is_mirror());
+    assert_eq!(s.surfaces[3].c, -0.01);
+    let txt = |b: String| format!("{{ {HEAD} \"blocks\": {b} }}");
+    let first = r#"{"row": {"action": "reflect", "t": 3}}, {"radius": 0, "semi": 5}"#;
+    let p = Project::from_json(&txt(lens(first))).unwrap();
+    let e = expand(&p, &env(), &ExpandOpts::default()).err().unwrap();
+    assert!(e.to_string().contains("can't be mirrors"), "{e}");
+    let list = r#"[{"type": "surfaces", "surfaces": [{"row": {"action": "reflect"}}]}, {"type": "air", "t": 5}]"#;
+    let p = Project::from_json(&txt(list.into())).unwrap();
+    let e = expand(&p, &env(), &ExpandOpts::default()).err().unwrap();
+    assert!(
+        e.to_string().contains("surface list can't have a mirror"),
+        "{e}"
+    );
+}
+
+/// 空気の間隔の medium: 前の面の後をその媒質にする（液浸）。最後の間隔なら像空間。鏡の後・ガラスの後は誤り
+#[test]
+fn a_gap_can_be_filled_with_a_medium() {
+    let s = project(
+        r#"[{"type": "stop", "semi": 4}, {"type": "air", "t": 10},
+        {"type": "lens", "source": {"surfaces": [{"radius": 20, "t": 3, "glass": "N-BK7", "semi": 5}, {"radius": 0, "semi": 5}]}},
+        {"type": "air", "t": 2, "medium": "1.515"}]"#,
+    );
+    let k = s.image() - 1;
+    assert_eq!(
+        s.surfaces[k].mat,
+        lensbench_core::material::Material::Index(1.515)
+    );
+    assert_eq!(s.surfaces[k].t, 2.0);
+    let txt = format!(
+        "{{ {HEAD} \"blocks\": [{{\"type\": \"stop\"}}, {{\"type\": \"air\", \"t\": 10}}, {{\"type\": \"mirror\"}}, {{\"type\": \"air\", \"t\": 5, \"medium\": \"N-BK7\"}}] }}"
+    );
+    let e = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .err()
+    .unwrap();
+    assert!(e.to_string().contains("is not air"), "{e}");
+}

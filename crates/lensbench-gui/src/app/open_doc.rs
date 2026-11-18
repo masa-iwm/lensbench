@@ -56,6 +56,20 @@ impl Core {
             self.loc.doc_path = (!from_zmx).then(|| p.to_path_buf());
             self.loc.doc_from = from_zmx.then(|| p.to_path_buf());
             self.build_combo(self.doc.combo.project());
+            // 要素に分けられなかった .zmx は、.zmx を読む要素 1 つで開く。保存したプロジェクトはその .zmx を使う
+            if from_zmx
+                && self
+                    .doc
+                    .combo
+                    .picks
+                    .iter()
+                    .any(|q| q.kind == combo::ElemKind::ZmxRange)
+            {
+                self.info(trf(
+                    "{} can't be split into elements, so it opens as one element that reads the .zmx (a saved project needs the .zmx)",
+                    &[&name],
+                ));
+            }
             return;
         }
         // 読めたが組合せで同じ系を書けないファイルと、多重構成のどれかの構成だけ読めないファイルは開かない（理由を

@@ -182,6 +182,7 @@ impl Combo {
             name: p.name.clone(),
             glass_catalogs: p.glass_catalogs.clone(),
             coatings: p.coatings.clone(),
+            coating_file: p.coating_file.clone(),
             path: p.path.clone().unwrap_or_default(),
             ..Combo::default()
         };
@@ -431,7 +432,7 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
 }
 
 /// 並びの要素と、その後の空気（t, id）
-type Item = (Pick, Option<(f64, String)>);
+type Item = (Pick, Option<(f64, String, String)>);
 
 /// ブロックの並びを要素の並びにする（群は要素の group、分岐のある BS は口の先）。branch は BS の口の先の並び
 fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> {
@@ -447,9 +448,10 @@ fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> 
                     return Err("blocks after a branched splitter".into());
                 }
             }
-            (false, Some((t, id))) => {
+            (false, Some((t, id, m))) => {
                 p.air = t;
                 p.air_id = id;
+                p.air_medium = m;
             }
             // 最上位の最後の要素の後に空気が無い: 空気 0 と同じ（[`canon`]）
             (false, None) if !branch && k + 1 == n => p.air = 0.0,
@@ -470,7 +472,7 @@ fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> 
                 if last.1.is_some() {
                     return Err("two airs in a row".into());
                 }
-                last.1 = Some((f(&b["t"], 0.0), s(&b["id"])));
+                last.1 = Some((f(&b["t"], 0.0), s(&b["id"]), s(&b["medium"])));
             }
             Some("group") => {
                 let id = s(&b["id"]);

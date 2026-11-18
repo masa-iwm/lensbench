@@ -249,6 +249,10 @@ impl SurfRow {
             }
             SurfKind::Coordbrk => {
                 let mut v = json!({ "coordbrk": self.cb, "t": self.t });
+                // 自動の半直径は書く（.zmx の座標ブレークは自動）
+                if self.semi_auto {
+                    v["semi"] = json!("auto");
+                }
                 if self.order != 0 {
                     v["order"] = json!(self.order);
                 }
@@ -364,6 +368,9 @@ pub(crate) struct Pick {
     pub id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub air_id: String,
+    /// 後の間隔を満たす媒質（液浸。空なら空気）。最後の要素の後なら像空間の媒質
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub air_medium: String,
 }
 
 /// 要素の面の値の上書き（面は要素の面のうち座標ブレークを除いた番号）
@@ -407,6 +414,7 @@ impl Default for Pick {
             edits_for: String::new(),
             id: String::new(),
             air_id: String::new(),
+            air_medium: String::new(),
         }
     }
 }
@@ -658,11 +666,12 @@ impl Pick {
                     .iter()
                     .enumerate()
                     .map(|(i, r)| {
-                        let mut v = SurfRow {
-                            kind: SurfKind::Standard,
-                            ..r.clone()
-                        }
-                        .json();
+                        // 玉の中の面は欄の面か座標ブレーク（Jones などは玉の中に書かない）
+                        let kind = match r.kind {
+                            SurfKind::Coordbrk => SurfKind::Coordbrk,
+                            _ => SurfKind::Standard,
+                        };
+                        let mut v = SurfRow { kind, ..r.clone() }.json();
                         // 最後の面の後は空気（間隔は要素の後の空気）
                         if i + 1 == n {
                             v.as_object_mut()
@@ -940,6 +949,9 @@ pub(crate) struct Combo {
     pub state_more: BTreeMap<String, serde_json::Map<String, Value>>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
+    /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coating_file: Option<String>,
     /// 群の役割・移動（名前は要素の group）
     pub groups: Vec<GroupDef>,
     /// 最後に置く検出器（拡張の検出器のブロック、[`crate::ext::Detector`]）
@@ -993,6 +1005,7 @@ impl Default for Combo {
             state_path: BTreeMap::new(),
             state_more: BTreeMap::new(),
             coatings: BTreeMap::new(),
+            coating_file: None,
             groups: Vec::new(),
             detector: None,
             lead_air: None,
@@ -1193,6 +1206,9 @@ impl Combo {
         }
         if !self.coatings.is_empty() {
             v["coatings"] = serde_json::to_value(&self.coatings).unwrap_or_default();
+        }
+        if let Some(f) = &self.coating_file {
+            v["coating_file"] = json!(f);
         }
         if !states.is_empty() {
             v["states"] = Value::Array(

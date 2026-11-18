@@ -248,7 +248,7 @@ fn comparable(s: &System) -> lensbench_core::Result<Value> {
     if m.get("afocal") != Some(&Value::Bool(true)) {
         m.remove("afocal_unit");
     }
-    // ZPL マクロのソルブの値は光線から求めた値（解く順で最後の桁が変わる）なので、その面の値は 10 桁まで
+    // ZPL マクロのソルブ・OPD のソルブの値は光線から繰り返して求めた値（解く順で最後の桁が変わる）なので、その面の値は 10 桁まで
     let solved_by_macro: Vec<usize> = s
         .macro_parms
         .iter()
@@ -258,6 +258,7 @@ fn comparable(s: &System) -> lensbench_core::Result<Value> {
                 q.kind,
                 lensbench_core::solves::SolveKind::MacroCurv { .. }
                     | lensbench_core::solves::SolveKind::MacroThick { .. }
+                    | lensbench_core::solves::SolveKind::Opd { .. }
             )
             .then_some(q.surf)
         }))

@@ -804,11 +804,11 @@ mod nav_tests {
     }
 }
 
-/// 像空間が硝材の .zmx（液浸など）は要素に分けず、.zmx をまるごと取り込む要素 1 つで開く。像空間の硝材は展開した系に
-/// 残り、後ろに要素を足すと「その媒質の中」の注意が出る。まるごとの .zmx は反転できない（反転の欄を出さず、R キーでも
-/// 反転の印を立てない）
+/// 像空間が硝材の .zmx（液浸など）は要素に分かれ、最後の間隔を像空間の媒質で満たす（空気の間隔の medium）。像空間の硝材は
+/// 展開した系に残り、後ろに要素を足すと「その媒質の中」の注意が出る。まるごとの .zmx の取り込みは反転できない（反転の欄を
+/// 出さず、R キーでも反転の印を立てない）
 #[test]
-fn image_space_glass_zmx_opens_whole() {
+fn image_space_glass_zmx_fills_the_last_gap() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
     let u: Vec<u16> = b[2..]
@@ -832,9 +832,14 @@ fn image_space_glass_zmx_opens_whole() {
     out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
     std::fs::write(&f, out).unwrap();
     let gd = vec![root.join("tests/glass")];
-    let mut c = Combo::from_zmx(&f, &gd, &[]).unwrap();
-    assert_eq!(c.picks.len(), 1);
-    assert_eq!(c.picks[0].kind, ElemKind::ZmxRange);
+    let c = Combo::from_zmx(&f, &gd, &[]).unwrap();
+    assert!(c.picks.len() > 1);
+    assert!(!c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange));
+    assert_eq!(c.picks.last().unwrap().air_medium, "N-SK16");
+    assert_eq!(
+        c.project()["blocks"].as_array().unwrap().last().unwrap()["medium"],
+        "N-SK16"
+    );
     let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
     let env = lensbench_project::Env::in_dir(&dir, &gd, None);
     let e = lensbench_project::expand(&pr, &env, &Default::default()).unwrap();
@@ -852,6 +857,19 @@ fn image_space_glass_zmx_opens_whole() {
     let ed = lensbench_project::expand(&pd, &env, &Default::default()).unwrap();
     assert!(in_medium(&ed), "{:?}", ed.notes);
     assert!(s.surfaces[s.image() - 1].mat.is_medium() && !s.surfaces[s.image() - 1].mat.is_air());
+    // まるごとの取り込み（分けられない .zmx に使う）は反転できない
+    let s0 = lensbench_core::zmx::load_with(
+        &f,
+        &lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: gd.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let p0 = lensbench_project::zmx_project(std::slice::from_ref(&s0), "a.zmx").unwrap();
+    let mut c = Combo::from_project(&p0, &dir).unwrap();
+    assert_eq!(c.picks[0].kind, ElemKind::ZmxRange);
     assert!(!c.picks[0].can_reverse());
     // R キー: 反転できない要素は印を立てない
     let mut view = View::default();

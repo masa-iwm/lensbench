@@ -926,6 +926,7 @@ importing a .zmx on the return path is not supported (use a lens block)	往路�
 lens catalog {vendor} {part}: the catalog can't be read	レンズカタログ {vendor} {part}: カタログを読めません
 a lens needs 2 or more surfaces	レンズには面が 2 つ以上必要です
 lens surface {}: not glass after it	レンズの面 {}: 後が硝材ではありません
+lens surface {}: the first and last surfaces of a lens can't be mirrors	レンズの面 {}: レンズの最初と最後の面はミラーにできません
 both blocks after a mirror and BS branches (a return path going into a BS branch)	ミラーの後のブロックと、BS の分岐の両方があります（復路が BS の分岐へ進む経路）
 a group with a mirror can't be moved (set shift to 0)	ミラーを含む群は動かせません（shift は 0 に）
 a detector must be the last block (not inside a group or user catalog)	検出器は最後のブロックだけ（群・ユーザーカタログの中には置けません）
@@ -1600,6 +1601,7 @@ block {id}: only lenses can bake in values changed in the surface table (undo th
 {path}: the object-space medium of the .zmx ({zm}) differs from the project ({m}); the project one is used (change it with object medium)	{path}: .zmx の物体空間の媒質（{zm}）はプロジェクト（{m}）と違います。プロジェクトの媒質を使います（object の medium で変えてください）
 {a} ends in {m} (no air after it), so {b} sits in that medium	{a} は {m} で終わり後ろに空気がないので、{b} はその媒質の中にあります
 {path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}	{path}: コーティングファイル {} は前の .zmx の {} と違います。コーティングは {} で引きます
+the coating file {} of a .zmx differs from coating_file {}; coatings are looked up in {}	.zmx のコーティングファイル {} は coating_file の {} と違います。コーティングは {} で引きます
 {tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match	{tag}: {prev_name} の後ろの端（{why}）と、{name} の前の端（{hint}）のねじが合いません
 {tag}: no block {b} for holds	{tag}: holds のブロック {b} がありません
 {name} mount	{name} のマウント
@@ -2180,6 +2182,11 @@ a loop of imports: {}	インポートが循環しています: {}
 block {at}: {e}	ブロック {at}: {e}
 surface {j} after a mirror: {e}	ミラーの後の面 {j}: {e}
 this surface can't be written as a row	この面は行で書けません
+this surface can't be written as a mirror in a lens	この面はレンズの中のミラーとして書けません
+a surface list can't have a mirror (use a mirror block)	面の並びにはミラーを書けません（ミラーのブロックで）
+a gap filled with a medium (air with medium) on the return path	復路の間隔に媒質は書けません（air の medium）
+a gap filled with a medium needs a surface before it	媒質で満たす間隔の前に面が要ります
+a gap filled with {m}: the medium before it is not air (the gap after a mirror or a glass)	{m} で満たす間隔: 前の媒質が空気ではありません（ミラーや硝材の後の間隔）
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
 row of a surface can't have stop, object or image (use set_stop of the block)	面の row には stop・object・image を書けません（絞りはブロックの set_stop で）
 a mirror written as row can't have radius, conic, semi, aperture or coat (write them in the row)	行で書いたミラーには radius・conic・semi・aperture・coat を書けません（行に書く）

@@ -1,6 +1,7 @@
 //! 書き出しの元になる場面: 玉（ガラスの立体）・鏡・面（像面など）と光線の折れ線を大域座標で持つ。
 //!
-//! - ガラスの立体は、ガラスを挟む隣り合った 2 面ごとに 1 つ（貼り合わせは 2 つ）。外径は 2 面の半径の大きい方で、
+//! - ガラスの立体は、ガラスを挟む隣り合った 2 面ごとに 1 つ（貼り合わせは 2 つ）。名前は面を含むプロジェクトの要素・群の
+//!   名前（系の玉・群 `units`。無ければ L1 …）と面の番号・硝材。外径は 2 面の半径の大きい方で、
 //!   小さい方の面は外径まで平らに延ばす（OpticStudio のレイアウトと同じ描き方）。
 //!   ダブルパスなどで同じ形の立体を 2 回通るときは 1 つにまとめる。
 //! - 空気中の鏡は、光の来ない側に厚さ（半径の 1/10）を付けた立体にする。
@@ -884,7 +885,10 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         };
         solids.push(Solid {
             kind: SolidKind::Glass,
-            name: format!("L{nl} S{a}-S{b} {mat}"),
+            name: format!(
+                "{} S{a}-S{b} {mat}",
+                unit_name(s, a, b).unwrap_or(&format!("L{nl}"))
+            ),
             material: mat,
             front: fa,
             back: fb,
@@ -943,7 +947,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         nm += 1;
         solids.push(Solid {
             kind: SolidKind::Mirror,
-            name: format!("M{nm} S{j}"),
+            name: format!("{} S{j}", unit_name(s, j, j).unwrap_or(&format!("M{nm}"))),
             material: "MIRROR".into(),
             front: f,
             back,
@@ -1166,6 +1170,19 @@ pub fn overlay(parts: Vec<(String, Scene)>, offset: V3) -> Result<Scene> {
         out.fields = out.fields.max(sc.fields);
     }
     Ok(out)
+}
+
+/// 面 a〜b を含むいちばん狭い玉・群の名前（プロジェクトの要素の id・型番など。読込で作った lens1 … は使わない）
+fn unit_name(s: &System, a: usize, b: usize) -> Option<&str> {
+    s.units
+        .iter()
+        .filter(|u| !u.auto)
+        .filter_map(|u| {
+            let sp = u.spans.iter().find(|sp| sp[0] <= a && b <= sp[1])?;
+            Some((sp[1] - sp[0], u.name.as_str()))
+        })
+        .min_by_key(|x| x.0)
+        .map(|x| x.1)
 }
 
 fn medium_name(s: &System, j: usize) -> String {

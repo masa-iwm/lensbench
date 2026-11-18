@@ -177,11 +177,13 @@ fn examples_build_the_same() {
         for st in std::iter::once(None).chain(c.states.iter().map(Some)) {
             let (a, b) = (build(&f, st), build(&g, st));
             assert!(a.is_ok(), "{} {st:?}: {:?}", f.display(), a);
-            // 玉の単位（units）・ブロックの範囲（blocks）は id の無かった要素に組合せが id を付けるので増える。系の面・図は同じ
+            // 玉の単位（units）・ブロックの範囲（blocks）は id の無かった要素に組合せが id を付けるので増える。立体の名前も
+            // 要素の id から付くので変わる。系の面・図は同じ
             let (mut a, mut b) = (a.unwrap(), b.unwrap());
             for x in [&mut a, &mut b] {
                 x.as_object_mut()
                     .map(|o| (o.remove("units"), o.remove("blocks")));
+                unname_solids(x);
             }
             assert!(
                 a == b,
@@ -224,6 +226,7 @@ fn raw_blocks_build_the_same() {
         let mut v = lensbench_engine::preview_layout(&load, &json!({})).unwrap();
         v.as_object_mut()
             .map(|o| (o.remove("units"), o.remove("blocks")));
+        unname_solids(&mut v);
         v
     };
     let (a, b) = (build("a.json", &v), build("b.json", &c.project()));
@@ -309,8 +312,8 @@ fn zmx_files_become_combos() {
         ok.len() == 2 && split.contains(&"A0".to_string()),
         "{ok:?} {split:?}"
     );
-    // 作業フォルダからの相対パスで開いても（GUI の引数）。o4 は要素に分けられないので、まるごと取り込む
-    let rel = Path::new("../../tests/opd_solve/o4.zmx");
+    // 作業フォルダからの相対パスで開いても（GUI の引数）。P0 は座標ブレークの値のピックアップがあり、要素に分けずに取り込む
+    let rel = Path::new("../../tests/projects/P0/template.zmx");
     let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
     assert!(
         Path::new(&c.picks[0].path).is_absolute(),
@@ -452,4 +455,13 @@ fn state_values_without_fields_round_trip() {
         p["states"][0]["project"]["environment"]["temperature_c"], 40,
         "{p}"
     );
+}
+
+/// 書き出しの場面の立体の名前を消す（名前は要素の id から付き、組合せが id を付けると変わる）
+fn unname_solids(v: &mut Value) {
+    if let Some(a) = v.get_mut("solids").and_then(Value::as_array_mut) {
+        for x in a {
+            x.as_object_mut().map(|o| o.remove("name"));
+        }
+    }
 }

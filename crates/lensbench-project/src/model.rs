@@ -533,6 +533,9 @@ pub enum Block {
         #[serde(default)]
         id: String,
         t: f64,
+        /// 間隔を満たす媒質（液浸の油・水など、硝材の名前か屈折率の数）。省略は空気。最後の間隔なら像空間の媒質
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        medium: Option<String>,
     },
     /// 絞り（空気中のダミー面）
     Stop {
@@ -800,6 +803,10 @@ pub struct Project {
     /// 膜（名前 → フィルタの透過特性・表）。面の `coat` に名前を書いて使う。ユーザーカタログの同じ名前より優先
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub coatings: BTreeMap<String, filter::CoatSpec>,
+    /// 膜ファイル（OpticStudio の COATING.DAT の形）。面の `coat` の名前を、`coatings` に無ければこのファイルで引く。
+    /// 相対パスはプロジェクトのフォルダから。取り込んだ .zmx の膜ファイルより優先
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coating_file: Option<String>,
     pub wavelengths: Vec<Wave>,
     /// 主波長の番号（1 始まり）
     #[serde(default = "one")]

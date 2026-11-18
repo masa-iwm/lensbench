@@ -747,3 +747,28 @@ fn mechanics_are_drawn() {
     let (lo, hi) = sc.bounds();
     assert!(lo[1] <= -20.5 && hi[1] >= 20.5);
 }
+
+/// ガラスの立体・鏡の名前は、面を含むプロジェクトの要素の id（id の無い要素は L1 … のまま）
+#[test]
+fn solids_are_named_after_project_elements() {
+    let txt = r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 5},
+        "blocks": [{"type": "stop", "semi": 3}, {"type": "air", "t": 5},
+        {"type": "lens", "id": "front", "source": {"surfaces": [{"radius": 30, "t": 3, "glass": "N-BK7", "semi": 6}, {"radius": -30, "semi": 6}]}},
+        {"type": "air", "t": 5},
+        {"type": "lens", "source": {"surfaces": [{"radius": 40, "t": 3, "glass": "N-BK7", "semi": 6}, {"radius": 0, "semi": 6}]}},
+        {"type": "air", "t": 20}, {"type": "mirror", "id": "fold", "semi": 8}, {"type": "air", "t": 10}]}"#;
+    let q = lensbench_project::Project::from_json(txt).unwrap();
+    let env = lensbench_project::Env::in_dir(
+        std::path::Path::new(ROOT),
+        &[format!("{ROOT}/tests/glass").into()],
+        None,
+    );
+    let s = lensbench_project::expand(&q, &env, &Default::default())
+        .unwrap()
+        .system;
+    let sc = scene::build(&s, &Options::default()).unwrap();
+    let names: Vec<&str> = sc.solids.iter().map(|x| x.name.as_str()).collect();
+    assert!(names[0].starts_with("front S"), "{names:?}");
+    assert!(names[1].starts_with("L2 S"), "{names:?}");
+    assert!(names[2].starts_with("fold S"), "{names:?}");
+}

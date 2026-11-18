@@ -756,6 +756,13 @@
               "default": "",
               "type": "string"
             },
+            "medium": {
+              "description": "間隔を満たす媒質（液浸の油・水など、硝材の名前か屈折率の数）。省略は空気。最後の間隔なら像空間の媒質",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "t": {
               "format": "double",
               "type": "number"
@@ -4444,6 +4451,13 @@
         "$ref": "#/$defs/Block"
       },
       "type": "array"
+    },
+    "coating_file": {
+      "description": "膜ファイル（OpticStudio の COATING.DAT の形）。面の `coat` の名前を、`coatings` に無ければこのファイルで引く。\n相対パスはプロジェクトのフォルダから。取り込んだ .zmx の膜ファイルより優先",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "coatings": {
       "additionalProperties": {

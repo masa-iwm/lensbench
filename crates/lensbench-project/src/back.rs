@@ -379,6 +379,20 @@ fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     })
 }
 
+/// 玉の中の鏡（裏面鏡・プリズムの反射）を、玉の面の行（[`SurfSpec::row`]）に。厚さ（鏡の後の向きで、次の面まで）は書く。
+/// 絞りの印は書かない。座標ブレーク・ゴーストの反射は書けない
+pub fn lens_mirror_spec(f: &Surface) -> lensbench_core::Result<SurfSpec> {
+    if !f.is_mirror() || f.reflect.is_some() || f.typ() == SurfType::CoordBrk {
+        return Err("this surface can't be written as a mirror in a lens".into());
+    }
+    let mut r = crate::sysfile_v2::write::surface_row(f, false)?;
+    r.stop = false;
+    Ok(SurfSpec {
+        row: Some(Box::new(r)),
+        ..Default::default()
+    })
+}
+
 /// 鏡の面を、鏡のブロックの行（[`Block::Mirror`] の row）に。厚さ・絞りの印は書かない。面の前後の傾き偏心
 /// （before・after）は行に書く。座標ブレーク・ゴーストの反射は書けない
 pub fn mirror_row(f: &Surface) -> lensbench_core::Result<crate::sysfile_v2::Row> {

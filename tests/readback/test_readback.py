@@ -193,9 +193,10 @@ def nearest(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def solid_surfaces(name: str) -> list[int]:
-    """立体の名前（"L1 S1-S2 N-SK16"・"M1 S8"）から面の番号"""
-    m = re.search(r"\bS(\d+)(?:-S(\d+))?\b", name)
-    assert m, name
+    """立体の名前（"L1 S1-S2 N-SK16"・"M1 S8"。先頭はプロジェクトの要素の id のこともある）から面の番号"""
+    ms = list(re.finditer(r"\bS(\d+)(?:-S(\d+))?\b", name))
+    assert ms, name
+    m = ms[-1]
     return [int(x) for x in m.groups() if x]
 
 

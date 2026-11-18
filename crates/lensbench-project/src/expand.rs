@@ -929,18 +929,13 @@ fn expand_body(
     rx.units = s.lens_units();
     // 取り込んだ .zmx の膜ファイル（面の膜の名前はそのファイルで引く）。違うファイルの .zmx が 2 つ以上なら最初のもの
     crate::zmx_links::carry_notes(&mut rx, &zpicks);
-    let mut cofs = c.zenv.iter().filter_map(|z| Some((&z.0, z.4.as_ref()?)));
-    if let Some((_, f)) = cofs.next() {
-        rx.coating_file = Some(f.clone());
-        if let Some((path, g)) = cofs.find(|(_, g)| *g != f) {
-            warn.push(Note::new(NoteKind::Coating, None, format!(
-                "{path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}",
-                g.display(),
-                f.display(),
-                f.display()
-            )));
-        }
-    }
+    crate::zmx_links::coating_file(
+        &mut rx,
+        &c.zenv,
+        p.coating_file.as_deref(),
+        &env.base,
+        &mut warn,
+    );
     let mut s = rx.build_raw()?;
     for id in &c.noted {
         let id = id.as_str();

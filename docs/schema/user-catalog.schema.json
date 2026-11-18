@@ -667,6 +667,13 @@
               "default": "",
               "type": "string"
             },
+            "medium": {
+              "description": "間隔を満たす媒質（液浸の油・水など、硝材の名前か屈折率の数）。省略は空気。最後の間隔なら像空間の媒質",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "t": {
               "format": "double",
               "type": "number"

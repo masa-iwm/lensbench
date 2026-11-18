@@ -16,7 +16,12 @@ use crate::combo::{Combo, ElemKind};
 /// 系 s（.zmx を構成 1 で読んだもの）を、p（[`lensbench_project::zmx_project`] の設定）の blocks を要素に分けた
 /// 組合せにする。同じ系にならなければ None
 pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) -> Option<Combo> {
-    let v = split_project(s, p)?;
+    let mut v = split_project(s, p)?;
+    // .zmx の膜ファイル（フォルダの中なら相対パス）
+    if let Some(f) = &s.coating_file {
+        let f = f.strip_prefix(base).unwrap_or(f);
+        v["coating_file"] = json!(f.to_string_lossy());
+    }
     let c = Combo::from_project(&v, base).ok()?;
     if c.picks.iter().any(|q| q.kind == ElemKind::Raw) {
         return None;
@@ -102,7 +107,15 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     // 面 j を SurfSpec の JSON に（書けない面は None）。玉の中の面は Jones にしない
     let surf = |j: usize, last: bool, in_lens: bool| -> Option<Value> {
         let a = &dirs[j];
-        if (in_lens && a.typ() == SurfType::Jones) || !a.mat.is_medium() {
+        if in_lens && a.is_mirror() {
+            // 玉の中の鏡: 面の行で、厚さは鏡の後の向き（光の進む向きで正）
+            let mut m = a.clone();
+            m.t = -m.t;
+            return serde_json::to_value(lensbench_project::lens_mirror_spec(&m).ok()?).ok();
+        }
+        if (in_lens && a.typ() == SurfType::Jones)
+            || (!a.mat.is_medium() && a.typ() != SurfType::CoordBrk)
+        {
             return None;
         }
         let mut x = serde_json::to_value(lensbench_project::surface_spec(a, last).ok()?).ok()?;
@@ -118,7 +131,19 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         }
         Some(x)
     };
+    // 面 j の後が空気か（座標ブレーク・鏡は前の媒質のまま）
+    let mut air = Vec::with_capacity(img + 1);
+    for a in &s.surfaces {
+        let prev = air.last().copied().unwrap_or(true);
+        air.push(if a.mat.is_medium() {
+            a.mat.is_air()
+        } else {
+            prev
+        });
+    }
     let (mut nl, mut ns, mut nm) = (0, 0, 0);
+    // 最後の間隔を満たす媒質（液浸）
+    let mut fill: Option<String> = None;
     let mut j = 1;
     while j < img {
         let id;
@@ -129,8 +154,8 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             nm += 1;
             id = format!("M{nm}");
             blocks.push(mirror_block(&dirs[j], &id)?);
-        } else if s.surfaces[j].mat.is_air() {
-            // 空気中の面 1 つ: 面の並び（絞りなら set_stop で）
+        } else if air[j] {
+            // 空気中の面 1 つ: 面の並び（絞りなら set_stop で。座標ブレークもここ）
             k = j;
             ns += 1;
             id = format!("S{ns}");
@@ -139,28 +164,50 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         } else {
             // ガラスに入る面から、空気に出る面までが 1 つの玉
             let mut e = j;
-            while e < img && !s.surfaces[e].mat.is_air() {
-                if s.surfaces[e].is_mirror() {
-                    return None;
-                }
+            while e < img && !air[e] {
                 e += 1;
             }
             if e >= img {
-                return None;
+                // 像空間が空気でない（液浸）: 最後の面までが玉（1 面なら面の並び）で、後ろの間隔をその媒質で満たす
+                if img - 1 < j || !s.surfaces[img - 1].mat.is_medium() {
+                    return None;
+                }
+                fill = Some(match &s.surfaces[img - 1].mat {
+                    lensbench_core::material::Material::Index(nd) => format!("{nd}"),
+                    m => m.name(),
+                });
+                e = img - 1;
             }
             k = e;
-            nl += 1;
-            id = format!("L{nl}");
-            let ss = (j..=k)
-                .map(|x| surf(x, x == k, true))
-                .collect::<Option<Vec<_>>>()?;
-            blocks.push(json!({ "type": "lens", "id": id, "source": { "surfaces": ss } }));
+            if k == j {
+                ns += 1;
+                id = format!("S{ns}");
+                blocks.push(
+                    json!({ "type": "surfaces", "id": id, "surfaces": [surf(j, true, false)?] }),
+                );
+            } else {
+                nl += 1;
+                id = format!("L{nl}");
+                let ss = (j..=k)
+                    .map(|x| surf(x, x == k, true))
+                    .collect::<Option<Vec<_>>>()?;
+                blocks.push(json!({ "type": "lens", "id": id, "source": { "surfaces": ss } }));
+            }
         }
-        for (i, x) in (j..=k).enumerate() {
+        // ブロックの面の番号は座標ブレークを除いて数える（座標ブレークは面の上書き・操作で指せない）
+        let mut i = 0;
+        for x in j..=k {
+            if s.surfaces[x].typ() == SurfType::CoordBrk {
+                if s.surfaces[x].stop {
+                    return None;
+                }
+                continue;
+            }
             face[x] = Some((id.clone(), i));
             if s.surfaces[x].stop {
                 stop = Some((id.clone(), i));
             }
+            i += 1;
         }
         // 鏡の後の空気は鏡の後の向きで（dirs の鏡の面は鏡の前の向きのまま）
         let t = if s.surfaces[k].is_mirror() {
@@ -168,7 +215,10 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         } else {
             dirs[k].t
         };
-        blocks.push(json!({ "type": "air", "t": t }));
+        match fill.take() {
+            Some(m) => blocks.push(json!({ "type": "air", "t": t, "medium": m })),
+            None => blocks.push(json!({ "type": "air", "t": t })),
+        }
         j = k + 1;
     }
     let at = |j: usize| -> Option<Value> {
@@ -318,5 +368,50 @@ mod tests {
             eprintln!("{} {}", f.display(), if split { "split" } else { "import" });
         }
         assert!(n[1] > 0 && n[0] == 0, "{n:?}");
+    }
+
+    /// 座標ブレークを挟んだ BS の板・キューブ（透過・反射の道、ガラスの中の鏡）・膜ファイルのある .zmx、OPD のソルブのある
+    /// .zmx も要素に分かれる。膜ファイルはプロジェクトの coating_file に、玉の中の座標ブレーク・鏡は玉の面に
+    #[test]
+    fn coordbrk_coating_and_opd_split() {
+        let glass = vec![root().join("tests/glass")];
+        for f in [
+            "tests/splitter/cube_T.zmx",
+            "tests/splitter/plate_T.zmx",
+            "tests/splitter/plate_R.zmx",
+            "tests/splitter/cube_R.zmx",
+            "tests/splitter/plate_back_R.zmx",
+            "tests/splitter/mich_RT.zmx",
+            "tests/splitter/mich_TR.zmx",
+            "tests/splitter/tg_TR.zmx",
+            "tests/opd_solve/o2.zmx",
+            "tests/opd_solve/o4.zmx",
+            "tests/opd_solve/o4z.zmx",
+        ] {
+            let c = Combo::from_zmx(&root().join(f), &glass, &[]).unwrap();
+            assert!(
+                !c.picks
+                    .iter()
+                    .any(|p| matches!(p.kind, ElemKind::ZmxRange | ElemKind::Raw)),
+                "{f}"
+            );
+        }
+        let c = Combo::from_zmx(&root().join("tests/splitter/cube_T.zmx"), &glass, &[]).unwrap();
+        assert_eq!(c.coating_file.as_deref(), Some("LBBS.DAT"));
+        let v = c.project();
+        assert_eq!(v["coating_file"], "LBBS.DAT");
+        let lens = v["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["type"] == "lens")
+            .unwrap();
+        let cbs = lens["source"]["surfaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|x| x.get("coordbrk").is_some())
+            .count();
+        assert_eq!(cbs, 2, "{lens}");
     }
 }

@@ -32,6 +32,7 @@ impl Pick {
             group: self.group.clone(),
             id: self.id.clone(),
             air_id: self.air_id.clone(),
+            air_medium: self.air_medium.clone(),
             ..Pick::new(kind)
         }
     }
