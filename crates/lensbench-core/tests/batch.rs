@@ -226,6 +226,35 @@ fn apertures_and_toroidal_match_scalar() {
     )));
     let s = rx.build_raw().unwrap();
     check("A0+Zernike（外挿なし）", &s, &px, &py);
+    // Fringe の並び・中心のずれ（dx, dy）・基準が平面（c = 0。初期値が 0 から始まる）
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[6];
+    d.set_type(SurfType::ZernikeFringe);
+    d.c = 0.0;
+    let mut z = ZernSag::new(
+        true,
+        4.0,
+        (1..=37).map(|i| 2e-3 * (0.7 * i as f64).sin()).collect(),
+        true,
+    );
+    (z.dx, z.dy) = (0.3, -0.2);
+    *d.zern_mut().unwrap() = Some(Arc::new(z));
+    let s = rx.build_raw().unwrap();
+    check("A0+Zernike（Fringe・ずれ・平面）", &s, &px, &py);
+    // 係数が大きく、ニュートン法が求まらない光線が混ざる（その面で止まる光線が増える）
+    let base = check("A0", &load("A0"), &px, &py);
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[6];
+    d.set_type(SurfType::ZernikeStd);
+    *d.zern_mut().unwrap() = Some(Arc::new(ZernSag::new(
+        false,
+        3.0,
+        (1..=37).map(|i| 0.4 * (i as f64).sin()).collect(),
+        true,
+    )));
+    let s = rx.build_raw().unwrap();
+    let v = check("A0+Zernike（求まらない光線）", &s, &px, &py);
+    assert!(v > base, "求まらない光線が増えていない（{v} ≤ {base}）");
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];
