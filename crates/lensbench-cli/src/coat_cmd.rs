@@ -218,7 +218,7 @@ fn model_medium_n(m: &str) -> Option<f64> {
 }
 
 /// モデル（OpticStudio 互換の位相）を、作った点とは別に測った表と比べる（`coat-model --check`）。
-/// 透過と鏡の係数の差 |Δ| の最大（s・p の大きい方）と、その点。透過と空気側の鏡で差が tol を超えた点を含む
+/// 透過と鏡の係数の差 |Δ| の最大（s・p の大きい方）と、その点。差が tol を超えた点（透過と鏡、硝材側の鏡も）を含む
 /// モデルの波長の区間の中点（波数で）を `refine_wl_um` に返す（そこで測り足すと補間がよくなる）。
 /// 屈折率だけの媒質の KEY だけを見る。後ろの媒質の全反射の近く（n2² − β² < 1e-3）とモデルの範囲の外（notimpl）は数えない
 fn check_model(
@@ -279,7 +279,7 @@ fn check_model(
                         at: json!({ "key": key, "wl_um": wl, "angle_deg": ang, "beta": b }),
                     };
                 }
-                if d > tol && (!mirror || m1 == "AIR") {
+                if d > tol {
                     bad.push(wl);
                 }
             }

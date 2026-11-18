@@ -311,6 +311,73 @@ fn mirror_model_does_not_cross_the_branch() {
 }
 
 #[test]
+fn mirror_model_stops_where_the_branch_leaves_the_range() {
+    // mirror_model_does_not_cross_the_branch と同じ鏡で、基板の屈折率が波長で大きく変わり、分岐点が測った β の上端（2.0）を
+    // 横切る（短い波長では範囲の上、長い波長では中）。補間に使う波長の一部にだけ分岐点があるところでは、上端の近くを
+    // notimpl にし、ほかの点は正しい値を返すこと
+    let ns = |wl: f64| 1.95 + 0.018 / (wl * wl);
+    let layers = [
+        (C64::new(2.10, 0.0), 0.12),
+        (C64::new(2.30, 0.0), 0.08),
+        (C64::new(2.15, 0.0), 0.15),
+    ];
+    let exact = |wl: f64, b: f64| {
+        let (rs, rp, _, _) = stack(2.05, &layers, C64::new(ns(wl), 0.0), wl, (b / 2.05).asin());
+        [rs, rp]
+    };
+    let wavelengths: Vec<f64> = (0..41)
+        .rev()
+        .map(|i| 1.0 / (1.0 / 0.7 + i as f64 * (2.0 - 1.0 / 0.7) / 40.0))
+        .collect();
+    let betas: Vec<f64> = (0..=1600).map(|i| 0.00125 * i as f64).collect();
+    let r = wavelengths
+        .iter()
+        .map(|&w| betas.iter().map(|&b| exact(w, b)).collect())
+        .collect();
+    let md = CoatModel {
+        mirror: Some(MirrorModel {
+            n_ref: 2.05,
+            d: 0.0,
+            wavelengths,
+            betas,
+            r,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let (mut worst, mut skipped) = (0.0f64, 0);
+    for wl in [0.5853, 0.5971, 0.6082, 0.6204] {
+        let f = Iface {
+            kind: prepare_model(
+                "T",
+                &md,
+                true,
+                false,
+                false,
+                wl,
+                0.0,
+                PhaseConvention::OpticStudio,
+            )
+            .unwrap(),
+            mirror: true,
+            n1: 2.05,
+            wl,
+        };
+        for k in 0..400 {
+            let b = 1.96 + 0.04 * k as f64 / 399.0;
+            let Ok(v) = f.eval((b / 2.05).asin()) else {
+                skipped += 1;
+                continue;
+            };
+            let e = exact(wl, b);
+            worst = worst.max((v[0] - e[0]).norm().max((v[1] - e[1]).norm()));
+        }
+    }
+    assert!(skipped > 0);
+    assert!(worst < 1e-4, "{worst:e}");
+}
+
+#[test]
 fn wave_weights_do_not_cross_kinks() {
     // 波数 x = 1/λ について、折れ目 0.5 µm の両側で別の 3 次式（値は連続、傾きが跳ぶ）
     let xk = 2.0;

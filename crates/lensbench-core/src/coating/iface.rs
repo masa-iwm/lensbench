@@ -410,13 +410,19 @@ pub(in crate::coating) fn prepare_model(
         // r が急に変わるのに測った点が足りず、値が r のわずかな違いで大きく変わり、OpticStudio とも合わない
         // （細かく測った OpticStudio の値と 2.6e-2 違った。この範囲を外すと 8e-6 以下）。
         // 補間に使う波長のその範囲を合わせた区間では notimpl にする（測った点の上にある分岐点は除く）
-        let band = if branch.is_some() {
+        let band = if let Some(bb) = &branch {
+            // この波長の分岐点（補間した位置）のまわりも。測った点の上に分岐点のある波長だけで補間すると、
+            // 間の波長の分岐点は測った点の間にあり、そのそばで同じように値が決まらない（2.05 側の鏡で 7e-3）
+            let kq = b2.partition_point(|&x| x < bb.xb).clamp(1, b2.len() - 1);
+            let own = (b2[kq] - bb.xb > MIRROR_BRANCH_SNAP * (b2[kq] - b2[kq - 1]))
+                .then(|| (b2[kq - 1], b2[(kq + 1).min(b2.len() - 1)]));
             (w0..w1)
                 .filter_map(|w| brb[w].filter(|v| !v.on_grid))
                 .map(|v| (b2[v.k - 1], b2[(v.k + 1).min(b2.len() - 1)]))
+                .chain(own)
                 .reduce(|a, c| (a.0.min(c.0), a.1.max(c.1)))
         } else {
-            None
+            partial_branch_band(&b2, &m.r[w0..w1], &brb[w0..w1])
         };
         let near = |j: usize| {
             branch.is_some() && {
@@ -845,4 +851,30 @@ impl Iface {
             }
         })
     }
+}
+
+/// 補間に使う波長の一部にだけ鏡の分岐点（[`mirror_branch`]）があり、ほかの波長では一番大きい β まで全反射にならない
+/// （分岐点が測った β の範囲より上にある。層の屈折率が波長で変わり、範囲の上端を横切る）とき、notimpl にする β² の範囲。
+/// 分岐点のある波長の、全反射の手前の最後の点から上端まで。そこでは波長の補間が分岐点をまたぎ、両側を揃える
+/// 分岐点の位置もそろわないので値が決まらない（OpticStudio とガラス側の鏡で 3e-2 違った）
+fn partial_branch_band(
+    b2: &[f64],
+    r: &[Vec<[C64; 2]>],
+    brb: &[Option<MirrorBranch>],
+) -> Option<(f64, f64)> {
+    let lo = brb.iter().flatten().map(|v| b2[v.k - 1]).reduce(f64::min)?;
+    let n = b2.len();
+    // 分岐点の見つからない波長は、上端のそば（mirror_branch が分岐点とみるのに要る点の数の内）でも |r| が 1 から
+    // はっきり離れている（分岐点が範囲の上か、上端に近すぎる）こと。全部 |r| = 1 なら分岐点の無い鏡で、ここでは扱わない
+    let lossy_top = |rw: &Vec<[C64; 2]>| {
+        rw[n.saturating_sub(6)..]
+            .iter()
+            .flatten()
+            .any(|v| (v.norm() - 1.0).abs() >= MIRROR_BRANCH_MIN_DEV)
+    };
+    r.iter()
+        .zip(brb)
+        .filter(|(_, b)| b.is_none())
+        .all(|(rw, _)| lossy_top(rw))
+        .then_some((lo, b2[n - 1]))
 }
