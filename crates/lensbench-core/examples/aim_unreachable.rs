@@ -2,7 +2,7 @@
 //! `cargo run --profile ci -p lensbench-core --example aim_unreachable -- [瞳座標の倍率]`
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 use std::time::Instant;
 
 fn main() {

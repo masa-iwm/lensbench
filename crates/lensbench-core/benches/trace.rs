@@ -8,8 +8,8 @@
 use std::path::PathBuf;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 const RAYS: usize = 20_000;
 const SYSTEMS: [&str; 4] = ["A0", "C0", "A2", "C1"];

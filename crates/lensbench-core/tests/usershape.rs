@@ -8,8 +8,8 @@ use lensbench_core::plugin::{Config, ConfigReader, Value};
 use lensbench_core::surface::SurfType;
 use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::usershape::{check_shape, ShapeInstance, ShapeModel, UserShape};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{Result, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::sync::Arc;
 
 /// 正規化の半径 [mm]

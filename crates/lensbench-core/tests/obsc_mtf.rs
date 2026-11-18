@@ -3,8 +3,8 @@
 use lensbench_core::analysis::{self, MtfMethod};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx;
 use lensbench_core::Waves;
+use lensbench_formats::zmx;
 
 /// 理想レンズ（f 100、入射瞳径 10、λ 0.55 µm）の前の平行光の中に遮蔽（半径 obsc）を置く
 fn ideal(obsc: f64) -> System {

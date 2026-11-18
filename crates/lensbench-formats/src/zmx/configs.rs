@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// .zmx の多重構成（MCE）を多重構成の表（[`crate::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
+/// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
 /// 偶数次非球面・座標ブレークの PRAM。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
@@ -10,9 +10,9 @@ pub(super) fn config_table(
     s: &System,
     n: usize,
     active: usize,
-) -> crate::Result<crate::configs::Configs> {
-    use crate::configs::{ConfigRow, Configs};
-    use crate::param::{Kind, Param};
+) -> lensbench_core::Result<lensbench_core::configs::Configs> {
+    use lensbench_core::configs::{ConfigRow, Configs};
+    use lensbench_core::param::{Kind, Param};
     let mut rows: Vec<(String, i64, i64, Vec<Option<f64>>)> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
         let parm = if op == "PRAM" {
@@ -47,7 +47,10 @@ pub(super) fn config_table(
             ("CONN", Some(_)) => Some(Kind::Conic),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
             ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
-                crate::pickup::kind_of_pick(&s.surfaces[k], crate::param::Kind::Parm(i))
+                lensbench_core::pickup::kind_of_pick(
+                    &s.surfaces[k],
+                    lensbench_core::param::Kind::Parm(i),
+                )
             }),
             _ => None,
         };

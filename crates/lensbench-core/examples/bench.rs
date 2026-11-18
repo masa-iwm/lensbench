@@ -25,8 +25,8 @@ use std::time::Instant;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn pupil(n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut st = 12345u64;

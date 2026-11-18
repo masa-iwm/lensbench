@@ -116,9 +116,9 @@ fn doc_peek_reads_gui_and_blocks() {
     );
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let glass = root.join("tests/glass");
-    let a0 = lensbench_core::zmx::load_with(
+    let a0 = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![glass.clone()],
             ..Default::default()
@@ -190,7 +190,7 @@ fn readable_files_open_as_combos() {
     let (mut opened, mut unread, mut unsupported) = (0usize, 0usize, 0usize);
     // 計算できない理由（読めて計算できれば None）
     fn not_computable(f: &std::path::Path, dirs: &[String]) -> Option<String> {
-        let lo = lensbench_core::zmx::LoadOptions {
+        let lo = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: dirs.iter().map(Into::into).collect(),
             ..Default::default()
@@ -198,7 +198,7 @@ fn readable_files_open_as_combos() {
         if !f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx")) {
             return None;
         }
-        match lensbench_core::zmx::load_configs(f, &lo, &[]) {
+        match lensbench_formats::zmx::load_configs(f, &lo, &[]) {
             Err(e) => Some(e.to_string()),
             Ok(c) => c
                 .iter()
@@ -233,12 +233,12 @@ fn readable_files_open_as_combos() {
             bad.push(format!("{}: {w}", f.display()));
             // LB_PEEK_DUMP のフォルダに、組合せにしたプロジェクト（.zmx は絶対パス）を書く。CLI の info で元と比べる
             if let Some(d) = std::env::var_os("LB_PEEK_DUMP") {
-                let lo = lensbench_core::zmx::LoadOptions {
+                let lo = lensbench_formats::zmx::LoadOptions {
                     cfg: 1,
                     catalog_dirs: dirs.iter().map(Into::into).collect(),
                     ..Default::default()
                 };
-                let p = lensbench_core::zmx::load_configs(f, &lo, &[])
+                let p = lensbench_formats::zmx::load_configs(f, &lo, &[])
                     .and_then(|c| lensbench_project::zmx_project(&c, &f.display().to_string()));
                 // 書けないもの（理由は上の why）は飛ばす
                 if let Ok(p) = p {

@@ -52,7 +52,7 @@ use lensbench_core::surface::{After, Aperture, Form, Material, SurfType, Surface
 use lensbench_core::system::{
     AfocalUnit, Aiming, ApertureKind, Field, FieldCond, FieldNorm, FieldType, System,
 };
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -318,7 +318,7 @@ mod surface_row_tests {
         let mut types = std::collections::BTreeSet::new();
         let mut grin = 0;
         for f in &files {
-            let opt = lensbench_core::zmx::LoadOptions {
+            let opt = lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![
                     root.join("tests/glass"),
@@ -327,7 +327,7 @@ mod surface_row_tests {
                 ],
                 ..Default::default()
             };
-            let Ok(s) = lensbench_core::zmx::load_with(f, &opt) else {
+            let Ok(s) = lensbench_formats::zmx::load_with(f, &opt) else {
                 continue;
             };
             let n = s.surfaces.len();

@@ -12,11 +12,11 @@ use lensbench_export::step;
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn zmx(name: &str) -> System {
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         catalog_dirs: vec![format!("{ROOT}/tests/glass").into()],
         ..Default::default()
     };
-    lensbench_core::zmx::load_with(
+    lensbench_formats::zmx::load_with(
         format!("{ROOT}/tests/refs/{name}/system.zmx").as_ref(),
         &opt,
     )
@@ -365,8 +365,8 @@ SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
 SURF 1\n  STOP\n  TYPE TOROIDAL\n  CURV 0.05\n  PARM 1 0\n  XDAT 1 0 0 0 1 0 0 \"\"\n  XDAT 2 100 0 0 1 0 0 \"\"\n  DISZ 4\n  GLAS ___BLANK 1 0 1.5168 0 0 0 0 0 0\n  DIAM 6 1 0 0 1 \"\"\n\
 SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 30\n  DIAM 6 1 0 0 1 \"\"\n\
 SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-    let raw = lensbench_core::zmx::parse_text(txt).unwrap();
-    let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+    let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
     let sc = scene::build(&s, &Options::default()).unwrap();
     let sd = &sc.solids[0];
     assert!(sd.front.toroidal && !sd.back.toroidal);
@@ -424,8 +424,8 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         ),
     ];
     for (i, txt) in cases.iter().enumerate() {
-        let raw = lensbench_core::zmx::parse_text(txt).unwrap();
-        let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+        let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let sc = scene::build(&s, &Options::default()).unwrap();
         assert_eq!(sc.solids.len(), 1);
         let mut b = Vec::new();
@@ -450,11 +450,11 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
 #[test]
 fn fresnel_and_binary_faces() {
     for name in ["F1", "C2", "B2"] {
-        let opt = lensbench_core::zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             catalog_dirs: vec![format!("{ROOT}/tests/glass").into()],
             ..Default::default()
         };
-        let s = lensbench_core::zmx::load_with(
+        let s = lensbench_formats::zmx::load_with(
             format!("{ROOT}/tests/surftypes/{name}/system.zmx").as_ref(),
             &opt,
         )

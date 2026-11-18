@@ -7,8 +7,8 @@ use lensbench_core::grid::Grid2;
 use lensbench_core::psf::{self, diffraction_limit, PsfOpts};
 use lensbench_core::surface::Surface;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn load(name: &str) -> System {

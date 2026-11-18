@@ -1,6 +1,6 @@
 //! 読込での厚さのソルブの計算し直し: MAZH（次の面での近軸マージナル光線の高さ）
 use lensbench_core::system::System;
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 
 const HEAD: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\

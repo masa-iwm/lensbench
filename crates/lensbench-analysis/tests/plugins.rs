@@ -9,8 +9,8 @@ use lensbench_core::plugin::{run_many, Array, Arrays, Config, Context, Registry,
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn sys() -> Arc<System> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

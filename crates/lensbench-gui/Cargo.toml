@@ -27,6 +27,7 @@ name = "lensbench-gui"
 path = "src/main.rs"
 
 [dependencies]
+lensbench-formats = { path = "../lensbench-formats" }
 # カタログの仕様の条件・単位
 lensbench-project = { path = "../lensbench-project" }
 lensbench-catalog = { path = "../lensbench-catalog" }

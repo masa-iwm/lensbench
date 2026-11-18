@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use lensbench_core::analysis::{self, MtfMethod};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

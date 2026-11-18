@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use lensbench_core::freeform::{sag_xy, GridSag};
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 use serde_json::Value;
 
 fn dir() -> PathBuf {
@@ -74,8 +74,8 @@ fn dat_matches_garr() {
 /// 書き出した .zmx を読み直すと同じ面になり、追跡がビット一致する（Z0〜Z4・G0〜G3）
 #[test]
 fn write_roundtrip() {
-    use lensbench_core::zmx::LoadOptions;
     use lensbench_core::FieldSel;
+    use lensbench_formats::zmx::LoadOptions;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let tmp = std::env::temp_dir().join(format!("lb_ff_{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();

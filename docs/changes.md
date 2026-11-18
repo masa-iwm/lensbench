@@ -5,6 +5,10 @@
 
 ## 次の版（v0.5.0 の後）
 
+### .zmx の読込の場所
+- `lensbench_core::zmx`（`load`・`load_with`・`LoadOptions`・`parse_text`・`build` など）を `lensbench_formats::zmx` に移した。
+  `lensbench_core::prelude` から `zmx`・`LoadOptions` を外し、それを足した `lensbench_formats::prelude` を置いた。
+
 ### 最適化の項
 - `zernike` の項を 37 項以上で当てはめた係数にした（前は `term` 項までで当てはめていた）。格子の上の最小二乗では当てはめる項の
   数で低い次の係数が動き、Double Gauss 28 の視野 2 で Fringe Z9 が 0.0944 → 0.0917 波（OpticStudio 26.1 の ZERN と 9 桁一致）、

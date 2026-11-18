@@ -3,7 +3,7 @@
 //! このプロセスで tests/glass の AGF を読むと、それが候補になるので、ほかの結合テストとは別のプロセスにしてある。
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_project::sysfile;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;

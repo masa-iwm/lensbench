@@ -3,7 +3,7 @@
 
 use lensbench_core::system::FieldSel;
 use lensbench_core::vfs::{self, Fs, MemFs};
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

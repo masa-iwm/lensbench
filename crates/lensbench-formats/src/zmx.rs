@@ -3,15 +3,17 @@
 //! 順次の光線追跡に効くものだけを読み、対応していないもの（未知の面タイプや面の行、扱わない多重構成の
 //! オペランドが構成で変わる、非順次、mm 以外の単位など）は `Error::NotImplemented` で止める。
 
-use crate::error::{Error, Result};
-use crate::glass::{self, Glass};
-use crate::import::{MacroRequest, MacroTarget};
-use crate::param::Kind;
-use crate::pickup::{surf_parm, Pickup};
-use crate::solves::{Solve, SolveKind};
-use crate::surface::{After, Aperture, Form, SurfType, Surface, Tilt};
-use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, Prescription, System};
-use crate::{invalid, notimpl};
+use lensbench_core::error::{Error, Result};
+use lensbench_core::glass::{self, Glass};
+use lensbench_core::import::{MacroRequest, MacroTarget};
+use lensbench_core::param::Kind;
+use lensbench_core::pickup::{surf_parm, Pickup};
+use lensbench_core::solves::{Solve, SolveKind};
+use lensbench_core::surface::{After, Aperture, Form, SurfType, Surface, Tilt};
+use lensbench_core::system::{
+    Aiming, ApertureKind, Field, FieldNorm, FieldType, Prescription, System,
+};
+use lensbench_core::{invalid, notimpl};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -230,7 +232,7 @@ pub struct LoadOptions {
     /// ファイルの GCAT の代わりに使うガラス
     pub glasses: Option<HashMap<String, Glass>>,
     /// ZPL Macro Solve のマクロ（.ZPL）を探すフォルダ（.zmx のフォルダ・その隣の Macros・環境変数
-    /// LENSBENCH_MACROS の前に探す。[`crate::zpl_solve::macro_dirs`]）
+    /// LENSBENCH_MACROS の前に探す。[`lensbench_core::zpl_solve::macro_dirs`]）
     pub macro_dirs: Vec<PathBuf>,
     /// カタログの玉として読む: 半直径をファイルの値で固定する（径は決まっている。自動の面も光線から
     /// 求めない）。系だけの設定（瞳のアポダイゼーション GFAC）は誤りにせず注意だけにする
@@ -374,7 +376,10 @@ pub fn document(
         .iter()
         .any(|r| matches!(r.typ.as_deref(), Some("GRINSUR8") | Some("GRINSUR9")))
     {
-        Some(crate::grin::GrinData::load(dirs, &raw.grd_file_name())?)
+        Some(lensbench_core::grin::GrinData::load(
+            dirs,
+            &raw.grd_file_name(),
+        )?)
     } else {
         None
     };
@@ -425,7 +430,7 @@ pub fn document(
     // UNIT の値の 6 番目（MM X W X CM の次）が Afocal Mode Units（UR・MR・RR・AS・AM・DG、OpticStudio 26.1 で確認）。無ければ mrad
     // （知らない記号はアフォーカルのときだけ誤り）
     if let Some(u) = sys_str(raw, "UNIT", 5) {
-        match crate::system::AfocalUnit::from_code(u) {
+        match lensbench_core::system::AfocalUnit::from_code(u) {
             Some(a) => rx.afocal_unit = a,
             None if rx.afocal => invalid!("UNIT Afocal Mode Units {u}"),
             None => {}

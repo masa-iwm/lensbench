@@ -43,8 +43,9 @@ use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
     Aiming, Cols, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolIn, RayBuf,
 };
-use lensbench_core::{analysis, psf, sweep, with_threads, zmx, RecSel, System};
+use lensbench_core::{analysis, psf, sweep, with_threads, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
+use lensbench_formats::zmx;
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::prelude::*;

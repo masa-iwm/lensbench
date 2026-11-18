@@ -14,8 +14,8 @@ use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::Coatings;
 use lensbench_core::coating::C64;
 use lensbench_core::system::PolIn;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn pupil(n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut st = 12345u64;

@@ -13,8 +13,8 @@ use std::time::Instant;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use lensbench_core::analysis::{self, MtfMethod};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

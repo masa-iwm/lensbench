@@ -52,7 +52,7 @@
   `--term`・`--terms` の項を写した行を面の後に書く（OpticStudio で開くとメリットファンクションに入る）。項を写せないもの
   （coupling・plugin・名前で指定した zplm・pwfn、正規化視野で書いた mtf・zernike・centroid）は警告にして書かない。`min`・`max`
   は重み 0 の行とそれを参照する OPGT・OPLT の 2 行に、MTF の both は MTFT・MTFS の 2 行にする。読んだ .zmx のレンズ単位が mm
-  でなければ読んだ行は書かない（警告を出す）。読めなかった行は番号を保つため BLNK にして元の文字をコメントに残す。構成が 2 つ以上のときは構成 1 の系を書き、多重構成の表は読んだ値のまま（表を書けない系では構成 2 以降の行を書かない）。近軸量の行の波長は主波長の番号で書く。Rust は `lensbench_core::zmx::merit`（行）、`lensbench_design::merit_zmx`（項と行の写し）、
+  でなければ読んだ行は書かない（警告を出す）。読めなかった行は番号を保つため BLNK にして元の文字をコメントに残す。構成が 2 つ以上のときは構成 1 の系を書き、多重構成の表は読んだ値のまま（表を書けない系では構成 2 以降の行を書かない）。近軸量の行の波長は主波長の番号で書く。Rust は `lensbench_formats::zmx::merit`（行）、`lensbench_design::merit_zmx`（項と行の写し）、
   `lensbench_formats::zmx_write::save_with_merit`。
 - Python で定義する項（UDOP 相当）: `System.optimize(vars, merit=None, terms=[{"type": "user", "fn": f}])`。`f(systems)` は
   System の list を受け取り、システムごとの残差を (システムの数, 残差の数) の配列で返す。差分のヤコビアンではずらしたシステムをまとめて

@@ -8,11 +8,11 @@ use ndarray_npy::NpzReader;
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn zmx(name: &str) -> System {
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         catalog_dirs: vec![format!("{ROOT}/tests/glass").into()],
         ..Default::default()
     };
-    lensbench_core::zmx::load_with(
+    lensbench_formats::zmx::load_with(
         format!("{ROOT}/tests/refs/{name}/system.zmx").as_ref(),
         &opt,
     )

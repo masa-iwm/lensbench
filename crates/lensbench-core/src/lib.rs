@@ -1,4 +1,4 @@
-//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、.zmx の読み書き、ソルブ・ZPL、基本の解析（波面・PSF・POP）。.zmx の書き出しは lensbench-formats、ゴースト・干渉縞・偏光の格子は lensbench-analysis。
+//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、ソルブ・ZPL、基本の解析（波面・PSF・POP）。.zmx の読み書きは lensbench-formats、ゴースト・干渉縞・偏光の格子は lensbench-analysis。
 //!
 //! 外部のレンズカタログ（ZMF など）の読込は [`catalog::LensCatalogSource`] を実装した
 //! 別クレートから差し込む。公開版にはその実装を含めない。
@@ -65,6 +65,8 @@ pub mod sweep;
 pub mod sync;
 pub mod system;
 pub mod tansag;
+#[cfg(test)]
+mod test_zmx;
 pub mod tol;
 pub mod trace;
 pub mod trig;
@@ -74,11 +76,11 @@ pub mod usershape;
 pub mod usersurf;
 pub mod vfs;
 pub mod waves;
-pub mod zmx;
 pub mod zpl;
 pub mod zpl_solve;
 
-/// ライブラリとして使うときの主な口（`use lensbench_core::prelude::*;`）。系を読む（[`zmx::load_with`]）→
+/// ライブラリとして使うときの主な口（`use lensbench_core::prelude::*;`）。系を読む（.zmx は lensbench-formats の `zmx`。その
+/// prelude はこれに `zmx`・`LoadOptions` を足したもの）→
 /// 追跡する（[`System::try_trace`]・[`TraceOpts`]）→ 解析する（[`analysis`]・[`psf`]）の流れに要るもの
 pub mod prelude {
     pub use crate::analysis::{self, Mtf, Wavefront};
@@ -91,7 +93,6 @@ pub mod prelude {
     pub use crate::tansag::TanSag;
     pub use crate::vfs;
     pub use crate::waves::Waves;
-    pub use crate::zmx::{self, LoadOptions};
     pub use crate::{init_from_env, report};
 }
 

@@ -1,8 +1,8 @@
 //! ZPLM の項: マクロの OPTRETURN の値を評価関数の項にする。
 
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::zpl_solve::Macro;
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::UserTerm;
 

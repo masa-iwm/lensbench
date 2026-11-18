@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 use std::path::PathBuf;
 
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

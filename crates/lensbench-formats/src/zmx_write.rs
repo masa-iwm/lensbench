@@ -1,4 +1,4 @@
-//! 系を .zmx（OpticStudio のレンズファイル）に書き出す。読込（[`lensbench_core::zmx`]）が解釈する項目だけを書く。
+//! 系を .zmx（OpticStudio のレンズファイル）に書き出す。読込（[`crate::zmx`]）が解釈する項目だけを書く。
 //!
 //! 厚さのソルブ（[`System::solves`]）は解いた値と MAZH の行を書き、ほかのソルブは値にして書く。ピックアップ（[`System::pickups`]）は解決した値とピックアップの行の両方を書く。モデルガラス（分散なし）は ___BLANK、ほかのガラスは名前とカタログ（GCAT）。
 
@@ -840,12 +840,12 @@ pub fn save(path: &Path, s: &System) -> Result<Vec<String>> {
     Ok(write_notes(s))
 }
 
-/// [`save`] で、メリットファンクションの行（[`lensbench_core::zmx::merit::MeritRow`]）も面の後に書く（OpticStudio と
+/// [`save`] で、メリットファンクションの行（[`crate::zmx::merit::MeritRow`]）も面の後に書く（OpticStudio と
 /// 同じ位置: 面の後、多重構成の表の前）。玉・群を動かした系は面の番号が変わるので、行は書かずに注意を返す
 pub fn save_with_merit(
     path: &Path,
     s: &System,
-    rows: &[lensbench_core::zmx::merit::MeritRow],
+    rows: &[crate::zmx::merit::MeritRow],
 ) -> Result<Vec<String>> {
     let name = coat_file_for(path);
     let mut txt = write_as(s, &name)?;
@@ -884,7 +884,7 @@ pub fn save_with_merit(
 }
 
 /// .zmx の本文（CRLF）の面の後・MNUM の前に行を入れる
-fn insert_merit(txt: &str, rows: &[lensbench_core::zmx::merit::MeritRow]) -> String {
+fn insert_merit(txt: &str, rows: &[crate::zmx::merit::MeritRow]) -> String {
     let mut block = String::new();
     for r in rows {
         block.push_str(&r.text());
@@ -1289,7 +1289,7 @@ fn glass_name(m: &str) -> &str {
 #[cfg(test)]
 mod merit_tests {
     use super::insert_merit;
-    use lensbench_core::zmx::merit::MeritRow;
+    use crate::zmx::merit::MeritRow;
 
     #[test]
     fn merit_before_mnum() {
@@ -1316,9 +1316,9 @@ mod merit_tests {
     #[test]
     fn merit_without_mce_drops_later_configs() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let s = lensbench_core::zmx::load_with(
+        let s = crate::zmx::load_with(
             &root.join("tests/refs/A0/system.zmx"),
-            &lensbench_core::zmx::LoadOptions {
+            &crate::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![root.join("tests/glass")],
                 ..Default::default()
@@ -1341,7 +1341,7 @@ mod merit_tests {
                 .any(|n| n.contains("configurations 2 and later")),
             "{notes:?}"
         );
-        let mf = lensbench_core::zmx::merit::merit_function(&path).unwrap();
+        let mf = crate::zmx::merit::merit_function(&path).unwrap();
         let ops: Vec<&str> = mf.rows.iter().map(|r| r.op.as_str()).collect();
         assert_eq!(ops, ["EFFL"]);
         std::fs::remove_dir_all(&dir).ok();

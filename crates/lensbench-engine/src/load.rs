@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
-use lensbench_core::{zmx, System};
+use lensbench_core::System;
 use lensbench_export::table;
+use lensbench_formats::zmx;
 use lensbench_project::open::{FileKind, OpenSpec, Source};
 use serde_json::{json, Value};
 

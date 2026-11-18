@@ -12,8 +12,8 @@ use lensbench_core::coating::Coatings;
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::pupil::{ApodMap, Apodization};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx;
 use lensbench_core::Waves;
+use lensbench_formats::zmx;
 use std::f64::consts::PI;
 
 /// 理想レンズ（f 100、入射瞳径 10、λ 0.55 µm）。obj が有限なら物体距離 [mm]（像面は結像の位置）

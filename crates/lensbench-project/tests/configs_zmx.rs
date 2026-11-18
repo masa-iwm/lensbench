@@ -1,7 +1,8 @@
 //! 経路・状態ごとの系を 1 つの多重構成の .zmx にまとめる: 読み戻した各構成が元の系と同じに追跡できる。
 
 use lensbench_core::system::FieldSel;
-use lensbench_core::{zmx, System};
+use lensbench_core::System;
+use lensbench_formats::zmx;
 use lensbench_formats::zmx_write;
 use lensbench_project::{expand, paths, Env, ExpandOpts, Project};
 use std::path::PathBuf;

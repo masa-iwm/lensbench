@@ -3,8 +3,8 @@
 use crate::common::root;
 use lensbench_core::pupil::{PupilFunction, PupilGrid};
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::sync::Arc;
 
 fn load(name: &str) -> System {

@@ -5,9 +5,9 @@ fn root() -> std::path::PathBuf {
 }
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use lensbench_design::montecarlo::{self as tolerance, Dist, LensTol, McSpec, Tol};
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_optim::{DefaultMerit, Problem, Var};
 use lensbench_runs::{Draws, Joint, Rng};
 

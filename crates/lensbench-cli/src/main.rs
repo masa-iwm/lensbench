@@ -10,8 +10,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use lensbench_core::{catalog::LensCatalog, coating, glass, zmx, System};
+use lensbench_core::{catalog::LensCatalog, coating, glass, System};
 use lensbench_export::{d2, mesh, scene};
+use lensbench_formats::zmx;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Value};
 

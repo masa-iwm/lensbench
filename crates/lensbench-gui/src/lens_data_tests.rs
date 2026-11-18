@@ -442,8 +442,8 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -10\n  GLAS MIRROR 0 0 1.5 40 0 0 0 
 SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -1\n\
 SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -20\n\
 SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-    let raw = lensbench_core::zmx::parse_text(txt).unwrap();
-    let base = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+    let base = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
     let rows: Vec<Row> = base
         .surfaces
         .iter()

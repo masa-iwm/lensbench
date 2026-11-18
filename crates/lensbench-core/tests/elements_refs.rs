@@ -3,7 +3,7 @@
 
 use lensbench_core::elements::{self, Kind};
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 use crate::common::{glass_dirs, refs_dir};
 

@@ -12,8 +12,8 @@ use lensbench_core::freeform::{GridSag, ZernSag};
 use lensbench_core::par::with_batch;
 use lensbench_core::surface::{Aperture, SurfType};
 use lensbench_core::system::{PolIn, Trace};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::sync::Arc;
 
 fn root() -> PathBuf {

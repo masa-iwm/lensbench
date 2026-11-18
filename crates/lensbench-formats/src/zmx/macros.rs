@@ -22,7 +22,7 @@ pub(super) fn solves(raw: &Raw) -> Vec<Solve> {
 /// 面の行の ZPL マクロのソルブを依頼の表にする（面の順、面の中は曲率・厚さ・円錐係数・半直径・パラメータの順）。
 /// マクロはここで探して読み、今の系で試すのは [`System::from_import`]
 pub(super) fn requests(raw: &Raw, opt: &LoadOptions, base: Option<&Path>) -> Vec<MacroRequest> {
-    let dirs = crate::zpl_solve::macro_dirs(&opt.macro_dirs, base);
+    let dirs = lensbench_core::zpl_solve::macro_dirs(&opt.macro_dirs, base);
     let mut out = Vec::new();
     for (k, r) in raw.surfs.iter().enumerate() {
         let mut todo: Vec<(MacroTarget, &String)> = Vec::new();
@@ -40,7 +40,7 @@ pub(super) fn requests(raw: &Raw, opt: &LoadOptions, base: Option<&Path>) -> Vec
                 surf: k,
                 target,
                 name: name.clone(),
-                found: crate::zpl_solve::find_macro(name, &dirs),
+                found: lensbench_core::zpl_solve::find_macro(name, &dirs),
             });
         }
     }

@@ -36,12 +36,12 @@ fn params_from_schema() {
 
 fn a0() -> lensbench_core::System {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         cfg: 1,
         catalog_dirs: vec![root.join("tests/glass")],
         ..Default::default()
     };
-    lensbench_core::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap()
+    lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap()
 }
 
 /// 同梱の解析はどれも既定の設定（周波数の要るものは周波数だけ足す）で動き、結果は core の関数と同じ値

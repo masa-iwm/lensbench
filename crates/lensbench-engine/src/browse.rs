@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind};
-use lensbench_core::{glass, vfs, zmx};
+use lensbench_core::{glass, vfs};
+use lensbench_formats::zmx;
 use serde_json::{json, Value};
 
 /// d・F・C 線 [µm]

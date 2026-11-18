@@ -240,8 +240,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
                    SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.2\n  DISZ 10\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::zmx::parse_text(txt).unwrap();
-        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = crate::test_zmx::parse_text(txt).unwrap();
+        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let spec = ObjSpec::Dir([0.0, 0.0, 1.0]);
         for c in [
             FieldCond::Position { surf: 2 },

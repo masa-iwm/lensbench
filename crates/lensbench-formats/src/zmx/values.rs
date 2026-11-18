@@ -258,7 +258,7 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
         base.into_iter()
             .chain(dirs.iter().map(|d| d.as_path()))
             .map(|d| d.join(&c))
-            .find(|p| crate::vfs::exists(p))
+            .find(|p| lensbench_core::vfs::exists(p))
     });
     let name = raw
         .sysl

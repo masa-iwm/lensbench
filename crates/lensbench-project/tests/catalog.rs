@@ -1,8 +1,8 @@
 //! ユーザーカタログ（玉・ブロックの保存と他のプロジェクトでの再利用）の自己照合
 
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_project::{block_item, expand, lens_item, Env, ExpandOpts, Project, UserCatalog};
 use std::path::{Path, PathBuf};
 

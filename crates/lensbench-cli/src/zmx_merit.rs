@@ -1,8 +1,8 @@
 //! `optimize --zmx-merit`: .zmx に保存したメリットファンクションを最適化の項にする
 
 use crate::{overlay_systems, warn_notes, AppError, Common, ConfigSel};
-use lensbench_core::zmx::merit::MeritRow;
 use lensbench_core::System;
+use lensbench_formats::zmx::merit::MeritRow;
 use serde_json::Value;
 
 /// .zmx から読んだメリットファンクション
@@ -24,7 +24,7 @@ pub(crate) fn terms(c: &Common, s: &System, out: bool) -> Result<ZmxMerit, AppEr
     if !is_zmx {
         return Err(AppError::usage("--zmx-merit needs a .zmx file"));
     }
-    let mf = lensbench_core::zmx::merit::merit_function(&c.file)?;
+    let mf = lensbench_formats::zmx::merit::merit_function(&c.file)?;
     let z = lensbench_design::merit_zmx::terms_from_zmx(&mf, s.primary + 1, s.image());
     warn_notes(z.notes);
     // 書き出す .zmx は mm なので、ほかの単位の行は長さの目標が合わない

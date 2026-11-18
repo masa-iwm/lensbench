@@ -14,12 +14,12 @@ fn zmx_projects_rebuild_the_same_system() {
     files.sort();
     let (mut same, mut differ) = (Vec::new(), Vec::new());
     for f in &files {
-        let o = lensbench_core::zmx::LoadOptions {
+        let o = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
         };
-        let s = lensbench_core::zmx::load_with(f, &o).unwrap();
+        let s = lensbench_formats::zmx::load_with(f, &o).unwrap();
         let p = lensbench_project::zmx_project(std::slice::from_ref(&s), &f.display().to_string())
             .unwrap();
         let env = lensbench_project::Env {
@@ -54,9 +54,9 @@ fn zmx_projects_rebuild_the_same_system() {
 #[test]
 fn zmx_project_writes_multi_config_and_field_solve() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut s = lensbench_core::zmx::load_with(
+    let mut s = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
@@ -166,12 +166,12 @@ fn multi_config_zmx_becomes_states() {
     let mut differ = Vec::new();
     let mut multi = 0;
     for f in &files {
-        let o = lensbench_core::zmx::LoadOptions {
+        let o = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
         };
-        let all = lensbench_core::zmx::load_configs(f, &o, &[]).unwrap();
+        let all = lensbench_formats::zmx::load_configs(f, &o, &[]).unwrap();
         let n = all.len();
         let p = lensbench_project::zmx_project(&all, &f.display().to_string())
             .unwrap_or_else(|e| panic!("{}: {e}", f.display()));
@@ -202,9 +202,9 @@ fn zmx_block_brings_its_coating_file() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let f = root.join("tests/birefringent/b2_coat.zmx");
     let gd = vec![root.join("tests/glass")];
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
@@ -230,9 +230,9 @@ fn zmx_block_brings_its_coating_file() {
 fn zmx_project_keeps_apodization_ropd_and_afocal_unit() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let gd = vec![root.join("tests/glass")];
-    let s0 = lensbench_core::zmx::load_with(
+    let s0 = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
@@ -312,9 +312,9 @@ fn zmx_project_solves_macros_after_the_global_reference() {
     let mut out = vec![0xff, 0xfe];
     out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
     std::fs::write(&f, out).unwrap();
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
@@ -365,9 +365,9 @@ fn zmx_project_roundtrip(
     let mut out = vec![0xff, 0xfe];
     out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
     std::fs::write(&f, out).unwrap();
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
@@ -543,9 +543,9 @@ fn zmx_project_keeps_object_row_and_edge_pickups() {
         let mut out = vec![0xff, 0xfe];
         out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
         std::fs::write(&f, out).unwrap();
-        let s = lensbench_core::zmx::load_with(
+        let s = lensbench_formats::zmx::load_with(
             &f,
-            &lensbench_core::zmx::LoadOptions {
+            &lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: gd.clone(),
                 ..Default::default()
@@ -588,9 +588,9 @@ fn zmx_project_keeps_grin_material_not_in_catalogs() {
     let mut out = vec![0xff, 0xfe];
     out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
     std::fs::write(&f, out).unwrap();
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
@@ -647,9 +647,9 @@ fn zmx_project_keeps_glass_catalogs() {
     let mut out = vec![0xff, 0xfe];
     out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
     std::fs::write(&f, out).unwrap();
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()

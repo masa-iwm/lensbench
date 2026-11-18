@@ -653,8 +653,8 @@ mod tests {
              SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 50\n  PARM 2 1\n  DISZ {image_t}\n\
              SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         );
-        let raw = crate::zmx::parse_text(&t).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = crate::test_zmx::parse_text(&t).unwrap();
+        crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]

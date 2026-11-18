@@ -1,5 +1,5 @@
 //! 分散式の有効範囲（AGF の LD）の外の波長の警告。式は延ばして計算する（OpticStudio は屈折率 1.0 にする）
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn load(wavm: &str) -> lensbench_core::system::System {

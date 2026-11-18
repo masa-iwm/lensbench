@@ -6,7 +6,8 @@ use lensbench_core::surface::SurfType;
 use lensbench_core::system::PolIn;
 use lensbench_core::usersurf::{SurfaceInstance, SurfaceModel, UserSurf};
 use lensbench_core::Waves;
-use lensbench_core::{analysis, zmx, FieldSel, System};
+use lensbench_core::{analysis, FieldSel, System};
+use lensbench_formats::zmx;
 use std::sync::Arc;
 
 const ZMX: &str =

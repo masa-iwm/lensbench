@@ -3,8 +3,8 @@
 //! 既定の連続（VigInterp::Continuous）は視野の間で段差がない
 
 use lensbench_core::system::{Field, FieldNorm, FieldSel, VigInterp};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn with_fields(fields: &[(f64, f64, [f64; 5])], norm: FieldNorm) -> System {

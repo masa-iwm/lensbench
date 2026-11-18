@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use lensbench_analysis::huygens::{huygens_psf, HuygensOpts};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 #[cfg(not(target_arch = "wasm32"))]
 #[global_allocator]

@@ -17,7 +17,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | ディレクトリ | 中身 |
 |---|---|
 | `crates/lensbench-core` | 光線追跡・解析のライブラリ |
-| `crates/lensbench-formats` | core の上のファイルの形式（システムの .zmx への書き出し）。.zmx の読込は core |
+| `crates/lensbench-formats` | core の上のファイルの形式（.zmx の読込と書き出し） |
 | `crates/lensbench-step` | STEP（ISO 10303-21）の読み取り。依存なし |
 | `crates/lensbench-catalog` | カタログの検索・絞り込み・品の項目の補完、STEP からの寸法の測定（project の上） |
 | `crates/lensbench-project` | ブロックで組むプロジェクトファイルと面への展開 |

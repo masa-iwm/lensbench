@@ -8,8 +8,8 @@
 
 use std::path::PathBuf;
 
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 use ndarray::{Array2, Array4};
 use ndarray_npy::NpzReader;
 

@@ -9,8 +9,8 @@ use lensbench_core::analysis;
 use lensbench_core::psf::{self, Psf, PsfOpts};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::f64::consts::PI;
 use std::path::PathBuf;
 

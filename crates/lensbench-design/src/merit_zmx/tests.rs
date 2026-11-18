@@ -1,7 +1,7 @@
 //! .zmx の評価関数の行と項の読み書きの試験
 
 use super::*;
-use lensbench_core::zmx::merit::merit_function_text;
+use lensbench_formats::zmx::merit::merit_function_text;
 
 /// 面の後に評価関数を置いた .zmx（OpticStudio 26.1 の書き方、Double Gauss 28 で作った行を A0 に合わせたもの）
 fn zmx(unit: &str, merit: &[&str]) -> String {
@@ -232,9 +232,9 @@ fn calc_rows_become_terms() {
     assert!(z.notes[0].contains("row 7 (ABSO") && z.notes[0].contains("bound"));
     // 項として読める
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
@@ -256,9 +256,9 @@ fn calc_rows_become_terms() {
 #[test]
 fn terms_can_be_read() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
@@ -329,12 +329,13 @@ fn terms_can_be_read() {
 #[test]
 fn terms_to_rows_and_back() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         cfg: 1,
         catalog_dirs: vec![root.join("tests/glass")],
         ..Default::default()
     };
-    let s = lensbench_core::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+    let s =
+        lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
     let terms = vec![
         json!({"type": "paraxial", "q": "efl", "target": 50.0, "weight": 2.0}),
         json!({"type": "spot", "rings": 4, "wave": null, "field": [0.0, 0.5], "reference": "chief", "quadrature": "opticstudio", "weight": 1.0}),
@@ -420,9 +421,9 @@ fn zern_fit_follows_opticstudio() {
     let fit: Vec<_> = z.terms.iter().map(|t| t["fit"].as_u64().unwrap()).collect();
     assert_eq!(fit, [22, 22, 11, 37]);
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &root.join("tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()

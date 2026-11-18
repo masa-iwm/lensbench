@@ -393,14 +393,14 @@ mod tests {
     #[test]
     fn surface_view_round_trips_every_reference_surface() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = lensbench_core::zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
         let mut n = 0;
         for e in std::fs::read_dir(root.join("tests/refs")).unwrap() {
             let f = e.unwrap().path().join("system.zmx");
-            let Ok(s) = lensbench_core::zmx::load_with(&f, &opt) else {
+            let Ok(s) = lensbench_formats::zmx::load_with(&f, &opt) else {
                 continue;
             };
             for j in 0..s.surfaces.len() {

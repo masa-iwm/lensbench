@@ -3,8 +3,8 @@
 use lensbench_analysis::ghost::{self, ghost_system};
 use lensbench_core::coating::{stack, Coatings, C64};
 use lensbench_core::system::{FieldSel, PolIn};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn load(name: &str) -> System {

@@ -3,8 +3,8 @@
 use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::{Aiming, FieldSel, Launch, ObjSpec};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str) -> System {
     zmx::load_with(

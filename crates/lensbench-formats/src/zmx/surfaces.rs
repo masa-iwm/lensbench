@@ -2,7 +2,7 @@
 
 use super::values::Glasses;
 use super::*;
-use crate::material::Material as M;
+use lensbench_core::material::Material as M;
 use std::sync::Arc;
 
 /// 面を作るのに要る、系の値と解いた値
@@ -16,7 +16,7 @@ pub(super) struct Ctx<'a> {
     pub mats: &'a [Material],
     pub stop: usize,
     /// GRIN の材料（GRIN の面があるときだけ）
-    pub grin: Option<&'a crate::grin::GrinData>,
+    pub grin: Option<&'a lensbench_core::grin::GrinData>,
     pub wl: &'a [f64],
     pub glasses: &'a Glasses,
     /// 温度 [°C]・気圧 [atm]・屈折率を空気に合わせるか（ENVD）
@@ -106,18 +106,18 @@ impl Ctx<'_> {
         }
         self.shape(typ, s, &mut d, &mat, &p, k)?;
         // 係数の並び（Tilted・Irregular は決まった数だけ）とトロイダルの回転半径（0 は無限 = 円柱面）
-        if crate::form::asph_parm_base(typ).is_some() {
+        if lensbench_core::form::asph_parm_base(typ).is_some() {
             set_parms(&mut d);
         }
         self.profile(typ, s, &mut d, k)?;
         let after = tilts(s, &mut d, k)?;
         aperture(s, k, &mut d, self.ops);
         let n = self.index(&d, typ, &mat, model, nprev, k)?;
-        if let Some(crate::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
-            let en = crate::surface::Bire::e_name(&mat);
+        if let Some(lensbench_core::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
+            let en = lensbench_core::surface::Bire::e_name(&mat);
             let Some(g) = self.glasses.map.get(&en) else {
                 let why = &self.glasses.why;
-                invalid!(code = crate::error::code::GLASS_NOT_FOUND; "extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}");
+                invalid!(code = lensbench_core::error::code::GLASS_NOT_FOUND; "extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}");
             };
             let (temp, pres, adjust) = self.env;
             *ne = self
@@ -167,7 +167,7 @@ impl Ctx<'_> {
                     .collect();
                 d.form = Form::Binary2 {
                     asph: Vec::new(),
-                    bin2: Some(Arc::new(crate::surface::Binary2 {
+                    bin2: Some(Arc::new(lensbench_core::surface::Binary2 {
                         order: p(0),
                         norm,
                         coef,
@@ -208,7 +208,7 @@ impl Ctx<'_> {
                     .collect();
                 d.form = Form::CylFresnel {
                     asph: Vec::new(),
-                    cylf: Some(Arc::new(crate::surface::CylFresnel {
+                    cylf: Some(Arc::new(lensbench_core::surface::CylFresnel {
                         c: s.xdat.get(&2).copied().unwrap_or(0.0),
                         k: s.xdat.get(&3).copied().unwrap_or(0.0),
                         coef,
@@ -297,7 +297,7 @@ impl Ctx<'_> {
         } else {
             let Some(g) = self.glasses.map.get(mat) else {
                 let why = &self.glasses.why;
-                invalid!(code = crate::error::code::GLASS_NOT_FOUND; "glass {mat} (surface {k}) is not in the catalogs{why}");
+                invalid!(code = lensbench_core::error::code::GLASS_NOT_FOUND; "glass {mat} (surface {k}) is not in the catalogs{why}");
             };
             let (temp, pres, adjust) = self.env;
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
@@ -352,13 +352,13 @@ fn birefringent(
         if !(axis.iter().map(|v| v * v).sum::<f64>() > 0.0) {
             invalid!("surface {k}: Birefringent In crystal axis is 0");
         }
-        d.bire = Some(crate::surface::Bire::In {
+        d.bire = Some(lensbench_core::surface::Bire::In {
             mode: mode as u8,
             axis,
             ne: Vec::new(),
         });
     } else if name == "BIRE_OUT" {
-        d.bire = Some(crate::surface::Bire::Out);
+        d.bire = Some(lensbench_core::surface::Bire::Out);
     }
     Ok(())
 }
@@ -514,7 +514,7 @@ fn freeform_surface(
     p: &dyn Fn(i64) -> f64,
     k: usize,
 ) -> Result<()> {
-    use crate::freeform::{GridSag, ZernSag};
+    use lensbench_core::freeform::{GridSag, ZernSag};
     use std::sync::Arc;
     let fringe = typ == SurfType::ZernikeFringe;
     let nterm = s.xdat.get(&1).copied().unwrap_or(0.0);

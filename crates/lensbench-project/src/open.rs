@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::error::code;
-use lensbench_core::{zmx, Error, System};
+use lensbench_core::{Error, System};
+use lensbench_formats::zmx;
 
 /// 読み方の引数の組み合わせ・値の誤り（符号 [`code::BAD_ARGUMENT`]）
 fn bad_arg(m: String) -> Error {
@@ -456,9 +457,9 @@ mod tests {
             FileKind::of(&root.join("tests/refs/A0/system.zmx")),
             FileKind::Zmx
         );
-        let a0 = lensbench_core::zmx::load_with(
+        let a0 = lensbench_formats::zmx::load_with(
             &root.join("tests/refs/A0/system.zmx"),
-            &lensbench_core::zmx::LoadOptions {
+            &lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![root.join("tests/glass")],
                 ..Default::default()

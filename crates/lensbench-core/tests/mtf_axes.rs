@@ -6,8 +6,8 @@ use crate::common::root;
 use lensbench_core::analysis::{self, MtfAxes, MtfMethod};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{psf, Waves};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 /// A0（回転対称、角度の視野）の視野を、y の角度 h [°] と同じ向きの大きさ（tan の大きさ）で方位 0°（y）・90°（x）・
 /// 45°・135°・30°・−120° の 6 つにした系（45° の倍数でない方位では (θx, θy) と (tan θx, tan θy) の向きが違う）

@@ -5,8 +5,8 @@
 use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str, fixed: bool) -> System {
     let opt = LoadOptions {

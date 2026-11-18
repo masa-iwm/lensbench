@@ -54,16 +54,16 @@ fn load_err(e: impl std::fmt::Display) -> OpenErr {
 /// 多重構成の .zmx の構成ごとの系。読めない構成があれば、その番号を付けた誤り
 fn load_each_config(
     f: &Path,
-    lo: &lensbench_core::zmx::LoadOptions,
+    lo: &lensbench_formats::zmx::LoadOptions,
 ) -> Result<Vec<lensbench_core::System>, OpenErr> {
     let txt = lensbench_core::glass::read_text(f)
         .map_err(|e| load_err(format!("{}: {e}", f.display())))?;
-    let n = lensbench_core::zmx::parse_text(&txt)
+    let n = lensbench_formats::zmx::parse_text(&txt)
         .map_err(load_err)?
         .configurations();
     (1..=n)
         .map(|k| {
-            lensbench_core::zmx::load_configs_text(&txt, f, lo, &[k])
+            lensbench_formats::zmx::load_configs_text(&txt, f, lo, &[k])
                 .map(|mut v| v.remove(0))
                 .map_err(|e| {
                     if n > 1 {
@@ -102,7 +102,7 @@ impl Combo {
         // 多重構成の .zmx は構成ごとの系（表で書けない構成も、ファイルの構成ごとに読む）
         let is_zmx = f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
         let cfgs = if is_zmx {
-            let lo = lensbench_core::zmx::LoadOptions {
+            let lo = lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: glass_dirs.to_vec(),
                 ..Default::default()

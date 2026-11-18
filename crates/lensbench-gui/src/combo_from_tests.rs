@@ -370,12 +370,12 @@ fn multi_config_zmx_opens_with_states() {
     for name in ["mich", "p6", "tg"] {
         let f = root().join(format!("tests/bs_configs/{name}.zmx"));
         let c = Combo::from_zmx(&f, &gd, &[]).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let lo = lensbench_core::zmx::LoadOptions {
+        let lo = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
         };
-        let all = lensbench_core::zmx::load_configs(&f, &lo, &[]).unwrap();
+        let all = lensbench_formats::zmx::load_configs(&f, &lo, &[]).unwrap();
         assert!(all.len() >= 3, "{name}");
         assert_eq!(c.picks.len(), 1, "{name}");
         assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");

@@ -424,11 +424,11 @@ fn crystal_plate_zmx_roundtrip() {
     assert!(txt.contains("COAT I.99999999"));
     let p = std::env::temp_dir().join(format!("lb_crystal_{}.zmx", std::process::id()));
     std::fs::write(&p, &txt).unwrap();
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         catalog_dirs: vec![root().join("tests/glass")],
         ..Default::default()
     };
-    let r = lensbench_core::zmx::load_with(&p, &opt).unwrap();
+    let r = lensbench_formats::zmx::load_with(&p, &opt).unwrap();
     std::fs::remove_file(&p).ok();
     for w in 0..3 {
         let (a, b) = (fields(&s, w), fields(&r, w));

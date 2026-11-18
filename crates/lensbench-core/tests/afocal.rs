@@ -4,8 +4,8 @@
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{AfocalUnit, FieldSel, System};
-use lensbench_core::zmx;
 use lensbench_core::Waves;
+use lensbench_formats::zmx;
 use lensbench_formats::zmx_write;
 
 /// ケプラー型の望遠鏡（物体は無限遠、視野 0・0.5°）。afocal で FTYP の 7 番目、img で像面までの距離
@@ -384,8 +384,8 @@ fn an_unsolvable_thickness_solve_is_fixed_at_the_saved_value_on_load() {
                SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 30\n  MAZH 0 0\n\
                SURF 2\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 50\n  PARM 2 1\n  DISZ 40\n  MAZH 0 0\n\
                SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-    let raw = lensbench_core::zmx::parse_text(txt).unwrap();
-    let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+    let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
     // 面 1 の後ろは平行光で解けない: 保存された 30 のまま、ソルブは外す
     assert_eq!(s.surfaces[1].t, 30.0);
     assert_eq!(s.solves.len(), 1, "{:?}", s.solves);

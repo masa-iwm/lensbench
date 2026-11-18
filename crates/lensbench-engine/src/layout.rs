@@ -224,12 +224,12 @@ mod tests {
     #[test]
     fn defaults_follow_the_view() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = lensbench_core::zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s =
-            lensbench_core::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt)
+            .unwrap();
         let r = RaySel::default();
         assert_eq!(r.options(&s, View::YZ).unwrap().fan, Fan::Y);
         assert_eq!(r.options(&s, View::XZ).unwrap().fan, Fan::X);

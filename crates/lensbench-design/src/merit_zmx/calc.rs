@@ -5,7 +5,7 @@
 //! lensbench は項の誤りにする。
 
 use super::{kind_of, zern_standard_fit, INT1, INT2, TARGET};
-use lensbench_core::zmx::merit::MeritRow;
+use lensbench_formats::zmx::merit::MeritRow;
 use serde_json::{json, Map, Value};
 
 /// 計算の行の演算子

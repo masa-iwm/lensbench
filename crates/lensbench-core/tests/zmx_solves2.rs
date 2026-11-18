@@ -6,7 +6,7 @@ use lensbench_core::param::Kind;
 use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::After;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 use lensbench_formats::zmx_write;
 
 const HEAD: &str =

@@ -222,9 +222,9 @@ SURF 9\n  TYPE STANDARD\n  CURV 0\n  DISZ 0\n";
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("cube_r.zmx");
     std::fs::write(&f, zmx).unwrap();
-    let mut hand = lensbench_core::zmx::load_with(
+    let mut hand = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root().join("tests/glass")],
             ..Default::default()
@@ -566,9 +566,9 @@ fn os_case(name: &str) -> System {
 fn written_paths_read_back_as_the_same_system() {
     for name in OS_CASES {
         let s = os_case(name);
-        let z = lensbench_core::zmx::load_with(
+        let z = lensbench_formats::zmx::load_with(
             &splitter_dir().join(format!("{name}.zmx")),
-            &lensbench_core::zmx::LoadOptions {
+            &lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![root().join("tests/glass")],
                 ..Default::default()

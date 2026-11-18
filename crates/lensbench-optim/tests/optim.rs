@@ -4,9 +4,9 @@
 use crate::common::root;
 use lensbench_core::pupil::Apodization;
 use lensbench_core::sweep::{rms, RmsOpts, RmsRef};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
 use lensbench_core::{FieldSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_optim::{dls, DefaultMerit, DlsOpts, JacMode, MtfDir, Problem, Term, TermKind, Var};
 
 fn load(name: &str) -> System {

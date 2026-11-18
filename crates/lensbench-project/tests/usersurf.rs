@@ -1,6 +1,7 @@
 //! 利用者定義の面を編集の操作で付け、系ファイルに書いて読み直す
 
-use lensbench_core::{zmx, FieldSel};
+use lensbench_core::FieldSel;
+use lensbench_formats::zmx;
 use lensbench_project::{edit_ops, sysfile};
 use serde_json::json;
 

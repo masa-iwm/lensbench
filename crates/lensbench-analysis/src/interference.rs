@@ -452,8 +452,8 @@ mod tests {
             one.join(" "),
             50.0 + dz
         );
-        let raw = lensbench_core::zmx::parse_text(&txt).unwrap();
-        lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = lensbench_formats::zmx::parse_text(&txt).unwrap();
+        lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]
@@ -629,8 +629,8 @@ mod tests {
              SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             100.0 + dz
         );
-        let raw = lensbench_core::zmx::parse_text(&txt).unwrap();
-        lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = lensbench_formats::zmx::parse_text(&txt).unwrap();
+        lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]

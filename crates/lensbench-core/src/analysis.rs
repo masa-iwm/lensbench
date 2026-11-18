@@ -406,12 +406,12 @@ mod tests {
         // 絞りの面に絞りの半径の 0.9 倍の開口を置くと瞳の縁の光線がけられる。内側の点の差で見積もった J は
         // 縁の差の J と瞳の収差の分しか違わず、MTF も計算できる
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::zmx::LoadOptions {
+        let opt = crate::test_zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = crate::test_zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
         for k in 0..s.fields.len() {
             let f = FieldSel::Index(k);
             let j0 = pupil_jacobian(&s, f, s.primary).unwrap();
@@ -516,12 +516,12 @@ mod tests {
     #[test]
     fn zernike_fit_is_the_same_for_any_thread_count() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::zmx::LoadOptions {
+        let opt = crate::test_zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::zmx::load_with(&root.join("tests/refs/C0/system.zmx"), &opt).unwrap();
+        let s = crate::test_zmx::load_with(&root.join("tests/refs/C0/system.zmx"), &opt).unwrap();
         let f = FieldSel::Index(1);
         let run = |t| {
             crate::with_threads(Some(t), || {
@@ -540,12 +540,12 @@ mod tests {
         // 格子 32・Standard 496 項（次数 30）は正規方程式では解けない（条件数が大きい）ので QR で解く。
         // 行列を zernike_row で作って lstsq で解いた値と比べる
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::zmx::LoadOptions {
+        let opt = crate::test_zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = crate::test_zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
         let f = FieldSel::Index(1);
         let (nt, n) = (496, 32);
         let z = zernike(&s, f, None, ZernKind::Standard, nt, n, false).unwrap();
@@ -592,8 +592,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 50\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::zmx::parse_text(txt).unwrap();
-        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = crate::test_zmx::parse_text(txt).unwrap();
+        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let (px, py) = pupil_grid(9);
         for f in 0..2 {
             let t = s
@@ -625,8 +625,8 @@ mod tests {
              SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             afocal as i32
         );
-        let raw = crate::zmx::parse_text(&txt).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = crate::test_zmx::parse_text(&txt).unwrap();
+        crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]

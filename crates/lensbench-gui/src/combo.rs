@@ -3140,7 +3140,7 @@ pub(crate) fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     }
     let v = lensbench_core::glass::read_text(std::path::Path::new(path))
         .ok()
-        .and_then(|t| lensbench_core::zmx::parse_text(&t).ok())
+        .and_then(|t| lensbench_formats::zmx::parse_text(&t).ok())
         .and_then(|raw| {
             let stop = raw.surfs.iter().position(|x| x.stop)?;
             Some((stop, raw.surfs.len().checked_sub(1)?))

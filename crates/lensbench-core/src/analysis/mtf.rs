@@ -702,8 +702,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::zmx::parse_text(txt).unwrap();
-        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = crate::test_zmx::parse_text(txt).unwrap();
+        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let nc = 1.0 / (0.55e-3 * 10.0);
         let freqs: Vec<f64> = (0..10).map(|i| nc * i as f64 / 10.0).collect();
         let m = mtf(&s, FieldSel::Index(0), Waves::All, Some(128), &freqs).unwrap();
@@ -732,8 +732,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::zmx::parse_text(txt).unwrap();
-        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = crate::test_zmx::parse_text(txt).unwrap();
+        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let s = crate::sweep::defocus(&s, 20.0).unwrap();
         let freqs = [2.0, 10.0, 60.0];
         for f in 0..2 {

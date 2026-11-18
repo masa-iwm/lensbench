@@ -525,9 +525,9 @@ mod tests {
 
     fn sys() -> System {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        lensbench_core::zmx::load_with(
+        lensbench_formats::zmx::load_with(
             &root.join("tests/refs/A0/system.zmx"),
-            &lensbench_core::zmx::LoadOptions {
+            &lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![root.join("tests/glass")],
                 ..Default::default()
@@ -637,14 +637,14 @@ mod tests {
     /// ミラーのある系の近軸の量（OpticStudio で確かめていない）は項の誤り
     #[test]
     fn mirror_terms_rejected() {
-        let raw = lensbench_core::zmx::parse_text(
+        let raw = lensbench_formats::zmx::parse_text(
             "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 1 1 0 0 0\n\
 YFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
 SURF 1\n  STOP\n  TYPE STANDARD\n  CURV -0.01\n  DISZ -50\n  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0\n\
 SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
         )
         .unwrap();
-        let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let check = |v: Value| {
             let mut p = lensbench_optim::Problem::single(s.clone());
             p.terms = terms_from_json(&serde_json::json!([v]), std::slice::from_ref(&s)).unwrap();

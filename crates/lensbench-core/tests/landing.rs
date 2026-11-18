@@ -9,8 +9,8 @@ use lensbench_core::math::*;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
 use lensbench_core::system::{Launch, Trace};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str) -> System {
     zmx::load_with(

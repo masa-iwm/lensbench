@@ -8,8 +8,8 @@ use lensbench_core::ext::{self, Ext};
 use lensbench_core::glass::{self, Glass};
 use lensbench_core::system::{FieldSel, PolIn};
 use lensbench_core::usermaterial::{check_material, MaterialModel};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::sync::Arc;
 
 /// AGF のガラスをそのまま返すモデル（名前は別に付ける）

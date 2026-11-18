@@ -656,9 +656,9 @@ mod tests {
     #[test]
     fn stopped_as_vignetted_reaches_the_problem() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let s = lensbench_core::zmx::load_with(
+        let s = lensbench_formats::zmx::load_with(
             &root.join("tests/refs/A0/system.zmx"),
-            &lensbench_core::zmx::LoadOptions {
+            &lensbench_formats::zmx::LoadOptions {
                 cfg: 1,
                 catalog_dirs: vec![root.join("tests/glass")],
                 ..Default::default()

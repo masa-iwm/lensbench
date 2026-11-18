@@ -4,9 +4,9 @@ use lensbench_core::analysis;
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldCond, FieldSel, FieldType, ObjSpec};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use lensbench_core::Waves;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {

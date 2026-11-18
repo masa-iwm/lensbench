@@ -21,6 +21,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 lensbench-step = { path = "../lensbench-step" }
 
 [dev-dependencies]
+lensbench-formats = { path = "../lensbench-formats" }
 ndarray = "0.16"
 ndarray-npy = "0.9"
 lensbench-project = { path = "../lensbench-project" }

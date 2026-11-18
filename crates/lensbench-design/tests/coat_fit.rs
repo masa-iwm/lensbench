@@ -1,8 +1,8 @@
 //! 膜のモデルの当てはめ（coat_fit）: モデルガラスの表から当てたモデルが膜の重なりと合う（core の tests/polarization.rs から移した）
 
 use lensbench_core::coating::Coatings;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn a0() -> System {

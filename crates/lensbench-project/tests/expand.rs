@@ -1,6 +1,6 @@
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 

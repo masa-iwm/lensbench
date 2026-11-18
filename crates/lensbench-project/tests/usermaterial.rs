@@ -2,7 +2,8 @@
 
 use lensbench_core::ext::{self, Ext};
 use lensbench_core::usermaterial::MaterialModel;
-use lensbench_core::{zmx, FieldSel};
+use lensbench_core::FieldSel;
+use lensbench_formats::zmx;
 use lensbench_project::sysfile;
 use std::sync::Arc;
 

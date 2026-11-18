@@ -11,7 +11,7 @@
 //! Wizard は瞳の半分（軸上は腕 1 本）だけを並べるが、項は瞳全体の点を使う（回転対称な系では同じ値）。
 
 use super::{data, is_length, INT2, TARGET, WEIGHT};
-use lensbench_core::zmx::merit::MeritRow;
+use lensbench_formats::zmx::merit::MeritRow;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 

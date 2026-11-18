@@ -585,13 +585,13 @@ fn coating_models_come_from_the_store_when_missing() {
     std::fs::rename(dir.join("ZEC_R.lbcb.bak"), coat.join("ZEC_R.lbcb")).unwrap();
     // 配る版と同じく .lbcb を外す。系の膜は置き場から取って読む
     std::fs::remove_file(coat.join("ZEC_R.lbcb")).unwrap();
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         cfg: 1,
         catalog_dirs: vec![root().join("tests/glass")],
         ..Default::default()
     };
     let mut s =
-        lensbench_core::zmx::load_with(&root().join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        lensbench_formats::zmx::load_with(&root().join("tests/refs/A0/system.zmx"), &opt).unwrap();
     let j = (1..s.surfaces.len())
         .find(|&j| !s.surfaces[j].mat.is_air())
         .unwrap();

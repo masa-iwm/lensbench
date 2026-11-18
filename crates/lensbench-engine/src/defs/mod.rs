@@ -23,12 +23,12 @@ mod tests {
     #[test]
     fn each_runs_with_defaults() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = lensbench_core::zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s =
-            lensbench_core::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt)
+            .unwrap();
         let cx = lensbench_analysis::Cx::new(&s);
         let mut a = lensbench_analysis::Analyses::default();
         super::register(&mut a);

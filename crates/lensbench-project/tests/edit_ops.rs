@@ -1,6 +1,6 @@
 //! JSON の操作の列での系の編集（serve の edit）。
 
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_project::edit_ops;
 use serde_json::json;
 use std::path::PathBuf;

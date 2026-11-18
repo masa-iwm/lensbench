@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use lensbench_core::system::Aiming;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 
 #[test]
 fn many_rays_agree_with_few_rays() {

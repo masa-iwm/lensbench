@@ -3,8 +3,8 @@
 use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::{FieldSel, PolIn};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 use std::time::Instant;
 

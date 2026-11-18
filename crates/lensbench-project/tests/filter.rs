@@ -228,9 +228,9 @@ fn zmx_export_keeps_coat_tables() {
     );
     let txt = lensbench_core::glass::read_text(&zp).unwrap();
     assert!(txt.contains("COFN QF \"bp_coat.dat\""), "{txt}");
-    let r = lensbench_core::zmx::load_with(
+    let r = lensbench_formats::zmx::load_with(
         &zp,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root().join("tests/glass")],
             ..Default::default()

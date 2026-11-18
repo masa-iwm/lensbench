@@ -2,8 +2,8 @@
 //! 系は tests/refs の OpticStudio が保存した .zmx
 
 use crate::common::root;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{glass, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 
 fn opt() -> LoadOptions {

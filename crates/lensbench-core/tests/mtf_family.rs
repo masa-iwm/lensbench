@@ -3,9 +3,9 @@
 
 use crate::common::root;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
 use lensbench_core::{analysis, psf, sweep};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str) -> System {
     let opt = LoadOptions {

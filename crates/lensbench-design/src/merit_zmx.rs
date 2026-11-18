@@ -1,4 +1,4 @@
-//! .zmx の評価関数（[`lensbench_core::zmx::merit`] の行）を評価関数の項の JSON（[`crate::merit`] の表）に写す。
+//! .zmx の評価関数（[`lensbench_formats::zmx::merit`] の行）を評価関数の項の JSON（[`crate::merit`] の表）に写す。
 //!
 //! 写せる演算子は lensbench の項で同じ量を表せるものだけ。写せない行・意味の違う行は行番号つきの注意にして飛ばし、
 //! 残りで評価関数を作る。重み 0 の行は評価関数に効かないので黙って飛ばす（OPGT・OPLT から参照されるときは使う）。
@@ -10,7 +10,7 @@
 //! lensbench の値にする。MTFT・MTFS の標本（64 × 64 など）は lensbench の MTF の求積点の数と意味が違い、OpticStudio の
 //! 低い標本は収束していないので渡さない（lensbench が収束する点の数を選ぶ）。ZERN の標本は格子の点の数として渡す。
 
-use lensbench_core::zmx::merit::{MeritFunction, MeritRow};
+use lensbench_formats::zmx::merit::{MeritFunction, MeritRow};
 use serde_json::{json, Map, Value};
 
 mod calc;

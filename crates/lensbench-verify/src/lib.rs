@@ -697,12 +697,12 @@ impl Manifest {
         let s = if ext.as_deref() == Some("json") {
             lensbench_project::sysfile::load_with(&sp.path, &sp.glass_dirs)?.0
         } else {
-            let opt = lensbench_core::zmx::LoadOptions {
+            let opt = lensbench_formats::zmx::LoadOptions {
                 cfg: sp.cfg,
                 catalog_dirs: sp.glass_dirs.clone(),
                 ..Default::default()
             };
-            lensbench_core::zmx::load_with(&sp.path, &opt)?
+            lensbench_formats::zmx::load_with(&sp.path, &opt)?
         };
         Ok(Some(Arc::new(s)))
     }

@@ -1,7 +1,7 @@
 //! ZPL Macro Solve: .zmx のソルブが呼ぶ ZPL のマクロを [`crate::zpl`] で走らせ、曲率・厚さ・円錐係数・半直径・面タイプのパラメータを
 //! 決める。
 //!
-//! マクロの文（.ZPL）は読込のときに探す（[`crate::zmx::LoadOptions::macro_dirs`]、.zmx のフォルダ、その隣の
+//! マクロの文（.ZPL）は読込のときに探す（[`crate::test_zmx::LoadOptions::macro_dirs`]、.zmx のフォルダ、その隣の
 //! Macros、環境変数 `LENSBENCH_MACROS`）。見つからない・読めない・lensbench が対応していない命令・関数を使うマクロは、ソルブを外して
 //! .zmx に保存された値で固定し、[`System::macro_warnings`] に理由を残す。
 //!

@@ -3,7 +3,8 @@
 use lensbench_core::ext::{self, Ext};
 use lensbench_core::plugin::{Config, ConfigReader};
 use lensbench_core::usershape::{ShapeInstance, ShapeModel};
-use lensbench_core::{zmx, FieldSel, Result};
+use lensbench_core::{FieldSel, Result};
+use lensbench_formats::zmx;
 use lensbench_project::{edit_ops, sysfile};
 use serde_json::json;
 use std::sync::Arc;

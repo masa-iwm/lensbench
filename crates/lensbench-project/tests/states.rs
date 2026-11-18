@@ -1,8 +1,8 @@
 //! 状態（多重構成に当たる）と群（ズーム群・フォーカス群）の展開の自己照合
 
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::{Path, PathBuf};
 

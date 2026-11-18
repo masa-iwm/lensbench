@@ -12,8 +12,8 @@ use lensbench_core::freeform::ZernSag;
 use lensbench_core::plugin::Config;
 use lensbench_core::surface::SurfType;
 use lensbench_core::usershape::{ShapeInstance, ShapeModel, UserShape};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, Result, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 const RAYS: usize = 20_000;
 

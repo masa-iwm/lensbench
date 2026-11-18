@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use lensbench_core::analysis::{self, MtfMethod};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
+use lensbench_formats::zmx::{self, LoadOptions};
 use serde_json::Value;
 
 fn nums(v: &Value) -> Vec<f64> {

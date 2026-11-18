@@ -4,7 +4,7 @@
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::fiber::{fiber_coupling, FiberOpts};
 use lensbench_core::system::System;
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 
 fn relay(defocus: f64) -> System {
     let t = format!(

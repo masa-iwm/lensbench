@@ -21,7 +21,8 @@ use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::sync::LockExt;
-use lensbench_core::{par, zmx, System};
+use lensbench_core::{par, System};
+use lensbench_formats::zmx;
 use lensbench_optim::{
     DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
 };

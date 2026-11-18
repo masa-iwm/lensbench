@@ -2,7 +2,7 @@
 
 use lensbench_core::report::cardinal;
 use lensbench_core::system::System;
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 
 const HEAD: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 1 1 0 0 0\n\

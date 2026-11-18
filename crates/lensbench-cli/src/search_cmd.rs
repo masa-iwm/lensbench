@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 use clap::Args;
 use lensbench_core::catalog::LensCatalog;
-use lensbench_core::{zmx, System};
+use lensbench_core::System;
 use lensbench_design::dls_spec::{ImageMerit, Reference, Targets, VarSpec, ZoomMethod, ZoomParams};
 use lensbench_design::swap::{SwapSearch, SwapSpec};
+use lensbench_formats::zmx;
 use lensbench_project::{Env, Project};
 use serde_json::{json, Value};
 

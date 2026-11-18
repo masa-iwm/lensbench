@@ -7,7 +7,7 @@
 use crate::common::root;
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::system::FieldSel;
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use serde_json::Value;
 use std::f64::consts::PI;
 

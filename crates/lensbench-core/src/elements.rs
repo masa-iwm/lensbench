@@ -466,8 +466,8 @@ mod tests {
     use std::sync::Arc;
 
     fn sys(txt: &str) -> System {
-        let raw = crate::zmx::parse_text(txt).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = crate::test_zmx::parse_text(txt).unwrap();
+        crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     const HEAD: &str =

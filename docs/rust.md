@@ -2,11 +2,11 @@
 
 ## 入口: 読む・追跡する・解析する
 
-`use lensbench_core::prelude::*;` で主な口がそろう。それ以外の `pub` のモジュールは上の層のクレートと拡張のための口で、
+`use lensbench_formats::prelude::*;` で主な口がそろう（core の prelude に .zmx の読込 `zmx`・`LoadOptions` を足したもの）。それ以外の `pub` のモジュールは上の層のクレートと拡張のための口で、
 版の間で変わりやすい。
 
 ```rust,ignore
-use lensbench_core::prelude::*;
+use lensbench_formats::prelude::*;
 
 lensbench_core::init_from_env(); // LENSBENCH_GLASSCAT・LENSBENCH_THREADS など（使わないなら呼ばなくてよい）
 let opt = LoadOptions { catalog_dirs: vec!["glass".into()], ..Default::default() };

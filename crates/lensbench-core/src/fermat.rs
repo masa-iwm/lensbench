@@ -782,8 +782,8 @@ SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n";
             }
         }
         t += "SURF 8\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::zmx::parse_text(&t).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = crate::test_zmx::parse_text(&t).unwrap();
+        crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     /// 陰関数の式による ds/dpが、ソルブを解き直した系の中心差分（従来の求め方）と合う。

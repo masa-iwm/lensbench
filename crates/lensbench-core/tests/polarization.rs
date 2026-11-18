@@ -4,8 +4,8 @@
 use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::surface::SurfType;
 use lensbench_core::system::{FieldSel, PolIn};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{Error, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn a0() -> System {

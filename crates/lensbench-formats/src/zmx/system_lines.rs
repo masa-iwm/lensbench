@@ -76,14 +76,14 @@ impl Raw {
     }
 }
 
-/// 瞳のアポダイゼーション: 系の行 GFAC 係数 種類（[`crate::pupil::Apodization::from_zmx`]。OpticStudio 26.1 の実測で
+/// 瞳のアポダイゼーション: 系の行 GFAC 係数 種類（[`lensbench_core::pupil::Apodization::from_zmx`]。OpticStudio 26.1 の実測で
 /// `GFAC 1.5 1` = Gaussian 1.5、`GFAC 0 2` = Cosine Cubed、`GFAC 0 0` = 一様。種類が Gaussian でなくても係数は残る）。
 /// APDT・APDF は系の行ではなく多重構成の操作数（構成で変わるものは誤り、変わらなければこの行と同じ）。
 /// カタログの玉として読むときは使わない（[`Raw::system_notes`] が注意に残す）
-pub(super) fn apodization(raw: &Raw, catalog: bool) -> Result<crate::pupil::Apodization> {
+pub(super) fn apodization(raw: &Raw, catalog: bool) -> Result<lensbench_core::pupil::Apodization> {
     if catalog {
-        return Ok(crate::pupil::Apodization::Uniform);
+        return Ok(lensbench_core::pupil::Apodization::Uniform);
     }
     let kind = sys_str(raw, "GFAC", 1).unwrap_or("0");
-    crate::pupil::Apodization::from_zmx(kind, sys_f(raw, "GFAC", 0, 0.0)?)
+    lensbench_core::pupil::Apodization::from_zmx(kind, sys_f(raw, "GFAC", 0, 0.0)?)
 }

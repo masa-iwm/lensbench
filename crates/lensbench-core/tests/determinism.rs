@@ -5,9 +5,9 @@ use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{Aiming, FieldSel, PolIn};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
 use lensbench_core::{with_threads, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 fn load(name: &str) -> System {

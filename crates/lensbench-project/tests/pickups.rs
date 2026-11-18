@@ -1,6 +1,6 @@
 //! zmx ブロックで取り込んだ面のピックアップを展開した系に残す。
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx;
+use lensbench_formats::zmx;
 use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 

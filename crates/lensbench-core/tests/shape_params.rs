@@ -7,8 +7,8 @@ use crate::common::root;
 use lensbench_core::freeform::ZernSag;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::sync::Arc;
 
 /// 半直径を今の値に固定する（Irregular の正規化半径は半直径なので、自動の半直径だとパラメータを変えた系で

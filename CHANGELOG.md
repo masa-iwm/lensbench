@@ -9,6 +9,8 @@
 
 ### 互換が切れる所
 
+- **.zmx の読込を lensbench-formats へ**: Rust の `lensbench_core::zmx` は `lensbench_formats::zmx` になった。
+  `lensbench_formats::prelude` は core の prelude に `zmx`・`LoadOptions` を足したもの。CLI・GUI・Python は変わらない。
 - **過去の形式の読込をやめた**: システムファイルの版 1、列挙の旧名（`"Epd"`・`"Real"`・`"Milliradians"` など大文字始まりの名前）、
   GUI の `--convert-combo`、`glass_dirs` の無い古い pickle は読まない。0.5 で開いて保存し直すと今の形になる。
 - **条件で定める視野の条件の JSON**: core のシステムの形（serve の `system_data` など）でも、システムファイルと同じ

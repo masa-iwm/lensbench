@@ -858,9 +858,9 @@ fn image_space_glass_zmx_fills_the_last_gap() {
     assert!(in_medium(&ed), "{:?}", ed.notes);
     assert!(s.surfaces[s.image() - 1].mat.is_medium() && !s.surfaces[s.image() - 1].mat.is_air());
     // まるごとの取り込み（分けられない .zmx に使う）は反転できない
-    let s0 = lensbench_core::zmx::load_with(
+    let s0 = lensbench_formats::zmx::load_with(
         &f,
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()

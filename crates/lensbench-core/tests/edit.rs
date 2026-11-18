@@ -7,8 +7,8 @@ use lensbench_core::pickup::Pickup;
 use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{Aperture, SurfType, Surface};
 use lensbench_core::system::{Aiming, ApertureKind, Field, FieldNorm, FieldSel, FieldType};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::collections::HashMap;
 
 fn load(name: &str) -> System {

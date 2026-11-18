@@ -1,6 +1,6 @@
 //! 壊れた .zmx で panic・メモリ確保の暴走をしない（数の欄を 1 つずつ壊して読む。誤りを返すのはよい）
 
-use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
 
 #[test]

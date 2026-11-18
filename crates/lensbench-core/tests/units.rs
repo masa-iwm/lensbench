@@ -4,8 +4,8 @@ use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldSel, ObjSpec};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 
 fn load(name: &str) -> System {

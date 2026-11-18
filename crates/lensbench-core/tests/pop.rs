@@ -241,8 +241,8 @@ fn paraxial_lens(f: f64, epd: f64) -> lensbench_core::System {
          SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 {f}\n  PARM 2 1\n  DISZ {f}\n\
          SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     );
-    let raw = lensbench_core::zmx::parse_text(&t).unwrap();
-    lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+    let raw = lensbench_formats::zmx::parse_text(&t).unwrap();
+    lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap()
 }
 
 /// 理想レンズの直後の場を光線から作り、焦点まで伝える。f/10 の正確な球面波なので
@@ -470,11 +470,11 @@ fn angular_spectrum_composes_and_keeps_power() {
 
 fn a0() -> lensbench_core::System {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let opt = lensbench_core::zmx::LoadOptions {
+    let opt = lensbench_formats::zmx::LoadOptions {
         catalog_dirs: vec![root.join("tests/glass")],
         ..Default::default()
     };
-    lensbench_core::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap()
+    lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap()
 }
 
 /// 実レンズ（f/5 のトリプレット）: 最後の面の後ろの場を光線から作り、像面へ伝えた照度の最大は

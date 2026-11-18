@@ -3,7 +3,8 @@
 use super::Pick;
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind as EKind};
-use lensbench_core::{par, zmx};
+use lensbench_core::par;
+use lensbench_formats::zmx;
 use std::collections::HashMap;
 use std::path::PathBuf;
 

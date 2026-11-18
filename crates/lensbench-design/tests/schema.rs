@@ -62,9 +62,9 @@ fn terms_schema_matches_reader() {
     ] {
         assert!(!v.is_valid(&bad), "{bad}");
     }
-    let s = lensbench_core::zmx::load_with(
+    let s = lensbench_formats::zmx::load_with(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refs/A0/system.zmx"),
-        &lensbench_core::zmx::LoadOptions {
+        &lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass")],
             ..Default::default()

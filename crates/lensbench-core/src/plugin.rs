@@ -895,12 +895,12 @@ mod tests {
     #[test]
     fn plugin_with_system() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::zmx::LoadOptions {
+        let opt = crate::test_zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let sys = crate::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let sys = crate::test_zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
         let sys = Arc::new(sys);
         let inst = SpotRms.prepare(&Config::new()).unwrap();
         let inp: Vec<Arrays> = (0..2)

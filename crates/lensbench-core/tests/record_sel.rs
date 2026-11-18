@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use lensbench_core::par::with_batch;
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, RecSel, System};
+use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str) -> System {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

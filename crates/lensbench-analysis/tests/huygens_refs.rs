@@ -16,8 +16,8 @@
 use crate::common::root;
 use lensbench_analysis::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
+use lensbench_formats::zmx::{self, LoadOptions};
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
