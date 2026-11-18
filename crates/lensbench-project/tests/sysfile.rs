@@ -1,5 +1,5 @@
 //! 系ファイル（版 2）: 公開の試験の .zmx すべてと例題を、保存して読み直すと追跡・近軸量がビット一致し、
-//! 書き直した文字列も同じになる。hash は同じ系で同じ。版 1 も読める。
+//! 書き直した文字列も同じになる。hash は同じ系で同じ。版 1 は読まない。
 
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::pickup::Pickup;
@@ -484,44 +484,12 @@ fn errors_and_files() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// 版 1（core の System の serde をそのまま書いた形）も読める
+/// 版 1（core の System の serde をそのまま書いた形）は読まず、保存し直す手順を誤りで示す
 #[test]
-fn reads_version_1() {
-    fn json(v: ciborium::value::Value) -> serde_json::Value {
-        use ciborium::value::Value as C;
-        match v {
-            C::Null => serde_json::Value::Null,
-            C::Bool(b) => b.into(),
-            C::Integer(i) => {
-                let i: i128 = i.into();
-                serde_json::json!(i as i64)
-            }
-            C::Float(f) if f.is_finite() => f.into(),
-            C::Float(f) => serde_json::json!({"$f": if f > 0.0 { "inf" } else { "-inf" }}),
-            C::Text(s) => s.into(),
-            C::Array(a) => a.into_iter().map(json).collect(),
-            C::Map(m) => m
-                .into_iter()
-                .map(|(k, v)| (k.into_text().unwrap(), json(v)))
-                .collect::<serde_json::Map<_, _>>()
-                .into(),
-            C::Tag(_, v) => json(*v),
-            _ => panic!(),
-        }
-    }
-    for name in ["A0", "D0"] {
-        let s = load(name);
-        let sys = json(ciborium::value::Value::serialized(&s).unwrap());
-        let v1 =
-            serde_json::json!({"format": "lensbench-system", "format_version": 1, "system": sys});
-        let (t, _, warn) = sysfile::from_str(&v1.to_string()).unwrap();
-        assert!(warn.is_empty(), "{warn:?}");
-        assert_eq!(fingerprint(&s), fingerprint(&t), "{name}");
-        // 書くのは版 2
-        assert!(sysfile::to_string(&t, &[])
-            .unwrap()
-            .contains("\"format_version\": 2"));
-    }
+fn rejects_version_1() {
+    let v1 = serde_json::json!({"format": "lensbench-system", "format_version": 1, "system": {}});
+    let e = sysfile::from_str(&v1.to_string()).unwrap_err().to_string();
+    assert!(e.contains("version 1 is no longer read"), "{e}");
 }
 
 /// ZPL Macro Solve: 系ファイルにはマクロの文を入れ、パスは書かない。読み直すときにファイルは読まず、

@@ -66,9 +66,13 @@ impl FieldKind {
     serde::Deserialize,
     schemars::JsonSchema,
 )]
+#[serde(tag = "cond", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FieldCond {
-    /// 面 surf での位置 (x, y) = 視野の値
-    Position { surf: usize },
+    /// 面 surf での位置 (x, y) = 視野の値（JSON の欄の名前は surface）
+    Position {
+        #[serde(rename = "surface")]
+        surf: usize,
+    },
     /// 面 s1 と s2 での方向余弦 (l, m) の和 = 視野の値（法線入射で戻る主光線なら 0）
     DirSum { s1: usize, s2: usize },
     /// 面 s1 と s2 での方向余弦 (l, m) の差（s1 − s2）= 視野の値
@@ -81,10 +85,8 @@ pub enum FieldCond {
 pub enum FieldNorm {
     /// 半径（最も遠い視野が 1）
     #[default]
-    #[serde(alias = "Radial")]
     Radial,
     /// 矩形（x・y の最大がそれぞれ 1）
-    #[serde(alias = "Rect")]
     Rect,
 }
 /// 定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）
@@ -102,12 +104,12 @@ pub enum FieldNorm {
 pub enum VigInterp {
     /// OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。
     /// OpticStudio と照合するとき
-    #[serde(rename = "opticstudio", alias = "OpticStudio")]
+    #[serde(rename = "opticstudio")]
     OpticStudio,
     /// 連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は
     /// 同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値
     #[default]
-    #[serde(rename = "continuous", alias = "Continuous")]
+    #[serde(rename = "continuous")]
     Continuous,
 }
 
@@ -126,22 +128,22 @@ pub enum VigInterp {
 pub enum ApertureKind {
     /// 入射瞳径
     #[default]
-    #[serde(rename = "epd", alias = "Epd")]
+    #[serde(rename = "epd")]
     Epd,
     /// 像側 F 値
-    #[serde(rename = "fnum", alias = "FNum")]
+    #[serde(rename = "fnum")]
     FNum,
     /// 物体側 NA
-    #[serde(rename = "na", alias = "Na")]
+    #[serde(rename = "na")]
     Na,
     /// 絞り径（絞りの半直径）
-    #[serde(rename = "float", alias = "Float")]
+    #[serde(rename = "float")]
     Float,
     /// 近軸作動 F 値
-    #[serde(rename = "pwfn", alias = "Pwfn")]
+    #[serde(rename = "pwfn")]
     Pwfn,
     /// 物体側コーン角
-    #[serde(rename = "cone", alias = "Cone")]
+    #[serde(rename = "cone")]
     Cone,
 }
 /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目、OpticStudio の Afocal Mode Units）
@@ -149,18 +151,12 @@ pub enum ApertureKind {
 #[serde(rename_all = "snake_case")]
 #[derive(schemars::JsonSchema)]
 pub enum AfocalUnit {
-    #[serde(alias = "Microradians")]
     Microradians,
     #[default]
-    #[serde(alias = "Milliradians")]
     Milliradians,
-    #[serde(alias = "Radians")]
     Radians,
-    #[serde(alias = "ArcSeconds")]
     ArcSeconds,
-    #[serde(alias = "ArcMinutes")]
     ArcMinutes,
-    #[serde(alias = "Degrees")]
     Degrees,
 }
 
@@ -218,11 +214,8 @@ impl AfocalUnit {
 #[derive(schemars::JsonSchema)]
 pub enum Aiming {
     #[default]
-    #[serde(alias = "Off")]
     Off,
-    #[serde(alias = "Paraxial")]
     Paraxial,
-    #[serde(alias = "Real")]
     Real,
 }
 

@@ -2772,20 +2772,18 @@ type Reduced<'py> = (
     (Bound<'py, PyBytes>, Vec<PathBuf>, Vec<PathBuf>),
 );
 
-/// Rebuild a system from a pickle (the values of [`PySystem::__reduce__`]). glass_dirs is missing in pickles of older versions
+/// Rebuild a system from a pickle (the values of [`PySystem::__reduce__`])
 #[pyfunction]
-#[pyo3(signature = (state, coatings, glass_dirs=None))]
 fn _system_from_state(
     state: &[u8],
     coatings: Vec<PathBuf>,
-    glass_dirs: Option<Vec<PathBuf>>,
+    glass_dirs: Vec<PathBuf>,
 ) -> PyResult<PySystem> {
     let txt =
         std::str::from_utf8(state).map_err(|e| value_err(format!("reloading the system: {e}")))?;
     // 長さと系の約束は sysfile::check で確かめる（壊れたバイト列で追跡が panic しないよう）
-    let (sys, _, _) =
-        lensbench_project::sysfile::from_str_with(txt, &glass_dirs.unwrap_or_default())
-            .map_err(|e| value_err(format!("reloading the system: {e}")))?;
+    let (sys, _, _) = lensbench_project::sysfile::from_str_with(txt, &glass_dirs)
+        .map_err(|e| value_err(format!("reloading the system: {e}")))?;
     Ok(PySystem::new(sys, coatings, Default::default()))
 }
 

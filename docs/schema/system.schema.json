@@ -1055,6 +1055,83 @@
       ],
       "type": "object"
     },
+    "FieldCond": {
+      "description": "条件で定める視野の条件（主光線、局所座標）",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "面 surf での位置 (x, y) = 視野の値（JSON の欄の名前は surface）",
+          "properties": {
+            "cond": {
+              "const": "position",
+              "type": "string"
+            },
+            "surface": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cond",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面 s1 と s2 での方向余弦 (l, m) の和 = 視野の値（法線入射で戻る主光線なら 0）",
+          "properties": {
+            "cond": {
+              "const": "dir_sum",
+              "type": "string"
+            },
+            "s1": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "s2": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cond",
+            "s1",
+            "s2"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面 s1 と s2 での方向余弦 (l, m) の差（s1 − s2）= 視野の値",
+          "properties": {
+            "cond": {
+              "const": "dir_diff",
+              "type": "string"
+            },
+            "s1": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "s2": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cond",
+            "s1",
+            "s2"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "FieldKind": {
       "description": "視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前）。\nJSON の名前は \"angle\"・\"object_height\"・\"paraxial_image_height\"・\"real_image_height\"・\"solve\"",
       "oneOf": [
@@ -1089,83 +1166,6 @@
         }
       ]
     },
-    "FieldSolve": {
-      "description": "条件で定める視野の条件（面は番号）",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "面 surface での主光線の位置 = 視野の値",
-          "properties": {
-            "cond": {
-              "const": "position",
-              "type": "string"
-            },
-            "surface": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "cond",
-            "surface"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "面 s1・s2 での主光線の方向余弦 (l, m) の和 = 視野の値",
-          "properties": {
-            "cond": {
-              "const": "dir_sum",
-              "type": "string"
-            },
-            "s1": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "s2": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "cond",
-            "s1",
-            "s2"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "差（s1 − s2）= 視野の値",
-          "properties": {
-            "cond": {
-              "const": "dir_diff",
-              "type": "string"
-            },
-            "s1": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "s2": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "cond",
-            "s1",
-            "s2"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "Fields": {
       "additionalProperties": false,
       "description": "視野",
@@ -1197,7 +1197,7 @@
         "solve": {
           "anyOf": [
             {
-              "$ref": "#/$defs/FieldSolve"
+              "$ref": "#/$defs/FieldCond"
             },
             {
               "type": "null"

@@ -23,7 +23,7 @@ use lensbench_core::pickup::Pickup;
 use lensbench_core::plugin::Config;
 use lensbench_core::solves::Solve;
 use lensbench_core::surface::{Binary2, CylFresnel};
-use lensbench_core::system::{AfocalUnit, Aiming, ApertureKind, FieldNorm, VigInterp};
+use lensbench_core::system::{AfocalUnit, Aiming, ApertureKind, FieldCond, FieldNorm, VigInterp};
 use lensbench_core::units::Unit;
 use lensbench_core::zpl_solve::{Macro, MacroParm};
 use schemars::JsonSchema;
@@ -185,7 +185,7 @@ pub struct Fields {
     pub weights: Vec<f64>,
     /// type = solve のときの条件
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub solve: Option<FieldSolve>,
+    pub solve: Option<FieldCond>,
     /// 正規化
     #[serde(default, skip_serializing_if = "is_default")]
     pub norm: FieldNorm,
@@ -195,18 +195,6 @@ pub struct Fields {
 }
 
 pub use lensbench_core::system::FieldKind;
-
-/// 条件で定める視野の条件（面は番号）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "cond", rename_all = "snake_case", deny_unknown_fields)]
-pub enum FieldSolve {
-    /// 面 surface での主光線の位置 = 視野の値
-    Position { surface: usize },
-    /// 面 s1・s2 での主光線の方向余弦 (l, m) の和 = 視野の値
-    DirSum { s1: usize, s2: usize },
-    /// 差（s1 − s2）= 視野の値
-    DirDiff { s1: usize, s2: usize },
-}
 
 /// 系の開口
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

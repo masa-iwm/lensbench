@@ -1092,6 +1092,7 @@ system file: not a JSON object	システムファイル: JSON のオブジェク
 system file: format is not {FORMAT}	システムファイル: format が {FORMAT} ではありません
 system file: no format_version	システムファイル: format_version がありません
 system file: version {ver} can't be read (up to {FORMAT_VERSION}; update lensbench)	システムファイル: 版 {ver} は読めません（{FORMAT_VERSION} まで、lensbench を新しくしてください）
+system file: version {ver} is no longer read (open and save it with lensbench 0.5 to make version {FORMAT_VERSION})	システムファイル: 版 {ver} はもう読みません（lensbench 0.5 で開いて保存し直すと版 {FORMAT_VERSION} になります）
 system file: no system	システムファイル: system がありません
 system file: coatings must be a list of strings	システムファイル: coatings は文字列の並び
 system file: the numbers of wavelengths, weights and primary don't match	システムファイル: 波長・ウェイト・主波長の数が合いません

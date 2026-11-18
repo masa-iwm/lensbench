@@ -4,7 +4,7 @@
 use super::*;
 use lensbench_core::glass::Glass;
 use lensbench_core::surface::{self as cs, Form, Material, SurfType, Surface};
-use lensbench_core::system::{self as sy, FieldCond, FieldType};
+use lensbench_core::system::{self as sy, FieldType};
 use lensbench_core::System;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -69,11 +69,7 @@ pub(crate) fn system(
         })
         .collect();
     let field_type = match (f.kind, f.solve) {
-        (FieldKind::Solve, Some(c)) => FieldType::Solve(match c {
-            FieldSolve::Position { surface } => FieldCond::Position { surf: surface },
-            FieldSolve::DirSum { s1, s2 } => FieldCond::DirSum { s1, s2 },
-            FieldSolve::DirDiff { s1, s2 } => FieldCond::DirDiff { s1, s2 },
-        }),
+        (FieldKind::Solve, Some(c)) => FieldType::Solve(c),
         (FieldKind::Solve, None) => return Err("fields: type solve needs solve".into()),
         (_, Some(_)) => return Err("fields: solve is only for type solve".into()),
         (k, None) => k.plain().ok_or("fields: type solve needs solve")?,

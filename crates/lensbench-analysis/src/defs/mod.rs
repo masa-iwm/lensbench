@@ -1,6 +1,6 @@
 //! 同梱の解析の定義（設定・結果の型と計算）。CLI・serve・GUI はここから作る（[`crate::registry`]）。
 //!
-//! 結果の JSON の形は以前の CLI の出力と同じ（GUI・Python のクライアントが鍵で読んでいる）。
+//! 結果の JSON の形は GUI・Python のクライアントが鍵で読む約束（変えるときは壊れる変更として docs/changes.md に書く）。
 
 mod basic;
 mod image;

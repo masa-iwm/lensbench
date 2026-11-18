@@ -717,7 +717,7 @@ def test_pickle_roundtrip_is_bit_exact(tmp_path):
         t.set_param("1.t", t.get_param("1.t") + 0.1)
         assert t.get_param("1.t") != s.get_param("1.t")
     with pytest.raises(ValueError):
-        lb._system_from_state(b"\x00\x01", [])
+        lb._system_from_state(b"\x00\x01", [], [])
 
 
 def _trace_in_child(s):

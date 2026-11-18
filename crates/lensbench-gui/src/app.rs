@@ -6,8 +6,6 @@
 
 mod ask;
 mod doc_file;
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) use doc_file::convert_old;
 mod doc_loc;
 mod folders;
 mod help;

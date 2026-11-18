@@ -990,8 +990,8 @@ class UnsupportedError(Error):
     """Uses an unsupported feature"""
 
 
-def _system_from_state(state: Any, coatings: Sequence[_StrPath], glass_dirs: Sequence[_StrPath] | None = None) -> System:
-    """Rebuild a system from a pickle (the values of [`PySystem::__reduce__`]). glass_dirs is missing in pickles of older versions"""
+def _system_from_state(state: Any, coatings: Sequence[_StrPath], glass_dirs: Sequence[_StrPath]) -> System:
+    """Rebuild a system from a pickle (the values of [`PySystem::__reduce__`])"""
 
 
 def analyses() -> list[Any]:

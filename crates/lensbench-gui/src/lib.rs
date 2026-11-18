@@ -103,13 +103,6 @@ pub fn main() -> std::process::ExitCode {
             return webview::run(&a);
         }
     }
-    // 前の版の組合せの保存（gui.combo）を今の形に直す、一度きりの変換（次の版で消す）
-    {
-        let a: Vec<String> = std::env::args().collect();
-        if a.get(1).map(String::as_str) == Some("--convert-combo") {
-            return app::convert_old(&a[2..]);
-        }
-    }
     // 既定のスレッド数（LENSBENCH_THREADS）など、環境変数から決める既定
     lensbench_core::init_from_env();
     // 引数: 系のファイル（エクスプローラーで .zmx をこの exe に落としたときも）、--glass-dir・--lens-catalog、

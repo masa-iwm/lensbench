@@ -2,7 +2,7 @@
 
 use super::*;
 use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
-use lensbench_core::system::{ApertureKind, FieldCond};
+use lensbench_core::system::ApertureKind;
 use lensbench_core::System;
 
 /// 系の処方。`catalogs` は使ったガラスのカタログ（[`catalogs::refs`]）
@@ -62,12 +62,7 @@ pub(crate) fn prescription(s: &System) -> lensbench_core::Result<Prescription> {
 }
 
 fn fields(s: &System) -> Fields {
-    let (kind, cond) = FieldKind::of(s.field_type);
-    let solve = cond.map(|c| match c {
-        FieldCond::Position { surf } => FieldSolve::Position { surface: surf },
-        FieldCond::DirSum { s1, s2 } => FieldSolve::DirSum { s1, s2 },
-        FieldCond::DirDiff { s1, s2 } => FieldSolve::DirDiff { s1, s2 },
-    });
+    let (kind, solve) = FieldKind::of(s.field_type);
     let weights: Vec<f64> = s.fields.iter().map(|f| f.w).collect();
     let vig: Vec<[f64; 5]> = s
         .fields

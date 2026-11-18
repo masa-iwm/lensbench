@@ -3,7 +3,22 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.4.0 の後）
+## 次の版（v0.5.0 の後）
+
+### 過去の形式の読込をやめた
+- システムファイルの版 1（core の System の serde をそのまま書いた形）は読まない。誤り「version 1 is no longer read」。lensbench 0.5 で
+  開いて保存し直すと版 2 になる。
+- core の列挙（`ApertureKind`・`Aiming`・`FieldNorm`・`AfocalUnit`・`VigInterp`）の旧名の別名（`"Epd"`・`"FNum"`・`"Real"`・
+  `"Milliradians"`・`"OpticStudio"` など）を消した。今の名前（`"epd"`・`"fnum"`・`"real"`・`"milliradians"`・`"opticstudio"`）だけを読む。
+- GUI の `lensbench-gui --convert-combo` を消した（前の版の `gui.combo` 入りの保存の変換）。
+- Python の pickle は `glass_dirs` の入ったもの（0.5 以降が書いたもの）だけを読む。
+
+### 条件で定める視野
+- core の `FieldCond` の JSON を、システムファイル版 2 の `field.solve` と同じ形（`{"cond": "position", "surface": 5}`・
+  `{"cond": "dir_sum", "s1": 2, "s2": 7}`）にした。系ファイルの `FieldSolve` は `FieldCond` そのものになった。
+  serve の `system_data`・`set_system_data` の `field_type` の `Solve` の中身もこの形。
+
+## v0.4.0 の後・v0.5.0 まで
 
 ### システムファイル
 - 面の量の型を 1 つにした（IOO-08）。ピックアップの量 `lensbench_core::pickup::PickKind` をやめ、パラメータの種類 `lensbench_core::param::Kind` に
