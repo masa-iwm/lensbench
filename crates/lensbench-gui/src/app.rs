@@ -580,27 +580,19 @@ impl Core {
         }
     }
 
-    /// 保存していない変更がある（組合せは最後に保存・開いたものと違う、開いた系は面の表・値を変えた）
+    /// 保存していない変更がある（組合せが最後に保存・開いたものと違う）
     fn dirty(&self) -> bool {
-        let combo =
-            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
-        if combo {
-            if self.loc.saved_combo.is_none() {
-                !self.doc.combo.picks.is_empty()
-            } else {
-                !self.loc.saved_combo.same(&self.doc)
-            }
+        if self.loc.saved_combo.is_none() {
+            !self.doc.combo.picks.is_empty()
         } else {
-            self.loc.ld_dirty
+            !self.loc.saved_combo.same(&self.doc)
         }
     }
 
     /// 閉じると失う変更がある。一度もファイルに保存・ファイルから開いていない組合せは設定に残り、次に起動したときに
     /// 戻るので失わない（毎回の閉じる確認を出さない）
     fn close_loses(&self) -> bool {
-        let combo =
-            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
-        if combo && self.loc.saved_combo.is_none() {
+        if self.loc.saved_combo.is_none() {
             return false;
         }
         self.dirty()
@@ -900,13 +892,10 @@ impl Core {
         }
     }
 
-    /// 保存（Ctrl+S）・名前を付けて保存（Ctrl+Shift+S）。組合せの系は組合せを同梱したプロジェクトの .json に、
-    /// 開いた系は系ファイル（.json）に書く。書き先は開いた・前に保存した .json（.zmx から開いた系・Web 版・
-    /// as_new は書き先を選ぶ）
+    /// 保存（Ctrl+S）・名前を付けて保存（Ctrl+Shift+S）。組合せをプロジェクトの .json に書く。書き先は開いた・
+    /// 前に保存した .json（.zmx から開いた組合せ・Web 版・as_new は書き先を選ぶ）
     fn save(&mut self, as_new: bool) {
-        let combo =
-            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
-        if !combo && self.loc.file.is_none() {
+        if self.loc.file.is_none() && self.doc.combo.picks.is_empty() {
             return;
         }
         let keep = if as_new || cfg!(target_arch = "wasm32") {
@@ -918,23 +907,23 @@ impl Core {
             Some(p) => p,
             None => {
                 let name = (self.loc.doc_path.as_ref())
-                    .or(self.loc.shown(combo))
+                    .or(self.loc.shown())
                     .and_then(|f| f.file_stem())
                     .map(|x| x.to_string_lossy().into_owned())
                     .filter(|x| !x.is_empty())
                     .or_else(|| {
                         let n = self.doc.combo.name.trim();
-                        (combo && !n.is_empty()).then(|| n.to_string())
+                        (!n.is_empty()).then(|| n.to_string())
                     })
                     .unwrap_or_else(|| "project".into());
                 let d = crate::files::FileDialog::new()
                     .add_filter(tr("Project"), &["json"])
                     .set_file_name(format!("{name}.json"));
-                self.save_as(d, move |c, p| c.save_to(combo, p));
+                self.save_as(d, move |c, p| c.save_to(p));
                 return;
             }
         };
-        self.save_to(combo, path);
+        self.save_to(path);
     }
 
     /// レイアウトを書き出す（形式は拡張子）。今の見る面・重ねた構成で。2D は断面、3D は立体
@@ -1017,11 +1006,10 @@ impl Core {
         }
     }
 
-    /// 開いている系は組合せから作ったものか
     /// レイアウト図を描き直す（重ねる構成を変えたとき）。組合せの系は下書きで
     fn request_layout(&mut self) {
-        match (&self.loc.combo_path, self.is_combo()) {
-            (Some(path), true) => {
+        match &self.loc.combo_path {
+            Some(path) => {
                 let load = self.load_params(path);
                 self.draft(
                     Tag::Preview,
@@ -1042,8 +1030,7 @@ impl Core {
                 r.prev = None;
             }
         }
-        // 読み直した系には面の表の変更は無い。別の系なら階層・選択も戻す（組合せの作り直しは同じ系）
-        self.loc.ld_dirty = false;
+        // 別の系なら階層・選択も戻す（組合せの作り直しは同じ系）
         if new_file != self.loc.file {
             self.p.ld.reset();
         }
@@ -1053,8 +1040,9 @@ impl Core {
         self.sys.info = None;
         self.refresh();
         self.read_params();
-        // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
-        if !self.is_combo() {
+        // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）。組合せの無い系（Web 版の
+        // 解析のパネルの別の窓が受けた写し）だけここで
+        if self.loc.combo_path.is_none() {
             self.calc(Tag::Layout, self.layout_params());
         }
         self.calc(Tag::Configs, json!({}));
@@ -1076,13 +1064,8 @@ impl Core {
         self.calc_refreshing(tag, params);
     }
 
-    fn is_combo(&self) -> bool {
-        self.loc.file.is_some() && self.loc.file == self.loc.combo_path
-    }
-
     /// 組合せのレイアウト図と要素の操作
     fn layout_ui(&mut self, ui: &mut Ui) {
-        let is_combo = self.is_combo();
         let accent = theme::accent(&self.s.look);
         if self.loc.file.is_some() {
             let mut changed = false;
@@ -1129,11 +1112,7 @@ impl Core {
                 self.request_layout();
             }
         }
-        let data = if is_combo {
-            self.layout_data.as_ref()
-        } else {
-            None
-        };
+        let data = self.layout_data.as_ref();
         let paths: Vec<String> = self
             .overlay
             .items
@@ -1142,11 +1121,7 @@ impl Core {
             .map(|x| x.1.clone())
             .collect();
         // 面の表で選んだ面を図で目立たせる
-        self.p.combo_view.hl_surf = if is_combo {
-            self.p.ld.cur.map(|x| x.0)
-        } else {
-            None
-        };
+        self.p.combo_view.hl_surf = self.p.ld.cur.map(|x| x.0);
         let busy = self.busy_short();
         let act = combo::ui(
             ui,
@@ -1459,7 +1434,7 @@ impl Core {
 
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
     fn cat_save_window(&mut self, ctx: &egui::Context) {
-        let ready = self.is_combo() && self.loc.built_combo.same(&self.doc);
+        let ready = self.loc.file.is_some() && self.loc.built_combo.same(&self.doc);
         let req = self
             .p
             .cat_save
@@ -1660,161 +1635,20 @@ impl App {
         crate::files::set_ctx(&cc.egui_ctx);
         #[cfg(not(target_arch = "wasm32"))]
         crate::files::set_owner(cc);
-        // 通し確認では保存した設定を使わない（引数のフォルダだけ）
-        let mut s: Settings = if args.tour.is_some() {
-            Settings::default()
-        } else {
-            cc.storage
-                .and_then(|st| eframe::get_value(st, eframe::APP_KEY))
-                .unwrap_or_default()
-        };
-        // 開いていた文書と画面の様子。前の版は好みと同じ値に入れていたので、鍵が無ければそこから一度だけ読む
-        // （同じ欄の名前。次に保存すると分かれる。この読み替えはほかの移行と一緒に消す）
-        let mut ses: Session = if args.tour.is_some() {
-            Session::default()
-        } else {
-            cc.storage
-                .and_then(|st| {
-                    eframe::get_value(st, SESSION_KEY)
-                        .or_else(|| eframe::get_value(st, eframe::APP_KEY))
-                })
-                .unwrap_or_default()
-        };
-        // Web 版: 解析のパネルを出した別の窓は、開いていた文書・並びを使わない（元のタブから受ける）
-        #[cfg(target_arch = "wasm32")]
-        if crate::web_tabs::calc_panel() {
-            ses = Session::default();
-        }
-        if args.tour.is_some() {
-            crate::tour::prepare(&args, &mut s);
-        } else {
-            s.resolve_paths();
-            ses.resolve_paths();
-            // 硝材・レンズのフォルダが無ければ、exe の隣の catalogs/ を既定に（リリースを展開してすぐ見える）
-            if s.glass_dirs.is_empty() && s.lens_dirs.is_empty() {
-                if let Some(d) = crate::portable::exe_dir() {
-                    let (g, l) = crate::portable::default_catalogs(&d);
-                    s.glass_dirs = g;
-                    s.lens_dirs = l;
-                }
-            }
-        }
-        // Web 版: ブラウザに残したフォルダのうち、消えたもの（残したファイルを消した後など）は外す
-        #[cfg(target_arch = "wasm32")]
-        crate::web_store::prune_dirs(&mut s.glass_dirs, &mut s.lens_dirs);
-        for d in &args.glass_dirs {
-            if !s.glass_dirs.contains(d) {
-                s.glass_dirs.push(d.clone());
-            }
-        }
-        for d in &args.lens_dirs {
-            if !s.lens_dirs.contains(d) {
-                s.lens_dirs.push(d.clone());
-            }
-        }
+        let (s, mut ses) = load_settings(cc, &args);
         i18n::set(s.lang);
         crate::fonts::follow_lang(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, &s.look);
         s.cad_store.apply();
-        // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない（解析のパネルは自分で計算するので作る）
-        #[cfg(target_arch = "wasm32")]
-        let panel = crate::web_tabs::panel_of_location();
-        #[cfg(target_arch = "wasm32")]
-        let (worker, preview) = if panel.is_some() && !crate::web_tabs::calc_panel() {
-            (Worker::idle(), Worker::idle())
-        } else {
-            let ctx = cc.egui_ctx.clone();
-            let ctx2 = cc.egui_ctx.clone();
-            (
-                Worker::new(None, move || ctx.request_repaint()),
-                Worker::preview(move || ctx2.request_repaint()),
-            )
-        };
-        #[cfg(not(target_arch = "wasm32"))]
-        let (worker, preview) = {
-            let ctx = cc.egui_ctx.clone();
-            let ctx2 = cc.egui_ctx.clone();
-            (
-                Worker::new(None, move || ctx.request_repaint()),
-                Worker::preview(move || ctx2.request_repaint()),
-            )
-        };
-        let browser = Browser::default();
-        let doc = crate::combo_doc::ComboDoc::new(std::mem::take(&mut ses.combo));
-        // 系のファイルを指定して開いたときは、前の組合せを作り直さない（指定が無ければ前の組合せで系を作る）
-        let built_combo = args.open.is_some().then(|| doc.combo.clone());
+        let (worker, preview) = make_workers(cc);
         let lay = ses
             .layout
             .take()
             .unwrap_or_else(|| Preset::Analysis.build());
         let next_id = lay.max_id();
+        let c = Core::new(&args, s, ses, (worker, preview), font, next_id);
         let mut app = App {
-            c: Core {
-                s,
-                ses,
-                bundled_refresh: false,
-                samples: menus::samples(&args),
-                worker,
-                preview,
-                load_stale: false,
-                preview_req: None,
-                status: Status {
-                    text: args.notice.as_ref().map(|n| n.text()).unwrap_or_default(),
-                    error: false,
-                },
-                status_err: None,
-                sys: Default::default(),
-                p: Panels::default(),
-                results: HashMap::new(),
-                new_param: String::new(),
-                pending_set: Default::default(),
-                rerun: None,
-                combo_edit: None,
-                combo_hist: Default::default(),
-                docs: Default::default(),
-                ld_glasses: Vec::new(),
-                close_ask: false,
-                combo_census: None,
-                missing_glass: None,
-                status_log: Vec::new(),
-                status_hint: None,
-                last_set: None,
-                shot: None,
-                fig_rects: HashMap::new(),
-                status_log_open: false,
-                close_ok: false,
-                close_pending: false,
-                auto_fill: Default::default(),
-                swap_ids: Vec::new(),
-                rev: 0,
-                param_sys_cache: Default::default(),
-                field_labels_cache: Default::default(),
-                sys_gen: 0,
-                saves: Default::default(),
-                browser,
-                doc,
-                folders_open: false,
-                help_open: false,
-                save_layout_open: false,
-                ask: None,
-                drawing_in: None,
-                layout_name: String::new(),
-                loc: DocLoc {
-                    built_combo: Snap::new(built_combo),
-                    ..Default::default()
-                },
-                _work: doc_loc::WorkDir::new(),
-                layout_data: None,
-                overlay: Overlay::default(),
-                rays_open: false,
-                folders: Default::default(),
-                reopen_same: false,
-                font,
-                next_id,
-                msgs: Vec::new(),
-                fx: Default::default(),
-                popup_doc: Default::default(),
-            },
+            c,
             dock: lay.dock,
             windows: lay.windows,
             palette: Palette::default(),
@@ -1825,7 +1659,6 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             tabs: None,
             #[cfg(target_arch = "wasm32")]
-            #[cfg(target_arch = "wasm32")]
             viewer: None,
             #[cfg(target_arch = "wasm32")]
             hosts: HashMap::new(),
@@ -1834,6 +1667,16 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             calc_flat: false,
         };
+        app.start(cc, &args);
+        app
+    }
+
+    /// 作った後: 前に閉じたときのパネルの設定を戻し、通し確認・Web 版の別の窓を始め、指定のファイルを開く
+    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
+    fn start(&mut self, cc: &eframe::CreationContext<'_>, args: &Args) {
+        let app = self;
+        #[cfg(target_arch = "wasm32")]
+        let panel = crate::web_tabs::panel_of_location();
         // 前に閉じたときの最適化・公差・差し替えの設定
         let panels = std::mem::take(&mut app.c.ses.panels);
         app.c.set_panels(&panels);
@@ -1850,7 +1693,7 @@ impl App {
             } else {
                 app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
             }
-            return app;
+            return;
         }
         // Web 版: 別のタブ・窓に出していたパネルはドックに戻す（タブ・窓はクリックしないと開けない）
         #[cfg(target_arch = "wasm32")]
@@ -1888,7 +1731,6 @@ impl App {
         if let Some(p) = reopen.as_ref().or(args.open.as_ref()) {
             app.c.open_doc(p);
         }
-        app
     }
 
     fn apply_dock_translations(&mut self) {
@@ -2744,6 +2586,161 @@ fn sample_combos_are_up_to_date() {
         }
         assert_eq!(back, c, "{name}");
     }
+}
+
+impl Core {
+    /// 設定・開いていた文書と計算の順番待ちから作る（パネルの設定は [`App::start`] が戻す）
+    fn new(
+        args: &Args,
+        s: Settings,
+        mut ses: Session,
+        (worker, preview): (Worker, Worker),
+        font: Option<String>,
+        next_id: u64,
+    ) -> Core {
+        let browser = Browser::default();
+        let doc = crate::combo_doc::ComboDoc::new(std::mem::take(&mut ses.combo));
+        // 系のファイルを指定して開いたときは、前の組合せを作り直さない（指定が無ければ前の組合せで系を作る）
+        let built_combo = args.open.is_some().then(|| doc.combo.clone());
+        Core {
+            s,
+            ses,
+            bundled_refresh: false,
+            samples: menus::samples(args),
+            worker,
+            preview,
+            load_stale: false,
+            preview_req: None,
+            status: Status {
+                text: args.notice.as_ref().map(|n| n.text()).unwrap_or_default(),
+                error: false,
+            },
+            status_err: None,
+            sys: Default::default(),
+            p: Panels::default(),
+            results: HashMap::new(),
+            new_param: String::new(),
+            pending_set: Default::default(),
+            rerun: None,
+            combo_edit: None,
+            combo_hist: Default::default(),
+            docs: Default::default(),
+            ld_glasses: Vec::new(),
+            close_ask: false,
+            combo_census: None,
+            missing_glass: None,
+            status_log: Vec::new(),
+            status_hint: None,
+            last_set: None,
+            shot: None,
+            fig_rects: HashMap::new(),
+            status_log_open: false,
+            close_ok: false,
+            close_pending: false,
+            auto_fill: Default::default(),
+            swap_ids: Vec::new(),
+            rev: 0,
+            param_sys_cache: Default::default(),
+            field_labels_cache: Default::default(),
+            sys_gen: 0,
+            saves: Default::default(),
+            browser,
+            doc,
+            folders_open: false,
+            help_open: false,
+            save_layout_open: false,
+            ask: None,
+            drawing_in: None,
+            layout_name: String::new(),
+            loc: DocLoc {
+                built_combo: Snap::new(built_combo),
+                ..Default::default()
+            },
+            _work: doc_loc::WorkDir::new(),
+            layout_data: None,
+            overlay: Overlay::default(),
+            rays_open: false,
+            folders: Default::default(),
+            reopen_same: false,
+            font,
+            next_id,
+            msgs: Vec::new(),
+            fx: Default::default(),
+            popup_doc: Default::default(),
+        }
+    }
+}
+
+/// 保存した好みと開いていた文書（通し確認では使わない）に、引数のカタログのフォルダを足す
+fn load_settings(cc: &eframe::CreationContext<'_>, args: &Args) -> (Settings, Session) {
+    // 通し確認では保存した設定を使わない（引数のフォルダだけ）
+    let mut s: Settings = if args.tour.is_some() {
+        Settings::default()
+    } else {
+        cc.storage
+            .and_then(|st| eframe::get_value(st, eframe::APP_KEY))
+            .unwrap_or_default()
+    };
+    // 開いていた文書と画面の様子。前の版は好みと同じ値に入れていたので、鍵が無ければそこから一度だけ読む
+    // （同じ欄の名前。次に保存すると分かれる。この読み替えはほかの移行と一緒に消す）
+    let mut ses: Session = if args.tour.is_some() {
+        Session::default()
+    } else {
+        cc.storage
+            .and_then(|st| {
+                eframe::get_value(st, SESSION_KEY)
+                    .or_else(|| eframe::get_value(st, eframe::APP_KEY))
+            })
+            .unwrap_or_default()
+    };
+    // Web 版: 解析のパネルを出した別の窓は、開いていた文書・並びを使わない（元のタブから受ける）
+    #[cfg(target_arch = "wasm32")]
+    if crate::web_tabs::calc_panel() {
+        ses = Session::default();
+    }
+    if args.tour.is_some() {
+        crate::tour::prepare(args, &mut s);
+    } else {
+        s.resolve_paths();
+        ses.resolve_paths();
+        // 硝材・レンズのフォルダが無ければ、exe の隣の catalogs/ を既定に（リリースを展開してすぐ見える）
+        if s.glass_dirs.is_empty() && s.lens_dirs.is_empty() {
+            if let Some(d) = crate::portable::exe_dir() {
+                let (g, l) = crate::portable::default_catalogs(&d);
+                s.glass_dirs = g;
+                s.lens_dirs = l;
+            }
+        }
+    }
+    // Web 版: ブラウザに残したフォルダのうち、消えたもの（残したファイルを消した後など）は外す
+    #[cfg(target_arch = "wasm32")]
+    crate::web_store::prune_dirs(&mut s.glass_dirs, &mut s.lens_dirs);
+    for d in &args.glass_dirs {
+        if !s.glass_dirs.contains(d) {
+            s.glass_dirs.push(d.clone());
+        }
+    }
+    for d in &args.lens_dirs {
+        if !s.lens_dirs.contains(d) {
+            s.lens_dirs.push(d.clone());
+        }
+    }
+    (s, ses)
+}
+
+/// 計算の順番待ち（本体と下書き）
+fn make_workers(cc: &eframe::CreationContext<'_>) -> (Worker, Worker) {
+    // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない（解析のパネルは自分で計算するので作る）
+    #[cfg(target_arch = "wasm32")]
+    if crate::web_tabs::panel_of_location().is_some() && !crate::web_tabs::calc_panel() {
+        return (Worker::idle(), Worker::idle());
+    }
+    let ctx = cc.egui_ctx.clone();
+    let ctx2 = cc.egui_ctx.clone();
+    (
+        Worker::new(None, move || ctx.request_repaint()),
+        Worker::preview(move || ctx2.request_repaint()),
+    )
 }
 
 #[cfg(test)]

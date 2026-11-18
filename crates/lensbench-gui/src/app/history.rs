@@ -1,5 +1,5 @@
-//! 元に戻す・やり直す。1 本の履歴で、今の文書の中の段（組合せは組合せの段、系で開いた文書は serve の段）の先に、
-//! 文書を替えた段（新規・開く）が続く。文書を替えた段を戻すと前の文書（とその中の段）に戻る
+//! 元に戻す・やり直す。1 本の履歴で、今の文書の中の段（組合せの段）の先に、文書を替えた段（新規・開く）が続く。
+//! 文書を替えた段を戻すと前の文書（とその中の段）に戻る。段はすべて GUI が持つ（serve の段は使わない）
 
 use super::*;
 use lensbench_core::history::History;
@@ -12,9 +12,8 @@ pub(super) struct ComboHist {
     last: Option<Combo>,
     /// last が今の組合せと同じと確かめた版（版が同じ間は比べない）
     last_at: std::cell::Cell<Option<u64>>,
-    /// 前の画面の組合せの版と、最後に変わった時刻（入力・ドラッグの途中は積まない）
-    seen_rev: u64,
-    changed_at: Option<web_time::Instant>,
+    /// 前の画面で入力を受けていた欄（欄を移ったら、前の欄の入力を 1 段にする）
+    focus: Option<egui::Id>,
 }
 
 /// 文書の写し（新規・開くの前の状態。戻すときに当てる）
@@ -28,10 +27,7 @@ pub(super) struct NewSnap {
     combo_path: Option<PathBuf>,
     doc_path: Option<PathBuf>,
     doc_from: Option<PathBuf>,
-    ld_dirty: bool,
     saved_combo: crate::combo_doc::Snap,
-    hist: (usize, usize),
-    hist_list: (Vec<Value>, Vec<Value>),
 }
 
 /// 組合せの変更の名前（要素の追加・削除・どの要素か・系の設定）
@@ -63,12 +59,11 @@ pub(super) fn combo_change(a: &Combo, b: &Combo) -> String {
 }
 
 impl ComboHist {
-    /// 画面ごとに呼ぶ。組合せが変わって落ち着いたら（ポインタを離し、入力欄を離れるか 0.8 秒たったら）前を積む
-    pub(super) fn track(&mut self, cur: &Combo, rev: u64, busy: bool) {
-        if self.seen_rev != rev {
-            self.seen_rev = rev;
-            self.changed_at = Some(web_time::Instant::now());
-        }
+    /// 画面ごとに呼ぶ。組合せが変わって操作が終わったら（ポインタを離し入力欄を離れたか、別の欄へ移ったら）前を
+    /// 積む。時間では区切らない。操作（[`Msg`]）の前後でも区切る（[`App::update`]）。busy はポインタを押しているか
+    /// 欄が入力を受けている、focus はその欄
+    pub(super) fn track(&mut self, cur: &Combo, rev: u64, busy: bool, focus: Option<egui::Id>) {
+        let moved = std::mem::replace(&mut self.focus, focus) != focus;
         let Some(last) = &self.last else {
             self.last = Some(cur.clone());
             self.last_at.set(Some(rev));
@@ -81,23 +76,21 @@ impl ComboHist {
             self.last_at.set(Some(rev));
             return;
         }
-        let quiet = self
-            .changed_at
-            .is_some_and(|t| t.elapsed().as_secs_f64() > 0.8);
-        if !busy || quiet {
+        if !busy || moved {
             self.commit(cur);
             self.last_at.set(Some(rev));
         }
     }
 
-    /// 前の落ち着いた組合せを積む
+    /// 前の落ち着いた組合せを積む（変わっていなければ何もしない）
     pub(super) fn commit(&mut self, cur: &Combo) {
+        if self.last.as_ref() == Some(cur) {
+            return;
+        }
         self.last_at.set(None);
         if let Some(last) = self.last.replace(cur.clone()) {
-            if &last != cur {
-                let what = combo_change(&last, cur);
-                self.hist.record(last, what);
-            }
+            let what = combo_change(&last, cur);
+            self.hist.record(last, what);
         }
     }
 
@@ -148,14 +141,10 @@ impl ComboHist {
 /// 文書を替えた段の履歴
 #[derive(Default)]
 pub(super) struct DocHist {
-    /// 前の文書の写しと、その文書の serve のやり直す段のうち別の文書のものの数。段の名前は新規・開くなど
-    hist: History<(NewSnap, usize)>,
+    /// 前の文書の写し。段の名前は新規・開くなど
+    hist: History<NewSnap>,
     /// 文書の段を戻した・やり直した直後の組合せ（組合せを変えたら、やり直す段は使わない）
     at: Option<Combo>,
-    /// serve の段を戻した・進めた後に当てる写し（系で開いた文書へ戻る）
-    pending: Option<NewSnap>,
-    /// serve のやり直す段のうち、別の文書のもの（今の文書の段としてはやり直さない）
-    skip: usize,
     /// 開くの前に段を積み、まだ読めていない（読めなければ前の文書に戻す）
     pub(super) opening: bool,
 }
@@ -164,7 +153,6 @@ impl DocHist {
     /// 文書の中の編集をした（やり直す段は捨てる）
     pub(super) fn edited(&mut self) {
         self.hist.clear_redo();
-        self.skip = 0;
     }
 }
 
@@ -186,10 +174,7 @@ impl Core {
             combo_path: self.loc.combo_path.take(),
             doc_path: self.loc.doc_path.take(),
             doc_from: self.loc.doc_from.take(),
-            ld_dirty: std::mem::take(&mut self.loc.ld_dirty),
             saved_combo: std::mem::take(&mut self.loc.saved_combo),
-            hist: std::mem::take(&mut self.sys.hist),
-            hist_list: std::mem::take(&mut self.sys.hist_list),
         }
     }
 
@@ -220,11 +205,9 @@ impl Core {
         if self.doc_empty() {
             return false;
         }
-        let skip = self.docs.skip;
         let snap = self.take_snap();
-        self.docs.hist.record((snap, skip), label);
+        self.docs.hist.record(snap, label);
         self.docs.at = None;
-        self.docs.skip = 0;
         true
     }
 
@@ -234,15 +217,13 @@ impl Core {
             return;
         }
         // 画面の表・図・解析は開く前のまま（写しを取っただけ）なので、欄を戻すだけ（読み直さず、誤りの表示も残す）
-        if let Some(((snap, skip), _)) = self.docs.hist.pop(true) {
-            (self.sys.hist, self.sys.hist_list) = (snap.hist, snap.hist_list.clone());
-            self.docs.skip = skip;
-            let (sum, file, dirty) = self.apply_snap(snap);
-            (self.sys.summary, self.loc.file, self.loc.ld_dirty) = (sum, file, dirty);
+        if let Some((snap, _)) = self.docs.hist.pop(true) {
+            let (sum, file) = self.apply_snap(snap);
+            (self.sys.summary, self.loc.file) = (sum, file);
         }
     }
 
-    /// 組合せを段を変えずに作り直す（serve の段はそのまま。前後の系で開いた文書へ serve の段で行ける）
+    /// 戻した組合せを組み直す（組合せの段は写しのまま）
     fn rebuild_kept(&mut self) {
         self.loc.file = self.loc.combo_path.clone();
         self.build_combo(self.doc.combo.project());
@@ -255,12 +236,12 @@ impl Core {
         }
         self.push_doc(tr("New").into());
         self.clear_doc_views();
-        // 新規は serve の系を変えない（新規を戻すと、その系に戻る）
+        // 新規は serve の系を変えない（新規を戻すと、その系の表・解析を読み直さずに出す）
         self.info(tr("New (Ctrl+Z to undo)"));
     }
 
-    /// 写しの文書の欄（系の要約・ファイル・面の表の変更を除く）を戻す
-    fn apply_snap(&mut self, n: NewSnap) -> (Option<Value>, Option<PathBuf>, bool) {
+    /// 写しの文書の欄（系の要約・ファイルを除く）を戻す
+    fn apply_snap(&mut self, n: NewSnap) -> (Option<Value>, Option<PathBuf>) {
         self.doc.combo = n.combo;
         self.combo_hist = n.combo_hist;
         self.loc.built = n.built;
@@ -269,84 +250,28 @@ impl Core {
         self.loc.doc_path = n.doc_path;
         self.loc.doc_from = n.doc_from;
         self.loc.saved_combo = n.saved_combo;
-        (n.summary, n.file, n.ld_dirty)
+        (n.summary, n.file)
     }
 
-    /// 写しの文書に戻る。(depth, redo) は替える前の serve の段の数、skip は戻る文書の別の文書の段の数、
-    /// was_empty は替える前の文書が空だったか
-    fn restore_doc(
-        &mut self,
-        n: NewSnap,
-        (depth, redo): (usize, usize),
-        skip: usize,
-        was_empty: bool,
-    ) {
-        let combo_doc = n.combo_path.is_some() && n.combo_path == n.file;
-        let (hist, hist_list) = (n.hist, n.hist_list.clone());
-        if !combo_doc && n.summary.is_none() {
-            // 何も開いていない文書
+    /// 写しの文書に戻る。was_empty は替える前の文書が空だったか（新規を戻す: serve に前の系が残っている）
+    fn restore_doc(&mut self, n: NewSnap, was_empty: bool) {
+        if n.combo_path.is_some() && n.combo_path == n.file {
+            // 組合せは段を変えずに組み直す
             self.apply_snap(n);
-            self.clear_doc_views();
-            return;
-        }
-        if was_empty {
-            // 新規を戻す・開けなかった: serve には前の系が残っている（読み直さずに表・解析を出し直す。組合せは段を
-            // 変えずに作り直す）
-            (self.sys.hist, self.sys.hist_list) = (hist, hist_list);
-            self.docs.skip = skip;
-            if combo_doc {
-                self.apply_snap(n);
-                self.rebuild_kept();
-                return;
-            }
-            let (sum, file, dirty) = self.apply_snap(n);
-            if let Some(sum) = sum {
-                self.on_loaded(sum);
-            }
-            self.loc.file = file;
-            self.loc.ld_dirty = dirty;
-            return;
-        }
-        // serve の段を戻す・進めて、その文書の系に戻す（組合せはそこで段を変えずに作り直す。serve のやり直す段を
-        // 残す）。届かなければファイルを読み直す（組合せは作り直して serve の段に積む）
-        let back = hist.0 < depth;
-        let steps = hist.0.abs_diff(depth);
-        let reach = if back { depth } else { redo };
-        if steps > 0 && steps <= reach {
-            // 戻すと serve のやり直す段はすべて別の文書のもの
-            self.docs.skip = if back { redo + steps } else { skip };
-            self.docs.pending = Some(n);
-            self.send_change(
-                Tag::History { back },
-                json!({ "back": back, "steps": steps }),
-            );
-        } else if steps == 0 && combo_doc {
-            self.apply_snap(n);
-            self.docs.skip = skip;
             self.rebuild_kept();
-        } else {
-            let (_, file, _) = self.apply_snap(n);
-            self.docs.skip = 0;
-            if combo_doc {
-                self.build_combo(self.doc.combo.project());
-            } else if let Some(f) = file {
-                self.open(&f);
-            }
+            return;
         }
-    }
-
-    /// serve の段を動かした結果が届いた: 待っていた写しの欄を戻す
-    pub(super) fn take_pending_doc(&mut self) {
-        if let Some(n) = self.docs.pending.take() {
-            let combo_doc = n.combo_path.is_some() && n.combo_path == n.file;
-            let (_, _, dirty) = self.apply_snap(n);
-            // 戻した文書の組合せ（step_doc で覚えたのは写しを当てる前の空の組合せ）
-            self.docs.at = Some(self.doc.combo.clone());
-            if combo_doc {
-                self.rebuild_kept();
-            } else {
-                self.loc.ld_dirty = dirty;
+        let (sum, file) = self.apply_snap(n);
+        match (sum, file) {
+            // 新規を戻した: 読み直さずに表・解析を出し直す
+            (Some(sum), file) if was_empty => {
+                self.on_loaded(sum);
+                self.loc.file = file;
             }
+            // 開いていた系はファイルを読み直す
+            (Some(_), Some(f)) => self.open(&f),
+            // 何も開いていない文書
+            _ => self.clear_doc_views(),
         }
     }
 
@@ -357,17 +282,15 @@ impl Core {
         } else {
             None
         };
-        let Some(((snap, skip), label)) = top else {
+        let Some((snap, label)) = top else {
             return false;
         };
         self.flush_set();
-        // 写しを取ると serve の段の数も移るので、戻す先の計算は替える前の数で
-        let hist = self.sys.hist;
         let was_empty = self.doc_empty();
         // 今の文書を反対の段に（空の文書も: 新規をやり直せる）
-        let cur = (self.take_snap(), self.docs.skip);
+        let cur = self.take_snap();
         self.docs.hist.pass(back, (cur, label));
-        self.restore_doc(snap, hist, skip, was_empty);
+        self.restore_doc(snap, was_empty);
         self.docs.at = Some(self.doc.combo.clone());
         self.info(tr(if back { "Undone" } else { "Redone" }));
         true
@@ -379,23 +302,9 @@ impl Core {
             && self.docs.at.as_ref().is_none_or(|c| *c == self.doc.combo)
     }
 
-    /// 系で開いた文書の中の serve の段の数（元に戻す段は開いた段より上、やり直す段は別の文書の段を除く）
-    pub(super) fn serve_in_doc(&self, back: bool) -> usize {
-        if self.is_combo() || self.sys.summary.is_none() {
-            return 0;
-        }
-        if back {
-            let base = self.docs.hist.top(true).map_or(0, |d| d.0 .0.hist.0 + 1);
-            self.sys.hist.0.saturating_sub(base)
-        } else {
-            self.sys.hist.1.saturating_sub(self.docs.skip)
-        }
-    }
-
     /// 元に戻す（back）・やり直すことができるか
     pub(super) fn can_undo(&self, back: bool) -> bool {
-        (self.is_combo() && self.combo_hist.can(&self.doc.combo, self.doc.rev, back))
-            || self.serve_in_doc(back) > 0
+        self.combo_hist.can(&self.doc.combo, self.doc.rev, back)
             || if back {
                 !self.docs.hist.is_empty(true)
             } else {
@@ -403,32 +312,9 @@ impl Core {
             }
     }
 
-    /// serve の結果の段の数と一覧を覚える
-    pub(super) fn take_history(&mut self, v: &Value) {
-        if let Ok(h) = views::read::<views::HistoryView>(v) {
-            (self.sys.hist, self.sys.hist_list) = ((h.undo, h.redo), (h.undo_list, h.redo_list));
-        }
-    }
-
-    /// 今の文書の中の段の名前
-    fn in_doc_list(&self, back: bool) -> Vec<String> {
-        if self.is_combo() {
-            return self.combo_hist.list(back);
-        }
-        let l = if back {
-            &self.sys.hist_list.0
-        } else {
-            &self.sys.hist_list.1
-        };
-        l.iter()
-            .take(self.serve_in_doc(back))
-            .map(crate::hist_label::hist_label)
-            .collect()
-    }
-
     /// 元に戻す・やり直す段の名前（元に戻す段は新しい順、やり直す段は次の順）。文書の中の段の後に、文書を替えた段
     pub(super) fn undo_list(&self, back: bool) -> Vec<String> {
-        let mut out = self.in_doc_list(back);
+        let mut out = self.combo_hist.list(back);
         let doc = if back || self.doc_redo_ok() {
             self.docs.hist.top(back)
         } else {
@@ -442,7 +328,7 @@ impl Core {
     pub(super) fn undo(&mut self, back: bool, n: usize) {
         // 戻して要素が減っても「外しました」は出さない
         self.combo_census = None;
-        let k = self.in_doc_list(back).len();
+        let k = self.combo_hist.list(back).len();
         if n.max(1) > k {
             if !self.step_doc(back) {
                 self.info(tr(if back {
@@ -453,18 +339,13 @@ impl Core {
             }
             return;
         }
-        if self.is_combo() {
-            if let Some(c) = self.combo_hist.step(&self.doc.combo, back, n) {
-                self.doc.combo = c;
-                if !self.s.auto_build {
-                    self.build_combo(self.doc.combo.project());
-                }
-                self.info(tr(if back { "Undone" } else { "Redone" }));
+        if let Some(c) = self.combo_hist.step(&self.doc.combo, back, n) {
+            self.doc.combo = c;
+            if !self.s.auto_build {
+                self.build_combo(self.doc.combo.project());
             }
-            return;
+            self.info(tr(if back { "Undone" } else { "Redone" }));
         }
-        self.flush_set();
-        self.send_change(Tag::History { back }, json!({ "back": back, "steps": n }));
     }
 }
 
@@ -486,23 +367,23 @@ mod tests {
         let mut c = Combo::default();
         let name0 = c.name.clone();
         let r = at(&c);
-        h.track(&c, r, false);
+        h.track(&c, r, false, None);
         assert!(!h.can(&c, r, true));
         c.name = "a".into();
         let r = at(&c);
-        h.track(&c, r, true);
+        h.track(&c, r, true, None);
         c.name = "ab".into();
         let r = at(&c);
-        h.track(&c, r, true);
+        h.track(&c, r, true, None);
         assert!(h.hist.is_empty(true) && h.can(&c, r, true));
-        h.track(&c, r, false);
+        h.track(&c, r, false, None);
         assert_eq!(h.hist.len(true), 1);
         // 同じ版のままなら比べ直さず、元に戻す段も増えない
-        h.track(&c, r, false);
+        h.track(&c, r, false, None);
         assert_eq!(h.hist.len(true), 1);
         c.name = "x".into();
         let r = at(&c);
-        h.track(&c, r, false);
+        h.track(&c, r, false, None);
         assert_eq!(h.list(true).len(), 2);
         assert_eq!(h.list(true)[0], "Combination settings");
         let b = h.step(&c, true, 1).unwrap();
@@ -513,16 +394,55 @@ mod tests {
         let f = h.step(&b, false, 1).unwrap();
         assert_eq!(f.name, "ab");
         let r = at(&f);
-        h.track(&f, r, false);
+        h.track(&f, r, false, None);
         assert!(h.can(&f, r, true));
         let mut g = f.clone();
         g.name = "y".into();
         let r = at(&g);
-        h.track(&g, r, false);
+        h.track(&g, r, false, None);
         assert!(!h.can(&g, r, false));
         assert_eq!(h.step(&g, true, 1).unwrap().name, "ab");
         // まとめて 2 段戻す
         assert_eq!(h.step(&f, true, 2).map(|c| c.name), Some(name0.clone()));
+    }
+
+    /// 段は時間では区切らない: 欄に入力している間は 1 段のまま、別の欄へ移るか欄を離れたら区切る。
+    /// 操作の前後の commit も区切り（変わっていなければ段を足さない）
+    #[test]
+    fn steps_split_by_focus_not_time() {
+        let mut h = ComboHist::default();
+        let mut d = crate::combo_doc::ComboDoc::default();
+        let mut at = |c: &Combo| {
+            d.combo = c.clone();
+            d.sync();
+            d.rev
+        };
+        let (fa, fb) = (Some(egui::Id::new("a")), Some(egui::Id::new("b")));
+        let mut c = Combo::default();
+        let r = at(&c);
+        h.track(&c, r, false, None);
+        // 欄に入った（まだ変えていない）
+        h.track(&c, r, true, fa);
+        c.name = "a".into();
+        let r = at(&c);
+        h.track(&c, r, true, fa);
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        c.name = "ab".into();
+        let r = at(&c);
+        h.track(&c, r, true, fa);
+        assert!(h.hist.is_empty(true));
+        // 別の欄へ移った: 前の欄の入力が 1 段
+        c.name = "abc".into();
+        let r = at(&c);
+        h.track(&c, r, true, fb);
+        assert_eq!(h.hist.len(true), 1);
+        h.track(&c, r, false, None);
+        assert_eq!(h.hist.len(true), 1);
+        h.commit(&c);
+        assert_eq!(h.hist.len(true), 1);
+        c.name = "x".into();
+        h.commit(&c);
+        assert_eq!(h.hist.len(true), 2);
     }
 
     /// 写しが今の組合せと同じかは、版が同じ間は比べ直さず、組合せが変わって版が進めば比べ直す

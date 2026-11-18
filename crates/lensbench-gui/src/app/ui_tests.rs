@@ -107,7 +107,10 @@ fn open_zmx_shows_system() {
     assert_eq!(st["status_error"], false, "{st}");
     assert!(!h.state().c.sys.ld_rows.is_empty());
     // 書ける .zmx は要素に分けて開く
-    assert!(h.state().c.is_combo(), "{st}");
+    assert!(
+        h.state().c.loc.file.is_some() && h.state().c.loc.file == h.state().c.loc.combo_path,
+        "{st}"
+    );
     assert!(!h.state().c.doc.combo.picks.is_empty());
 }
 

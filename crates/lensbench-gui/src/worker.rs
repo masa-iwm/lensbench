@@ -53,8 +53,6 @@ pub enum Tag {
     Surfaces,
     /// 組合せの面の表のソルブ・ピックアップを要素のブロックへ書き戻す（serve の write_back）
     WriteBack,
-    /// 系ファイルに保存（serve の save）
-    Save,
     /// 選んだ面の範囲を系ファイルに書き出す（serve の save_range）
     SaveRange,
     /// 面の設定（serve の surface_data、面の番号）
@@ -73,12 +71,6 @@ pub enum Tag {
     Tolerance,
     /// ズーム軌跡（serve の zoom）
     Zoom,
-    /// 元に戻す（back）・やり直す
-    History {
-        back: bool,
-    },
-    /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
-    HistoryDepth,
     /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける）
     Refresh,
     /// カタログのフォルダの様子（下書きの folders。AGF の名前・見つからないフォルダ）
@@ -119,7 +111,6 @@ impl Tag {
             Tag::LayoutExport => "layout_export",
             Tag::Surfaces => "surface",
             Tag::WriteBack => "write_back",
-            Tag::Save => "save",
             Tag::SaveRange => "save_range",
             Tag::SurfData(_) => "surface_data",
             Tag::Configs => "configs",
@@ -131,9 +122,6 @@ impl Tag {
             Tag::Swap => "swap",
             Tag::Tolerance => "tolerance",
             Tag::Zoom => "zoom",
-            Tag::History { back: true } => "undo",
-            Tag::History { back: false } => "redo",
-            Tag::HistoryDepth => "history",
             Tag::Folders => "folders",
             Tag::CadMeasure => "cad_measure",
             Tag::OpenDoc => "doc_peek",
@@ -165,7 +153,6 @@ impl Tag {
                 | Tag::Surfaces
                 | Tag::SurfData(_)
                 | Tag::Configs
-                | Tag::HistoryDepth
                 | Tag::Refresh
                 | Tag::Folders
                 | Tag::PopupDoc
@@ -199,7 +186,7 @@ impl Tag {
 
     /// serve の系を変える要求（出す前に、待っている・回っている解析をやめる）
     fn changes_system(&self) -> bool {
-        matches!(self, Tag::Load | Tag::Set | Tag::History { .. })
+        matches!(self, Tag::Load | Tag::Set)
     }
 }
 
@@ -1426,7 +1413,6 @@ mod tests {
         for (m, _) in Tag::refresh_calls() {
             assert_eq!(Tag::of_refresh(&m).method(), Some(m.as_str()));
         }
-        assert_eq!(Tag::History { back: true }.method(), Some("undo"));
         assert_eq!(Tag::UserCatalog(CatOp::Edit).method(), Some("catalog_edit"));
     }
 

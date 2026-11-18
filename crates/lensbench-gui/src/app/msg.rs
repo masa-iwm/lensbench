@@ -259,7 +259,10 @@ impl Core {
 impl App {
     /// 操作を当てる: 状態を変え、外への作用を返す（当てるのは [`App::apply`]）
     pub(super) fn update(&mut self, msg: Msg) -> Vec<Effect> {
+        // 操作は元に戻す段の区切り: 前の入力・ドラッグと、この操作の変更をそれぞれ 1 段に
+        self.c.combo_hist.commit(&self.c.doc.combo);
         self.update_state(msg);
+        self.c.combo_hist.commit(&self.c.doc.combo);
         self.c.fx.take()
     }
 

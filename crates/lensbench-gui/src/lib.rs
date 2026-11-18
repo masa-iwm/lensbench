@@ -28,7 +28,6 @@ mod figures;
 mod files;
 mod fill;
 mod fonts;
-mod hist_label;
 mod i18n;
 mod image_util;
 mod json_view;

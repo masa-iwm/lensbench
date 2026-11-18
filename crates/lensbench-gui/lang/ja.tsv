@@ -1316,23 +1316,15 @@ Undone	元に戻した
 Redone	やり直した
 Nothing to undo	元に戻す変更がありません
 Nothing to redo	やり直す変更がありません
-{} and {} more	{} ほか {} 件
 Change {} elements	{} 個の要素を変える
-{} (surface {})	{}（面 {}）
 Redo up to	ここまでやり直す
 Undo up to	ここまで元に戻す
 Value change	値の変更
-Switch configuration	構成の切り替え
 Combination settings	組合せの設定
 Change element {} ({})	要素 {} を変える（{}）
 Remove element ({})	要素を削除（{}）
 Add element ({})	要素を追加（{}）
-Surface values	面の値
-Surface type	面タイプ
-Delete surface	面を削除
-Insert surface	面を挿入
 Open {}	{} を開く
-Reload {}	{} を再読み込み
 Optics that fit {} (holding diameter {} mm)	{}（保持径 {} mm）に入る光学素子
 Mechanics that hold {} (diameter {} mm)	{}（径 {} mm）が入る機構部品
 , holding diameter {} mm	、保持径 {} mm
@@ -1407,8 +1399,8 @@ Select a row to see its cross-section	行を選択すると断面が出ます
 The element's surfaces changed, so the values changed in Lens Data ({}) were dropped (Ctrl+Z to undo)	要素の面が変わったので、面の表で変えた値 {} 件を破棄しました（Ctrl+Z で元に戻す）
 Open / close the analysis settings ({} changed)	解析の設定の欄を開く・閉じる（{} 個を変更）
 Search analyses, panels and commands (Ctrl+K)	解析・パネル・操作を探す（Ctrl+K）
-Reloaded (Ctrl+Z to undo)	再読み込みしました（Ctrl+Z で元に戻す）
-Reload (discard changed values; Ctrl+Z to undo)	再読み込み（変えた値を捨てる、Ctrl+Z で戻す）
+Reloaded	再読み込みしました
+Reload (discard changed values)	再読み込み（変えた値を捨てる）
 Deselect	選択を解除
 {} surface overrides	面の上書き {} 件
 (add glass catalogs in File > Catalog folders…)	（ファイル > カタログのフォルダ… で硝材カタログを追加）

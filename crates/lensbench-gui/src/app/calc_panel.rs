@@ -66,7 +66,7 @@ impl PopupDoc {
 
     /// 系を変える要求の返事（[`Core::take`]、誤りでないもの）: 読んだ文書とその後の変更を覚える
     pub(super) fn track(&mut self, d: &Done) {
-        let (_, params, r) = d.first();
+        let (_, params, _) = d.first();
         match d.tag {
             Tag::Load => {
                 // 読んだときの中身（組合せの作り直しは同じパスに書き直すので、読んだときに持つ）
@@ -78,13 +78,6 @@ impl PopupDoc {
                     bytes: std::sync::Arc::new(b),
                     ops: Vec::new(),
                 });
-            }
-            // 読む前の系へ戻した（開く・読み直すを戻した）: その文書は持っていない
-            Tag::History { .. } if r.is_ok_and(|v| v.get("loaded").is_some()) => self.base = None,
-            Tag::History { .. } => {
-                if let Some(b) = &mut self.base {
-                    b.ops.push(json!({ "history": params }));
-                }
             }
             Tag::Set => {
                 if let Some(b) = &mut self.base {
@@ -174,7 +167,7 @@ impl Core {
     /// 別の窓: 元のタブの系の写しを読む（how は読み方と変更、bytes は読むファイルの中身）。前の系の待っている解析は
     /// 要らない。段は積まない（元に戻すのは元のタブ）
     fn open_popup_doc(&mut self, how: &Value, bytes: Vec<u8>) {
-        let mut load = how["load"].clone();
+        let load = how["load"].clone();
         let Some(file) = load["file"].as_str().map(PathBuf::from) else {
             return;
         };
@@ -184,18 +177,12 @@ impl Core {
                 return self.fail(format!("{}: {e}", file.display()));
             }
         }
-        if let Some(m) = load.as_object_mut() {
-            m.remove("history");
-        }
         self.popup_doc.failed = false;
         self.drop_queued();
         self.calc(Tag::Load, load);
         for op in how["ops"].as_array().into_iter().flatten() {
             if let Some(p) = op.get("set") {
                 self.calc_refreshing(Tag::Set, p.clone());
-            } else if let Some(p) = op.get("history") {
-                let back = p["back"].as_bool() == Some(true);
-                self.calc_refreshing(Tag::History { back }, p.clone());
             }
         }
     }

@@ -102,15 +102,8 @@ impl Core {
         let file = p.display().to_string();
         // 別のファイルを開いたら、待たせていた組合せの読み直しはやめる（後から組合せで上書きしない）
         self.load_stale &= self.loc.combo_path.as_deref() == Some(p);
-        let mut params = self.load_params(p);
-        // 開く前の系は serve の段に積む（開くを元に戻せる）。組合せの作り直しは組合せの段で戻すので積まない
-        params["history"] = json!(
-            if self.is_combo() && self.loc.combo_path.as_deref() == Some(p) {
-                "keep"
-            } else {
-                "push"
-            }
-        );
+        // 元に戻すは組合せの段と文書の段（GUI）が持つので、serve の段は積まない
+        let params = self.load_params(p);
         self.calc(Tag::Load, params);
         self.info(trf("Reading {}…", &[&file]));
     }

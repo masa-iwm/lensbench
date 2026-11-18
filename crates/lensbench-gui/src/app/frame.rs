@@ -21,7 +21,7 @@ impl App {
     /// 窓の題（開いている文書と変更の印）と、OS の枠を使うか
     pub(super) fn sync_window_chrome(&mut self, ctx: &egui::Context) {
         // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
-        let shown = self.c.loc.shown(self.c.is_combo());
+        let shown = self.c.loc.shown();
         let mark = if self.c.dirty() { "● " } else { "" };
         let title = match shown {
             Some(f) => format!(

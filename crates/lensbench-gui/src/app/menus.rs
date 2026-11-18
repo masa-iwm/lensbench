@@ -48,7 +48,7 @@ impl App {
                 Msg::RunTol,
             );
         }
-        if self.c.is_combo() && self.c.layout_data.is_some() {
+        if self.c.loc.file.is_some() && self.c.layout_data.is_some() {
             push(
                 tr("Image at paraxial focus").into(),
                 "focus image paraxial",
@@ -189,7 +189,7 @@ impl App {
                 self.view_menu(ctx, ui, &mut cmd);
                 self.help_menu(ctx, ui, &mut cmd);
             }
-            let shown = self.c.loc.shown(self.c.is_combo()).cloned();
+            let shown = self.c.loc.shown().cloned();
             let dirty = self.c.dirty();
             if shown.is_some() || dirty {
                 let name = shown

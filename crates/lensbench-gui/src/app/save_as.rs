@@ -68,9 +68,9 @@ impl Core {
         self.saves.wait = keep;
     }
 
-    /// 文書を path に書く（[`Core::save`] が書き先を決めてから）。組合せはプロジェクトの .json、開いた系は serve で
-    pub(super) fn save_to(&mut self, combo: bool, path: PathBuf) {
-        if combo {
+    /// 組合せをプロジェクトの .json として path に書く（[`Core::save`] が書き先を決めてから）
+    pub(super) fn save_to(&mut self, path: PathBuf) {
+        {
             let mut v = doc_file::project_file(&self.doc.combo);
             let panels = self.panels_value();
             if let Some(o) = panels.as_object() {
@@ -91,10 +91,6 @@ impl Core {
                 }
                 Err(e) => self.fail(format!("{}: {e}", path.display())),
             }
-        } else {
-            self.loc.doc_path = Some(path.clone());
-            self.loc.doc_from = None;
-            self.calc(Tag::Save, json!({ "path": path.display().to_string() }));
         }
     }
 

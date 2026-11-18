@@ -20,8 +20,6 @@ pub(super) struct DocLoc {
     pub(super) built_combo: crate::combo_doc::Snap,
     /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり）
     pub(super) saved_combo: crate::combo_doc::Snap,
-    /// 開いた系を面の表で変えて、まだ保存していない
-    pub(super) ld_dirty: bool,
 }
 
 impl DocLoc {
@@ -114,13 +112,9 @@ impl Drop for WorkDir {
 }
 
 impl DocLoc {
-    /// 題名に出すファイル（組合せは保存先か作った元、開いた系はそのファイル）
-    pub(super) fn shown(&self, combo: bool) -> Option<&PathBuf> {
-        if combo {
-            self.doc_path.as_ref().or(self.doc_from.as_ref())
-        } else {
-            self.file.as_ref()
-        }
+    /// 題名に出すファイル（保存先か、組合せを作った元）
+    pub(super) fn shown(&self) -> Option<&PathBuf> {
+        self.doc_path.as_ref().or(self.doc_from.as_ref())
     }
 }
 
@@ -132,8 +126,7 @@ fn shown_falls_back_to_the_source() {
         doc_from: Some("/d/a.zmx".into()),
         ..Default::default()
     };
-    assert_eq!(l.shown(true), Some(&PathBuf::from("/d/a.zmx")));
-    assert_eq!(l.shown(false), Some(&PathBuf::from("/tmp/w/combo.json")));
+    assert_eq!(l.shown(), Some(&PathBuf::from("/d/a.zmx")));
     l.doc_path = Some("/d/a.json".into());
-    assert_eq!(l.shown(true), Some(&PathBuf::from("/d/a.json")));
+    assert_eq!(l.shown(), Some(&PathBuf::from("/d/a.json")));
 }

@@ -34,19 +34,7 @@ impl App {
                 .as_ref()
                 .filter(|(t, _)| self.c.status.error && t == &self.c.status.text)
                 .map(|(_, h)| h.clone());
-            // 履歴（直近 20 件。クリックで全文と履歴を開く）
-            if !self.c.status.text.is_empty()
-                && self.c.status_log.last().map(|x| &x.0) != Some(&self.c.status.text)
-            {
-                self.c.status_log.push((
-                    self.c.status.text.clone(),
-                    self.c.status.error,
-                    hint.clone(),
-                ));
-                if self.c.status_log.len() > 20 {
-                    self.c.status_log.remove(0);
-                }
-            }
+            self.c.log_status(hint.clone());
             // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る
             let right_w: f32 = ui
                 .data(|d| d.get_temp(egui::Id::new("status-right-w")))
@@ -85,129 +73,137 @@ impl App {
                 self.c.status_log_open = !self.c.status_log_open;
             }
             let right = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Label::new(RichText::new(version()).small().color(weak))
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_text(tr("Click to copy the version"))
-                    .clicked()
-                {
-                    ui.ctx().copy_text(version());
-                }
-                if self.c.font.is_none() && i18n::is_ja() {
-                    ui.label(
-                        RichText::new(tr("No Japanese font found"))
-                            .small()
-                            .color(weak),
-                    );
-                }
-                // 系の数値と面・視野・波長の数。左の状態の文に 260 px を残し、入らない分は大事でない方から出さない
-                // （系のパネルと同じ名前にして長くなったので、狭い窓で重ならないように）
-                let mut parts: Vec<(String, String)> = Vec::new();
-                if self.c.sys.info.is_some() {
-                    let n = |k: &str, d: f64| {
-                        self.c
-                            .info_num(k)
-                            .map(|x| fmt_num((x * d).round() / d))
-                            .unwrap_or("—".into())
-                    };
-                    // 大事な順
-                    for (k, v, u) in [
-                        (tr("Focal length"), n("effl", 1e3), " mm"),
-                        (tr("Working F/#"), n("wfno", 1e2), ""),
-                        (tr("Image space NA"), n("image_na", 1e4), ""),
-                        (tr("Total track"), n("total_track", 1e2), " mm"),
-                        (
-                            tr("Paraxial image height"),
-                            n("paraxial_image_height", 1e3),
-                            " mm",
-                        ),
-                    ] {
-                        parts.push((k.to_string(), format!("{v}{u}")));
-                    }
-                }
-                if let Some(s) = &self.c.sys.summary {
-                    parts.push((
-                        trf(
-                            "{} surfaces · {} fields · {} wavelengths",
-                            &[&s["surfaces"], &self.c.n_fields(), &self.c.waves_um().len()],
-                        ),
-                        String::new(),
-                    ));
-                }
-                let width = |ui: &Ui, t: &str, mono: bool| {
-                    let font = if mono {
-                        egui::TextStyle::Monospace.resolve(ui.style())
-                    } else {
-                        egui::TextStyle::Body.resolve(ui.style())
-                    };
-                    ui.fonts(|f| f.layout_no_wrap(t.to_string(), font, weak).size().x)
-                };
-                // 行の幅から、右に置いた版の欄（min_rect）と左の状態の文に残す分を引く
-                let mut budget = row_w - ui.min_rect().width() - 300.0;
-                let mut shown = 0;
-                for (k, v) in &parts {
-                    budget -= width(ui, k, false)
-                        + width(ui, v, true)
-                        + 3.0 * ui.spacing().item_spacing.x
-                        + 6.0;
-                    if budget < 0.0 {
-                        break;
-                    }
-                    shown += 1;
-                }
-                // 右から左へ置くので、出すものを逆の順に（左から 焦点距離 … 面・視野・波長 の数）
-                for (k, v) in parts[..shown].iter().rev() {
-                    if v.is_empty() {
-                        ui.label(RichText::new(k).color(weak));
-                        ui.separator();
-                        continue;
-                    }
-                    ui.label(RichText::new(v).monospace());
-                    ui.label(RichText::new(k).color(weak));
-                    ui.add_space(6.0);
-                }
-                ui.min_rect().width()
+                self.status_numbers(ui, row_w, weak)
             });
             let w = right.inner;
             ui.data_mut(|d| d.insert_temp(egui::Id::new("status-right-w"), w));
         });
         if self.c.status_log_open {
-            let mut open = true;
-            egui::Window::new(tr("Status history"))
-                .open(&mut open)
-                .default_width(560.0)
-                .max_height(ui.ctx().screen_rect().height() * 0.6)
-                .show(ui.ctx(), |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for (t, err, hint) in self.c.status_log.iter().rev() {
-                            let rt = RichText::new(t);
-                            let rt = if *err {
-                                rt.color(theme::error(ui.visuals()))
-                            } else {
-                                rt
-                            };
-                            ui.add(egui::Label::new(rt).wrap());
-                            if let Some(h) = hint {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(h)
-                                            .small()
-                                            .color(theme::weak_text(ui.visuals())),
-                                    )
-                                    .wrap(),
-                                );
-                            }
-                            ui.separator();
+            self.status_log_window(ui.ctx());
+        }
+    }
+
+    /// 右の数値（系の数値と面・視野・波長の数、版）。置いた幅を返す（次のフレームの左の文の幅に使う）
+    fn status_numbers(&self, ui: &mut Ui, row_w: f32, weak: Color32) -> f32 {
+        if ui
+            .add(
+                egui::Label::new(RichText::new(version()).small().color(weak))
+                    .sense(egui::Sense::click()),
+            )
+            .on_hover_text(tr("Click to copy the version"))
+            .clicked()
+        {
+            ui.ctx().copy_text(version());
+        }
+        if self.c.font.is_none() && i18n::is_ja() {
+            ui.label(
+                RichText::new(tr("No Japanese font found"))
+                    .small()
+                    .color(weak),
+            );
+        }
+        // 系の数値と面・視野・波長の数。左の状態の文に 260 px を残し、入らない分は大事でない方から出さない
+        // （系のパネルと同じ名前にして長くなったので、狭い窓で重ならないように）
+        let mut parts: Vec<(String, String)> = Vec::new();
+        if self.c.sys.info.is_some() {
+            let n = |k: &str, d: f64| {
+                self.c
+                    .info_num(k)
+                    .map(|x| fmt_num((x * d).round() / d))
+                    .unwrap_or("—".into())
+            };
+            // 大事な順
+            for (k, v, u) in [
+                (tr("Focal length"), n("effl", 1e3), " mm"),
+                (tr("Working F/#"), n("wfno", 1e2), ""),
+                (tr("Image space NA"), n("image_na", 1e4), ""),
+                (tr("Total track"), n("total_track", 1e2), " mm"),
+                (
+                    tr("Paraxial image height"),
+                    n("paraxial_image_height", 1e3),
+                    " mm",
+                ),
+            ] {
+                parts.push((k.to_string(), format!("{v}{u}")));
+            }
+        }
+        if let Some(s) = &self.c.sys.summary {
+            parts.push((
+                trf(
+                    "{} surfaces · {} fields · {} wavelengths",
+                    &[&s["surfaces"], &self.c.n_fields(), &self.c.waves_um().len()],
+                ),
+                String::new(),
+            ));
+        }
+        let width = |ui: &Ui, t: &str, mono: bool| {
+            let font = if mono {
+                egui::TextStyle::Monospace.resolve(ui.style())
+            } else {
+                egui::TextStyle::Body.resolve(ui.style())
+            };
+            ui.fonts(|f| f.layout_no_wrap(t.to_string(), font, weak).size().x)
+        };
+        // 行の幅から、右に置いた版の欄（min_rect）と左の状態の文に残す分を引く
+        let mut budget = row_w - ui.min_rect().width() - 300.0;
+        let mut shown = 0;
+        for (k, v) in &parts {
+            budget -=
+                width(ui, k, false) + width(ui, v, true) + 3.0 * ui.spacing().item_spacing.x + 6.0;
+            if budget < 0.0 {
+                break;
+            }
+            shown += 1;
+        }
+        // 右から左へ置くので、出すものを逆の順に（左から 焦点距離 … 面・視野・波長 の数）
+        for (k, v) in parts[..shown].iter().rev() {
+            if v.is_empty() {
+                ui.label(RichText::new(k).color(weak));
+                ui.separator();
+                continue;
+            }
+            ui.label(RichText::new(v).monospace());
+            ui.label(RichText::new(k).color(weak));
+            ui.add_space(6.0);
+        }
+        ui.min_rect().width()
+    }
+
+    /// 状態の履歴の窓
+    fn status_log_window(&mut self, ctx: &egui::Context) {
+        let mut open = true;
+        egui::Window::new(tr("Status history"))
+            .open(&mut open)
+            .default_width(560.0)
+            .max_height(ctx.screen_rect().height() * 0.6)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for (t, err, hint) in self.c.status_log.iter().rev() {
+                        let rt = RichText::new(t);
+                        let rt = if *err {
+                            rt.color(theme::error(ui.visuals()))
+                        } else {
+                            rt
+                        };
+                        ui.add(egui::Label::new(rt).wrap());
+                        if let Some(h) = hint {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(h)
+                                        .small()
+                                        .color(theme::weak_text(ui.visuals())),
+                                )
+                                .wrap(),
+                            );
                         }
-                    });
-                    if ui.button(tr("Copy full text")).clicked() {
-                        ui.ctx().copy_text(self.c.status.text.clone());
+                        ui.separator();
                     }
                 });
-            self.c.status_log_open = open;
-        }
+                if ui.button(tr("Copy full text")).clicked() {
+                    ui.ctx().copy_text(self.c.status.text.clone());
+                }
+            });
+        self.c.status_log_open = open;
     }
 }
 
@@ -253,6 +249,21 @@ pub(super) fn plain_error(e: &str) -> String {
             " (add catalogs: add_glasses, add_glass_catalogs)",
             &format!(" {add}"),
         )
+}
+
+impl Core {
+    /// 状態の文が変わっていれば履歴に足す（直近 20 件。下の行のクリックで全文と履歴を開く）
+    fn log_status(&mut self, hint: Option<String>) {
+        if !self.status.text.is_empty()
+            && self.status_log.last().map(|x| &x.0) != Some(&self.status.text)
+        {
+            self.status_log
+                .push((self.status.text.clone(), self.status.error, hint));
+            if self.status_log.len() > 20 {
+                self.status_log.remove(0);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

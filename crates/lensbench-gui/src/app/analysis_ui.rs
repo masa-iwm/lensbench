@@ -37,28 +37,7 @@ impl Core {
                 s["surfaces"].to_string(),
             )
         }) else {
-            ui.add_space(8.0);
-            ui.label(tr(
-                "Open a system file (.zmx or project .json), or drop it onto the window.",
-            ));
-            ui.label(tr("To combine catalog lenses, go to the Catalog panel."));
-            if ui.button(tr("Open… (Ctrl+O)")).clicked() {
-                self.msgs.push(Msg::Open);
-            }
-            if !self.s.recent.is_empty() {
-                ui.add_space(8.0);
-                ui.label(RichText::new(tr("Recent files")).small().color(weak));
-                for f in self.s.recent.clone().iter().take(6) {
-                    let name = Path::new(f)
-                        .file_name()
-                        .map(|x| x.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| f.clone());
-                    if ui.link(name).on_hover_text(f).clicked() {
-                        self.msgs.push(Msg::OpenFile(PathBuf::from(f)));
-                    }
-                }
-            }
-            return;
+            return self.system_empty_ui(ui, weak);
         };
         egui::ScrollArea::vertical().show(ui, |ui| {
             let (name, surfaces) = sum;
@@ -147,72 +126,101 @@ impl Core {
                 }
             });
             ui.separator();
-            ui.label(RichText::new(tr("Parameters")).small().strong().color(weak));
-            ui.label(
-                RichText::new(tr(
-                    "Changing a value recomputes the open analyses right away (↑↓ keys also work)",
-                ))
-                .small()
-                .color(weak),
-            );
-            let mut remove = None;
-            for (i, p) in self.ses.params.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(p).monospace());
-                    match self.sys.param_vals.get(p).copied() {
-                        Some(mut x) => {
-                            let step = (x.abs() * 1e-3).max(1e-3);
-                            let r =
-                                ui.add(egui::DragValue::new(&mut x).speed(step).max_decimals(8));
-                            if r.changed() {
-                                self.msgs.push(Msg::SetParam(p.clone(), x));
-                            }
-                        }
-                        None => {
-                            ui.weak("—");
+            self.params_ui(ui, weak);
+        });
+    }
+
+    /// 系を開いていないときのシステムのパネル: 開く・最近のファイル
+    fn system_empty_ui(&mut self, ui: &mut Ui, weak: Color32) {
+        ui.add_space(8.0);
+        ui.label(tr(
+            "Open a system file (.zmx or project .json), or drop it onto the window.",
+        ));
+        ui.label(tr("To combine catalog lenses, go to the Catalog panel."));
+        if ui.button(tr("Open… (Ctrl+O)")).clicked() {
+            self.msgs.push(Msg::Open);
+        }
+        if !self.s.recent.is_empty() {
+            ui.add_space(8.0);
+            ui.label(RichText::new(tr("Recent files")).small().color(weak));
+            for f in self.s.recent.clone().iter().take(6) {
+                let name = Path::new(f)
+                    .file_name()
+                    .map(|x| x.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| f.clone());
+                if ui.link(name).on_hover_text(f).clicked() {
+                    self.msgs.push(Msg::OpenFile(PathBuf::from(f)));
+                }
+            }
+        }
+    }
+
+    /// 見るパラメータ（値を変えると開いている解析を計算し直す）と読み直し
+    fn params_ui(&mut self, ui: &mut Ui, weak: Color32) {
+        ui.label(RichText::new(tr("Parameters")).small().strong().color(weak));
+        ui.label(
+            RichText::new(tr(
+                "Changing a value recomputes the open analyses right away (↑↓ keys also work)",
+            ))
+            .small()
+            .color(weak),
+        );
+        let mut remove = None;
+        for (i, p) in self.ses.params.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(p).monospace());
+                match self.sys.param_vals.get(p).copied() {
+                    Some(mut x) => {
+                        let step = (x.abs() * 1e-3).max(1e-3);
+                        let r = ui.add(egui::DragValue::new(&mut x).speed(step).max_decimals(8));
+                        if r.changed() {
+                            self.msgs.push(Msg::SetParam(p.clone(), x));
                         }
                     }
-                    if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                        remove = Some(i);
+                    None => {
+                        ui.weak("—");
                     }
-                });
-            }
-            if let Some(i) = remove {
-                self.msgs.push(Msg::RemoveParam(i));
-            }
-            ui.horizontal_wrapped(|ui| {
-                let sys = self.param_sys();
-                let (_, enter) = crate::param_pick::edit_pick(
-                    ui,
-                    &mut self.new_param,
-                    120.0,
-                    "3.t · STOP.r · G1.shift",
-                    &sys,
-                    crate::param_pick::Set::Any,
-                );
-                if (ui.button(tr("+ Add parameter")).clicked() || enter)
-                    && !self.new_param.trim().is_empty()
-                {
-                    let p = self.new_param.trim().to_string();
-                    self.msgs.push(Msg::AddParam(p));
-                    self.new_param.clear();
+                }
+                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
+                    remove = Some(i);
                 }
             });
-            ui.label(
-                RichText::new(tr(
-                    "Names are the same as in Python and serve (3.t, STOP.r, G1.shift, …)",
-                ))
-                .small()
-                .color(weak),
+        }
+        if let Some(i) = remove {
+            self.msgs.push(Msg::RemoveParam(i));
+        }
+        ui.horizontal_wrapped(|ui| {
+            let sys = self.param_sys();
+            let (_, enter) = crate::param_pick::edit_pick(
+                ui,
+                &mut self.new_param,
+                120.0,
+                "3.t · STOP.r · G1.shift",
+                &sys,
+                crate::param_pick::Set::Any,
             );
-            if ui
-                .button(tr("Reload"))
-                .on_hover_text(tr("Reload (discard changed values; Ctrl+Z to undo)"))
-                .clicked()
+            if (ui.button(tr("+ Add parameter")).clicked() || enter)
+                && !self.new_param.trim().is_empty()
             {
-                self.msgs.push(Msg::Reload);
+                let p = self.new_param.trim().to_string();
+                self.msgs.push(Msg::AddParam(p));
+                self.new_param.clear();
             }
         });
+        ui.label(
+            RichText::new(tr(
+                "Names are the same as in Python and serve (3.t, STOP.r, G1.shift, …)",
+            ))
+            .small()
+            .color(weak),
+        );
+        if ui
+            .button(tr("Reload"))
+            .on_hover_text(tr("Reload (discard changed values)"))
+            .clicked()
+        {
+            self.msgs.push(Msg::Reload);
+        }
     }
 
     /// 解析の引数の欄に並べる項目（視野・波長を上で選ぶ解析はそれを除く。図に要る引数は図のときは GUI が足すので除く）。

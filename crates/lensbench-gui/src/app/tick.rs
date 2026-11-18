@@ -88,14 +88,16 @@ impl App {
         }
         // 組合せを動かしている間は解析を待たせ、系の作り直しとレイアウト図を先に回す
         let settle = std::time::Duration::from_millis(350);
-        let moving = self.c.is_combo() && self.c.combo_edit.is_some_and(|t| t.elapsed() < settle);
+        let moving =
+            self.c.loc.file.is_some() && self.c.combo_edit.is_some_and(|t| t.elapsed() < settle);
         if moving && self.c.rerun.is_some() {
             ctx.request_repaint_after(settle);
         } else if let Some(live) = self.c.rerun.take() {
             self.run_all(live);
         }
         self.c.flush_set();
-        let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        let focus = ctx.memory(|m| m.focused());
+        let busy = ctx.input(|i| i.pointer.any_down()) || focus.is_some();
         let dropped = self.c.doc.combo.drop_stale_edits();
         if dropped > 0 {
             self.c.info(trf(
@@ -130,10 +132,10 @@ impl App {
         self.c.doc.sync();
         self.c
             .combo_hist
-            .track(&self.c.doc.combo, self.c.doc.rev, busy);
+            .track(&self.c.doc.combo, self.c.doc.rev, busy, focus);
         // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ
         if self.c.doc.refocus
-            && self.c.is_combo()
+            && self.c.loc.file.is_some()
             && self.c.loc.built_combo.same(&self.c.doc)
             && self.c.layout_data.is_some()
             && !self.c.busy_short()

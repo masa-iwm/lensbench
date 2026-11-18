@@ -40,7 +40,7 @@ impl Core {
         }
         // 系を変える要求に付けた読み直し（send_change）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
         // 断られたら読み直しは回っていない（途中の誤りで止まる）
-        if matches!(d.tag, Tag::Set | Tag::History { .. }) && d.replies.len() > 1 {
+        if matches!(d.tag, Tag::Set) && d.replies.len() > 1 {
             let (d, rest) = d.split_change();
             let ok = d.error().is_none() && !d.skipped;
             self.bundled_refresh = ok;
@@ -52,7 +52,7 @@ impl Core {
             return;
         }
         self.rev += 1;
-        let changes = matches!(d.tag, Tag::Load | Tag::Set | Tag::History { .. });
+        let changes = matches!(d.tag, Tag::Load | Tag::Set);
         if changes {
             self.sys_gen += 1;
         }
@@ -168,8 +168,8 @@ impl Core {
             Tag::Glasses | Tag::Lenses | Tag::UserCatalog(_) | Tag::CatalogFill => {
                 return Some(self.catalog_done(d, v, ms, text));
             }
-            Tag::Load | Tag::Set | Tag::History { .. } | Tag::Surfaces => {
-                return self.system_done(d, params, v, text);
+            Tag::Load | Tag::Set | Tag::Surfaces => {
+                return self.system_done(d, v, text);
             }
             Tag::Info => self.sys.info = Some(v),
             Tag::Analyze(id) => {
@@ -215,10 +215,6 @@ impl Core {
                 }
                 return None;
             }
-            Tag::HistoryDepth => {
-                self.take_history(&v);
-                return None;
-            }
             // take の頭で分けて回すので来ない
             Tag::Write | Tag::Refresh | Tag::Gets => {}
             Tag::LayoutExport => {
@@ -254,13 +250,6 @@ impl Core {
                     &[&params["path"].as_str().unwrap_or_default()],
                 );
             }
-            Tag::Save => {
-                self.loc.ld_dirty = false;
-                text = trf(
-                    "Saved to {}",
-                    &[&params["path"].as_str().unwrap_or_default()],
-                );
-            }
             Tag::Layout => {
                 self.layout_data = Some(combo::LayoutData::parse(&v));
                 // 前の図の誤り（別の系で残った重ねる経路など）は、図が描けたら消す
@@ -289,23 +278,13 @@ impl Core {
         Some(text)
     }
 
-    /// 系を開いた・変えた・読み直した返事（面の表・要約・元に戻す段）。下の行に出す文を返す
-    fn system_done(
-        &mut self,
-        d: &Done,
-        params: Value,
-        mut v: Value,
-        mut text: String,
-    ) -> Option<String> {
+    /// 系を開いた・変えた・読み直した返事（面の表・要約）。下の行に出す文を返す
+    fn system_done(&mut self, d: &Done, v: Value, mut text: String) -> Option<String> {
         match d.tag {
             Tag::Load => {
                 self.docs.opening = false;
-                // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
-                self.sys.hist = (0, 0);
-                self.sys.hist_list = Default::default();
-                self.take_history(&v);
                 if d.replies[0].method == "reload" {
-                    text = tr("Reloaded (Ctrl+Z to undo)").into();
+                    text = tr("Reloaded").into();
                 }
                 // 読んだときの注意（プロジェクトの展開・分散式・.zmx の読めなかった行など）は履歴へ、下の行には数
                 let notes: Vec<String> = v["notes"]
@@ -334,29 +313,8 @@ impl Core {
                 }
                 self.on_loaded(v);
             }
-            Tag::Set | Tag::History { .. } => {
-                self.take_history(&v);
-                if !matches!(d.tag, Tag::History { .. }) {
-                    self.docs.edited();
-                }
-                let back = params["back"].as_bool() == Some(true);
-                // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
-                // 面の表は変更あり
-                if let Some(l) = v.get_mut("loaded") {
-                    self.on_loaded(l.take());
-                    let top = &self.sys.hist_list.0.first();
-                    self.loc.ld_dirty =
-                        top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
-                    // 前の文書へ戻した: 写しの欄（組合せ・保存先・変更あり）を当てる
-                    self.take_pending_doc();
-                    self.info(tr(if back { "Undone" } else { "Redone" }));
-                    return None;
-                }
-                if matches!(d.tag, Tag::History { .. }) {
-                    text = tr(if back { "Undone" } else { "Redone" }).into();
-                }
-                // 値の変更（Set）も保存していない変更
-                self.loc.ld_dirty = true;
+            Tag::Set => {
+                self.docs.edited();
                 // 値を変えたら面の表・要約と、開いている解析を計算し直す
                 self.refresh();
                 self.calc(Tag::Layout, self.layout_params());
@@ -520,8 +478,6 @@ impl Core {
         match tag {
             Tag::Optimize => {
                 self.p.opt.undo = None;
-                // 結果を系に当てたら元に戻す段が増える
-                self.calc(Tag::HistoryDepth, json!({}));
                 text = trf(
                     "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
