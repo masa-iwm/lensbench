@@ -100,7 +100,7 @@ pub struct Raw {
     pub sysl: HashMap<String, Vec<Vec<String>>>,
     /// 評価関数の行（面の後、TOL・MNUM の前の字下げしない行。[`merit::MeritRow`]）。系を作るときは使わない
     pub merit: Vec<merit::MeritRow>,
-    /// 読まずに飛ばした行など、読込の注意（[`System::import_notes`] に入る）
+    /// 読まずに飛ばした行など、読込の注意（[`System::import_notes`](lensbench_core::system::Prescription::import_notes) に入る）
     pub notes: Vec<String>,
 }
 

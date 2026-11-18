@@ -1,7 +1,7 @@
 //! core の上のファイルの形式。
 //!
-//! - [`zmx_write`] は 系を .zmx（OpticStudio のレンズファイル）に書き出す（core から外した）。
-//!   読込は core の `crate::zmx`（系のソルブ・ZPL と一緒に core に残す）
+//! - [`zmx`] は .zmx（OpticStudio のレンズファイル）を読んでシステムにする（core から移した。システムのソルブ・ZPL は core）
+//! - [`zmx_write`] は システムを .zmx に書き出す
 
 #![warn(unreachable_pub)]
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方（core と同じ）

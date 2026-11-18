@@ -1,6 +1,6 @@
 //! 系を .zmx（OpticStudio のレンズファイル）に書き出す。読込（[`crate::zmx`]）が解釈する項目だけを書く。
 //!
-//! 厚さのソルブ（[`System::solves`]）は解いた値と MAZH の行を書き、ほかのソルブは値にして書く。ピックアップ（[`System::pickups`]）は解決した値とピックアップの行の両方を書く。モデルガラス（分散なし）は ___BLANK、ほかのガラスは名前とカタログ（GCAT）。
+//! 厚さのソルブ（[`System::solves`](lensbench_core::system::Prescription::solves)）は解いた値と MAZH の行を書き、ほかのソルブは値にして書く。ピックアップ（[`System::pickups`](lensbench_core::system::Prescription::pickups)）は解決した値とピックアップの行の両方を書く。モデルガラス（分散なし）は ___BLANK、ほかのガラスは名前とカタログ（GCAT）。
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -46,7 +46,7 @@ pub fn write(s: &System) -> Result<String> {
     write_as(s, DEFAULT_COAT_FILE)
 }
 
-/// 系に書いた膜の表（[`System::coat_tables`]）を書き出すときの膜ファイルの名前（[`write`] の既定。[`save`] は
+/// 系に書いた膜の表（[`System::coat_tables`](lensbench_core::system::Prescription::coat_tables)）を書き出すときの膜ファイルの名前（[`write`] の既定。[`save`] は
 /// `.zmx` の名前から決める）
 pub(crate) const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
 
@@ -828,7 +828,7 @@ fn config_notes(s: &System) -> Vec<String> {
     out
 }
 
-/// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く。系に書いた膜の表（[`System::coat_tables`]）を使う面があれば、
+/// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く。系に書いた膜の表（[`System::coat_tables`](lensbench_core::system::Prescription::coat_tables)）を使う面があれば、
 /// 表を足した膜ファイル（[`coating_dat`]）を `.zmx` の隣に `名前_coat.dat` で書き、COFN はそれを指す
 /// （lensbench は .zmx のフォルダから読む。OpticStudio で開くときは OpticStudio の Coatings フォルダに写す）
 /// 書いたファイルに入らなかったもの・変えたものの注意を返す（[`write_notes`]）
@@ -991,8 +991,8 @@ fn uses_coat_tables(s: &System) -> bool {
         .any(|d| !d.coat.is_empty() && s.coat_tables.contains_key(&d.coat))
 }
 
-/// 系に書いた膜の表（[`System::coat_tables`]）を使う面があれば、その表を足した膜ファイル（COATING.DAT 形式）の中身。
-/// 系の膜ファイル（[`System::coating_file`]）があればその中身を先に置き、表を後ろに足す（同じ名前は後ろの表が勝つ。
+/// 系に書いた膜の表（[`System::coat_tables`](lensbench_core::system::Prescription::coat_tables)）を使う面があれば、その表を足した膜ファイル（COATING.DAT 形式）の中身。
+/// 系の膜ファイル（[`System::coating_file`](lensbench_core::system::Prescription::coating_file)）があればその中身を先に置き、表を後ろに足す（同じ名前は後ろの表が勝つ。
 /// lensbench の読込と同じく系の表が膜ファイルより優先）。表を使う面がなければ None
 pub fn coating_dat(s: &System) -> Result<Option<String>> {
     if !uses_coat_tables(s) {
