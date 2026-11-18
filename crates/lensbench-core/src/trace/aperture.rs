@@ -2,7 +2,7 @@
 
 use crate::math::*;
 use crate::surface::Aperture;
-use crate::tol::APERTURE_EDGE;
+use crate::tol::{aperture_edge, APERTURE_EDGE};
 
 /// 開口の外か（遮蔽なら内側が「外」）。pl は面の局所座標の交点
 #[inline]
@@ -10,34 +10,40 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
     match a {
         Aperture::Circular { min, max, dx, dy } => {
             let (u, v) = (pl[0] - dx, pl[1] - dy);
-            match ring_side(u, v, min - APERTURE_EDGE, max + APERTURE_EDGE) {
+            let (lo, hi) = (min - aperture_edge(min), max + aperture_edge(max));
+            match ring_side(u, v, lo, hi) {
                 Some(inside) => !inside,
                 None => {
                     let r = u.hypot(v);
-                    r > max + APERTURE_EDGE || r < min - APERTURE_EDGE
+                    r > hi || r < lo
                 }
             }
         }
-        Aperture::Floating { semi } => match ring_side(pl[0], pl[1], 0.0, semi + APERTURE_EDGE) {
-            Some(inside) => !inside,
-            None => (pl[0]).hypot(pl[1]) > semi + APERTURE_EDGE,
-        },
+        Aperture::Floating { semi } => {
+            let hi = semi + aperture_edge(semi);
+            match ring_side(pl[0], pl[1], 0.0, hi) {
+                Some(inside) => !inside,
+                None => (pl[0]).hypot(pl[1]) > hi,
+            }
+        }
         Aperture::Obsc { min, max, dx, dy } => {
             let (u, v) = (pl[0] - dx, pl[1] - dy);
-            match ring_side(u, v, min - APERTURE_EDGE, max + APERTURE_EDGE) {
+            let (lo, hi) = (min - aperture_edge(min), max + aperture_edge(max));
+            match ring_side(u, v, lo, hi) {
                 Some(inside) => inside,
                 None => {
                     let r = u.hypot(v);
-                    r <= max + APERTURE_EDGE && r >= min - APERTURE_EDGE
+                    r <= hi && r >= lo
                 }
             }
         }
         Aperture::Rect { hx, hy, dx, dy } => {
-            (pl[0] - dx).abs() > hx + APERTURE_EDGE || (pl[1] - dy).abs() > hy + APERTURE_EDGE
+            let e = aperture_edge(hx.abs().max(hy.abs()));
+            (pl[0] - dx).abs() > hx + e || (pl[1] - dy).abs() > hy + e
         }
         Aperture::Ellipse { hx, hy, dx, dy } => {
             let (u, v) = ((pl[0] - dx) / hx, (pl[1] - dy) / hy);
-            u * u + v * v > 1.0 + APERTURE_EDGE
+            u * u + v * v > 1.0 + 2.0 * APERTURE_EDGE
         }
         Aperture::Spider {
             width,

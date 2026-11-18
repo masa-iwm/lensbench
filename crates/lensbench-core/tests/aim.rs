@@ -75,3 +75,169 @@ fn many_rays_agree_with_few_rays() {
         }
     }
 }
+
+/// 絞りの半径が 0.005 mm ほどの小さい系（A0 を 1/1000 に縮めた）でも、縁に狙った光線（瞳の単位円の上）が
+/// 狙いの許容と開口の判定の余裕のずれでけられない（どちらも絞りの半径に対する比）
+#[test]
+fn rim_rays_pass_in_a_tiny_system() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = String::from_utf16(&u).unwrap();
+    let k = 1e-3;
+    let num = |w: &str| -> String {
+        match w.parse::<f64>() {
+            Ok(v) => format!("{:e}", v),
+            Err(_) => w.to_string(),
+        }
+    };
+    let scaled: Vec<String> = t
+        .split("\r\n")
+        .map(|l| {
+            let w: Vec<&str> = l.split(' ').collect();
+            let key = l.trim_start();
+            let f = if key.starts_with("CURV ") {
+                1.0 / k
+            } else if key.starts_with("DISZ ")
+                || key.starts_with("DIAM ")
+                || key.starts_with("MEMA ")
+                || key.starts_with("ENPD ")
+            {
+                k
+            } else {
+                return l.to_string();
+            };
+            // 最初の数（キーワードの次）だけを縮める（INFINITY はそのまま）
+            let mut w: Vec<String> = w.iter().map(|x| x.to_string()).collect();
+            let i = w.iter().position(|x| !x.is_empty()).unwrap() + 1;
+            if let Ok(v) = w[i].parse::<f64>() {
+                w[i] = num(&(v * f).to_string());
+            }
+            w.join(" ")
+        })
+        .collect();
+    let dir = std::env::temp_dir().join(format!("lb-aim-tiny-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a.zmx");
+    let mut out = vec![0xff, 0xfe];
+    out.extend(
+        scaled
+            .join("\r\n")
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes),
+    );
+    std::fs::write(&f, out).unwrap();
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let mut s = zmx::load_with(&f, &opt).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    s.edit_raw(|p| {
+        p.aiming = Aiming::Real;
+        Ok(())
+    })
+    .unwrap();
+    let (rx, ry) = s.stop_radius();
+    assert!(rx.abs().max(ry.abs()) < 0.01, "{rx} {ry}");
+    let n = 64;
+    let px: Vec<f64> = (0..n)
+        .map(|i| (i as f64 / n as f64 * std::f64::consts::TAU).cos())
+        .collect();
+    let py: Vec<f64> = (0..n)
+        .map(|i| (i as f64 / n as f64 * std::f64::consts::TAU).sin())
+        .collect();
+    for fi in 0..s.fields.len() {
+        let tr = s
+            .try_trace(FieldSel::Index(fi), &px, &py, None, None, false)
+            .unwrap();
+        for (i, r) in tr.rays.iter().enumerate() {
+            assert!(
+                r.status.surf().is_none() && r.vig == 0,
+                "視野 {fi} 光線 {i}: {:?} {}",
+                r.status,
+                r.vig
+            );
+        }
+    }
+}
+
+/// 入射瞳の径だけを 1e-3〜1e-6 倍にした系（絞りがごく小さい）でも、狙いが丸めで止まらずに届く（許容の大きさに
+/// 光線がたどる長さに対する丸めの下限がある）
+#[test]
+fn aiming_converges_with_a_tiny_stop() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for name in ["A1", "E1"] {
+        let b = std::fs::read(root.join(format!("tests/refs/{name}/system.zmx"))).unwrap();
+        let u: Vec<u16> = b[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
+        let t = String::from_utf16(&u).unwrap();
+        let at = t.find("\nENPD ").unwrap() + 1;
+        let end = at + t[at..].find('\r').unwrap();
+        let d: f64 = t[at + 5..end].trim().parse().unwrap();
+        for k in [1e-3, 1e-6] {
+            let t = format!("{}ENPD {:e}{}", &t[..at], d * k, &t[end..]);
+            let dir =
+                std::env::temp_dir().join(format!("lb-aim-stop-{name}-{k}-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let f = dir.join("a.zmx");
+            let mut out = vec![0xff, 0xfe];
+            out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
+            std::fs::write(&f, out).unwrap();
+            let opt = LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            };
+            let mut s = zmx::load_with(&f, &opt).unwrap();
+            std::fs::remove_dir_all(&dir).ok();
+            s.edit_raw(|p| {
+                p.aiming = Aiming::Real;
+                Ok(())
+            })
+            .unwrap();
+            // 少ない光線（光線ごとのニュートン法）と多い光線（当てはめから反復する）の両方
+            let n = 600;
+            let mut px: Vec<f64> = (0..n)
+                .map(|i| ((i * 7919) % 1000) as f64 / 1000.0 * 2.0 - 1.0)
+                .collect();
+            let mut py: Vec<f64> = (0..n)
+                .map(|i| ((i * 104729) % 1000) as f64 / 1000.0 * 2.0 - 1.0)
+                .collect();
+            for (x, y) in px.iter_mut().zip(py.iter_mut()) {
+                let r = x.hypot(*y);
+                if r > 1.0 {
+                    (*x, *y) = (*x / r, *y / r);
+                }
+            }
+            let few = (
+                vec![0.0, 1.0, -1.0, 0.0, 0.0, 0.5, 0.7],
+                vec![0.0, 0.0, 0.0, 1.0, -1.0, 0.5, -0.7],
+            );
+            for (px, py) in [(&few.0, &few.1), (&px, &py)] {
+                for fi in 0..s.fields.len() {
+                    let tr = s
+                        .try_trace(FieldSel::Index(fi), px, py, None, None, false)
+                        .unwrap_or_else(|e| panic!("{name} ×{k} 視野 {fi}: {e}"));
+                    for (i, r) in tr.rays.iter().enumerate() {
+                        assert!(
+                            r.status.surf().is_none(),
+                            "{name} ×{k} 視野 {fi} 光線 {i}: {:?}",
+                            r.status
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

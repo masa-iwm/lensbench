@@ -276,8 +276,8 @@ pub(super) fn aperture_out_l<V: Lanes>(a: Aperture, pl: &VL<V>) -> V::B {
             pl,
             (dx, dy),
             (
-                min - crate::tol::APERTURE_EDGE,
-                max + crate::tol::APERTURE_EDGE,
+                min - crate::tol::aperture_edge(min),
+                max + crate::tol::aperture_edge(max),
             ),
             false,
         ),
@@ -286,17 +286,15 @@ pub(super) fn aperture_out_l<V: Lanes>(a: Aperture, pl: &VL<V>) -> V::B {
             pl,
             (dx, dy),
             (
-                min - crate::tol::APERTURE_EDGE,
-                max + crate::tol::APERTURE_EDGE,
+                min - crate::tol::aperture_edge(min),
+                max + crate::tol::aperture_edge(max),
             ),
             true,
         ),
         // [`trace::aperture_out`] と同じ比較を光線ごとに（NaN は外にならない）
         Aperture::Rect { hx, hy, dx, dy } => {
-            let (bx, by) = (
-                hx + crate::tol::APERTURE_EDGE,
-                hy + crate::tol::APERTURE_EDGE,
-            );
+            let e = crate::tol::aperture_edge(hx.abs().max(hy.abs()));
+            let (bx, by) = (hx + e, hy + e);
             (pl[0] - dx).abs().gt(bx) | (pl[1] - dy).abs().gt(by)
         }
         _ => V::B::from_fn(|i| trace::aperture_out(a, get(pl, i))),
@@ -312,7 +310,7 @@ mod tests {
     #[test]
     fn lane_aperture_matches_scalar_for_floating_and_circular() {
         let semi = 3.7;
-        let edge = semi + 1e-9;
+        let edge = semi + crate::tol::aperture_edge(semi);
         let rs = [
             0.0,
             1.0,
