@@ -1,0 +1,325 @@
+//! .zmx の文を行ごとに読んで [`Raw`] にする（面の行・系の行・多重構成の行）
+
+use super::*;
+
+fn mce_line(line: &str) -> Option<(String, i64, i64, String, Vec<String>)> {
+    // ^([A-Z0-9]{4})\s+(-?\d+)\s+(\d+)\s+(\S+)(.*)$
+    let b = line.as_bytes();
+    if b.len() < 4
+        || !b[..4]
+            .iter()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    {
+        return None;
+    }
+    let rest = &line[4..];
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let t: Vec<&str> = rest.split_whitespace().collect();
+    if t.len() < 3 {
+        return None;
+    }
+    let p1: i64 = t[0].parse().ok()?;
+    if !t[1].chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let cfg: i64 = t[1].parse().ok()?;
+    Some((
+        line[..4].to_string(),
+        p1,
+        cfg,
+        t[2].to_string(),
+        t[3..].iter().map(|s| s.to_string()).collect(),
+    ))
+}
+
+pub fn parse_text(txt: &str) -> Result<Raw> {
+    let mut raw = Raw::default();
+    let mut cur: Option<usize> = None;
+    let mut in_mce = false;
+    // 古い .zmx（Edmund の一部の品など）は面の行を字下げしない。字下げした行が 1 つも無いときは、
+    // SURF の後の行を全て面の行として読み、知らない行は飛ばす（小文字の stop は絞り）
+    let legacy = !txt.lines().any(|l| l.starts_with("  "));
+    for line in txt.lines() {
+        let t: Vec<&str> = line.split_whitespace().collect();
+        if t.is_empty() {
+            continue;
+        }
+        let key = if legacy && cur.is_some() && t[0] == "stop" {
+            "STOP"
+        } else {
+            t[0]
+        };
+        let rest = || t[1..].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        if key == "SURF" {
+            raw.surfs.push(RawSurf {
+                n: t.get(1).and_then(|v| v.parse().ok()).unwrap_or(0),
+                ..Default::default()
+            });
+            cur = Some(raw.surfs.len() - 1);
+            continue;
+        }
+        if key == "MNUM" {
+            in_mce = true;
+            cur = None;
+            raw.sysl.entry(key.into()).or_default().push(rest());
+            continue;
+        }
+        if in_mce {
+            let Some(m) = mce_line(line) else {
+                invalid!("can't read the zmx multi-configuration line: {line}");
+            };
+            raw.mce.push(m);
+            continue;
+        }
+        let Some(ci) = cur.filter(|_| legacy || line.starts_with("  ")) else {
+            raw.sysl.entry(key.into()).or_default().push(rest());
+            cur = None;
+            continue;
+        };
+        let s = &mut raw.surfs[ci];
+        let num = |i: usize| -> Result<f64> { fv(t.get(i).copied().unwrap_or("0")) };
+        let nums = || -> Result<Vec<f64>> { t[1..].iter().map(|v| fv(v)).collect() };
+        match key {
+            "COMM" => s.comment = line.trim().get(5..).unwrap_or("").to_string(),
+            "PARM" => {
+                s.parm.insert(num(1)? as i64, num(2)?);
+            }
+            // ピックアップ: PPAR 番号 元の面 倍率 オフセット 列、PZUP 元の面 倍率 オフセット 列、
+            // PKUP 元の面 倍率 列（円錐係数はオフセットなし）。列は [`Kind::from_column`]（OpticStudio 2026 R1.01 で実測）
+            // 元の面が負（OpticStudio 2026 R1 の座標ブレークの主光線のソルブがこう保存される）は、保存された値で固定する
+            // （PARM は解いた値。付属のサンプルで OpticStudio と光線が一致）
+            "PPAR" if num(2)? < 0.0 => {}
+            "PPAR" => {
+                let i = num(1)? as i64;
+                let from = pick_col(s.n, "PPAR", num(5)?, Kind::Parm(i.clamp(0, 255) as u8))?;
+                s.ppar
+                    .insert(i, (surf_no(num(2)?)?, num(3)?, num(4)?, from));
+            }
+            "PZUP" => {
+                let from = pick_col(s.n, "PZUP", num(4)?, Kind::Thick)?;
+                s.pzup = Some((surf_no(num(1)?)?, num(2)?, num(3)?, from));
+            }
+            // 厚さのソルブ（OpticStudio 2026 R1.01 で実測）。OPDZ OPD 帯
+            "MAZH" => {
+                let z = num(2)?;
+                let k = if z == 0.0 {
+                    SolveKind::MarginalHeight { height: 0.0 }
+                } else {
+                    SolveKind::MarginalHeightZone {
+                        height: 0.0,
+                        zone: z,
+                    }
+                };
+                s.tsolve = Some((k, num(1)?));
+            }
+            "CHZH" => s.tsolve = Some((SolveKind::ChiefHeight { height: 0.0 }, num(1)?)),
+            "TPUP" => s.tsolve = Some((SolveKind::PupilPosition, 0.0)),
+            "EDGE" => {
+                s.tsolve = Some((
+                    SolveKind::Edge {
+                        thickness: 0.0,
+                        radius: num(2)?,
+                    },
+                    num(1)?,
+                ))
+            }
+            "TOLE" => {
+                s.tsolve = Some((
+                    SolveKind::Position {
+                        other: surf_no(num(1)?)?,
+                        length: 0.0,
+                    },
+                    num(2)?,
+                ))
+            }
+            "TCOM" => {
+                s.tsolve = Some((
+                    SolveKind::Compensator {
+                        other: surf_no(num(1)?)?,
+                        sum: 0.0,
+                    },
+                    num(2)?,
+                ))
+            }
+            "TCOC" => {
+                s.tsolve = Some((
+                    SolveKind::CenterOfCurvature {
+                        other: surf_no(num(1)?)?,
+                    },
+                    0.0,
+                ))
+            }
+            "OPDZ" => {
+                s.tsolve = Some((
+                    SolveKind::Opd {
+                        opd: 0.0,
+                        zone: num(2)?,
+                    },
+                    num(1)?,
+                ))
+            }
+            "PKUP" => {
+                let from = pick_col(s.n, "PKUP", num(3)?, Kind::Conic)?;
+                s.pkup = Some((surf_no(num(1)?)?, num(2)?, 0.0, from));
+            }
+            "XDAT" => {
+                s.xdat.insert(num(1)? as i64, num(2)?);
+            }
+            "GDAT" => s.gdat = Some(nums()?),
+            "GARR" => {
+                let v = nums()?;
+                if v.len() < 5 {
+                    invalid!("surface {}: too few GARR values", s.n);
+                }
+                let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
+                s.garr.push((
+                    count_in(v[0], "GARR number", 0, MAX_GRID)?,
+                    [g(1), g(2), g(3), g(4), g(5)],
+                ));
+            }
+            "FIMP" => s.fimp = Some(line.trim().get(5..).unwrap_or("").trim().to_string()),
+            "TYPE" => s.typ = Some(t.get(1).unwrap_or(&"").to_string()),
+            "COAT" => s.coat = Some(t.get(1).unwrap_or(&"").to_string()),
+            // GLAS 名前 ソルブ 元の面 nd vd ΔPgF …。ソルブ 1 はモデルガラス（名前 ___BLANK）、2 は材料のピックアップ
+            // （Ghost Focus Generator が保存するゴーストの系の戻りの面など。名前と nd・vd は保存時の値で、使わない）
+            "GLAS" => {
+                s.glas = Some(t.get(1).unwrap_or(&"").to_string());
+                // ソルブ 4 は Offset（欄 10 が Δnd、欄 11 が Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
+                if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
+                    let (surf, dnd, dvd) = (s.n, num(10)?, num(11)?);
+                    notimpl!("zmx surface {surf}: material Offset solve (Δnd {dnd}, Δvd {dvd})");
+                }
+                if t.get(2) == Some(&"2") {
+                    s.glas_pickup = Some(surf_no(num(3)?)?);
+                } else if t.get(1) == Some(&"___BLANK") {
+                    s.model_glass = Some((num(4)?, num(5)?, num(6)?));
+                }
+            }
+            // CURV 曲率 ソルブ ...。ソルブ 4 はピックアップ: CURV 曲率 4 元の面 倍率 列（同じ列なら倍率は曲率にかかり、
+            // オフセットはない。[`Pickup`]）。ほかのソルブは保存された値を使う
+            "CURV" => {
+                s.curv = Some(num(1)?);
+                let p1 = num(3)?;
+                s.csolve = match t.get(2).copied().unwrap_or("0") {
+                    "0" | "1" => None,
+                    "4" => {
+                        let from = pick_col(s.n, "CURV", num(5)?, Kind::Curv)?;
+                        s.curv_pickup = Some((surf_no(p1)?, num(4)?, from));
+                        None
+                    }
+                    // 曲率のソルブ（OpticStudio 2026 R1.01 で実測）
+                    "2" => Some((SolveKind::MarginalAngle { angle: 0.0 }, p1)),
+                    "3" => Some((SolveKind::ChiefAngle { angle: 0.0 }, p1)),
+                    "5" => Some((SolveKind::MarginalNormal, 0.0)),
+                    "6" => Some((SolveKind::ChiefNormal, 0.0)),
+                    "7" => Some((SolveKind::Aplanatic, 0.0)),
+                    "8" => Some((SolveKind::ElementPower { power: 0.0 }, p1)),
+                    "9" => Some((
+                        SolveKind::ConcentricSurface {
+                            other: surf_no(p1)?,
+                        },
+                        0.0,
+                    )),
+                    "10" => Some((
+                        SolveKind::ConcentricRadius {
+                            other: surf_no(p1)?,
+                        },
+                        0.0,
+                    )),
+                    "11" => Some((SolveKind::FNumber { fnum: 0.0 }, p1)),
+                    // ZPL マクロのソルブ（最後の欄の "…" がマクロの名前）。マクロは build で探す
+                    "12" => {
+                        s.cmacro = Some(macro_name(s.n, line)?);
+                        None
+                    }
+                    c => notimpl!("zmx surface {}: curvature solve {c}", s.n),
+                };
+            }
+            "CONI" => s.coni = Some(num(1)?),
+            // ZPL マクロのソルブ（OpticStudio 26.1.1 で実測）
+            "TZPL" => s.tmacro = Some(macro_name(s.n, line)?),
+            "KZPL" => s.kmacro = Some(macro_name(s.n, line)?),
+            "PZPL" => {
+                let n = num(1)?;
+                if !(0.0..=255.0).contains(&n) || n.fract() != 0.0 {
+                    invalid!("zmx surface {}: PZPL parameter number {n}", s.n);
+                }
+                s.pmacros.push((n as u8, macro_name(s.n, line)?));
+            }
+            "DISZ" => s.disz = Some(num(1)?),
+            // DIAM 半直径 ソルブ …（ソルブ 0 は自動、1 は固定）。ソルブ 2 はピックアップ: DIAM 値 2 元の面 列 倍率
+            // （オフセットなし、OpticStudio 2026 R1.01 で実測）
+            "DIAM" => {
+                s.diam = Some(num(1)?);
+                s.diam_mode = t.get(2).and_then(|v| v.parse().ok());
+                s.diam_fixed = t.get(2) == Some(&"1");
+                if t.get(2) == Some(&"4") {
+                    s.smacro = Some(macro_name(s.n, line)?);
+                }
+                if t.get(2) == Some(&"2") {
+                    let from = pick_col(s.n, "DIAM", num(4)?, Kind::Semi)?;
+                    s.diam_pickup = Some((surf_no(num(3)?)?, num(5)?, from));
+                }
+            }
+            "CLAP" => s.clap = Some(nums()?),
+            "SQAP" => s.sqap = Some(nums()?),
+            "ELAP" => s.elap = Some(nums()?),
+            "FLAP" => s.flap = Some(nums()?),
+            "OBSC" => s.obsc = Some(nums()?),
+            // SPID 腕の幅（全幅） 腕の本数 開口のピックアップの元の面（OpticStudio 2026 R1.01 で実測）。ピックアップした面
+            // にも元の面の値と偏心（OBDC）が書かれるので、その値を使う
+            "SPID" => {
+                let v = nums()?;
+                let (w, n) = (
+                    v.first().copied().unwrap_or(0.0),
+                    v.get(1).copied().unwrap_or(0.0),
+                );
+                if !(w >= 0.0) || !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
+                    invalid!("zmx surface {}: spider arm width {w}, {n} arms", s.n);
+                }
+                s.spid = Some(v);
+            }
+            "OBDC" => s.obdc = Some(nums()?),
+            "SCBD" => s.scbd.push(rest()),
+            "STOP" => s.stop = true,
+            // 面の無視（Ignore This Surface）: OpticStudio は HIDE の 6 番目の値を 1 にして書く（IGNR は多重構成の
+            // 演算子の名前で、面の行にはない）
+            "HIDE" => s.ignore = t.get(6).is_some_and(|v| *v != "0"),
+            "MEMA" => {}
+            k if HARMLESS.contains(&k) => {}
+            k if legacy => raw.notes.push(format!(
+                "zmx surface {}: line {k} was skipped (an old .zmx without indentation)",
+                s.n
+            )),
+            k => notimpl!("zmx surface {}: line {} is not supported", s.n, k),
+        }
+    }
+    raw.check_counts()?;
+    Ok(raw)
+}
+
+/// マクロのソルブの行の名前（最初の " から最後の " までの中身）
+fn macro_name(n: i64, line: &str) -> Result<String> {
+    match (line.find('"'), line.rfind('"')) {
+        (Some(a), Some(b)) if b > a + 1 => Ok(line[a + 1..b].to_string()),
+        _ => invalid!("zmx surface {n}: no macro solve name"),
+    }
+}
+
+/// 面の番号の欄
+fn surf_no(v: f64) -> Result<usize> {
+    if v < 0.0 || v.fract() != 0.0 {
+        invalid!("surface number {v}");
+    }
+    Ok(v as usize)
+}
+
+/// ピックアップの列のコードから元の量（同じ列なら None）
+fn pick_col(n: i64, key: &str, col: f64, dst: Kind) -> Result<Option<Kind>> {
+    match Kind::from_column(col as i64, dst).filter(|_| col.fract() == 0.0) {
+        Some(f) => Ok(f),
+        None => notimpl!("zmx surface {n}: pickup column {col} of {key}"),
+    }
+}
