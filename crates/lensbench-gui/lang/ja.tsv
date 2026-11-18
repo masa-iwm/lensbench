@@ -582,7 +582,7 @@ Delete the selected surface (Delete)	選択した面を削除（Delete）
 The range has no .zmx stop surface	範囲に .zmx の絞りの面がありません
 OPD of one ray [waves] − target (like OPDC)	1 本の光線の OPD [波] − 目標（OPDC 相当）
 x or y of the beam centroid on the image − target (same rays as the spot term; e.g. a compensator that centres the returned spot with a mirror tilt)	像面の光束の重心の x か y − 目標（スポットの項と同じ光線。ミラーのチルトで像点を合わせる補償など）
-Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC)	1 本の実光線の面のローカル座標での位置・方向余弦 − 目標（REAX〜REAC 相当）
+Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC; TRAX, OPTH, RAGX, RAID etc. by q)	1 本の実光線の面のローカル座標での位置・方向余弦 − 目標（REAX〜REAC 相当。q で TRAX・OPTH・RAGX・RAID なども）
 7.t, lens2.tx, …	7.t・lens2.tx など
 MTF − target (default target 1)	MTF − 目標（デフォルトの目標 1）
 RMS spot radius (field, wavelength; empty wavelength = polychromatic)	RMS スポット半径（視野・波長、空の波長は多色）

@@ -47,6 +47,7 @@
 - **近軸量の波長**: `paraxial` の項の `efl`・`pimh` に `wave`（その波長を主波長にした値）を足した。.zmx の EFFL・PIMH の Wave を読み書きする
 - **面の量の項**: 最適化の項 `surface`（面の曲率・コーニック・矢高・点の厚み・直径・玉の径・頂点の大域座標）。.zmx の CVGT〜COVA・DMGT〜DMVA・SAGX・SAGY・SSAG・STHI・GLCX〜GLCZ を読み書きする。MXEA・MXEG も書く。縁の厚み（`edge`）の項も、最適化の間に自動の半直径を求め直すようにした（前は始めの半直径のまま）
 - **光線の収差・光路長**: `ray` の項の `q` に `trax`・`tray`・`trar`（主波長の主光線からのずれ）と `opth`（光路長）を足した。.zmx の TRAX・TRAY・TRAR・OPTH を読み書きする
+- **光線の量**: `ray` の項の `q` に `gx`〜`gn`（グローバル座標の交点・方向）・`r`・`ang`・`tanx`・`tany`・`nl`〜`nn`（面の法線）・`aoi`・`aoe`（入射角・射出角）・`cosi`・`cose` を足した。.zmx の RAGX〜RAGC・REAR・RANG・RETX・RETY・RENA〜RENC・RAID・RAED・RAIN・RAEN を読み書きする。`to` で面の範囲（`opth` は面の間の光路長、`aoi`・`aoe` は `min`・`max` との面ごとのはみ出し）、.zmx の PLEN・MXRE・MNRE・MXRI・MNRI
 - **評価関数の Wizard の行**: .zmx の DMFS の後の光線の行（OPDX・TRAR・TRAC・TRAD・TRAE・TRCX・TRCY）を、視野ごとの
   スポット・波面の項にまとめて読む（評価関数の値は OpticStudio と同じ）。そのために `spot`・`wavefront` の項に
   `quadrature: "grid"`（`n` × `n` の升の中心）と `arms`（`opticstudio` の腕の数、0° から等間隔）、`spot` に `axis`（`x`・`y`）を足した

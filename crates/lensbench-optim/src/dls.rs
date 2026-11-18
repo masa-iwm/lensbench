@@ -63,6 +63,9 @@ use jac::{pupil_d, JacCache, PupilCache};
 mod spot;
 use spot::{centroid_term, spot_term};
 
+#[path = "dls_ray.rs"]
+mod ray;
+
 #[path = "dls_surf.rs"]
 mod surf;
 use surf::reads_semi;
@@ -794,6 +797,18 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             }
             (*field, Some(wave.unwrap_or(s.primary)))
         }
+        TermKind::RayPath {
+            field,
+            wave,
+            surf,
+            to,
+            q,
+            upper,
+            ..
+        } => {
+            ray::check_path(i, s, *surf, *to, *q, *upper)?;
+            (*field, Some(wave.unwrap_or(s.primary)))
+        }
         TermKind::Opd { field, wave, .. } => (*field, Some(wave.unwrap_or(s.primary))),
         TermKind::Zernike {
             field,
@@ -890,7 +905,7 @@ fn supports_analytic(s: &System, k: &TermKind) -> bool {
         TermKind::Wavefront { .. } | TermKind::Opd { .. } => {
             flat_image(s) && (s.ropd == 1 || s.ropd == 2)
         }
-        TermKind::Ray { q, .. } => !matches!(q, RayQ::Z | RayQ::Opth),
+        TermKind::Ray { q, .. } => !q.by_diff(),
         _ => false,
     }
 }
@@ -978,7 +993,8 @@ fn eval_term(
             surf,
             q,
             target,
-        } => ray_term(s, *field, *wave, *px, *py, *surf, *q, *target, ps),
+        } => ray::ray_term(s, *field, *wave, *px, *py, *surf, *q, *target, ps),
+        TermKind::RayPath { .. } => ray::path_term(s, k),
         TermKind::Opd {
             field,
             wave,
@@ -1079,115 +1095,6 @@ fn eval_term(
         }
         TermKind::User(u) => Ok((u.eval_checked(&[s])?.remove(0), None)),
     }
-}
-
-/// 光線の量の項
-#[allow(clippy::too_many_arguments)]
-fn ray_term(
-    s: &System,
-    field: FieldSel,
-    wave: Option<usize>,
-    px: f64,
-    py: f64,
-    surf: Option<usize>,
-    q: RayQ,
-    target: f64,
-    ps: Option<&[Param]>,
-) -> Result<TermOut> {
-    let w = wave.unwrap_or(s.primary);
-    let j = surf.unwrap_or(s.image());
-    let t = s.try_trace(field, &[px], &[py], Some(w), Some(j), ps.is_some())?;
-    let x = &t.rays[0];
-    if x.status.surf().is_some() {
-        invalid!(
-            "the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})",
-            x.status.code()
-        );
-    }
-    // TRAX・TRAY・TRAR は主波長の主光線との差
-    let tra = matches!(q, RayQ::TraX | RayQ::TraY | RayQ::TraR);
-    let tc = if tra {
-        let tc = s.try_trace(
-            field,
-            &[0.0],
-            &[0.0],
-            Some(s.primary),
-            Some(j),
-            ps.is_some(),
-        )?;
-        if tc.rays[0].status.surf().is_some() {
-            invalid!(
-                "the chief ray stopped (surface {})",
-                tc.rays[0].status.code()
-            );
-        }
-        Some(tc)
-    } else {
-        None
-    };
-    let (dx, dy) = match &tc {
-        Some(tc) => (x.xyz[0] - tc.rays[0].xyz[0], x.xyz[1] - tc.rays[0].xyz[1]),
-        None => (0.0, 0.0),
-    };
-    let r = dx.hypot(dy);
-    let v = match q {
-        RayQ::X => x.xyz[0],
-        RayQ::Y => x.xyz[1],
-        RayQ::Z => x.xyz[2],
-        RayQ::L => x.lmn[0],
-        RayQ::M => x.lmn[1],
-        RayQ::N => x.lmn[2],
-        RayQ::TraX => dx,
-        RayQ::TraY => dy,
-        RayQ::TraR => r,
-        RayQ::Opth if s.infinite() => {
-            // 平行な光線は光線に垂直な同じ面から出るので、主光線の面 1 までの光路長を引けば OpticStudio の基準になる
-            let c = s.try_trace(field, &[0.0], &[0.0], Some(w), Some(1), false)?;
-            if c.rays[0].status.surf().is_some() {
-                invalid!(
-                    "the chief ray stopped (surface {})",
-                    c.rays[0].status.code()
-                );
-            }
-            x.opl - c.rays[0].opl
-        }
-        RayQ::Opth => x.opl,
-    };
-    let jac = match ps {
-        Some(ps) if !matches!(q, RayQ::Z | RayQ::Opth) => {
-            let g = s.land_grad(&t, w, ps, None)?;
-            let gc = match &tc {
-                Some(tc) => s.land_grad(tc, s.primary, ps, None)?,
-                None => vec![0.0; g.len()],
-            };
-            let d: Vec<f64> = (0..ps.len())
-                .map(|k| {
-                    let g = &g[k * 4..k * 4 + 4];
-                    let (gx, gy) = (g[0] - gc[k * 4], g[1] - gc[k * 4 + 1]);
-                    match q {
-                        RayQ::X => g[0],
-                        RayQ::Y => g[1],
-                        RayQ::L => g[2],
-                        RayQ::M => g[3],
-                        RayQ::TraX => gx,
-                        RayQ::TraY => gy,
-                        // 長さ 0 では向きが決まらないので 0
-                        RayQ::TraR if r > 0.0 => (dx * gx + dy * gy) / r,
-                        RayQ::TraR => 0.0,
-                        // l² + m² + n² = 1
-                        _ => -(x.lmn[0] * g[2] + x.lmn[1] * g[3]) / x.lmn[2],
-                    }
-                })
-                .collect();
-            if d.iter().any(|v| !v.is_finite()) {
-                invalid!("can't find the ray derivatives");
-            }
-            Some(d)
-        }
-        Some(_) => invalid!("z and opth of a ray are by differences"),
-        None => None,
-    };
-    Ok((vec![v - target], jac))
 }
 
 /// 1 本の光線の OPD の項（[`lensbench_core::analysis::opd`] の ref_primary = true と同じ値）

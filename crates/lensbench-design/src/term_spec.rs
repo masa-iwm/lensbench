@@ -161,7 +161,11 @@ pub struct RaySpec {
     pub py: Option<f64>,
     /// 面の番号（物体 0、既定は像面）
     pub surf: Option<usize>,
-    /// 量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長）
+    /// 面 surf から to まで（q は opth で面の間の光路長、aoi・aoe は min・max と面ごとに比べてはみ出しを足す）
+    pub to: Option<usize>,
+    /// 量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長。gx〜gn はグローバル座標の交点と方向、
+    /// r は交点の半径、ang は z 軸との角 [rad]、tanx・tany は l/n・m/n、nl〜nn は面の法線、aoi・aoe は入射角・射出角 [度]、
+    /// cosi・cose はその cos）
     pub q: String,
     pub target: Option<f64>,
 }

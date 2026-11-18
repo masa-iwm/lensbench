@@ -221,6 +221,20 @@ pub enum TermKind {
         q: RayQ,
         target: f64,
     },
+    /// 1 本の光線の面 surf から to までの量 − target（微分は差分）。q は opth（面の間の光路長、OpticStudio の PLEN）か、
+    /// aoi・aoe（面ごとの入射角・射出角 [度] を target と比べ、はみ出しの和 + target。upper は上限か。MXRI・MNRI・
+    /// MXRE・MNRE）
+    RayPath {
+        field: FieldSel,
+        wave: Option<usize>,
+        px: f64,
+        py: f64,
+        surf: usize,
+        to: usize,
+        q: RayQ,
+        upper: Option<bool>,
+        target: f64,
+    },
     /// 1 本の光線の OPD [波] − target（[`lensbench_core::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
     Opd {
         field: FieldSel,
@@ -292,9 +306,52 @@ pub enum RayQ {
     /// 光路長 [レンズ単位]（OpticStudio の OPTH）。無限遠物体では、同じ波長の主光線が面 1 を通る点を通り光線に垂直な
     /// 面から測る（OpticStudio 26.1 の実測どおり）。有限物体では物点から
     Opth,
+    /// 大域の交点・面の後の方向余弦（OpticStudio の RAGX〜RAGC）
+    Gx,
+    Gy,
+    Gz,
+    Gl,
+    Gm,
+    Gn,
+    /// 局所の交点の √(x² + y²)（REAR）
+    R,
+    /// 面の後の方向と局所の z 軸の角 [rad]（RANG）
+    Ang,
+    /// 面の後の方向の x・y の傾き l/n・m/n（RETX・RETY）
+    TanX,
+    TanY,
+    /// 交点での面の法線（局所、−z 寄りの向き。RENA〜RENC）
+    Nl,
+    Nm,
+    Nn,
+    /// 入射角・射出角 [度]（RAID・RAED）と、その cos（RAIN・RAEN）
+    Aoi,
+    Aoe,
+    CosI,
+    CosE,
 }
 
 impl RayQ {
+    /// 面ごとの記録から求める量
+    pub fn recorded(&self) -> bool {
+        !matches!(
+            self,
+            RayQ::X
+                | RayQ::Y
+                | RayQ::Z
+                | RayQ::L
+                | RayQ::M
+                | RayQ::N
+                | RayQ::TraX
+                | RayQ::TraY
+                | RayQ::TraR
+                | RayQ::Opth
+        )
+    }
+    /// 微分を差分で求める量
+    pub fn by_diff(&self) -> bool {
+        matches!(self, RayQ::Z | RayQ::Opth) || self.recorded()
+    }
     pub fn parse(s: &str) -> Result<RayQ> {
         Ok(match s.trim().to_ascii_lowercase().as_str() {
             "x" | "reax" => RayQ::X,
@@ -307,7 +364,26 @@ impl RayQ {
             "tray" => RayQ::TraY,
             "trar" => RayQ::TraR,
             "opth" => RayQ::Opth,
-            _ => invalid!("ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth)"),
+            "gx" => RayQ::Gx,
+            "gy" => RayQ::Gy,
+            "gz" => RayQ::Gz,
+            "gl" => RayQ::Gl,
+            "gm" => RayQ::Gm,
+            "gn" => RayQ::Gn,
+            "r" => RayQ::R,
+            "ang" => RayQ::Ang,
+            "tanx" => RayQ::TanX,
+            "tany" => RayQ::TanY,
+            "nl" => RayQ::Nl,
+            "nm" => RayQ::Nm,
+            "nn" => RayQ::Nn,
+            "aoi" => RayQ::Aoi,
+            "aoe" => RayQ::Aoe,
+            "cosi" => RayQ::CosI,
+            "cose" => RayQ::CosE,
+            _ => invalid!(
+                "ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)"
+            ),
         })
     }
     pub fn name(&self) -> &'static str {
@@ -322,6 +398,23 @@ impl RayQ {
             RayQ::TraY => "tray",
             RayQ::TraR => "trar",
             RayQ::Opth => "opth",
+            RayQ::Gx => "gx",
+            RayQ::Gy => "gy",
+            RayQ::Gz => "gz",
+            RayQ::Gl => "gl",
+            RayQ::Gm => "gm",
+            RayQ::Gn => "gn",
+            RayQ::R => "r",
+            RayQ::Ang => "ang",
+            RayQ::TanX => "tanx",
+            RayQ::TanY => "tany",
+            RayQ::Nl => "nl",
+            RayQ::Nm => "nm",
+            RayQ::Nn => "nn",
+            RayQ::Aoi => "aoi",
+            RayQ::Aoe => "aoe",
+            RayQ::CosI => "cosi",
+            RayQ::CosE => "cose",
         }
     }
 }
@@ -515,6 +608,7 @@ impl TermKind {
             TermKind::Mtf { dir, target, .. } if *dir != MtfDir::Both => Some(*target),
             TermKind::Paraxial { target, .. }
             | TermKind::Ray { target, .. }
+            | TermKind::RayPath { target, .. }
             | TermKind::Centroid { target, .. }
             | TermKind::Opd { target, .. }
             | TermKind::Zernike { target, .. }
@@ -680,6 +774,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         }
         TermKind::Paraxial { .. }
         | TermKind::Ray { .. }
+        | TermKind::RayPath { .. }
         | TermKind::Centroid { .. }
         | TermKind::Opd { .. }
         | TermKind::Zernike { .. }

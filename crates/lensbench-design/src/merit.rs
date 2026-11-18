@@ -225,6 +225,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             ..
         } | TermKind::Paraxial { .. }
             | TermKind::Ray { .. }
+            | TermKind::RayPath { .. }
             | TermKind::Centroid { .. }
             | TermKind::Opd { .. }
             | TermKind::Zernike { .. }
@@ -240,6 +241,18 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             return Err("a thickness term with each needs min or max".into());
         }
         e.upper = side == Side::Max;
+    }
+    // 面ごとの入射角・射出角は min・max の向きで比べる
+    if let TermKind::RayPath {
+        q: RayQ::Aoi | RayQ::Aoe,
+        upper,
+        ..
+    } = &mut kind
+    {
+        if side == Side::Eq {
+            return Err("a ray term with to and aoi or aoe needs min or max".into());
+        }
+        *upper = Some(side == Side::Max);
     }
     if side != Side::Eq && !single {
         return Err(format!(
@@ -304,14 +317,27 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 .target
                 .ok_or("paraxial term has no target (or min and max)")?,
         },
-        TermSpec::Ray(t) => TermKind::Ray {
-            field: field(t.field, s)?,
-            wave: wave(t.wave, s)?,
-            px: t.px.unwrap_or(0.0),
-            py: t.py.unwrap_or(0.0),
-            surf: t.surf,
-            q: RayQ::parse(&t.q)?,
-            target: t.target.unwrap_or(0.0),
+        TermSpec::Ray(t) => match t.to {
+            Some(to) => TermKind::RayPath {
+                field: field(t.field, s)?,
+                wave: wave(t.wave, s)?,
+                px: t.px.unwrap_or(0.0),
+                py: t.py.unwrap_or(0.0),
+                surf: t.surf.ok_or("to goes with surf")?,
+                to,
+                q: RayQ::parse(&t.q)?,
+                upper: None,
+                target: t.target.unwrap_or(0.0),
+            },
+            None => TermKind::Ray {
+                field: field(t.field, s)?,
+                wave: wave(t.wave, s)?,
+                px: t.px.unwrap_or(0.0),
+                py: t.py.unwrap_or(0.0),
+                surf: t.surf,
+                q: RayQ::parse(&t.q)?,
+                target: t.target.unwrap_or(0.0),
+            },
         },
         TermSpec::Centroid(t) => TermKind::Centroid {
             field: field(t.field, s)?,
@@ -580,6 +606,8 @@ mod tests {
             r#"{"type": "thickness", "surf": 1, "to": 3, "each": "air", "target": 1}"#,
             r#"{"type": "thickness", "surf": 1, "zone": 0.5, "target": 1}"#,
             r#"{"type": "thickness", "surf": 1, "edge": true, "zone": 0, "target": 1}"#,
+            r#"{"type": "ray", "field": 1, "to": 3, "q": "opth"}"#,
+            r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "q": "aoi", "target": 10}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

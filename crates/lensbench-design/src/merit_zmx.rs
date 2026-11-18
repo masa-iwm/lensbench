@@ -73,6 +73,23 @@ const RAY: &[(&str, &str, bool)] = &[
     ("TRAY", "tray", true),
     ("TRAR", "trar", true),
     ("OPTH", "opth", true),
+    ("RAGX", "gx", true),
+    ("RAGY", "gy", true),
+    ("RAGZ", "gz", true),
+    ("RAGA", "gl", false),
+    ("RAGB", "gm", false),
+    ("RAGC", "gn", false),
+    ("REAR", "r", true),
+    ("RANG", "ang", false),
+    ("RETX", "tanx", false),
+    ("RETY", "tany", false),
+    ("RENA", "nl", false),
+    ("RENB", "nm", false),
+    ("RENC", "nn", false),
+    ("RAID", "aoi", false),
+    ("RAED", "aoe", false),
+    ("RAIN", "cosi", false),
+    ("RAEN", "cose", false),
 ];
 
 /// 標本の番号（1 が 32 × 32、1 つ増すごとに 2 倍）から瞳の標本数
@@ -167,6 +184,32 @@ fn kind_of(
         return Ok(m);
     }
     match op {
+        // PLEN: 面 Int1 から Int2 までの光路長（主波長）。MXRE・MNRE・MXRI・MNRI: その面ごとの射出角・入射角 [度] の上限・下限
+        "PLEN" | "MXRE" | "MNRE" | "MXRI" | "MNRI" => {
+            let (s1, s2) = (int(INT1)?, int(INT2)?);
+            if s1 < i64::from(op != "PLEN") || s2 < s1 || s2 as usize > image {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            m.insert("type".into(), json!("ray"));
+            m.insert("surf".into(), json!(s1));
+            m.insert("to".into(), json!(s2));
+            if op != "PLEN" {
+                m.insert("wave".into(), wave(int(data(5))?)?);
+            }
+            m.insert("field".into(), norm_field()?);
+            m.insert("px".into(), json!(num(data(3))?));
+            m.insert("py".into(), json!(num(data(4))?));
+            let (q, key, t) = match op {
+                "PLEN" => ("opth", "target", target * unit),
+                _ => (
+                    if op.ends_with('E') { "aoe" } else { "aoi" },
+                    if op.starts_with("MX") { "max" } else { "min" },
+                    target,
+                ),
+            };
+            m.insert("q".into(), json!(q));
+            m.insert(key.into(), json!(t));
+        }
         // CTGT・CTLT・CTVA: Int1 の面の中心の厚み ≥・≤・＝ 目標。TTHI: Int1 から Int2 の面の厚みの和
         "CTGT" | "CTLT" | "CTVA" | "TTHI" => {
             let s1 = int(INT1)?;
@@ -547,7 +590,7 @@ fn is_length(op: &str) -> bool {
             "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAC", "TRAD", "TRAE",
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
-            "SSAG", "STHI", "GLCX", "GLCY", "GLCZ",
+            "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN",
         ]
         .contains(&op)
 }
@@ -774,6 +817,43 @@ fn row_of(
                 0.0,
             ];
             ("OPDC", p, bound(0.0))
+        }
+        // 面の間の光路長（PLEN、主波長だけ）と、面ごとの入射角・射出角の境界（MXRI・MNRI・MXRE・MNRE）
+        "ray" if t.get("to").is_some() => {
+            let (hx, hy) = field()?;
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let w = if wave() == 0.0 { primary } else { wave() };
+            let mut p = [
+                num("surf").unwrap_or(0.0),
+                num("to").unwrap_or(0.0),
+                hx,
+                hy,
+                num("px").unwrap_or(0.0),
+                num("py").unwrap_or(0.0),
+                0.0,
+                0.0,
+            ];
+            match (q, bound(0.0)) {
+                ("opth", b) if w == primary => ("PLEN", p, b),
+                ("opth", _) => {
+                    return Err("PLEN of OpticStudio is for the primary wavelength".into())
+                }
+                ("aoi" | "aoe", Bound::Side(side, b)) => {
+                    p[6] = w;
+                    let op = match (side == "OPGT", q == "aoe") {
+                        (true, true) => "MNRE",
+                        (true, false) => "MNRI",
+                        (false, true) => "MXRE",
+                        (false, false) => "MXRI",
+                    };
+                    (op, p, Bound::Target(b))
+                }
+                _ => {
+                    return Err(format!(
+                        "a ray term with to and {q} has no OpticStudio operand"
+                    ))
+                }
+            }
         }
         "ray" => {
             let q = t
@@ -1324,6 +1404,11 @@ mod tests {
             json!({"type": "paraxial", "q": "pimh", "wave": 3, "target": 20.0, "weight": 1.0}),
             json!({"type": "ray", "wave": 1, "field": [0.0, 1.0], "px": 0.5, "py": 0.5, "q": "trar", "target": 0.0, "weight": 1.0}),
             json!({"type": "ray", "surf": 4, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "opth", "target": 50.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 5, "wave": 2, "field": [0.0, 1.0], "px": 0.3, "py": -0.7, "q": "aoi", "target": 10.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 6, "wave": 1, "field": [0.0, 0.5], "px": 0.0, "py": 1.0, "q": "gz", "target": 40.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 0, "to": 6, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "opth", "target": 60.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 1, "to": 5, "wave": 2, "field": [0.0, 0.7], "px": 0.0, "py": 1.0, "q": "aoe", "max": 20.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 2, "to": 4, "wave": 1, "field": [0.0, 0.0], "px": 0.5, "py": 0.5, "q": "aoi", "min": 1.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
             json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
@@ -1348,12 +1433,14 @@ mod tests {
             json!({"type": "coupling"}),
             json!({"type": "thickness", "surf": 1, "to": 3, "edge": true, "target": 3.0}),
             json!({"type": "ray", "surf": 3, "field": 1, "q": "trax"}),
+            json!({"type": "ray", "surf": 1, "to": 3, "wave": 3, "field": 1, "q": "opth"}),
+            json!({"type": "ray", "surf": 1, "to": 3, "field": 1, "q": "x"}),
         ];
         let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
         let systems = [s.clone(), s.clone()];
         let before = [MeritRow::blank("from the zmx")];
         let (rows, notes) = rows_from_terms(&all, &systems, &before);
-        assert_eq!(notes.len(), 5, "{notes:?}");
+        assert_eq!(notes.len(), 7, "{notes:?}");
         // 行を .zmx に書いて読み直す
         let mut txt = String::new();
         for r in before.iter().chain(&rows) {

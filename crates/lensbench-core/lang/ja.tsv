@@ -141,7 +141,7 @@ set {i}: line break in the result	組 {i}: 結果に改行
 set {i}: {e}	組 {i}: {e}
 
 # optim
-ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・opth）
+ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・opth・gx・gy・gz・gl・gm・gn・r・ang・tanx・tany・nl・nm・nn・aoi・aoe・cosi・cose）
 paraxial {s} ({})	近軸量 {s}（{}）
 user term {}: {} results for {} systems	ユーザーの項 {}: システム {} 個に結果 {} 個
 user term {}: {} residuals (expected {})	ユーザーの項 {}: 残差 {} 個（{} 個のはず）
@@ -187,7 +187,7 @@ can't compute the Zernike coefficients	Zernike 係数を計算できません
 can't compute the coupling efficiency	結合効率を計算できません
 the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})	光線が止まりました（波長 {w}、瞳 ({px:.3}, {py:.3})、面 {}）
 can't find the ray derivatives	光線の微分を求められません
-z and opth of a ray are by differences	光線の z と opth は差分
+{} of a ray is by differences	光線の {} は差分
 OPD reference {} (exit pupil or infinity only)	OPD の基準 {}（射出瞳・無限遠のみ）
 can't compute the OPD	OPD を計算できません
 a system with an ideal lens	理想レンズのシステム
@@ -2298,3 +2298,12 @@ macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）
 no macro {} (the system has {})	マクロ {} がありません（システムのマクロは {} 個）
 no macro named {n}	{n} という名前のマクロがありません
 macro is only for macro_curv or macro_thick (not {kind})	macro は macro_curv・macro_thick だけに書けます（{kind} ではありません）
+{} of the ray at surface {j} is not finite	面 {j} での光線の {} が有限でない
+term {i}: surfaces {surf} to {to} ({first} to {})	項 {i}: 面 {surf}〜{to}（{first}〜{}）
+term {i}: a ray term with to is opth, or aoi or aoe with min or max	項 {i}: to のある ray の項は opth か、min・max のある aoi・aoe です
+surface {surf} or {to} is ignored	面 {surf} か {to} は無視する面です
+{} of the ray from surface {surf} to {to} is not finite	面 {surf}〜{to} の光線の {} が有限でない
+to goes with surf	to は surf と使います
+a ray term with to and aoi or aoe needs min or max	to と aoi・aoe のある ray の項には min か max が要ります
+PLEN of OpticStudio is for the primary wavelength	OpticStudio の PLEN は主波長だけです
+a ray term with to and {q} has no OpticStudio operand	to と {q} のある ray の項に当たる OpticStudio の演算子はありません

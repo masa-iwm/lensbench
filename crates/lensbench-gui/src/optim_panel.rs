@@ -43,7 +43,10 @@ const PARAXIAL_Q: &[&str] = &[
     "efl", "pmag", "enpp", "epd", "expp", "expd", "wfno", "pwfn", "isfn", "pimh", "totr", "obsn",
     "isna",
 ];
-const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth"];
+const RAY_Q: &[&str] = &[
+    "x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth", "gx", "gy", "gz", "gl", "gm",
+    "gn", "r", "ang", "tanx", "tany", "nl", "nm", "nn", "aoi", "aoe", "cosi", "cose",
+];
 const SURF_Q: &[&str] = &[
     "curv",
     "conic",
@@ -117,6 +120,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("px", Num),
             ("py", Num),
             ("surf", Int),
+            ("to", Int),
             ("q", Choice(RAY_Q)),
             ("target", Num),
         ],
@@ -208,7 +212,7 @@ fn type_hint(ty: &str) -> &'static str {
         "wavefront" => tr("RMS wavefront error [waves]"),
         "mtf" => tr("MTF − target (default target 1)"),
         "paraxial" => tr("System quantity such as a paraxial value − target (same values as System Data)"),
-        "ray" => tr("Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC)"),
+        "ray" => tr("Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC; TRAX, OPTH, RAGX, RAID etc. by q)"),
         "centroid" => tr("x or y of the beam centroid on the image − target (same rays as the spot term; e.g. a compensator that centres the returned spot with a mirror tilt)"),
         "opd" => tr("OPD of one ray [waves] − target (like OPDC)"),
         "zernike" => tr("Zernike coefficient [waves] − target"),

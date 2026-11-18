@@ -604,7 +604,7 @@
               ]
             },
             "q": {
-              "description": "量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長）",
+              "description": "量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長。gx〜gn はグローバル座標の交点と方向、\nr は交点の半径、ang は z 軸との角 [rad]、tanx・tany は l/n・m/n、nl〜nn は面の法線、aoi・aoe は入射角・射出角 [度]、\ncosi・cose はその cos）",
               "type": "string"
             },
             "surf": {
@@ -620,6 +620,15 @@
               "format": "double",
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "to": {
+              "description": "面 surf から to まで（q は opth で面の間の光路長、aoi・aoe は min・max と面ごとに比べてはみ出しを足す）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
                 "null"
               ]
             },
