@@ -163,9 +163,9 @@ pub struct StopOp<S> {
 #[serde(deny_unknown_fields, bound(deserialize = "S: Deserialize<'de>"))]
 pub struct MacroSolveOp<S> {
     pub surface: S,
-    /// マクロの番号（系の `macros`、プロジェクトでは `macros` の並び。0 始まり）
+    /// マクロの名前か番号（系のマクロ、プロジェクトでは `macros`。番号は 0 始まり）
     #[serde(rename = "macro")]
-    pub index: u16,
+    pub macro_ref: Ref,
     /// 解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）
     pub what: String,
 }
@@ -178,7 +178,7 @@ impl<S> MacroSolveOp<S> {
     ) -> Result<Option<MacroSolveOp<T>>, E> {
         Ok(f(self.surface)?.map(|surface| MacroSolveOp {
             surface,
-            index: self.index,
+            macro_ref: self.macro_ref,
             what: self.what,
         }))
     }
@@ -198,9 +198,12 @@ pub struct SolveOp<S> {
     /// 別の面を参照する種類の面
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other: Option<S>,
-    /// 帯・縁の高さ（既定 0）
+    /// 帯・縁の高さ（既定 0）。種類 `macro_curv`・`macro_thick` ではマクロの番号（`macro` で名前でも指せる）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param: Option<Num>,
+    /// 種類 `macro_curv`・`macro_thick` のマクロの名前か番号（系のマクロ、プロジェクトでは `macros`）。書けば `param` より優先
+    #[serde(rename = "macro", default, skip_serializing_if = "Option::is_none")]
+    pub macro_ref: Option<Ref>,
 }
 
 /// ピックアップを置く: dst の量 = src の量 × scale + offset
@@ -256,6 +259,7 @@ impl<S> SolveOp<S> {
             value: self.value,
             other,
             param: self.param,
+            macro_ref: self.macro_ref,
         }))
     }
 

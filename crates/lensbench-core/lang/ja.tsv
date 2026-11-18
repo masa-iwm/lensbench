@@ -2273,3 +2273,5 @@ extensions {a} and {b} both add {names}	拡張 {a} と {b} が、どちらも {n
 a macro solve sets k, semi or p1.. (not {})	マクロのソルブで解くのは k・semi・p1.. です（{} ではありません）
 macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）
 no macro {} (the system has {})	マクロ {} がありません（システムのマクロは {} 個）
+no macro named {n}	{n} という名前のマクロがありません
+macro is only for macro_curv or macro_thick (not {kind})	macro は macro_curv・macro_thick だけに書けます（{kind} ではありません）

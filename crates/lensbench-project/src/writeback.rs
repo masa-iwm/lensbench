@@ -229,6 +229,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
                         value: o.value,
                         other,
                         param: o.param,
+                        macro_ref: o.macro_ref.clone(),
                     }),
                     shown,
                 ),

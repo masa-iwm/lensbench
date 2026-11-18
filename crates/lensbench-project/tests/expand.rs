@@ -1452,6 +1452,37 @@ fn a_macro_solve_uses_the_project_macros() {
     .system;
     assert_eq!(s.surfaces[s.image() - 2].k, -0.7);
     assert_eq!(s.macro_parms.len(), 1);
+    // 名前でも指せる（大文字・小文字は区別しない）。並べ替えても同じマクロを指す
+    let named = k
+        .replace(r#""param": 0}"#, r#""macro": "mirr"}"#)
+        .replace(r#""macro": 1,"#, r#""macro": "K","#);
+    let named = named.replace(
+        r#"[{"name": "MIRR", "source": "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n"}, {"name": "K", "source": "SOLVERETURN -0.7\n"}]"#,
+        r#"[{"name": "K", "source": "SOLVERETURN -0.7\n"}, {"name": "MIRR", "source": "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n"}]"#,
+    );
+    assert!(
+        named.contains(r#""macro": "mirr""#) && named.contains(r#"[{"name": "K""#),
+        "{named}"
+    );
+    let s = expand(
+        &Project::from_json(&named).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .unwrap()
+    .system;
+    assert_eq!(s.surfaces[s.image() - 2].k, -0.7);
+    assert!((s.surfaces[s.image() - 1].c + 0.02).abs() < 1e-15);
+    // 無い名前は誤り
+    let bad = named.replace(r#""macro": "mirr""#, r#""macro": "NONE""#);
+    let err = expand(
+        &Project::from_json(&bad).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .err()
+    .unwrap();
+    assert!(err.to_string().contains("no macro named NONE"), "{err}");
     // 無い番号のマクロは誤り
     let bad = txt.replace(r#""param": 0"#, r#""param": 1"#);
     assert!(expand(

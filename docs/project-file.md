@@ -164,10 +164,12 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `coatings` に無ければこのファイルで引く。取り込んだ .zmx の膜ファイルより優先（違えば注意）。GUI が .zmx を要素に分けると、
   その .zmx の膜ファイルをここに書く（材料の検索フォルダで見つけたものはそこからの相対パス）。
 - ZPL マクロのソルブ: `"macros": [{"name": "MIRR", "source": "…"}]`（.ZPL の中身をそのまま。マクロのファイルは読まない）と書き、
-  ブロックの `surface_ops` に `{"op": "add_solve", "surface": 1, "kind": "macro_curv", "param": 0}`（厚さは `macro_thick`）で
-  `param` に `macros` の番号（0 始まり）を書く。円錐係数・半直径・面タイプのパラメータは
-  `{"op": "add_macro_solve", "surface": 0, "macro": 1, "what": "k"}`（`what` は `k`・`semi`・`p1` …）。
-  OpticStudio の Macro Solve と同じに解く（.zmx のマクロのソルブと同じ）。GUI がマクロのソルブのある .zmx を要素に分けると、マクロをここに書く。
+  ブロックの `surface_ops` に `{"op": "add_solve", "surface": 1, "kind": "macro_curv", "macro": "MIRR"}`（厚さは `macro_thick`）で
+  `macro` にマクロの名前（大文字・小文字は区別しない。0 始まりの番号でもよい、`param` に番号でも読む）を書く。円錐係数・半直径・
+  面タイプのパラメータは `{"op": "add_macro_solve", "surface": 0, "macro": "K", "what": "k"}`（`what` は `k`・`semi`・`p1` …）。
+  OpticStudio の Macro Solve と同じに解く（.zmx のマクロのソルブと同じ）。マクロの中の面の番号は展開したシステムの面の番号
+  （`SOSO(0)` からの相対でなければ、前に面を足し引きすると指す面が変わる。OpticStudio と同じ）。
+  GUI がマクロのソルブのある .zmx を要素に分けると、マクロをここに書き、ソルブは名前で指す。
 - フィルタ・ダイクロイックの膜: プロジェクトかユーザーカタログの `"coatings": {名前: 膜}` に書いた膜を、面・BS の `coat`
   に名前で使う（TABLE 膜として偏光の追跡・透過に効く。プロジェクトの同じ名前がカタログより優先、膜ファイルの同じ名前より優先）。
   膜は `{"type": "table", "rows": [[入射角 deg, 波長 µm, Rs, Rp, Ts, Tp], …]}`（表そのまま）、`curve`（`wavelengths_nm`・`t`・`r`、

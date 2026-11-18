@@ -27,6 +27,13 @@
 
 ### 足したもの
 
+- **プロジェクトの ZPL マクロ**: プロジェクトに `macros`（マクロの名前と .ZPL の中身）を書き、ブロックの `surface_ops` の
+  `add_solve`（`macro_curv`・`macro_thick`）と新しい `add_macro_solve`（円錐係数・半直径・面タイプのパラメータ）でマクロを
+  名前か番号で指して解く。マクロのファイルは読まない。serve の `edit` でも `add_macro_solve` が使える
+- **GUI で開く .zmx を要素に分ける範囲**: 前後に傾けて戻す鏡（行の `before`・`after`）、座標ブレーク、膜ファイル（プロジェクトの
+  `coating_file`）、OPD のソルブ、玉の中の鏡（裏面鏡・キューブ BS の中の反射）、液浸（空気のブロックの `medium`、要素の設定の欄）、
+  ZPL マクロのソルブのある .zmx も要素に分ける。分けられない .zmx（多重構成など）は .zmx を読む要素 1 つで開き、その旨を出す
+- **書き出しの場面の立体の名前**: 3D の書き出しのガラス・鏡の立体の名前の頭に、その面を含むプロジェクトの要素・群の名前を付ける
 - **.zmx のメリットファンクション**: OpticStudio が .zmx に保存したメリットファンクション（面の後の行）を読み、項で表せる
   オペランド（近軸量・RSCE などの RMS・OPDC・ZERN・MTFT/MTFS・REAX〜REAC・CENX/CENY・OPGT/OPLT・CONF）を最適化の項にする。
   CLI は `optimize --zmx-merit`。写せない行は行の番号つきの警告にする。`optimize --out` の .zmx にもメリットファンクション

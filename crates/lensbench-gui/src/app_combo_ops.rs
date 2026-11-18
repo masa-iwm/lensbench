@@ -285,6 +285,7 @@ mod tests {
             kind: Some("marginal_height".into()),
             value: None,
             param: None,
+            macro_ref: None,
         };
         let mut d = combo::Combo::from_project(&p, &root).unwrap();
         surface_ops::put_solve(&mut d.picks[0].ops, add(), true);

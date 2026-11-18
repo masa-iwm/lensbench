@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::SurfType;
 use lensbench_core::System;
 use serde_json::{json, Value};
@@ -232,11 +233,26 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     if let Some((b, i)) = stop {
         ops.push(json!({ "op": "set_stop", "surface": { "block": b, "surface": i } }));
     }
-    // 曲率・厚さのマクロのソルブの param はマクロの番号（分けたプロジェクトのマクロは系と同じ並び）
+    // マクロはプロジェクトの macros（系と同じ並び）を名前で指す。同じ名前のマクロが 2 つあれば分けない
+    let mname = |i: u16| -> Option<String> {
+        let n = &s.macros.get(i as usize)?.name;
+        (s.macros
+            .iter()
+            .filter(|m| m.name.eq_ignore_ascii_case(n))
+            .count()
+            == 1)
+            .then(|| n.clone())
+    };
     for q in &s.solves {
         let (kind, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
         let mut o = json!({ "op": "add_solve", "surface": at(q.surf)?, "kind": kind,
-            "value": value, "param": param });
+            "value": value });
+        match q.kind {
+            SolveKind::MacroCurv { index } | SolveKind::MacroThick { index } => {
+                o["macro"] = json!(mname(index)?)
+            }
+            _ => o["param"] = json!(param),
+        }
         if let Some(x) = other {
             o["other"] = at(x)?;
         }
@@ -245,7 +261,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     // 円錐・半直径・面タイプのパラメータのマクロのソルブ
     for q in &s.macro_parms {
         ops.push(
-            json!({ "op": "add_macro_solve", "surface": at(q.surf)?, "macro": q.id,
+            json!({ "op": "add_macro_solve", "surface": at(q.surf)?, "macro": mname(q.id)?,
             "what": q.what.name() }),
         );
     }
@@ -290,7 +306,6 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lensbench_core::solves::SolveKind;
     use lensbench_project::edit_ops::{BlockRef, SurfaceOp};
 
     fn root() -> PathBuf {
@@ -459,8 +474,13 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             c.picks.iter().map(|p| &p.kind).collect::<Vec<_>>()
         );
         assert_eq!(c.macros.len(), 2);
-        // マクロのファイルを消した後もプロジェクトから開け、ソルブが解ける
+        // マクロのファイルを消した後もプロジェクトから開け、ソルブが解ける。ソルブはマクロを名前で指す
         let v = c.project();
+        let t = v.to_string();
+        assert!(
+            t.contains(r#""macro":"LBMIRR""#) && t.contains(r#""macro":"LBCONI""#),
+            "{t}"
+        );
         let p = lensbench_project::Project::from_json(&v.to_string()).unwrap();
         let s = lensbench_project::expand(
             &p,

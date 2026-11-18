@@ -3951,6 +3951,17 @@
                 "null"
               ]
             },
+            "macro": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Ref"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "種類 `macro_curv`・`macro_thick` のマクロの名前か番号（系のマクロ、プロジェクトでは `macros`）。書けば `param` より優先"
+            },
             "op": {
               "const": "add_solve",
               "type": "string"
@@ -3975,7 +3986,7 @@
                   "type": "null"
                 }
               ],
-              "description": "帯・縁の高さ（既定 0）"
+              "description": "帯・縁の高さ（既定 0）。種類 `macro_curv`・`macro_thick` ではマクロの番号（`macro` で名前でも指せる）"
             },
             "surface": {
               "$ref": "#/$defs/BlockRef"
@@ -4003,11 +4014,8 @@
           "description": "円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く",
           "properties": {
             "macro": {
-              "description": "マクロの番号（系の `macros`、プロジェクトでは `macros` の並び。0 始まり）",
-              "format": "uint16",
-              "maximum": 65535,
-              "minimum": 0,
-              "type": "integer"
+              "$ref": "#/$defs/Ref",
+              "description": "マクロの名前か番号（系のマクロ、プロジェクトでは `macros`。番号は 0 始まり）"
             },
             "op": {
               "const": "add_macro_solve",

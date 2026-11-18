@@ -549,6 +549,7 @@ mod tests {
                 kind: Some("marginal_height".into()),
                 value: None,
                 param: None,
+                macro_ref: None,
             }));
         c.picks = vec![p];
         c.glass_out_of_lens(0, 1).unwrap();

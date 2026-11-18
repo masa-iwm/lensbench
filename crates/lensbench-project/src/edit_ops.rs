@@ -73,6 +73,22 @@ fn surf(s: &System, v: &Ref, what: &str) -> lensbench_core::Result<usize> {
     }
 }
 
+/// 系のマクロ（[`System::macros`]）の番号: 番号はそのまま確かめ、名前は大文字・小文字を区別せずに最初のもの
+fn macro_of(s: &System, r: &Ref) -> lensbench_core::Result<u16> {
+    let i = match r {
+        Ref::Index(i) => *i,
+        Ref::Name(n) => s
+            .macros
+            .iter()
+            .position(|m| m.name.eq_ignore_ascii_case(n.trim()))
+            .ok_or_else(|| format!("no macro named {n}"))?,
+    };
+    if i >= s.macros.len() || i > u16::MAX as usize {
+        return Err(format!("no macro {i} (the system has {})", s.macros.len()).into());
+    }
+    Ok(i as u16)
+}
+
 fn vec3(v: &[Num; 3]) -> [f64; 3] {
     v.map(|x| x.0)
 }
@@ -672,12 +688,22 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
                 None => None,
                 Some(v) => Some(surf(t, v, name)?),
             };
+            let kind = o.kind.as_deref().unwrap_or("marginal_height");
+            let param = match &o.macro_ref {
+                Some(m) if matches!(kind, "macro_curv" | "macro_thick") => macro_of(t, m)? as f64,
+                Some(_) => {
+                    return Err(
+                        format!("macro is only for macro_curv or macro_thick (not {kind})").into(),
+                    )
+                }
+                None => o.param.map_or(0.0, |x| x.0),
+            };
             let q = Solve {
                 surf: surf(t, &o.surface, name)?,
                 kind: lensbench_core::solves::solve_kind_parse(
-                    o.kind.as_deref().unwrap_or("marginal_height"),
+                    kind,
                     o.value.map_or(0.0, |x| x.0),
-                    o.param.map_or(0.0, |x| x.0),
+                    param,
                     other,
                 )
                 .map_err(e)?,
@@ -687,7 +713,7 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
         O::AddMacroSolve(o) => {
             let q = lensbench_core::zpl_solve::MacroParm {
                 surf: surf(t, &o.surface, name)?,
-                id: o.index,
+                id: macro_of(t, &o.macro_ref)?,
                 what: Kind::parse(&o.what).map_err(e)?,
             };
             t.add_macro_parm(q).map_err(e)?;

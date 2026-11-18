@@ -94,6 +94,7 @@ mod tests {
             kind: Some("marginal_height".into()),
             value: None,
             param: None,
+            macro_ref: None,
         }
     }
 
