@@ -290,6 +290,7 @@ Saved to {}	保存しました: {}
 {} is not a number	{} は数ではありません
 Lock {}	{} をロック
 This value cannot be changed here	この値は変えられません
+The change could not be applied	変更を反映できませんでした
 View and edit this element's surfaces in the Lens Data table (or double-click the element in the figure)	この要素の面をレンズデータの表で見る・変える（図の要素のダブルクリックでも）
 Comment	コメント
 Conic	コーニック

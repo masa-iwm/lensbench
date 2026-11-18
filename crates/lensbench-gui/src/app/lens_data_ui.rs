@@ -21,7 +21,7 @@ impl Core {
                     ))
                     .clicked()
                 {
-                    self.doc.combo.insert_plane(0);
+                    edit::stage(&mut self.doc.combo, &mut self.msgs, |c| c.insert_plane(0));
                 }
             }
             return;
@@ -87,7 +87,9 @@ impl Core {
                 .show(&mut bottom, |ui| {
                     if let Some(name) = &view {
                         match ids.iter().position(|i| i == name) {
-                            Some(k) => combo::block_settings(ui, &mut self.doc.combo, k),
+                            Some(k) => edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
+                                combo::block_settings(ui, c, k)
+                            }),
                             None => {
                                 ui.weak(trf(
                                     "{} is not a combination element (select the element for its settings)",
@@ -123,7 +125,9 @@ impl Core {
 
     /// 状態の表（変えた値は組合せの変更として組み直す）
     pub(super) fn config_ui(&mut self, ui: &mut Ui) {
-        crate::state_table::ui(ui, &mut self.doc.combo, &mut self.p.states);
+        edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
+            crate::state_table::ui(ui, c, &mut self.p.states)
+        });
     }
 
     /// 組合せの系の面 j の値を、組合せの要素に当てて作り直す

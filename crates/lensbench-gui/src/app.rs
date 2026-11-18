@@ -7,6 +7,7 @@
 mod ask;
 mod doc_file;
 mod doc_loc;
+mod edit;
 mod folders;
 mod help;
 mod history;
@@ -1121,16 +1122,18 @@ impl Core {
         // 面の表で選んだ面を図で目立たせる
         self.p.combo_view.hl_surf = self.p.ld.cur.map(|x| x.0);
         let busy = self.busy_short();
-        let act = combo::ui(
-            ui,
-            &mut self.doc.combo,
-            data,
-            &mut self.p.combo_view,
-            &mut self.s.auto_build,
-            busy,
-            accent,
-            &paths,
-        );
+        let act = edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
+            combo::ui(
+                ui,
+                c,
+                data,
+                &mut self.p.combo_view,
+                &mut self.s.auto_build,
+                busy,
+                accent,
+                &paths,
+            )
+        });
         if let Some(a) = act {
             self.msgs.push(Msg::Combo(a));
         }
@@ -1220,12 +1223,15 @@ impl Core {
             .sel()
             .filter(|&k| k < self.doc.combo.len());
         self.browser.lens_hide.clone_from(&self.s.lens_hide);
+        // カタログから足した玉も欄の書き換えとして当てる（足した番号・像面合わせの印は文書の外の印なのでそのまま）
+        let before = self.doc.combo.clone();
         let act = self.browser.ui(
             ui,
             &mut self.doc,
             self.s.glass_dirs.len(),
             self.s.lens_dirs.len(),
         );
+        edit::unstage(before, &mut self.doc.combo, &mut self.msgs);
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.doc.added.take() {
             self.p.combo_view.select(k);

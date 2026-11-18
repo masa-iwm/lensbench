@@ -190,6 +190,10 @@ impl Core {
         let cats = &self.folders.agf;
         egui::ScrollArea::vertical()
             .id_salt("sysset_scroll")
-            .show(ui, |ui| crate::sysset::ui(ui, &mut self.doc.combo, cats));
+            .show(ui, |ui| {
+                edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
+                    crate::sysset::ui(ui, c, cats)
+                })
+            });
     }
 }

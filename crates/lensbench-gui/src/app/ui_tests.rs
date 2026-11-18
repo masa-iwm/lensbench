@@ -535,3 +535,56 @@ fn last_row_of_the_table_is_above_the_details_bar() {
         .unwrap();
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
 }
+
+/// 欄の値の書き換えも操作で当てる: 組合せを変えた所だけが書き換えになり、当てると文書が変わって描き直しを
+/// 頼む。元に戻す段は書き換えでは区切らず（入力の途中を 1 段にまとめる）、戻すと前の値に戻る
+#[test]
+fn field_edits_are_messages() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    // 何も触らずに描き続けても、ウィジェットは書き換えを出さない（文書の版が進まない）
+    let rev = h.state().c.doc.rev;
+    h.run_steps(4);
+    assert_eq!(h.state().c.doc.rev, rev);
+    let app = h.state_mut();
+    let epd0 = app.c.doc.combo.epd;
+    let mut want = app.c.doc.combo.clone();
+    want.epd = epd0 + 1.0;
+    let e = edit::Edit::between(&app.c.doc.combo, &want).expect("changed");
+    assert_eq!(e.ops.len(), 1, "{e:?}");
+    let fx = app.update(Msg::Edit(e.clone()));
+    assert_eq!(fx, vec![msg::Effect::Repaint]);
+    assert_eq!(app.c.doc.combo, want);
+    // 2 つ目の書き換えも同じ段（入力の途中）
+    let mut want2 = want.clone();
+    want2.epd = epd0 + 2.0;
+    app.update(Msg::Edit(edit::Edit::between(&want, &want2).unwrap()));
+    h.run_steps(2);
+    assert_eq!(h.state().c.doc.combo.epd, epd0 + 2.0);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    settle(&mut h);
+    assert_eq!(
+        h.state().c.doc.combo.epd,
+        epd0,
+        "{}",
+        h.state().test_state()
+    );
+    // 場所の無い書き換えは誤りを出し、文書を変えない
+    let app = h.state_mut();
+    let before = app.c.doc.combo.clone();
+    let bad = edit::Edit {
+        ops: vec![edit::Op {
+            path: vec![edit::Seg::Key("picks".into()), edit::Seg::Index(999)],
+            value: Some(json!({})),
+        }],
+    };
+    let fx = app.update(Msg::Edit(bad));
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(app.c.doc.combo, before);
+    assert!(app.c.status.error, "{}", app.test_state());
+}

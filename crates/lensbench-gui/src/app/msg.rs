@@ -60,6 +60,9 @@ pub(super) enum Msg {
     AddParam(String),
     RemoveParam(usize),
     SetParam(String, f64),
+    /// 欄の値の書き換え（組合せの図・要素の設定・状態の表・系の設定・カタログから足す。[`super::edit`]）。
+    /// 元に戻す段は区切らない（入力の途中・ドラッグの途中も 1 段のまま。区切りは欄を離れたとき）
+    Edit(super::edit::Edit),
 }
 
 /// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
@@ -102,6 +105,8 @@ pub(super) enum Effect {
     Look,
     /// 言語を画面（字形）に当てる
     Lang,
+    /// 画面を描き直す（パネルを描いた後に当てた書き換えを、先に描いたパネルにも出す）
+    Repaint,
     /// ファイルの窓を出す（答えは同じ id で受ける）
     Dialog {
         id: String,
@@ -259,10 +264,16 @@ impl Core {
 impl App {
     /// 操作を当てる: 状態を変え、外への作用を返す（当てるのは [`App::apply`]）
     pub(super) fn update(&mut self, msg: Msg) -> Vec<Effect> {
-        // 操作は元に戻す段の区切り: 前の入力・ドラッグと、この操作の変更をそれぞれ 1 段に
-        self.c.combo_hist.commit(&self.c.doc.combo);
+        // 操作は元に戻す段の区切り: 前の入力・ドラッグと、この操作の変更をそれぞれ 1 段に。欄の値の書き換えは
+        // 区切らない（欄を離れたときに [`ComboHist::track`] が区切る）
+        let step = !matches!(msg, Msg::Edit(_));
+        if step {
+            self.c.combo_hist.commit(&self.c.doc.combo);
+        }
         self.update_state(msg);
-        self.c.combo_hist.commit(&self.c.doc.combo);
+        if step {
+            self.c.combo_hist.commit(&self.c.doc.combo);
+        }
         self.c.fx.take()
     }
 
@@ -272,6 +283,7 @@ impl App {
             match e {
                 Effect::Look => theme::apply(ctx, &self.c.s.look),
                 Effect::Lang => crate::fonts::follow_lang(ctx),
+                Effect::Repaint => ctx.request_repaint(),
                 Effect::Dialog { id, kind, dialog } => crate::files::start(&id, kind, dialog),
                 Effect::Calc { .. } | Effect::DropQueued => {}
             }
@@ -398,6 +410,12 @@ impl App {
                 self.c.sys.param_vals.insert(p.clone(), x);
                 self.c.pending_set.insert(p, x);
             }
+            Msg::Edit(e) => match e.apply(&mut self.c.doc.combo) {
+                Ok(()) => self.c.fx.push(Effect::Repaint),
+                Err(why) => self
+                    .c
+                    .fail(format!("{}: {why}", tr("The change could not be applied"))),
+            },
         }
     }
 }
