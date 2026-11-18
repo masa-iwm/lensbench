@@ -142,14 +142,11 @@ mod gui {
     }
 
     pub fn add(e: Extensions) -> Extensions {
-        e.gui_analysis(Analysis {
-            cmd: "example-chief",
-            label: "Chief ray on the image (example)",
-            select: true,
-            figure: Some(figure),
-            figure_params: None,
-            object: None,
-        })
+        e.gui_analysis(
+            Analysis::new("example-chief", "Chief ray on the image (example)")
+                .select(true)
+                .figure(figure),
+        )
         .gui_translations(&[
             ("Chief ray on the image (example)", "像面の主光線（例）"),
             ("Chief ray at ({}, {}) mm", "主光線の位置 ({}, {}) mm"),

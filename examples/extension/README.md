@@ -8,7 +8,10 @@
 - `src/bin/cli.rs`・`src/bin/gui.rs`: それを渡す exe の入口
 - `tests/check.rs`: 足し忘れの検査（`lensbench_sdk::check`）とプラグインの試験
 
+Cargo.lock は公開のものを写してから組むと、公開の CI で試した依存の版になります（`cargo` が雛形の分だけ足す）。
+
 ```
+cp ../../Cargo.lock .   # 写した先では、公開リポジトリの同じタグの Cargo.lock
 cargo run --bin example-cli -- example-chief lens.zmx
 cargo run --features gui --bin example-gui
 ```

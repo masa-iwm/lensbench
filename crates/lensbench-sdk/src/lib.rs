@@ -185,17 +185,10 @@ mod tests {
             check(&e),
             ["detector sdk-test-detector has no GUI fields (gui_detector)"]
         );
-        let e = e.gui_detector(gui::Detector {
-            kind: "sdk-test-detector",
-            object: gui::ObjectArg {
-                arg: "",
-                title: "",
-                note: "",
-                specs: Vec::new,
-                groups: &[],
-                file_name: "d.json",
-            },
-        });
+        let e = e.gui_detector(gui::Detector::new(
+            "sdk-test-detector",
+            gui::ObjectArg::new("", "", Vec::new),
+        ));
         assert!(check(&e).is_empty());
     }
 }

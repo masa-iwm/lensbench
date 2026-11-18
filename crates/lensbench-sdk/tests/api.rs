@@ -83,7 +83,10 @@ fn api_list_matches_the_reexports() {
     if std::env::var_os("LB_UPDATE_API").is_some() {
         std::fs::write(&path, &got).unwrap();
     }
-    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    // Windows の checkout では改行が CRLF になる（autocrlf）ので LF に揃えて比べる
+    let want = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     assert_eq!(
         want, got,
         "API.txt differs from the re-exports in src/lib.rs. If the change is intended, run \

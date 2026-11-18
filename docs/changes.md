@@ -338,6 +338,9 @@
   - GUI の `lensbench_gui::ext::GuiExtensions` と `lensbench_gui::main_with`、Python の `lensbench::ext::PyExtensions`
     と `module_with`、CLI の `lensbench_cli::main_with`。
   - `SurfaceModel::example_config`（既定は `params` の既定値。`check` が `check_flip` に渡す）。
+  - **壊す変更**: GUI の見せ方の型 `Analysis`・`ObjectArg`・`Detector` はフィールドを隠し、`Analysis::new(cmd, label)` と
+    `select`・`figure`・`figure_params`・`object` などのビルダーで作る。大域の `register`・`register_detector`・
+    `translations` は消した（`GuiExtensions` の `gui_analysis`・`gui_detector`・`gui_translations` を使う）。
 - `System::semi_affects_trace` を公開した。
 - 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
   分布は厳密に同じで手間はおよそ 1/6、同じ種でも雑音の値は前と違う。`Rng::normal`・`Rng::poisson` はそのまま

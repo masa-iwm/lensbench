@@ -78,7 +78,7 @@ fn ja() -> &'static HashMap<&'static str, &'static str> {
     T.get_or_init(|| table(JA))
 }
 
-/// 拡張が足した日本語の訳（[`crate::ext::translations`]）
+/// 拡張が足した日本語の訳（[`crate::ext::GuiExtensions::gui_translations`]）
 static EXTRA: std::sync::RwLock<Option<HashMap<&'static str, &'static str>>> =
     std::sync::RwLock::new(None);
 

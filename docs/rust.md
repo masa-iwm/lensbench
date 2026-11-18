@@ -41,7 +41,8 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 - 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面）。
   試験で呼ぶ。
 - **約束の型** は `lensbench-sdk` が再輸出するものだけ（一覧は `crates/lensbench-sdk/API.txt`）。各クレートのほかの
-  `pub` は中の都合で変わる。0.x の間はマイナー版で約束を壊してよく、壊す変更は [変更点](changes.md) の Rust API に書く。
+  `pub` は中の都合で変わる。一覧の試験（`tests/api.rs`）が見るのは再輸出の名前だけで、型の中身（関数の引数・
+  フィールドなど）の変化は公開 CI の雛形のジョブ（`examples/extension` を組んで試す）が止める。0.x の間はマイナー版で約束を壊してよく、壊す変更は [変更点](changes.md) の Rust API に書く。
 - 外は git のタグ（`v0.5.0` から）か rev で参照する。egui・pyo3・serde・schemars は SDK の再輸出
   （`lensbench_sdk::gui::egui`・`py::pyo3`・`serde`・`schemars`）を使い、自分の Cargo.toml に直接書かない
   （版がずれると型が合わない）。derive には `#[serde(crate = "lensbench_sdk::serde")]` などを付ける。
