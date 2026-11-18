@@ -3,7 +3,7 @@
 use super::Pick;
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind as EKind};
-use lensbench_core::{glass, par, zmx};
+use lensbench_core::{par, zmx};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -11,17 +11,7 @@ use std::path::PathBuf;
 /// すべて同じなら同じ鍵。読めない玉は None（まとめない）
 fn lens_shape(zmx_text: &str, glass_dirs: &[PathBuf]) -> Option<(String, String)> {
     let raw = zmx::parse_text(zmx_text).ok()?;
-    let s = zmx::build(
-        &raw,
-        &zmx::LoadOptions {
-            cfg: 1,
-            fixed_semi: true,
-            ..Default::default()
-        },
-        &glass::catalog_dirs(glass_dirs),
-        None,
-    )
-    .ok()?;
+    let s = lensbench_project::catalog_system(&raw, glass_dirs, None).ok()?;
     let e = elements::split(&s)
         .ok()?
         .into_iter()

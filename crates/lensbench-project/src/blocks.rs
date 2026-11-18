@@ -984,17 +984,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     false => e,
                 })?;
                 let raw = zmx::parse_text(&txt)?;
-                let s = zmx::build(
-                    &raw,
-                    &zmx::LoadOptions {
-                        cfg: 1,
-                        fixed_semi: true,
-                        ..Default::default()
-                    },
-                    &glass::catalog_dirs(&self.env.glass_dirs),
-                    None,
-                )
-                .map_err(|e| format!("{vendor} {part}: {e}"))?;
+                let s = crate::catalog_system(&raw, &self.env.glass_dirs, None)
+                    .map_err(|e| format!("{vendor} {part}: {e}"))?;
                 self.add_glasses(&s.glasses);
                 // カタログの玉は径が決まっているので半直径は固定（fixed_semi）
                 let el = pick_lens(&s, 1).map_err(|e| format!("{vendor} {part}: {e}"))?;

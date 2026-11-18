@@ -530,6 +530,27 @@ pub fn is_catalog_file(p: &Path) -> bool {
     n.ends_with(".json") || n.ends_with(".json.gz")
 }
 
+/// レンズカタログの品の .zmx の文（読んだもの raw）を系にする。展開・一覧の要約・差し替え探索で同じ設定にするための 1 か所
+/// （読み直しは展開の [`SourceCache`] が省く）:
+/// 構成 1、径はファイルの値で固定（カタログの玉の径は決まっている）。glasses を渡せば .zmx の GCAT のカタログの代わりに使う
+pub fn catalog_system(
+    raw: &zmx::Raw,
+    glass_dirs: &[PathBuf],
+    glasses: Option<HashMap<String, Glass>>,
+) -> lensbench_core::Result<System> {
+    zmx::build(
+        raw,
+        &zmx::LoadOptions {
+            cfg: 1,
+            fixed_semi: true,
+            glasses,
+            ..Default::default()
+        },
+        &glass::catalog_dirs(glass_dirs),
+        None,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

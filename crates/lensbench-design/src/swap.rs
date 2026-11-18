@@ -21,7 +21,7 @@ use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::sync::LockExt;
-use lensbench_core::{glass, par, zmx, System};
+use lensbench_core::{par, zmx, System};
 use lensbench_optim::{
     DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
 };
@@ -357,17 +357,7 @@ pub fn lens_info(
     efl_cat: f64,
     glass_dirs: &[PathBuf],
 ) -> lensbench_core::Result<(f64, f64, f64)> {
-    let raw = zmx::parse_text(zmx_text)?;
-    let s = zmx::build(
-        &raw,
-        &zmx::LoadOptions {
-            cfg: 1,
-            fixed_semi: true,
-            ..Default::default()
-        },
-        &glass::catalog_dirs(glass_dirs),
-        None,
-    )?;
+    let s = lensbench_project::catalog_system(&zmx::parse_text(zmx_text)?, glass_dirs, None)?;
     let els = elements::split(&s)?;
     let e = els
         .iter()

@@ -136,18 +136,7 @@ fn lens_summary(
             sub.insert(k, g.clone());
         }
     }
-    let s = zmx::build(
-        &raw,
-        &zmx::LoadOptions {
-            cfg: 1,
-            glasses: Some(sub),
-            // カタログの玉の径はファイルの値
-            fixed_semi: true,
-            ..Default::default()
-        },
-        &glass::catalog_dirs(dirs),
-        None,
-    )?;
+    let s = lensbench_project::catalog_system(&raw, dirs, Some(sub))?;
     system_summary(&s, efl_cat)
 }
 
