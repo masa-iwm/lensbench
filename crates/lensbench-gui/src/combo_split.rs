@@ -17,9 +17,13 @@ use crate::combo::{Combo, ElemKind};
 /// 組合せにする。同じ系にならなければ None
 pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) -> Option<Combo> {
     let mut v = split_project(s, p)?;
-    // .zmx の膜ファイル（フォルダの中なら相対パス）
+    // .zmx の膜ファイル（フォルダの中なら相対パス。材料の検索フォルダで見つけたものはそこからの相対パスで、
+    // 開くときも検索フォルダから引く。別の PC へ持っていっても絶対パスが残らないように）
     if let Some(f) = &s.coating_file {
-        let f = f.strip_prefix(base).unwrap_or(f);
+        let f = std::iter::once(base)
+            .chain(glass_dirs.iter().map(|d| d.as_path()))
+            .find_map(|d| f.strip_prefix(d).ok())
+            .unwrap_or(f);
         v["coating_file"] = json!(f.to_string_lossy());
     }
     let c = Combo::from_project(&v, base).ok()?;
@@ -413,5 +417,26 @@ mod tests {
             .filter(|x| x.get("coordbrk").is_some())
             .count();
         assert_eq!(cbs, 2, "{lens}");
+    }
+
+    /// 材料の検索フォルダで見つけた膜ファイルは、絶対パスでなく検索フォルダからの相対パスでプロジェクトに書き、
+    /// 開くときも検索フォルダから引く（保存したプロジェクトを別の所へ持っていっても引ける）
+    #[test]
+    fn a_coating_file_found_in_a_search_folder_is_written_relative_to_it() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_cofn_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("cube_T.zmx");
+        std::fs::copy(root().join("tests/splitter/cube_T.zmx"), &f).unwrap();
+        let glass = vec![root().join("tests/glass"), root().join("tests/splitter")];
+        let c = Combo::from_zmx(&f, &glass, &[]).unwrap();
+        std::fs::remove_dir_all(&tmp).ok();
+        assert!(
+            !c.picks
+                .iter()
+                .any(|p| matches!(p.kind, ElemKind::ZmxRange | ElemKind::Raw)),
+            "{:?}",
+            c.picks.iter().map(|p| &p.kind).collect::<Vec<_>>()
+        );
+        assert_eq!(c.coating_file.as_deref(), Some("LBBS.DAT"));
     }
 }

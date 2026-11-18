@@ -804,7 +804,7 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub coatings: BTreeMap<String, filter::CoatSpec>,
     /// 膜ファイル（OpticStudio の COATING.DAT の形）。面の `coat` の名前を、`coatings` に無ければこのファイルで引く。
-    /// 相対パスはプロジェクトのフォルダから。取り込んだ .zmx の膜ファイルより優先
+    /// 相対パスはプロジェクトのフォルダから、そこに無ければ材料の検索フォルダから。取り込んだ .zmx の膜ファイルより優先
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coating_file: Option<String>,
     pub wavelengths: Vec<Wave>,

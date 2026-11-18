@@ -685,8 +685,8 @@ fn go(
         if let Some(a) = p.air_name(&id) {
             air["id"] = json!(a);
         }
-        if !p.air_medium.is_empty() {
-            air["medium"] = json!(p.air_medium);
+        if !p.air_medium.trim().is_empty() {
+            air["medium"] = json!(p.air_medium.trim());
         }
         let g = p.group.trim();
         let g = if g.is_empty() || cx.names.iter().any(|n| n == g) {

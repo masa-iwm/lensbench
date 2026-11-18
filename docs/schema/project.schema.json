@@ -4453,7 +4453,7 @@
       "type": "array"
     },
     "coating_file": {
-      "description": "膜ファイル（OpticStudio の COATING.DAT の形）。面の `coat` の名前を、`coatings` に無ければこのファイルで引く。\n相対パスはプロジェクトのフォルダから。取り込んだ .zmx の膜ファイルより優先",
+      "description": "膜ファイル（OpticStudio の COATING.DAT の形）。面の `coat` の名前を、`coatings` に無ければこのファイルで引く。\n相対パスはプロジェクトのフォルダから、そこに無ければ材料の検索フォルダから。取り込んだ .zmx の膜ファイルより優先",
       "type": [
         "string",
         "null"

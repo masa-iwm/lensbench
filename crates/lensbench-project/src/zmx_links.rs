@@ -127,13 +127,15 @@ pub(crate) fn object_surface(r: Option<&crate::sysfile_v2::Row>) -> Result<Surfa
     crate::sysfile_v2::read::surface(r).map_err(|e| format!("object: {e}"))
 }
 
-/// 系の膜ファイル: プロジェクトの `coating_file`（base から）、無ければ取り込んだ .zmx の膜ファイル（違うファイルの .zmx が
+/// 系の膜ファイル: プロジェクトの `coating_file`（base から。そこに無い相対パスは .zmx の膜ファイルと同じく
+/// 材料の検索フォルダ dirs からも探す）、無ければ取り込んだ .zmx の膜ファイル（違うファイルの .zmx が
 /// 2 つ以上なら最初のもの）。違えば注意
 pub(crate) fn coating_file(
     rx: &mut lensbench_core::Prescription,
     zenv: &[(String, f64, f64, bool, Option<std::path::PathBuf>)],
     project: Option<&str>,
     base: &std::path::Path,
+    dirs: &[std::path::PathBuf],
     warn: &mut Vec<crate::Note>,
 ) {
     use crate::{Note, NoteKind};
@@ -150,7 +152,11 @@ pub(crate) fn coating_file(
         }
     }
     if let Some(f) = project {
-        let f = base.join(f);
+        let f = std::iter::once(base)
+            .chain(dirs.iter().map(|d| d.as_path()))
+            .map(|d| d.join(f))
+            .find(|p| lensbench_core::vfs::exists(p))
+            .unwrap_or_else(|| base.join(f));
         if let Some(g) = rx.coating_file.as_ref().filter(|g| **g != f) {
             warn.push(Note::new(NoteKind::Coating, None, format!(
                 "the coating file {} of a .zmx differs from coating_file {}; coatings are looked up in {}",

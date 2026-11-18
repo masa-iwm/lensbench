@@ -1498,3 +1498,5 @@ No states yet. Add one in the Layout panel (states are the configurations of a c
 {} can't be opened (it can't be written as a combination: {})	{} は開けません（組合せで書けません: {}）
 {} can't be split into elements, so it opens as one element that reads the .zmx (a saved project needs the .zmx)	{} は要素に分割できないので、.zmx を読む要素 1 つで開きます（保存したプロジェクトはこの .zmx を使います）
 Inserting surfaces and pasting is not available in a combination	面を挿入して貼り付ける操作は組合せではまだできません
+Air	空気
+Medium filling this gap (glass name or refractive index, e.g. for immersion); empty is air	この間隔を満たす媒質（硝材の名前か屈折率。液浸など）。空なら空気

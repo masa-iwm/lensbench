@@ -141,6 +141,17 @@ pub(super) fn element_settings(
                 if air != p.air_in(st) {
                     *p.air_mut(st) = air;
                 }
+                // 間隔を満たす媒質（液浸）。鏡の後には書けないので、鏡では書いてあるときだけ出す（外せるように）
+                if p.kind != ElemKind::Mirror || !p.air_medium.is_empty() {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut p.air_medium)
+                            .hint_text(tr("Air"))
+                            .desired_width(60.0),
+                    )
+                    .on_hover_text(tr(
+                        "Medium filling this gap (glass name or refractive index, e.g. for immersion); empty is air",
+                    ));
+                }
             }
         });
     });

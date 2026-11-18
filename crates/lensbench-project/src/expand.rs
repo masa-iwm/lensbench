@@ -934,6 +934,7 @@ fn expand_body(
         &c.zenv,
         p.coating_file.as_deref(),
         &env.base,
+        &env.glass_dirs,
         &mut warn,
     );
     let mut s = rx.build_raw()?;
