@@ -1893,6 +1893,9 @@ Coatings to make (comma-separated; all in the tables by default)	作るコーテ
 Kinks along wavelength [µm] (comma-separated): nodes of the dispersion tables of the coating materials. Interpolation doesn't cross these points	波長方向の折れ目 [µm]（カンマ区切り）。コーティングの材料の分散表の節。補間はこの点をまたがない
 Upper limit of the ψ interpolation error that sets BMAX [rad]	BMAX を決める ψ の補間誤差の上限 [rad]
 Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)	モデルに入れる注記（NOTE。`lensbench coatings` に出る。短い測定から作った近似のモデルの印など）
+Measured tables to check the model against (LBCT format, more than one allowed; points measured apart from the model points). Reports the largest difference and the wavelengths to add	モデルと比べる実測表（LBCT 形式、複数可。モデルの点とは別に測った点）。最大の差と、測り足す波長を出す
+Difference of the coefficients above which --check proposes wavelengths to add	--check で測り足す波長を出す、係数の差の閾値
+Smallest score to take as a kink candidate (how many times the median residual of a smooth fit). Lower finds weaker kinks	折れ目の候補にする強さの下限（なめらかなフィッティングの残差の中央値の何倍か）。下げると弱い折れ目も拾う
 Make a coating model (LBCM) smaller	コーティングのモデル（LBCM）を小さくする
 Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)	バイナリ（LBCM 3、値を 1e-9 刻み・ミラーは 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）と同じに扱える
 Original model (LBCM 2 or 3)	元のモデル（LBCM 2 か 3）

@@ -364,6 +364,9 @@ enum Cmd {
         /// KEYs to check (can be given more than once; by default the transmission from air and the mirror KEYs; on the glass side the residual is large at high β and detection is weak)
         #[arg(long)]
         key: Vec<String>,
+        /// Smallest score to take as a kink candidate (how many times the median residual of a smooth fit). Lower finds weaker kinks
+        #[arg(long, default_value_t = 100.0)]
+        min_score: f64,
         /// Output JSON
         #[arg(long)]
         json: bool,
@@ -401,28 +404,7 @@ enum Cmd {
     /// Make an encrypted coating model (LBCM 2) from measured tables (LBCT) taken with a set of model glasses
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
-    CoatModel {
-        /// Measured tables (LBCT format, more than one allowed; for the same KEY the later table is used)
-        tables: Vec<PathBuf>,
-        /// LBCM file to write
-        #[arg(long, short)]
-        out: PathBuf,
-        /// Coatings to make (comma-separated; all in the tables by default)
-        #[arg(long)]
-        coat: Option<String>,
-        /// Kinks along wavelength [µm] (comma-separated): nodes of the dispersion tables of the coating materials. Interpolation doesn't cross these points
-        #[arg(long)]
-        kinks: Option<String>,
-        /// Upper limit of the ψ interpolation error that sets BMAX [rad]
-        #[arg(long, default_value_t = 1e-4)]
-        tol_psi: f64,
-        /// Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)
-        #[arg(long)]
-        note: Option<String>,
-        /// Output JSON
-        #[arg(long)]
-        json: bool,
-    },
+    CoatModel(coat_cmd::CoatModelArgs),
     /// Make a coating model (LBCM) smaller
     ///
     /// Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)
@@ -1338,26 +1320,13 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             coatings: table,
             json,
         } => (json, coatings(&file, &glass_dir, &table)?),
-        Cmd::CoatKinks { tables, key, json } => (json, coat_kinks(&tables, &key)?),
-        Cmd::CoatModel {
+        Cmd::CoatKinks {
             tables,
-            out,
-            coat,
-            kinks,
-            tol_psi,
-            note,
+            key,
+            min_score,
             json,
-        } => (
-            json,
-            coat_model(
-                &tables,
-                &out,
-                coat.as_deref(),
-                kinks.as_deref(),
-                tol_psi,
-                note.as_deref(),
-            )?,
-        ),
+        } => (json, coat_kinks(&tables, &key, min_score)?),
+        Cmd::CoatModel(a) => (a.json, coat_model(&a)?),
         Cmd::CoatCompact { model, out, json } => (json, coat_compact(&model, &out)?),
         Cmd::CoatDesign {
             targets,

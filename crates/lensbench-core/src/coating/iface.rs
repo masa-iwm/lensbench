@@ -301,6 +301,38 @@ pub(in crate::coating) enum Kind {
     },
 }
 
+impl CoatModel {
+    /// このモデルだけで境界 key（`膜|前|後`、鏡は後が `MIRROR`）の波長 wl [µm] の係数を用意する。
+    /// 系も膜ファイルも使わない（モデルと OpticStudio の実測表を比べる道具用）。n1・n2 は前後の屈折率
+    pub fn iface(
+        &self,
+        key: &str,
+        wl: f64,
+        n1: f64,
+        n2: f64,
+        phase: PhaseConvention,
+    ) -> Result<Iface> {
+        let k = IfaceKey::parse(key);
+        let to_mirror = k.after == After::Mirror;
+        let reflect = k.is_reflect();
+        Ok(Iface {
+            kind: prepare_model(
+                k.coat,
+                self,
+                to_mirror,
+                reflect,
+                k.after_is_air(),
+                wl,
+                n2,
+                phase,
+            )?,
+            mirror: to_mirror || reflect,
+            n1,
+            wl,
+        })
+    }
+}
+
 /// 膜のモデルを波長 wl で用意する
 #[allow(clippy::too_many_arguments)]
 pub(in crate::coating) fn prepare_model(

@@ -485,6 +485,11 @@
   （`SwapSearch::distinct_count` はまとめた後の組の数）。
 - 展開の結果 `Expansion` に `map: Vec<SurfOrigin>`（システムの面ごとの出どころ: 面を足した id のあるブロック・群、往路・復路、
   反転た玉）を足した（PRJ-04）。ブロック・群の面の範囲は `block_runs(&map, id, back)` で引く。
+- 膜のモデル作りの道具（[膜](coatings.md)）: `lensbench coat-model --check 表 --check-tol 値` でモデルを作った点とは別に測った表と比べ、
+  最大の差と足す波長を JSON の `check` に出す。`lensbench coat-kinks --min-score`（既定 100）で折れ目の候補にする強さの下限を変えられる。
+  `lensbench_design::coat_fit::detect_kinks` は数点の間に並んだ 2 つの折れ目も拾うようになり（同じ表でも折れ目が増えることがある）、
+  下限を渡す `detect_kinks_with(m, min_score)` を足した。`lensbench_core::coating::CoatModel::iface(KEY, 波長, n1, n2, 位相)` で
+  1 つのモデルから面の境界（`Iface`）を作れる。
 
 ### GUI
 - 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。

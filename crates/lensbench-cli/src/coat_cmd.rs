@@ -5,8 +5,9 @@ use super::*;
 pub(crate) fn coat_kinks(
     tables: &[PathBuf],
     only: &[String],
+    min_score: f64,
 ) -> Result<Value, crate::error::AppError> {
-    use lensbench_design::coat_fit::detect_kinks;
+    use lensbench_design::coat_fit::detect_kinks_with;
     let mut keys = Vec::new();
     // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
     let mut per: Vec<(String, Vec<f64>)> = Vec::new();
@@ -18,7 +19,7 @@ pub(crate) fn coat_kinks(
             if (only.is_empty() && !air) || (!only.is_empty() && !only.contains(&k)) {
                 continue;
             }
-            let ks = detect_kinks(&m);
+            let ks = detect_kinks_with(&m, min_score);
             let coat = k.split('|').next().unwrap_or("").to_string();
             let i = match per.iter().position(|(c, _)| *c == coat) {
                 Some(i) => i,
@@ -51,14 +52,48 @@ pub(crate) fn coat_kinks(
     Ok(json!({ "coats": coats, "keys": keys }))
 }
 
-pub(crate) fn coat_model(
-    tables: &[PathBuf],
-    out: &std::path::Path,
-    only: Option<&str>,
-    kinks: Option<&str>,
+// `coat-model` の引数（main.rs を大きくしないようここに置く）
+#[derive(clap::Args)]
+pub(crate) struct CoatModelArgs {
+    /// Measured tables (LBCT format, more than one allowed; for the same KEY the later table is used)
+    tables: Vec<PathBuf>,
+    /// LBCM file to write
+    #[arg(long, short)]
+    out: PathBuf,
+    /// Coatings to make (comma-separated; all in the tables by default)
+    #[arg(long)]
+    coat: Option<String>,
+    /// Kinks along wavelength [µm] (comma-separated): nodes of the dispersion tables of the coating materials. Interpolation doesn't cross these points
+    #[arg(long)]
+    kinks: Option<String>,
+    /// Upper limit of the ψ interpolation error that sets BMAX [rad]
+    #[arg(long, default_value_t = 1e-4)]
     tol_psi: f64,
-    note: Option<&str>,
-) -> lensbench_core::Result<Value> {
+    /// Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)
+    #[arg(long)]
+    note: Option<String>,
+    /// Measured tables to check the model against (LBCT format, more than one allowed; points measured apart from the model points). Reports the largest difference and the wavelengths to add
+    #[arg(long)]
+    check: Vec<PathBuf>,
+    /// Difference of the coefficients above which --check proposes wavelengths to add
+    #[arg(long, default_value_t = 1e-4)]
+    check_tol: f64,
+    /// Output JSON
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+pub(crate) fn coat_model(a: &CoatModelArgs) -> lensbench_core::Result<Value> {
+    let (tables, out, only, tol_psi, check_tol) =
+        (&a.tables, &a.out, a.coat.as_deref(), a.tol_psi, a.check_tol);
+    let (kinks, note) = (a.kinks.as_deref(), a.note.as_deref());
+    // 照合用の表（モデルを作った点とは別に測った表）
+    let mut checks: Vec<(String, coating::Measured)> = Vec::new();
+    for t in &a.check {
+        let txt = lensbench_core::vfs::read_to_string(t)
+            .map_err(lensbench_core::Error::io_at(t.display()))?;
+        checks.extend(coating::parse_measured(&txt).map_err(|e| e.at(t.display()))?);
+    }
     let mut kinks: Vec<f64> = match kinks {
         None => Vec::new(),
         Some(k) => k
@@ -147,8 +182,10 @@ pub(crate) fn coat_model(
                 "warning: {c}: the wavelength grid is coarse (wavenumber step {gap:.4} > guide {need:.4} [1/um]); coefficients shift between wavelengths"
             )));
         }
+        let chk = (!checks.is_empty()).then(|| check_model(c, &r.model, &checks, check_tol));
         rep.push(json!({
             "coat": c,
+            "check": chk,
             "d_um": r.model.d,
             "bmax": r.model.bmax,
             "mirror_d_um": r.model.mirror.as_ref().map(|m| m.d),
@@ -170,6 +207,109 @@ pub(crate) fn coat_model(
     lensbench_core::vfs::write(out, format_models(&e))
         .map_err(|x| format!("{}: {x}", out.display()))?;
     Ok(json!({ "out": out.display().to_string(), "models": rep }))
+}
+
+/// 屈折率だけの媒質（`AIR`・`n,k`）の屈折率。硝材の名前などは None
+fn model_medium_n(m: &str) -> Option<f64> {
+    if m == "AIR" {
+        return Some(1.0);
+    }
+    m.split_once(',')?.0.trim().parse().ok()
+}
+
+/// モデル（OpticStudio 互換の位相）を、作った点とは別に測った表と比べる（`coat-model --check`）。
+/// 透過と鏡の係数の差 |Δ| の最大（s・p の大きい方）と、その点。透過と空気側の鏡で差が tol を超えた点を含む
+/// モデルの波長の区間の中点（波数で）を `refine_wl_um` に返す（そこで測り足すと補間がよくなる）。
+/// 屈折率だけの媒質の KEY だけを見る。後ろの媒質の全反射の近く（n2² − β² < 1e-3）とモデルの範囲の外（notimpl）は数えない
+fn check_model(
+    coat: &str,
+    model: &coating::CoatModel,
+    tabs: &[(String, coating::Measured)],
+    tol: f64,
+) -> Value {
+    #[derive(Default)]
+    struct Worst {
+        d: f64,
+        at: Value,
+    }
+    let (mut wt, mut wm) = (Worst::default(), Worst::default());
+    let (mut points, mut skipped) = (0usize, 0usize);
+    let mut bad: Vec<f64> = Vec::new();
+    for (key, m) in tabs {
+        let mut it = key.split('|');
+        let (Some(c), Some(m1), Some(m2)) = (it.next(), it.next(), it.next()) else {
+            continue;
+        };
+        if !c.eq_ignore_ascii_case(coat) || key.contains('@') {
+            continue;
+        }
+        let mirror = m2 == "MIRROR";
+        let Some(n1) = model_medium_n(m1) else {
+            continue;
+        };
+        let n2 = if mirror {
+            0.0
+        } else {
+            match model_medium_n(m2) {
+                Some(n) => n,
+                None => continue,
+            }
+        };
+        for (iw, &wl) in m.wavelengths.iter().enumerate() {
+            let Ok(f) = model.iface(key, wl, n1, n2, coating::PhaseConvention::OpticStudio) else {
+                skipped += m.angles_deg.len();
+                continue;
+            };
+            for (ia, &ang) in m.angles_deg.iter().enumerate() {
+                let v = m.data[iw][ia];
+                let b = n1 * ang.to_radians().sin();
+                if !v[0].re.is_finite() || (!mirror && n2 * n2 - b * b < 1e-3) {
+                    continue;
+                }
+                let Ok(p) = f.eval(ang.to_radians()) else {
+                    skipped += 1;
+                    continue;
+                };
+                let d = (p[0] - v[0]).norm().max((p[1] - v[1]).norm());
+                points += 1;
+                let w = if mirror { &mut wm } else { &mut wt };
+                if d > w.d {
+                    *w = Worst {
+                        d,
+                        at: json!({ "key": key, "wl_um": wl, "angle_deg": ang, "beta": b }),
+                    };
+                }
+                if d > tol && (!mirror || m1 == "AIR") {
+                    bad.push(wl);
+                }
+            }
+        }
+    }
+    // 差の大きい点を含むモデルの波長の区間の中点（波数で）。モデルの波長ちょうどの点・範囲の外は足さない
+    let ws = &model.wavelengths;
+    let mut refine: Vec<f64> = Vec::new();
+    for wl in bad {
+        let i = ws.partition_point(|&x| x < wl);
+        if i == 0 || i >= ws.len() || (ws[i] - wl).abs() < 1e-9 {
+            continue;
+        }
+        let mid = 2.0 / (1.0 / ws[i - 1] + 1.0 / ws[i]);
+        let mid = (mid * 1e9).round() / 1e9;
+        if !refine.iter().any(|&x| (x - mid).abs() < 1e-9) {
+            refine.push(mid);
+        }
+    }
+    refine.sort_by(f64::total_cmp);
+    json!({
+        "tol": tol,
+        "transmit_max": wt.d,
+        "transmit_at": wt.at,
+        "mirror_max": wm.d,
+        "mirror_at": wm.at,
+        "points": points,
+        "notimpl": skipped,
+        "refine_wl_um": refine,
+    })
 }
 
 pub(crate) fn coat_compact(

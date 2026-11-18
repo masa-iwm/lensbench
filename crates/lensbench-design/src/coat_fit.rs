@@ -477,6 +477,12 @@ fn lsq_resid(a: &[Vec<f64>], ys: &[Vec<f64>]) -> Vec<f64> {
 /// 折れ目を入れた残差が 1/30 以下になれば折れ目とする。
 /// 折れ目の両側に十分な点が要る（膜の位相の厚さから決めた波長の格子の 4 倍くらい細かく）
 pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
+    detect_kinks_with(m, 100.0)
+}
+
+/// [`detect_kinks`] で、候補にする強さ（1 本の多項式の残差が、列ごとの中央値の何倍か）の下限を min_score にしたもの。
+/// 下げると弱い折れ目も拾う（拾いすぎた折れ目は、そこで区間を分けて測る点が増えるだけで、補間は大きくは悪くならない）
+pub fn detect_kinks_with(m: &Measured, min_score: f64) -> Vec<Kink> {
     const KINK_N: usize = 7;
     // 波数の昇順に、全角度・s/p の Re/Im を並べる（有限の列だけ）
     let mut ord: Vec<usize> = (0..m.wavelengths.len()).collect();
@@ -533,6 +539,33 @@ pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
             .collect();
         Some((lsq_resid(&a1, &ys), lsq_resid(&a2, &ys)))
     };
+    // 2 つの折れ目 q1 < q2 を入れた残差（q1 の前 KINK_N 点、間の点、q2 の後 KINK_N 点。節ちょうどの点は入れない）
+    let res2 = |q1: f64, q2: f64| -> Option<Vec<f64>> {
+        let r = x.partition_point(|&q| q < q1 - 1e-12);
+        let l = x.partition_point(|&q| q <= q2 + 1e-12);
+        if r < KINK_N || l + KINK_N > n {
+            return None;
+        }
+        let idx: Vec<usize> = (r - KINK_N..r)
+            .chain((r..l).filter(|&i| (x[i] - q1).abs() > 1e-12 && (x[i] - q2).abs() > 1e-12))
+            .chain(l..l + KINK_N)
+            .collect();
+        if idx.len() < 2 * KINK_N + 1 {
+            return None;
+        }
+        let ys: Vec<Vec<f64>> = idx.iter().map(|&i| v[i].clone()).collect();
+        let a: Vec<Vec<f64>> = idx
+            .iter()
+            .map(|&i| {
+                let t = x[i] - q1;
+                let (p1, p2) = (t.max(0.0), (x[i] - q2).max(0.0));
+                let mut row: Vec<f64> = (0..5).map(|k| t.powi(k)).collect();
+                row.extend([p1, p1 * p1, p1 * p1 * p1, p2, p2 * p2, p2 * p2 * p2]);
+                row
+            })
+            .collect();
+        Some(lsq_resid(&a, &ys))
+    };
     // 列ごとの 1 本の残差の中央値を基準に、各点の強さ（基準の何倍か、列の最大）を出す
     let r1s: Vec<Option<Vec<f64>>> = x.iter().map(|&q| res(q).map(|r| r.0)).collect();
     let nc = v[0].len();
@@ -549,8 +582,9 @@ pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
         .map(|r| r.as_deref().map_or(0.0, score))
         .collect();
     let mut out: Vec<Kink> = Vec::new();
+    let mut rejected: Vec<(usize, f64, f64, f64)> = Vec::new();
     for i in 1..n - 1 {
-        if !(s[i] > 100.0 && s[i] >= s[i - 1] && s[i] >= s[i + 1]) {
+        if !(s[i] > min_score && s[i] >= s[i - 1] && s[i] >= s[i + 1]) {
             continue;
         }
         let h = (x[i + 1] - x[i - 1]) / 2.0;
@@ -565,12 +599,57 @@ pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
             }
         }
         if let Some((s2, q, s1)) = best {
-            if s2 < s1 / 30.0 && !out.iter().any(|k| (1.0 / k.wl - q).abs() < h) {
-                out.push(Kink {
-                    wl: 1.0 / q,
-                    smooth: s1,
-                    kinked: s2,
-                });
+            if s2 < s1 / 30.0 {
+                if !out.iter().any(|k| (1.0 / k.wl - q).abs() < h) {
+                    out.push(Kink {
+                        wl: 1.0 / q,
+                        smooth: s1,
+                        kinked: s2,
+                    });
+                }
+                continue;
+            }
+            rejected.push((i, h, s1, s2));
+        }
+    }
+    // 1 つの折れ目では説明できない候補: 数点の間に 2 つの節が並んでいることがある（材料の違う 2 つの表の節。
+    // ある近似の膜では 0.426・0.4275 µm）。見つけた折れ目から離れた候補だけ、窓の中の 2 つの折れ目（1 刻み以上離す）で当て直し、
+    // 1 つのときよりはっきりよく（1/10）、なめらかなときの 1/30 より小さければ採る
+    // 強い候補から。窓（前後 KINK_N 点と ±4 刻み）が折れ目に掛かる候補は、その折れ目の当て残りなので見ない
+    rejected.sort_by(|a, b| b.2.total_cmp(&a.2));
+    for (i, h, s1, s2) in rejected {
+        if out
+            .iter()
+            .any(|k| (1.0 / k.wl - x[i]).abs() < (KINK_N as f64 + 5.0) * h)
+        {
+            continue;
+        }
+        let mut best2: Option<(f64, f64, f64)> = None;
+        const STEPS: usize = 64;
+        for a in 0..STEPS {
+            for b in a + 1..=STEPS {
+                let q1 = x[i] - 4.0 * h + 8.0 * h * a as f64 / STEPS as f64;
+                let q2 = x[i] - 4.0 * h + 8.0 * h * b as f64 / STEPS as f64;
+                if q2 - q1 < h {
+                    continue;
+                }
+                if let Some(r) = res2(q1, q2) {
+                    let s = score(&r);
+                    if best2.is_none_or(|v| s < v.0) {
+                        best2 = Some((s, q1, q2));
+                    }
+                }
+            }
+        }
+        if let Some((sp, q1, q2)) = best2 {
+            if sp < s1 / 30.0 && sp < s2 / 10.0 {
+                for q in [q1, q2] {
+                    out.push(Kink {
+                        wl: 1.0 / q,
+                        smooth: s1,
+                        kinked: sp,
+                    });
+                }
             }
         }
     }
@@ -611,6 +690,37 @@ mod tests {
         assert_eq!(w.len(), 2, "{k:?}");
         assert!(
             (w[0] - 0.47).abs() < 2e-5 && (w[1] - 0.55).abs() < 2e-5,
+            "{w:?}"
+        );
+    }
+
+    #[test]
+    fn detect_kinks_finds_two_close_kinks() {
+        // 数点しか離れていない 2 つの傾きの跳び（0.5 µm と 0.504 µm）。1 つの折れ目では当たらないので 2 つで当て直す
+        let wls: Vec<f64> = (0..300).map(|i| 0.4 + 0.4 * i as f64 / 299.0).collect();
+        let noise =
+            |x: f64, a: f64| ((x * 7919.0 + a * 104729.0).sin() * 43758.5453).fract() * 1e-9;
+        let f = |wl: f64, a: f64| {
+            let x = 1.0 / wl;
+            let k1 = (x - 1.0 / 0.504).max(0.0);
+            let k2 = (x - 1.0 / 0.5).max(0.0);
+            C64::new(
+                (3.0 * x + a).cos() + 1e-2 * k1 - 2e-2 * k2 + noise(x, a),
+                (2.0 * x).sin() * a + noise(x, a + 0.5),
+            )
+        };
+        let m = Measured {
+            wavelengths: wls.clone(),
+            angles_deg: vec![0.0, 30.0],
+            data: wls
+                .iter()
+                .map(|&w| vec![[f(w, 0.1), f(w, 0.2)], [f(w, 0.3), f(w, 0.4)]])
+                .collect(),
+        };
+        let w: Vec<f64> = detect_kinks(&m).iter().map(|k| k.wl).collect();
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert!(
+            (w[0] - 0.5).abs() < 2e-4 && (w[1] - 0.504).abs() < 2e-4,
             "{w:?}"
         );
     }

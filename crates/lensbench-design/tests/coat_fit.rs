@@ -130,11 +130,14 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
     ] {
         let f = c2.prepare(&s, k, wl, n1, n2).unwrap();
         let g = c2.prepare(&s, km, wl, n1, n2).unwrap();
+        // 系なしでモデルだけから用意しても（照合の道具 coat-model --check の経路）同じ係数
+        let h = c2.models["ZX"].iface(km, wl, n1, n2, c2.phase).unwrap();
         for i in 0..=40 {
             let th = (amax * i as f64 / 40.0f64).to_radians();
             let (a, b) = (f.eval(th).unwrap(), g.eval(th).unwrap());
             let d = (a[0] - b[0]).norm().max((a[1] - b[1]).norm());
             assert!(d < 1e-5, "{km} {th}: {a:?} {b:?}");
+            assert_eq!(h.eval(th).unwrap(), b, "{km} {th}");
             worst = worst.max(d);
         }
     }
