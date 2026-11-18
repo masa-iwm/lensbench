@@ -25,9 +25,7 @@ use std::path::{Path, PathBuf};
 pub const MAX_STEP: f64 = 1.0;
 
 /// Gradient 5 の分散（SGRIN.DAT の組）
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Sgrin {
     pub name: String,
     /// 波長の範囲 [µm]
@@ -42,9 +40,7 @@ pub struct Sgrin {
 }
 
 /// Gradium の分布（PROFILE.GRD の組）
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct GradiumProfile {
     pub name: String,
     /// 分散の名前（SGRIN.DAT の組）
@@ -56,17 +52,14 @@ pub struct GradiumProfile {
     /// 読んだファイルの名前（PROFILE.GRD など。.zmx の COFN に書く）
     pub file: String,
     /// 分布を z について裏返した（鏡の後に置いた）もの。係数はファイルの組と違うので .zmx には書けない
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "std::ops::Not::not")
-    )]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flipped: bool,
 }
 
 /// Gradient 9 の材料（GRADIENT_9.DAT の組）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Grad9Mat {
     pub b: f64,
     pub c: f64,
@@ -75,9 +68,7 @@ pub struct Grad9Mat {
     pub k2: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[allow(clippy::large_enum_variant)]
 pub enum GrinKind {
     Gradium {
@@ -99,9 +90,7 @@ pub enum GrinKind {
 }
 
 /// 面の後ろの屈折率分布
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Grin {
     pub kind: GrinKind,
     /// OpticStudio の刻み Δt（パラメータ 1）。ここでは刻みの初めの値にだけ使う

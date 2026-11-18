@@ -43,9 +43,9 @@ impl Kind {
 /// 曲率は OpticStudio と同じく特別で（2026 R1.01 で実測）、同じ列（曲率・半径）からなら c = scale × c元、
 /// 別の列の値 v からなら元の値を半径とみなして c = scale / v（オフセットなし）。ほかの量が半径の列から取るときは
 /// 半径の値 R を使う（v = scale × R + offset）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Pickup {
     pub dst: usize,
     pub src: usize,
@@ -53,7 +53,7 @@ pub struct Pickup {
     pub scale: f64,
     pub offset: f64,
     /// 元の量（別の列からのピックアップ）。None は what と同じ
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub from: Option<Kind>,
 }
 

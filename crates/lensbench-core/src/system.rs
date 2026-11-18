@@ -59,9 +59,7 @@ const CUSP_FIELD_DEG: f64 = 0.01;
 
 /// 系の文書: 利用者が書く値（面・波長・視野・開口・ピックアップ・ソルブ・多重構成など）。
 /// [`System`] はこれを [`Arc`] で持ち、書き換えは [`System::edit`] を通す（直した後に座標系・近軸量などを作り直す）
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Prescription {
     pub surfaces: Vec<Surface>,
     pub wavelengths: Vec<f64>,
@@ -81,43 +79,34 @@ pub struct Prescription {
     pub ropd: i64,
     /// 瞳のアポダイゼーション（.zmx の GFAC。PSF・MTF の瞳関数の振幅と、スポット・重心・RMS 波面・幾何 MTF・最適化の
     /// RMS の項の光線の重み（強度）。Zernike の当てはめには入れない。[`crate::pupil::Apodization`]）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "crate::pupil::Apodization::is_uniform")
-    )]
+    #[serde(default, skip_serializing_if = "crate::pupil::Apodization::is_uniform")]
     pub apodization: crate::pupil::Apodization,
     /// 像空間がアフォーカル（.zmx の FTYP の 7 番目）。波面収差・Zernike・OPD を、射出瞳の位置で主光線に
     /// 垂直な平面（平面波）を基準に測る。スポット・MTF・PSF は角度（[`System::image_point`]、単位は
     /// [`System::afocal_unit`]）で出す
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub afocal: bool,
     /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub afocal_unit: AfocalUnit,
     /// 定義した視野以外の点のケラレ係数の求め方（既定は連続、OpticStudio と照合するときは OpticStudio）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub vig_interp: VigInterp,
     /// 浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定はける。OpticStudio は半直径を固定した面を
     /// 浮動開口にしてける）。光線エイミングの追跡は開口を見ない
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            default = "crate::configs::yes",
-            skip_serializing_if = "crate::configs::is_yes"
-        )
+    #[serde(
+        default = "crate::configs::yes",
+        skip_serializing_if = "crate::configs::is_yes"
     )]
     pub floating_clip: bool,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
     /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     pub field_wave: Option<usize>,
     pub coating_file: Option<PathBuf>,
     /// 膜ファイルの外で定めた TABLE 膜（名前 → 表。プロジェクト・カタログのフィルタの透過特性）。
     /// 膜ファイルの同じ名前より優先する
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "HashMap::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub coat_tables: HashMap<String, crate::coating::Table>,
     pub name: String,
     pub adjust_index: bool,
@@ -126,44 +115,26 @@ pub struct Prescription {
     /// 厚さのソルブ（.zmx の MAZH）。パラメータを変えると解き直す（[`crate::param`]）
     pub solves: Vec<crate::solves::Solve>,
     /// ソルブが呼ぶ ZPL のマクロ（[`crate::solves::SolveKind::MacroCurv`]・`MacroThick` の番号で引く）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub macros: Vec<crate::zpl_solve::Macro>,
     /// 面タイプのパラメータの ZPL マクロのソルブ
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub macro_parms: Vec<crate::zpl_solve::MacroParm>,
     /// マクロのソルブを外して保存された値で固定した理由（マクロがない・対応していない命令など）と、
     /// 解き直しでマクロがエラーになって値を変えなかったこと（[`System::macro_warnings`]）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub macro_notes: Vec<String>,
     /// ファイルから読んだときの注意（.zmx の読まずに飛ばした行・既定と違う設定など）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub import_notes: Vec<String>,
     /// 玉・群（[`crate::units`]）。剛体の動きは座標系にかける
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub units: Vec<crate::units::Unit>,
     /// 機構部品（[`crate::mech`]）。光線の追跡には効かず、ケラレの確認と描画だけに使う
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<crate::mech::MechPart>,
     /// 多重構成の表（[`crate::edit`]）。None なら構成は 1 つ
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configs: Option<crate::configs::Configs>,
 }
 
@@ -362,14 +333,12 @@ impl System {
     }
 }
 
-#[cfg(feature = "serde")]
 impl serde::Serialize for System {
     fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
         self.rx.serialize(s)
     }
 }
 
-#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for System {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<System, D::Error> {
         let p = Prescription::deserialize(d)?;
@@ -377,7 +346,6 @@ impl<'de> serde::Deserialize<'de> for System {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for System {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         Prescription::schema_name()

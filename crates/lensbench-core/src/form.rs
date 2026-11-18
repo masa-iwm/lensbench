@@ -20,9 +20,8 @@ pub const JONES_IDENTITY: [f64; 8] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
 ///
 /// serde では面の表の中に平たく（`typ` と、どの種類でも全部の値の欄。種類に無い値は既定）書く。読むときは
 /// 種類に無い欄に既定でない値があれば誤り
-#[derive(Debug, Clone, PartialEq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(into = "FormFlat", try_from = "FormFlat"))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(into = "FormFlat", try_from = "FormFlat")]
 #[non_exhaustive]
 pub enum Form {
     #[default]
@@ -652,9 +651,7 @@ impl Surface {
 }
 
 /// serde での [`Form`] の平たい形（面の表の中の `typ` と種類ごとの値の欄）
-#[cfg(feature = "serde")]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 struct FormFlat {
     typ: SurfType,
     asph: Vec<f64>,
@@ -674,7 +671,6 @@ struct FormFlat {
     user: Option<UserSurf>,
 }
 
-#[cfg(feature = "serde")]
 impl From<Form> for FormFlat {
     fn from(f: Form) -> FormFlat {
         let mut s = Surface {
@@ -701,7 +697,6 @@ impl From<Form> for FormFlat {
     }
 }
 
-#[cfg(feature = "serde")]
 impl TryFrom<FormFlat> for Form {
     type Error = String;
 
@@ -770,7 +765,6 @@ impl TryFrom<FormFlat> for Form {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for Form {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Form".into()

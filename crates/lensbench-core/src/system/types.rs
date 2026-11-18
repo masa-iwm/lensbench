@@ -2,9 +2,9 @@
 
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub enum FieldType {
     Angle,
     ObjH,
@@ -17,10 +17,9 @@ pub enum FieldType {
 
 /// 視野の種類（[`FieldType`] の条件を除いたもの。プロジェクトの `fields.type`・系ファイル版 2 の `field.type` の名前）。
 /// JSON の名前は "angle"・"object_height"・"paraxial_image_height"・"real_image_height"・"solve"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum FieldKind {
     #[default]
     Angle,
@@ -56,9 +55,17 @@ impl FieldKind {
 }
 
 /// 条件で定める視野の条件（主光線、局所座標）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub enum FieldCond {
     /// 面 surf での位置 (x, y) = 視野の値
     Position { surf: usize },
@@ -68,81 +75,92 @@ pub enum FieldCond {
     DirDiff { s1: usize, s2: usize },
 }
 /// 視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）。JSON の名前は "radial"・"rect"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum FieldNorm {
     /// 半径（最も遠い視野が 1）
     #[default]
-    #[cfg_attr(feature = "serde", serde(alias = "Radial"))]
+    #[serde(alias = "Radial")]
     Radial,
     /// 矩形（x・y の最大がそれぞれ 1）
-    #[cfg_attr(feature = "serde", serde(alias = "Rect"))]
+    #[serde(alias = "Rect")]
     Rect,
 }
 /// 定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub enum VigInterp {
     /// OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。
     /// OpticStudio と照合するとき
-    #[cfg_attr(
-        feature = "serde",
-        serde(rename = "opticstudio", alias = "OpticStudio")
-    )]
+    #[serde(rename = "opticstudio", alias = "OpticStudio")]
     OpticStudio,
     /// 連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は
     /// 同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値
     #[default]
-    #[cfg_attr(feature = "serde", serde(rename = "continuous", alias = "Continuous"))]
+    #[serde(rename = "continuous", alias = "Continuous")]
     Continuous,
 }
 
 /// 系の開口の種類。JSON の名前は "epd"・"fnum"・"na"・"float"・"pwfn"・"cone"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub enum ApertureKind {
     /// 入射瞳径
     #[default]
-    #[cfg_attr(feature = "serde", serde(rename = "epd", alias = "Epd"))]
+    #[serde(rename = "epd", alias = "Epd")]
     Epd,
     /// 像側 F 値
-    #[cfg_attr(feature = "serde", serde(rename = "fnum", alias = "FNum"))]
+    #[serde(rename = "fnum", alias = "FNum")]
     FNum,
     /// 物体側 NA
-    #[cfg_attr(feature = "serde", serde(rename = "na", alias = "Na"))]
+    #[serde(rename = "na", alias = "Na")]
     Na,
     /// 絞り径（絞りの半直径）
-    #[cfg_attr(feature = "serde", serde(rename = "float", alias = "Float"))]
+    #[serde(rename = "float", alias = "Float")]
     Float,
     /// 近軸作動 F 値
-    #[cfg_attr(feature = "serde", serde(rename = "pwfn", alias = "Pwfn"))]
+    #[serde(rename = "pwfn", alias = "Pwfn")]
     Pwfn,
     /// 物体側コーン角
-    #[cfg_attr(feature = "serde", serde(rename = "cone", alias = "Cone"))]
+    #[serde(rename = "cone", alias = "Cone")]
     Cone,
 }
 /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目、OpticStudio の Afocal Mode Units）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum AfocalUnit {
-    #[cfg_attr(feature = "serde", serde(alias = "Microradians"))]
+    #[serde(alias = "Microradians")]
     Microradians,
     #[default]
-    #[cfg_attr(feature = "serde", serde(alias = "Milliradians"))]
+    #[serde(alias = "Milliradians")]
     Milliradians,
-    #[cfg_attr(feature = "serde", serde(alias = "Radians"))]
+    #[serde(alias = "Radians")]
     Radians,
-    #[cfg_attr(feature = "serde", serde(alias = "ArcSeconds"))]
+    #[serde(alias = "ArcSeconds")]
     ArcSeconds,
-    #[cfg_attr(feature = "serde", serde(alias = "ArcMinutes"))]
+    #[serde(alias = "ArcMinutes")]
     ArcMinutes,
-    #[cfg_attr(feature = "serde", serde(alias = "Degrees"))]
+    #[serde(alias = "Degrees")]
     Degrees,
 }
 
@@ -195,23 +213,22 @@ impl AfocalUnit {
 }
 
 /// 光線エイミング。JSON の名前は "off"・"paraxial"・"real"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum Aiming {
     #[default]
-    #[cfg_attr(feature = "serde", serde(alias = "Off"))]
+    #[serde(alias = "Off")]
     Off,
-    #[cfg_attr(feature = "serde", serde(alias = "Paraxial"))]
+    #[serde(alias = "Paraxial")]
     Paraxial,
-    #[cfg_attr(feature = "serde", serde(alias = "Real"))]
+    #[serde(alias = "Real")]
     Real,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Field {
     pub x: f64,
     pub y: f64,

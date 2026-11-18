@@ -14,7 +14,7 @@ workspace = true
 lensbench-formats = { path = "../lensbench-formats" }
 lensbench-runs = { path = "../lensbench-runs" }
 lensbench-optim = { path = "../lensbench-optim" }
-lensbench-core = { path = "../lensbench-core", features = ["serde"] }
+lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-catalog = { path = "../lensbench-catalog" }

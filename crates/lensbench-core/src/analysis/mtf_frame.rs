@@ -6,10 +6,9 @@ use crate::quantity::Angle;
 use crate::system::{FieldSel, FieldType, System};
 
 /// MTF の子午・球欠の向き
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum MtfAxes {
     /// 既定。子午は視野の向き（視野の座標 (x, y)、角度なら (tan θx, tan θy) の向き。回転対称な系の像面の上では
     /// 主光線の像の動径の向き）の周波数、球欠は

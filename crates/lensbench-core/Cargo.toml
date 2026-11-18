@@ -17,21 +17,16 @@ workspace = true
 miniz_oxide = "0.9"
 # .zmx・AGF などの文字コード（UTF-8 でない ANSI のファイル: Shift_JIS・Windows-1252）
 encoding_rs = "0.8"
-num-complex = "0.4"
+num-complex = { version = "0.4", features = ["serde"] }
 rustfft = "6"
 rayon = "1"
-serde = { version = "1", features = ["derive"], optional = true }
-schemars = { version = "1", optional = true }
+# System などの serde での書き出し・読み直し（システムファイル・Python の pickle）と、JSON スキーマ（schemars）。常に有効
+serde = { version = "1", features = ["derive", "rc"] }
+schemars = "1"
 
 # OS の言語（誤りの文の言語の既定、i18n.rs）。wasm は GUI が言語を決める
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 sys-locale = "0.3"
-
-[features]
-# System などを serde で書き出し・読み直す（Python の pickle に使う）
-serde = ["dep:serde", "serde/rc", "num-complex/serde"]
-# 系ファイルの JSON スキーマ: serde の型から schemars でスキーマを作る
-schema = ["serde", "dep:schemars"]
 
 [dev-dependencies]
 # .zmx の書き出しで読み直す試験（書き手は lensbench-formats。dev の依存なので循環にならない）

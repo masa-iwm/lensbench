@@ -7,9 +7,9 @@
 pub use crate::form::{Form, JONES_IDENTITY};
 pub use crate::material::Material;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub enum SurfType {
     Standard,
     EvenAsph,
@@ -47,9 +47,7 @@ pub enum SurfType {
 }
 
 /// Binary 2 の位相 Φ = order · Σ coef[i] ρ^{2(i+1)}（ρ = r / norm、係数の単位は rad）
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Binary2 {
     /// 回折次数 M
     pub order: f64,
@@ -77,9 +75,7 @@ impl Binary2 {
 }
 
 /// Cylinder Fresnel の屈折に使う面: z = c y² / (1 + √(1 − (1 + k) c² y²)) + Σ coef[i] y^{2(i+1)}
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CylFresnel {
     pub c: f64,
     pub k: f64,
@@ -87,17 +83,17 @@ pub struct CylFresnel {
 }
 
 /// 傾き・偏心（dx dy tx ty tz [deg]）と順序（0: 偏心→X→Y→Z、1: Z→Y→X→偏心）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Tilt {
     pub d: [f64; 5],
     pub order: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub enum After {
     None,
     /// 「前」の変換を戻す
@@ -105,9 +101,9 @@ pub enum After {
     Tilt(Tilt),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub enum Aperture {
     None,
     /// 最小・最大半径、偏心 x y
@@ -153,12 +149,10 @@ pub enum Aperture {
 }
 
 /// 面の値（処方）。`==` は値の比較（NaN は等しくない、−0 と 0 は等しい）
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Surface {
     /// 面の種類と、種類ごとの値（[`Form`]）。serde では面の表の中に平たく（`typ`・`cb` など）
-    #[cfg_attr(feature = "serde", serde(flatten))]
+    #[serde(flatten)]
     pub form: Form,
     pub ignore: bool,
     /// 次の面までの厚さ [mm]（物体面は無限遠なら inf）
@@ -171,10 +165,7 @@ pub struct Surface {
     /// 半直径 [mm]。`semi_auto` なら光線から求めた値（[`crate::System::update_semi`]）
     pub semi: f64,
     /// 半直径を光線から求める（OpticStudio の Automatic、.zmx の DIAM … 0、系ファイルの "semi": "auto"）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "std::ops::Not::not")
-    )]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub semi_auto: bool,
     pub c: f64,
     pub k: f64,
@@ -190,16 +181,10 @@ pub struct Surface {
     pub reflect: Option<Reflect>,
     /// Jones 面（[`SurfType::Jones`]）を波長ごとに作る偏光子・波長板。あれば偏光の追跡は `jones` でなく
     /// これを各波長で使う（`jones` は設計波長 `wl0` の値で、.zmx の JONESMAT に書く）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retarder: Option<Retarder>,
     /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。形は標準面のまま
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bire: Option<Bire>,
 }
 
@@ -208,9 +193,7 @@ pub struct Surface {
 /// 行列は R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・
 /// 厚さのある結晶板（[`Bire`]）と同じ向き）。
 /// `plates` があれば（複屈折材の板）遅延は板ごとの Δn(λ)·d/λ で、行列は板の行列の積（光の通る順）
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub struct Retarder {
     pub axis_deg: f64,
     pub tx: f64,
@@ -222,10 +205,7 @@ pub struct Retarder {
     /// 設計波長 [µm]
     pub wl0: f64,
     /// 複屈折材の板（空なら理想の遅延 order + retardance）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plates: Vec<Plate>,
 }
 
@@ -233,18 +213,16 @@ pub struct Retarder {
 /// 複屈折材の名前の約束）。板の光学軸は板の面内で、速い軸の向きは `axis_deg`（波長板の `axis_deg` からの角度）。
 /// 遅延は φ(λ) = 2π·s·(ne − no)(λ)·d/λ（s は設計波長での ne − no の符号で、設計波長で速い軸が `axis_deg` になる）。
 /// 斜めに入る光での遅延の変化は見ない（垂直入射の値）
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub struct Plate {
     pub material: String,
     /// 厚さ [mm]
     pub thickness: f64,
     pub axis_deg: f64,
     /// 常光・異常光のガラス（[`Retarder::resolve`] で引く）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub o: Option<crate::glass::Glass>,
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub e: Option<crate::glass::Glass>,
 }
 
@@ -382,9 +360,7 @@ impl Retarder {
 /// 結晶軸 a から決まる異常光の成分（a の k に垂直な向き）に、常光の成分に対して
 /// exp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける（OpticStudio の Mode 2、波長板モード）。
 /// n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は k と a の角、L は板の中の光線の長さ。Mode 0 は常光の成分だけを通す
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub enum Bire {
     In {
         /// 0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は未対応
@@ -392,7 +368,7 @@ pub enum Bire {
         /// 結晶軸の向き（入口の面の局所座標、規格化しなくてよい）
         axis: [f64; 3],
         /// 異常光の屈折率（波長ごと）
-        #[cfg_attr(feature = "serde", serde(default))]
+        #[serde(default)]
         ne: Vec<f64>,
     },
     Out,
@@ -406,9 +382,7 @@ impl Bire {
 }
 
 /// 屈折面での反射の、反対側（光が入らない側）の媒質
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub struct Reflect {
     /// 媒質の名前（空気は "AIR"）
     pub mat: String,

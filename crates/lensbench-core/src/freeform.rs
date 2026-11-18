@@ -18,10 +18,8 @@ use crate::surface::{SurfType, Surface};
 ///
 /// serde では内部の `groups`・`mmax` を書き出さず、読み直したら `coef` から作り直す。
 /// 項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "serde", serde(try_from = "ZernSagData"))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(try_from = "ZernSagData")]
 pub struct ZernSag {
     /// Fringe の順（規格化なし）か、Standard（Noll の順、規格化）か
     pub fringe: bool,
@@ -35,18 +33,16 @@ pub struct ZernSag {
     pub dx: f64,
     pub dy: f64,
     /// (m, cos か) ごとにまとめた Jacobi 多項式 P_k^(0, m)(2ρ² − 1) の係数（項の係数と規格化を掛けたもの、k = (n − m)/2 の順）
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     groups: Vec<ZGroup>,
     /// m の最大
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     mmax: u32,
 }
 
 /// [`ZernSag`] の serde の読み直し用（内部の多項式なし）。順番は ZernSag の書き出しと同じ
-#[cfg(feature = "serde")]
-#[derive(serde::Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(rename = "ZernSag"))]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[schemars(rename = "ZernSag")]
 struct ZernSagData {
     /// Fringe の順（規格化なし）か、Standard（Noll の順、規格化）か
     fringe: bool,
@@ -61,7 +57,6 @@ struct ZernSagData {
     dy: f64,
 }
 
-#[cfg(feature = "serde")]
 impl TryFrom<ZernSagData> for ZernSag {
     type Error = String;
     fn try_from(d: ZernSagData) -> Result<ZernSag, String> {
@@ -389,9 +384,7 @@ fn eval_groups(
 }
 
 /// Grid Sag の格子
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct GridSag {
     pub nx: usize,
     pub ny: usize,
@@ -677,7 +670,6 @@ pub(crate) fn isect_with(
 mod tests {
     use super::*;
 
-    #[cfg(feature = "serde")]
     #[test]
     fn serde_rebuilds_groups_from_coef() {
         // 書き出しに内部の多項式は入らず、読み直すと coef から作り直す

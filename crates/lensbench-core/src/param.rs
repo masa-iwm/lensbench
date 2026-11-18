@@ -34,9 +34,17 @@ use crate::units::UnitKind;
 use crate::{invalid, notimpl};
 
 /// パラメータの種類
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub enum Kind {
     /// 曲率 c
     Curv,
@@ -224,10 +232,18 @@ impl Kind {
 }
 
 /// パラメータが付く先。面・玉/群の番号の意味は種類で変わらない
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Target {
     /// 面の番号
     Surf(usize),
@@ -239,9 +255,17 @@ pub enum Target {
 
 /// パラメータ: 付く先と種類。付く先は種類から決まる（[`Kind::is_global`] は系全体、[`Kind::Unit`] は玉・群、
 /// ほかは面）ので、[`Param::new`]・[`Param::unit`]・[`Param::system`] で作る
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub struct Param {
     pub target: Target,
     pub kind: Kind,

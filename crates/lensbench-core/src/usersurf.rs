@@ -155,12 +155,8 @@ pub trait SurfaceInstance: Send + Sync {
 
 /// 面に付ける利用者定義の面（モデルの名前・設定と、準備した面）。系ファイルには名前と設定だけを書き、
 /// 読むときに登録から作り直す
-#[derive(Clone)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(try_from = "UserSurfSpec", into = "UserSurfSpec")
-)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "UserSurfSpec", into = "UserSurfSpec")]
 pub struct UserSurf {
     pub model: String,
     pub config: Config,
@@ -168,14 +164,12 @@ pub struct UserSurf {
 }
 
 /// [`UserSurf`] の書き出しの形
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub(crate) struct UserSurfSpec {
     /// モデルの名前（同梱は ideal_mapping）
     pub model: String,
     /// 設定（数・文字列・数の並び）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub config: Config,
 }
 
@@ -195,7 +189,6 @@ impl From<UserSurf> for UserSurfSpec {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for UserSurf {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         UserSurfSpec::schema_name()

@@ -131,14 +131,12 @@ fn model_numbers(mat: &str) -> Option<(f64, f64, f64)> {
         .then(|| (v[0], v[1], v.get(2).copied().unwrap_or(0.0)))
 }
 
-#[cfg(feature = "serde")]
 impl serde::Serialize for Material {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.name())
     }
 }
 
-#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Material {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Material, D::Error> {
         let s = <String as serde::Deserialize>::deserialize(d)?;
@@ -146,7 +144,6 @@ impl<'de> serde::Deserialize<'de> for Material {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for Material {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Material".into()

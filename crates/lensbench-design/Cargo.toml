@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 lensbench-runs = { path = "../lensbench-runs" }
 lensbench-optim = { path = "../lensbench-optim" }
-lensbench-core = { path = "../lensbench-core", features = ["serde", "schema"] }
+lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 serde = { version = "1", features = ["derive"] }

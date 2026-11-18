@@ -47,13 +47,9 @@ impl Kind {
 }
 
 /// 設定の値（系ファイルの JSON では数・真偽・文字列・数の並びをそのまま書く）
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(untagged)
-)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[derive(schemars::JsonSchema)]
 pub enum Value {
     Num(f64),
     /// 真偽（[`ConfigReader::flag`]。0・1 の数も受ける）

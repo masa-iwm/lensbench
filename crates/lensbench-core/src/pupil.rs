@@ -510,10 +510,9 @@ impl PupilCache {
 ///   (ρ_x r, ρ_y r)（r は入射瞳の半径）への向きで求める。無限遠物体ではどの光線も同じ向きなので一様になる。
 ///
 /// OpticStudio 26.1 と照合済み（Cooke 40 の Strehl が OS の FFT PSF 瞳 512 と 0.3% 以内。試験は解析的に確かめたもの）
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum Apodization {
     /// 一様（.zmx の GFAC _ 0）
     #[default]

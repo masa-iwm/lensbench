@@ -31,9 +31,17 @@ use crate::system::{Frame, System};
 use crate::{invalid, notimpl};
 
 /// 玉・群のパラメータの種類
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub enum UnitKind {
     Dx,
     Dy,
@@ -91,9 +99,7 @@ impl UnitKind {
 }
 
 /// 玉・群: 面の範囲の組と、その剛体の動き・移動
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Unit {
     pub name: String,
     /// 面の範囲 [最初, 最後]（両端を含む、光の通る順）
@@ -108,10 +114,7 @@ pub struct Unit {
     pub auto: bool,
     /// 玉をもとの向き（カタログ・.zmx の向き）から裏返して置いた（プロジェクトの `reversed` の玉）。
     /// 公差のくさびの面（もとの向きの後ろの面）を選ぶのに使う
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "std::ops::Not::not")
-    )]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flipped: bool,
 }
 

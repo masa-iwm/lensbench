@@ -35,19 +35,17 @@ use crate::zpl::{Flow, Host, Program, Value};
 use crate::{RwLockExt, System};
 
 /// 系に付けたマクロ（名前と文）。系ファイル（JSON）には文をそのまま入れ、戻すときにファイルは読まない
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Macro {
     /// .zmx に書かれた名前（拡張子なし）
     pub name: String,
     /// マクロの文（.ZPL の中身）
     pub source: String,
     /// 読んだファイル（記録だけ。系ファイルには書かない）
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     pub path: PathBuf,
     /// 解釈した文（JSON から戻したときは空で、最初に使うときに source から解釈して残す）
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     pub(crate) prog: std::sync::OnceLock<Arc<Program>>,
 }
 
@@ -427,9 +425,9 @@ impl Host for SysHost<'_> {
 }
 
 /// 曲率・厚さ以外の列の ZPL マクロのソルブ（.zmx の PZPL 番号 "名前"・KZPL "名前"・DIAM 値 4 0 0 1 "名前"）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct MacroParm {
     pub surf: usize,
     /// [`System::macros`] の番号

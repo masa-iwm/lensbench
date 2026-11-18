@@ -7,9 +7,9 @@ use crate::system::System;
 
 /// 多重構成の表（OpticStudio の Multi-Configuration Editor の数の行に当たる）。
 /// 行ごとにパラメータ 1 つと、構成ごとの値を持つ。[`System::config`] で構成 k の値を入れた系を作る
-#[derive(Debug, Clone, PartialEq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Configs {
     /// 構成の数（1 以上）
     pub n: usize,
@@ -19,45 +19,37 @@ pub struct Configs {
 }
 
 /// 多重構成の表の 1 行
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ConfigRow {
     pub param: Param,
     /// 構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値
     pub values: Vec<f64>,
     /// 構成のピックアップ（OpticStudio の多重構成の pickup）。無ければ省く
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picks: Vec<ConfigPick>,
 }
 
 /// 多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct ConfigPick {
     pub k: usize,
     pub from: usize,
-    #[cfg_attr(feature = "serde", serde(default = "one"))]
+    #[serde(default = "one")]
     pub scale: f64,
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub offset: f64,
 }
 
-#[cfg(feature = "serde")]
 fn one() -> f64 {
     1.0
 }
 
-#[cfg(feature = "serde")]
 pub(crate) fn yes() -> bool {
     true
 }
 
-#[cfg(feature = "serde")]
 pub(crate) fn is_yes(b: &bool) -> bool {
     *b
 }

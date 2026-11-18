@@ -341,6 +341,7 @@
   - **壊す変更**: GUI の見せ方の型 `Analysis`・`ObjectArg`・`Detector` はフィールドを隠し、`Analysis::new(cmd, label)` と
     `select`・`figure`・`figure_params`・`object` などのビルダーで作る。大域の `register`・`register_detector`・
     `translations` は消した（`GuiExtensions` の `gui_analysis`・`gui_detector`・`gui_translations` を使う）。
+- lensbench-core の feature `serde`・`schema` を消した。core の型は常に `serde::Serialize`・`Deserialize`・`schemars::JsonSchema` を実装する（依存の `features = ["serde", "schema"]` は消す）。lensbench-runs の `serde`・`schema` は残る。
 - `System::semi_affects_trace` を公開した。
 - 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
   分布は厳密に同じで手間はおよそ 1/6、同じ種でも雑音の値は前と違う。`Rng::normal`・`Rng::poisson` はそのまま

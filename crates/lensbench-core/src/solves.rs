@@ -8,10 +8,9 @@ use crate::system::{Keep, System};
 use crate::{invalid, notimpl};
 
 /// ソルブの種類と、その条件の値（.zmx の書き方は OpticStudio 2026 R1.01 で実測）。other は参照する別の面
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "type", rename_all = "snake_case"))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(schemars::JsonSchema)]
 pub enum SolveKind {
     /// 厚さ: 次の面での主波長の近軸マージナル光線の高さ = height（MAZH 高さ 0）
     MarginalHeight { height: f64 },
@@ -152,12 +151,12 @@ impl SolveKind {
 }
 
 /// ソルブ: 面 surf の厚さか曲率（[`SolveKind::is_curv`]）を、種類 kind の条件で決める
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Solve {
     pub surf: usize,
-    #[cfg_attr(feature = "serde", serde(flatten))]
+    #[serde(flatten)]
     pub kind: SolveKind,
 }
 

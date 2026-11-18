@@ -11,9 +11,9 @@ use crate::math::{add, col, dot, mm, mtv, mv, norm, rot, sub, M3, V3};
 use crate::system::{FieldSel, System};
 
 /// 部品の穴（円柱）。z は部品の座標 [mm]
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Bore {
     pub z0: f64,
     pub z1: f64,
@@ -22,54 +22,40 @@ pub struct Bore {
 }
 
 /// 系に置いた機構部品
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct MechPart {
     pub name: String,
     /// 置く基準の面（その面の局所座標）
     pub surface: usize,
     /// 基準の面の局所座標でのずれ [dx, dy, dz] [mm]
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub offset: [f64; 3],
     /// 傾き [tx, ty] [deg]（ずらした後、x → y の順）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub tilt: [f64; 2],
     pub bores: Vec<Bore>,
     /// 外形（描画・重なりの確認用）: 部品の z の範囲と外径の半径。0 なら穴から決める
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub length: f64,
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub outer_radius: f64,
     /// 素子を保持する内壁の半径（保持径の半分）。0 なら穴の半径が内壁
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub hold_radius: f64,
     /// ケージのロッドの間隔 [mm]（0 はケージ板でない）
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[serde(default)]
     pub rod_spacing: f64,
     /// 外形が角（`outer_radius` は正方形の一辺の半分、辺は部品の x・y 軸に沿う）。false は丸
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "std::ops::Not::not")
-    )]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub square: bool,
     /// 部品の詳しい形の STEP（品の公式の STEP を取ったキャッシュのファイル）。描画で詳しい形を選ぶと使う
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "String::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub step: String,
     /// STEP の形を裏返して置く（部品を `reversed` で置いた。z → 長さ − z、y → −y）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "std::ops::Not::not")
-    )]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub step_flip: bool,
     /// 保持する素子の面（系の面の番号）。はみ出し・保持径の確認に使う
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holds: Vec<usize>,
 }
 
