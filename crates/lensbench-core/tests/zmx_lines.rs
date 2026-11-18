@@ -715,3 +715,14 @@ fn write_notes_list_dropped_items() {
         .iter()
         .any(|n| n.contains("floating_clip")));
 }
+
+/// 非順次の物体（NSOH の行、非順次・混合モードの系）は、それと分かる文で断る
+#[test]
+fn non_sequential_objects_are_named() {
+    let txt = format!(
+        "{HEAD}SURF 1\n  STOP\n  TYPE NONSEQCO\n  CURV 0.0\n  DISZ 0\n  NSOH NSC_VSRE 0 0 \n  NOID 3\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+    );
+    let e = zmx::parse_text(&txt).unwrap_err().to_string();
+    assert!(e.contains("non-sequential objects (NSOH)"), "{e}");
+}

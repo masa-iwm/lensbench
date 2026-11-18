@@ -499,6 +499,7 @@ zmx surface {}: curvature solve {c}	zmx の面 {}: 曲率のソルブ {c}
 zmx surface {}: PZPL parameter number {n}	zmx の面 {}: PZPL のパラメータの番号 {n}
 zmx surface {}: spider arm width {w}, {n} arms	zmx の面 {}: スパイダーのアームの幅 {w}・本数 {n}
 zmx surface {}: line {} is not supported	zmx の面 {}: 行 {} は未対応
+zmx surface {}: non-sequential objects (NSOH) are not supported (a non-sequential or mixed-mode system)	zmx の面 {}: 非順次の物体（NSOH）は未対応（非順次・混合モードのシステム）
 {what} {v} (an integer {lo} to {hi})	{what} {v}（{lo}〜{hi} の整数）
 lens unit {u} (mm, cm, in, m)	レンズ単位 {u}（mm・cm・in・m）
 ray aiming pupil shift in lens unit {unit}	レンズ単位 {unit} の光線エイミングの瞳のずらし

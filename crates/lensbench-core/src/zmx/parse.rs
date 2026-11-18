@@ -315,6 +315,11 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 "zmx surface {}: line {k} was skipped (an old .zmx without indentation)",
                 s.n
             )),
+            // 非順次の物体（非順次モード・混合モードの系）: 光線に効くので飛ばせない
+            "NSOH" => notimpl!(
+                "zmx surface {}: non-sequential objects (NSOH) are not supported (a non-sequential or mixed-mode system)",
+                s.n
+            ),
             k => notimpl!("zmx surface {}: line {} is not supported", s.n, k),
         }
     }
