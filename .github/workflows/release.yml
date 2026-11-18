@@ -68,7 +68,9 @@ jobs:
           else
             # リリース候補（v0.5.0-rc.1 など、- を含むタグ）は pre-release にする（最新のリリースにしない）
             pre=(); case "$TAG" in *-*) pre=(--prerelease) ;; esac
-            gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --generate-notes --verify-tag "${pre[@]}"
+            # 本文は CHANGELOG.md の版の節（GitHub の自動の一覧は最初のリリースで全 PR が並ぶので使わない）
+            python scripts/release_notes.py "$TAG" > dist/notes.md
+            gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --notes-file dist/notes.md --verify-tag "${pre[@]}"
           fi
       # ドキュメントを版の置き場（/vX.Y/・/schema/vX.Y/）に置く: Pages がタグのコミットの CI の site-book を固めて
       # このリリースに添付し、そこから載せる（pages.yml）。まだ CI が終わっていなければ、次の main の Pages で添付する
