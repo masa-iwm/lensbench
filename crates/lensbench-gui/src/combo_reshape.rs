@@ -325,6 +325,7 @@ fn refers_to(o: &SurfaceOp, id: &str) -> bool {
 fn for_each_ref(o: &mut SurfaceOp, f: &mut dyn FnMut(&mut BlockRef)) {
     match o {
         SurfaceOp::SetStop(s) => f(&mut s.surface),
+        SurfaceOp::AddMacroSolve(s) => f(&mut s.surface),
         SurfaceOp::AddSolve(s) => {
             f(&mut s.surface);
             if let Some(x) = s.other.as_mut() {

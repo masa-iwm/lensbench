@@ -183,6 +183,7 @@ impl Combo {
             glass_catalogs: p.glass_catalogs.clone(),
             coatings: p.coatings.clone(),
             coating_file: p.coating_file.clone(),
+            macros: v["macros"].as_array().cloned().unwrap_or_default(),
             path: p.path.clone().unwrap_or_default(),
             ..Combo::default()
         };

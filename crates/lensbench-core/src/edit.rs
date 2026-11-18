@@ -719,6 +719,31 @@ impl System {
         })
     }
 
+    /// 円錐係数・半直径・面タイプのパラメータの ZPL マクロのソルブ（[`crate::zpl_solve::MacroParm`]）を足す（同じ面・
+    /// 同じ量のものは置き換える）。マクロは [`System::macros`] の番号。値はすぐに解き直す
+    pub fn add_macro_parm(&mut self, q: crate::zpl_solve::MacroParm) -> Result<()> {
+        let ns = self.surfaces.len();
+        if q.surf == 0 || q.surf >= ns {
+            invalid!("macro solve surface {} (1 to {})", q.surf, ns - 1);
+        }
+        if q.id as usize >= self.macros.len() {
+            invalid!("no macro {} (the system has {})", q.id, self.macros.len());
+        }
+        if !matches!(q.what, Kind::Conic | Kind::Semi | Kind::Parm(_)) {
+            invalid!("a macro solve sets k, semi or p1.. (not {})", q.what.name());
+        }
+        if !q.what.is_pick_only() {
+            self.check_param(Param::new(q.surf, q.what))?;
+        }
+        self.edit_sys(|s| {
+            s.rx_mut()
+                .macro_parms
+                .retain(|x| !(x.surf == q.surf && x.what == q.what));
+            s.rx_mut().macro_parms.push(q);
+            Ok(())
+        })
+    }
+
     /// 面 surf の量 kind（[`Kind::Thick`] か [`Kind::Curv`]）のソルブを外す（値は今のまま残る）。無ければエラー
     pub fn remove_solve(&mut self, surf: usize, kind: Kind) -> Result<()> {
         let hit = |x: &Solve| x.surf == surf && x.kind.param_kind() == kind;

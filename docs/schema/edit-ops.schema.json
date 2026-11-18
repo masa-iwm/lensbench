@@ -294,6 +294,37 @@
         },
         {
           "additionalProperties": false,
+          "description": "円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く",
+          "properties": {
+            "macro": {
+              "description": "マクロの番号（系の `macros`、プロジェクトでは `macros` の並び。0 始まり）",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "add_macro_solve",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            },
+            "what": {
+              "description": "解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "macro",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "ソルブを外す",
           "properties": {
             "op": {

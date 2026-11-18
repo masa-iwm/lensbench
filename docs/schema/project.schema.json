@@ -2380,6 +2380,24 @@
       ],
       "description": "玉の出どころ"
     },
+    "Macro": {
+      "description": "系に付けたマクロ（名前と文）。系ファイル（JSON）には文をそのまま入れ、戻すときにファイルは読まない",
+      "properties": {
+        "name": {
+          "description": ".zmx に書かれた名前（拡張子なし）",
+          "type": "string"
+        },
+        "source": {
+          "description": "マクロの文（.ZPL の中身）",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "source"
+      ],
+      "type": "object"
+    },
     "MechAt": {
       "additionalProperties": false,
       "description": "機構を置く基準の面（[`MechPlacement::at`]）",
@@ -3982,6 +4000,37 @@
         },
         {
           "additionalProperties": false,
+          "description": "円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く",
+          "properties": {
+            "macro": {
+              "description": "マクロの番号（系の `macros`、プロジェクトでは `macros` の並び。0 始まり）",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "add_macro_solve",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/BlockRef"
+            },
+            "what": {
+              "description": "解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "macro",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "ピックアップを置く",
           "properties": {
             "dst": {
@@ -4536,6 +4585,13 @@
         }
       ],
       "description": "像面（省略は平面で傾きなし）。システムファイル（版 2）の面の行で、形・面の前の傾き偏心・開口などを書く。\n厚さ・媒質・絞りの印は書けない"
+    },
+    "macros": {
+      "description": "ZPL のマクロ（名前 `name` と文 `source`、.ZPL の中身）。ブロックの `surface_ops` の `add_solve` で種類\n`macro_curv`・`macro_thick` の `param` にこの並びの番号（0 始まり）を書いて使う。マクロのファイルは読まない",
+      "items": {
+        "$ref": "#/$defs/Macro"
+      },
+      "type": "array"
     },
     "mechanics": {
       "description": "機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う",

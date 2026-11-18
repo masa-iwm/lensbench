@@ -404,6 +404,7 @@ impl Pick {
 fn map_refs(o: &mut SurfaceOp, f: &dyn Fn(&mut BlockRef) -> bool) -> bool {
     match o {
         SurfaceOp::SetStop(s) => f(&mut s.surface),
+        SurfaceOp::AddMacroSolve(s) => f(&mut s.surface),
         SurfaceOp::AddSolve(s) => f(&mut s.surface) && s.other.as_mut().is_none_or(f),
         SurfaceOp::AddPickup(s) => f(&mut s.dst) && f(&mut s.src),
         SurfaceOp::RemoveSolve { surface, .. } => f(surface),

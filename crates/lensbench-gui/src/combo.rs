@@ -952,6 +952,9 @@ pub(crate) struct Combo {
     /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coating_file: Option<String>,
+    /// ZPL のマクロ（プロジェクトの `macros`。.zmx を分けたときはそのソルブのマクロ。名前と文の JSON のまま持つ）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub macros: Vec<Value>,
     /// 群の役割・移動（名前は要素の group）
     pub groups: Vec<GroupDef>,
     /// 最後に置く検出器（拡張の検出器のブロック、[`crate::ext::Detector`]）
@@ -1006,6 +1009,7 @@ impl Default for Combo {
             state_more: BTreeMap::new(),
             coatings: BTreeMap::new(),
             coating_file: None,
+            macros: Vec::new(),
             groups: Vec::new(),
             detector: None,
             lead_air: None,
@@ -1209,6 +1213,9 @@ impl Combo {
         }
         if let Some(f) = &self.coating_file {
             v["coating_file"] = json!(f);
+        }
+        if !self.macros.is_empty() {
+            v["macros"] = Value::Array(self.macros.clone());
         }
         if !states.is_empty() {
             v["states"] = Value::Array(

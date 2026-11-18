@@ -157,6 +157,33 @@ pub struct StopOp<S> {
     pub surface: S,
 }
 
+/// 円錐係数・半直径・面タイプのパラメータを ZPL マクロで解く（同じ面・同じ量のものは置き換える。OpticStudio の
+/// KZPL・DIAM の Macro Solve・PZPL）
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields, bound(deserialize = "S: Deserialize<'de>"))]
+pub struct MacroSolveOp<S> {
+    pub surface: S,
+    /// マクロの番号（系の `macros`、プロジェクトでは `macros` の並び。0 始まり）
+    #[serde(rename = "macro")]
+    pub index: u16,
+    /// 解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）
+    pub what: String,
+}
+
+impl<S> MacroSolveOp<S> {
+    /// 面を f で読み替える（None は当てない）
+    pub fn map<T, E>(
+        self,
+        mut f: impl FnMut(S) -> Result<Option<T>, E>,
+    ) -> Result<Option<MacroSolveOp<T>>, E> {
+        Ok(f(self.surface)?.map(|surface| MacroSolveOp {
+            surface,
+            index: self.index,
+            what: self.what,
+        }))
+    }
+}
+
 /// 厚さか曲率のソルブを置く（同じ面・同じ量のソルブは置き換える）
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields, bound(deserialize = "S: Deserialize<'de>"))]
@@ -308,6 +335,8 @@ pub enum EditOp {
     RemovePickup { dst: Ref, what: String },
     /// ソルブを置く
     AddSolve(SolveOp<Ref>),
+    /// 円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く
+    AddMacroSolve(MacroSolveOp<Ref>),
     /// ソルブを外す
     RemoveSolve {
         surface: Ref,
@@ -422,6 +451,8 @@ pub enum SurfaceOp {
     SetStop(StopOp<BlockRef>),
     /// ソルブを置く
     AddSolve(SolveOp<BlockRef>),
+    /// 円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く
+    AddMacroSolve(MacroSolveOp<BlockRef>),
     /// ピックアップを置く
     AddPickup(PickupOp<BlockRef>),
     /// ソルブを外す
@@ -443,6 +474,7 @@ impl SurfaceOp {
         Ok(match self.clone() {
             SurfaceOp::SetStop(o) => o.map(f)?.map(EditOp::SetStop),
             SurfaceOp::AddSolve(o) => o.map(f)?.map(EditOp::AddSolve),
+            SurfaceOp::AddMacroSolve(o) => o.map(f)?.map(EditOp::AddMacroSolve),
             SurfaceOp::AddPickup(o) => o.map(f)?.map(EditOp::AddPickup),
             SurfaceOp::RemoveSolve { surface, what } => {
                 f(surface)?.map(|surface| EditOp::RemoveSolve { surface, what })
@@ -458,6 +490,7 @@ impl SurfaceOp {
         match self {
             SurfaceOp::SetStop(x) => &mut x.surface,
             SurfaceOp::AddSolve(x) => &mut x.surface,
+            SurfaceOp::AddMacroSolve(x) => &mut x.surface,
             SurfaceOp::AddPickup(x) => &mut x.dst,
             SurfaceOp::RemoveSolve { surface, .. } => surface,
             SurfaceOp::RemovePickup { dst, .. } => dst,
@@ -479,6 +512,7 @@ impl SurfaceOp {
         match self {
             SurfaceOp::SetStop(_) => "set_stop",
             SurfaceOp::AddSolve(_) => "add_solve",
+            SurfaceOp::AddMacroSolve(_) => "add_macro_solve",
             SurfaceOp::AddPickup(_) => "add_pickup",
             SurfaceOp::RemoveSolve { .. } => "remove_solve",
             SurfaceOp::RemovePickup { .. } => "remove_pickup",

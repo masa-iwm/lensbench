@@ -2250,3 +2250,6 @@ user-defined surface model {name}: flipping twice in {h} does not give the origi
 user-defined surface model {name}: the paraxial power changes when flipped in {h}	ユーザー定義の面のモデル {name}: {h} について反転すると近軸の屈折力が変わります
 user-defined surface model {name}: the surface flipped in {h} does not deflect the ray at ({px}, {py}) in direction ({kx}, {ky}, {kz}) as the mirror image	ユーザー定義の面のモデル {name}: {h} について反転した面が、点 ({px}, {py})・方向 ({kx}, {ky}, {kz}) の光線をミラー像と同じに曲げません
 extensions {a} and {b} both add {names}	拡張 {a} と {b} が、どちらも {names} を足しています
+a macro solve sets k, semi or p1.. (not {})	マクロのソルブで解くのは k・semi・p1.. です（{} ではありません）
+macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）
+no macro {} (the system has {})	マクロ {} がありません（システムのマクロは {} 個）

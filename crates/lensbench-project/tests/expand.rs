@@ -1407,3 +1407,57 @@ fn a_gap_can_be_filled_with_a_medium() {
     .unwrap();
     assert!(e.to_string().contains("is not air"), "{e}");
 }
+
+/// プロジェクトのマクロ（名前と文）を、ブロックの surface_ops の macro_curv のソルブが番号で指して解く。
+/// マクロのファイルは読まない
+#[test]
+fn a_macro_solve_uses_the_project_macros() {
+    let txt = format!(
+        r#"{{ {HEAD} "macros": [{{"name": "MIRR", "source": "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n"}}],
+        "blocks": [{{"type": "stop", "semi": 4}}, {{"type": "air", "t": 10}},
+        {{"type": "lens", "id": "L", "source": {{"surfaces": [{{"radius": 50, "t": 3, "glass": "N-BK7", "semi": 5}}, {{"radius": 0, "semi": 5}}]}},
+          "surface_ops": [{{"op": "add_solve", "surface": 1, "kind": "macro_curv", "param": 0}}]}},
+        {{"type": "air", "t": 20}}] }}"#
+    );
+    let e = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .unwrap();
+    let s = e.system;
+    // レンズの後の面の曲率 = −前の面の曲率
+    let j = s.image() - 1;
+    assert!(
+        (s.surfaces[j].c + 0.02).abs() < 1e-15,
+        "{}",
+        s.surfaces[j].c
+    );
+    assert!(s.macro_warnings().is_empty(), "{:?}", s.macro_warnings());
+    // 円錐係数のマクロのソルブ（add_macro_solve）
+    let k = txt.replace(
+        r#""kind": "macro_curv", "param": 0}]"#,
+        r#""kind": "macro_curv", "param": 0}, {"op": "add_macro_solve", "surface": 0, "macro": 1, "what": "k"}]"#,
+    ).replace(
+        r#""source": "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n"}]"#,
+        r#""source": "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n"}, {"name": "K", "source": "SOLVERETURN -0.7\n"}]"#,
+    );
+    assert!(k.contains("add_macro_solve") && k.contains(r#""K""#), "{k}");
+    let s = expand(
+        &Project::from_json(&k).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .unwrap()
+    .system;
+    assert_eq!(s.surfaces[s.image() - 2].k, -0.7);
+    assert_eq!(s.macro_parms.len(), 1);
+    // 無い番号のマクロは誤り
+    let bad = txt.replace(r#""param": 0"#, r#""param": 1"#);
+    assert!(expand(
+        &Project::from_json(&bad).unwrap(),
+        &env(),
+        &ExpandOpts::default()
+    )
+    .is_err());
+}

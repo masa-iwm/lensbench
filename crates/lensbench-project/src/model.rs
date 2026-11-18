@@ -807,6 +807,10 @@ pub struct Project {
     /// 相対パスはプロジェクトのフォルダから、そこに無ければ材料の検索フォルダから。取り込んだ .zmx の膜ファイルより優先
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coating_file: Option<String>,
+    /// ZPL のマクロ（名前 `name` と文 `source`、.ZPL の中身）。ブロックの `surface_ops` の `add_solve` で種類
+    /// `macro_curv`・`macro_thick` の `param` にこの並びの番号（0 始まり）を書いて使う。マクロのファイルは読まない
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub macros: Vec<lensbench_core::zpl_solve::Macro>,
     pub wavelengths: Vec<Wave>,
     /// 主波長の番号（1 始まり）
     #[serde(default = "one")]

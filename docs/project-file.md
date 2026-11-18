@@ -39,7 +39,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   厚さは符号を逆に）。往路の最後の面の厚さ・材料はブロックの外（後の空気のブロック）なので変えられない。
   `fields` の名前が面の値の名前に無ければ、serve の `set_surface_data` と同じ面のデータの項目（`ap`・`before`・`zern` など）として当てる。
   カタログの玉は型番のまま上書きを持てる。id の無いブロックにも書ける。GUI の面の表で組合せの玉の面を変えると、これで保存される
-- 面の絞り・ソルブ・ピックアップ（ブロックの `surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
+- 面の絞り・ソルブ・ピックアップ（ブロックの `surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_macro_solve`・`add_pickup`・`remove_solve`・
   `remove_pickup` と同じ形で、当てる面（`surface`・`dst`）はそのブロックの面の番号（`surface_edits` と同じ数え方。往復するブロックは
   往路の面）。参照する面（`src`・`other`）は、ほかのブロックの面 `{"block": "L1", "surface": 0}` か、展開したシステムの面の番号・名前。
   ほかの操作・知らないキーは読むときにエラー。例（id L2 の玉に）:
@@ -163,6 +163,11 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 膜ファイル: `"coating_file": "COATING.DAT"`（OpticStudio の膜ファイルの形。相対パスはプロジェクトのフォルダから、そこに無ければ .zmx の膜ファイルと同じく材料の検索フォルダから）。面の `coat` の名前を、
   `coatings` に無ければこのファイルで引く。取り込んだ .zmx の膜ファイルより優先（違えば注意）。GUI が .zmx を要素に分けると、
   その .zmx の膜ファイルをここに書く（材料の検索フォルダで見つけたものはそこからの相対パス）。
+- ZPL マクロのソルブ: `"macros": [{"name": "MIRR", "source": "…"}]`（.ZPL の中身をそのまま。マクロのファイルは読まない）と書き、
+  ブロックの `surface_ops` に `{"op": "add_solve", "surface": 1, "kind": "macro_curv", "param": 0}`（厚さは `macro_thick`）で
+  `param` に `macros` の番号（0 始まり）を書く。円錐係数・半直径・面タイプのパラメータは
+  `{"op": "add_macro_solve", "surface": 0, "macro": 1, "what": "k"}`（`what` は `k`・`semi`・`p1` …）。
+  OpticStudio の Macro Solve と同じに解く（.zmx のマクロのソルブと同じ）。GUI がマクロのソルブのある .zmx を要素に分けると、マクロをここに書く。
 - フィルタ・ダイクロイックの膜: プロジェクトかユーザーカタログの `"coatings": {名前: 膜}` に書いた膜を、面・BS の `coat`
   に名前で使う（TABLE 膜として偏光の追跡・透過に効く。プロジェクトの同じ名前がカタログより優先、膜ファイルの同じ名前より優先）。
   膜は `{"type": "table", "rows": [[入射角 deg, 波長 µm, Rs, Rp, Ts, Tp], …]}`（表そのまま）、`curve`（`wavelengths_nm`・`t`・`r`、

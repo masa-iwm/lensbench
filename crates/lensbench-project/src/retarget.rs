@@ -162,6 +162,7 @@ impl Retarget {
             | SetSurfaceData { surface, .. } => *surface = self.r(surface)?,
             RemovePickup { dst, .. } => *dst = self.r(dst)?,
             SetStop(x) => x.surface = self.r(&x.surface)?,
+            AddMacroSolve(x) => x.surface = self.r(&x.surface)?,
             AddPickup(x) => {
                 x.dst = self.r(&x.dst)?;
                 x.src = self.r(&x.src)?;

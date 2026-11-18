@@ -1,12 +1,11 @@
 //! 開いた .zmx を組合せの要素（自作の玉・絞り・面の並びと空気）に分ける（11/16 masa 決定: 開いた .zmx の変更は
 //! 取り込みの上書きでなく中身へ）。ソルブ・ピックアップ・絞りは要素の操作にする。分けた組合せの系が元の系と
-//! 同じときだけ使い、書けない面（玉の中の鏡・座標ブレーク・ゴーストの反射など）があれば今までどおり .zmx を取り込む。
+//! 同じときだけ使い、書けない面（ゴーストの反射など）があれば今までどおり .zmx を取り込む。ZPL マクロはプロジェクトの macros に。
 //! 空気中の鏡は鏡の要素（半径・コーニックで書けない形は行で）。鏡の後の面は光の進む向きに裏返して書く。
 //! SurfSpec の欄で書けない形（Zernike・Grid Sag など）はシステムファイルの行（SurfSpec の row）で書く
 
 use std::path::{Path, PathBuf};
 
-use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::SurfType;
 use lensbench_core::System;
 use serde_json::{json, Value};
@@ -86,7 +85,7 @@ fn mirror_block(a: &lensbench_core::surface::Surface, id: &str) -> Option<Value>
 
 /// blocks（面の絞り・ソルブ・ピックアップはブロックの surface_ops）・glrs を要素で書いたプロジェクト
 fn split_project(s: &System, p: &Value) -> Option<Value> {
-    if !s.macros.is_empty() || !s.macro_parms.is_empty() || s.surfaces.len() < 3 {
+    if s.surfaces.len() < 3 {
         return None;
     }
     let img = s.surfaces.len() - 1;
@@ -233,13 +232,8 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     if let Some((b, i)) = stop {
         ops.push(json!({ "op": "set_stop", "surface": { "block": b, "surface": i } }));
     }
+    // 曲率・厚さのマクロのソルブの param はマクロの番号（分けたプロジェクトのマクロは系と同じ並び）
     for q in &s.solves {
-        if matches!(
-            q.kind,
-            SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
-        ) {
-            return None;
-        }
         let (kind, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
         let mut o = json!({ "op": "add_solve", "surface": at(q.surf)?, "kind": kind,
             "value": value, "param": param });
@@ -247,6 +241,13 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             o["other"] = at(x)?;
         }
         ops.push(o);
+    }
+    // 円錐・半直径・面タイプのパラメータのマクロのソルブ
+    for q in &s.macro_parms {
+        ops.push(
+            json!({ "op": "add_macro_solve", "surface": at(q.surf)?, "macro": q.id,
+            "what": q.what.name() }),
+        );
     }
     for q in &s.pickups {
         let name = lensbench_core::pickup::pick_kind_name;
@@ -280,12 +281,16 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     if s.glrs != 1 {
         v["glrs"] = at(s.glrs)?;
     }
+    if !s.macros.is_empty() {
+        v["macros"] = serde_json::to_value(&s.macros).ok()?;
+    }
     Some(v)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lensbench_core::solves::SolveKind;
     use lensbench_project::edit_ops::{BlockRef, SurfaceOp};
 
     fn root() -> PathBuf {
@@ -417,6 +422,64 @@ mod tests {
             .filter(|x| x.get("coordbrk").is_some())
             .count();
         assert_eq!(cbs, 2, "{lens}");
+    }
+
+    /// マクロのソルブ（曲率・厚さ・円錐など）のある .zmx も要素に分け、マクロ（名前と文）はプロジェクトの macros に入れる。
+    /// 分けたプロジェクトはマクロのファイルが無くても開ける
+    #[test]
+    fn a_zmx_with_macro_solves_splits_and_keeps_the_macros() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_zpl_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("LBMIRR.ZPL"),
+            "s = SOSO(0)\nSOLVERETURN -CURV(s - 1)\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("LBCONI.ZPL"), "SOLVERETURN -0.5\n").unwrap();
+        let f = tmp.join("m.zmx");
+        std::fs::write(
+            &f,
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 5 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.02\n  CONI 0\n  KZPL \"LBCONI\"\n  DISZ 5\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV -1e-3 12 0 0 0 \"LBMIRR\"\n  DISZ 45\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        )
+        .unwrap();
+        let glass = vec![root().join("tests/glass")];
+        let c = Combo::from_zmx(&f, &glass, &[]).unwrap();
+        std::fs::remove_dir_all(&tmp).ok();
+        assert!(
+            !c.picks
+                .iter()
+                .any(|p| matches!(p.kind, ElemKind::ZmxRange | ElemKind::Raw)),
+            "{:?}",
+            c.picks.iter().map(|p| &p.kind).collect::<Vec<_>>()
+        );
+        assert_eq!(c.macros.len(), 2);
+        // マクロのファイルを消した後もプロジェクトから開け、ソルブが解ける
+        let v = c.project();
+        let p = lensbench_project::Project::from_json(&v.to_string()).unwrap();
+        let s = lensbench_project::expand(
+            &p,
+            &lensbench_project::Env::in_dir(&root(), &glass, None),
+            &Default::default(),
+        )
+        .unwrap()
+        .system;
+        assert!(s
+            .solves
+            .iter()
+            .any(|q| matches!(q.kind, SolveKind::MacroCurv { .. })));
+        assert!(
+            (s.surfaces[3].c + 0.02).abs() < 1e-15,
+            "{}",
+            s.surfaces[3].c
+        );
+        assert_eq!(s.macro_parms.len(), 1);
+        assert_eq!(s.surfaces[2].k, -0.5);
     }
 
     /// 材料の検索フォルダで見つけた膜ファイルは、絶対パスでなく検索フォルダからの相対パスでプロジェクトに書き、
