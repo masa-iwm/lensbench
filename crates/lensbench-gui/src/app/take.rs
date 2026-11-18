@@ -12,7 +12,7 @@ impl Core {
             let n = d.replies.len();
             if !d.skipped {
                 for (m, p) in Tag::refresh_calls().into_iter().skip(n) {
-                    self.worker.send(Tag::of_refresh(&m), p);
+                    self.calc(Tag::of_refresh(&m), p);
                 }
             }
             return d.split().into_iter().for_each(|d| self.take(d));
@@ -32,7 +32,7 @@ impl Core {
             if stopped {
                 for p in self.ses.params.clone() {
                     if !asked.contains(&p) {
-                        self.worker.send(Tag::Get, json!({ "param": p }));
+                        self.calc(Tag::Get, json!({ "param": p }));
                     }
                 }
             }
@@ -359,7 +359,7 @@ impl Core {
                 self.loc.ld_dirty = true;
                 // 値を変えたら面の表・要約と、開いている解析を計算し直す
                 self.refresh();
-                self.worker.send(Tag::Layout, self.layout_params());
+                self.calc(Tag::Layout, self.layout_params());
                 self.rerun = Some(true);
             }
             Tag::Surfaces => {
@@ -521,7 +521,7 @@ impl Core {
             Tag::Optimize => {
                 self.p.opt.undo = None;
                 // 結果を系に当てたら元に戻す段が増える
-                self.worker.send(Tag::HistoryDepth, json!({}));
+                self.calc(Tag::HistoryDepth, json!({}));
                 text = trf(
                     "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],

@@ -3,94 +3,18 @@
 use super::*;
 
 impl App {
-    /// 窓に落としたファイルとキー
+    /// 窓に落としたファイルとキーを操作にして当てる
     pub(super) fn handle_input(&mut self, ctx: &egui::Context) {
-        // 窓に落としたファイル
-        let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(crate::files::dropped)
-                .collect()
-        });
-        if let Some(p) = dropped.into_iter().next() {
-            self.c.open_doc(&p);
-        }
-        // キー
-        let (save_as, save) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::S),
-                i.consume_key(Modifiers::COMMAND, Key::S),
-            )
-        });
-        if save_as || save {
-            self.c.save(save_as);
-        }
-        let (new, open, palette, f5, reload, help, next, prev) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::COMMAND, Key::N),
-                i.consume_key(Modifiers::COMMAND, Key::O),
-                i.consume_key(Modifiers::COMMAND, Key::K),
-                i.consume_key(Modifiers::NONE, Key::F5),
-                i.consume_key(Modifiers::COMMAND, Key::R),
-                i.consume_key(Modifiers::NONE, Key::F1),
-                i.consume_key(Modifiers::COMMAND, Key::Tab),
-                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Tab),
-            )
-        });
-        if new {
-            self.c.new_system();
-        }
-        if open {
-            self.c.pick_and_open();
-        }
-        if palette {
-            if self.palette.open {
-                self.palette.open = false;
-            } else {
-                self.palette.show();
-            }
-        }
-        if f5 {
-            self.run_all(false);
-        }
-        if reload {
-            self.c.reload();
-        }
-        if help {
-            self.c.help_open = !self.c.help_open;
-        }
-        if next || prev {
-            self.cycle(prev);
-        }
-        // Ctrl+Z・Ctrl+Y（Ctrl+Shift+Z）: 系の変更を元に戻す・やり直す（入力欄の中では欄の文字の取り消し）
-        if !ctx.wants_keyboard_input() {
-            let (redo, undo) = ctx.input_mut(|i| {
-                (
-                    i.consume_key(Modifiers::COMMAND, Key::Y)
-                        || i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z),
-                    i.consume_key(Modifiers::COMMAND, Key::Z),
-                )
-            });
-            if undo || redo {
-                self.c.undo(undo, 1);
-            }
+        for m in input_msgs(ctx) {
+            self.dispatch(ctx, m);
         }
     }
 
     /// パネルを描いた後のキー: パネルが使わなかったものだけ。Ctrl+A・Ctrl+Shift+A は多重構成の次・前の構成
     /// （入力欄にフォーカスがあるときは全選択、面の表を使っているときは表の全部の行の選択に、パネルが先に取る）
     pub(super) fn handle_late_input(&mut self, ctx: &egui::Context) {
-        if !ctx.wants_keyboard_input() {
-            let (back, fwd) = ctx.input_mut(|i| {
-                (
-                    i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A),
-                    i.consume_key(Modifiers::COMMAND, Key::A),
-                )
-            });
-            if back || fwd {
-                self.c.cycle_config(back);
-            }
+        if let Some(m) = late_input_msg(ctx) {
+            self.dispatch(ctx, m);
         }
     }
 
@@ -214,12 +138,12 @@ impl App {
         // 項目はパレットを開いているときだけ作る
         if self.palette.open {
             let items = self.palette_items();
-            if let Some(cmd) = self.palette.ui(ctx, &items) {
-                self.exec(ctx, cmd);
+            if let Some(m) = self.palette.ui(ctx, &items) {
+                self.dispatch(ctx, m);
             }
         }
-        for cmd in std::mem::take(&mut self.c.cmds) {
-            self.exec(ctx, cmd);
+        for m in std::mem::take(&mut self.c.msgs) {
+            self.dispatch(ctx, m);
         }
         if self.c.folders_open {
             self.c.folders_window(ctx);
@@ -247,4 +171,69 @@ impl App {
             self.c.ask_ui(ctx);
         }
     }
+}
+
+/// 窓に落としたファイルとキーの操作（パネルを描く前）
+fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
+    let mut out = Vec::new();
+    // 窓に落としたファイル
+    let dropped = ctx.input(|i| i.raw.dropped_files.iter().find_map(crate::files::dropped));
+    if let Some(p) = dropped {
+        out.push(Msg::OpenFile(p));
+    }
+    let keys = [
+        (
+            Modifiers::COMMAND | Modifiers::SHIFT,
+            Key::S,
+            Msg::Save(true),
+        ),
+        (Modifiers::COMMAND, Key::S, Msg::Save(false)),
+        (Modifiers::COMMAND, Key::N, Msg::New),
+        (Modifiers::COMMAND, Key::O, Msg::Open),
+        (Modifiers::COMMAND, Key::K, Msg::TogglePalette),
+        (Modifiers::NONE, Key::F5, Msg::RunAll),
+        (Modifiers::COMMAND, Key::R, Msg::Reload),
+        (Modifiers::NONE, Key::F1, Msg::ToggleHelp),
+        (
+            Modifiers::COMMAND | Modifiers::SHIFT,
+            Key::Tab,
+            Msg::CyclePanes(true),
+        ),
+        (Modifiers::COMMAND, Key::Tab, Msg::CyclePanes(false)),
+    ];
+    ctx.input_mut(|i| {
+        for (m, k, msg) in keys {
+            if i.consume_key(m, k) {
+                out.push(msg);
+            }
+        }
+    });
+    // Ctrl+Z・Ctrl+Y（Ctrl+Shift+Z）: 系の変更を元に戻す・やり直す（入力欄の中では欄の文字の取り消し）
+    if !ctx.wants_keyboard_input() {
+        let (redo, undo) = ctx.input_mut(|i| {
+            (
+                i.consume_key(Modifiers::COMMAND, Key::Y)
+                    || i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z),
+                i.consume_key(Modifiers::COMMAND, Key::Z),
+            )
+        });
+        if undo || redo {
+            out.push(Msg::Undo(undo, 1));
+        }
+    }
+    out
+}
+
+/// パネルを描いた後のキーの操作
+fn late_input_msg(ctx: &egui::Context) -> Option<Msg> {
+    if ctx.wants_keyboard_input() {
+        return None;
+    }
+    let (back, fwd) = ctx.input_mut(|i| {
+        (
+            i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A),
+            i.consume_key(Modifiers::COMMAND, Key::A),
+        )
+    });
+    (back || fwd).then_some(Msg::CycleConfig(back))
 }

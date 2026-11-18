@@ -21,7 +21,7 @@ impl Core {
             "glass_dirs": dirs(&self.s.glass_dirs),
             "lens_catalogs": dirs(&self.s.lens_dirs),
         });
-        self.preview.send(Tag::OpenDoc, q);
+        self.draft(Tag::OpenDoc, q);
     }
 
     /// [`Self::open_doc`] の続き。v は下書きの Worker の `doc_peek` の答え（{gui, blocks}。.zmx・読めない
@@ -111,7 +111,7 @@ impl Core {
                 "push"
             }
         );
-        self.worker.send(Tag::Load, params);
+        self.calc(Tag::Load, params);
         self.info(trf("Reading {}…", &[&file]));
     }
 

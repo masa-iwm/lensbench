@@ -84,7 +84,7 @@ impl App {
         }
         // 取った品の STEP と簡易外形の照合（Web 版。品の載ったカタログは下書きの Worker が持つ）
         for p in self.c.browser.cad.take_measure() {
-            self.c.preview.send(Tag::CadMeasure, p);
+            self.c.draft(Tag::CadMeasure, p);
         }
         // 組合せを動かしている間は解析を待たせ、系の作り直しとレイアウト図を先に回す
         let settle = std::time::Duration::from_millis(350);
@@ -136,7 +136,7 @@ impl App {
             && self.c.is_combo()
             && self.c.loc.built_combo.same(&self.c.doc)
             && self.c.layout_data.is_some()
-            && !self.c.worker.busy_short()
+            && !self.c.busy_short()
         {
             self.c.doc.refocus = false;
             self.c.request_focus();

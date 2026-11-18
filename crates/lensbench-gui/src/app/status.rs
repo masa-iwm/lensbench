@@ -9,7 +9,7 @@ impl App {
         ui.horizontal(|ui| {
             // 行の全体の幅（右の数値の置き方を前のフレームの左の幅に頼らずに決める）
             let row_w = ui.available_width();
-            let busy = self.c.worker.busy();
+            let busy = self.c.busy();
             let (dot, col) = if busy {
                 ("●", theme::warn(ui.visuals()))
             } else if self.c.status.error {
@@ -20,9 +20,7 @@ impl App {
             ui.label(RichText::new(dot).color(col));
             if busy {
                 ui.spinner();
-                ui.label(
-                    RichText::new(trf("Computing ({})", &[&self.c.worker.pending()])).color(weak),
-                );
+                ui.label(RichText::new(trf("Computing ({})", &[&self.c.pending()])).color(weak));
             }
             let text = if self.c.status.text.is_empty() {
                 tr("Ready").to_string()

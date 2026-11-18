@@ -106,7 +106,7 @@ impl Core {
                         .add_filter(tr("System file"), &["json"])
                         .set_file_name(format!("{stem}_{a}-{b}.json"));
                     self.save_as(d, move |c, p| {
-                        c.worker.send(
+                        c.calc(
                             Tag::SaveRange,
                             json!({ "path": p.display().to_string(), "from": a, "to": b }),
                         );
@@ -177,11 +177,11 @@ impl Core {
                             }),
                         }
                     }
-                    self.cmds.push(Cmd::FocusKind(Kind::Optimize));
+                    self.msgs.push(Msg::FocusKind(Kind::Optimize));
                     self.info(trf("Added {} to the optimization variables", &[&name]));
                 }
                 Act::NeedData(j) => {
-                    self.worker.send(Tag::SurfData(j), json!({ "surface": j }));
+                    self.calc(Tag::SurfData(j), json!({ "surface": j }));
                 }
             }
         }

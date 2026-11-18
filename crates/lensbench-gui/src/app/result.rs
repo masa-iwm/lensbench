@@ -88,7 +88,7 @@ impl Core {
         };
         let Some(r) = self.results.get(&id) else {
             ui.horizontal(|ui| view_row(ui, cfg));
-            if !self.worker.busy_short() {
+            if !self.busy_short() {
                 self.run(id, cfg);
             }
             return;

@@ -3,161 +3,73 @@
 use super::*;
 
 impl App {
-    pub(super) fn exec(&mut self, ctx: &egui::Context, cmd: Cmd) {
-        match cmd {
-            Cmd::New => self.c.new_system(),
-            Cmd::Undo(back, n) => self.c.undo(back, n),
-            Cmd::Open => self.c.pick_and_open(),
-            Cmd::Recent(f) => {
-                self.c.prepare_sample(&f);
-                self.c.open_doc(Path::new(&f));
-            }
-            Cmd::Reload => self.c.reload(),
-            Cmd::RunAll => self.run_all(false),
-            Cmd::WriteZmx => self.c.write_zmx(),
-            Cmd::Save(as_new) => self.c.save(as_new),
-            // 1 枚だけのパネルは、あれば表に出す
-            Cmd::Add(k) if k.single() => self.exec(ctx, Cmd::FocusKind(k)),
-            Cmd::Add(k) => {
-                let id = self.add_pane(k);
-                self.focus(id);
-            }
-            Cmd::Focus(id) => self.focus(id),
-            Cmd::FocusKind(k) => {
-                let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
-                let id = match self.pane_of(same) {
-                    Some(id) => id,
-                    None => self.add_pane(k),
-                };
-                self.focus(id);
-            }
-            Cmd::ToWindow(id) => self.detach(id),
-            Cmd::Preset(p) => self.set_layout(p.build()),
-            Cmd::Layout(i) => {
-                if let Some((_, l)) = self.c.s.layouts.get(i) {
-                    let l = l.clone();
-                    self.set_layout(l);
-                }
-            }
-            Cmd::SaveLayout => {
-                self.c.save_layout_open = true;
-            }
-            Cmd::Theme(m) => {
-                self.c.s.look.mode = m;
-                theme::apply(ctx, &self.c.s.look);
-            }
-            Cmd::Accent(i) => {
-                self.c.s.look.accent = theme::ACCENTS[i % theme::ACCENTS.len()];
-                theme::apply(ctx, &self.c.s.look);
-            }
-            Cmd::Lang(l) => {
-                self.c.s.lang = l;
-                i18n::set(l);
-                crate::fonts::follow_lang(ctx);
-                self.apply_dock_translations();
-            }
-            Cmd::Folders => self.c.folders_open = true,
-            Cmd::Help => self.c.help_open = true,
-            Cmd::RunOpt => {
-                self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
-                if !self.c.p.opt.running {
-                    match self.c.p.opt.params() {
-                        Ok(p) => {
-                            self.c.p.opt.error = None;
-                            self.c.p.opt.running = true;
-                            self.c.p.opt.result = None;
-                            self.c.p.opt.gen = self.c.sys_gen;
-                            self.c.worker.send(Tag::Optimize, p);
-                        }
-                        Err(e) => self.c.p.opt.error = Some(e),
-                    }
-                }
-            }
-            Cmd::RunTol => {
-                self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
-                if !self.c.p.tol.running {
-                    match self.c.p.tol.spec() {
-                        Ok(p) => {
-                            self.c.p.tol.error = None;
-                            self.c.p.tol.running = true;
-                            self.c.p.tol.result = None;
-                            self.c.worker.send(Tag::Tolerance, p);
-                        }
-                        Err(e) => self.c.p.tol.error = Some(e),
-                    }
-                }
-            }
-            Cmd::FocusImage => self.c.request_focus(),
-        }
-    }
-
     /// パレットの項目
-    pub(super) fn palette_items(&self) -> Vec<Item<Cmd>> {
+    pub(super) fn palette_items(&self) -> Vec<Item<Msg>> {
         let mut v = Vec::new();
-        let mut push = |label: String, hint: &str, cmd: Cmd| {
+        let mut push = |label: String, hint: &str, cmd: Msg| {
             v.push(Item {
                 label,
                 hint: hint.into(),
-                danger: matches!(cmd, Cmd::New | Cmd::Reload),
+                danger: matches!(cmd, Msg::New | Msg::Reload),
                 cmd,
             })
         };
         push(
             tr("New (clear the combination)").into(),
             "new ctrl+n",
-            Cmd::New,
+            Msg::New,
         );
         push(
             tr("Open a system file…").into(),
             "open file ctrl+o",
-            Cmd::Open,
+            Msg::Open,
         );
         push(
             tr("Undo (Ctrl+Z)").into(),
             "undo ctrl+z",
-            Cmd::Undo(true, 1),
+            Msg::Undo(true, 1),
         );
         push(
             tr("Redo (Ctrl+Y)").into(),
             "redo ctrl+y ctrl+shift+z",
-            Cmd::Undo(false, 1),
+            Msg::Undo(false, 1),
         );
-        push(tr("Reload the system").into(), "reload", Cmd::Reload);
+        push(tr("Reload the system").into(), "reload", Msg::Reload);
         // 実行系。設定はそれぞれのパネルのまま
         if self.c.sys.summary.is_some() {
             push(
                 tr("Optimize (current settings)").into(),
                 "run optimize opt",
-                Cmd::RunOpt,
+                Msg::RunOpt,
             );
             push(
                 tr("Run tolerancing (current settings)").into(),
                 "run tolerance tol monte carlo",
-                Cmd::RunTol,
+                Msg::RunTol,
             );
         }
         if self.c.is_combo() && self.c.layout_data.is_some() {
             push(
                 tr("Image at paraxial focus").into(),
                 "focus image paraxial",
-                Cmd::FocusImage,
+                Msg::FocusImage,
             );
         }
         push(
             tr("Recompute all open analyses").into(),
             "run all f5",
-            Cmd::RunAll,
+            Msg::RunAll,
         );
         push(
             tr("Export to .zmx…").into(),
             "write zmx export",
-            Cmd::WriteZmx,
+            Msg::WriteZmx,
         );
-        push(tr("Save (Ctrl+S)").into(), "save ctrl+s", Cmd::Save(false));
+        push(tr("Save (Ctrl+S)").into(), "save ctrl+s", Msg::Save(false));
         push(
             tr("Save As… (Ctrl+Shift+S)").into(),
             "save as ctrl+shift+s",
-            Cmd::Save(true),
+            Msg::Save(true),
         );
         for k in add_kinds() {
             let t = Pane {
@@ -177,7 +89,7 @@ impl App {
             } else {
                 trf("Add panel: {}", &[&t])
             };
-            push(label, &hint, Cmd::Add(k));
+            push(label, &hint, Msg::Add(k));
         }
         for (_, p) in self.dock.iter_all_tabs() {
             let name = match (&p.kind, p.kind.tool()) {
@@ -188,7 +100,7 @@ impl App {
             push(
                 trf("Go to panel: {}", &[&p.title()]),
                 &format!("go focus panel {name}"),
-                Cmd::Focus(p.id),
+                Msg::Focus(p.id),
             );
             push(
                 format!(
@@ -197,64 +109,64 @@ impl App {
                     p.title()
                 ),
                 &format!("window monitor detach {name}"),
-                Cmd::ToWindow(p.id),
+                Msg::ToWindow(p.id),
             );
         }
         for p in Preset::ALL {
             push(
                 trf("Workspace: {}", &[&p.label()]),
                 "layout preset",
-                Cmd::Preset(p),
+                Msg::Preset(p),
             );
         }
         for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
             push(
                 trf("Saved workspace: {}", &[n]),
                 "layout saved",
-                Cmd::Layout(i),
+                Msg::Layout(i),
             );
         }
         push(
             tr("Save current workspace…").into(),
             "save layout",
-            Cmd::SaveLayout,
+            Msg::SaveLayout,
         );
         push(
             tr("Theme: dark").into(),
             "theme dark",
-            Cmd::Theme(Mode::Dark),
+            Msg::Theme(Mode::Dark),
         );
         push(
             tr("Theme: light").into(),
             "theme light",
-            Cmd::Theme(Mode::Light),
+            Msg::Theme(Mode::Light),
         );
         push(
             tr("Theme: follow the OS").into(),
             "theme system",
-            Cmd::Theme(Mode::System),
+            Msg::Theme(Mode::System),
         );
         for i in 0..theme::ACCENTS.len() {
             push(
                 trf("Accent color {}", &[&(i + 1)]),
                 "accent color",
-                Cmd::Accent(i),
+                Msg::Accent(i),
             );
         }
         for l in Lang::ALL {
-            push(trf("Language: {}", &[&l.label()]), "language", Cmd::Lang(l));
+            push(trf("Language: {}", &[&l.label()]), "language", Msg::Lang(l));
         }
         push(
             tr("Catalog folders…").into(),
             "folders settings",
-            Cmd::Folders,
+            Msg::Folders,
         );
-        push(tr("Keyboard shortcuts").into(), "help keys f1", Cmd::Help);
+        push(tr("Keyboard shortcuts").into(), "help keys f1", Msg::Help);
         for f in &self.c.s.recent {
             push(
                 trf("Recent file: {}", &[f]),
                 "recent",
-                Cmd::Recent(f.clone()),
+                Msg::OpenFile(PathBuf::from(f)),
             );
         }
         v
@@ -310,7 +222,7 @@ impl App {
                 .fill(accent)
                 .min_size(egui::vec2(0.0, 28.0));
                 if ui.add_enabled(self.c.sys.summary.is_some(), run).clicked() {
-                    cmd = Some(Cmd::RunAll);
+                    cmd = Some(Msg::RunAll);
                 }
                 // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー）。押すと何を戻すかをホバーで
                 for (back, icon, key) in
@@ -336,7 +248,7 @@ impl App {
                         .on_disabled_hover_text(tip)
                         .clicked()
                     {
-                        cmd = Some(Cmd::Undo(back, 1));
+                        cmd = Some(Msg::Undo(back, 1));
                     }
                 }
                 // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない）
@@ -368,20 +280,20 @@ impl App {
             });
         });
         if let Some(c) = cmd {
-            self.exec(ctx, c);
+            self.dispatch(ctx, c);
         }
     }
 
     /// 上の帯の「File」メニュー
-    fn file_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn file_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Msg>) {
         ui.menu_button(tr("File"), |ui| {
             if ui.button(tr("New (Ctrl+N)")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::New);
+                *cmd = Some(Msg::New);
             }
             if ui.button(tr("Open… (Ctrl+O)")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::Open);
+                *cmd = Some(Msg::Open);
             }
             if !self.c.samples.is_empty() {
                 ui.menu_button(tr("Samples"), |ui| {
@@ -408,7 +320,7 @@ impl App {
                         let name = sample_name(f);
                         if ui.button(name).on_hover_text(f).clicked() {
                             ui.close_menu();
-                            *cmd = Some(Cmd::Recent(f.clone()));
+                            *cmd = Some(Msg::OpenFile(PathBuf::from(f)));
                         }
                     }
                 });
@@ -420,7 +332,7 @@ impl App {
                 for f in &self.c.s.recent {
                     if ui.button(f).clicked() {
                         ui.close_menu();
-                        *cmd = Some(Cmd::Recent(f.clone()));
+                        *cmd = Some(Msg::OpenFile(PathBuf::from(f)));
                     }
                 }
             });
@@ -432,7 +344,7 @@ impl App {
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::Reload);
+                *cmd = Some(Msg::Reload);
             }
             ui.separator();
             if ui
@@ -443,7 +355,7 @@ impl App {
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::WriteZmx);
+                *cmd = Some(Msg::WriteZmx);
             }
             let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
             let save_label = tr("Save (Ctrl+S)");
@@ -455,7 +367,7 @@ impl App {
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::Save(false));
+                *cmd = Some(Msg::Save(false));
             }
             if ui
                 .add_enabled(
@@ -465,12 +377,12 @@ impl App {
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::Save(true));
+                *cmd = Some(Msg::Save(true));
             }
             ui.separator();
             if ui.button(tr("Catalog folders…")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::Folders);
+                *cmd = Some(Msg::Folders);
             }
             #[cfg(target_arch = "wasm32")]
             {
@@ -516,7 +428,7 @@ impl App {
     }
 
     /// 上の帯の「Edit」メニュー
-    fn edit_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn edit_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Msg>) {
         ui.menu_button(tr("Edit"), |ui| {
             let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
             if ui
@@ -524,14 +436,14 @@ impl App {
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::Undo(true, 1));
+                *cmd = Some(Msg::Undo(true, 1));
             }
             if ui
                 .add_enabled(r, egui::Button::new(tr("Redo (Ctrl+Y)")))
                 .clicked()
             {
                 ui.close_menu();
-                *cmd = Some(Cmd::Undo(false, 1));
+                *cmd = Some(Msg::Undo(false, 1));
             }
             // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
             for (back, title) in [(true, tr("Undo up to")), (false, tr("Redo up to"))] {
@@ -542,7 +454,7 @@ impl App {
                             for (i, l) in list.iter().enumerate() {
                                 if ui.button(format!("{}. {l}", i + 1)).clicked() {
                                     ui.close_menu();
-                                    *cmd = Some(Cmd::Undo(back, i + 1));
+                                    *cmd = Some(Msg::Undo(back, i + 1));
                                 }
                             }
                         });
@@ -560,7 +472,7 @@ impl App {
     }
 
     /// 上の帯の「Panels」メニュー
-    fn panels_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn panels_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Msg>) {
         // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける
         ui.menu_button(tr("Panels"), |ui| {
             let (single, many): (Vec<Kind>, Vec<Kind>) =
@@ -577,7 +489,7 @@ impl App {
                     .clicked()
                 {
                     ui.close_menu();
-                    *cmd = Some(Cmd::Add(k));
+                    *cmd = Some(Msg::Add(k));
                 }
             }
             ui.separator();
@@ -590,7 +502,7 @@ impl App {
                     .title();
                     if ui.button(trf("+ {}", &[&t])).clicked() {
                         ui.close_menu();
-                        *cmd = Some(Cmd::Add(k));
+                        *cmd = Some(Msg::Add(k));
                     }
                 }
             });
@@ -598,14 +510,14 @@ impl App {
     }
 
     /// 上の帯の「Workspace」メニュー
-    fn workspace_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn workspace_menu(&mut self, ui: &mut Ui, cmd: &mut Option<Msg>) {
         let weak = theme::weak_text(ui.visuals());
         ui.menu_button(tr("Workspace"), |ui| {
             ui.label(RichText::new(tr("Preset workspaces")).small().color(weak));
             for p in Preset::ALL {
                 if ui.button(p.label()).clicked() {
                     ui.close_menu();
-                    *cmd = Some(Cmd::Preset(p));
+                    *cmd = Some(Msg::Preset(p));
                 }
             }
             ui.separator();
@@ -618,7 +530,7 @@ impl App {
                 ui.horizontal(|ui| {
                     if ui.button(n).clicked() {
                         ui.close_menu();
-                        *cmd = Some(Cmd::Layout(i));
+                        *cmd = Some(Msg::Layout(i));
                     }
                     if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                         del = Some(i);
@@ -631,13 +543,13 @@ impl App {
             ui.separator();
             if ui.button(tr("Save current workspace…")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::SaveLayout);
+                *cmd = Some(Msg::SaveLayout);
             }
         });
     }
 
     /// 上の帯の「View」メニュー
-    fn view_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn view_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Msg>) {
         let weak = theme::weak_text(ui.visuals());
         ui.menu_button(tr("View"), |ui| {
             ui.label(RichText::new(tr("Theme")).small().color(weak));
@@ -647,7 +559,7 @@ impl App {
                 (Mode::System, tr("Follow the OS")),
             ] {
                 if ui.radio(self.c.s.look.mode == m, l).clicked() {
-                    *cmd = Some(Cmd::Theme(m));
+                    *cmd = Some(Msg::Theme(m));
                 }
             }
             ui.label(RichText::new(tr("Accent color")).small().color(weak));
@@ -666,7 +578,7 @@ impl App {
                         )
                         .clicked()
                     {
-                        *cmd = Some(Cmd::Accent(i));
+                        *cmd = Some(Msg::Accent(i));
                     }
                 }
                 let mut c = Color32::from_rgb(
@@ -689,19 +601,19 @@ impl App {
             ui.label(RichText::new(tr("Language")).small().color(weak));
             for l in Lang::ALL {
                 if ui.radio(self.c.s.lang == l, l.label()).clicked() {
-                    *cmd = Some(Cmd::Lang(l));
+                    *cmd = Some(Msg::Lang(l));
                 }
             }
             ui.separator();
             if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::Help);
+                *cmd = Some(Msg::Help);
             }
         });
     }
 
     /// 上の帯の「Help」メニュー
-    fn help_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Cmd>) {
+    fn help_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Msg>) {
         let weak = theme::weak_text(ui.visuals());
         ui.menu_button(tr("Help"), |ui| {
             for (label, page, tip) in HELP_PAGES {
@@ -713,7 +625,7 @@ impl App {
             ui.separator();
             if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
                 ui.close_menu();
-                *cmd = Some(Cmd::Help);
+                *cmd = Some(Msg::Help);
             }
             ui.separator();
             ui.label(RichText::new(version()).small().color(weak));
@@ -732,7 +644,7 @@ pub(super) fn samples(args: &Args) -> Vec<String> {
 
 impl Core {
     /// アプリ版で同梱の見本を開く前に: 書き出し、見本のガラス・レンズのフォルダを設定に足す
-    fn prepare_sample(&mut self, _f: &str) {
+    pub(super) fn prepare_sample(&mut self, _f: &str) {
         #[cfg(not(target_arch = "wasm32"))]
         if crate::samples::is_sample(_f) {
             match crate::samples::extract() {

@@ -15,7 +15,7 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
             }
         }
-        let busy = self.c.worker.busy();
+        let busy = self.c.busy();
         if t.timed_out() {
             t.errors.push(format!("{} で時間切れ", t.step.name()));
             t.step = Step::Done;
@@ -66,7 +66,7 @@ impl App {
                 c.state_path.insert("参照".into(), "RR".into());
                 let p = c.project();
                 self.c.build_combo(p);
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+                self.dispatch(ctx, Msg::FocusKind(Kind::SysSettings));
             }
             Step::Coatings => {
                 // 膜（フィルタ）の定義: バンドパスを定義して BS の膜にし、系の設定の膜の欄を開いて見せる
@@ -88,13 +88,13 @@ impl App {
                 let p = c.project();
                 self.c.build_combo(p);
                 crate::coat_defs::focus(ctx);
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+                self.dispatch(ctx, Msg::FocusKind(Kind::SysSettings));
             }
             Step::UndoOpen => {
                 // ズームの例を開く前の段まで戻す: 開く前の組合せ（干渉計）に戻る
                 let n = self.c.undo_list(true).len();
                 self.c.undo(true, n);
-                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
             }
             Step::Zoom => {
                 // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
@@ -129,11 +129,11 @@ impl App {
                 match z.params(&cands) {
                     Ok(p) => {
                         z.running = true;
-                        self.c.worker.send(Tag::Zoom, p);
+                        self.c.calc(Tag::Zoom, p);
                     }
                     Err(e) => self.c.fail(e),
                 }
-                self.exec(ctx, Cmd::FocusKind(Kind::Zoom));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Zoom));
             }
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
@@ -175,7 +175,7 @@ impl App {
             }
             Step::Layout => {
                 // レイアウト図: 2 枚目を選び、1 枚目の後の空気の寸法を選ぶ
-                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
                 // 1 枚目の後の空気の寸法を、その場で書き換えるところ
                 self.c.p.combo_view.start_edit(&mut self.c.doc.combo, 0);
             }
@@ -209,7 +209,7 @@ impl App {
                     self.c.p.ld.sel = Some(id.clone());
                     self.c.p.ld.cur = None;
                 }
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
+                self.dispatch(ctx, Msg::FocusKind(Kind::LensData));
             }
             Step::LensDataTree => {
                 // 折りたたみ表示: 1 枚目の玉をその場で開き、中の面を選ぶ
@@ -228,7 +228,7 @@ impl App {
                         .and_then(|b| b.surfs.first().copied());
                     self.c.p.ld.cur = first.map(|j| (j, lens_data::Col::R));
                 }
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
+                self.dispatch(ctx, Msg::FocusKind(Kind::LensData));
             }
             Step::ComboSpot => {
                 // 面の表の表示・見る面を戻す
@@ -243,7 +243,7 @@ impl App {
             }
             Step::Optimize => {
                 // 最適化: 像面の前の間隔を変数に、既定の RMS スポットと縁の光線の項で回す
-                self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Optimize));
                 let img = self.c.sys.ld_rows.len().saturating_sub(1);
                 let o = &mut self.c.p.opt;
                 o.vars = vec![crate::optim_panel::VarRow {
@@ -257,7 +257,7 @@ impl App {
                 if let Ok(p) = o.params() {
                     o.running = true;
                     o.gen = self.c.sys_gen;
-                    self.c.worker.send(Tag::Optimize, p);
+                    self.c.calc(Tag::Optimize, p);
                 }
             }
             Step::OptApply => {
@@ -274,7 +274,7 @@ impl App {
             }
             Step::Swap => {
                 // 差し替え探索: 2 枚目をカタログの全部（裏返しも）で差し替え、間の空気と像面までを最適化
-                self.exec(ctx, Cmd::FocusKind(Kind::Swap));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Swap));
                 let (proj, cands) = crate::swap_panel::combo_project(&self.c.doc.combo);
                 let sw = &mut self.c.p.swap;
                 sw.slots = cands
@@ -302,7 +302,7 @@ impl App {
                     v["top"] = json!(sw.top);
                     sw.running = true;
                     self.c.swap_ids = self.c.doc.combo.ids();
-                    self.c.worker.send(Tag::Swap, v);
+                    self.c.calc(Tag::Swap, v);
                 }
             }
             Step::SwapInsert => {
@@ -333,7 +333,7 @@ impl App {
             }
             Step::Tolerance => {
                 // モンテカルロ公差: 精密の組、像面の前の間隔を補償子に、30 回
-                self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Tolerance));
                 let img = self.c.sys.ld_rows.len().saturating_sub(1);
                 let t = &mut self.c.p.tol;
                 t.trials = 30;
@@ -351,7 +351,7 @@ impl App {
                 match t.spec() {
                     Ok(p) => {
                         t.running = true;
-                        self.c.worker.send(Tag::Tolerance, p);
+                        self.c.calc(Tag::Tolerance, p);
                     }
                     Err(e) => self.c.fail(e),
                 }
@@ -394,14 +394,14 @@ impl App {
             }
             Step::English => {
                 self.palette.open = false;
-                self.exec(ctx, Cmd::Lang(Lang::En));
-                self.exec(ctx, Cmd::Theme(Mode::Light));
+                self.dispatch(ctx, Msg::Lang(Lang::En));
+                self.dispatch(ctx, Msg::Theme(Mode::Light));
             }
             Step::Settings => {
                 // 系の設定のパネル: 視野に重み、波長を 1 つ足し、エイミングを実光線に（系は自動で作り直す）
-                self.exec(ctx, Cmd::Lang(Lang::Ja));
-                self.exec(ctx, Cmd::Theme(Mode::Dark));
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+                self.dispatch(ctx, Msg::Lang(Lang::Ja));
+                self.dispatch(ctx, Msg::Theme(Mode::Dark));
+                self.dispatch(ctx, Msg::FocusKind(Kind::SysSettings));
                 let c = &mut self.c.doc.combo;
                 if let Some(f) = c.fields.last_mut() {
                     f.w = 0.5;
@@ -431,7 +431,7 @@ impl App {
                 let p = self.c.doc.combo.project();
                 self.c.build_combo(p);
                 self.c.p.combo_view.select(1);
-                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
+                self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
             }
             Step::FreeEdit => {
                 // 空の文書から面を足していく: 平面 1 枚の面の並びに半径と硝材を入れて玉にし、後ろに平面を足す
@@ -454,7 +454,7 @@ impl App {
                 let p = self.c.doc.combo.project();
                 self.c.build_combo(p);
                 self.c.p.combo_view.select(0);
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
+                self.dispatch(ctx, Msg::FocusKind(Kind::LensData));
             }
         }
     }

@@ -28,7 +28,7 @@ impl Core {
         if self.folders.asked.as_ref() == Some(&now) {
             return;
         }
-        self.preview.send(
+        self.draft(
             Tag::Folders,
             json!({ "glass_dirs": now.0, "lens_dirs": now.1 }),
         );

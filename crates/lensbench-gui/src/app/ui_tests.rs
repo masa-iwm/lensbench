@@ -347,3 +347,66 @@ fn ctrl_a_selects_rows_in_the_table() {
         h.state().test_state()
     );
 }
+
+/// 操作は画面を描かずに当てられ、状態を変えて外への作用（計算の要求・見た目）を返す。返した作用は当てるまで
+/// 順番待ちに入らないが、待っている数には入る
+#[test]
+fn update_applies_a_message_and_returns_effects() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let app = h.state_mut();
+    // 見た目: 設定を変え、画面に当てる作用を返す
+    let fx = app.update(Msg::Theme(Mode::Light));
+    assert_eq!(app.c.s.look.mode, Mode::Light);
+    assert_eq!(fx, vec![msg::Effect::Look]);
+    // 公差: パネルを表に出し、公差の計算を頼む
+    let fx = app.update(Msg::RunTol);
+    assert!(app.pane_of(|k| matches!(k, Kind::Tolerance)).is_some());
+    assert!(app.c.p.tol.running);
+    assert!(
+        fx.iter().any(|e| matches!(
+            e,
+            msg::Effect::Calc {
+                pool: msg::Pool::Main,
+                tag: Tag::Tolerance,
+                ..
+            }
+        )),
+        "{fx:?}"
+    );
+    // 多重構成の次の構成: 状態はすぐ替わる（系の作り直しは次のフレームで組合せの変更として）
+    let s0 = app.c.doc.combo.active_state().map(str::to_string);
+    app.update(Msg::CycleConfig(false));
+    assert_ne!(app.c.doc.combo.active_state().map(str::to_string), s0);
+    // まだ当てていない作用も待っている数に入る
+    app.c.calc(Tag::Configs, json!({}));
+    assert!(app.c.busy() && app.c.busy_core());
+    let fx = app.c.fx.take();
+    assert!(!app.c.fx.take().iter().any(|_| true));
+    let ctx = h.ctx.clone();
+    h.state_mut().apply(&ctx, fx);
+    settle(&mut h);
+}
+
+/// Ctrl+Shift+Tab はパネルを逆順に出す（Ctrl+Tab が先に取っていた）
+#[test]
+fn ctrl_shift_tab_cycles_backwards() {
+    let _g = serial();
+    let mut h = harness(Args::default());
+    let focused =
+        |h: &mut Harness<'static, App>| h.state_mut().dock.find_active_focused().map(|(_, p)| p.id);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Tab);
+    h.run_steps(2);
+    let a = focused(&mut h);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Tab);
+    h.run_steps(2);
+    assert_ne!(focused(&mut h), a);
+    h.press_key_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Tab);
+    h.run_steps(2);
+    assert_eq!(focused(&mut h), a);
+}

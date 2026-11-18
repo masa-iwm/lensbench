@@ -28,8 +28,8 @@ impl App {
             .collect();
         analyses.sort_by_key(|a| a["panel"].as_u64());
         json!({
-            "busy": c.worker.busy() || c.preview.busy(),
-            "pending": c.worker.pending() + c.preview.pending(),
+            "busy": c.busy() || c.preview_busy(),
+            "pending": c.pending() + c.preview.pending(),
             "file": name(&c.loc.file),
             "doc": name(&c.loc.doc_path),
             "system": c.sys.summary.is_some(),

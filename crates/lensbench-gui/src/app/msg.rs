@@ -1,0 +1,368 @@
+//! 操作（[`Msg`]）と外への作用（[`Effect`]）: 操作は [`App::update`] が当てて状態を変え、計算の要求・見た目を
+//! 画面に当てることは作用として返す（当てるのは [`App::apply`]）。キー・メニュー・パレット・パネルは操作を出す
+//! だけで、フレームの決まった所（入力の後・パネルを描いた後）でまとめて当てる。画面なしでも操作を当てて、状態と
+//! 作用を確かめられる。パネルの中で直接変える状態はまだ残っており、その計算の要求も作用として溜め、フレームの
+//! 終わりに当てる（[`App::flush_fx`]）
+
+use super::*;
+
+/// パレット・メニュー・キー・パネルから出す操作
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Msg {
+    New,
+    /// 元に戻す（true）・やり直す、段の数
+    Undo(bool, usize),
+    Open,
+    /// ファイルを開く（最近のファイル・見本・窓に落としたファイル）
+    OpenFile(PathBuf),
+    Reload,
+    RunAll,
+    WriteZmx,
+    /// 保存（true は名前を付けて保存）
+    Save(bool),
+    Add(Kind),
+    Focus(u64),
+    /// その種類のパネルを表に出す（無ければ足す）
+    FocusKind(Kind),
+    /// ドックのパネルを順に表に出す（true は逆順）
+    CyclePanes(bool),
+    ToWindow(u64),
+    Preset(Preset),
+    Layout(usize),
+    SaveLayout,
+    Theme(Mode),
+    Accent(usize),
+    Lang(Lang),
+    Folders,
+    Help,
+    /// 使い方の窓を開く・閉じる
+    ToggleHelp,
+    /// コマンドパレットを開く・閉じる
+    TogglePalette,
+    /// 多重構成の次・前（true）の構成
+    CycleConfig(bool),
+    /// 最適化を今の設定で回す・公差を回す・像面を近軸の焦点へ（パレットの実行系）
+    RunOpt,
+    RunTol,
+    FocusImage,
+}
+
+/// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Pool {
+    Main,
+    Preview,
+}
+
+/// 1 つの要求の呼び出し
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Calls {
+    /// 印の method を 1 回（[`Worker::send`]）
+    One(Value),
+    /// 同じ method を順に（[`Worker::send_each`]）
+    Each(Vec<Value>),
+    /// 印の method に面の表・要約の読み直しを付ける（[`Worker::send_refreshing`]）
+    Refreshing(Value),
+}
+
+impl Calls {
+    /// 順番待ちに入る要求か（呼び出しが空なら何も出さない）
+    fn sends(&self, tag: &Tag) -> bool {
+        match self {
+            Calls::One(_) => tag.method().is_some(),
+            Calls::Each(v) => tag.method().is_some() && !v.is_empty(),
+            Calls::Refreshing(_) => true,
+        }
+    }
+}
+
+/// 状態の外への作用
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Effect {
+    /// 計算の要求
+    Calc { pool: Pool, tag: Tag, calls: Calls },
+    /// 待っている解析を捨て、回している解析をやめる（[`Worker::drop_queued`]）
+    DropQueued,
+    /// 色を画面に当てる
+    Look,
+    /// 言語を画面（字形）に当てる
+    Lang,
+}
+
+/// まだ当てていない作用（[`Core`] の操作が足し、[`App::apply`] が当てる）
+#[derive(Default)]
+pub(super) struct Fx(Vec<Effect>);
+
+impl Fx {
+    pub(super) fn push(&mut self, e: Effect) {
+        self.0.push(e);
+    }
+
+    pub(super) fn take(&mut self) -> Vec<Effect> {
+        std::mem::take(&mut self.0)
+    }
+
+    /// 本体の順番待ちに入れる要求の数: (すべて、解析でない要求、長い要求)
+    fn queued(&self) -> (usize, usize, usize) {
+        let mut n = (0, 0, 0);
+        for e in &self.0 {
+            if let Effect::Calc {
+                pool: Pool::Main,
+                tag,
+                calls,
+            } = e
+            {
+                if !calls.sends(tag) {
+                    continue;
+                }
+                n.0 += 1;
+                if tag.long() {
+                    n.2 += 1;
+                } else if !tag.skippable() {
+                    n.1 += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// 下書きの順番待ちに入れる要求がある
+    fn preview_queued(&self) -> bool {
+        self.0.iter().any(
+            |e| matches!(e, Effect::Calc { pool: Pool::Preview, tag, calls } if calls.sends(tag)),
+        )
+    }
+}
+
+impl Core {
+    /// 本体に要求を出す
+    pub(super) fn calc(&mut self, tag: Tag, params: Value) {
+        self.fx.push(Effect::Calc {
+            pool: Pool::Main,
+            tag,
+            calls: Calls::One(params),
+        });
+    }
+
+    /// 本体に同じ method の呼び出しを 1 つの要求として出す
+    pub(super) fn calc_each(&mut self, tag: Tag, params: Vec<Value>) {
+        self.fx.push(Effect::Calc {
+            pool: Pool::Main,
+            tag,
+            calls: Calls::Each(params),
+        });
+    }
+
+    /// 本体に、面の表・要約の読み直しを付けた要求を出す
+    pub(super) fn calc_refreshing(&mut self, tag: Tag, params: Value) {
+        self.fx.push(Effect::Calc {
+            pool: Pool::Main,
+            tag,
+            calls: Calls::Refreshing(params),
+        });
+    }
+
+    /// 下書きの順番待ちに要求を出す
+    pub(super) fn draft(&mut self, tag: Tag, params: Value) {
+        self.fx.push(Effect::Calc {
+            pool: Pool::Preview,
+            tag,
+            calls: Calls::One(params),
+        });
+    }
+
+    /// 待っている解析を捨て、回している解析をやめる
+    pub(super) fn drop_queued(&mut self) {
+        self.fx.push(Effect::DropQueued);
+    }
+
+    /// 何か待っている（まだ出していない要求も）
+    pub(super) fn busy(&self) -> bool {
+        self.worker.busy() || self.fx.queued().0 > 0
+    }
+
+    /// 待っている要求の数
+    pub(super) fn pending(&self) -> usize {
+        self.worker.pending() + self.fx.queued().0
+    }
+
+    /// 長い要求（最適化など）のほかに待っている
+    pub(super) fn busy_short(&self) -> bool {
+        let q = self.fx.queued();
+        self.worker.busy_short() || q.0 > q.2
+    }
+
+    /// 解析でない要求（系の読み込み・レイアウトなど）を待っている
+    pub(super) fn busy_core(&self) -> bool {
+        self.worker.busy_core() || self.fx.queued().1 > 0
+    }
+
+    /// 下書きの順番待ちに何かある
+    pub(super) fn preview_busy(&self) -> bool {
+        self.preview.busy() || self.fx.preview_queued()
+    }
+
+    /// 計算の作用を順番待ちに渡す（画面に当てる作用は返す）
+    pub(super) fn send_calcs(&mut self, fx: Vec<Effect>) -> Vec<Effect> {
+        let mut rest = Vec::new();
+        for e in fx {
+            match e {
+                Effect::Calc { pool, tag, calls } => {
+                    let w = match pool {
+                        Pool::Main => &mut self.worker,
+                        Pool::Preview => &mut self.preview,
+                    };
+                    match calls {
+                        Calls::One(p) => w.send(tag, p),
+                        Calls::Each(v) => w.send_each(tag, v),
+                        Calls::Refreshing(p) => w.send_refreshing(tag, p),
+                    }
+                }
+                Effect::DropQueued => self.worker.drop_queued(),
+                e => rest.push(e),
+            }
+        }
+        rest
+    }
+}
+
+impl App {
+    /// 操作を当てる: 状態を変え、外への作用を返す（当てるのは [`App::apply`]）
+    pub(super) fn update(&mut self, msg: Msg) -> Vec<Effect> {
+        self.update_state(msg);
+        self.c.fx.take()
+    }
+
+    /// 作用を当てる
+    pub(super) fn apply(&mut self, ctx: &egui::Context, fx: Vec<Effect>) {
+        for e in self.c.send_calcs(fx) {
+            match e {
+                Effect::Look => theme::apply(ctx, &self.c.s.look),
+                Effect::Lang => crate::fonts::follow_lang(ctx),
+                Effect::Calc { .. } | Effect::DropQueued => {}
+            }
+        }
+    }
+
+    /// 操作を当て、作用もすぐ当てる
+    pub(super) fn dispatch(&mut self, ctx: &egui::Context, msg: Msg) {
+        let fx = self.update(msg);
+        self.apply(ctx, fx);
+    }
+
+    /// パネルなどがまだ直接足した作用を当てる（フレームの終わり）
+    pub(super) fn flush_fx(&mut self, ctx: &egui::Context) {
+        let fx = self.c.fx.take();
+        self.apply(ctx, fx);
+    }
+
+    fn update_state(&mut self, msg: Msg) {
+        match msg {
+            Msg::New => self.c.new_system(),
+            Msg::Undo(back, n) => self.c.undo(back, n),
+            Msg::Open => self.c.pick_and_open(),
+            Msg::OpenFile(f) => {
+                self.c.prepare_sample(&f.display().to_string());
+                self.c.open_doc(&f);
+            }
+            Msg::Reload => self.c.reload(),
+            Msg::RunAll => self.run_all(false),
+            Msg::WriteZmx => self.c.write_zmx(),
+            Msg::Save(as_new) => self.c.save(as_new),
+            // 1 枚だけのパネルは、あれば表に出す
+            Msg::Add(k) if k.single() => self.update_state(Msg::FocusKind(k)),
+            Msg::Add(k) => {
+                let id = self.add_pane(k);
+                self.focus(id);
+            }
+            Msg::Focus(id) => self.focus(id),
+            Msg::FocusKind(k) => {
+                let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
+                let id = match self.pane_of(same) {
+                    Some(id) => id,
+                    None => self.add_pane(k),
+                };
+                self.focus(id);
+            }
+            Msg::CyclePanes(back) => self.cycle(back),
+            Msg::ToWindow(id) => self.detach(id),
+            Msg::Preset(p) => self.set_layout(p.build()),
+            Msg::Layout(i) => {
+                if let Some((_, l)) = self.c.s.layouts.get(i) {
+                    let l = l.clone();
+                    self.set_layout(l);
+                }
+            }
+            Msg::SaveLayout => self.c.save_layout_open = true,
+            Msg::Theme(m) => {
+                self.c.s.look.mode = m;
+                self.c.fx.push(Effect::Look);
+            }
+            Msg::Accent(i) => {
+                self.c.s.look.accent = theme::ACCENTS[i % theme::ACCENTS.len()];
+                self.c.fx.push(Effect::Look);
+            }
+            Msg::Lang(l) => {
+                self.c.s.lang = l;
+                i18n::set(l);
+                self.apply_dock_translations();
+                self.c.fx.push(Effect::Lang);
+            }
+            Msg::Folders => self.c.folders_open = true,
+            Msg::Help => self.c.help_open = true,
+            Msg::ToggleHelp => self.c.help_open = !self.c.help_open,
+            Msg::TogglePalette => {
+                if self.palette.open {
+                    self.palette.open = false;
+                } else {
+                    self.palette.show();
+                }
+            }
+            Msg::CycleConfig(back) => self.c.cycle_config(back),
+            Msg::RunOpt => {
+                self.update_state(Msg::FocusKind(Kind::Optimize));
+                self.c.start_optimize();
+            }
+            Msg::RunTol => {
+                self.update_state(Msg::FocusKind(Kind::Tolerance));
+                self.c.start_tolerance();
+            }
+            Msg::FocusImage => self.c.request_focus(),
+        }
+    }
+}
+
+impl Core {
+    /// 最適化を今の設定で回す（回していれば何もしない）
+    pub(super) fn start_optimize(&mut self) {
+        if self.p.opt.running {
+            return;
+        }
+        match self.p.opt.params() {
+            Ok(p) => {
+                self.p.opt.error = None;
+                self.p.opt.running = true;
+                self.p.opt.result = None;
+                self.p.opt.gen = self.sys_gen;
+                self.calc(Tag::Optimize, p);
+            }
+            Err(e) => self.p.opt.error = Some(e),
+        }
+    }
+
+    /// 公差を今の設定で回す（回していれば何もしない）
+    pub(super) fn start_tolerance(&mut self) {
+        if self.p.tol.running {
+            return;
+        }
+        match self.p.tol.spec() {
+            Ok(p) => {
+                self.p.tol.error = None;
+                self.p.tol.running = true;
+                self.p.tol.result = None;
+                self.calc(Tag::Tolerance, p);
+            }
+            Err(e) => self.p.tol.error = Some(e),
+        }
+    }
+}

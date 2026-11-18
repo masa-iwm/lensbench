@@ -909,7 +909,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             let mut n = 1;
             while self.glasses.get(&key).is_some_and(|h| *h != g) || own.contains_key(&key) {
                 n += 1;
-                key = format!("{base}{n}");
+                key = format!("{base}#{n}");
             }
             let theirs = &self.glasses[&k];
             self.notes.push(format!(

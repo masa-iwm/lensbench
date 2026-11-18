@@ -34,7 +34,7 @@ impl Core {
                     self.p.opt.running = true;
                     self.p.opt.result = None;
                     self.p.opt.gen = self.sys_gen;
-                    self.worker.send(Tag::Optimize, p);
+                    self.calc(Tag::Optimize, p);
                 }
                 Action::Stop => crate::worker::progress::stop("optimize"),
                 Action::Apply => {
@@ -42,7 +42,7 @@ impl Core {
                         continue;
                     };
                     // 最適化の間・後に系が変わっていれば、古い系の値なので当てない
-                    if self.p.opt.gen != self.sys_gen || self.worker.busy_core() {
+                    if self.p.opt.gen != self.sys_gen || self.busy_core() {
                         self.p.opt.error = Some(
                             tr("The system changed after the optimization started, so the result was not applied (optimize again)")
                                 .to_string(),
@@ -104,7 +104,7 @@ impl Core {
         if let Some(p) = crate::zoom_panel::ui(ui, &mut self.p.zoom, &cands, &sys) {
             self.p.zoom.running = true;
             self.p.zoom.result = None;
-            self.worker.send(Tag::Zoom, p);
+            self.calc(Tag::Zoom, p);
         }
     }
 
@@ -146,7 +146,7 @@ impl Core {
                 Action::Run(p) => {
                     self.p.tol.running = true;
                     self.p.tol.result = None;
-                    self.worker.send(Tag::Tolerance, p);
+                    self.calc(Tag::Tolerance, p);
                 }
                 Action::Stop => crate::worker::progress::stop("tolerance"),
                 Action::Save(v) => {
@@ -218,7 +218,7 @@ impl Core {
                     self.swap_ids = self.doc.combo.ids();
                     self.p.swap.running = true;
                     self.p.swap.result = None;
-                    self.worker.send(Tag::Swap, v);
+                    self.calc(Tag::Swap, v);
                 }
                 Action::Stop => crate::worker::progress::stop("swap"),
                 Action::Insert(i) => {
@@ -290,7 +290,7 @@ impl Core {
                 .iter()
                 .map(|(k, x)| json!({ "op": "set_param", "param": k, "value": x }))
                 .collect();
-            self.worker.send(Tag::WriteBack, json!({ "ops": ops }));
+            self.calc(Tag::WriteBack, json!({ "ops": ops }));
             return true;
         };
         let ids = self.doc.combo.span_ids();

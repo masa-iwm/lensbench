@@ -146,10 +146,10 @@ impl Core {
         }
         let fresh = pd.flat.clone().filter(|(g, _)| *g == gen);
         let Some((_, bytes)) = fresh else {
-            if pd.asked != Some(gen) && !self.worker.busy_core() {
-                pd.asked = Some(gen);
+            if self.popup_doc.asked != Some(gen) && !self.busy_core() {
+                self.popup_doc.asked = Some(gen);
                 let path = flat_path().display().to_string();
-                self.worker.send(Tag::PopupDoc, json!({ "path": path }));
+                self.calc(Tag::PopupDoc, json!({ "path": path }));
             }
             return;
         };
@@ -188,15 +188,14 @@ impl Core {
             m.remove("history");
         }
         self.popup_doc.failed = false;
-        self.worker.drop_queued();
-        self.worker.send(Tag::Load, load);
+        self.drop_queued();
+        self.calc(Tag::Load, load);
         for op in how["ops"].as_array().into_iter().flatten() {
             if let Some(p) = op.get("set") {
-                self.worker.send_refreshing(Tag::Set, p.clone());
+                self.calc_refreshing(Tag::Set, p.clone());
             } else if let Some(p) = op.get("history") {
                 let back = p["back"].as_bool() == Some(true);
-                self.worker
-                    .send_refreshing(Tag::History { back }, p.clone());
+                self.calc_refreshing(Tag::History { back }, p.clone());
             }
         }
     }
@@ -245,7 +244,7 @@ impl App {
             }
         }
         // 解析以外の頼み（パレットなど）はこの窓では受けない
-        self.c.cmds.clear();
+        self.c.msgs.clear();
         let (closed, waiting) = match &self.calc {
             Some(k) => (k.closed, self.c.sys.summary.is_none()),
             None => return,

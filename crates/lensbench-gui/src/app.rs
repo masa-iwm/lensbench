@@ -16,6 +16,8 @@ mod ld_combo;
 use history::{ComboHist, DocHist};
 mod frame;
 mod menus;
+mod msg;
+use msg::Msg;
 mod open_doc;
 mod panels;
 mod result;
@@ -316,38 +318,6 @@ struct MissingGlass {
     tries: usize,
 }
 
-/// パレット・メニューから実行する操作
-#[derive(Clone)]
-enum Cmd {
-    New,
-    /// 元に戻す（true）・やり直す、段の数
-    Undo(bool, usize),
-    Open,
-    Recent(String),
-    Reload,
-    RunAll,
-    WriteZmx,
-    /// 保存（true は名前を付けて保存）
-    Save(bool),
-    Add(Kind),
-    Focus(u64),
-    /// その種類のパネルを表に出す（無ければ足す）
-    FocusKind(Kind),
-    ToWindow(u64),
-    Preset(Preset),
-    Layout(usize),
-    SaveLayout,
-    Theme(Mode),
-    Accent(usize),
-    Lang(Lang),
-    Folders,
-    Help,
-    /// 最適化を今の設定で回す・公差を回す・像面を近軸の焦点へ（パレットの実行系）
-    RunOpt,
-    RunTol,
-    FocusImage,
-}
-
 /// パネルの外の状態（パネルの中から触る）
 struct Core {
     /// パネルの状態
@@ -404,8 +374,10 @@ struct Core {
     reopen_same: bool,
     font: Option<String>,
     next_id: u64,
-    /// パネルの中から頼まれた操作
-    cmds: Vec<Cmd>,
+    /// パネルの中から頼まれた操作（パネルを描いた後に当てる）
+    msgs: Vec<msg::Msg>,
+    /// まだ当てていない外への作用（計算の要求など）
+    fx: msg::Fx,
     /// Web 版（元のタブ）: 解析のパネルを出した別の窓に写す系
     popup_doc: calc_panel::PopupDoc,
     /// 最後に組合せを変えて系を作り直した時刻（動かしている間は解析を待たせる）
@@ -674,11 +646,11 @@ impl Core {
     fn refresh_catalog(&mut self) {
         self.folders.stale();
         // 系の解析の順番を待たない（下書きの worker で読む）
-        self.preview.send(
+        self.draft(
             Tag::Glasses,
             json!({ "glass_dirs": dirs(&self.s.glass_dirs) }),
         );
-        self.preview.send(
+        self.draft(
             Tag::Lenses,
             json!({
                 "lens_catalogs": dirs(&self.s.lens_dirs),
@@ -824,7 +796,7 @@ impl Core {
         }
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
-                self.worker.send(Tag::Analyze(id), p);
+                self.calc(Tag::Analyze(id), p);
                 // 下の行は操作の結果だけ。計算中は要求の数を横に出す
                 self.ana_sent(id);
             }
@@ -853,7 +825,7 @@ impl Core {
                     calls.push(json!({ "px": px, "py": py, "field": f, "wave": w }));
                 }
             }
-            self.worker.send_each(Tag::Rays(id), calls);
+            self.calc_each(Tag::Rays(id), calls);
         }
     }
 
@@ -865,7 +837,7 @@ impl Core {
             .iter()
             .map(|p| json!({ "param": p }))
             .collect();
-        self.worker.send_each(Tag::Gets, calls);
+        self.calc_each(Tag::Gets, calls);
     }
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
@@ -908,14 +880,14 @@ impl Core {
                 self.loc.built = Some(project);
                 self.loc.combo_path = Some(path.clone());
                 // 図は下書きで先に。系の読み込みは、前の読み込みが終わってから最新のファイルを読む
-                self.preview.send(
+                self.draft(
                     Tag::Preview,
                     json!({ "load": self.load_params(&path), "layout": self.layout_params() }),
                 );
-                if self.worker.busy_core() {
+                if self.busy_core() {
                     self.load_stale = true;
                 } else {
-                    self.worker.drop_queued();
+                    self.drop_queued();
                     self.open(&path);
                 }
             }
@@ -986,7 +958,7 @@ impl Core {
             c.s.rays
                 .apply(&mut params, c.n_fields(), c.waves_um().len(), true);
             params["file"] = json!(p.display().to_string());
-            c.worker.send(Tag::LayoutExport, params);
+            c.calc(Tag::LayoutExport, params);
         });
     }
 
@@ -994,7 +966,7 @@ impl Core {
         let d = crate::files::FileDialog::new().add_filter("Zemax", &["zmx"]);
         self.save_as(d, |c, p| {
             let path = p.display().to_string();
-            c.worker.send(Tag::Write, json!({ "path": path }));
+            c.calc(Tag::Write, json!({ "path": path }));
         });
     }
 
@@ -1002,10 +974,10 @@ impl Core {
     /// 値の変更を送る。解析でない要求（読み込み・前の値の変更）を待っている間だけ待つ。解析が回っている間は
     /// 送れば中断する（Set は系を変える）が、動かし続けると解析が 1 つも出ないので 250 ms に 1 回まで
     fn flush_set(&mut self) {
-        if self.pending_set.is_empty() || self.worker.busy_core() {
+        if self.pending_set.is_empty() || self.busy_core() {
             return;
         }
-        if self.worker.busy_short()
+        if self.busy_short()
             && self
                 .last_set
                 .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(250))
@@ -1046,12 +1018,12 @@ impl Core {
         match (&self.loc.combo_path, self.is_combo()) {
             (Some(path), true) => {
                 let load = self.load_params(path);
-                self.preview.send(
+                self.draft(
                     Tag::Preview,
                     json!({ "load": load, "layout": self.layout_params() }),
                 );
             }
-            _ => self.worker.send(Tag::Layout, self.layout_params()),
+            _ => self.calc(Tag::Layout, self.layout_params()),
         }
     }
 
@@ -1078,9 +1050,9 @@ impl Core {
         self.read_params();
         // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
         if !self.is_combo() {
-            self.worker.send(Tag::Layout, self.layout_params());
+            self.calc(Tag::Layout, self.layout_params());
         }
-        self.worker.send(Tag::Configs, json!({}));
+        self.calc(Tag::Configs, json!({}));
         self.rerun = Some(false);
     }
 
@@ -1090,13 +1062,13 @@ impl Core {
         if self.bundled_refresh {
             return;
         }
-        self.worker.send_refreshing(Tag::Refresh, Value::Null);
+        self.calc_refreshing(Tag::Refresh, Value::Null);
     }
 
     /// 系を変える要求（set・edit・undo/redo）に、面の表・多重構成の表・要約の読み直しを続けて付けて 1 つの要求で
     /// 送る（返事を受けてから読み直しを頼む往復をなくす）。返事は [`Core::take`] が分ける
     fn send_change(&mut self, tag: Tag, params: Value) {
-        self.worker.send_refreshing(tag, params);
+        self.calc_refreshing(tag, params);
     }
 
     fn is_combo(&self) -> bool {
@@ -1170,26 +1142,26 @@ impl Core {
         } else {
             None
         };
+        let busy = self.busy_short();
         let act = combo::ui(
             ui,
             &mut self.doc.combo,
             data,
             &mut self.p.combo_view,
             &mut self.s.auto_build,
-            self.worker.busy_short(),
+            busy,
             accent,
             &paths,
         );
         match act {
-            Some(combo::Act::Catalog) => self.cmds.push(Cmd::FocusKind(Kind::Catalog)),
+            Some(combo::Act::Catalog) => self.msgs.push(Msg::FocusKind(Kind::Catalog)),
             Some(combo::Act::Build) => self.build_combo(self.doc.combo.project()),
             Some(combo::Act::Focus) => self.request_focus(),
             Some(combo::Act::SaveToCatalog(k)) => {
                 self.p.cat_save.open_for(k, &self.doc.combo);
                 let c = self.p.cat_save.catalog.trim().to_string();
                 if !c.is_empty() && self.p.cat_save.listed != c {
-                    self.preview
-                        .send(Tag::UserCatalog(CatOp::Items), json!({ "catalog": c }));
+                    self.draft(Tag::UserCatalog(CatOp::Items), json!({ "catalog": c }));
                 }
             }
             Some(combo::Act::Open(k)) => {
@@ -1201,7 +1173,7 @@ impl Core {
                         self.p.ld.sel = Some(id.clone());
                     }
                 }
-                self.cmds.push(Cmd::FocusKind(Kind::LensData));
+                self.msgs.push(Msg::FocusKind(Kind::LensData));
             }
             None => {}
         }
@@ -1210,15 +1182,15 @@ impl Core {
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
-        if self.load_stale && !self.worker.busy_core() {
+        if self.load_stale && !self.busy_core() {
             self.load_stale = false;
             if let Some(p) = self.loc.combo_path.clone() {
-                self.worker.drop_queued();
+                self.drop_queued();
                 self.open(&p);
             }
         }
         if !self.s.auto_build
-            || self.preview.busy()
+            || self.preview_busy()
             || self.doc.combo.picks.is_empty()
             || self.loc.built_combo.same(&self.doc)
             || !self.doc.combo.settings_problems().is_empty()
@@ -1237,7 +1209,7 @@ impl Core {
         if img < 2 {
             return;
         }
-        self.worker.send(
+        self.calc(
             Tag::Focus,
             json!({ "px": [0.0], "py": [1e-3], "hx": 0.0, "hy": 0.0, "last": img - 1 }),
         );
@@ -1305,8 +1277,8 @@ impl Core {
         match act {
             Some(catalog::Action::Refresh) => self.refresh_catalog(),
             Some(catalog::Action::Settings) => self.folders_open = true,
-            Some(catalog::Action::SysSettings) => self.cmds.push(Cmd::FocusKind(Kind::SysSettings)),
-            Some(catalog::Action::New) => self.cmds.push(Cmd::New),
+            Some(catalog::Action::SysSettings) => self.msgs.push(Msg::FocusKind(Kind::SysSettings)),
+            Some(catalog::Action::New) => self.msgs.push(Msg::New),
             Some(catalog::Action::Build(p)) => self.build_combo(p),
             None => {}
         }
@@ -1321,7 +1293,7 @@ impl Core {
         if b.preview.as_ref().is_some_and(|p| p.0 == i) || self.preview_req == Some(i) {
             return;
         }
-        if self.preview.busy() {
+        if self.preview_busy() {
             return;
         }
         let r = &b.lenses[i];
@@ -1339,7 +1311,7 @@ impl Core {
             return;
         }
         self.preview_req = Some(i);
-        self.preview.send(
+        self.draft(
             Tag::LensPreview(i),
             json!({ "load": self.load_params(&path), "layout": { "rays": 5 } }),
         );
@@ -1515,9 +1487,9 @@ impl Core {
             .window(ctx, &self.doc.combo, &self.browser.lenses, ready);
         if let Some((op, p)) = req {
             if op == CatOp::Add {
-                self.worker.send(Tag::UserCatalog(op), p);
+                self.calc(Tag::UserCatalog(op), p);
             } else {
-                self.preview.send(Tag::UserCatalog(op), p);
+                self.draft(Tag::UserCatalog(op), p);
             }
         }
     }
@@ -1540,7 +1512,7 @@ impl Core {
                 .cloned();
             match self.auto_fill.tick(ctx, sel.as_ref()) {
                 Some(crate::fill::AutoOut::Save(p)) => {
-                    self.preview.send(Tag::CatalogFill, p);
+                    self.draft(Tag::CatalogFill, p);
                 }
                 #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {
@@ -1554,7 +1526,7 @@ impl Core {
             return;
         }
         if let Some(p) = self.p.fill.window(ctx) {
-            self.preview.send(Tag::CatalogFill, p);
+            self.draft(Tag::CatalogFill, p);
         }
     }
 }
@@ -1860,7 +1832,8 @@ impl App {
                 reopen_same: false,
                 font,
                 next_id,
-                cmds: Vec::new(),
+                msgs: Vec::new(),
+                fx: Default::default(),
                 popup_doc: Default::default(),
             },
             dock: lay.dock,
@@ -2316,11 +2289,11 @@ impl App {
         if self.c.close_pending {
             if self.c.status.error {
                 self.c.close_pending = false;
-            } else if !self.c.dirty() && !self.c.worker.busy() {
+            } else if !self.c.dirty() && !self.c.busy() {
                 self.c.close_pending = false;
                 self.c.close_ok = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            } else if !self.c.worker.busy() && !self.c.saving() {
+            } else if !self.c.busy() && !self.c.saving() {
                 // 保存の窓をやめた
                 self.c.close_pending = false;
             }
@@ -2385,7 +2358,8 @@ impl eframe::App for App {
         }
         #[cfg(target_arch = "wasm32")]
         if self.calc.is_some() {
-            return self.calc_frame(ctx);
+            self.calc_frame(ctx);
+            return self.flush_fx(ctx);
         }
         self.logic(ctx);
         self.handle_input(ctx);
@@ -2394,6 +2368,7 @@ impl eframe::App for App {
         self.handle_late_input(ctx);
         self.show_dialogs(ctx);
         self.tour_frame(ctx);
+        self.flush_fx(ctx);
     }
 
     /// Web 版は設定（最近のファイル・並びなど）をこまめに残す。eframe 0.31 の Web 版はページを閉じるときに

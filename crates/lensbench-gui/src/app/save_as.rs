@@ -90,8 +90,7 @@ impl Core {
         } else {
             self.loc.doc_path = Some(path.clone());
             self.loc.doc_from = None;
-            self.worker
-                .send(Tag::Save, json!({ "path": path.display().to_string() }));
+            self.calc(Tag::Save, json!({ "path": path.display().to_string() }));
         }
     }
 

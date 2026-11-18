@@ -143,7 +143,7 @@ impl Tag {
     }
 
     /// 解析（系が変われば、待っている分は捨ててよい）
-    fn skippable(&self) -> bool {
+    pub(crate) fn skippable(&self) -> bool {
         matches!(self, Tag::Analyze(_) | Tag::Rays(_))
     }
 
@@ -193,7 +193,7 @@ impl Tag {
     }
 
     /// 長い計算（ネイティブは別のスレッドで回し、[`Worker::busy_core`]・[`Worker::busy_short`] に数えない）
-    fn long(&self) -> bool {
+    pub(crate) fn long(&self) -> bool {
         matches!(self, Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom)
     }
 

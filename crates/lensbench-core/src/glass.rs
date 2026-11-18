@@ -423,6 +423,8 @@ pub fn resolve_qualified<'a>(
         let Some((base, cat)) = n.split_once('@') else {
             continue;
         };
+        // 名前@カタログ#2: 同じ名前のカタログ 2 つとぶつかったときに付けた番号（引くのはそのカタログ）
+        let cat = cat.split_once('#').map_or(cat, |x| x.0);
         if table.contains_key(n) {
             continue;
         }
@@ -556,6 +558,16 @@ mod tests {
         set_default_dirs(Vec::new());
         assert_eq!(v, [PathBuf::from("a"), none]);
         assert_eq!(catalog_dirs(&[]), Vec::<PathBuf>::new());
+    }
+    /// 名前@カタログ と、番号を付けた 名前@カタログ#2 は、表にあるそのカタログのガラスを引く
+    #[test]
+    fn qualified_names_resolve_by_catalog() {
+        let txt = "NM TESTG 2 0 1.5 60 0 1\nCD 1.0 0.006 0.2 0.02 1.0 100\nTD 0 0 0 0 0 0 20\n";
+        let mut t = parse_agf(txt, "TEST").unwrap();
+        let missing = resolve_qualified(&mut t, ["TESTG@TEST", "TESTG@TEST#2", "TESTG@OTHER"], &[]);
+        assert_eq!(t["TESTG@TEST"], t["TESTG"]);
+        assert_eq!(t["TESTG@TEST#2"], t["TESTG"]);
+        assert_eq!(missing, vec!["TESTG@OTHER".to_string()]);
     }
     #[test]
     fn air_index_reasonable() {
