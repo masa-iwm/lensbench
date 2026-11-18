@@ -58,6 +58,12 @@ fn fingerprint(name: &str) -> String {
             "{:?}",
             analysis::mtf(&s, fs, Waves::All, Some(32), &[0.0, 10.0, 25.0, 50.0]).unwrap()
         );
+        // 幾何 MTF: 周波数ごとの並列が効く大きさ（周波数 × 光線の数）
+        let fr: Vec<f64> = (0..32).map(|i| 2.5 * i as f64).collect();
+        out += &format!(
+            "{:?}",
+            lensbench_core::psf::geometric_mtf(&s, fs, Waves::All, 64, &fr, false).unwrap()
+        );
     }
     // PSF: 1 段目（瞳の行ごと）も 2 段目も並列になる大きさ
     let o = PsfOpts {

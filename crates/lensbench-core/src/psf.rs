@@ -665,9 +665,8 @@ pub fn geometric_mtf_axes(
         }
     }
     let (mx, my) = (mx / wsum, my / wsum);
-    let mut tan = vec![0.0; freqs.len()];
-    let mut sag = tan.clone();
-    for (q, &f) in freqs.iter().enumerate() {
+    // 周波数ごとの (球欠, 子午)。周波数は互いに独立なので、点が多ければ並列に（周波数の中の和の順は変えないので同じビット）
+    let one = |f: f64| -> (f64, f64) {
         let ph = 2.0 * std::f64::consts::PI * f;
         let (mut a, mut b) = (C64::new(0.0, 0.0), C64::new(0.0, 0.0));
         for (k, pts, cut) in &sets {
@@ -688,9 +687,16 @@ pub fn geometric_mtf_axes(
             a += aw * (k * ds);
             b += bw * (k * dt);
         }
-        sag[q] = a.norm() / wsum;
-        tan[q] = b.norm() / wsum;
-    }
+        (a.norm() / wsum, b.norm() / wsum)
+    };
+    let npts: usize = sets.iter().map(|x| x.1.len()).sum();
+    let st: Vec<(f64, f64)> = if freqs.len() * npts >= 1 << 16 && !crate::par::sequential() {
+        use rayon::prelude::*;
+        freqs.par_iter().map(scoped(|&f: &f64| one(f))).collect()
+    } else {
+        freqs.iter().map(|&f| one(f)).collect()
+    };
+    let (sag, tan): (Vec<f64>, Vec<f64>) = st.into_iter().unzip();
     Ok(Mtf {
         freqs: freqs.to_vec(),
         tan,
