@@ -11,6 +11,7 @@
 //! - ρ = r / 正規化半径、φ は +x から +y へ測る角。外挿しないときは ρ > 1 で Zernike の項を 0 にする。
 //! - Grid Sag: 長方形の格子の値（矢高と ∂z/∂x・∂z/∂y・∂²z/∂x∂y）を双三次（または双一次）で補間する。
 
+use crate::batch::lanes::Lanes;
 use crate::math::*;
 use crate::surface::{SurfType, Surface};
 
@@ -270,6 +271,22 @@ impl ZernSag {
         self.groups = ZPoly::from_groups(g.into_iter().map(|(m, cs, a)| ZGroup::new(m, cs, a)));
     }
 
+    /// [`ZernSag::eval`] の光線の組の版（追跡の内側用。光線ごとの値は同じビット）
+    #[inline(always)]
+    pub(crate) fn eval_l<V: Lanes>(&self, x: V, y: V) -> (V, V, V) {
+        if self.groups.heads.is_empty() {
+            let zero = V::splat(0.0);
+            return (zero, zero, zero);
+        }
+        eval_groups_l(
+            &self.groups,
+            self.norm,
+            self.extrapolate,
+            x - self.dx,
+            y - self.dy,
+        )
+    }
+
     /// Zernike の項の和と (∂/∂x, ∂/∂y)
     pub fn eval(&self, x: f64, y: f64) -> (f64, f64, f64) {
         if self.groups.heads.is_empty() {
@@ -402,6 +419,75 @@ fn eval_groups(g: &ZPoly, norm: f64, extrapolate: bool, x: f64, y: f64) -> (f64,
         zv += v4 * dq * a + pv * av;
     }
     (z, zu / norm, zv / norm)
+}
+
+/// [`horner`] の光線の組の版
+#[inline(always)]
+fn horner_l<V: Lanes>(c: &[f64], x: V) -> (V, V) {
+    let (mut v, mut d) = (V::splat(0.0), V::splat(0.0));
+    for &c in c.iter().rev() {
+        d = d * x + v;
+        v = v * x + c;
+    }
+    (v, d)
+}
+
+/// [`eval_groups`] の光線の組の版。同じ演算を同じ順に書いたもので、光線ごとの値は同じビット
+/// （正規化半径の外の光線は、計算した値を捨てて 0 にする）
+#[inline(always)]
+fn eval_groups_l<V: Lanes>(g: &ZPoly, norm: f64, extrapolate: bool, x: V, y: V) -> (V, V, V) {
+    let zero = V::splat(0.0);
+    if !(norm > 0.0) {
+        return (zero, zero, zero);
+    }
+    let (u, v) = (x / norm, y / norm);
+    let r2 = u * u + v * v;
+    let x2 = r2 * 2.0 - 1.0;
+    let (u4, v4) = (u * 4.0, v * 4.0);
+    let px = &g.px[..];
+    let (mut z, mut zu, mut zv) = (zero, zero, zero);
+    let mut heads = &g.heads[..];
+    if let Some((h, rest)) = heads.split_first() {
+        if h.m == 0 {
+            let (pv, dq) = horner_l(&px[h.start as usize..h.end as usize], x2);
+            z += pv * 1.0;
+            zu += u4 * dq * 1.0 + pv * 0.0;
+            zv += v4 * dq * 1.0 + pv * 0.0;
+            heads = rest;
+        }
+    }
+    let (mut wr, mut wi, mut pr, mut pi) = (V::splat(1.0), zero, zero, zero);
+    let mut k = 0;
+    for h in heads {
+        debug_assert!(h.m >= k.max(1));
+        while k < h.m {
+            (pr, pi) = (wr, wi);
+            wr = pr * u - pi * v;
+            wi = pr * v + pi * u;
+            k += 1;
+        }
+        let (pv, dq) = horner_l(&px[h.start as usize..h.end as usize], x2);
+        let mf = h.m as f64;
+        let (a, au, av) = if h.cos {
+            (wr, pr * mf, pi * -mf)
+        } else {
+            (wi, pi * mf, pr * mf)
+        };
+        z += pv * a;
+        zu += u4 * dq * a + pv * au;
+        zv += v4 * dq * a + pv * av;
+    }
+    let (zu, zv) = (zu / norm, zv / norm);
+    if extrapolate {
+        (z, zu, zv)
+    } else {
+        let out = r2.gt(1.0);
+        (
+            V::select(out, zero, z),
+            V::select(out, zero, zu),
+            V::select(out, zero, zv),
+        )
+    }
 }
 
 /// Grid Sag の格子

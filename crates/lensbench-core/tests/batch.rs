@@ -216,6 +216,16 @@ fn apertures_and_toroidal_match_scalar() {
     )));
     let s = rx.build_raw().unwrap();
     check("A0+Zernike", &s, &px, &py);
+    // 外挿しない（正規化半径の外で Zernike の項を 0 にする光線が混ざる）
+    let mut rx = s.into_prescription();
+    *rx.surfaces[6].zern_mut().unwrap() = Some(Arc::new(ZernSag::new(
+        false,
+        2.0,
+        (1..=37).map(|i| 1e-3 * (i as f64).cos()).collect(),
+        false,
+    )));
+    let s = rx.build_raw().unwrap();
+    check("A0+Zernike（外挿なし）", &s, &px, &py);
     let s = load("A0");
     let mut rx = s.into_prescription();
     let d = &mut rx.surfaces[3];

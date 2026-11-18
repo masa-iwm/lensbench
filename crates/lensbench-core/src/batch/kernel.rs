@@ -4,8 +4,9 @@ use super::lanes::{sel, Lanes, Mask};
 use super::pol::{aperture_out_l, pol_surface_l, PolLanes, PolSoa};
 use super::{LaneSink, Move, Plan, Sag, Step};
 use crate::action::{Act, Action};
+use crate::freeform::ZernSag;
 use crate::math::*;
-use crate::shape::{Isect, Norm};
+use crate::shape::{Isect, Norm, Shape};
 use crate::surface::Aperture;
 use crate::trace::{self, RayOut, RayStatus, RecEntry};
 
@@ -107,6 +108,21 @@ impl Sag {
         }
         (z, dz)
     }
+}
+
+/// Zernike の面の矢高と (∂z/∂x, ∂z/∂y) の光線の組の版（[`Shape::sag`] の Zernike の枝と同じ演算を同じ順に:
+/// 偶数次非球面 + Zernike の項）
+#[inline(always)]
+fn zern_sag_l<V: Lanes>(sag: &Sag, terms: Option<&ZernSag>, x: V, y: V) -> (V, V, V) {
+    let (z, dz) = sag.eval(x * x + y * y);
+    let (mut z, mut zx, mut zy) = (z, dz * 2.0 * x, dz * 2.0 * y);
+    if let Some(zs) = terms {
+        let (a, ax, ay) = zs.eval_l(x, y);
+        z += a;
+        zx += ax;
+        zy += ay;
+    }
+    (z, zx, zy)
 }
 
 /// 光線ごとの面の番号（止まった面・けられた面。f64 で持つと比較・選択がまとめてできる）
@@ -333,6 +349,47 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             };
             match st.kind.isect {
                 Isect::Plane => {}
+                // Zernike の面は光線の組のまま（[`Shape::isect`] の Zernike の枝・[`crate::freeform::isect_with`] と
+                // 同じ演算を同じ順に。光線ごとの反復の回数も同じ）
+                Isect::Newton if matches!(d.shape(), Shape::Zernike { .. }) => {
+                    let Shape::Zernike { base, terms } = d.shape() else {
+                        unreachable!("matched above")
+                    };
+                    let m: V::B = err.eq(0.0);
+                    // 初期値: 基準の二次曲面との交点（交わらなければ 0）
+                    let mut s = zero;
+                    if base.c != 0.0 {
+                        let c = base.c;
+                        let ff = (pl[0] * pl[0] + pl[1] * pl[1]) * c;
+                        let gg = kl[2] - (pl[0] * kl[0] + pl[1] * kl[1]) * c;
+                        let aa =
+                            (kl[0] * kl[0] + kl[1] * kl[1] + kl[2] * (1.0 + base.k) * kl[2]) * c;
+                        let disc = gg * gg - aa * ff;
+                        let r = conic_root_l(ff, gg, aa, disc, st.sig);
+                        s = sel(disc.ge(0.0) & r.is_finite(), r, zero);
+                    }
+                    let mut act = m;
+                    let mut ds = V::splat(f64::NAN);
+                    for _ in 0..60 {
+                        if !act.any() {
+                            break;
+                        }
+                        let q = axpy(pl, kl, s);
+                        let (z, zx, zy) = zern_sag_l(&st.sag, terms, q[0], q[1]);
+                        let dn = (q[2] - z) / (kl[2] - zx * kl[0] - zy * kl[1]);
+                        ds = sel(act, dn, ds);
+                        s = sel(act, s - dn, s);
+                        let t = (s.abs() + z.abs()) * (8.0 * f64::EPSILON);
+                        let tm = crate::tol::NEWTON_STEP_MIN;
+                        let tol = sel(t.gt(tm), t, V::splat(tm));
+                        act = act & dn.abs().gt(tol);
+                    }
+                    // !(|ds| <= 1e-10)（NaN も）は求まらない。位置・光路長は求まらなくても進める（光線ごとの版と同じ）
+                    err = mark(err, m & !ds.abs().le(1e-10), jf);
+                    pl = sel3(m, axpy(pl, kl, s), pl);
+                    opl = sel(m, opl + nprev * s, opl);
+                    s_tot = sel(m, s_tot + s, s_tot);
+                }
                 Isect::Newton => {
                     let sh = d.shape();
                     lane_isect(&|pi, ki| sh.isect(pi, ki, st.sig))
@@ -509,6 +566,14 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     nv
                 };
                 let nvec: VL<V> = match st.kind.norm {
+                    Norm::Grad if matches!(d.shape(), Shape::Zernike { .. }) => {
+                        let Shape::Zernike { terms, .. } = d.shape() else {
+                            unreachable!("matched above")
+                        };
+                        let (_, zx, zy) = zern_sag_l(&st.sag, terms, pl[0], pl[1]);
+                        err = mark(err, !(zx.is_finite() & zy.is_finite()) & err.eq(0.0), jf);
+                        [-zx, -zy, one]
+                    }
                     Norm::Grad => {
                         let sh = d.shape();
                         lane_normal(&mut err, &|x, y| {
