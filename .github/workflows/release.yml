@@ -2,7 +2,7 @@ name: Release
 
 # v* のタグで、Windows の GUI と CLI の exe を zip にして GitHub の Releases に置き、Pages を回してその版のドキュメントを /vX.Y/ に置く。
 # タグは手で打たない。配る版を決めたとき、元のリポジトリの書き出しが同じ版の名前で打つ（版の名前は Cargo.toml の
-# workspace.package.version に v を付けたもの）。一度載せた zip は差し替えない（直すときは次の版を切る）。
+# workspace.package.version に v を付けたもの。開発中の版 X.Y.Z-dev ではリリース候補 vX.Y.Z-rc.N も）。一度載せた zip は差し替えない（直すときは次の版を切る）。
 on:
   push:
     tags: ["v*"]
@@ -32,8 +32,9 @@ jobs:
         shell: bash
         run: |
           cv=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          if [ "$TAG" != "v$cv" ]; then
-            echo "::error::タグ $TAG が Cargo.toml の版 $cv と違う"
+          # タグは v＋版。開発中の版 X.Y.Z-dev ではリリース候補 vX.Y.Z-rc.N も（版を上げずに打つ。docs/versioning.md）
+          if ! python "scripts/check_version.py" --tag "$TAG"; then
+            echo "::error::タグ $TAG が Cargo.toml の版 $cv に合わない"
             exit 1
           fi
           # 画面の版の欄・--version もタグの名前にする
@@ -65,7 +66,9 @@ jobs:
             fi
             gh release upload "$TAG" "dist/$DIST.zip"
           else
-            gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --generate-notes --verify-tag
+            # リリース候補（v0.5.0-rc.1 など、- を含むタグ）は pre-release にする（最新のリリースにしない）
+            pre=(); case "$TAG" in *-*) pre=(--prerelease) ;; esac
+            gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --generate-notes --verify-tag "${pre[@]}"
           fi
       # ドキュメントを版の置き場（/vX.Y/・/schema/vX.Y/）に置く: Pages がタグのコミットの CI の site-book を固めて
       # このリリースに添付し、そこから載せる（pages.yml）。まだ CI が終わっていなければ、次の main の Pages で添付する
