@@ -315,6 +315,8 @@ pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
         .show(ui, |ui| {
             let mut tb = TableBuilder::new(ui)
                 .striped(true)
+                // 低いパネルでもパネルの中に収める（既定の最低 200 だとはみ出し、最後の行までスクロールできない）
+                .min_scrolled_height(0.0)
                 .column(Column::auto().at_least(140.0).resizable(true));
             for _ in &cols {
                 tb = tb.column(Column::auto().at_least(80.0));

@@ -1586,6 +1586,7 @@ a plate needs glass	平板の glass が必要です
 block {id}: only lenses can bake in values changed in the surface table (undo the changes on others before saving)	ブロック {id}: 面の表で変えた値を焼き込めるのはレンズだけ（ほかは変更を戻してから保存）
 {path}: the .zmx environment ({t} °C, {pr} atm) differs from the project environment ({} °C, {} atm); indices are computed in the project environment (change it with environment)	{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違います。屈折率はプロジェクトの環境で計算します（environment で変えてください）
 {path}: the object-space medium of the .zmx ({zm}) differs from the project ({m}); the project one is used (change it with object medium)	{path}: .zmx の物体空間の媒質（{zm}）はプロジェクト（{m}）と違います。プロジェクトの媒質を使います（object の medium で変えてください）
+{a} ends in {m} (no air after it), so {b} sits in that medium	{a} は {m} で終わり後ろに空気がないので、{b} はその媒質の中にあります
 {path}: the coating file {} differs from {} of an earlier .zmx; coatings are looked up in {}	{path}: コーティングファイル {} は前の .zmx の {} と違います。コーティングは {} で引きます
 {tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match	{tag}: {prev_name} の後ろの端（{why}）と、{name} の前の端（{hint}）のねじが合いません
 {tag}: no block {b} for holds	{tag}: holds のブロック {b} がありません

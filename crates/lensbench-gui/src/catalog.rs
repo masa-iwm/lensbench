@@ -1410,6 +1410,8 @@ impl Browser {
                 let mut tb = TableBuilder::new(ui)
                     .striped(true)
                     .resizable(true)
+                    // 低いパネルでもパネルの中に収める（既定の最低 200 だとはみ出し、最後の行までスクロールできない）
+                    .min_scrolled_height(0.0)
                     .sense(Sense::click_and_drag());
                 for c in &cols {
                     tb = tb.column(c.column());
@@ -1833,6 +1835,8 @@ impl Browser {
         TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
+            // 低いパネルでもパネルの中に収める（既定の最低 200 だとはみ出し、最後の行までスクロールできない）
+            .min_scrolled_height(0.0)
             .sense(Sense::click())
             .column(Column::initial(110.0))
             .column(Column::initial(80.0))

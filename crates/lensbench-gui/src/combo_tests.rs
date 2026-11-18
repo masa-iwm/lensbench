@@ -803,3 +803,70 @@ mod nav_tests {
         assert!((v.zoom_log).abs() < 1e-6);
     }
 }
+
+/// 像空間が硝材の .zmx（液浸など）は要素に分けず、.zmx をまるごと取り込む要素 1 つで開く。像空間の硝材は展開した系に
+/// 残り、後ろに要素を足すと「その媒質の中」の注意が出る。まるごとの .zmx は反転できない（反転の欄を出さず、R キーでも
+/// 反転の印を立てない）
+#[test]
+fn image_space_glass_zmx_opens_whole() {
+    let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = String::from_utf16(&u).unwrap();
+    let at = t.find("SURF 8\r\n").unwrap();
+    let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
+    let t = format!(
+        "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
+        &t[..k],
+        &t[k..]
+    );
+    let dir = std::env::temp_dir().join(format!("lb-gui-ima-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a.zmx");
+    let mut out = vec![0xff, 0xfe];
+    out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
+    std::fs::write(&f, out).unwrap();
+    let gd = vec![root.join("tests/glass")];
+    let mut c = Combo::from_zmx(&f, &gd, &[]).unwrap();
+    assert_eq!(c.picks.len(), 1);
+    assert_eq!(c.picks[0].kind, ElemKind::ZmxRange);
+    let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+    let env = lensbench_project::Env::in_dir(&dir, &gd, None);
+    let e = lensbench_project::expand(&pr, &env, &Default::default()).unwrap();
+    let in_medium = |e: &lensbench_project::Expansion| {
+        e.notes
+            .iter()
+            .any(|n| n.text.contains("sits in that medium"))
+    };
+    assert!(!in_medium(&e), "{:?}", e.notes);
+    let s = e.system;
+    // 後ろに玉を足すと、玉は硝材の中にある（空気を入れない）ので注意
+    let mut d = c.clone();
+    d.picks.push(Pick::new(ElemKind::Lens));
+    let pd = lensbench_project::Project::from_json(&d.project().to_string()).unwrap();
+    let ed = lensbench_project::expand(&pd, &env, &Default::default()).unwrap();
+    assert!(in_medium(&ed), "{:?}", ed.notes);
+    assert!(s.surfaces[s.image() - 1].mat.is_medium() && !s.surfaces[s.image() - 1].mat.is_air());
+    assert!(!c.picks[0].can_reverse());
+    // R キー: 反転できない要素は印を立てない
+    let mut view = View::default();
+    view.select(0);
+    let ctx = egui::Context::default();
+    let mut input = egui::RawInput::default();
+    input.events.push(egui::Event::Key {
+        key: egui::Key::R,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(input, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| keys(ui, &mut c, &mut view));
+    });
+    assert!(!c.picks[0].reversed);
+}

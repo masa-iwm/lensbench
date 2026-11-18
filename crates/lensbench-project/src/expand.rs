@@ -1032,6 +1032,7 @@ fn expand_body(
         rx.mechanics = mech;
         Ok(())
     })?;
+    warn.extend(crate::expand_error::in_medium_notes(&s, &map));
     s.validate()?;
     Ok(Walk::Done(Box::new(Expansion {
         system: s,

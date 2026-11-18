@@ -2111,7 +2111,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     .sel
                     .filter(|&k| free(combo, k))
                     .and_then(|k| combo.el_mut(k))
-                    .filter(|p| p.kind != ElemKind::Lens || p.can_reverse())
+                    .filter(|p| p.can_reverse())
                 {
                     p.reversed = !p.reversed;
                 }

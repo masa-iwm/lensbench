@@ -500,3 +500,38 @@ fn dialogs_and_analyses_are_effects() {
     h.state_mut().c.pending_set.clear();
     settle(&mut h);
 }
+
+/// 低いパネルでも、レンズデータの表の最後の行まで送ると下の「詳細」の帯の上に全部見える（表が自分の矩形の下へ
+/// はみ出さない）
+#[test]
+fn last_row_of_the_table_is_above_the_details_bar() {
+    let _g = serial();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 560.0))
+        .with_max_steps(1000)
+        .build_eframe(move |cc| App::new(cc, a0()));
+    i18n::set(i18n::Lang::En);
+    settle(&mut h);
+    let n = h.state().c.sys.ld_rows.len() - 1;
+    h.get_by_label("Surface 1 Thickness").click();
+    h.run_steps(2);
+    for _ in 0..n {
+        h.press_key(Key::ArrowDown);
+        h.run_steps(2);
+    }
+    h.run_steps(4);
+    // 帯の字（ラベルと字の並びの 2 つの節）
+    let bar = h
+        .query_all(
+            egui_kittest::kittest::by()
+                .predicate(|n| n.value().is_some_and(|l| l.contains("Details —"))),
+        )
+        .next()
+        .and_then(|n| n.bounding_box())
+        .unwrap();
+    let last = h
+        .get_by_label(&format!("Surface {n} Type"))
+        .bounding_box()
+        .unwrap();
+    assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
+}

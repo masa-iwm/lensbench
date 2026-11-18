@@ -432,6 +432,8 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
             let mut table = TableBuilder::new(ui)
                 .id_salt(("lens_data", npar, crate::i18n::is_ja()))
                 .max_scroll_height(table_h)
+                // 低いパネルでも表は自分の矩形に収める（既定の 200 だと矩形の下へはみ出し、最後の行が下の帯に隠れる）
+                .min_scrolled_height(0.0)
                 .auto_shrink([false, true])
                 .striped(true)
                 .resizable(true)

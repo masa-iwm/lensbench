@@ -132,7 +132,8 @@ pub enum NoteKind {
     Glrs,
     /// 機構部品を置かなかった・ねじが合わない
     Mechanics,
-    /// 取り込んだ .zmx の物体空間の媒質がプロジェクト（`object` の `medium`）と違う
+    /// 取り込んだ .zmx の物体空間の媒質がプロジェクト（`object` の `medium`）と違う。空気でない媒質で終わるブロックの後に
+    /// 別のブロックが続く（後のブロックはその媒質の中）
     Medium,
 }
 
@@ -158,4 +159,43 @@ impl std::fmt::Display for Note {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.text)
     }
+}
+
+/// 空気でない媒質（液浸の .zmx の像空間など）で終わるブロックの後に別のブロックの面が続くときの注意。間に空気は
+/// 入らないので、後のブロックはその媒質の中に置かれる（物理のとおりに計算し、気づけるように知らせる）
+pub(crate) fn in_medium_notes(
+    s: &lensbench_core::system::System,
+    map: &[crate::SurfOrigin],
+) -> Vec<Note> {
+    let img = s.image();
+    // 座標ブレークを除いた面（物体面・像面も除く）
+    let faces: Vec<usize> = (1..img)
+        .filter(|&j| !s.surfaces[j].is_coord_break())
+        .collect();
+    let node = |j: usize| map.get(j).and_then(|o| o.face.as_ref()).map(|f| &f.node);
+    let name = |j: usize| {
+        map.get(j)
+            .and_then(|o| o.blocks.first().cloned())
+            .unwrap_or_else(|| format!("surface {j}"))
+    };
+    let mut out = Vec::new();
+    for w in faces.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let m = &s.surfaces[a].mat;
+        if !m.is_medium() || m.is_air() || node(a).is_none() || node(a) == node(b) {
+            continue;
+        }
+        let (na, nb) = (name(a), name(b));
+        out.push(Note::new(
+            NoteKind::Medium,
+            Some(nb.clone()),
+            format!(
+                "{a} ends in {m} (no air after it), so {b} sits in that medium",
+                a = na,
+                m = m.label(),
+                b = nb
+            ),
+        ));
+    }
+    out
 }
