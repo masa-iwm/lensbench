@@ -132,6 +132,8 @@ pub enum NoteKind {
     Glrs,
     /// 機構部品を置かなかった・ねじが合わない
     Mechanics,
+    /// 取り込んだ .zmx の物体空間の媒質がプロジェクト（`object` の `medium`）と違う
+    Medium,
 }
 
 impl Note {

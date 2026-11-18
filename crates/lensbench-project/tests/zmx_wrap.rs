@@ -344,7 +344,11 @@ fn zmx_project_solves_macros_after_the_global_reference() {
 }
 
 /// A0 の面の行を書き換えた .zmx を組合せのプロジェクトにして展開し、元の系と同じか確かめる
-fn zmx_project_roundtrip(tag: &str, edit: impl Fn(String) -> String) -> serde_json::Value {
+fn zmx_project_roundtrip(
+    tag: &str,
+    edit: impl Fn(String) -> String,
+    then: impl FnOnce(&serde_json::Value, &lensbench_project::Env),
+) -> serde_json::Value {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let gd = vec![root.join("tests/glass")];
     let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
@@ -383,10 +387,17 @@ fn zmx_project_roundtrip(tag: &str, edit: impl Fn(String) -> String) -> serde_js
             lensbench_project::expand(&q, &env, &Default::default())
                 .map_err(lensbench_core::Error::from)
         })
-        .unwrap()
-        .system;
+        .unwrap();
+    then(&p, &env);
     std::fs::remove_dir_all(&dir).ok();
-    lensbench_project::same_system(&s, &e).unwrap();
+    assert!(
+        !e.notes
+            .iter()
+            .any(|n| n.kind == lensbench_project::NoteKind::Medium),
+        "{:?}",
+        e.notes
+    );
+    lensbench_project::same_system(&s, &e.system).unwrap();
     p
 }
 
@@ -394,41 +405,70 @@ fn zmx_project_roundtrip(tag: &str, edit: impl Fn(String) -> String) -> serde_js
 #[test]
 fn zmx_project_keeps_non_air_object_and_image_space() {
     // 物体側の液浸（物体面の硝材はプロジェクトの object の medium へ）
-    let p = zmx_project_roundtrip("obj", |t| {
-        t.replacen(
-            "  DISZ INFINITY\r\n",
-            "  DISZ 10\r\n  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n",
-            1,
-        )
-    });
+    let p = zmx_project_roundtrip(
+        "obj",
+        |t| {
+            t.replacen(
+                "  DISZ INFINITY\r\n",
+                "  DISZ 10\r\n  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n",
+                1,
+            )
+        },
+        |p, env| {
+            // プロジェクトに媒質を書かなければ物体空間は空気で、.zmx と違う注意が出る
+            let mut q = p.clone();
+            q["object"].as_object_mut().unwrap().remove("medium");
+            let e = lensbench_project::Project::from_json(&q.to_string())
+                .and_then(|q| {
+                    lensbench_project::expand(&q, env, &Default::default())
+                        .map_err(lensbench_core::Error::from)
+                })
+                .unwrap();
+            assert!(
+                e.notes
+                    .iter()
+                    .any(|n| n.kind == lensbench_project::NoteKind::Medium),
+                "{:?}",
+                e.notes
+            );
+        },
+    );
     assert!(p["object"]["medium"].is_string(), "{p}");
     // 像空間が硝材（像面の手前の面が硝材を持つ）
-    zmx_project_roundtrip("ima", |t| {
-        let at = t.find("SURF 8\r\n").unwrap();
-        let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
-        format!(
-            "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
-            &t[..k],
-            &t[k..]
-        )
-    });
+    zmx_project_roundtrip(
+        "ima",
+        |t| {
+            let at = t.find("SURF 8\r\n").unwrap();
+            let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
+            format!(
+                "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
+                &t[..k],
+                &t[k..]
+            )
+        },
+        |_, _| {},
+    );
     // 最後の玉の後ろの硝材のブロックの中で鏡が折り返し、像空間は硝材のまま
-    zmx_project_roundtrip("fold", |t| {
-        let at = t.find("SURF 7\r\n").unwrap();
-        let k = at + t[at..].find("  MAZH").unwrap();
-        let t = format!(
-            "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
-            &t[..k],
-            &t[k..]
-        );
-        let at = t.find("SURF 8\r\n").unwrap();
-        let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
-        format!(
-            "{}  GLAS MIRROR 0 0 0 0 0 0 0 0 0 0 \r\n{}",
-            &t[..k],
-            &t[k..]
-        )
-    });
+    zmx_project_roundtrip(
+        "fold",
+        |t| {
+            let at = t.find("SURF 7\r\n").unwrap();
+            let k = at + t[at..].find("  MAZH").unwrap();
+            let t = format!(
+                "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
+                &t[..k],
+                &t[k..]
+            );
+            let at = t.find("SURF 8\r\n").unwrap();
+            let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
+            format!(
+                "{}  GLAS MIRROR 0 0 0 0 0 0 0 0 0 0 \r\n{}",
+                &t[..k],
+                &t[k..]
+            )
+        },
+        |_, _| {},
+    );
 }
 
 /// 物体面の形と開口・像面の半直径のピックアップ・無限の厚みを写すピックアップも、組合せのプロジェクトで同じ系

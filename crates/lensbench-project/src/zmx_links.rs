@@ -50,12 +50,14 @@ pub(crate) fn shift_macro(kind: &mut SolveKind, off: usize) {
 }
 
 /// 面 1 から系の面 1 に取り込んだ .zmx の物体面は、系の物体面（元の面 0 を指すピックアップを残す。値が合うかは
-/// ピックアップを足すときに確かめる）。物体面のコメントも持ち越す。像面も同じ
+/// ピックアップを足すときに確かめる）。物体面のコメントも持ち越す。像面も同じ。物体空間の媒質が .zmx と系
+/// （プロジェクトの `object` の `medium`）で違えば、その注意を返す
 pub(crate) fn carry_object(
     s: &mut System,
     zpicks: &[ZmxLinks],
     at: &mut HashMap<(usize, usize), usize>,
-) -> lensbench_core::Result<()> {
+) -> lensbench_core::Result<Vec<String>> {
+    let mut warn = Vec::new();
     let img = s.image();
     for (inst, z) in zpicks.iter().enumerate() {
         // 系の最後の取り込みの .zmx の像面は、系の像面（像面の半直径のピックアップなど。値が合うかは
@@ -72,6 +74,14 @@ pub(crate) fn carry_object(
         }
         if at.get(&(inst, 1)) == Some(&1) {
             at.insert((inst, 0), 0);
+            let m = &s.surfaces[0].mat;
+            let air = crate::blocks::is_air;
+            if !(air(m) && air(&z.obj_mat)) && *m != z.obj_mat {
+                let (path, zm) = (&z.path, &z.obj_mat);
+                warn.push(format!(
+                    "{path}: the object-space medium of the .zmx ({zm}) differs from the project ({m}); the project one is used (change it with object medium)"
+                ));
+            }
             if !z.obj_comment.is_empty() && s.surfaces[0].comment.is_empty() {
                 let c = z.obj_comment.clone();
                 s.edit_raw(|rx| {
@@ -81,7 +91,7 @@ pub(crate) fn carry_object(
             }
         }
     }
-    Ok(())
+    Ok(warn)
 }
 
 /// 取り込んだ .zmx のマクロのソルブの注意（解けずに保存された値で固定したもの）を持ち越す

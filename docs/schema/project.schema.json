@@ -4486,7 +4486,7 @@
           "type": "null"
         }
       ],
-      "description": "物体面の形・開口（省略は平面で開口なし）。`image` と同じ面の行で、厚さは `object_distance`。厚さ・媒質・絞りの印・\n傾き偏心は書けない"
+      "description": "物体面の形・開口・物体空間の媒質（省略は平面で開口なし・空気）。`image` と同じ面の行で、厚さは\n`object_distance`。`medium` は物体空間の媒質（液浸など）。厚さ・絞りの印・傾き偏心は書けない"
     },
     "object_distance": {
       "default": null,

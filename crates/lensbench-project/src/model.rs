@@ -842,8 +842,8 @@ pub struct Project {
     /// 厚さ・媒質・絞りの印は書けない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<Box<crate::sysfile_v2::Row>>,
-    /// 物体面の形・開口（省略は平面で開口なし）。`image` と同じ面の行で、厚さは `object_distance`。厚さ・媒質・絞りの印・
-    /// 傾き偏心は書けない
+    /// 物体面の形・開口・物体空間の媒質（省略は平面で開口なし・空気）。`image` と同じ面の行で、厚さは
+    /// `object_distance`。`medium` は物体空間の媒質（液浸など）。厚さ・絞りの印・傾き偏心は書けない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object: Option<Box<crate::sysfile_v2::Row>>,
     /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない

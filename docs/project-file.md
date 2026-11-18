@@ -62,6 +62,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 物体面の形・開口は `"object"`（省略は平面で開口なし）。`image` と同じ面の行で、`shape`（傾いた平面など）・`aperture` を書く。
   `medium` は物体空間の媒質（液浸など。省略は空気）。厚さは `object_distance` で、`t`・`stop`・`coordinate_break`・`before`・`after` は書けない。
   GUI が物体空間・像空間の空気でない .zmx を組合せで開くときは、物体空間の媒質をこれで書き、像空間の媒質は zmx ブロックの最後の面が持つ。
+  面 1 から取り込んだ .zmx の物体空間の媒質がこれと違えば注意を出す（プロジェクトの媒質を使う）。
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - クリア半径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。

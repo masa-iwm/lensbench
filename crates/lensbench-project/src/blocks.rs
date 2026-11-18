@@ -254,6 +254,8 @@ pub(crate) struct ZmxLinks {
     pub(crate) image: usize,
     /// 取り込んだ .zmx の物体面のコメント（面 1 から系の面 1 に取り込んだとき、系の物体面のコメントにする）
     pub(crate) obj_comment: String,
+    /// 取り込んだ .zmx の物体空間の媒質（面 1 から系の面 1 に取り込んだとき、系の物体空間の媒質と違えば注意を出す）
+    pub(crate) obj_mat: Material,
     /// 取り込んだ .zmx のマクロのソルブの注意（展開した系の注意にする）
     pub(crate) macro_notes: Vec<String>,
     /// 取り込んだ .zmx の ZPL マクロと、パラメータ・円錐係数・半直径のマクロのソルブ（ソルブの番号は macros の番号）
@@ -1141,6 +1143,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     solves: s.solves.clone(),
                     image: s.image(),
                     obj_comment: s.surfaces[0].comment.clone(),
+                    obj_mat: s.surfaces[0].mat.clone(),
                     macro_notes: s.macro_notes.clone(),
                     macros: s.macros.clone(),
                     macro_parms: s.macro_parms.clone(),

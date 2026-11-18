@@ -885,7 +885,9 @@ fn expand_body(
         return Err("fields solve only with type solve".into());
     }
     let mut s = s.build_raw()?;
-    let mut warn = Note::all(NoteKind::Pickup, None, keep_pickups(&mut s, &org, &zpicks)?);
+    let (picks, medium) = keep_pickups(&mut s, &org, &zpicks)?;
+    let mut warn = Note::all(NoteKind::Pickup, None, picks);
+    warn.extend(Note::all(NoteKind::Medium, None, medium));
     for (path, t, pr, adj, _) in &c.zenv {
         let e = &p.environment;
         // どちらも補正しないなら温度・気圧は屈折率に効かない
@@ -1299,12 +1301,13 @@ pub(crate) fn group_shift(blocks: &[Block], id: &str) -> Option<f64> {
 
 /// zmx ブロックで取り込んだ面のピックアップと厚さのソルブを、展開した系の面番号に付け替えて残す。
 /// 元か先が取り込んだ範囲の外にあるもの、展開で値の関係が崩れたもの（群の移動で厚さが変わったなど）は
-/// 値で固定し、説明を返す。org[i] は展開した系の面 i + 1 の出どころ
+/// 値で固定し、説明を返す。org[i] は展開した系の面 i + 1 の出どころ。物体空間の媒質の注意（[`crate::zmx_links::carry_object`]）
+/// も別に返す
 pub(crate) fn keep_pickups(
     s: &mut System,
     org: &[Option<(usize, usize)>],
     zpicks: &[ZmxLinks],
-) -> lensbench_core::Result<Vec<String>> {
+) -> lensbench_core::Result<(Vec<String>, Vec<String>)> {
     let mut at: HashMap<(usize, usize), usize> = HashMap::new();
     for (i, o) in org.iter().enumerate() {
         if let Some(k) = o {
@@ -1312,7 +1315,7 @@ pub(crate) fn keep_pickups(
             at.insert(*k, i + 1);
         }
     }
-    crate::zmx_links::carry_object(s, zpicks, &mut at)?;
+    let medium = crate::zmx_links::carry_object(s, zpicks, &mut at)?;
     let mut warn = Vec::new();
     for (inst, z) in zpicks.iter().enumerate() {
         let (path, picks) = (&z.path, &z.pickups);
@@ -1464,7 +1467,7 @@ pub(crate) fn keep_pickups(
             }
         }
     }
-    Ok(warn)
+    Ok((warn, medium))
 }
 
 /// 面 j のガラス mat がカタログに無い誤り（符号 [`code::GLASS_NOT_FOUND`]）
