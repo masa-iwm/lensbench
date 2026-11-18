@@ -1,10 +1,10 @@
 //! スポット（RMS 半径・重心・主光線）
 
 use super::pupil_gauss;
-use crate::error::Result;
-use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
-use crate::trace::RayCounts;
-use crate::Waves;
+use lensbench_core::error::Result;
+use lensbench_core::system::{Cols, FieldSel, RayBuf, System, Trace};
+use lensbench_core::trace::RayCounts;
+use lensbench_core::Waves;
 
 #[derive(Debug, Clone)]
 pub struct Spot {
@@ -107,7 +107,7 @@ fn apodized_pow(
     wts: &[f64],
     pow: i32,
 ) -> Result<Vec<f64>> {
-    let a = crate::pupil::ApodMap::new(s, field)?;
+    let a = lensbench_core::pupil::ApodMap::new(s, field)?;
     if a.is_uniform() {
         return Ok(wts.to_vec());
     }

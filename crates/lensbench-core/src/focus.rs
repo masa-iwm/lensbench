@@ -1,6 +1,6 @@
 //! 像面だけをずらした系の光線を、ずらす前の系の追跡から作る（スルーフォーカス・RMS vs Focus）。
 //!
-//! 像面を光軸の向きにずらしても、像面の手前の面までの光線は変わらない。[`crate::sweep::defocus_shared`] で
+//! 像面を光軸の向きにずらしても、像面の手前の面までの光線は変わらない。lensbench-analysis の `sweep::defocus_shared` で
 //! 作った系の追跡（像面まで・記録なし）は、ずらす前の系で追った光線を共有の表から引き、像面の平面まで
 //! 直線で進めるだけにする。表は同じ掃引のずらしの点で共有するので、同じ瞳の格子（補間の格子・OPD の傾きの
 //! 見積もりの 33×33 など）は 1 度しか追わない。値は像面の系を追い直すのと丸めの差だけ違う。
@@ -33,7 +33,7 @@ struct Entry {
 type Key = (u64, u64, usize, usize, u64);
 
 /// ずらす前の系と、掃引の点で共有する光線の表
-pub(crate) struct FocusBase {
+pub struct FocusBase {
     base: System,
     rays: Mutex<HashMap<Key, Vec<Entry>>>,
     count: AtomicUsize,
@@ -47,9 +47,9 @@ impl std::fmt::Debug for FocusBase {
 
 /// ずらした系 1 つ分: 共有の表と、ずらす前の像面の局所座標でのずらした像面の位置 z
 #[derive(Debug, Clone)]
-pub(crate) struct FocusShift {
-    pub(crate) base: Arc<FocusBase>,
-    pub(crate) z: f64,
+pub struct FocusShift {
+    pub base: Arc<FocusBase>,
+    pub z: f64,
 }
 
 /// 瞳座標の並びのハッシュ（FNV-1a を 64 ビットの語ごとに）
@@ -63,7 +63,7 @@ fn hash_xy(px: &[f64], py: &[f64]) -> u64 {
 
 impl FocusBase {
     /// 使えない系（モジュールの説明）なら None
-    pub(crate) fn new(s: &System) -> Option<Arc<FocusBase>> {
+    pub fn new(s: &System) -> Option<Arc<FocusBase>> {
         let im = s.surfaces.last()?;
         // 像面の手前の媒質（座標ブレークを飛ばした有効な面の後ろ）が GRIN なら光線は直線に進まない
         let grin = s.surfaces[..s.image()]
@@ -91,7 +91,7 @@ impl FocusBase {
 
     /// ずらした系 d（像面の手前の面の厚さだけを変えて changed() を呼んだもの）の、ずらす前の像面の局所座標での
     /// 像面の位置 z。座標系が平行移動でなければ None
-    pub(crate) fn shift_of(&self, d: &System) -> Option<f64> {
+    pub fn shift_of(&self, d: &System) -> Option<f64> {
         let (j, b) = (d.image(), &self.base);
         let (f0, f1) = (b.frames().surf[j].as_ref()?, d.frames().surf[j].as_ref()?);
         if f0.r != f1.r {
@@ -105,7 +105,7 @@ impl FocusBase {
 
 impl FocusShift {
     /// d（この掃引の点の系）の視野 field の光線 (px, py) を、像面まで記録なしで追った結果
-    pub(crate) fn trace(
+    pub fn trace(
         &self,
         d: &System,
         field: FieldSel,

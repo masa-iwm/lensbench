@@ -19,7 +19,7 @@ pub enum SolveKind {
     /// 厚さ: 次の面での近軸主光線の高さ = height（CHZH 高さ 0）
     ChiefHeight { height: f64 },
     /// 厚さ: 軸上の視野・主波長の実光線（瞳 (0, zone)）の像面での OPD [波] = opd（OPDZ OPD 帯）。OPD は
-    /// [`crate::analysis::opd`]（OpticStudio の光線の OPD、OPDC と同じ）
+    /// [`crate::opd::opd`]（OpticStudio の光線の OPD、OPDC と同じ）
     Opd { opd: f64, zone: f64 },
     /// 厚さ: 次の面を近軸の瞳（その空間で近軸主光線が軸を切る位置）に置く（TPUP）
     PupilPosition,
@@ -861,7 +861,7 @@ impl System {
 
     /// OPD の厚さのソルブの、今の系での像面の OPD [波] − 目標（光線が通らなければ NaN）
     fn opd_residual(&self, opd: f64, zone: f64) -> Result<f64> {
-        let o = crate::analysis::opd(
+        let o = crate::opd::opd(
             self,
             crate::system::FieldSel::Norm(0.0, 0.0),
             &[0.0],

@@ -12,7 +12,7 @@ use std::time::Instant;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use lensbench_core::analysis::{self, MtfMethod};
+use lensbench_analysis::analysis::{self, MtfMethod};
 use lensbench_core::FieldSel;
 use lensbench_formats::zmx::{self, LoadOptions};
 

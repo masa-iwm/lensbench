@@ -3,8 +3,8 @@
 //! 既定値は [`OptimizeParams`]・[`ZoomParams`] の `Default` だけに書く。CLI の `default_value_t`、Python の引数の既定は
 //! ここから取り（Python は試験で突き合わせる）、serve は JSON をこの型に読む。
 
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::param::Param;
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::{Error, Result, System};
 use lensbench_optim::zoom::{TargetMethod, ZoomSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts, JacMode, ParaxQ, Problem, Var};

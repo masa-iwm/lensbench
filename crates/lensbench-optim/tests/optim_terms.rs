@@ -2,8 +2,8 @@
 //! （光線・OPD）が差分と合うこと、利用者の項の差分がまとめて 1 回で評価されること。
 
 use crate::common::root;
-use lensbench_core::analysis::{opd, zernike, ZernKind};
-use lensbench_core::fiber::FiberOpts;
+use lensbench_analysis::analysis::{opd, zernike, ZernKind};
+use lensbench_analysis::fiber::FiberOpts;
 use lensbench_core::param::Param;
 use lensbench_core::{FieldSel, Result, System};
 use lensbench_formats::zmx::{self, LoadOptions};
@@ -279,7 +279,7 @@ fn coupling_term() {
         grid: 31,
         ..Default::default()
     };
-    let c = lensbench_core::fiber::fiber_coupling(&s, s.primary, &o, None).unwrap();
+    let c = lensbench_analysis::fiber::fiber_coupling(&s, s.primary, &o, None).unwrap();
     let p = one(
         &s,
         TermKind::Coupling {
@@ -509,7 +509,7 @@ fn centroid_value_and_jacobian() {
         let field = FieldSel::Norm(0.6, 0.8);
         // 値: スポットの項と同じ光線（ガウス求積の瞳の点）の像面の位置の、重みつきの平均
         let w = s.primary;
-        let (px, py, wt) = lensbench_core::analysis::pupil_gauss(3, None);
+        let (px, py, wt) = lensbench_analysis::analysis::pupil_gauss(3, None);
         let t = s.try_trace(field, &px, &py, Some(w), None, false).unwrap();
         let (mut sw, mut sx, mut sy) = (0.0, 0.0, 0.0);
         for (i, a) in wt.iter().enumerate() {
@@ -549,7 +549,7 @@ fn centroid_value_and_jacobian() {
 /// 項の値の意味: 目標のある項は量そのもの、ない項は RMS
 #[test]
 fn term_value_kinds() {
-    use lensbench_core::sweep::RmsRef;
+    use lensbench_analysis::sweep::RmsRef;
     use lensbench_optim::TermValue;
     let s = load("A0");
     let mut p = one(
@@ -585,8 +585,8 @@ fn term_value_kinds() {
 /// 評価し、数を ray_counts で出す
 #[test]
 fn stopped_rays_as_vignetted() {
+    use lensbench_analysis::sweep::RmsRef;
     use lensbench_core::param::Kind;
-    use lensbench_core::sweep::RmsRef;
     let s0 = load("A0");
     // 1 面の曲率半径を、その面での近軸のマージナル光線の高さの 0.8 倍に: 瞳の縁の光線は面に当たらない
     let y1 = s0.paraxial().marginal.0[1].abs();

@@ -18,7 +18,6 @@ miniz_oxide = "0.9"
 # .zmx・AGF などの文字コード（UTF-8 でない ANSI のファイル: Shift_JIS・Windows-1252）
 encoding_rs = "0.8"
 num-complex = { version = "0.4", features = ["serde"] }
-rustfft = "6"
 rayon = "1"
 # System などの serde での書き出し・読み直し（システムファイル・Python の pickle）と、JSON スキーマ（schemars）。常に有効
 serde = { version = "1", features = ["derive", "rc"] }
@@ -29,6 +28,7 @@ schemars = "1"
 sys-locale = "0.3"
 
 [dev-dependencies]
+lensbench-analysis = { path = "../lensbench-analysis" }
 ciborium = "0.2"
 # .zmx の書き出しで読み直す試験（書き手は lensbench-formats。dev の依存なので循環にならない）
 lensbench-formats = { path = "../lensbench-formats" }

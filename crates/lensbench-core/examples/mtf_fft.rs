@@ -5,7 +5,7 @@ use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use lensbench_core::analysis::{self, MtfMethod};
+use lensbench_analysis::analysis::{self, MtfMethod};
 use lensbench_core::FieldSel;
 use lensbench_formats::zmx::{self, LoadOptions};
 use serde_json::Value;

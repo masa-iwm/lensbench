@@ -146,7 +146,8 @@ pub fn current_threads() -> usize {
 
 /// a を n 個ずつに分けた塊のそれぞれに f(番号, 塊) をかける（逐次の指定の中では逐次）。
 /// 塊ごとに独立に計算するので、スレッド数によらず結果は同じ
-pub(crate) fn for_each_chunk_mut<T: Send>(
+#[doc(hidden)]
+pub fn for_each_chunk_mut<T: Send>(
     a: &mut [T],
     n: usize,
     f: impl Fn(usize, &mut [T]) + Sync + Send,

@@ -97,7 +97,7 @@ fn real_ray_zone() {
 }
 
 fn opd_at(s: &System, zone: f64) -> f64 {
-    lensbench_core::analysis::opd(
+    lensbench_analysis::analysis::opd(
         s,
         lensbench_core::system::FieldSel::Norm(0.0, 0.0),
         &[0.0],

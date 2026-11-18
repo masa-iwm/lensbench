@@ -6,8 +6,8 @@
 //! （偏光ごとの PSF の重ね合わせ）は入れない。多色では、波長ごとに瞳の上で平均した光量の透過率を波長の重みに掛ける
 //! （[`lensbench_core::pupil::wave_weight`]。膜の透過率が波長で違えば、像面に届く光量の比で足す）。
 //!
-//! 使い方: [`PolAmp::new`] で作り、[`lensbench_core::psf::psf_with`]・[`crate::huygens::huygens_psf_with`]・
-//! [`lensbench_core::analysis::mtf_amp`] に渡す。系のアポダイゼーション（[`lensbench_core::pupil::Apodization`]）は
+//! 使い方: [`PolAmp::new`] で作り、[`crate::psf::psf_with`]・[`crate::huygens::huygens_psf_with`]・
+//! [`crate::analysis::mtf_amp`] に渡す。系のアポダイゼーション（[`lensbench_core::pupil::Apodization`]）は
 //! これとは別に常に入る。
 
 use crate::polgrid::PolGrid;

@@ -9,12 +9,12 @@
 //! 理由を残し、ほかの点は続ける。
 
 use crate::analysis::{self, MtfAxes};
-use crate::error::Result;
-use crate::focus::{FocusBase, FocusShift};
-use crate::invalid;
-use crate::pupil::{PupilFunction, PupilGrid};
-use crate::system::{Cols, FieldSel, FieldType, RayBuf, System};
-use crate::Waves;
+use lensbench_core::error::Result;
+use lensbench_core::focus::{FocusBase, FocusShift};
+use lensbench_core::invalid;
+use lensbench_core::pupil::{PupilFunction, PupilGrid};
+use lensbench_core::system::{Cols, FieldSel, FieldType, RayBuf, System};
+use lensbench_core::Waves;
 use std::sync::Arc;
 
 // ------------------------------------------------------------------------------------------ 系の変更
@@ -26,13 +26,15 @@ pub fn defocus(s: &System, dz: f64) -> Result<System> {
     let mut d = s.clone();
     if dz != 0.0 {
         let j = d.image() - 1;
-        d.rx_mut().surfaces[j].t += dz;
-        d.changed()?;
+        d.edit_raw(|p| {
+            p.surfaces[j].t += dz;
+            Ok(())
+        })?;
     }
     Ok(d)
 }
 
-/// [`defocus`] で、掃引の点で共有する光線の表 fb（[`crate::focus`]、使えない系は None）から追う系
+/// [`defocus`] で、掃引の点で共有する光線の表 fb（[`lensbench_core::focus`]、使えない系は None）から追う系
 fn defocus_shared(s: &System, dz: f64, fb: Option<&Arc<FocusBase>>) -> Result<System> {
     let mut d = defocus(s, dz)?;
     if let Some((fb, z)) = fb.and_then(|fb| Some((fb, fb.shift_of(&d)?))) {
@@ -92,8 +94,8 @@ impl FieldAxis {
 /// 横軸を振った MTF。tan・sag は格子（x = 横軸の点、y = 周波数。`tan[k][i]` は周波数 k・点 i）
 #[derive(Debug, Clone)]
 pub struct MtfSweep {
-    pub tan: crate::grid::Grid2,
-    pub sag: crate::grid::Grid2,
+    pub tan: lensbench_core::grid::Grid2,
+    pub sag: lensbench_core::grid::Grid2,
     pub warnings: Vec<String>,
 }
 
@@ -116,11 +118,13 @@ fn mtf_sweep(
     one: impl Fn(f64) -> Result<analysis::Mtf> + Sync + Send,
 ) -> MtfSweep {
     let nf = freqs.len();
-    let grid = || crate::grid::Grid2::new(x.to_vec(), freqs.to_vec(), vec![f64::NAN; x.len() * nf]);
+    let grid = || {
+        lensbench_core::grid::Grid2::new(x.to_vec(), freqs.to_vec(), vec![f64::NAN; x.len() * nf])
+    };
     let (mut tan, mut sag) = (grid(), grid());
     let mut warnings = Vec::new();
     // 点ごとに独立（周波数が少ないと 1 点の中の並列（周波数×向き）だけではコアが余るので、点でも並列にする。値は同じ）
-    let ms = crate::par::map(x, |&xi| one(xi));
+    let ms = lensbench_core::par::map(x, |&xi| one(xi));
     for ((i, &xi), m) in x.iter().enumerate().zip(ms) {
         match m {
             Ok(m) => {
@@ -181,12 +185,8 @@ fn without_vig(s: &System) -> (std::borrow::Cow<'_, System>, Option<String>) {
     if !has {
         return (std::borrow::Cow::Borrowed(s), None);
     }
-    let mut c = s.clone();
-    for f in c.rx_mut().fields.iter_mut() {
-        (f.vdx, f.vdy, f.vcx, f.vcy, f.van) = (0.0, 0.0, 0.0, 0.0, 0.0);
-    }
     (
-        std::borrow::Cow::Owned(c),
+        std::borrow::Cow::Owned(s.without_vignetting()),
         Some(
             "vignetting factors are not used (ignored in a field sweep, as in OpticStudio)".into(),
         ),
@@ -337,7 +337,7 @@ fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
             }
         }
     }
-    let c = crate::linalg::solve_or_zero(g, v);
+    let c = lensbench_core::linalg::solve_or_zero(g, v);
     Ok(rows
         .iter()
         .enumerate()
@@ -450,7 +450,7 @@ fn rms_sweep(
 ) -> RmsSweep {
     let mut warnings = Vec::new();
     // 点ごとに独立なので並列（警告は点の順）
-    let rms = crate::par::map(x, |&v| one(v))
+    let rms = lensbench_core::par::map(x, |&v| one(v))
         .into_iter()
         .zip(x)
         .map(|(r, &v)| {
@@ -474,8 +474,10 @@ fn field_at_wave(s: &System, w: usize, o: RmsOpts) -> Result<std::borrow::Cow<'_
         return Ok(std::borrow::Cow::Borrowed(s));
     }
     let mut d = s.clone();
-    d.rx_mut().field_wave = Some(w);
-    d.changed()?;
+    d.edit_raw(|p| {
+        p.field_wave = Some(w);
+        Ok(())
+    })?;
     Ok(std::borrow::Cow::Owned(d))
 }
 
@@ -561,13 +563,13 @@ mod tests {
                 }
             }
         }
-        let r = crate::linalg::solve_or_zero(g, v);
+        let r = lensbench_core::linalg::solve_or_zero(g, v);
         assert!(
             (r[0] - 1.5).abs() < 1e-12 && r[1] == 0.0 && (r[2] - 2.0).abs() < 1e-12,
             "{r:?}"
         );
         // 傾きの列がすべて 0 ならピストンは重み付き平均
-        let r = crate::linalg::solve_or_zero(
+        let r = lensbench_core::linalg::solve_or_zero(
             vec![vec![2.0, 0.0, 0.0], vec![0.0; 3], vec![0.0; 3]],
             vec![3.0, 0.0, 0.0],
         );
@@ -590,7 +592,7 @@ mod tests {
                 }
             }
         }
-        let r = crate::linalg::solve_or_zero(g, v);
+        let r = lensbench_core::linalg::solve_or_zero(g, v);
         assert!((r[0] - a).abs() < 1e-12 && (r[1] - b).abs() < 1e-12 && (r[2] - c).abs() < 1e-12);
     }
 

@@ -152,7 +152,8 @@ impl Cholesky {
 
 /// 内積（4 本に分けて足す。足す順は長さだけで決まる）
 #[inline]
-pub(crate) fn dot4(a: &[f64], b: &[f64]) -> f64 {
+#[doc(hidden)]
+pub fn dot4(a: &[f64], b: &[f64]) -> f64 {
     let n = a.len().min(b.len());
     let (a, b) = (&a[..n], &b[..n]);
     let mut s = [0.0f64; 4];

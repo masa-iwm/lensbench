@@ -25,9 +25,9 @@
 //! 種類ごとのキーは [`crate::term_spec`] の型で読み、知らないキーは誤り。スキーマは `docs/schema/terms.schema.json`
 //! （正式な綴りだけ。読みが受ける大文字の `type` はスキーマには無い）。
 
-use lensbench_core::analysis::ZernKind;
-use lensbench_core::fiber::FiberOpts;
-use lensbench_core::sweep::RmsRef;
+use lensbench_analysis::analysis::ZernKind;
+use lensbench_analysis::fiber::FiberOpts;
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{

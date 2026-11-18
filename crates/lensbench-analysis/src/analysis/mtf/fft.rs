@@ -80,18 +80,21 @@ pub(super) fn shifted_rows(
         (sum, miss)
     };
     let new_buf = || -> [Vec<f64>; 5] { Default::default() };
-    let rows: Vec<(C64, Vec<Miss>)> = if nr * gl.gu.len() >= 4096 && !crate::par::sequential() {
-        use rayon::prelude::*;
-        let cx = crate::par::current();
-        (0..nr)
-            .into_par_iter()
-            .with_min_len((1024 / gl.gu.len()).max(1))
-            .map_init(new_buf, |b, r| crate::par::with_ctx(&cx, || row(r, b)))
-            .collect()
-    } else {
-        let mut b = new_buf();
-        (0..nr).map(|r| row(r, &mut b)).collect()
-    };
+    let rows: Vec<(C64, Vec<Miss>)> =
+        if nr * gl.gu.len() >= 4096 && !lensbench_core::par::sequential() {
+            use rayon::prelude::*;
+            let cx = lensbench_core::par::current();
+            (0..nr)
+                .into_par_iter()
+                .with_min_len((1024 / gl.gu.len()).max(1))
+                .map_init(new_buf, |b, r| {
+                    lensbench_core::par::with_ctx(&cx, || row(r, b))
+                })
+                .collect()
+        } else {
+            let mut b = new_buf();
+            (0..nr).map(|r| row(r, &mut b)).collect()
+        };
     let mut miss: Vec<Miss> = Vec::new();
     for (sum, m) in rows {
         acc += sum;
@@ -125,7 +128,7 @@ pub(super) fn row_autocorr(
     // 行を決まった大きさの塊に分けて塊ごとに |F|² を足し、塊の順に足す（スレッド数によらず同じ値）
     const CH: usize = 16;
     let groups: Vec<usize> = (0..ns.div_ceil(CH)).collect();
-    let parts = crate::par::map(&groups, |&g| {
+    let parts = lensbench_core::par::map(&groups, |&g| {
         let mut buf = vec![zero; l];
         let mut scratch = vec![zero; fft.get_inplace_scratch_len()];
         let mut acc = vec![0.0; l];
@@ -172,7 +175,7 @@ pub(super) fn autocorr_at(r: &[C64], s: f64) -> C64 {
         return at(i0);
     }
     // 点 i0−1, i0, i0+1, i0+2（節点の番号 0..4 で u + 1 の位置）
-    let w = crate::interp::lagrange::<4>(u + 1.0);
+    let w = lensbench_core::interp::lagrange::<4>(u + 1.0);
     (0..4).map(|k| at(i0 - 1 + k as isize) * w[k]).sum()
 }
 
@@ -217,7 +220,7 @@ pub(super) fn wave_otf_fft(
             let mut col = [Vec::new(), Vec::new()];
             ip.eval_lines(false, cx[iy], cx[iy], &cx, row, &mut tmp, &mut col);
         };
-        if !crate::par::sequential() {
+        if !lensbench_core::par::sequential() {
             wv.par_chunks_mut(ns).enumerate().for_each(scoped(f));
         } else {
             wv.chunks_mut(ns).enumerate().for_each(f);

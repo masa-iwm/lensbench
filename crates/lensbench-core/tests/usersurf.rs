@@ -1,12 +1,13 @@
 //! 利用者定義の面: 画角 → 像高を与える理想レンズ `ideal_mapping` を、f 50 の理想レンズの系に置いて追う
 
+use lensbench_analysis::analysis;
 use lensbench_core::ext::{self, Ext};
 use lensbench_core::plugin::{Config, Value};
 use lensbench_core::surface::SurfType;
 use lensbench_core::system::PolIn;
 use lensbench_core::usersurf::{SurfaceInstance, SurfaceModel, UserSurf};
 use lensbench_core::Waves;
-use lensbench_core::{analysis, FieldSel, System};
+use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx;
 use std::sync::Arc;
 

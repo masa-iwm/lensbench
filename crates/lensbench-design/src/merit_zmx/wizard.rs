@@ -100,7 +100,7 @@ fn points(q: &Map<String, Value>) -> Vec<(f64, f64, f64)> {
         }
     } else {
         let (rings, arms) = (get("rings"), get("arms"));
-        let (u, wu) = lensbench_core::analysis::gauss_legendre(rings);
+        let (u, wu) = lensbench_analysis::analysis::gauss_legendre(rings);
         for i in 0..rings {
             let r = ((u[i] + 1.0) / 2.0).sqrt();
             for a in 0..arms {

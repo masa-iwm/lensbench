@@ -1,7 +1,7 @@
-//! Zernike の当てはめ（OPD の最小二乗。OpticStudio の Zernike Coefficients）。最小二乗は [`crate::linalg`]。
+//! Zernike の当てはめ（OPD の最小二乗。OpticStudio の Zernike Coefficients）。最小二乗は [`lensbench_core::linalg`]。
 
 use super::*;
-use crate::linalg::{dot4, lstsq_cols, Cholesky};
+use lensbench_core::linalg::{dot4, lstsq_cols, Cholesky};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZernKind {
@@ -323,7 +323,7 @@ pub(super) fn zern_pass(
         (g, atr, r)
     };
     let nch = v.len().div_ceil(ZCH);
-    let parts: Vec<_> = if crate::par::sequential() {
+    let parts: Vec<_> = if lensbench_core::par::sequential() {
         (0..nch).map(part).collect()
     } else {
         (0..nch).into_par_iter().map(scoped(part)).collect()

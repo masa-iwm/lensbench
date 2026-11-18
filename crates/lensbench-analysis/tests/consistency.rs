@@ -4,9 +4,9 @@
 //! - 中心遮蔽の系の PSF の MTF は輪帯瞳の式と合う
 //! - 瞳の標本不足・像の格子の外の光量を PSF・Huygens PSF が知らせ、自動の格子では知らせない
 
+use lensbench_analysis::analysis;
 use lensbench_analysis::huygens::{huygens_psf, HuygensOpts};
-use lensbench_core::analysis;
-use lensbench_core::psf::{self, Psf, PsfOpts};
+use lensbench_analysis::psf::{self, Psf, PsfOpts};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::Waves;

@@ -4,7 +4,7 @@
 //! - 標準面に非球面の係数を残した系は誤り（交点と法線で解釈が食い違わない）
 //! - 間隔の分割・恒等の座標ブレークで結果は変わらない、追跡できた ⇔ 有限、スレッド数で変わらない、入力で落ちない
 
-use lensbench_core::analysis;
+use lensbench_analysis::analysis;
 use lensbench_core::report::system_data;
 use lensbench_core::surface::Surface;
 use lensbench_core::system::FieldSel;

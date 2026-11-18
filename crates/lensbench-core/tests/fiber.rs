@@ -1,8 +1,8 @@
 //! ファイバ結合（fiber::fiber_coupling）をガウスの式と比べる。物体側・像側とも f 50 の近軸レンズの 4f 系
 //! （1:1 の結像で方向余弦がそのまま移る、収差なし）
 
+use lensbench_analysis::fiber::{fiber_coupling, FiberOpts};
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::fiber::{fiber_coupling, FiberOpts};
 use lensbench_core::system::System;
 use lensbench_formats::zmx;
 

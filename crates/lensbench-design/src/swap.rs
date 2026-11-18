@@ -16,10 +16,10 @@
 //!
 //! 候補の焦点距離はカタログの値（無ければ玉の .zmx の主波長の近軸の値）、径は面の半径の最大の 2 倍。
 
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::catalog::{LensCatalog, VendorKey};
 use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::sync::LockExt;
 use lensbench_core::{par, System};
 use lensbench_formats::zmx;

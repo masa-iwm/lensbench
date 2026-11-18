@@ -24,7 +24,8 @@ impl System {
 
     /// 視野 i の正規化視野
     /// 視野の指定の正規化座標。視野・波長の番号が範囲の外なら誤り（入力で落ちない）
-    pub(crate) fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
+    #[doc(hidden)]
+    pub fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
         if w >= self.wavelengths.len() {
             let (wn, nw) = (w + 1, self.wavelengths.len());
             invalid!("wavelength number {wn} ({nw} in all)");

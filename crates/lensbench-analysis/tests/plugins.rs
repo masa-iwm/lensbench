@@ -3,12 +3,12 @@ use lensbench_core::Waves;
 use std::path::Path;
 use std::sync::Arc;
 
-use lensbench_core::analysis::{self, MtfMethod, ZernKind};
+use lensbench_analysis::analysis::{self, MtfMethod, ZernKind};
+use lensbench_analysis::pop::{self, OutGrid, PopMethod, RayBeamOpts};
+use lensbench_analysis::psf::{self, PsfOpts};
+use lensbench_analysis::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::coating::Coatings;
 use lensbench_core::plugin::{run_many, Array, Arrays, Config, Context, Registry, Value};
-use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
-use lensbench_core::psf::{self, PsfOpts};
-use lensbench_core::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx::{self, LoadOptions};
 

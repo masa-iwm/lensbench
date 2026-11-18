@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use lensbench_analysis::analysis;
 use lensbench_core::system::Launch;
-use lensbench_core::{analysis, FieldSel, System};
+use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Value};

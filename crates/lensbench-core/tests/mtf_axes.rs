@@ -3,10 +3,11 @@
 //! 子午と球欠が入れ替わる
 
 use crate::common::root;
-use lensbench_core::analysis::{self, MtfAxes, MtfMethod};
+use lensbench_analysis::analysis::{self, MtfAxes, MtfMethod};
+use lensbench_analysis::psf;
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{psf, Waves};
+use lensbench_core::Waves;
 use lensbench_formats::zmx::{self, LoadOptions};
 
 /// A0（回転対称、角度の視野）の視野を、y の角度 h [°] と同じ向きの大きさ（tan の大きさ）で方位 0°（y）・90°（x）・

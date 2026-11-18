@@ -14,11 +14,11 @@ pub enum MtfDir {
 /// スポット・波面の項の瞳のガウス求積の点の置き方（r² に Gauss-Legendre の rings 本の輪 × 等間隔の腕）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Quad {
-    /// 腕 4 rings + 2 本（[`lensbench_core::analysis::pupil_gauss`]。少ない rings でも角度の求積が収束に近い）
+    /// 腕 4 rings + 2 本（[`lensbench_analysis::analysis::pupil_gauss`]。少ない rings でも角度の求積が収束に近い）
     #[default]
     Lensbench,
     /// OpticStudio 26.1 の RSCE・RSCH・RWCE・RWCH と同じ: 腕 2 rings 本を 90° 回して置く
-    /// （[`lensbench_core::analysis::pupil_gauss_os`]。.zmx から読んだ行の項）
+    /// （[`lensbench_analysis::analysis::pupil_gauss_os`]。.zmx から読んだ行の項）
     OpticStudio,
     /// 腕を与えた数だけ 0° から等間隔に置く（腕の角度 a·360°/arms）。OpticStudio の評価関数の Wizard の
     /// ガウス求積（GQ）と同じ
@@ -185,7 +185,7 @@ pub enum TermKind {
         reference: RmsRef,
         quad: Quad,
     },
-    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_core::analysis::mtf`]）
+    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_analysis::analysis::mtf`]）
     Mtf {
         field: FieldSel,
         wave: Option<usize>,
@@ -246,7 +246,7 @@ pub enum TermKind {
         upper: Option<bool>,
         target: f64,
     },
-    /// 1 本の光線の OPD [波] − target（[`lensbench_core::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
+    /// 1 本の光線の OPD [波] − target（[`lensbench_analysis::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
     Opd {
         field: FieldSel,
         wave: Option<usize>,
@@ -254,7 +254,7 @@ pub enum TermKind {
         py: f64,
         target: f64,
     },
-    /// Zernike 係数 [波] − target（[`lensbench_core::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり。
+    /// Zernike 係数 [波] − target（[`lensbench_analysis::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり。
     /// fit は当てはめる項の数（term 以上。None は term と 37 の大きい方）
     Zernike {
         field: FieldSel,
@@ -265,7 +265,7 @@ pub enum TermKind {
         n: usize,
         target: f64,
     },
-    /// 単一モードファイバへの結合効率（偏光なし）− target（[`lensbench_core::fiber::fiber_coupling`]、有限物体の系）
+    /// 単一モードファイバへの結合効率（偏光なし）− target（[`lensbench_analysis::fiber::fiber_coupling`]、有限物体の系）
     Coupling {
         wave: Option<usize>,
         opts: FiberOpts,

@@ -225,7 +225,7 @@ impl<'a> SysHost<'a> {
         self.opdc = if r.status.surf().is_some() {
             0.0
         } else {
-            crate::analysis::opd(s, field, &[x[2]], &[x[3]], Some(w), true)?.opd[0]
+            crate::opd::opd(s, field, &[x[2]], &[x[3]], Some(w), true)?.opd[0]
         };
         Ok(Flow::Go)
     }

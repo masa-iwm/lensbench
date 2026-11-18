@@ -100,7 +100,7 @@ pub struct Prescription {
     )]
     pub floating_clip: bool,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
-    /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）
+    /// だけ使う（lensbench-analysis の `sweep::RmsOpts::field_wave`）
     #[serde(skip)]
     pub field_wave: Option<usize>,
     pub coating_file: Option<PathBuf>,
@@ -395,6 +395,16 @@ impl System {
         Arc::make_mut(&mut self.rx)
     }
 
+    /// ケラレ係数（VDX・VDY・VCX・VCY・VAN）を 0 にした複製。係数は座標系・近軸量に効かないのでキャッシュは残す
+    /// （視野の掃引: OpticStudio の MTF vs Field・RMS vs Field は係数を使わない）
+    pub fn without_vignetting(&self) -> System {
+        let mut c = self.clone();
+        for f in c.rx_mut().fields.iter_mut() {
+            (f.vdx, f.vdy, f.vcx, f.vcy, f.van) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        }
+        c
+    }
+
     /// 文書
     pub fn prescription(&self) -> &Prescription {
         &self.rx
@@ -527,8 +537,9 @@ impl System {
         self.cache = Cache::default();
     }
 
-    /// 像面だけをずらした系の追跡に共有の表を使う（[`crate::sweep::defocus_shared`]）
-    pub(crate) fn set_focus(&mut self, f: crate::focus::FocusShift) {
+    /// 像面だけをずらした系の追跡に共有の表を使う（lensbench-analysis の `sweep::defocus_shared`）
+    #[doc(hidden)]
+    pub fn set_focus(&mut self, f: crate::focus::FocusShift) {
         self.cache.focus = Some(f);
         self.cache.pupils.clear();
     }

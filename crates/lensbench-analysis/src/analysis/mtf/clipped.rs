@@ -339,7 +339,7 @@ pub(super) fn clipped_otf(
     }
     let one = |(k, dir): (usize, usize)| -> Result<C64> {
         // GUI で系が変わったら途中でやめる（周波数・向きごとに確かめる）
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         let (sx, sy) = pupil_shift(jm, lam, dir);
         let dl = if dir == 0 { sx } else { sy } * freqs[k];
         let h = 0.5 * dl.abs();
@@ -379,7 +379,7 @@ pub(super) fn clipped_otf(
     let jobs: Vec<(usize, usize)> = (0..freqs.len())
         .flat_map(|k| dirs.iter().map(move |&d| (k, d)))
         .collect();
-    let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
+    let accs: Vec<Result<C64>> = if jobs.len() > 1 && !lensbench_core::par::sequential() {
         use rayon::prelude::*;
         jobs.par_iter().copied().map(scoped(one)).collect()
     } else {

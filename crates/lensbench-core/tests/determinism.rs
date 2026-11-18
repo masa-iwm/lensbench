@@ -1,9 +1,9 @@
 //! 追跡・解析の結果がスレッド数（1・2・4・既定）によらず同じビットになることを確かめる。
 //! 比べるのは f64 の Debug 表示（最短で元に戻る表記なので、ビットが違えば文字列も違う）。
 
-use lensbench_core::analysis::{self, ZernKind};
+use lensbench_analysis::analysis::{self, ZernKind};
+use lensbench_analysis::psf::{self, PsfOpts};
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{Aiming, FieldSel, PolIn};
 use lensbench_core::Waves;
 use lensbench_core::{with_threads, System};
@@ -62,7 +62,7 @@ fn fingerprint(name: &str) -> String {
         let fr: Vec<f64> = (0..32).map(|i| 2.5 * i as f64).collect();
         out += &format!(
             "{:?}",
-            lensbench_core::psf::geometric_mtf(&s, fs, Waves::All, 64, &fr, false).unwrap()
+            lensbench_analysis::psf::geometric_mtf(&s, fs, Waves::All, 64, &fr, false).unwrap()
         );
     }
     // PSF: 1 段目（瞳の行ごと）も 2 段目も並列になる大きさ

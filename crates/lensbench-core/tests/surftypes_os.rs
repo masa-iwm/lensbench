@@ -12,7 +12,8 @@
 
 use std::path::PathBuf;
 
-use lensbench_core::{analysis, FieldSel, System};
+use lensbench_analysis::analysis;
+use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx::{self, LoadOptions};
 use ndarray::{Array2, Array4};
 use ndarray_npy::NpzReader;

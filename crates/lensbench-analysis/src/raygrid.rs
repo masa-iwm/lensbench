@@ -6,14 +6,14 @@
 //! - 強度は幾何光学: 瞳の格子のセル 1 つを三角形 2 つに分け、三角形ごとに
 //!   ファイバのモードの重み（ファイバ端の方向余弦のガウス）× 方向余弦の面積 / 検出面の面積。
 //!   画素は、その中心を含む最初の三角形の値を取る（ねじれた三角形 = 折り返しは除く）。
-//! - 場は中心波長の偏光追跡の Jones ベクトル（検出面の局所 x・y、約束は exp(−i k L)、[`crate::phase`]）、
+//! - 場は中心波長の偏光追跡の Jones ベクトル（検出面の局所 x・y、約束は exp(−i k L)、[`lensbench_core::phase`]）、
 //!   光路長は追跡した波長ごと。画素の値は三角形の重心座標で補間する。
 
-use crate::coating::{Coatings, C64};
-use crate::math::V3;
-use crate::par::scoped;
-use crate::system::{FieldSel, Launch, PolIn, RecSel, System};
-use crate::{invalid, Result};
+use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::math::V3;
+use lensbench_core::par::scoped;
+use lensbench_core::system::{FieldSel, Launch, PolIn, RecSel, System};
+use lensbench_core::{invalid, Result};
 use rayon::prelude::*;
 
 fn czero() -> C64 {
@@ -296,7 +296,7 @@ pub fn rasterize_with(
         }
     };
     // 逐次の指定では rayon を使わない（fork した子プロセスでも動く）
-    if crate::par::sequential() {
+    if lensbench_core::par::sequential() {
         ok.chunks_mut(npx)
             .zip(ii.chunks_mut(npx))
             .zip(ll.chunks_mut(npx * nw))
@@ -539,7 +539,7 @@ fn trace_jones_in(
     let pg = PupilGrid { g };
     let (idx, pxs, pys) = if with_edge { pg.rays_rim() } else { pg.rays() };
     // 縁を求めるときは、けられた光線も値を残す（追跡はけられても続く）
-    let pass = |t: &crate::system::Trace, m: usize| {
+    let pass = |t: &lensbench_core::system::Trace, m: usize| {
         if with_edge {
             t.rays[m].status.is_ok()
         } else {
@@ -625,7 +625,7 @@ fn trace_jones_in(
         let of = sys.object_frame();
         for (m, &q) in idx.iter().enumerate() {
             // 物体の座標系へ（回転の列が軸）
-            let d = crate::math::mtv(&of.r, t0.k0[m]);
+            let d = lensbench_core::math::mtv(&of.r, t0.k0[m]);
             r.sx[q] = d[0];
             r.sy[q] = d[1];
         }
@@ -675,7 +675,7 @@ fn trace_jones_in(
         }
     }
     // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)、約束は
-    // [`crate::phase`] の exp(−i k L)）
+    // [`lensbench_core::phase`] の exp(−i k L)）
     let mut jones = vec![[[czero(); 2]; 2]; g * g];
     for (m, &q) in idx.iter().enumerate() {
         if !pass(&t0, m) || !good[q] {
@@ -730,7 +730,7 @@ fn trace_jones_in(
                 for (i, &q) in idx.iter().enumerate() {
                     let p = rec.xyz[i];
                     if good[q] && p[0].is_finite() {
-                        m[q] = crate::trace::aperture_margin(ap, p[0], p[1]);
+                        m[q] = lensbench_core::trace::aperture_margin(ap, p[0], p[1]);
                         at[q] = [p[0], p[1]];
                     }
                 }
@@ -745,7 +745,7 @@ fn trace_jones_in(
                         // 距離の、開口の面の交点での勾配（中心差分）/ 瞳での勾配の大きさ
                         let [x, y] = at[q];
                         let dl = 1e-6 * x.abs().max(y.abs()).max(1.0);
-                        let mg = |a: f64, b: f64| crate::trace::aperture_margin(ap, a, b);
+                        let mg = |a: f64, b: f64| lensbench_core::trace::aperture_margin(ap, a, b);
                         edge_dm[q] = if n.is_finite() {
                             [
                                 (mg(x + dl, y) - mg(x - dl, y)) / (2.0 * dl * n),

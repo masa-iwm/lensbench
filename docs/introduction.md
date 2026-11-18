@@ -16,7 +16,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 
 | ディレクトリ | 中身 |
 |---|---|
-| `crates/lensbench-core` | 光線追跡・解析のライブラリ |
+| `crates/lensbench-core` | 光線追跡のライブラリ（システム・追跡・ソルブ・OPD） |
 | `crates/lensbench-formats` | core の上のファイルの形式（.zmx の読込と書き出し） |
 | `crates/lensbench-step` | STEP（ISO 10303-21）の読み取り。依存なし |
 | `crates/lensbench-catalog` | カタログの検索・絞り込み・品の項目の補完、STEP からの寸法の測定（project の上） |
@@ -26,7 +26,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `crates/lensbench-design` | 評価関数の項・モンテカルロ公差・差し替え探索（設定と結果の JSON、公差の計算）、膜のモデルの当てはめと設計 |
 | `crates/lensbench-export` | 書き出し（レイアウトの 2D・3D・STEP、追跡結果の CSV・JSON・npz） |
 | `crates/lensbench-cad` | メーカーの品の CAD データ（公式の STEP）の取得・置き場・形の測定、膜のモデルの取得 |
-| `crates/lensbench-analysis` | 同梱のプラグイン: システムを追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
+| `crates/lensbench-analysis` | 実光線の解析（MTF・スポット・Zernike・波面・PSF・POP・焦点の掃引・ファイバ結合）と同梱のプラグイン: システムを追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
 | `crates/lensbench-engine` | 実行の層: 解析の登録簿・システムの読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
 | `crates/lensbench-cli` | コマンドライン（`lensbench`）。引数の解釈と serve の要求を運ぶ道（TCP・パイプ） |

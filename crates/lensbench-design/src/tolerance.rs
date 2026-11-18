@@ -42,9 +42,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::montecarlo::{self as tolerance, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::catalog::VendorKey;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
 use lensbench_optim::{DefaultMerit, DlsOpts, Problem, Var};
 use serde_json::{json, Value};

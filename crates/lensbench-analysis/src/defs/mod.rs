@@ -116,13 +116,13 @@ fn freqs_for(
         None => {
             let f = lensbench_core::FieldSel::Index(field);
             let w = w.unwrap_or(s.primary);
-            0.95 * lensbench_core::analysis::mtf_cutoff_axes(s, f, w, axes.core())?.min()
+            0.95 * crate::analysis::mtf_cutoff_axes(s, f, w, axes.core())?.min()
         }
     };
     auto_freqs(top, freq_steps)
 }
 
-/// MTF の子午・球欠の向き（core の [`lensbench_core::analysis::MtfAxes`]）
+/// MTF の子午・球欠の向き（core の [`crate::analysis::MtfAxes`]）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MtfDirs {
@@ -134,10 +134,10 @@ pub enum MtfDirs {
 }
 
 impl MtfDirs {
-    pub(super) fn core(self) -> lensbench_core::analysis::MtfAxes {
+    pub(super) fn core(self) -> crate::analysis::MtfAxes {
         match self {
-            MtfDirs::Field => lensbench_core::analysis::MtfAxes::Field,
-            MtfDirs::Pupil => lensbench_core::analysis::MtfAxes::Pupil,
+            MtfDirs::Field => crate::analysis::MtfAxes::Field,
+            MtfDirs::Pupil => crate::analysis::MtfAxes::Pupil,
         }
     }
 }
@@ -154,10 +154,10 @@ pub enum Axis {
 }
 
 impl Axis {
-    fn core(self) -> lensbench_core::sweep::FieldAxis {
+    fn core(self) -> crate::sweep::FieldAxis {
         match self {
-            Axis::X => lensbench_core::sweep::FieldAxis::X,
-            Axis::Y => lensbench_core::sweep::FieldAxis::Y,
+            Axis::X => crate::sweep::FieldAxis::X,
+            Axis::Y => crate::sweep::FieldAxis::Y,
         }
     }
 }
@@ -203,7 +203,7 @@ pub struct WaveMtf {
 }
 
 impl MtfRow {
-    fn of(field: usize, m: lensbench_core::analysis::Mtf) -> MtfRow {
+    fn of(field: usize, m: crate::analysis::Mtf) -> MtfRow {
         MtfRow {
             field: field + 1,
             freqs: m.freqs,

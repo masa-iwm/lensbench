@@ -3,7 +3,7 @@
 use lensbench_core::Waves;
 use std::path::PathBuf;
 
-use lensbench_core::analysis::{self, ZernKind};
+use crate::analysis::{self, ZernKind};
 use lensbench_core::coating::Coatings;
 use lensbench_core::{FieldSel, Result};
 use schemars::JsonSchema;

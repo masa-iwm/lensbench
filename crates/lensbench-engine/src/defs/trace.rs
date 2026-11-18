@@ -3,7 +3,8 @@
 use std::f64::consts::PI;
 use std::path::{Path, PathBuf};
 
-use lensbench_core::{elements, pop, Error, FieldSel, Result, System};
+use lensbench_analysis::pop;
+use lensbench_core::{elements, Error, FieldSel, Result, System};
 use lensbench_export::{scene, table};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

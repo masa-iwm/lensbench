@@ -5,11 +5,11 @@
 //! - Cosine Cubed の振幅は物点から入射瞳の点への向きの (cos θ / cos θ₀)^{3/2}、無限遠物体では一様
 //! - 一様なら振幅を入れる前とビット単位で同じ、理想レンズだけの系の膜・偏光の振幅は 1
 
+use lensbench_analysis::analysis::{self, MtfMethod};
 use lensbench_analysis::huygens::{huygens_psf, huygens_psf_with, HuygensOpts};
+use lensbench_analysis::psf::{self, PsfOpts};
 use lensbench_analysis::pupil_amp::PolAmp;
-use lensbench_core::analysis::{self, MtfMethod};
 use lensbench_core::coating::Coatings;
-use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::pupil::{ApodMap, Apodization};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::Waves;
@@ -423,13 +423,13 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     let (u, g) = (base(""), base("GFAC 8 1\n"));
     assert_eq!(g.apodization, Apodization::Gaussian(8.0));
     let f = FieldSel::Index(0);
-    let o = lensbench_core::sweep::RmsOpts {
+    let o = lensbench_analysis::sweep::RmsOpts {
         rings: 20,
         ..Default::default()
     };
     let (ru, rg) = (
-        lensbench_core::sweep::rms(&u, f, Waves::One(0), o).unwrap(),
-        lensbench_core::sweep::rms(&g, f, Waves::One(0), o).unwrap(),
+        lensbench_analysis::sweep::rms(&u, f, Waves::One(0), o).unwrap(),
+        lensbench_analysis::sweep::rms(&g, f, Waves::One(0), o).unwrap(),
     );
     let c = ru.spot * 2f64.sqrt();
     let gg = 8.0f64;
@@ -460,7 +460,7 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     }
     // 一様（Gaussian(0)）はビット単位で同じ
     let z = base("GFAC 0 1\n");
-    let rz = lensbench_core::sweep::rms(&z, f, Waves::One(0), o).unwrap();
+    let rz = lensbench_analysis::sweep::rms(&z, f, Waves::One(0), o).unwrap();
     assert_eq!(rz.spot.to_bits(), ru.spot.to_bits());
     assert_eq!(rz.wfe.to_bits(), ru.wfe.to_bits());
     let mu = psf::geometric_mtf(&u, f, Waves::One(0), 64, &freqs, false).unwrap();

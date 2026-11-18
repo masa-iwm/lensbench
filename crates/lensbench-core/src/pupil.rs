@@ -7,10 +7,10 @@
 //!
 //! 標本の並びはどの格子も行 = y が外、x が内（[`PupilSamples`]）。
 
-use crate::analysis::{opd_chief, to_ref_plane_point};
 use crate::error::Result;
 use crate::invalid;
 use crate::math::V3;
+use crate::opd::{opd_chief, to_ref_plane_point};
 use crate::system::{FieldSel, RayBuf, System, Trace};
 use std::sync::{Arc, Mutex};
 
@@ -164,10 +164,8 @@ impl PupilGrid {
                 for (iy, &cy) in g.iter().enumerate() {
                     for (ix, &cx) in g.iter().enumerate() {
                         let (f, qx, qy) = match *self {
-                            PupilGrid::Sheared { q, .. } => {
-                                crate::psf::cell_frac_mapped(q, cx, cy, h)
-                            }
-                            _ => crate::psf::cell_frac(cx, cy, h),
+                            PupilGrid::Sheared { q, .. } => cell_frac_mapped(q, cx, cy, h),
+                            _ => cell_frac(cx, cy, h),
                         };
                         if f > 0.0 {
                             s.px.push(qx);
@@ -180,7 +178,7 @@ impl PupilGrid {
             }
             PupilGrid::Gauss { rings, arms } => {
                 let arms = arms.unwrap_or(4 * rings + 2);
-                let (u, wu) = crate::analysis::gauss_legendre(rings);
+                let (u, wu) = crate::opd::gauss_legendre(rings);
                 for i in 0..rings {
                     let r = ((u[i] + 1.0) / 2.0).sqrt();
                     for a in 0..arms {
@@ -719,6 +717,74 @@ pub fn wave_weight(
         }
     }
     Ok(if den > 0.0 { k * num / den } else { 0.0 })
+}
+
+/// 瞳の区間 [a, a + h]² の単位円内の面積の割合（8×8 の小区間の中心で数える）と、円内の部分の中心の近似
+#[doc(hidden)]
+pub fn cell_frac(cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
+    let r0 = cx.hypot(cy);
+    let half = 0.5 * h * std::f64::consts::SQRT_2;
+    if r0 + half <= 1.0 {
+        return (1.0, cx, cy);
+    }
+    if r0 - half >= 1.0 {
+        return (0.0, cx, cy);
+    }
+    let k = 8;
+    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
+    for a in 0..k {
+        for b in 0..k {
+            let x = cx + h * ((a as f64 + 0.5) / k as f64 - 0.5);
+            let y = cy + h * ((b as f64 + 0.5) / k as f64 - 0.5);
+            if x * x + y * y <= 1.0 {
+                n += 1;
+                sx += x;
+                sy += y;
+            }
+        }
+    }
+    if n == 0 {
+        return (0.0, cx, cy);
+    }
+    let f = n as f64 / (k * k) as f64;
+    (f, sx / n as f64, sy / n as f64)
+}
+
+/// [`cell_frac`] の、区間を q で写したもの: 区間（中心 (cx, cy)、一辺 h）を p = q c で写した平行四辺形の単位円内の面積の
+/// 割合と、円内の部分の中心（p の座標）
+#[doc(hidden)]
+pub fn cell_frac_mapped(q: [[f64; 2]; 2], cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
+    let map = |x: f64, y: f64| (q[0][0] * x + q[0][1] * y, q[1][0] * x + q[1][1] * y);
+    let (px, py) = map(cx, cy);
+    let r0 = px.hypot(py);
+    let (u, v) = map(0.5 * h, 0.5 * h);
+    let (u2, v2) = map(0.5 * h, -0.5 * h);
+    let half = u.hypot(v).max(u2.hypot(v2));
+    if r0 + half <= 1.0 {
+        return (1.0, px, py);
+    }
+    if r0 - half >= 1.0 {
+        return (0.0, px, py);
+    }
+    let k = 8;
+    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
+    for a in 0..k {
+        for b in 0..k {
+            let x = cx + h * ((a as f64 + 0.5) / k as f64 - 0.5);
+            let y = cy + h * ((b as f64 + 0.5) / k as f64 - 0.5);
+            let (x, y) = map(x, y);
+            if x * x + y * y <= 1.0 {
+                n += 1;
+                sx += x;
+                sy += y;
+            }
+        }
+    }
+    if n == 0 {
+        return (0.0, px, py);
+    }
+    let f = n as f64 / (k * k) as f64;
+    (f, sx / n as f64, sy / n as f64)
 }
 
 #[cfg(test)]

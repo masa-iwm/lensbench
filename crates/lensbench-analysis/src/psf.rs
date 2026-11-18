@@ -13,14 +13,15 @@
 //! Gauss-Legendre の求積で光線を選ぶ）。球欠は x、子午は y の周波数。
 
 use crate::analysis::{lens_quad, mtf_cutoff_axes, pupil_jacobian, LensGl, MtfAxes};
-use crate::coating::C64;
-use crate::error::Result;
-use crate::grid::Grid2;
-use crate::invalid;
-use crate::par::scoped;
-use crate::pupil::{PupilAmp, PupilFunction, PupilGrid};
-use crate::system::{FieldSel, System};
-use crate::{TanSag, Waves};
+use lensbench_core::coating::C64;
+use lensbench_core::error::Result;
+use lensbench_core::grid::Grid2;
+use lensbench_core::invalid;
+use lensbench_core::par::scoped;
+pub use lensbench_core::pupil::{cell_frac, cell_frac_mapped};
+use lensbench_core::pupil::{PupilAmp, PupilFunction, PupilGrid};
+use lensbench_core::system::{FieldSel, System};
+use lensbench_core::{TanSag, Waves};
 
 /// 回折 PSF
 #[derive(Debug, Clone)]
@@ -160,37 +161,6 @@ impl Default for PsfOpts {
     }
 }
 
-/// 瞳の区間 [a, a + h]² の単位円内の面積の割合（8×8 の小区間の中心で数える）と、円内の部分の中心の近似
-#[doc(hidden)]
-pub fn cell_frac(cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
-    let r0 = cx.hypot(cy);
-    let half = 0.5 * h * std::f64::consts::SQRT_2;
-    if r0 + half <= 1.0 {
-        return (1.0, cx, cy);
-    }
-    if r0 - half >= 1.0 {
-        return (0.0, cx, cy);
-    }
-    let k = 8;
-    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
-    for a in 0..k {
-        for b in 0..k {
-            let x = cx + h * ((a as f64 + 0.5) / k as f64 - 0.5);
-            let y = cy + h * ((b as f64 + 0.5) / k as f64 - 0.5);
-            if x * x + y * y <= 1.0 {
-                n += 1;
-                sx += x;
-                sy += y;
-            }
-        }
-    }
-    if n == 0 {
-        return (0.0, cx, cy);
-    }
-    let f = n as f64 / (k * k) as f64;
-    (f, sx / n as f64, sy / n as f64)
-}
-
 /// 主光線（向き k）に垂直な面の単位ベクトル e1（x 寄り）・e2（y 寄り）
 fn perp_basis(k: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -238,53 +208,17 @@ pub fn plane_slopes(s: &System, jm: [[f64; 2]; 2], k: [f64; 3], plane: PsfPlane)
 /// （x・y の両方に角度のある視野で出る）があると x と y の変換に分かれない。瞳の格子の点 c（区間の中心、[−1, 1]²）を
 /// p = Q c、Q = J⁻¹ diag(ga, gb)（ga・gb は [`plane_slopes`] の値）で追うと J Q = diag(ga, gb) なので位相は
 /// x ga c_x + y gb c_y に分かれ、行列の DFT がそのまま使える。単位円は c の上で [−1, 1]² に内接する楕円になる。
-/// J が対角（非対角が対角の [`crate::tol::JACOBIAN_REL`] 以下）なら None（写さない）
+/// J が対角（非対角が対角の [`lensbench_core::tol::JACOBIAN_REL`] 以下）なら None（写さない）
 #[doc(hidden)]
 pub fn image_shear(jm: [[f64; 2]; 2]) -> Option<[[f64; 2]; 2]> {
     let [[a, b], [c, d]] = jm;
-    let r = crate::tol::JACOBIAN_REL;
+    let r = lensbench_core::tol::JACOBIAN_REL;
     if b.abs() <= r * a.abs() && c.abs() <= r * d.abs() {
         return None;
     }
     let det = a * d - b * c;
     let (ga, gb) = (a.signum() * a.hypot(b), d.signum() * c.hypot(d));
     Some([[d * ga / det, -b * gb / det], [-c * ga / det, a * gb / det]])
-}
-
-/// [`cell_frac`] の、区間を q で写したもの: 区間（中心 (cx, cy)、一辺 h）を p = q c で写した平行四辺形の単位円内の面積の
-/// 割合と、円内の部分の中心（p の座標）
-pub(crate) fn cell_frac_mapped(q: [[f64; 2]; 2], cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
-    let map = |x: f64, y: f64| (q[0][0] * x + q[0][1] * y, q[1][0] * x + q[1][1] * y);
-    let (px, py) = map(cx, cy);
-    let r0 = px.hypot(py);
-    let (u, v) = map(0.5 * h, 0.5 * h);
-    let (u2, v2) = map(0.5 * h, -0.5 * h);
-    let half = u.hypot(v).max(u2.hypot(v2));
-    if r0 + half <= 1.0 {
-        return (1.0, px, py);
-    }
-    if r0 - half >= 1.0 {
-        return (0.0, px, py);
-    }
-    let k = 8;
-    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
-    for a in 0..k {
-        for b in 0..k {
-            let x = cx + h * ((a as f64 + 0.5) / k as f64 - 0.5);
-            let y = cy + h * ((b as f64 + 0.5) / k as f64 - 0.5);
-            let (x, y) = map(x, y);
-            if x * x + y * y <= 1.0 {
-                n += 1;
-                sx += x;
-                sy += y;
-            }
-        }
-    }
-    if n == 0 {
-        return (0.0, px, py);
-    }
-    let f = n as f64 / (k * k) as f64;
-    (f, sx / n as f64, sy / n as f64)
 }
 
 fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
@@ -307,7 +241,7 @@ pub fn psf(s: &System, field: FieldSel, w: Waves, o: PsfOpts) -> Result<Psf> {
 }
 
 /// [`psf`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す。多色では
-/// 各波長の全強度を、重み × 透過した光量の割合に比例させる（[`crate::pupil::wave_weight`]）
+/// 各波長の全強度を、重み × 透過した光量の割合に比例させる（[`lensbench_core::pupil::wave_weight`]）
 pub fn psf_with(
     s: &System,
     field: FieldSel,
@@ -425,8 +359,8 @@ fn psf_once(
     let (mut norm, mut wsum) = (0.0, 0.0);
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for &wi in &ws {
-        crate::par::check_cancel()?;
-        let k = crate::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
+        lensbench_core::par::check_cancel()?;
+        let k = lensbench_core::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if !(k > 0.0) {
             continue;
         }
@@ -475,7 +409,7 @@ fn psf_once(
         let (n0, m0) = (0.5 - 0.5 * np as f64, -half);
         let cx = Czt::new(a * h * pixel.0, np, n0, ni, m0);
         let cy = Czt::new(b * h * pixel.1, np, n0, ni, m0);
-        let big = np * ni >= 1 << 14 && !crate::par::sequential();
+        let big = np * ni >= 1 << 14 && !lensbench_core::par::sequential();
         // 1 段目: 各瞳の行 iy について x 方向の変換 G[iy][mx]。行は互いに独立なので、大きければ並列に
         let stage1 = |row: &Vec<C64>| -> Vec<C64> { cx.apply(row) };
         let g: Vec<Vec<C64>> = if big {
@@ -664,7 +598,7 @@ pub fn geometric_mtf_axes(
     // 波長ごとの (重み / 有効な光線の重みの和, 光線の位置と求積の重み, 遮断周波数)
     let mut sets = Vec::new();
     for &wi in &ws {
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         let k = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
         if !(k > 0.0) {
             continue;
@@ -721,7 +655,7 @@ pub fn geometric_mtf_axes(
         })
         .collect();
     // 周波数ごとの (球欠, 子午)。周波数は互いに独立なので、点が多ければ並列に（周波数の中の和の順は変えないので同じビット）。
-    // 位相因子は [`crate::trig::cis_scaled`]（MTF・Huygens と同じ。libm の sin・cos との差は丸めの範囲）
+    // 位相因子は [`lensbench_core::trig::cis_scaled`]（MTF・Huygens と同じ。libm の sin・cos との差は丸めの範囲）
     let one = |f: f64| -> (f64, f64) {
         let ph = 2.0 * std::f64::consts::PI * f;
         let (mut a, mut b) = (C64::new(0.0, 0.0), C64::new(0.0, 0.0));
@@ -731,7 +665,7 @@ pub fn geometric_mtf_axes(
             arg.extend(pos.iter().map(|&x| ph * x));
             out.clear();
             out.resize(pos.len(), C64::new(0.0, 0.0));
-            crate::trig::cis_scaled(&arg, wq, &mut out);
+            lensbench_core::trig::cis_scaled(&arg, wq, &mut out);
             let mut acc = C64::new(0.0, 0.0);
             for &c in &out {
                 acc += c;
@@ -754,7 +688,8 @@ pub fn geometric_mtf_axes(
         (a.norm() / wsum, b.norm() / wsum)
     };
     let npts: usize = sets.iter().map(|x| x.1.len()).sum();
-    let st: Vec<(f64, f64)> = if freqs.len() * npts >= 1 << 16 && !crate::par::sequential() {
+    let st: Vec<(f64, f64)> = if freqs.len() * npts >= 1 << 16 && !lensbench_core::par::sequential()
+    {
         use rayon::prelude::*;
         freqs.par_iter().map(scoped(|&f: &f64| one(f))).collect()
     } else {

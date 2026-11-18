@@ -1,6 +1,6 @@
 //! 系を追跡する解析を、解析のプラグイン（`lensbench_core::plugin`）として登録する同梱の crate。
 //!
-//! 計算は core（`lensbench_core::analysis`・`lensbench_core::psf`）のまま、名前・設定・配列の約束で包む。
+//! 計算は core（`crate::analysis`・`crate::psf`）のまま、名前・設定・配列の約束で包む。
 //! 結果は core の関数を直接呼んだ値とビット一致する。どれも入力は `field`（数 1 つなら視野の番号（1 始まり）、
 //! 2 個なら正規化視野 (hx, hy)）で、系は `Context` で受け取る。`wave` は波長の番号（1 始まり、省けば全波長の
 //! 重み付き。wavefront・zernike は省けば主波長）。
@@ -27,18 +27,18 @@
 use lensbench_core::Waves;
 use std::sync::Arc;
 
+use crate::analysis::{self, MtfMethod, ZernKind};
 use crate::ghost;
 use crate::huygens::{self, HuygensOpts};
 use crate::interference::{self, PupilOpts};
-use lensbench_core::analysis::{self, MtfMethod, ZernKind};
+use crate::pop::{self, OutGrid, PopMethod, RayBeamOpts};
+use crate::psf::{self, PsfOpts, PsfPlane};
+use crate::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::coating::Coatings;
 use lensbench_core::plugin::{
     check_wave, field_sel, Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance,
     Kind, OutputSpec, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
 };
-use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
-use lensbench_core::psf::{self, PsfOpts, PsfPlane};
-use lensbench_core::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::{invalid, FieldSel, Result, System};
 
 /// 同梱の解析を `reg` に登録する

@@ -1,8 +1,8 @@
 //! 簡易 POPを解析解と照合する: 円形開口の軸上（Fresnel・Rayleigh-Sommerfeld の閉じた式）、
 //! 正方形開口の断面（Fresnel 積分）、集光の Airy 像と軸上のデフォーカス、光線から作った場（理想レンズ）。
 
+use lensbench_analysis::pop::{self, Beam, OutGrid, Pilot, PopMethod, RayBeamOpts};
 use lensbench_core::coating::C64;
-use lensbench_core::pop::{self, Beam, OutGrid, Pilot, PopMethod, RayBeamOpts};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::FieldSel;
 use std::f64::consts::PI;
@@ -484,9 +484,9 @@ fn a0() -> lensbench_core::System {
 fn real_lens_peak_matches_strehl_from_opd() {
     let s = a0();
     let w = 1;
-    let (px, py) = lensbench_core::analysis::pupil_grid(201);
-    let o =
-        lensbench_core::analysis::opd(&s, FieldSel::Index(0), &px, &py, Some(w), false).unwrap();
+    let (px, py) = lensbench_analysis::analysis::pupil_grid(201);
+    let o = lensbench_analysis::analysis::opd(&s, FieldSel::Index(0), &px, &py, Some(w), false)
+        .unwrap();
     let (mut z, mut n) = (C64::new(0.0, 0.0), 0.0);
     for (i, v) in o.opd.iter().enumerate() {
         if o.ok(i) {

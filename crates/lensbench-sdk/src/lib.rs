@@ -49,7 +49,7 @@ pub mod system {
 
 /// 追跡の要求と結果
 pub mod trace {
-    pub use lensbench_core::raygrid::RayGrid;
+    pub use lensbench_analysis::raygrid::RayGrid;
     pub use lensbench_core::system::{
         Cols, FieldSel, Launch, ObjSpec, PolIn, PolTrace, RayBuf, RecSel, Trace, TraceOpts,
     };

@@ -3453,7 +3453,7 @@
           "type": "object"
         },
         {
-          "description": "厚さ: 軸上の視野・主波長の実光線（瞳 (0, zone)）の像面での OPD [波] = opd（OPDZ OPD 帯）。OPD は\n[`crate::analysis::opd`]（OpticStudio の光線の OPD、OPDC と同じ）",
+          "description": "厚さ: 軸上の視野・主波長の実光線（瞳 (0, zone)）の像面での OPD [波] = opd（OPDZ OPD 帯）。OPD は\n[`crate::opd::opd`]（OpticStudio の光線の OPD、OPDC と同じ）",
           "properties": {
             "opd": {
               "anyOf": [

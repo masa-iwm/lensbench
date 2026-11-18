@@ -6,7 +6,7 @@ use crate::tol::{aperture_edge, APERTURE_EDGE};
 
 /// 開口の外か（遮蔽なら内側が「外」）。pl は面の局所座標の交点
 #[inline]
-pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
+pub fn aperture_out(a: Aperture, pl: V3) -> bool {
     match a {
         Aperture::Circular { min, max, dx, dy } => {
             let (u, v) = (pl[0] - dx, pl[1] - dy);
@@ -57,7 +57,7 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
 
 /// 開口の縁までの符号付きの距離 [mm]（通る側が正、`aperture_out` の境界で 0）。x y は面の局所座標の交点。
 /// 楕円は半軸で正規化した半径からの近似（符号と 0 の位置は正しい）。スパイダーは腕の帯までの距離
-pub(crate) fn aperture_margin(a: Aperture, x: f64, y: f64) -> f64 {
+pub fn aperture_margin(a: Aperture, x: f64, y: f64) -> f64 {
     let ring = |u: f64, v: f64, min: f64, max: f64| {
         let r = u.hypot(v);
         let out = max - r;

@@ -1,9 +1,10 @@
 //! 回折 MTF・スルーフォーカス・フィールド MTF・幾何 MTF・Huygens MTF
 
+use crate::analysis::{self, MtfMethod};
 use crate::huygens::{self, HuygensOpts};
-use lensbench_core::analysis::{self, MtfMethod};
+use crate::{psf, sweep};
 use lensbench_core::Waves;
-use lensbench_core::{psf, sweep, Error, FieldSel, Result};
+use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

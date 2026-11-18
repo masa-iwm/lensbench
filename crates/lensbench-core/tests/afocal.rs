@@ -1,8 +1,8 @@
 //! アフォーカル像空間（.zmx の FTYP の 7 番目）: 波面・Zernike を射出瞳の位置で主光線に垂直な平面を
 //! 基準に測る。OpticStudio との照合は別の基準（公開していない。8 コンフィグのリレー系、Zernike 37 項が 1.2e-7 波で一致）
 
-use lensbench_core::analysis::{self, ZernKind};
-use lensbench_core::psf::{self, PsfOpts};
+use lensbench_analysis::analysis::{self, ZernKind};
+use lensbench_analysis::psf::{self, PsfOpts};
 use lensbench_core::system::{AfocalUnit, FieldSel, System};
 use lensbench_core::Waves;
 use lensbench_formats::zmx;

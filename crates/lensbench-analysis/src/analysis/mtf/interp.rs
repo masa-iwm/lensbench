@@ -149,7 +149,7 @@ pub(super) const LAG: usize = 6;
 impl PupilInterp {
     /// 一辺 n 区間で [-1, 1] を覆い、補間の足が届くよう外側に 3 点ずつ足す。追うのは [`PupilInterp::sampled`] の点だけ
     fn new(s: &System, field: FieldSel, w: usize, n: usize, fr: &MtfFrame) -> Result<PupilInterp> {
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         let h = 2.0 / n as f64;
         let pad = LAG / 2;
         let m = n + 1 + 2 * pad;
@@ -203,7 +203,7 @@ impl PupilInterp {
         let m = self.m;
         let ok = |i: usize| {
             let (x, y) = self.node(i);
-            x.hypot(y) <= 1.0 + crate::tol::PUPIL_RIM && self.w[i].is_finite()
+            x.hypot(y) <= 1.0 + lensbench_core::tol::PUPIL_RIM && self.w[i].is_finite()
         };
         let mut g: f64 = 0.0;
         for iy in 0..m {
@@ -252,7 +252,7 @@ impl PupilInterp {
         let i = t as isize - (LAG as isize / 2 - 1);
         debug_assert!(i >= 0 && i as usize + LAG <= self.m);
         let u = t - i as f64; // 足の点 0..LAG に対する位置
-        let wv = crate::interp::lagrange::<LAG>(u);
+        let wv = lensbench_core::interp::lagrange::<LAG>(u);
         Some((wv, i as usize))
     }
 }
@@ -293,7 +293,7 @@ pub(super) fn opd_at(
                     *o = v;
                 }
             };
-            if x.len() >= 4096 && !crate::par::sequential() {
+            if x.len() >= 4096 && !lensbench_core::par::sequential() {
                 out.par_iter_mut()
                     .enumerate()
                     .with_min_len(1024)
@@ -425,7 +425,7 @@ impl PupilInterp {
 /// 子午と球欠の MTF が同じになるか（軸上の回転対称な系）: 格子の OPD が対称（[`PupilInterp::symmetric`]）で、
 /// 瞳の縮尺 J が x・y で同じ
 pub(super) fn axis_symmetric(jm: &[[f64; 2]; 2], ip: &PupilInterp) -> bool {
-    let a = jm[0][0].abs() * crate::tol::JACOBIAN_REL;
+    let a = jm[0][0].abs() * lensbench_core::tol::JACOBIAN_REL;
     (jm[0][0] - jm[1][1]).abs() <= a && jm[0][1].abs() <= a && jm[1][0].abs() <= a && ip.symmetric()
 }
 

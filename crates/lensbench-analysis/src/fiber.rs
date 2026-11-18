@@ -17,12 +17,12 @@
 //! 偏光込みでは、送り側の局所 x・y の偏光ごとに、出射電場の像面の局所 x・y 成分で同じ和をとった 2 × 2 の複素行列
 //! （[`Coupling::jones`]）を返す。入射偏光 e の結合は |C e|²（受け側の 2 つの偏光モードの和）。
 
-use crate::coating::{Coatings, C64};
-use crate::error::Result;
-use crate::invalid;
-use crate::math::*;
-use crate::surface::Aperture;
-use crate::system::{Launch, PolIn, RecSel, System, Trace};
+use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::error::Result;
+use lensbench_core::invalid;
+use lensbench_core::math::*;
+use lensbench_core::surface::Aperture;
+use lensbench_core::system::{Launch, PolIn, RecSel, System, Trace};
 
 /// 結合の計算の設定
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -222,7 +222,7 @@ pub fn fiber_coupling(
     if !(o.na_source > 0.0 && o.na_receiver > 0.0) {
         invalid!("NA must be positive");
     }
-    crate::waves::index(w + 1, s.wavelengths.len())?;
+    lensbench_core::waves::index(w + 1, s.wavelengths.len())?;
     let n0 = s.n(0)[w];
     let n1 = s.image_index(w);
     let smax = o.na_max.unwrap_or((3.0 * o.na_source / n0).min(0.999));
@@ -265,7 +265,7 @@ pub fn fiber_coupling(
     } else {
         RecSel::Off
     };
-    let (t, e): (Trace, Option<crate::system::PolField>) = match coat {
+    let (t, e): (Trace, Option<lensbench_core::system::PolField>) = match coat {
         Some(c) => {
             let p = s.trace_pol_launch(&launch, w, PolIn::new(&pols, c).no_phase(), rec)?;
             (p.trace, Some(p.e))

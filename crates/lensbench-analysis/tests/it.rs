@@ -10,6 +10,7 @@ mod ghost;
 mod huygens;
 mod huygens_refs;
 mod obsc_mtf;
+mod plugin_system;
 mod plugins;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）

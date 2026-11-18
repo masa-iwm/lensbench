@@ -5,7 +5,7 @@
 //! pop.json がない系は飛ばす。
 
 use crate::common::root;
-use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
+use lensbench_analysis::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::system::FieldSel;
 use lensbench_formats::zmx::{self, LoadOptions};
 use serde_json::Value;

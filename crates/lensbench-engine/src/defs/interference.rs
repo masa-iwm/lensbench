@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use lensbench_analysis::interference::{self, DetectorOpts, Polarized, PupilOpts};
+use lensbench_analysis::raygrid::InputPol;
 use lensbench_core::coating::Coatings;
-use lensbench_core::raygrid::InputPol;
 use lensbench_core::{report, Error, FieldSel, Result};
 use lensbench_export::image::{self, ImageFormat};
 use schemars::JsonSchema;

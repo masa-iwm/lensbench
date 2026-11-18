@@ -1,10 +1,10 @@
 //! Huygens PSF・Huygens MTFの性質: 軸上・斜めの視野で FFT PSF（像面の上）と一致、収差のない系で回折限界、傾いた像面で
 //! 像面の上の座標（主光線に垂直な面の 1/cos 倍に伸びる）になること。OpticStudio との照合は huygens_refs.rs。
 
+use lensbench_analysis::analysis;
 use lensbench_analysis::huygens::{huygens_mtf, huygens_mtf_axes, huygens_psf, HuygensOpts};
-use lensbench_core::analysis;
+use lensbench_analysis::psf::{self, diffraction_limit, PsfOpts};
 use lensbench_core::grid::Grid2;
-use lensbench_core::psf::{self, diffraction_limit, PsfOpts};
 use lensbench_core::surface::Surface;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::Waves;

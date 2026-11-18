@@ -8,7 +8,7 @@
 //! （理想レンズの積分モード D2 は 5e-5）、ありは 2e-3。ガラスはテスト用カタログ tests/glass（refractiveindex.info、CC0）。
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験から呼ぶ照合の中身。合わなければ panic で知らせる
 
-use lensbench_core::analysis::{self, ZernKind};
+use lensbench_analysis::analysis::{self, ZernKind};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::report;
 use lensbench_core::system::{Aiming, FieldSel, FieldType};

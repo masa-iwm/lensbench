@@ -1,9 +1,9 @@
 //! カタログレンズの差し替え探索
 
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
 use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::sweep::RmsRef;
 use lensbench_design::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts};
 use lensbench_project::{expand, Env, ExpandOpts, Project};

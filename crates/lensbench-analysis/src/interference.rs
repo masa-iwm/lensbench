@@ -6,14 +6,14 @@
 //!   格子は OpticStudio の Interferogram と同じ [`pupil_grid`]。瞳は正規化した入射瞳の座標で、OpticStudio の
 //!   「Use Exit Pupil」を外したときと同じ（既定の射出瞳の形を使う設定では、軸外で射出瞳の形に合わせて点を
 //!   取り直すので、縞の位置が少し違う）。A0 系の 16 条件で強度の差は 2e-9 以下（OpticStudio の結果と照合）。
-//! - 像面上（[`detector`]）: 2 本の経路の光線の格子を像面（検出面）の画素へ補間し（[`lensbench_core::raygrid::rasterize`]）、
+//! - 像面上（[`detector`]）: 2 本の経路の光線の格子を像面（検出面）の画素へ補間し（[`crate::raygrid::rasterize`]）、
 //!   画素ごとに場を足して I = |A_s e^{−ikL_s} + A_r e^{−ikL_r}|² を出す（約束は [`lensbench_core::phase`]）。瞳は一様に照らす
 //!   （強度は瞳の正規化座標の面積の割合 / 検出面の面積）。偏光を指定すると Jones の場で重ねる。
 
+use crate::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
 use lensbench_core::pupil::{PupilFunction, PupilGrid, Rim};
-use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::system::{FieldSel, PolIn, System};
 use lensbench_core::{invalid, Result};
 

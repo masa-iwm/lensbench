@@ -10,7 +10,7 @@
 //!   すべて面 2 のエラーにする。lensbench を OpticStudio の根の近くから解くと、軸上の光線がその粗さの中で合う
 //!   （同じ条件の別の根であることの確認）。OpticStudio の根の選び方・粗さには合わせない
 //! - ほかのソルブ（像面の焦点の MAZH）と組んだ場合も OpticStudio に合わせない（両方を同時に満たす。決定）
-use lensbench_core::analysis;
+use lensbench_analysis::analysis;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_formats::zmx;
 use serde_json::Value;

@@ -3,8 +3,8 @@
 fn root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
 use lensbench_design::montecarlo::{self as tolerance, Dist, LensTol, McSpec, Tol};
 use lensbench_formats::zmx::{self, LoadOptions};

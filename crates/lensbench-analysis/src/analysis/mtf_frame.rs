@@ -1,9 +1,9 @@
 //! MTF の子午・球欠の向き
 
 use super::pupil_jacobian;
-use crate::error::Result;
-use crate::quantity::Angle;
-use crate::system::{FieldSel, FieldType, System};
+use lensbench_core::error::Result;
+use lensbench_core::quantity::Angle;
+use lensbench_core::system::{FieldSel, FieldType, System};
 
 /// MTF の子午・球欠の向き
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -123,9 +123,10 @@ impl MtfFrame {
                 [[dot(e, je), dot(e, jf)], [dot(f, je), dot(f, jf)]]
             }
         };
-        if !(jp[0][0].abs() > crate::tol::JACOBIAN_MIN && jp[1][1].abs() > crate::tol::JACOBIAN_MIN)
+        if !(jp[0][0].abs() > lensbench_core::tol::JACOBIAN_MIN
+            && jp[1][1].abs() > lensbench_core::tol::JACOBIAN_MIN)
         {
-            crate::notimpl!("MTF: the image space aperture is 0 (afocal?)");
+            lensbench_core::notimpl!("MTF: the image space aperture is 0 (afocal?)");
         }
         Ok(jp)
     }

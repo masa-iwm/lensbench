@@ -267,7 +267,7 @@ impl Grin {
                 let nv = nz(z0)?;
                 let ne = nz(z0 + t)?;
                 let np = 64usize;
-                let (gx, gw) = crate::analysis::gauss_legendre(8);
+                let (gx, gw) = crate::opd::gauss_legendre(8);
                 let mut s = 0.0;
                 for i in 0..np {
                     for (x, wt) in gx.iter().zip(&gw) {

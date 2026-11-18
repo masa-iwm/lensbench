@@ -4,170 +4,24 @@
 //! （像面から EXPP）と交わる点を通る。各光線を像面から参照球まで戻し、(主光線の光路 − 光線の光路) を
 //! その光線の波長の波数で表す（主光線はその波長のもの）。ROPD「無限遠」は主光線に垂直な平面。
 
-use crate::coating::C64;
-use crate::error::Result;
-use crate::math::*;
-use crate::pupil::{PupilAmp, PupilFunction, PupilGrid, Rim, WaveAmp};
-use crate::system::{Cols, FieldSel, RayBuf, System, Trace};
-use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
+use lensbench_core::coating::C64;
+use lensbench_core::error::Result;
+use lensbench_core::math::*;
+use lensbench_core::pupil::{PupilAmp, PupilFunction, PupilGrid, WaveAmp};
+use lensbench_core::system::{FieldSel, System};
+use lensbench_core::{invalid, notimpl, par::scoped, TanSag, Waves};
 
 mod mtf;
 mod mtf_frame;
 mod spot;
 mod zernike;
+pub use lensbench_core::opd::*;
 pub use mtf::*;
 pub use mtf_frame::MtfAxes;
 use mtf_frame::MtfFrame;
 pub(crate) use spot::spot_of;
 pub use spot::{apodized, apodized_amplitude, spot, spot_arms, spot_pupil, Spot};
 pub use zernike::*;
-
-/// n×n の格子のうち単位円内の点（[`PupilGrid::Linear`] の [`Rim::Padded`]）
-pub fn pupil_grid(n: usize) -> (Vec<f64>, Vec<f64>) {
-    let s = PupilGrid::Linear {
-        n,
-        rim: Rim::Padded,
-    }
-    .samples();
-    (s.px, s.py)
-}
-
-/// Gauss-Legendre の節点と重み（[-1, 1]）
-pub fn gauss_legendre(n: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut x = vec![0.0; n];
-    let mut w = vec![0.0; n];
-    for i in 0..n {
-        let mut z = (std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
-        let mut dp = 0.0;
-        for _ in 0..100 {
-            let (mut p0, mut p1) = (1.0, z);
-            for k in 2..=n {
-                let p2 = ((2 * k - 1) as f64 * z * p1 - (k - 1) as f64 * p0) / k as f64;
-                p0 = p1;
-                p1 = p2;
-            }
-            let pn = if n == 1 { z } else { p1 };
-            let pm = if n == 1 { 1.0 } else { p0 };
-            dp = n as f64 * (z * pn - pm) / (z * z - 1.0);
-            let dz = pn / dp;
-            z -= dz;
-            if dz.abs() < 1e-16 {
-                break;
-            }
-        }
-        x[n - 1 - i] = z;
-        w[n - 1 - i] = 2.0 / ((1.0 - z * z) * dp * dp);
-    }
-    (x, w)
-}
-
-/// 瞳のガウス求積（[`PupilGrid::Gauss`]）→ px, py, 重み（和 1）
-pub fn pupil_gauss(rings: usize, arms: Option<usize>) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
-    let s = PupilGrid::Gauss { rings, arms }.samples();
-    (s.px, s.py, s.wt)
-}
-
-/// OpticStudio 26.1 の RSCE・RSCH・RWCE・RWCH の瞳の求積 → px, py, 重み: [`pupil_gauss`] の腕を 2 rings 本にし、90° 回す
-/// （腕の角度 90° + (a + 0.5)·180°/rings）。Double Gauss 28 の Ring 2〜6・6 視野・各波長で OpticStudio と相対 1e-10 で一致
-/// する（Ring 1 の Hx = 0・Hy ≠ 0 の視野だけは、腕の数・向きを変えても OpticStudio の値にならない）
-pub fn pupil_gauss_os(rings: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
-    let (px, py, w) = pupil_gauss(rings, Some(2 * rings));
-    // 角度 θ + 90°: (cos θ, sin θ) → (−sin θ, cos θ)
-    let rx = py.iter().map(|y| -y).collect();
-    (rx, px, w)
-}
-
-/// OPD [波] の結果（光線と一緒に）
-pub struct Opd {
-    /// 光線の列（位置・方向・光路長・理想レンズの位相と状態・けられ、[`Cols::WAVE`]）
-    pub rays: RayBuf,
-    pub opd: Vec<f64>,
-}
-
-impl Opd {
-    pub fn ok(&self, i: usize) -> bool {
-        self.rays.ok(i)
-    }
-}
-
-/// アフォーカル像空間の基準の平面の点: 射出瞳の位置で主光線に垂直な平面（OpticStudio の平面波基準）。
-/// 射出瞳が無限遠なら像面の主光線の点で（平面波なので面の位置は定数の違いだけ）
-pub(crate) fn to_ref_plane_point(expp: f64, pc: V3, kc: V3) -> V3 {
-    if crate::pupil::exit_pupil_near(expp) {
-        add(pc, scale(kc, (expp - pc[2]) / kc[2]))
-    } else {
-        pc
-    }
-}
-
-#[doc(hidden)]
-pub fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f64) -> f64 {
-    ref_opl(s, w, pc, kc)(q, k, opl)
-}
-
-/// [`to_ref`] を同じ参照の主光線 (pc, kc) で何本もの光線に使う形: 基準の面と像空間の屈折率を 1 度だけ求め、
-/// 光線 (q, k, opl) ごとの換算を返す（光線ごとに求め直すと、面の数だけの走査が光線の本数ぶん掛かる）。値は
-/// [`to_ref`] と同じビット
-#[doc(hidden)]
-pub fn ref_opl(s: &System, w: usize, pc: V3, kc: V3) -> impl Fn(V3, V3, f64) -> f64 {
-    let r = crate::pupil::RefSurface::of(s, pc, kc);
-    let ni = s.image_index(w);
-    move |q, k, opl| r.opl(ni, q, k, opl)
-}
-
-/// 視野の光線 (px, py) の OPD [波]。ref_primary: 参照球の中心を主波長の主光線に（OpticStudio の光線の OPD）、
-/// false なら波長 w 自身の主光線に（Zernike、波面マップ）
-pub fn opd(
-    s: &System,
-    field: FieldSel,
-    px: &[f64],
-    py: &[f64],
-    w: Option<usize>,
-    ref_primary: bool,
-) -> Result<Opd> {
-    Ok(opd_chief(s, field, px, py, w, ref_primary)?.0)
-}
-
-/// [`opd`] と、参照球の中心に使った主光線の追跡（ref_primary なら主波長、でなければ波長 w）
-pub(crate) fn opd_chief(
-    s: &System,
-    field: FieldSel,
-    px: &[f64],
-    py: &[f64],
-    w: Option<usize>,
-    ref_primary: bool,
-) -> Result<(Opd, Trace)> {
-    crate::pupil::check_opd_reference(s)?;
-    let w = w.unwrap_or(s.primary);
-    let mut r = RayBuf::with_cols(Cols::WAVE);
-    s.try_trace_into(field, px, py, Some(w), None, &mut r)?;
-    let rc = s.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
-    let rp = if w == s.primary || !ref_primary {
-        rc.clone()
-    } else {
-        s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?
-    };
-    for (t, wi) in [(&rc, w), (&rp, s.primary)] {
-        let c = &t.rays[0];
-        if let Some(surf) = c.status.surf() {
-            let why = c.status.why();
-            invalid!(
-                "the chief ray (wavelength {}) doesn't reach the image (surface {}, {why}); no OPD reference",
-                wi + 1,
-                surf
-            );
-        }
-    }
-    let (pc, kc) = (rp.rays[0].xyz, rp.rays[0].lmn);
-    let c = &rc.rays[0];
-    let to = ref_opl(s, w, pc, kc);
-    let lc = to(c.xyz, c.lmn, c.opl) + c.lens_opd;
-    let wl = s.wave(w).mm();
-    let opd = (0..r.len())
-        .map(|i| (lc - (to(r.xyz[i], r.lmn[i], r.opl[i]) + r.lens_opd[i])) / wl)
-        .collect();
-    Ok((Opd { rays: r, opd }, rp))
-}
 
 /// 波面マップの格子 p_i = (i − n/2)/(n/2 − 1)（[`PupilGrid::WavefrontMap`]、OpticStudio の Wavefront Map と同じ）
 pub fn wavefront_grid(n: usize) -> Vec<f64> {
@@ -176,7 +30,7 @@ pub fn wavefront_grid(n: usize) -> Vec<f64> {
 
 pub struct Wavefront {
     /// 波面 [波]（行優先、行 = y。座標は正規化瞳、x・y 共通の [`wavefront_grid`]。瞳の外・けられは NaN）
-    pub w: crate::grid::Grid2,
+    pub w: lensbench_core::grid::Grid2,
     pub pv: f64,
     pub rms: f64,
 }
@@ -201,7 +55,7 @@ pub fn wavefront(
     let pv =
         v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min);
     Ok(Wavefront {
-        w: crate::grid::Grid2::from_rows(g.clone(), g, ww),
+        w: lensbench_core::grid::Grid2::from_rows(g.clone(), g, ww),
         pv,
         rms,
     })
@@ -230,7 +84,9 @@ pub fn pupil_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]
     } else {
         pupil_jacobian_inner(s, field, w)?
     };
-    if !(jm[0][0].abs() > crate::tol::JACOBIAN_MIN && jm[1][1].abs() > crate::tol::JACOBIAN_MIN) {
+    if !(jm[0][0].abs() > lensbench_core::tol::JACOBIAN_MIN
+        && jm[1][1].abs() > lensbench_core::tol::JACOBIAN_MIN)
+    {
         notimpl!("MTF: the image space aperture is 0 (afocal?)");
     }
     Ok(jm)
@@ -254,13 +110,13 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
     }
     let r = s.try_trace(field, &px, &py, Some(w), None, false)?;
     if !r.traced(0) {
-        invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
+        invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
     }
     let (q0, k0) = (r.rays[0].xyz, r.rays[0].lmn);
     // 射出瞳の位置で主光線に垂直な平面（OPD の基準の平面、[`to_ref`]）まで光線を延ばした点の、主光線からの差。
     // 射出瞳が無限遠なら像面の主光線の点を通る平面
     let expp = s.exit_pupil();
-    let pe = if crate::pupil::exit_pupil_near(expp) {
+    let pe = if lensbench_core::pupil::exit_pupil_near(expp) {
         add(q0, scale(k0, (expp - q0[2]) / k0[2]))
     } else {
         q0
@@ -288,14 +144,16 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
         let k = |ia: usize, neg: bool| 1 + axis * 2 * A.len() + 2 * ia + neg as usize;
         let Some(ia) = (0..A.len()).find(|&ia| r.traced(k(ia, false)) && r.traced(k(ia, true)))
         else {
-            invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: rays on the pupil axes are vignetted (the pupil size can't be set)");
+            invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "MTF: rays on the pupil axes are vignetted (the pupil size can't be set)");
         };
         let (p, m) = (perp(k(ia, false)), perp(k(ia, true)));
         let h = 2.0 * A[ia];
         *c = [-(p[0] - m[0]) / h * u, -(p[1] - m[1]) / h * u];
     }
     let jm = [[col[0][0], col[1][0]], [col[0][1], col[1][1]]];
-    if !(jm[0][0].abs() > crate::tol::JACOBIAN_MIN && jm[1][1].abs() > crate::tol::JACOBIAN_MIN) {
+    if !(jm[0][0].abs() > lensbench_core::tol::JACOBIAN_MIN
+        && jm[1][1].abs() > lensbench_core::tol::JACOBIAN_MIN)
+    {
         notimpl!("MTF: the beam width of the afocal image space is 0");
     }
     Ok(jm)
@@ -327,14 +185,14 @@ fn pupil_jacobian_inner(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 
             [(p[0] - m[0]) / h, (p[1] - m[1]) / h]
         } else {
             if !r.traced(0) {
-                invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
+                invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
             }
             let o = lm(0);
             let one = (0..A.len())
                 .flat_map(|ia| [(ia, false), (ia, true)])
                 .find(|&(ia, neg)| r.traced(k(ia, neg)));
             let Some((ia, neg)) = one else {
-                invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: rays inside the pupil are vignetted too (the pupil size can't be set)");
+                invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "MTF: rays inside the pupil are vignetted too (the pupil size can't be set)");
             };
             let p = lm(k(ia, neg));
             let h = if neg { -A[ia] } else { A[ia] };
@@ -406,12 +264,13 @@ mod tests {
         // 絞りの面に絞りの半径の 0.9 倍の開口を置くと瞳の縁の光線がけられる。内側の点の差で見積もった J は
         // 縁の差の J と瞳の収差の分しか違わず、MTF も計算できる
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::test_zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::test_zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt)
+            .unwrap();
         for k in 0..s.fields.len() {
             let f = FieldSel::Index(k);
             let j0 = pupil_jacobian(&s, f, s.primary).unwrap();
@@ -421,7 +280,7 @@ mod tests {
             let st = v.stop();
             let rmax = 0.9 * v.stop_radius().0.abs();
             v.edit_raw(|p| {
-                p.surfaces[st].ap = crate::surface::Aperture::Circular {
+                p.surfaces[st].ap = lensbench_core::surface::Aperture::Circular {
                     min: 0.0,
                     max: rmax,
                     dx: 0.0,
@@ -516,15 +375,16 @@ mod tests {
     #[test]
     fn zernike_fit_is_the_same_for_any_thread_count() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::test_zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::test_zmx::load_with(&root.join("tests/refs/C0/system.zmx"), &opt).unwrap();
+        let s = lensbench_formats::zmx::load_with(&root.join("tests/refs/C0/system.zmx"), &opt)
+            .unwrap();
         let f = FieldSel::Index(1);
         let run = |t| {
-            crate::with_threads(Some(t), || {
+            lensbench_core::with_threads(Some(t), || {
                 zernike(&s, f, None, ZernKind::Fringe, 37, 96, false).unwrap()
             })
         };
@@ -540,12 +400,13 @@ mod tests {
         // 格子 32・Standard 496 項（次数 30）は正規方程式では解けない（条件数が大きい）ので QR で解く。
         // 行列を zernike_row で作って lstsq で解いた値と比べる
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let opt = crate::test_zmx::LoadOptions {
+        let opt = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: vec![root.join("tests/glass")],
             ..Default::default()
         };
-        let s = crate::test_zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
+        let s = lensbench_formats::zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt)
+            .unwrap();
         let f = FieldSel::Index(1);
         let (nt, n) = (496, 32);
         let z = zernike(&s, f, None, ZernKind::Standard, nt, n, false).unwrap();
@@ -568,7 +429,7 @@ mod tests {
                 v.push(o.opd[i]);
             }
         }
-        let c = crate::linalg::lstsq(&a, &v);
+        let c = lensbench_core::linalg::lstsq(&a, &v);
         let e = c
             .iter()
             .zip(&z.coef)
@@ -580,7 +441,7 @@ mod tests {
     #[test]
     fn lstsq_exact() {
         let a = vec![vec![1.0, 0.0], vec![1.0, 1.0], vec![1.0, 2.0]];
-        let x = crate::linalg::lstsq(&a, &[1.0, 3.0, 5.0]);
+        let x = lensbench_core::linalg::lstsq(&a, &[1.0, 3.0, 5.0]);
         assert!((x[0] - 1.0).abs() < 1e-14 && (x[1] - 2.0).abs() < 1e-14);
     }
 
@@ -592,8 +453,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 50\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::test_zmx::parse_text(txt).unwrap();
-        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+        let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let (px, py) = pupil_grid(9);
         for f in 0..2 {
             let t = s
@@ -604,8 +465,8 @@ mod tests {
                 .map(|i| {
                     // 平行光の波面（主光線に垂直な面）までの光路
                     let k = t.rays[0].lmn;
-                    let d = crate::math::sub(t.rays[i].xyz, t.rays[0].xyz);
-                    t.opl_os[i] + t.rays[i].lens_opd - crate::math::dot(d, k)
+                    let d = lensbench_core::math::sub(t.rays[i].xyz, t.rays[0].xyz);
+                    t.opl_os[i] + t.rays[i].lens_opd - lensbench_core::math::dot(d, k)
                 })
                 .collect();
             let (lo, hi) = l
@@ -616,7 +477,7 @@ mod tests {
     }
 
     /// 物体距離 d の前に理想レンズ（f = 100）を置き、後ろ 50 に像面を置いた系（afocal: アフォーカル像空間）
-    fn paraxial_collimator(d: f64, afocal: bool) -> crate::System {
+    fn paraxial_collimator(d: f64, afocal: bool) -> lensbench_core::System {
         let txt = format!(
             "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 {}\n\
              XFLN 0 0\nYFLN 0 2\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\n\
@@ -625,8 +486,8 @@ mod tests {
              SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             afocal as i32
         );
-        let raw = crate::test_zmx::parse_text(&txt).unwrap();
-        crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = lensbench_formats::zmx::parse_text(&txt).unwrap();
+        lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]

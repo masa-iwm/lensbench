@@ -5,6 +5,13 @@
 
 ## 次の版（v0.5.0 の後）
 
+### 解析の場所
+- `lensbench_core::{analysis, psf, pop, sweep, fiber, raygrid}` を `lensbench_analysis::{…}` に移した。core に残るのは OPD と瞳の標本
+  （`lensbench_core::opd`: `opd`・`to_ref`・`Opd`・`pupil_grid`・`pupil_gauss`・`gauss_legendre`）と、瞳の区画の面積（`pupil::cell_frac`）。
+- `lensbench_core::prelude` から `analysis`・`Mtf`・`Wavefront`・`psf`・`Psf`・`PsfOpts`・`PsfPlane` を外した。.zmx の読込と解析まで含む
+  `lensbench_analysis::prelude` を置いた。
+- 視野の掃引のために `System::without_vignetting`（ケラレ係数を 0 にした複製）を足した。
+
 ### .zmx の読込の場所
 - `lensbench_core::zmx`（`load`・`load_with`・`LoadOptions`・`parse_text`・`build` など）を `lensbench_formats::zmx` に移した。
   `lensbench_core::prelude` から `zmx`・`LoadOptions` を外し、それを足した `lensbench_formats::prelude` を置いた。

@@ -7,16 +7,16 @@
 //!
 //! 項:
 //! - [`TermKind::Spot`]: RMS スポット半径。光線ごとの (x − 基準, y − 基準) を残差にする（ガウス求積、
-//!   [`lensbench_core::sweep::rms`] と同じ光線・重み・基準）
+//!   [`lensbench_analysis::sweep::rms`] と同じ光線・重み・基準）
 //! - [`TermKind::Wavefront`]: RMS 波面収差 [波]。光線ごとの OPD から、ピストン（重心基準なら方向余弦の差に比例する項も）を
-//!   除いたもの（[`lensbench_core::sweep::rms`] と同じ定義）
+//!   除いたもの（[`lensbench_analysis::sweep::rms`] と同じ定義）
 //! - [`TermKind::Mtf`]: 1 つの周波数の MTF と目標の差
 //! - [`TermKind::Paraxial`]: 近軸量（焦点距離・倍率・瞳・F ナンバーなど、[`ParaxQ`]）と目標の差
 //! - [`TermKind::Centroid`]: 瞳の光線の像面の位置の重心（x か y）と目標の差（光線はスポットの項と同じ、解析的な微分）
 //! - [`TermKind::Ray`]: 1 本の実光線の、面の局所座標での位置・方向余弦と目標の差（OpticStudio の REAX〜REAC 相当）
 //! - [`TermKind::Opd`]: 1 本の光線の OPD [波] と目標の差（参照球は主波長の主光線、OpticStudio の OPDC 相当）
-//! - [`TermKind::Zernike`]: OPD の Zernike 係数 [波] と目標の差（[`lensbench_core::analysis::zernike`]）
-//! - [`TermKind::Coupling`]（単一モードファイバへの結合効率と目標の差、[`lensbench_core::fiber::fiber_coupling`]）
+//! - [`TermKind::Zernike`]: OPD の Zernike 係数 [波] と目標の差（[`lensbench_analysis::analysis::zernike`]）
+//! - [`TermKind::Coupling`]（単一モードファイバへの結合効率と目標の差、[`lensbench_analysis::fiber::fiber_coupling`]）
 //! - [`TermKind::User`]: 利用者が定義する項（[`UserTerm`]。Python の関数など）。系の並びをまとめて評価する
 //!
 //! 項は JSON でも書ける（`lensbench_design::merit`、CLI の `--term`・Python の `terms=`）。

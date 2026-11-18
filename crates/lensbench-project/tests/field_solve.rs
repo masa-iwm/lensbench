@@ -1,6 +1,6 @@
 //! 条件で定める視野: 実像高との一致、法線入射で戻る主光線の視野、パラメータ変更での解き直し、プロジェクトファイル。
 
-use lensbench_core::analysis;
+use lensbench_analysis::analysis;
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldCond, FieldSel, FieldType, ObjSpec};

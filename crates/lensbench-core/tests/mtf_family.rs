@@ -2,9 +2,9 @@
 //! 既存の解析と突き合わせて確かめる（OpticStudio との照合は別、tests/refs の基準が揃ってから）。
 
 use crate::common::root;
+use lensbench_analysis::{analysis, psf, sweep};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::Waves;
-use lensbench_core::{analysis, psf, sweep};
 use lensbench_formats::zmx::{self, LoadOptions};
 
 fn load(name: &str) -> System {

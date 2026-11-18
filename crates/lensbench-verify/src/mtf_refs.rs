@@ -42,11 +42,12 @@
 //!   口径食の係数をすべて 0 にした A6v で照合する（RMS vs 視野は A6 でも合う）。
 #![allow(clippy::unwrap_used, clippy::panic, clippy::neg_cmp_op_on_partial_ord)] // 試験から呼ぶ照合の中身。NaN も不合格にする
 
-use lensbench_core::analysis::MtfAxes;
-use lensbench_core::psf;
-use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};
+use lensbench_analysis::analysis;
+use lensbench_analysis::analysis::MtfAxes;
+use lensbench_analysis::psf;
+use lensbench_analysis::sweep::{self, FieldAxis, RmsOpts, RmsRef};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{analysis, Waves};
+use lensbench_core::Waves;
 use lensbench_formats::zmx::{self, LoadOptions};
 use ndarray::Array2;
 use ndarray_npy::NpzReader;

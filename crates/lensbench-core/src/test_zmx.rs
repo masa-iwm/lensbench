@@ -24,10 +24,3 @@ pub(crate) fn build(
 pub(crate) fn load(path: &Path) -> lensbench_formats::prelude::Result<System> {
     lensbench_formats::zmx::load(path).map(conv)
 }
-
-pub(crate) fn load_with(
-    path: &Path,
-    opt: &LoadOptions,
-) -> lensbench_formats::prelude::Result<System> {
-    lensbench_formats::zmx::load_with(path, opt).map(conv)
-}

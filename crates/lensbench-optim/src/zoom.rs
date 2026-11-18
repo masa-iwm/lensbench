@@ -23,10 +23,10 @@
 //! 状態を持たないので、一括実行のタスクの中からも呼べる。
 
 use crate::{DefaultMerit, DlsOpts, ParaxQ, Problem, Stop, Term, TermKind, Var};
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::error::{Error, Result};
 use lensbench_core::invalid;
 use lensbench_core::param::Param;
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::System;
 
 /// 近軸量の目標の満たし方

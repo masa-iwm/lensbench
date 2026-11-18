@@ -1,14 +1,14 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
 use crate::pupil::apodized_gauss;
-use lensbench_core::analysis::{mtf_only, ref_opl, to_ref, MtfMethod, ZernKind};
+use lensbench_analysis::analysis::{mtf_only, ref_opl, to_ref, zernike, MtfMethod, ZernKind};
+use lensbench_analysis::fiber::{fiber_coupling, FiberOpts};
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::error::{Error, Result};
-use lensbench_core::fiber::FiberOpts;
 use lensbench_core::math::*;
 use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::pupil::{exit_pupil_near, RefSurface};
 use lensbench_core::surface::SurfType;
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::{Cols, FieldSel, System};
 use lensbench_core::{invalid, Waves};
 use std::sync::Arc;
@@ -1039,7 +1039,7 @@ fn eval_term(
             // 以上で当てはめる。OpticStudio 26.1 の ZERN は Fringe がいつも 37 項、Standard が求める項まで（.zmx から読んだ項は
             // fit をそれに合わせる）
             let nterms = fit.unwrap_or((*term).max(ZERN_MIN_TERMS));
-            let z = lensbench_core::analysis::zernike(s, *field, *wave, *kind, nterms, *n, false)?;
+            let z = zernike(s, *field, *wave, *kind, nterms, *n, false)?;
             let v = z.coef[term - 1];
             if !v.is_finite() {
                 invalid!("can't compute the Zernike coefficients");
@@ -1047,8 +1047,7 @@ fn eval_term(
             Ok((vec![v - target], None))
         }
         TermKind::Coupling { wave, opts, target } => {
-            let c =
-                lensbench_core::fiber::fiber_coupling(s, wave.unwrap_or(s.primary), opts, None)?;
+            let c = fiber_coupling(s, wave.unwrap_or(s.primary), opts, None)?;
             if !c.eta.is_finite() {
                 invalid!("can't compute the coupling efficiency");
             }
@@ -1120,7 +1119,7 @@ fn eval_term(
     }
 }
 
-/// 1 本の光線の OPD の項（[`lensbench_core::analysis::opd`] の ref_primary = true と同じ値）
+/// 1 本の光線の OPD の項（[`lensbench_analysis::analysis::opd`] の ref_primary = true と同じ値）
 #[allow(clippy::too_many_arguments)]
 fn opd_term(
     s: &System,
@@ -1194,7 +1193,7 @@ fn opd_term(
     Ok((vec![v - target], Some(d)))
 }
 
-/// to_ref（[`lensbench_core::analysis`]）の値の微分。ni は像空間の屈折率（波長 w の [`System::image_index`]）、d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
+/// to_ref（[`lensbench_analysis::analysis`]）の値の微分。ni は像空間の屈折率（波長 w の [`System::image_index`]）、d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
 #[allow(clippy::too_many_arguments)]
 fn to_ref_d(
     s: &System,

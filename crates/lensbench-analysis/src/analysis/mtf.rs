@@ -248,7 +248,7 @@ fn phasor(dw: f64) -> C64 {
     C64::new(c, s)
 }
 
-/// Σ w[i] exp(2πi (a[i] − b[i]))（a・b のどちらかが有限でない点は飛ばす）。位相因子は [`crate::trig::cis_scaled`] で
+/// Σ w[i] exp(2πi (a[i] − b[i]))（a・b のどちらかが有限でない点は飛ばす）。位相因子は [`lensbench_core::trig::cis_scaled`] で
 /// まとめて求め（libm の sin_cos と相対 1e-13 程度の差）、和は i の順に取る
 fn phasor_sum(a: &[f64], b: &[f64], w: &[f64]) -> C64 {
     thread_local! {
@@ -275,7 +275,7 @@ fn phasor_sum(a: &[f64], b: &[f64], w: &[f64]) -> C64 {
             }
         }
         let (ph, am, z) = (&ph[..n], &am[..n], &mut z[..n]);
-        crate::trig::cis_scaled(ph, am, z);
+        lensbench_core::trig::cis_scaled(ph, am, z);
         z.iter().fold(C64::new(0.0, 0.0), |acc, &v| acc + v)
     })
 }
@@ -376,7 +376,7 @@ fn wave_otf(
         let mut uniq = nks.clone();
         uniq.sort_unstable();
         uniq.dedup();
-        let gls = crate::par::map(&uniq, |&m| (m, LensGl::new(m)));
+        let gls = lensbench_core::par::map(&uniq, |&m| (m, LensGl::new(m)));
         // 振幅つきなら光量は振幅の 2 乗の求積（点数 n で）
         let e0 = amp.map_or(std::f64::consts::PI, |a| amp_area(&LensGl::new(n), a));
         (gls, nks, e0)
@@ -405,7 +405,7 @@ fn wave_otf(
     // 周波数 f・向き dir の和（点数 nk）
     let eval = |f: f64, dir: usize, nk: usize| -> Result<C64> {
         // GUI で系が変わったら途中でやめる（周波数・向きごとに確かめる）
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         let (dx, dy) = shift(f, dir);
         let d = dx.hypot(dy);
         // ずらす向き (ex, ey) と直交する向き (−ey, ex)。周波数 0 は、けられた点がありうるとき（補間の格子に
@@ -471,7 +471,7 @@ fn wave_otf(
         }
         (s0, t0)
     };
-    let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
+    let accs: Vec<Result<C64>> = if jobs.len() > 1 && !lensbench_core::par::sequential() {
         use rayon::prelude::*;
         (0..jobs.len()).into_par_iter().map(scoped(one)).collect()
     } else {
@@ -597,7 +597,7 @@ pub fn mtf_only(
 
 /// [`mtf_only`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す。
 /// 系のアポダイゼーション（[`System::apodization`]）はどの MTF にも入る。多色の波長の重みには透過した光量の割合を
-/// 掛ける（[`crate::pupil::wave_weight`]）。axes は子午・球欠の向き（[`MtfAxes`]）
+/// 掛ける（[`lensbench_core::pupil::wave_weight`]）。axes は子午・球欠の向き（[`MtfAxes`]）
 #[allow(clippy::too_many_arguments)]
 pub fn mtf_amp(
     s: &System,
@@ -616,7 +616,7 @@ pub fn mtf_amp(
     let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
     let mut otfs = Vec::new();
     for &wi in &ws {
-        let wt = crate::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
+        let wt = lensbench_core::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if wt > 0.0 {
             otfs.push((
                 wt,
@@ -625,7 +625,7 @@ pub fn mtf_amp(
         }
     }
     if otfs.is_empty() {
-        crate::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない
+        lensbench_core::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
     let cut = mtf_cutoff_in(s, field, w.unwrap_or(s.primary), &fr)?;
@@ -672,7 +672,7 @@ pub fn mtf_waves_amp(
     let multi = otfs.len() > 1;
     let mut poly: Vec<(f64, &_)> = Vec::new();
     for (wi, o) in otfs.iter().enumerate() {
-        let wt = crate::pupil::wave_weight(s, field, wi, multi, extra)?;
+        let wt = lensbench_core::pupil::wave_weight(s, field, wi, multi, extra)?;
         if wt > 0.0 {
             poly.push((wt, o));
         }
@@ -702,8 +702,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::test_zmx::parse_text(txt).unwrap();
-        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+        let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let nc = 1.0 / (0.55e-3 * 10.0);
         let freqs: Vec<f64> = (0..10).map(|i| nc * i as f64 / 10.0).collect();
         let m = mtf(&s, FieldSel::Index(0), Waves::All, Some(128), &freqs).unwrap();
@@ -732,8 +732,8 @@ mod tests {
                    SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
                    SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
                    SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-        let raw = crate::test_zmx::parse_text(txt).unwrap();
-        let s = crate::test_zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+        let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let s = crate::sweep::defocus(&s, 20.0).unwrap();
         let freqs = [2.0, 10.0, 60.0];
         for f in 0..2 {

@@ -1,6 +1,6 @@
 //! MTF の結果の dict と、設定の文字列の読み取り（lib.rs から分けた）
 
-use lensbench_core::{analysis, sweep};
+use lensbench_analysis::{analysis, sweep};
 use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};

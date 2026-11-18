@@ -17,14 +17,14 @@
 //! 集光する場でも残りの位相（収差・デフォーカス）を標本化できれば足りる。出力のパイロットは
 //! Gauss ビームの q（1/q = κ − i λ′/(π w²)）を d だけ進めたもの（焦点付近で平面に近づく）。
 //!
-//! 位相の約束は exp(i(ωt − kz))（光路長 L の位相は exp(−ikL)、[`crate::phase`]）。
+//! 位相の約束は exp(i(ωt − kz))（光路長 L の位相は exp(−ikL)、[`lensbench_core::phase`]）。
 //! 全体の位相の定数（e^{−ikd} など）は落とす。強度は Σ|u|² dx dy = 1（開口を掛ける前）に正規化する。
 
-use crate::coating::C64;
-use crate::error::Result;
-use crate::surface::Aperture;
-use crate::system::{FieldSel, System};
-use crate::{invalid, notimpl};
+use lensbench_core::coating::C64;
+use lensbench_core::error::Result;
+use lensbench_core::surface::Aperture;
+use lensbench_core::system::{FieldSel, System};
+use lensbench_core::{invalid, notimpl};
 use std::f64::consts::PI;
 
 /// パイロットの波面: 光路長 n·(a_x X + a_y Y + κ (X² + Y²)/2)（X, Y は格子の中心から）
@@ -57,7 +57,7 @@ pub struct Beam {
     /// 局所座標の z の向きに対する伝搬の向き（+1 / −1。鏡の後は −1）
     pub dir: f64,
     /// パイロットを除いた場（行優先: [iy·nx + ix]）。伝搬の途中の作業用の形（間隔 dx・dy が伝搬で変わるので
-    /// 座標は x0・dx から作る）。結果として渡すときは [`Beam::grid`]（座標の並びつきの [`crate::grid::Grid2`]）
+    /// 座標は x0・dx から作る）。結果として渡すときは [`Beam::grid`]（座標の並びつきの [`lensbench_core::grid::Grid2`]）
     pub u: Vec<C64>,
 }
 
@@ -124,12 +124,12 @@ impl Beam {
         (0..self.ny).map(|j| self.y(j)).collect()
     }
     /// パイロットを除いた場を座標の並びつきの格子で（[`Beam::u`] の写し）
-    pub fn grid(&self) -> crate::grid::Grid2<C64> {
-        crate::grid::Grid2::new(self.xs(), self.ys(), self.u.clone())
+    pub fn grid(&self) -> lensbench_core::grid::Grid2<C64> {
+        lensbench_core::grid::Grid2::new(self.xs(), self.ys(), self.u.clone())
     }
     /// 照度 |u|² を座標の並びつきの格子で
-    pub fn irradiance_grid(&self) -> crate::grid::Grid2 {
-        crate::grid::Grid2::new(self.xs(), self.ys(), self.irradiance())
+    pub fn irradiance_grid(&self) -> lensbench_core::grid::Grid2 {
+        lensbench_core::grid::Grid2::new(self.xs(), self.ys(), self.irradiance())
     }
     /// 照度 |u|²（行優先）
     pub fn irradiance(&self) -> Vec<f64> {
@@ -221,7 +221,7 @@ impl Beam {
         let (nx, dx, dy) = (self.nx, self.dx, self.dy);
         let xs: Vec<f64> = (0..self.nx).map(|i| self.x(i)).collect();
         let ys: Vec<f64> = (0..self.ny).map(|j| self.y(j)).collect();
-        crate::par::for_each_chunk_mut(&mut self.u[..], nx, |j, row| {
+        lensbench_core::par::for_each_chunk_mut(&mut self.u[..], nx, |j, row| {
             for (i, c) in row.iter_mut().enumerate() {
                 let f = coverage(ap, xs[i], ys[j], dx, dy, ss);
                 *c *= f;
@@ -232,7 +232,7 @@ impl Beam {
 
 /// 点 (x, y) の画素（幅 dx, dy）のうち開口の中の割合
 fn coverage(ap: Aperture, x: f64, y: f64, dx: f64, dy: f64, ss: usize) -> f64 {
-    let inside = |x: f64, y: f64| !crate::trace::aperture_out(ap, [x, y, 0.0]);
+    let inside = |x: f64, y: f64| !lensbench_core::trace::aperture_out(ap, [x, y, 0.0]);
     // 画素の四隅と中心が同じなら、その値
     let h = (0.5 * dx, 0.5 * dy);
     let c = inside(x, y);
@@ -622,14 +622,14 @@ fn fft2(
     fy: &dyn rustfft::Fft<f64>,
     t: &mut Vec<C64>,
 ) {
-    crate::par::for_each_chunk_mut(&mut a[..], px, |_, r| fx.process(r));
+    lensbench_core::par::for_each_chunk_mut(&mut a[..], px, |_, r| fx.process(r));
     t.resize(px * py, C64::new(0.0, 0.0));
     for j in 0..py {
         for i in 0..px {
             t[i * py + j] = a[j * px + i];
         }
     }
-    crate::par::for_each_chunk_mut(&mut t[..], py, |_, r| fy.process(r));
+    lensbench_core::par::for_each_chunk_mut(&mut t[..], py, |_, r| fy.process(r));
     for j in 0..py {
         for i in 0..px {
             a[j * px + i] = t[i * py + j];
@@ -728,7 +728,7 @@ fn kernel_1d(
     dx1: f64,
 ) -> Vec<C64> {
     let mut m = vec![C64::new(0.0, 0.0); x1.len() * x2.len()];
-    crate::par::for_each_chunk_mut(&mut m[..], x1.len(), |i2, row| {
+    lensbench_core::par::for_each_chunk_mut(&mut m[..], x1.len(), |i2, row| {
         let xo = x2[i2] - x02;
         let po = a2 * xo + 0.5 * c2 * xo * xo;
         for (i1, v) in row.iter_mut().enumerate() {
@@ -756,7 +756,7 @@ fn fresnel(b: &Beam, d: f64, o: &mut Beam) {
     // tmp[j1][i2] = Σ_i1 u[j1][i1] Kx[i2][i1]
     let (n1x, n2x) = (b.nx, o.nx);
     let mut tmp = vec![C64::new(0.0, 0.0); b.ny * n2x];
-    crate::par::for_each_chunk_mut(&mut tmp[..], n2x, |j1, row| {
+    lensbench_core::par::for_each_chunk_mut(&mut tmp[..], n2x, |j1, row| {
         let ur = &b.u[j1 * n1x..(j1 + 1) * n1x];
         if ur.iter().all(|c| c.re == 0.0 && c.im == 0.0) {
             return;
@@ -772,7 +772,7 @@ fn fresnel(b: &Beam, d: f64, o: &mut Beam) {
     });
     // out[j2][i2] = Σ_j1 Ky[j2][j1] tmp[j1][i2]
     let n1y = b.ny;
-    crate::par::for_each_chunk_mut(&mut o.u[..], n2x, |j2, row| {
+    lensbench_core::par::for_each_chunk_mut(&mut o.u[..], n2x, |j2, row| {
         let kr = &ky[j2 * n1y..(j2 + 1) * n1y];
         for (j1, c) in kr.iter().enumerate() {
             let tr = &tmp[j1 * n2x..(j1 + 1) * n2x];
@@ -798,7 +798,7 @@ fn direct(b: &Beam, d: f64, o: &mut Beam) {
     let yo = |j: usize| y0 + (j as f64 - (ny as f64 - 1.0) / 2.0) * dy;
     let d2 = d * d;
     let n = src.len();
-    crate::par::for_each_chunk_mut(&mut o.u[..], nx, |j, row| {
+    lensbench_core::par::for_each_chunk_mut(&mut o.u[..], nx, |j, row| {
         let y = yo(j);
         // 位相因子は点ごとの from_polar の代わりに、入力の点についてまとめて cis_scaled で（Huygens PSF と同じ）
         let (mut ph, mut amp, mut rr) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
@@ -814,7 +814,7 @@ fn direct(b: &Beam, d: f64, o: &mut Beam) {
                 amp[q] = d / (r * r);
                 rr[q] = r;
             }
-            crate::trig::cis_scaled(&ph, &amp, &mut e);
+            lensbench_core::trig::cis_scaled(&ph, &amp, &mut e);
             // (1/2π)(d/r)(1/r + ik) e^{−ik(r − d)}/r
             let mut s = C64::new(0.0, 0.0);
             for ((&(_, _, c), &eq), &r) in src.iter().zip(&e).zip(&rr) {
@@ -955,7 +955,7 @@ pub fn beam_from_rays(
             rhs.push(opl[i]);
         }
     }
-    let c = crate::linalg::lstsq(&rows, &rhs);
+    let c = lensbench_core::linalg::lstsq(&rows, &rhs);
     let pilot = Pilot {
         ax: c[1] / n,
         ay: c[2] / n,
@@ -1194,7 +1194,7 @@ pub fn distance_to(s: &System, j: usize, to: usize, dir: f64) -> Result<f64> {
     for q in j..to {
         let d = &s.surfaces[q];
         if q > j && !d.ignore {
-            let plain = d.typ() == crate::surface::SurfType::Standard
+            let plain = d.typ() == lensbench_core::surface::SurfType::Standard
                 && d.c == 0.0
                 && !d.is_mirror()
                 && d.before.is_none()

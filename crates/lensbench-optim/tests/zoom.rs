@@ -1,6 +1,6 @@
 //! ズーム軌跡: 状態ごとに群の移動を解き、焦点距離の目標と像のピントを満たすか
 
-use lensbench_core::sweep::RmsRef;
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::System;
 use lensbench_optim::zoom::{self, ZoomSpec};
 use lensbench_optim::{DefaultMerit, ParaxQ};

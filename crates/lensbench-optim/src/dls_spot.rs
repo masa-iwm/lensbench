@@ -3,10 +3,10 @@
 use super::trace::{trace_ok, trace_pupil, trace_pupil_cols};
 use super::{waves, Quad, SpotAxis, TermOut};
 use crate::pupil::apodized_gauss;
+use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::error::Result;
 use lensbench_core::invalid;
 use lensbench_core::param::Param;
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::{Cols, FieldSel, RayBuf, System};
 
 pub(super) fn spot_term(

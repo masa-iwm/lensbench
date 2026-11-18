@@ -37,14 +37,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_analysis::polgrid::{self, PolGrid};
+use lensbench_analysis::{analysis, psf, sweep};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
     Aiming, Cols, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolIn, RayBuf,
 };
-use lensbench_core::{analysis, psf, sweep, with_threads, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
+use lensbench_core::{with_threads, RecSel, System};
 use lensbench_formats::zmx;
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
@@ -1380,7 +1381,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let w = wave.map_or(Ok(s.primary), |w| wave_index(&s, w))?;
-        let o = lensbench_core::fiber::FiberOpts {
+        let o = lensbench_analysis::fiber::FiberOpts {
             na_source,
             na_receiver: na_receiver.unwrap_or(na_source),
             source: [source.0, source.1],
@@ -1391,7 +1392,7 @@ impl PySystem {
         };
         let coat = if pol { Some(self.coatings(&s)?) } else { None };
         let c = py
-            .detach(|| lensbench_core::fiber::fiber_coupling(&s, w, &o, coat.as_deref()))
+            .detach(|| lensbench_analysis::fiber::fiber_coupling(&s, w, &o, coat.as_deref()))
             .map_err(err)?;
         warn_all(py, &c.warning().into_iter().collect::<Vec<_>>())?;
         let d = PyDict::new(py);

@@ -1,9 +1,9 @@
-//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、ソルブ・ZPL、基本の解析（波面・PSF・POP）。.zmx の読み書きは lensbench-formats、ゴースト・干渉縞・偏光の格子は lensbench-analysis。
+//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、ソルブ・ZPL、OPD（射出瞳の参照球）と瞳の標本。.zmx の読み書きは lensbench-formats、解析（MTF・スポット・Zernike・PSF・POP・ゴースト・干渉縞など）は lensbench-analysis。
 //!
 //! 外部のレンズカタログ（ZMF など）の読込は [`catalog::LensCatalogSource`] を実装した
 //! 別クレートから差し込む。公開版にはその実装を含めない。
 //!
-//! ライブラリとして使うときの入口は [`prelude`]（系の読込・追跡・主な解析・結果の型）。それ以外の `pub` のモジュールは
+//! ライブラリとして使うときの入口は [`prelude`]（追跡と結果の型。.zmx の読込と解析まで含むのは lensbench-analysis の prelude）。それ以外の `pub` のモジュールは
 //! 上の層のクレート（analysis・project・engine など）と拡張のための口で、安定の度合いは低い。
 
 #![warn(unreachable_pub)]
@@ -18,7 +18,6 @@ pub mod math;
 
 pub mod action;
 mod aim;
-pub mod analysis;
 pub mod batch;
 pub mod catalog;
 pub mod coating;
@@ -27,8 +26,8 @@ pub mod edit;
 pub mod elements;
 pub mod ext;
 pub mod fermat;
-pub mod fiber;
-mod focus;
+#[doc(hidden)]
+pub mod focus;
 pub mod form;
 pub mod freeform;
 pub mod glass;
@@ -44,16 +43,14 @@ pub mod linalg;
 pub mod mech;
 mod media;
 mod newton2;
+pub mod opd;
 pub mod par;
 pub mod param;
 pub mod phase;
 pub mod pickup;
 pub mod plugin;
-pub mod pop;
-pub mod psf;
 pub mod pupil;
 pub mod quantity;
-pub mod raygrid;
 pub mod report;
 pub mod semi;
 pub mod shape;
@@ -61,7 +58,6 @@ mod shape_param;
 pub mod solve;
 pub mod solves;
 pub mod surface;
-pub mod sweep;
 pub mod sync;
 pub mod system;
 pub mod tansag;
@@ -81,14 +77,12 @@ pub mod zpl_solve;
 
 /// ライブラリとして使うときの主な口（`use lensbench_core::prelude::*;`）。系を読む（.zmx は lensbench-formats の `zmx`。その
 /// prelude はこれに `zmx`・`LoadOptions` を足したもの）→
-/// 追跡する（[`System::try_trace`]・[`TraceOpts`]）→ 解析する（[`analysis`]・[`psf`]）の流れに要るもの
+/// 追跡する（[`System::try_trace`]・[`TraceOpts`]）の流れのうち core の分（解析まで含むのは lensbench-analysis の prelude）
 pub mod prelude {
-    pub use crate::analysis::{self, Mtf, Wavefront};
     pub use crate::error::{Error, Result};
     pub use crate::ext::{self, Ext};
     pub use crate::grid::Grid2;
     pub use crate::par::{with_threads, CancelToken};
-    pub use crate::psf::{self, Psf, PsfOpts, PsfPlane};
     pub use crate::system::{FieldSel, Prescription, RecSel, System, TraceOpts};
     pub use crate::tansag::TanSag;
     pub use crate::vfs;

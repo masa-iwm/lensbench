@@ -10,7 +10,7 @@ use std::time::Instant;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use lensbench_core::analysis::{self, ZernKind};
+use lensbench_analysis::analysis::{self, ZernKind};
 use lensbench_core::coating::Coatings;
 use lensbench_core::coating::C64;
 use lensbench_core::system::PolIn;

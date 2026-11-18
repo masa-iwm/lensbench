@@ -9,7 +9,8 @@
 //! 光線ごと・面ごとの交点・方向・光路長、EFL、OPDC を見る。
 
 use crate::common::root;
-use lensbench_core::{analysis, FieldSel, System};
+use lensbench_analysis::analysis;
+use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 use serde_json::Value;

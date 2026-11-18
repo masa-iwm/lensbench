@@ -1,6 +1,6 @@
 //! Huygens PSF・Huygens MTF（OpticStudio の Huygens PSF・Huygens MTF 相当）。
 //!
-//! FFT の PSF（[`lensbench_core::psf::psf`]）は瞳から像の面（既定は像面、照合用に主光線に垂直な面）への写像を一次（対角）で近似するが、Huygens は
+//! FFT の PSF（[`crate::psf::psf`]）は瞳から像の面（既定は像面、照合用に主光線に垂直な面）への写像を一次（対角）で近似するが、Huygens は
 //! 射出瞳の参照球（OPD の基準と同じ。ROPD「無限遠」・射出瞳が無限遠なら主光線に垂直な平面）の上の各点を
 //! 2 次波源とし、像面（傾き・曲率を含む像面そのもの）の格子の各点まで素直に足し合わせる:
 //!
@@ -20,11 +20,11 @@
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
-use lensbench_core::analysis::{mtf_cutoff_axes, mtf_tangential, pupil_jacobian, Mtf, MtfAxes};
+use crate::analysis::{mtf_cutoff_axes, mtf_tangential, pupil_jacobian, Mtf, MtfAxes};
+use crate::psf::{perp_slopes_of, plane_slopes, Psf, PsfPlane};
 use lensbench_core::coating::C64;
 use lensbench_core::error::Result;
 use lensbench_core::math::*;
-use lensbench_core::psf::{perp_slopes_of, plane_slopes, Psf, PsfPlane};
 use lensbench_core::pupil::{PupilAmp, PupilFunction, PupilGrid, RefSurface};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::{invalid, notimpl};
@@ -40,7 +40,7 @@ pub struct HuygensOpts {
     /// 像の格子の一辺
     pub image: usize,
     /// 像の格子の間隔 [レンズ単位]（像面の上で。None で像面の上の 1 / (2 × 遮断周波数)、x・y 別。FFT PSF の
-    /// 既定の面（[`lensbench_core::psf::PsfPlane::Image`]）の既定の間隔と同じ）
+    /// 既定の面（[`crate::psf::PsfPlane::Image`]）の既定の間隔と同じ）
     pub pixel: Option<f64>,
 }
 
@@ -134,7 +134,7 @@ pub fn huygens_psf_with(
     extra: Option<&dyn PupilAmp>,
 ) -> Result<Psf> {
     let w = w.one();
-    lensbench_core::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
+    crate::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
         huygens_once(s, field, w, HuygensOpts { pupil: np, ..o }, extra)
     })
 }
@@ -233,7 +233,7 @@ fn huygens_once(
                 .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
                 .collect();
             let need = (ni as f64 * (pixel.0 * cut.0).max(pixel.1 * cut.1)).ceil() as usize;
-            lensbench_core::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
+            crate::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
         }
     };
     // 瞳の格子（FFT PSF と同じ区間の中心）
@@ -304,7 +304,7 @@ fn huygens_once(
         if !(s2 > 0.0) {
             invalid!("Huygens PSF: no valid rays (all vignetted)");
         }
-        step = step.max(lensbench_core::psf::phase_step(np, &w_ok));
+        step = step.max(crate::psf::phase_step(np, &w_ok));
         // 光源を成分ごとの配列に（像の 1 点の内側のループをベクトル化し、位相因子をまとめて求める）
         let (qx, qy, qz): (Vec<f64>, Vec<f64>, Vec<f64>) = (
             src.iter().map(|q| q.q[0]).collect(),
@@ -399,7 +399,7 @@ fn huygens_once(
         .collect();
     let peak = i.iter().flatten().cloned().fold(0.0, f64::max);
     let enclosed = encl / wsum;
-    let mut warnings = lensbench_core::psf::sampling_warnings("Huygens PSF", np, step, enclosed);
+    let mut warnings = crate::psf::sampling_warnings("Huygens PSF", np, step, enclosed);
     if off_surface > 0 {
         warnings.push(format!(
             "Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts} image grid points (outside the surface shape); their intensity is NaN",

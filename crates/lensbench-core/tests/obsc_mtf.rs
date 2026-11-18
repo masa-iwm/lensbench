@@ -1,6 +1,6 @@
 //! 中心遮蔽で主光線がけられる系の回折 MTF。基準の光線（主光線・瞳の大きさを決める光線）は
 //! OpticStudio と同じく開口・遮蔽を無視し、瞳の光線だけがけられる。
-use lensbench_core::analysis::{self, MtfMethod};
+use lensbench_analysis::analysis::{self, MtfMethod};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::Waves;

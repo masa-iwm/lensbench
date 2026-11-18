@@ -9,6 +9,9 @@
 
 ### 互換が切れる所
 
+- **解析を lensbench-analysis へ**: Rust の `lensbench_core::{analysis, psf, pop, sweep, fiber, raygrid}` は `lensbench_analysis::…` になった。
+  OPD と瞳の標本（`opd`・`gauss_legendre` など）は core の `lensbench_core::opd` に残り、`lensbench_analysis::analysis` からも引ける。
+  `lensbench_analysis::prelude` は .zmx の読込と解析まで含む。CLI・GUI・Python は変わらない。
 - **.zmx の読込を lensbench-formats へ**: Rust の `lensbench_core::zmx` は `lensbench_formats::zmx` になった。
   `lensbench_formats::prelude` は core の prelude に `zmx`・`LoadOptions` を足したもの。CLI・GUI・Python は変わらない。
 - **過去の形式の読込をやめた**: システムファイルの版 1、列挙の旧名（`"Epd"`・`"Real"`・`"Milliradians"` など大文字始まりの名前）、

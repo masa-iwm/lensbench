@@ -1,7 +1,7 @@
 //! 評価関数が使う瞳のガウス求積の点の使い回し（core の analysis から移した。使うのはこのクレートだけ）
 
 use crate::Quad;
-use lensbench_core::analysis::{pupil_gauss, pupil_gauss_os};
+use lensbench_analysis::analysis::{pupil_gauss, pupil_gauss_os};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -66,7 +66,7 @@ pub(crate) fn quad_len(rings: usize, quad: Quad) -> usize {
 }
 
 /// [`pupil_shared`] の点と、系のアポダイゼーションの強度 A²（amplitude なら振幅 A。波面の項）を掛けた重み
-/// （解析と同じ: [`lensbench_core::analysis::apodized`]・[`lensbench_core::analysis::apodized_amplitude`]）
+/// （解析と同じ: [`lensbench_analysis::analysis::apodized`]・[`lensbench_analysis::analysis::apodized_amplitude`]）
 pub(crate) fn apodized_gauss(
     s: &lensbench_core::System,
     field: lensbench_core::system::FieldSel,
@@ -76,9 +76,9 @@ pub(crate) fn apodized_gauss(
 ) -> lensbench_core::error::Result<(Rc<PupilPts>, Vec<f64>)> {
     let pg = pupil_shared(rings, quad);
     let f = if amplitude {
-        lensbench_core::analysis::apodized_amplitude
+        lensbench_analysis::analysis::apodized_amplitude
     } else {
-        lensbench_core::analysis::apodized
+        lensbench_analysis::analysis::apodized
     };
     let w = f(s, field, &pg.0, &pg.1, &pg.2)?;
     Ok((pg, w))

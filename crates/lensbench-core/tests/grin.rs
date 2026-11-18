@@ -12,8 +12,9 @@
 //! G9A の rays_dtnom.json・sysdata_dtnom.txt は Δt 0.5 のときの値で、収束値と 4e-6 ずれる（参考）。
 
 use crate::common::root;
+use lensbench_analysis::analysis;
 use lensbench_core::system::PolIn;
-use lensbench_core::{analysis, FieldSel, System};
+use lensbench_core::{FieldSel, System};
 use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 use serde_json::Value;
@@ -339,7 +340,8 @@ fn unsupported_surface_after_the_medium_is_rejected() {
 /// ずらす前の光線を直線で進める近道（core focus.rs）は使わず、厚さを変えて追い直したのと同じ値
 #[test]
 fn rms_vs_focus_with_the_image_inside_grin() {
-    use lensbench_core::{sweep, Waves};
+    use lensbench_analysis::sweep;
+    use lensbench_core::Waves;
     let (mut s, _) = load("G9A");
     s.delete_surface(2).unwrap();
     // GRIN の面と像面の間に何もしない座標ブレークを挟んだ系も（媒質は GRIN のまま）。像面を手前へずらすと
@@ -372,7 +374,8 @@ fn rms_vs_focus_with_the_image_inside_grin() {
 }
 
 fn check_focus(s: &System) {
-    use lensbench_core::{sweep, Waves};
+    use lensbench_analysis::sweep;
+    use lensbench_core::Waves;
     let f = FieldSel::Index(s.fields.len() - 1);
     for dz in [-0.5, 0.5] {
         let r = sweep::rms_vs_focus(s, f, &[dz], Waves::All, Default::default());
