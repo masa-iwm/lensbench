@@ -1386,7 +1386,7 @@ fn wfe_term(
     let nt = if reference == RmsRef::Centroid { 2 } else { 0 };
     let nu = nw + nt;
     // 有効な光線ごと: (波長 k, 光線 i, OPD, L − Lc, M − Mc, 波長の中の重み q)
-    let mut rows: Vec<(usize, usize, f64, f64, f64, f64)> = Vec::new();
+    let mut rows: Vec<(usize, usize, f64, f64, f64, f64)> = Vec::with_capacity(m);
     // 微分（rows と同じ順）: dOPD・d(L − Lc)・d(M − Mc) [パラメータ]
     let mut drows: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = Vec::new();
     for (k, &w) in ws.iter().enumerate() {
