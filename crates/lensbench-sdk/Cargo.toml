@@ -1,0 +1,31 @@
+[package]
+name = "lensbench-sdk"
+description = "Extension SDK of lensbench: the one crate an outside crate depends on to add plugins, analyses, detectors and surface models, and to build its own exe and wheel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# CLI の入口（cli::main）
+cli = ["dep:lensbench-cli"]
+# GUI の入口と見せ方（gui::main・GuiExtensions、egui の再輸出）
+gui = ["dep:lensbench-gui", "dep:egui"]
+# Python の拡張モジュールの入口と関数の足し方（py::module、pyo3 の再輸出）
+py = ["dep:lensbench-py", "dep:pyo3"]
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-analysis = { path = "../lensbench-analysis" }
+lensbench-project = { path = "../lensbench-project" }
+lensbench-engine = { path = "../lensbench-engine" }
+lensbench-cli = { path = "../lensbench-cli", optional = true }
+lensbench-gui = { path = "../lensbench-gui", optional = true }
+lensbench-py = { path = "../lensbench-py", optional = true, default-features = false }
+egui = { version = "0.31", default-features = false, optional = true }
+pyo3 = { version = "0.30", features = ["abi3-py39"], optional = true }

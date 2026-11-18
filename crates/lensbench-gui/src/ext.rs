@@ -1,8 +1,8 @@
 //! 拡張の解析（GUI の側）: この GUI を組み込んだ exe（非公開版など）が足す解析を、解析パネルの一覧・図・設定の欄に
 //! 載せる。計算は解析の登録簿に足した拡張の解析（`lensbench_engine::register`）で、ここでは見せ方だけを登録する。
 //!
-//! exe の入口で `lensbench_engine::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
-//! [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
+//! 外のクレートは [`GuiExtensions`] で `lensbench_engine::Extensions` に見せ方を足し、[`crate::main_with`] に渡す
+//! （計算の登録と同じ値 1 つ）。図を描く部品は [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
 
 use serde_json::{Map, Value};
 
@@ -94,6 +94,40 @@ impl GuiExt {
         self.detectors.retain(|x| x.kind != d.kind);
         self.detectors.push(d);
     }
+}
+
+/// `lensbench_engine::Extensions` に GUI の見せ方を足す（表の欄に入れる。install・ext のときに足す）
+pub trait GuiExtensions {
+    /// 解析の見せ方（同じ cmd は置き換える）
+    fn gui_analysis(self, a: Analysis) -> Self;
+    /// 検出器の欄（同じ kind は置き換える）
+    fn gui_detector(self, d: Detector) -> Self;
+    /// 画面の文字の訳（英語, 日本語）。`tr` で引く（同梱の表に無いものだけ使う）
+    fn gui_translations(self, pairs: &'static [(&'static str, &'static str)]) -> Self;
+}
+
+impl GuiExtensions for lensbench_engine::Extensions {
+    fn gui_analysis(self, a: Analysis) -> Self {
+        self.with_ext(move |e| e.slot_mut::<GuiExt>().add_analysis(a))
+    }
+    fn gui_detector(self, d: Detector) -> Self {
+        self.with_ext(move |e| e.slot_mut::<GuiExt>().add_detector(d))
+    }
+    fn gui_translations(self, pairs: &'static [(&'static str, &'static str)]) -> Self {
+        self.with_ext(move |_| crate::i18n::add(pairs))
+    }
+}
+
+/// 表 e に cmd の解析の見せ方があるか（拡張の検査用）
+pub fn has_analysis(e: &lensbench_core::ext::Ext, cmd: &str) -> bool {
+    e.slot::<GuiExt>()
+        .is_some_and(|t| t.analyses.iter().any(|a| a.cmd == cmd))
+}
+
+/// 表 e に kind の検出器の欄があるか（拡張の検査用）
+pub fn has_detector(e: &lensbench_core::ext::Ext, kind: &str) -> bool {
+    e.slot::<GuiExt>()
+        .is_some_and(|t| t.detectors.iter().any(|d| d.kind == kind))
 }
 
 fn table() -> Option<GuiExt> {

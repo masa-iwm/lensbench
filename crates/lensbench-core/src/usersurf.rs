@@ -36,6 +36,14 @@ pub trait SurfaceModel: Send + Sync {
     }
     /// 設定を確かめて面を作る
     fn prepare(&self, config: &Config) -> Result<Arc<dyn SurfaceInstance>>;
+    /// 試しの設定（拡張の検査で [`check_flip`] に渡す）。既定は [`SurfaceModel::params`] の既定値を並べたもの
+    /// （既定値の無い項目があれば None。そのときは自分で返す）
+    fn example_config(&self) -> Option<Config> {
+        self.params()
+            .into_iter()
+            .map(|p| Some((p.name, p.default?)))
+            .collect()
+    }
     /// 面を裏返した面の設定（鏡の後に置く・玉を反転するときに使う）。None は「対応しない」で、そのとき鏡の後や
     /// 反転では誤りになる（既定）。
     ///

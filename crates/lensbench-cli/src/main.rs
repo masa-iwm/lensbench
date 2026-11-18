@@ -1496,6 +1496,18 @@ where
     Cli::from_arg_matches(&m)
 }
 
+/// 拡張を入れてから CLI を動かす（外のクレートの exe の入口）
+pub fn main_with(ext: lensbench_engine::Extensions) -> ExitCode {
+    if let Err(e) = ext.install() {
+        eprintln!(
+            "lensbench: {}",
+            lensbench_core::i18n::translate(&e.to_string())
+        );
+        return ExitCode::FAILURE;
+    }
+    main()
+}
+
 pub fn main() -> ExitCode {
     quiet_broken_pipe();
     // 隠し: clap の定義を JSON で（マニュアルの CLI のページの元）

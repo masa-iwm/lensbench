@@ -79,6 +79,19 @@ pub use tour::Args;
 #[cfg(target_arch = "wasm32")]
 pub use worker::entry as web_worker;
 
+/// 拡張を入れてから GUI を起動する（外のクレートの exe の入口。見せ方は [`ext::GuiExtensions`] で同じ値に足す）
+#[cfg(not(target_arch = "wasm32"))]
+pub fn main_with(ext: lensbench_engine::Extensions) -> std::process::ExitCode {
+    if let Err(e) = ext.install() {
+        eprintln!(
+            "lensbench-gui: {}",
+            lensbench_core::i18n::translate(&e.to_string())
+        );
+        return std::process::ExitCode::FAILURE;
+    }
+    main()
+}
+
 /// GUI を起動する（引数はプロセスの引数から読む）
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main() -> std::process::ExitCode {

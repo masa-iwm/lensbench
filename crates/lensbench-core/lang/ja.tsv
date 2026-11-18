@@ -2170,3 +2170,4 @@ the user-defined surface model {model} can't be flipped in {h} (it has no flip)	
 user-defined surface model {name}: flipping twice in {h} does not give the original config	ユーザー定義の面のモデル {name}: {h} について 2 回反転しても元の設定に戻りません
 user-defined surface model {name}: the paraxial power changes when flipped in {h}	ユーザー定義の面のモデル {name}: {h} について反転すると近軸の屈折力が変わります
 user-defined surface model {name}: the surface flipped in {h} does not deflect the ray at ({px}, {py}) in direction ({kx}, {ky}, {kz}) as the mirror image	ユーザー定義の面のモデル {name}: {h} について反転した面が、点 ({px}, {py})・方向 ({kx}, {ky}, {kz}) の光線をミラー像と同じに曲げません
+extensions {} and {} both add {}	拡張 {} と {} が、どちらも {} を足しています
