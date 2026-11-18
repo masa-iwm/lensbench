@@ -441,6 +441,31 @@ fn interp_mtf_matches_direct_across_an_opd_step() {
     }
 }
 
+/// 外挿しない Zernike 面の縁で光線が落ちる細い帯（Z3、瞳で幅 1e-5 より細い）は、求積点が当たっても瞳が切れて
+/// いるとはしない（線ごとの求積に切り替えない）。周波数 0 はどの点数でも 1 で、点の少ない求積も細かい求積と合う
+/// （帯に点が当たると線ごとの求積に切り替えていたときは、視野 3・n = 120 の球欠で 8e-3 違った）
+#[test]
+fn thin_vignetted_band_does_not_switch_to_the_clipped_quadrature() {
+    use analysis::MtfMethod;
+    let s = load("Z3");
+    let f = FieldSel::Index(2);
+    let c = analysis::mtf_cutoff(&s, f, 0).unwrap().min();
+    let freqs: Vec<f64> = (0..10).map(|k| c * 0.09 * k as f64).collect();
+    let run =
+        |n| analysis::mtf_with(&s, f, Waves::One(0), Some(n), &freqs, MtfMethod::Interp).unwrap();
+    let fine = run(1500);
+    for n in [120, 288, 373, 600] {
+        let m = run(n);
+        let one = (m.tan[0] - 1.0).abs().max((m.sag[0] - 1.0).abs());
+        assert!(one < 1e-12, "{n}: {} {}", m.tan[0], m.sag[0]);
+        for k in 0..freqs.len() {
+            for (a, b) in [(m.tan[k], fine.tan[k]), (m.sag[k], fine.sag[k])] {
+                assert!((a - b).abs() < 3e-3, "{n} {k}: {a} {b}");
+            }
+        }
+    }
+}
+
 /// FFT の自己相関は既定（補間の求積）と 1.5e-4 以内で合う（瞳の標本 512 で 5e-5 程度）
 #[test]
 fn fft_mtf_is_the_quadrature_mtf() {

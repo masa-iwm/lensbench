@@ -68,6 +68,11 @@ pub(crate) struct Tuning {
     pub count_scan: usize,
     /// 区間の数が変わる線の位置を探す角度の走査の線の数
     pub line_scan: usize,
+    /// けられた面積（単位円の面積に対する割合、[`clipped_area`]）がこれを超えるときだけ、瞳が切れているとして
+    /// 線ごとの求積（[`clipped_otf`]）にする。これ以下のけられ（面の定義域の縁で光線が落ちる細い帯など）は、
+    /// ふつうの求積でけられた点を除くだけで MTF に割合ほどしか効かない（線ごとの求積の誤差 3e-4 より小さい）。
+    /// 求積点がけられに当たるかどうかで経路を選ぶと、点数や点の置き方で値が跳ぶ
+    pub clip_area: f64,
 }
 
 /// 回折 MTF の数値の設定（[`Tuning`]）
@@ -92,6 +97,7 @@ pub(crate) const T: Tuning = Tuning {
     lines_min: 128,
     count_scan: 257,
     line_scan: 65,
+    clip_area: 1e-4,
 };
 
 /// MTF（変調度）。freqs [cycles/mm] ごとに子午と球欠（向きは [`MtfAxes`]。既定は子午が視野の向き、y だけの視野では
@@ -327,9 +333,9 @@ fn wave_otf(
     // 瞳の点・ずれ・補間の格子はどれも組の座標 (u, v)（u は球欠 s、v は子午 t の向き。恒等なら正規化瞳の
     // x・y）。追跡と振幅だけが正規化瞳の座標に直す
     // 組の座標でのずれ（dir 0: 球欠、1: 子午の周波数）
-    let shift = |(k, dir): (usize, usize)| {
+    let shift = |f: f64, dir: usize| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
-        (sx * freqs[k], sy * freqs[k])
+        (sx * f, sy * f)
     };
     // 補間の格子がすべて有限なら、単位円の中の点はどれも補間できて有限（けられなし）。このときは
     // - 瞳の光量を点ごとの OPD から数えなくてよい（収差の大きい系では、点ごとに数えると求積と同じくらいかかる）
@@ -341,8 +347,8 @@ fn wave_otf(
         let ip = ip.as_ref().expect("pupil sampled above");
         let nks: Vec<usize> = jobs
             .iter()
-            .map(|&j| {
-                let (dx, dy) = shift(j);
+            .map(|&(k, dir)| {
+                let (dx, dy) = shift(freqs[k], dir);
                 if auto && n >= T.shift_min_n {
                     shift_points(ip, dx, dy).min(n)
                 } else {
@@ -369,25 +375,32 @@ fn wave_otf(
         if !(e0 > 0.0) {
             invalid!("MTF: no valid rays (all vignetted)");
         }
-        // 瞳が開口・遮蔽で切れている（けられた点がある）なら縁に合わせた求積にする
-        if o0.iter().any(|v| !v.is_finite()) {
+        // 瞳が開口・遮蔽で切れている（けられた面積がある）なら縁に合わせた求積にする。けられた点があっても
+        // 面積が小さければ（[`Tuning::clip_area`]）ふつうの求積でけられた点を除く
+        if o0.iter().any(|v| !v.is_finite())
+            && clipped_area(s, field, wi, fr, &gl, &o0)? > T.clip_area * std::f64::consts::PI
+        {
             return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym, amp, fr);
         }
         (vec![(n, gl)], vec![n; jobs.len()], e0)
     };
     // 周波数・向きごとに独立（並列でも値は同じ。和は周波数・向きの中で順に取る）
-    let one = |ji: usize| -> Result<C64> {
+    // 周波数 f・向き dir の和（点数 nk）
+    let eval = |f: f64, dir: usize, nk: usize| -> Result<C64> {
         // GUI で系が変わったら途中でやめる（周波数・向きごとに確かめる）
         crate::par::check_cancel()?;
-        let (dx, dy) = shift(jobs[ji]);
+        let (dx, dy) = shift(f, dir);
         let d = dx.hypot(dy);
-        // ずらす向き (ex, ey) と直交する向き (−ey, ex)
+        // ずらす向き (ex, ey) と直交する向き (−ey, ex)。周波数 0 は、けられた点がありうるとき（補間の格子に
+        // 有限でない点がある）はその向きの周波数と同じ点に（光量 e0 の割り算で周波数 0 が 1 になる）
         let (ex, ey) = if d > 0.0 {
             (dx / d, dy / d)
+        } else if !all_finite && dir == 1 {
+            (0.0, 1.0)
         } else {
             (1.0, 0.0)
         };
-        let gl = &gls.iter().find(|g| g.0 == nks[ji]).expect("listed glass").1;
+        let gl = &gls.iter().find(|g| g.0 == nk).expect("listed glass").1;
         let scale = match (all_finite, amp) {
             (false, _) => 1.0,
             (true, None) => e0 / lens_area(gl),
@@ -420,6 +433,27 @@ fn wave_otf(
         acc += phasor_sum(&a, &b, &w);
         Ok(acc * scale)
     };
+    let one = |ji: usize| eval(freqs[jobs[ji].0], jobs[ji].1, nks[ji]);
+    // けられた点がありうるとき（補間の格子に有限でない点がある）は、光量を向きごとに周波数 0 の和（その向きの
+    // 求積と同じ点・同じ補間と直接追跡）にする。ずらさない瞳の点ごとの光量とは、細い帯のけられに点が当たるか
+    // どうかで違い、周波数 0 が 1 からずれる
+    let e0 = if all_finite {
+        (e0, e0)
+    } else {
+        let e = |dir: usize| eval(0.0, dir, n).map(|c| c.re);
+        let s0 = if dirs.contains(&0) { e(0)? } else { e0 };
+        let t0 = if sym {
+            s0
+        } else if dirs.contains(&1) {
+            e(1)?
+        } else {
+            e0
+        };
+        if !(s0 > 0.0 && t0 > 0.0) {
+            invalid!("MTF: no valid rays (all vignetted)");
+        }
+        (s0, t0)
+    };
     let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
         use rayon::prelude::*;
         (0..jobs.len()).into_par_iter().map(scoped(one)).collect()
@@ -439,7 +473,7 @@ fn wave_otf(
             tan[k] = acc;
         }
     }
-    Ok((sag, tan, (e0, e0)))
+    Ok((sag, tan, e0))
 }
 
 /// 波長 wave の回折限界の遮断周波数 [cycles/mm]（瞳を 2 だけずらす周波数）。子午・球欠は既定の向き

@@ -108,6 +108,72 @@ pub(super) fn pupil_segments(
     Ok(segs)
 }
 
+/// ずらさない瞳の [`lens_quad`]（d = 0、点数は gl）で、けられた点（o0 が有限でない点）が覆うけられの面積（正規化瞳の
+/// 単位、単位円で π）。点の行（t が一定）ごとに、けられた点の続きの両側の縁を隣の点（行の端なら弦の端）との間の
+/// 二分法で詰め、縁の間の長さに行の重みを掛けて足す。点の当たり外れではなく縁の位置で測るので、求積点より細い
+/// けられ（面の定義域の縁で光線が落ちる帯など）は点に当たってもその幅ほどの面積にしかならない。点が当たらない
+/// 行のけられは数えない
+pub(super) fn clipped_area(
+    s: &System,
+    field: FieldSel,
+    wi: usize,
+    fr: &MtfFrame,
+    gl: &LensGl,
+    o0: &[f64],
+) -> Result<f64> {
+    let nu = gl.gu.len();
+    // 縁 (行の t, けられた側の u, 通る側の u)、けられの続き (行の重み, 左の縁, 右の縁)
+    let mut edges: Vec<(f64, f64, f64)> = Vec::new();
+    let mut runs: Vec<(f64, usize, usize)> = Vec::new();
+    for (r, row) in o0.chunks(nu).enumerate() {
+        if row.iter().all(|v| v.is_finite()) {
+            continue;
+        }
+        // [`lens_quad`] の d = 0 の行 r
+        let (z, wz) = (gl.gt[r / 2], gl.wt[r / 2]);
+        let tau = 0.5 * (z + 1.0);
+        let y = 1.0 - tau * tau;
+        let dy = tau * wz;
+        let x = (1.0 - y * y).max(0.0).sqrt();
+        let t = if r % 2 == 0 { y } else { -y };
+        let end = x * (1.0 - 1e-12);
+        let mut i = 0;
+        while i < nu {
+            if row[i].is_finite() {
+                i += 1;
+                continue;
+            }
+            let mut j = i;
+            while j + 1 < nu && !row[j + 1].is_finite() {
+                j += 1;
+            }
+            let left = if i > 0 { x * gl.gu[i - 1] } else { -end };
+            let right = if j + 1 < nu { x * gl.gu[j + 1] } else { end };
+            runs.push((dy, edges.len(), edges.len() + 1));
+            edges.push((t, x * gl.gu[i], left));
+            edges.push((t, x * gl.gu[j], right));
+            i = j + 1;
+        }
+    }
+    for _ in 0..44 {
+        if edges.is_empty() {
+            break;
+        }
+        let (px, py): (Vec<f64>, Vec<f64>) = edges.iter().map(|e| (0.5 * (e.1 + e.2), e.0)).unzip();
+        let o = frame_opd(s, field, wi, fr, &px, &py)?;
+        for (k, e) in edges.iter_mut().enumerate() {
+            let c = 0.5 * (e.1 + e.2);
+            if o.ok(k) && o.opd[k].is_finite() {
+                e.2 = c;
+            } else {
+                e.1 = c;
+            }
+        }
+    }
+    let at = |k: usize| 0.5 * (edges[k].1 + edges[k].2);
+    Ok(runs.iter().map(|&(w, a, b)| w * (at(b) - at(a))).sum())
+}
+
 /// [`clipped_otf`] の線の位置と重み（向き dir、[`pupil_segments`] と同じ線）。v = sin θ と置いて θ で
 /// Gauss-Legendre、全部で約 n 本。光線が通る区間の数が変わる θ（開口の縁が線と平行な所、遮蔽の端など。
 /// 線ごとの光量が跳ぶ・折れる）を [`Tuning::line_scan`] 本の走査と二分法で求め、そこで θ の範囲を分ける
