@@ -25,6 +25,10 @@ class CheckVersion(unittest.TestCase):
         self.assertTrue(cv.check("0.5.0-dev", tags, ["v0.4.1"]))
         self.assertEqual(cv.check("0.5.0-dev", [], []), [])  # タグが無い
         self.assertEqual(cv.check("0.5.0", tags + ["v0.5.0-rc.1"], []), [])
+        # リリース候補のタグの後に main を開発中の名前へ戻してよい（リリース候補は比べる相手にしない）
+        self.assertEqual(cv.check("0.5.0-dev", tags + ["v0.5.0-rc.1", "v0.5.0-rc.2"], []), [])
+        self.assertEqual(cv.check("0.5.0-rc.1", tags + ["v0.5.0-rc.1"], ["v0.5.0-rc.1"]), [])  # rc のタグのコミット
+        self.assertTrue(cv.check("0.5.0-dev", tags + ["v0.5.0-rc.1"], ["v0.5.0-rc.1"]))
 
 
 if __name__ == "__main__":

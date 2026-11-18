@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""版の検査（docs/versioning.md）: Cargo.toml の workspace.package.version が、最後のリリースのタグ（v*）より新しいこと。
-HEAD がタグのコミットなら、版はそのタグの名前（v を除く）と同じこと。タグが 1 つも無ければ検査しない。
+"""版の検査（docs/versioning.md）: Cargo.toml の workspace.package.version が、最後のリリースのタグ（v*、接尾辞の無いもの）より
+新しいこと。リリース候補のタグ（v0.5.0-rc.1 など）は比べる相手にしない（その後の main は 0.5.0-dev に戻る）。
+HEAD がタグのコミットなら、版はそのタグの名前（v を除く）と同じこと。リリースのタグが 1 つも無ければ、タグとの新しさは検査しない。
 
   python3 scripts/check_version.py          # git のタグを読む（CI は fetch-depth: 0 で）
 """
@@ -29,7 +30,8 @@ def key(v: str):
 
 def check(version: str, tags: list[str], head_tags: list[str]) -> list[str]:
     errs = []
-    vt = [t[1:] for t in tags if t.startswith("v") and SEMVER.match(t[1:])]
+    # リリースのタグだけ（接尾辞つきのリリース候補は除く）
+    vt = [t[1:] for t in tags if t.startswith("v") and (m := SEMVER.match(t[1:])) and m[4] is None]
     here = [t[1:] for t in head_tags if t.startswith("v") and SEMVER.match(t[1:])]
     try:
         k = key(version)
