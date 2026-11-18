@@ -665,17 +665,37 @@ pub fn geometric_mtf_axes(
         }
     }
     let (mx, my) = (mx / wsum, my / wsum);
-    // 周波数ごとの (球欠, 子午)。周波数は互いに独立なので、点が多ければ並列に（周波数の中の和の順は変えないので同じビット）
+    // 波長ごとの、重心から測った位置 (x, y) と求積の重みの列
+    let cols: Vec<[Vec<f64>; 3]> = sets
+        .iter()
+        .map(|(_, pts, _)| {
+            [
+                pts.iter().map(|p| p.0 - mx).collect(),
+                pts.iter().map(|p| p.1 - my).collect(),
+                pts.iter().map(|p| p.2).collect(),
+            ]
+        })
+        .collect();
+    // 周波数ごとの (球欠, 子午)。周波数は互いに独立なので、点が多ければ並列に（周波数の中の和の順は変えないので同じビット）。
+    // 位相因子は [`crate::trig::cis_scaled`]（MTF・Huygens と同じ。libm の sin・cos との差は丸めの範囲）
     let one = |f: f64| -> (f64, f64) {
         let ph = 2.0 * std::f64::consts::PI * f;
         let (mut a, mut b) = (C64::new(0.0, 0.0), C64::new(0.0, 0.0));
-        for (k, pts, cut) in &sets {
-            let (mut aw, mut bw) = (C64::new(0.0, 0.0), C64::new(0.0, 0.0));
-            for &(x, y, wq) in pts {
-                let (x, y) = (x - mx, y - my);
-                aw += C64::new((ph * x).cos(), (ph * x).sin()) * wq;
-                bw += C64::new((ph * y).cos(), (ph * y).sin()) * wq;
+        let (mut arg, mut out) = (Vec::new(), Vec::new());
+        let mut sum = |pos: &[f64], wq: &[f64]| -> C64 {
+            arg.clear();
+            arg.extend(pos.iter().map(|&x| ph * x));
+            out.clear();
+            out.resize(pos.len(), C64::new(0.0, 0.0));
+            crate::trig::cis_scaled(&arg, wq, &mut out);
+            let mut acc = C64::new(0.0, 0.0);
+            for &c in &out {
+                acc += c;
             }
+            acc
+        };
+        for ((k, _, cut), [xs, ys, wq]) in sets.iter().zip(&cols) {
+            let (aw, bw) = (sum(xs, wq), sum(ys, wq));
             let (ds, dt) = if diff_limit {
                 (
                     diffraction_limit(f / cut.sag),
