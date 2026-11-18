@@ -13,6 +13,7 @@
 //! | `centroid` | field、wave（null は多色）、rings（3）、q（x・y）、target [レンズ単位]。像面の光束の重心（スポットの項と同じ光線・重み） |
 //! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n、主波長の主光線からのずれ trax・tray・trar、光路長 opth）、target |
 //! | `opd` | field、wave、px・py、target [波] |
+//! | `surface` | surf、q（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）、x・y（sag・thick の点 [レンズ単位]、0）、target |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -30,7 +31,8 @@ use lensbench_core::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, Term, TermKind,
+    CalcArg, CalcOp, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, SurfQ, Term,
+    TermKind,
 };
 use serde_json::Value;
 
@@ -187,7 +189,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 13] = [
+    const TYPES: [&str; 14] = [
         "spot",
         "wavefront",
         "mtf",
@@ -198,6 +200,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "zernike",
         "coupling",
         "thickness",
+        "surface",
         "zplm",
         "plugin",
         "calc",
@@ -227,6 +230,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Zernike { .. }
             | TermKind::Coupling { .. }
             | TermKind::Thickness { .. }
+            | TermKind::Surface { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -373,6 +377,21 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                     },
                     upper: false,
                 }),
+            }
+        }
+        TermSpec::Surface(t) => {
+            let q = SurfQ::parse(&t.q)?;
+            if (t.x.is_some() || t.y.is_some()) && !matches!(q, SurfQ::Sag | SurfQ::Thick) {
+                return Err("x and y go with sag and thick".to_string().into());
+            }
+            TermKind::Surface {
+                surf: t.surf,
+                q,
+                x: t.x.unwrap_or(0.0),
+                y: t.y.unwrap_or(0.0),
+                target: t
+                    .target
+                    .ok_or("surface term has no target (or min and max)")?,
             }
         }
         TermSpec::Calc(c) => calc_kind(c, s)?,

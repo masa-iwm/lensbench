@@ -44,6 +44,19 @@ const PARAXIAL_Q: &[&str] = &[
     "isna",
 ];
 const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth"];
+const SURF_Q: &[&str] = &[
+    "curv",
+    "conic",
+    "sag",
+    "sagx",
+    "sagy",
+    "thick",
+    "diam",
+    "mech_diam",
+    "gx",
+    "gy",
+    "gz",
+];
 const REFERENCE: &[&str] = &["centroid", "chief"];
 /// スポット・波面の瞳の求積（arms は opticstudio、n は grid と使う）
 const QUADRATURE: &[&str] = &["lensbench", "opticstudio", "grid"];
@@ -63,6 +76,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "zplm",
     "plugin",
     "calc",
+    "surface",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -159,6 +173,13 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("args", JsonList),
             ("target", Num),
         ],
+        "surface" => &[
+            ("surf", Int),
+            ("q", Choice(SURF_Q)),
+            ("x", Num),
+            ("y", Num),
+            ("target", Num),
+        ],
         "plugin" => &[
             ("name", Text),
             ("field", Field),
@@ -194,6 +215,7 @@ fn type_hint(ty: &str) -> &'static str {
         "coupling" => tr("Fiber coupling efficiency − target (default target 1, finite object)"),
         "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
         "calc" => tr("op of args (numbers or terms with a single value, e.g. {\"type\": \"paraxial\", \"q\": \"efl\", \"target\": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)"),
+        "surface" => tr("Curvature, conic, sag, thickness at a point, diameter or global vertex position of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, DMVA and GLCX; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
         "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
@@ -209,6 +231,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "ray" => vec![("field", "1"), ("py", "1"), ("q", "y"), ("target", "0")],
         "centroid" => vec![("field", "1"), ("q", "x"), ("target", "0")],
         "thickness" => vec![("surf", "1"), ("target", "")],
+        "surface" => vec![("surf", "1"), ("q", "curv"), ("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],

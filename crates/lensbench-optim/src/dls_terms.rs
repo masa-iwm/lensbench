@@ -256,6 +256,14 @@ pub enum TermKind {
         edge: Option<f64>,
         each: Option<Each>,
     },
+    /// 面 surf の量 − target（[`SurfQ`]。(x, y) は矢高・厚みを測る点 [レンズ単位]）。微分は差分
+    Surface {
+        surf: usize,
+        q: SurfQ,
+        x: f64,
+        y: f64,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -512,6 +520,7 @@ impl TermKind {
             | TermKind::Zernike { target, .. }
             | TermKind::Coupling { target, .. }
             | TermKind::Thickness { target, .. }
+            | TermKind::Surface { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -676,6 +685,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Zernike { .. }
         | TermKind::Coupling { .. }
         | TermKind::Thickness { .. }
+        | TermKind::Surface { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

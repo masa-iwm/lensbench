@@ -225,6 +225,21 @@ pub struct ThickSpec {
     pub each: Option<EachName>,
 }
 
+/// surface の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SurfSpec {
+    /// 面の番号（物体面 0）
+    pub surf: usize,
+    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）
+    pub q: String,
+    /// sag・thick を測る点 [レンズ単位]（既定 0）
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -314,6 +329,7 @@ pub enum TermSpec {
     Zernike(ZernSpec),
     Coupling(CouplingSpec),
     Thickness(ThickSpec),
+    Surface(SurfSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

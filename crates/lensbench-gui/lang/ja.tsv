@@ -1504,3 +1504,4 @@ No states yet. Add one in the Layout panel (states are the configurations of a c
 Inserting surfaces and pasting is not available in a combination	面を挿入して貼り付ける操作は組合せではまだできません
 Air	空気
 Medium filling this gap (glass name or refractive index, e.g. for immersion); empty is air	この間隔を満たす媒質（硝材の名前か屈折率。液浸など）。空なら空気
+Curvature, conic, sag, thickness at a point, diameter or global vertex position of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, DMVA and GLCX; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick	面 surf の曲率・コーニック・矢高・点の厚み・直径・頂点のグローバル座標 − 目標（CVVA・COVA・SSAG・SAGX・STHI・DMVA・GLCX 相当。CVGT・DMLT などは min・max）。x・y は sag と thick の点

@@ -1614,7 +1614,6 @@ the referenced row {} ({}) is a bound, whose value OpticStudio moves to its targ
 .zmx merit function row {}: the Wizard rows from here don't match the pupil sampling of its settings; they are read one by one	.zmx のメリットファンクションの行 {}: ここからの Wizard の行は設定の瞳のサンプリングと合わないので、1 行ずつ読みます
 zone {zone} (more than 0, up to 1)	zone {zone}（0 より大きく 1 以下）
 a thickness term with each needs min or max	each の厚みの項には min か max が要ります
-OpticStudio has no maximum edge thickness of air or glass surfaces	OpticStudio には空気・硝材の面の縁の厚みの上限のオペランドがありません
 only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)	書けるのは 1 面のクリア半径での縁の厚みだけです（ETGT・ETLT・ETVA）
 this operand is not supported	このオペランドには対応していません
 wavelength {w} (lensbench reads the wavelength only for EFFL and PIMH)	波長 {w}（lensbench が波長を読むのは EFFL と PIMH だけです）
@@ -2286,6 +2285,14 @@ user-defined surface model {name}: flipping twice in {h} does not give the origi
 user-defined surface model {name}: the paraxial power changes when flipped in {h}	ユーザー定義の面のモデル {name}: {h} について反転すると近軸の屈折力が変わります
 user-defined surface model {name}: the surface flipped in {h} does not deflect the ray at ({px}, {py}) in direction ({kx}, {ky}, {kz}) as the mirror image	ユーザー定義の面のモデル {name}: {h} について反転した面が、点 ({px}, {py})・方向 ({kx}, {ky}, {kz}) の光線をミラー像と同じに曲げません
 extensions {a} and {b} both add {names}	拡張 {a} と {b} が、どちらも {names} を足しています
+surface quantity {s} ({})	面の量 {s}（{}）
+surface quantity {q}	面の量 {q}
+surface {j} has no position (ignored, or the object at infinity)	面 {j} には位置がありません（無視する面か、無限遠の物体）
+{} of surface {j} is not finite	面 {j} の {} が有限ではありません
+term {i}: surface {surf} (0 to {last})	項 {i}: 面 {surf}（0〜{last}）
+x and y go with sag and thick	x と y は sag と thick と使います
+surface term has no target (or min and max)	surface の項に target（か min・max）がありません
+SSAG with Off-Axis, Remove or BFS	Off-Axis・Remove・BFS のある SSAG
 a macro solve sets k, semi or p1.. (not {})	マクロのソルブで解くのは k・semi・p1.. です（{} ではありません）
 macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）
 no macro {} (the system has {})	マクロ {} がありません（システムのマクロは {} 個）

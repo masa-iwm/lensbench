@@ -63,6 +63,11 @@ use jac::{pupil_d, JacCache, PupilCache};
 mod spot;
 use spot::{centroid_term, spot_term};
 
+#[path = "dls_surf.rs"]
+mod surf;
+use surf::reads_semi;
+pub use surf::SurfQ;
+
 #[path = "dls_trace.rs"]
 mod trace;
 use trace::{launch_of, trace_ok, trace_pupil_cols, trace_pupil_rec};
@@ -314,10 +319,14 @@ impl Problem {
             .map(|(v, &xv)| (v.param, xv))
             .collect();
         if ch.is_empty() {
-            Ok(self.configs[c].clone())
-        } else {
-            self.configs[c].with_params_fast(&ch)
+            return Ok(self.configs[c].clone());
         }
+        let mut s = self.configs[c].with_params_fast(&ch)?;
+        // 半直径を読む項があれば、自動の半直径を評価のたびに求め直す（OpticStudio と同じ）
+        if self.terms.iter().any(|t| reads_semi(&t.kind)) {
+            s.update_semi();
+        }
+        Ok(s)
     }
 
     /// 項ごとの残差の行数（系の形と項で決まり、変数の値によらない）
@@ -822,6 +831,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             }
             return Ok(());
         }
+        TermKind::Surface { surf, q, .. } => return surf::check(i, *surf, *q, s),
         TermKind::Calc { op, args, .. } => {
             let (lo, hi) = op.arity();
             let n = args.len();
@@ -1049,6 +1059,7 @@ fn eval_term(
             }
             Ok((vec![v - target], None))
         }
+        TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args
                 .iter()

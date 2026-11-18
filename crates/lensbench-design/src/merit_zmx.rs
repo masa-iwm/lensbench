@@ -204,7 +204,8 @@ fn kind_of(
         }
         // 範囲の境界: Int1〜Int2 の面（像面は除く）のうち T すべて・A 空気・G ガラスの面の中心（C）・縁（E）の厚みを
         // 1 面ずつ目標と比べる。縁は Data1 の Zone（0 は半直径、ほかは半直径に対する割合）
-        "MNCT" | "MXCT" | "MNCA" | "MXCA" | "MNCG" | "MXCG" | "MNET" | "MXET" | "MNEA" | "MNEG" => {
+        "MNCT" | "MXCT" | "MNCA" | "MXCA" | "MNCG" | "MXCG" | "MNET" | "MXET" | "MNEA" | "MXEA"
+        | "MNEG" | "MXEG" => {
             let s1 = int(INT1)?;
             let s2 = int(INT2)?.min(image as i64 - 1);
             if s1 < 1 || s2 < s1 {
@@ -228,6 +229,55 @@ fn kind_of(
             m.insert("each".into(), json!(each));
             let key = if op.starts_with("MN") { "min" } else { "max" };
             m.insert(key.into(), json!(target * unit));
+        }
+        // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
+        "CVGT" | "CVLT" | "CVVA" | "COGT" | "COLT" | "COVA" | "DMGT" | "DMLT" | "DMVA" | "SAGX"
+        | "SAGY" | "SSAG" | "STHI" | "GLCX" | "GLCY" | "GLCZ" => {
+            let j = int(INT1)?;
+            let last = if op == "STHI" { image - 1 } else { image };
+            if j < 0 || j as usize > last {
+                return Err(format!("surface {j}"));
+            }
+            let (q, xy) = match op {
+                "CVGT" | "CVLT" | "CVVA" => ("curv", None),
+                "COGT" | "COLT" | "COVA" => ("conic", None),
+                "DMGT" | "DMLT" | "DMVA" if int(data(2))? == 0 => ("mech_diam", None),
+                "DMGT" | "DMLT" | "DMVA" => ("diam", None),
+                "SAGX" => ("sagx", None),
+                "SAGY" => ("sagy", None),
+                // SSAG: Data1・Data2 が点、Data3〜Data5（Off-Axis・Remove・BFS）は 0 だけ
+                "SSAG" => {
+                    if (3..=5).any(|k| num(data(k)).unwrap_or(0.0) != 0.0) {
+                        return Err("SSAG with Off-Axis, Remove or BFS".into());
+                    }
+                    ("sag", Some((num(data(1))?, num(data(2))?)))
+                }
+                // STHI: Data1・Data2 が点（Data3 の Mode は回転対称の系で 0・1 とも同じ値）
+                "STHI" => ("thick", Some((num(data(1))?, num(data(2))?))),
+                "GLCX" => ("gx", None),
+                "GLCY" => ("gy", None),
+                _ => ("gz", None),
+            };
+            m.insert("type".into(), json!("surface"));
+            m.insert("surf".into(), json!(j));
+            m.insert("q".into(), json!(q));
+            if let Some((x, y)) = xy {
+                m.insert("x".into(), json!(x * unit));
+                m.insert("y".into(), json!(y * unit));
+            }
+            let key = match &op[2..] {
+                "GT" => "min",
+                "LT" => "max",
+                _ => "target",
+            };
+            let len = !matches!(q, "curv" | "conic");
+            // 曲率は 1/レンズ単位
+            let t = match q {
+                "curv" => target / unit,
+                _ if len => target * unit,
+                _ => target,
+            };
+            m.insert(key.into(), json!(t));
         }
         "RSCE" | "RSCH" | "RWCE" | "RWCH" => {
             if target != 0.0 {
@@ -467,8 +517,11 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
             m.insert(side.into(), json!(if len { t * cx.unit } else { t }));
         }
         // 長さの項の残差は mm になるので、重みをレンズ単位の 2 乗で割って OpticStudio と同じ釣り合いにする
+        // 曲率（1/レンズ単位）の残差は逆に、重みにレンズ単位の 2 乗をかける
         let weight = if len {
             weight / (cx.unit * cx.unit)
+        } else if ["CVGT", "CVLT", "CVVA"].contains(&src.op.as_str()) {
+            weight * cx.unit * cx.unit
         } else {
             weight
         };
@@ -493,7 +546,8 @@ fn is_length(op: &str) -> bool {
         || [
             "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAC", "TRAD", "TRAE",
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
-            "MNET", "MXET", "MNEA", "MNEG",
+            "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
+            "SSAG", "STHI", "GLCX", "GLCY", "GLCZ",
         ]
         .contains(&op)
 }
@@ -823,23 +877,20 @@ fn row_of(
                     Bound::Side(s, b) => (s == "OPGT", b),
                     _ => return Err("a thickness term with each needs min or max".into()),
                 };
-                let op =
-                    match (lower.0, edge, e) {
-                        (true, false, "air") => "MNCA",
-                        (true, false, "glass") => "MNCG",
-                        (true, false, _) => "MNCT",
-                        (false, false, "air") => "MXCA",
-                        (false, false, "glass") => "MXCG",
-                        (false, false, _) => "MXCT",
-                        (true, true, "air") => "MNEA",
-                        (true, true, "glass") => "MNEG",
-                        (true, true, _) => "MNET",
-                        (false, true, "all") => "MXET",
-                        _ => return Err(
-                            "OpticStudio has no maximum edge thickness of air or glass surfaces"
-                                .into(),
-                        ),
-                    };
+                let op = match (lower.0, edge, e) {
+                    (true, false, "air") => "MNCA",
+                    (true, false, "glass") => "MNCG",
+                    (true, false, _) => "MNCT",
+                    (false, false, "air") => "MXCA",
+                    (false, false, "glass") => "MXCG",
+                    (false, false, _) => "MXCT",
+                    (true, true, "air") => "MNEA",
+                    (true, true, "glass") => "MNEG",
+                    (true, true, _) => "MNET",
+                    (false, true, "air") => "MXEA",
+                    (false, true, "glass") => "MXEG",
+                    (false, true, _) => "MXET",
+                };
                 (op, p, Bound::Target(lower.1))
             } else if edge {
                 if s2 != s1 || zone != 1.0 {
@@ -860,6 +911,48 @@ fn row_of(
                     Bound::Side(_, b) => ("CTLT", p, Bound::Target(b)),
                     b => ("CTVA", p, b),
                 }
+            }
+        }
+        "surface" => {
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let mut p = [
+                num("surf").unwrap_or(0.0),
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ];
+            let (x, y) = (num("x").unwrap_or(0.0), num("y").unwrap_or(0.0));
+            // GT・LT のある量は 1 行、ほかは VA の行（min・max は OPGT・OPLT）
+            let (va, gt, lt) = match q {
+                "curv" => ("CVVA", "CVGT", "CVLT"),
+                "conic" => ("COVA", "COGT", "COLT"),
+                "diam" | "mech_diam" => {
+                    p[3] = if q == "diam" { 1.0 } else { 0.0 };
+                    ("DMVA", "DMGT", "DMLT")
+                }
+                "sagx" => ("SAGX", "", ""),
+                "sagy" => ("SAGY", "", ""),
+                "sag" => {
+                    (p[1], p[2], p[3]) = (0.0, x, y);
+                    ("SSAG", "", "")
+                }
+                "thick" => {
+                    (p[2], p[3]) = (x, y);
+                    ("STHI", "", "")
+                }
+                "gx" => ("GLCX", "", ""),
+                "gy" => ("GLCY", "", ""),
+                "gz" => ("GLCZ", "", ""),
+                _ => return Err(format!("surface quantity {q}")),
+            };
+            match bound(0.0) {
+                Bound::Side("OPGT", b) if !gt.is_empty() => (gt, p, Bound::Target(b)),
+                Bound::Side(_, b) if !lt.is_empty() => (lt, p, Bound::Target(b)),
+                b => (va, p, b),
             }
         }
         "zplm" => match t.get("macro").and_then(Value::as_u64) {
@@ -1238,6 +1331,15 @@ mod tests {
             json!({"type": "thickness", "surf": 1, "to": 5, "each": "air", "edge": true, "zone": 0.5, "min": 0.5, "weight": 1.0}),
             json!({"type": "thickness", "surf": 1, "to": 5, "each": "glass", "max": 10.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 1, "to": 5, "each": "all", "edge": true, "max": 10.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 2, "q": "curv", "min": 0.01, "weight": 1.0}),
+            json!({"type": "surface", "surf": 2, "q": "conic", "target": -1.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 1, "q": "sag", "x": 3.0, "y": 4.0, "target": 0.2, "weight": 1.0}),
+            json!({"type": "surface", "surf": 1, "q": "sagy", "target": 0.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 1, "q": "thick", "x": 0.0, "y": 5.0, "target": 8.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 3, "q": "diam", "max": 40.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 3, "q": "mech_diam", "target": 50.0, "weight": 1.0}),
+            json!({"type": "surface", "surf": 4, "q": "gz", "target": 30.0, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0, "weight": 1.0}),
             json!({"type": "centroid", "wave": null, "field": 1, "q": "x", "target": 0.0, "weight": 1.0, "config": 2}),
         ];
         let bad = [
@@ -1245,14 +1347,13 @@ mod tests {
             json!({"type": "mtf", "field": [0.0, 1.0], "freq": 30.0}),
             json!({"type": "coupling"}),
             json!({"type": "thickness", "surf": 1, "to": 3, "edge": true, "target": 3.0}),
-            json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0}),
             json!({"type": "ray", "surf": 3, "field": 1, "q": "trax"}),
         ];
         let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
         let systems = [s.clone(), s.clone()];
         let before = [MeritRow::blank("from the zmx")];
         let (rows, notes) = rows_from_terms(&all, &systems, &before);
-        assert_eq!(notes.len(), 6, "{notes:?}");
+        assert_eq!(notes.len(), 5, "{notes:?}");
         // 行を .zmx に書いて読み直す
         let mut txt = String::new();
         for r in before.iter().chain(&rows) {
