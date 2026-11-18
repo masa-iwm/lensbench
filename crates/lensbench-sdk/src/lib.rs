@@ -69,6 +69,11 @@ pub mod shape {
     pub use lensbench_core::usershape::{check_shape, ShapeInstance, ShapeModel};
 }
 
+/// 利用者定義の材料（名前つきのカタログの単位で足し、AGF のカタログと同じに名前で引く）
+pub mod material {
+    pub use lensbench_core::usermaterial::{check_material, MaterialModel};
+}
+
 /// レンズカタログの形式
 pub mod catalog {
     pub use lensbench_core::catalog::{CatalogLens, LensCatalogSource};
@@ -80,7 +85,9 @@ pub mod detector {
 }
 
 /// 足し忘れの検査: GUI の見せ方の無い解析、検出器の欄の無い検出器（feature `gui` のとき）、反転の約束を守らない
-/// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
+/// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル、
+/// 約束を守らない・同じカタログに同じ名前のある材料のモデル（同梱のガラスのカタログと同じ名前の材料のカタログは、
+/// 表を作れない誤りとして挙がる）。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
 pub fn check(ext: &Extensions) -> Vec<String> {
     let mut out = Vec::new();
     let table = match ext.ext() {
@@ -119,6 +126,20 @@ pub fn check(ext: &Extensions) -> Vec<String> {
             let r = m.example_radius();
             if let Err(e) = lensbench_core::usershape::check_shape(m.as_ref(), &c, r) {
                 out.push(format!("shape model {}: {e}", m.name()));
+            }
+        }
+    }
+    for (cat, ms) in ext.material_catalogs() {
+        let mut seen = std::collections::BTreeSet::new();
+        for m in ms {
+            if !seen.insert(m.name().to_string()) {
+                out.push(format!(
+                    "material catalog {cat}: {} is added twice",
+                    m.name()
+                ));
+            }
+            if let Err(e) = lensbench_core::usermaterial::check_material(m.as_ref()) {
+                out.push(format!("material catalog {cat}: {e}"));
             }
         }
     }
@@ -200,6 +221,14 @@ mod tests {
             schema: None,
         });
         assert_eq!(check(&e).len(), 1);
+        // 同梱のガラスのカタログと同じ名前の材料のカタログは表を作れない（大文字小文字は問わない）
+        let e = Extensions::named("t").material_catalog("schott", Vec::new());
+        let c = check(&e);
+        assert!(
+            c.len() == 1 && c[0].contains("has the name of a built-in glass catalog"),
+            "{c:?}"
+        );
+        assert!(e.ext().is_err());
     }
 
     /// GUI の見せ方の無い検出器を挙げ、足せば挙げない

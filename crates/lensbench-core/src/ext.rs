@@ -13,6 +13,7 @@
 use crate::catalog::{LbcatSource, LensCatalogSource, ZmxFileSource};
 use crate::error::Result;
 use crate::plugin::Registry;
+use crate::usermaterial::{MaterialCatalog, MaterialModel};
 use crate::usershape::ShapeModel;
 use crate::usersurf::{IdealMapping, SurfaceModel};
 use crate::{invalid, RwLockExt};
@@ -31,6 +32,8 @@ pub struct Ext {
     sources: Vec<CatalogSource>,
     surfaces: BTreeMap<String, Arc<dyn SurfaceModel>>,
     shapes: BTreeMap<String, Arc<dyn ShapeModel>>,
+    /// 材料のカタログ（足したときの綴り。引くときは大文字小文字を問わない）
+    materials: BTreeMap<String, Arc<MaterialCatalog>>,
     plugins: Registry,
     /// 上の層の表（型ごとに 1 つ）
     slots: BTreeMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -44,6 +47,7 @@ impl Default for Ext {
             sources: Vec::new(),
             surfaces,
             shapes: BTreeMap::new(),
+            materials: BTreeMap::new(),
             plugins: Registry::new(),
             slots: BTreeMap::new(),
         }
@@ -56,6 +60,7 @@ impl std::fmt::Debug for Ext {
             .field("sources", &self.sources.len())
             .field("surfaces", &self.surfaces.keys().collect::<Vec<_>>())
             .field("shapes", &self.shapes.keys().collect::<Vec<_>>())
+            .field("materials", &self.materials.keys().collect::<Vec<_>>())
             .field("plugins", &self.plugins.list())
             .field("slots", &self.slots.len())
             .finish()
@@ -94,6 +99,41 @@ impl Ext {
     /// 形のモデルを外す（あれば true）
     pub fn remove_shape_model(&mut self, name: &str) -> bool {
         self.shapes.remove(name).is_some()
+    }
+
+    /// 利用者定義の材料のカタログを足す（名前は AGF のカタログと同じに引く。大文字小文字は問わず、同じ名前は差し替える）
+    pub fn add_material_catalog(
+        &mut self,
+        name: &str,
+        models: Vec<Arc<dyn MaterialModel>>,
+    ) -> &mut Self {
+        self.materials.retain(|k, _| !k.eq_ignore_ascii_case(name));
+        self.materials.insert(
+            name.to_string(),
+            Arc::new(MaterialCatalog::new(name, models)),
+        );
+        self
+    }
+
+    /// 材料のカタログを外す（あれば true）
+    pub fn remove_material_catalog(&mut self, name: &str) -> bool {
+        let n = self.materials.len();
+        self.materials.retain(|k, _| !k.eq_ignore_ascii_case(name));
+        self.materials.len() != n
+    }
+
+    /// 名前の材料のカタログ（大文字小文字は問わない）
+    pub fn material_catalog(&self, name: &str) -> Option<&Arc<MaterialCatalog>> {
+        // カタログは数個なので、名前を写さずに順に比べる（屈折率を求めるたびに通る）
+        self.materials
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, c)| c)
+    }
+
+    /// 材料のカタログの名前（足したときの綴り、名前の順）
+    pub fn material_catalogs(&self) -> Vec<String> {
+        self.materials.values().map(|c| c.name.clone()).collect()
     }
 
     /// プラグインの表
@@ -138,6 +178,10 @@ impl Ext {
         }
         for (k, m) in &other.shapes {
             self.shapes.insert(k.clone(), m.clone());
+        }
+        for (k, c) in &other.materials {
+            self.materials.retain(|x, _| !x.eq_ignore_ascii_case(k));
+            self.materials.insert(k.clone(), c.clone());
         }
         for p in other.plugins.plugins() {
             self.plugins.register(p.clone());

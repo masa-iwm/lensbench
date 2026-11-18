@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub struct Glass {
     pub name: String,
     pub catalog: String,
+    /// 分散式の番号（AGF の 1〜13。0 は利用者の材料で、屈折率は拡張の表のカタログ `catalog` のモデル `name` が
+    /// 返す（係数 `c` は空。[`crate::usermaterial`]）。その拡張の無いプロセスでは屈折率を求められない）
     pub formula: i32,
     pub c: Vec<f64>,
     /// D0 D1 D2 E0 E1 λtk Tref
@@ -22,8 +24,11 @@ pub struct Glass {
 }
 
 impl Glass {
-    /// カタログ温度での相対屈折率（分散式）。
+    /// カタログ温度での相対屈折率（分散式）。利用者の材料（[`crate::usermaterial`]）はモデルの基準温度・1 atm で
     pub fn n_cat(&self, l: f64) -> f64 {
+        if self.formula == crate::usermaterial::USER_FORMULA {
+            return crate::usermaterial::index(self, l, self.td[6], 1.0);
+        }
         let c = &self.c;
         let l2 = l * l;
         match self.formula {
@@ -81,6 +86,10 @@ impl Glass {
 
     /// 系の温度 t [℃]・気圧 p [atm] での相対屈折率（系の空気 = 1）。
     pub fn n(&self, wl: f64, t: f64, p: f64) -> f64 {
+        // 利用者の材料は空気・温度の換算もモデルが受け持つ
+        if self.formula == crate::usermaterial::USER_FORMULA {
+            return crate::usermaterial::index(self, wl, t, p);
+        }
         let [d0, d1, d2, e0, e1, ltk, tref] = self.td;
         if t == tref && p == 1.0 {
             return self.n_cat(wl);
@@ -370,7 +379,8 @@ pub(crate) fn find_agf(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     })
 }
 
-/// GCAT の順にカタログを探して読む（フォルダに無いカタログは同梱のもの、[`builtin`]）。同じ名前のガラスは先のカタログのもの。
+/// GCAT の順にカタログを探して読む（拡張の表に足した材料のカタログ（[`crate::usermaterial`]）が同じ名前のフォルダの
+/// AGF より先、フォルダに無いカタログは同梱のもの、[`builtin`]）。同じ名前のガラスは先のカタログのもの。
 /// 見つからないカタログ名は戻り値の 2 番目に返す（読めなかったカタログは「名前（理由）」の形で）。
 pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Glass>, Vec<String>) {
     let (g, missing) = load_catalogs_shared(names, dirs);
@@ -475,6 +485,12 @@ pub fn load_catalogs_shared(
     // 読めなかった AGF・同梱のカタログを使ったら使い回さない（直したら・置いたら読み直す）
     let mut complete = true;
     for name in names {
+        // 拡張の表に足した材料のカタログ（フォルダの AGF より先。表は計算ごとに違いうるので使い回さない）
+        if let Some(g) = crate::usermaterial::catalog(name) {
+            merge_catalog(&mut out, &g, name);
+            complete = false;
+            continue;
+        }
         let Some(e) = find_agf(name, dirs) else {
             // フォルダのどこにも無ければ同梱のカタログ。後でフォルダに置かれたら読み直すよう使い回さない
             match builtin::catalog(name) {

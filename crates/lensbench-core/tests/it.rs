@@ -41,6 +41,7 @@ mod surftypes;
 mod surftypes_os;
 mod thinfilm;
 mod units;
+mod usermaterial;
 mod usershape;
 mod usersurf;
 mod vfs_mem;

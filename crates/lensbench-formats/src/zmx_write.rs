@@ -916,6 +916,23 @@ pub fn write_notes(s: &System) -> Vec<String> {
                 .to_string(),
         );
     }
+    // 利用者の材料（拡張の表のモデル）は名前だけ書く。OpticStudio のカタログには無い
+    let user: std::collections::BTreeSet<String> = s
+        .surfaces
+        .iter()
+        .map(|d| d.mat.name())
+        .filter(|n| {
+            s.glasses
+                .get(n.trim())
+                .is_some_and(|g| g.formula == lensbench_core::usermaterial::USER_FORMULA)
+        })
+        .collect();
+    if !user.is_empty() {
+        out.push(format!(
+            "user-defined materials ({}) were written by name only; OpticStudio has no catalog for them",
+            user.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
     out.extend(config_notes(s));
     if !out.is_empty() {
         out.push("write a system file (.json) to keep everything".to_string());

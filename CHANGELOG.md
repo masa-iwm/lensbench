@@ -36,6 +36,10 @@
   偏光・dOPL/dp・着地点の微分・玉の反転はほかの面と同じに効き、設定の数の項目はパラメータ `<面>.u_<項目>` で変数に
   できる。システムファイルは `"shape": {"user": {…}}`。.zmx には書けない。約束は [ライブラリ](docs/rust.md) と
   `check_shape`。雛形 `examples/extension` に例（`example_saddle`）
+- **利用者定義の材料**: 外のクレートが `lensbench_sdk::material::MaterialModel`（波長・系の温度・気圧 → 屈折率）を
+  実装し `Extensions::material_catalog(名前, …)` で足すと、AGF のカタログと同じにカタログ名・材料名で引ける
+  （GCAT・`glass_catalogs`・`材料@カタログ`）。dn・disp・範囲の注意・内部透過率もガラスと同じに効く。雛形に例
+  （カタログ `EXAMPLE`）
 
 ### 速さ
 

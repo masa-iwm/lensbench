@@ -8,6 +8,10 @@
 //! 読んだ AGF の順に探し、最初に見つかったファイル（今のカタログ）を使う。hash が合うものを選ぶのではない。hash が
 //! 書いたときと違えば注意を返し、hash が空なら値を確かめられないと注意を返す。見つからなければ誤り。
 //!
+//! 拡張の表に足した材料のカタログ（[`lensbench_core::usermaterial`]）はファイルより先に引き、hash は空にする（値は
+//! モデルが決める。足していないプロセスでは見つからない誤り）。同じ名前のファイルもあれば、読むときに注意を返す
+//! （ガラスの表を作る [`glass::load_catalogs_shared`] と同じ順）。
+//!
 //! 同梱のカタログ（[`glass::builtin`]、SCHOTT・OHARA）は、ファイルが見つからないときの最後の候補。保存では
 //! 同梱のデータ（AGF の本文）の hash を書き、読むときはフォルダに無ければ同梱のものを使って注意を返す。
 
@@ -143,6 +147,12 @@ fn sources(s: &System) -> Vec<Source> {
                 gs.iter()
                     .all(|(n, g)| m.get(glass::base_name(n)) == Some(*g))
             };
+            // 拡張の表に足した材料のカタログ（ファイルは無い。同梱のものと同じく None で、hash は空）
+            if let Some(m) = lensbench_core::usermaterial::catalog(&cat) {
+                let m: Catalog = Arc::new(m);
+                let found = same(&m).then_some((None, m));
+                return (cat, found, names);
+            }
             let found = cands
                 .into_iter()
                 .find_map(|p| {
@@ -241,6 +251,18 @@ pub(crate) fn load(
         let cands = candidates(&r.name, dirs);
         // 探す順で最初に見つかったもの（今のカタログ）を使う。無ければ同梱のもの
         let pick = cands.first().cloned();
+        // 拡張の表に足した材料のカタログが先（値はモデルが決めるので hash は見ない）。同じ名前のファイルは使わない
+        if let Some(g) = lensbench_core::usermaterial::catalog(&r.name) {
+            if let Some(p) = &pick {
+                notes.push(format!(
+                    "glass catalog {} is a material catalog registered by an extension; the file of the same name ({}) is not used",
+                    r.name,
+                    p.display()
+                ));
+            }
+            glass::merge_catalog(&mut out, &g, &r.name);
+            continue;
+        }
         if let (None, Some(g)) = (&pick, glass::builtin::catalog(&r.name)) {
             notes.push(format!(
                 "glass catalog {} was not found in the folders; the built-in catalog is used (index only; no internal transmittance or thermal expansion). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT",

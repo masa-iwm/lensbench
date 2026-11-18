@@ -16,6 +16,7 @@ use lensbench_analysis::{Analyses, Analysis, DynAnalysis};
 use lensbench_core::catalog::LensCatalogSource;
 use lensbench_core::ext::Ext;
 use lensbench_core::plugin::Registry;
+use lensbench_core::usermaterial::MaterialModel;
 use lensbench_core::usershape::ShapeModel;
 use lensbench_core::usersurf::SurfaceModel;
 use lensbench_project::detectors::DetectorKind;
@@ -34,6 +35,7 @@ pub struct Extensions {
     sources: Vec<Arc<dyn LensCatalogSource + Send + Sync>>,
     surfaces: Vec<Arc<dyn SurfaceModel>>,
     shapes: Vec<Arc<dyn ShapeModel>>,
+    materials: Vec<(&'static str, Vec<Arc<dyn MaterialModel>>)>,
     detectors: Vec<DetectorKind>,
     analyses: Vec<Arc<dyn DynAnalysis>>,
     hooks: Vec<Hook>,
@@ -86,6 +88,16 @@ impl Extensions {
     /// 利用者定義の形のモデル（面の種類 USERSHAPE）
     pub fn shape_model(mut self, m: Arc<dyn ShapeModel>) -> Self {
         self.shapes.push(m);
+        self
+    }
+
+    /// 利用者定義の材料のカタログ（名前 name で AGF のカタログと同じに引く）
+    pub fn material_catalog(
+        mut self,
+        name: &'static str,
+        models: Vec<Arc<dyn MaterialModel>>,
+    ) -> Self {
+        self.materials.push((name, models));
         self
     }
 
@@ -150,7 +162,12 @@ impl Extensions {
         &self.shapes
     }
 
-    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・カタログの拡張子）を
+    /// 足した材料のカタログ（名前とモデル）
+    pub fn material_catalogs(&self) -> &[(&'static str, Vec<Arc<dyn MaterialModel>>)] {
+        &self.materials
+    }
+
+    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・カタログの拡張子）を
     /// 足していれば誤り（other が [`Extensions::replacing`] なら other の方が勝つ）
     pub fn merge(mut self, other: Extensions) -> lensbench_core::Result<Self> {
         if !other.replacing {
@@ -166,6 +183,7 @@ impl Extensions {
         self.sources.extend(other.sources);
         self.surfaces.extend(other.surfaces);
         self.shapes.extend(other.shapes);
+        self.materials.extend(other.materials);
         self.detectors.extend(other.detectors);
         self.analyses.extend(other.analyses);
         self.hooks.extend(other.hooks);
@@ -205,6 +223,11 @@ impl Extensions {
                 .iter()
                 .map(|m| format!("shape model {}", m.name())),
         );
+        n.extend(
+            self.materials
+                .iter()
+                .map(|(c, _)| format!("material catalog {}", c.to_uppercase())),
+        );
         for s in &self.sources {
             n.extend(
                 s.extensions()
@@ -232,6 +255,15 @@ impl Extensions {
         }
         for m in &self.shapes {
             e.add_shape_model(m.clone());
+        }
+        for (c, ms) in &self.materials {
+            // 同梱のガラスのカタログと同じ名前は、同梱のものを黙って隠すので誤り
+            if lensbench_core::glass::builtin::catalogs().any(|b| b.eq_ignore_ascii_case(c)) {
+                lensbench_core::invalid!(
+                    "material catalog {c} has the name of a built-in glass catalog; give it another name"
+                );
+            }
+            e.add_material_catalog(c, ms.clone());
         }
         for f in &self.plugins {
             f(e.plugins_mut());

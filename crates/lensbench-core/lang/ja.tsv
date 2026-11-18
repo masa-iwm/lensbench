@@ -755,6 +755,12 @@ no coordinate system for surface {b}	面 {b} の座標系がありません
 lens or group {} range {:?}: the return rotation can't be made into coordinate break angles	レンズ・群 {} の範囲 {:?}: 戻りの回転を座標ブレークの角にできません
 no user-defined surface model {name} (registered: {})	ユーザー定義の面のモデル {name} はありません（登録: {}）
 no user-defined shape model {name} (registered: {})	ユーザー定義の形のモデル {name} はありません（登録: {}）
+material model {name}: the range [{lo}, {hi}] µm is not a valid interval	材料のモデル {name}: 範囲 [{lo}, {hi}] µm が正しい区間ではありません
+material model {name}: the index at {wl} µm, {t} °C, {p} atm is {n} (not a positive number)	材料のモデル {name}: {wl} µm・{t} °C・{p} atm での屈折率が {n} です（正の数ではありません）
+material model {name}: the transmittance row ({wl} µm, {tr}, {th} mm) is out of range	材料のモデル {name}: 内部透過率の行（{wl} µm、{tr}、{th} mm）が範囲の外です
+glass {} is a user-defined material, but the registered material catalog {} has no {}	硝材 {} はユーザー定義の材料ですが、登録された材料のカタログ {} に {} がありません
+glass {} is a user-defined material of catalog {}, but no extension registers that catalog (install the extension that adds it)	硝材 {} はカタログ {} のユーザー定義の材料ですが、そのカタログを登録した拡張がありません（足す拡張を入れてください）
+material catalog {c} has the name of a built-in glass catalog; give it another name	材料のカタログ {c} は同梱の硝材のカタログと同じ名前です。別の名前にしてください
 no user-defined shape has the number setting {n}	ユーザー定義の形に数の設定 {n} はありません
 no user-defined shape has the number setting {s}	ユーザー定義の形に数の設定 {s} はありません
 surface {j} is not a user-defined shape with the number setting {kind}	面 {j} は数の設定 {kind} を持つユーザー定義の形ではありません
@@ -1120,6 +1126,7 @@ glass catalog {} differs from when the file was saved ({}); the values are compu
 glass catalog {} has no hash in the system file, so its values can't be checked; the values are computed from the current catalog ({})	硝材のカタログ {} はシステムファイルに hash が無いので値を確かめられません。値は今のカタログ（{}）で求めます
 glass catalog {} was not found in the folders; the built-in catalog is used (index only; no internal transmittance or thermal expansion). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	硝材のカタログ {} がフォルダに無いので、同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）を使います。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
 glass catalog {} differs from when the file was saved (built-in catalog); the values are computed from the built-in catalog	硝材のカタログ {} が保存したときと違います（同梱のカタログ）。値は同梱のカタログから求めます
+glass catalog {} is a material catalog registered by an extension; the file of the same name ({}) is not used	硝材のカタログ {} は拡張が登録した材料のカタログです。同じ名前のファイル（{}）は使いません
 glass {}: {} uses catalog {}, not {} of glass_catalogs; named {} in this system	硝材 {}: {} はカタログ {} のもの（glass_catalogs の {} ではない）を使います。このシステムでは {} の名前です
 no file of glass catalog {} has the same values as the system's glasses ({}); the system file records no hash for it, so the values can't be checked when it is read	硝材のカタログ {} のファイルでシステムの硝材（{}）と値が同じものが見つかりません。システムファイルに hash を書けないので、読むときに値を確かめられません
 wavelengths: no wavelength	wavelengths: 波長がありません
@@ -1616,6 +1623,7 @@ only the values of the configuration pickups of multi-configuration row {} were 
 lens and group moves were written as coordinate breaks (the surface numbers change)	レンズ・群の動きは座標ブレークに展開して書きました（面の番号が変わります）
 the {what} pickup of surface {} (from surface {}) can't be written to .zmx, so only the value was written	面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書きました
 {} mechanical parts can't be written to .zmx	機構部品 {} 個は .zmx に書けません
+user-defined materials ({}) were written by name only; OpticStudio has no catalog for them	ユーザー定義の材料（{}）は名前だけ書きました。OpticStudio にはそのカタログがありません
 the setting that floating apertures don't clip (floating_clip: false) can't be written to .zmx (they clip when read back)	浮動開口でケラレない設定（floating_clip: false）は .zmx に書けません（再読み込みするとケラレます）
 write a system file (.json) to keep everything	欠けなく残すならシステムファイル（.json）に書いてください
 the number of lines	行の数

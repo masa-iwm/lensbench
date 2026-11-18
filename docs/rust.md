@@ -27,18 +27,18 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 
 ## 拡張の約束: 外のクレートから足す
 
-別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・カタログの形式を足し、自分の exe・wheel を組める
+別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・材料・カタログの形式を足し、自分の exe・wheel を組める
 （DLL は使わない。静的にリンクする）。依存するのは `lensbench-sdk` 1 つ。
 
 - 足すものは `lensbench_sdk::Extensions` 1 つにまとめる: `.plugins(..)`・`.analysis(..)`・`.detector(..)`・
-  `.surface_model(..)`・`.shape_model(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
+  `.surface_model(..)`・`.shape_model(..)`・`.material_catalog(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
   （`gui_analysis`・`gui_detector`・`gui_translations`）、Python の関数は `lensbench_sdk::py::PyExtensions`（`py_module`）。
 - 入口に渡す: CLI は `lensbench_sdk::cli::main(ext)`、GUI は `lensbench_sdk::gui::main(ext)`、Python の拡張モジュールは
   `#[pymodule]` から `lensbench_sdk::py::module(m, ext)`。呼ぶ順の約束は無い。
-- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・カタログの拡張子）は誤りになる
+- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・カタログの拡張子）は誤りになる
   （置き換えるときは後の方に `.replacing()`）。`Extensions::named(..)` の名前は誤りの文にだけ使い、サブコマンドなど
   利用者に見える名前には入らない。
-- 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面・勾配が矢高の差分と合わない形）。
+- 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面・勾配が矢高の差分と合わない形・約束を守らない材料）。
   試験で呼ぶ。
 - **約束の型** は `lensbench-sdk` が再輸出するものだけ（一覧は `crates/lensbench-sdk/API.txt`）。各クレートのほかの
   `pub` は中の都合で変わる。一覧の試験（`tests/api.rs`）が見るのは再輸出の名前だけで、型の中身（関数の引数・
@@ -83,11 +83,22 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   - 編集の操作（`set_surface_data` の `data`）: `"typ": "UserShape", "shape": {"model": 名前, "config": {…}, "flip_z": …, "mirror_x": …}`
   - システムファイルの面の行: `"shape": {"user": {"c": …, "k": …, "model": 名前, "config": {…}, "flip_z": …, "mirror_x": …}}`
 
-  設定の数の項目（`Num`。数の並びは除く）はパラメータ `3.u_<項目>`（変数・ピックアップ・微分）。約束は、クリア半径の少し外まで
+  設定の数の項目（`Num`。数の並びは除く）はパラメータ `3.u_<項目>`（変数・ピックアップ・微分）。`params()` に宣言した項目は拡張を入れた時から読め、宣言していない項目はその項目を持つ形を準備するまで読めない。約束は、クリア半径の少し外まで
   有限で勾配が連続、`prepare` は軽い（値を変えるたびに作り直す）、状態を持たずどのスレッドから呼んでもよい。
   鏡の後・玉の反転の裏返し（z・x の向き）は core が包むので、モデルは何もしなくてよい。近軸の曲率は土台の c に頂点の
   2 階（勾配の差分、幅はクリア半径の 1e-6）を足したもので、YZ 面だけ。.zmx には書けない。`check_shape(モデル, 設定, 半径)` で約束を確かめられる
   （`lensbench_sdk::check` は `example_config`・`example_radius` で呼ぶ）
+- `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
+  （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
+  `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の
+  カタログと同じに名前で引く（.zmx の GCAT・プロジェクトの `glass_catalogs`・`材料@カタログ`、大文字小文字は問わない。
+  フォルダの同じ名前の AGF より先で、システムファイルを読むときは注意を返す。同梱のカタログ SCHOTT・OHARA と同じ名前は
+  `Extensions` を入れる時（`install`・`ext`・`check`）の誤り）。屈折率は組み立てた時でなく求める時の拡張の表で決まる（系はモデルを持たない。
+  表に無ければ材料とカタログの名前を言う誤り）。系のガラスの表に分散式の枝の 1 つとして入るので、dn・disp・範囲の外の注意・
+  内部透過率はガラスと同じに効く。約束は、`index` が系の空気に対する相対屈折率を系の温度・気圧で返す（空気・温度の
+  換算はモデルが持つ。屈折率を環境に合わせないときは `tref` と 1 atm で呼ぶ）、状態を持たずどのスレッドから呼んでも
+  よい。システムファイルにはカタログの名前だけを書き（hash は空）、カタログを足していないプロセスで読むとカタログが
+  無い誤り。.zmx に書くと GCAT にカタログの名前が入るが、OpticStudio には無い（書き出しの注意に挙げる）。`check_material` で約束を確かめられる
 
 - `lensbench_core::param`: システムを作り直さずにパラメータを変える。面は番号か名前（コメント）で、`sys.param("L1.t")`・
   `sys.param("3.c")` のように指定し、`set_param`・`with_params`（軽い複製）で変える。種類は `c` `r` `k` `a2`〜`a16`

@@ -96,6 +96,9 @@ impl Prescription {
                 let Some(g) = self.glasses.get(m) else {
                     invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)");
                 };
+                if let Some(e) = crate::usermaterial::missing(g) {
+                    invalid!("{e}");
+                }
                 let (t, p, a) = (self.temperature, self.pressure, self.adjust_index);
                 Ok(lams.iter().map(|&l| g.index(l, t, p, a)).collect())
             }

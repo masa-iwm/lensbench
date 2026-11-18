@@ -1,9 +1,10 @@
-//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、Python の関数 1 つ。
+//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、材料のカタログ 1 つ、Python の関数 1 つ。
 //!
 //! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel・Web 版の入口がそれを渡す
 //! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`・`web`）。
 
 use lensbench_sdk::analysis::{Analysis, Cx, Meta};
+use lensbench_sdk::material::MaterialModel;
 use lensbench_sdk::plugin::{
     Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance, Kind, ParamSpec,
     ParamType, Plugin, Spec, Value,
@@ -27,7 +28,8 @@ pub fn extensions() -> Extensions {
     let e = Extensions::named("example")
         .plugins(|r| r.register(Arc::new(Gain)))
         .analysis(Chief)
-        .shape_model(Arc::new(Saddle));
+        .shape_model(Arc::new(Saddle))
+        .material_catalog("EXAMPLE", vec![Arc::new(Cauchy)]);
     #[cfg(feature = "gui")]
     let e = gui::add(e);
     #[cfg(feature = "py")]
@@ -126,6 +128,25 @@ impl ShapeInstance for SaddleShape {
     /// 設定 a による微分（変数・dOPL/dp 用）
     fn dsag(&self, key: &str, x: f64, y: f64) -> Option<[f64; 3]> {
         (key == "a").then_some([x * y, y, x])
+    }
+}
+
+// ------------------------------------------------------------------------------------------ 材料
+
+/// Cauchy の式の材料（カタログ EXAMPLE の EXAMPLE-CAUCHY）: n = 1.5 + 0.004 / λ²（λ [µm]）。AGF のカタログと同じに、
+/// .zmx の GCAT・プロジェクトの `glass_catalogs` に EXAMPLE を書き、材料の名前で引く（`名前@EXAMPLE` でも）
+pub struct Cauchy;
+
+impl MaterialModel for Cauchy {
+    fn name(&self) -> &str {
+        "EXAMPLE-CAUCHY"
+    }
+    /// 系の空気に対する相対屈折率（系の温度・気圧で。この例は温度・気圧によらない）
+    fn index(&self, wl: f64, _t: f64, _p: f64) -> f64 {
+        1.5 + 0.004 / (wl * wl)
+    }
+    fn range(&self) -> Option<[f64; 2]> {
+        Some([0.4, 1.0])
     }
 }
 

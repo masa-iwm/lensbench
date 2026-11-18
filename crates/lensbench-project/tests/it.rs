@@ -23,6 +23,7 @@ mod surface_edits;
 mod surface_ops;
 mod sysfile;
 mod units;
+mod usermaterial;
 mod usershape;
 mod usersurf;
 
