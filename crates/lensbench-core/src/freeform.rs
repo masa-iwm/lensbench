@@ -257,13 +257,38 @@ impl ZernSag {
     }
 
     /// 項 j（1 から）だけの値（係数 1）と (∂/∂x, ∂/∂y)。感度 dz/dA_j に使う
+    ///
+    /// 項ひとつの多項式は係数に依らないので、項の数の上限までは一度だけ作って使い回す（光線・パラメータごとに
+    /// 呼ばれるので、呼ぶたびに作ると確保が重い）
     pub fn term(&self, j: usize, x: f64, y: f64) -> (f64, f64, f64) {
-        let (n, m, cs) = zern_nm(j, self.fringe);
-        let k = ((n - m) / 2) as usize;
-        let mut p = vec![0.0; k + 1];
-        p[k] = radial_norm(n, m, !self.fringe);
-        let g = [ZGroup::new(m, cs, p)];
-        eval_groups(&g, m, self.norm, self.extrapolate, x - self.dx, y - self.dy)
+        static TERMS: std::sync::OnceLock<[Vec<ZGroup>; 2]> = std::sync::OnceLock::new();
+        let terms = TERMS.get_or_init(|| {
+            [false, true].map(|fringe| {
+                (1..=ZernSag::max_terms(fringe))
+                    .map(|j| term_group(j, fringe))
+                    .collect()
+            })
+        });
+        let own;
+        let g = match j
+            .checked_sub(1)
+            .and_then(|i| terms[self.fringe as usize].get(i))
+        {
+            Some(g) => g,
+            None => {
+                own = term_group(j, self.fringe);
+                &own
+            }
+        };
+        let (x, y) = (x - self.dx, y - self.dy);
+        eval_groups(
+            std::slice::from_ref(g),
+            g.m,
+            self.norm,
+            self.extrapolate,
+            x,
+            y,
+        )
     }
 
     /// 面を z について裏返す（z → −z）: 項の係数の符号を全部変える
@@ -293,6 +318,15 @@ impl ZernSag {
             231
         }
     }
+}
+
+/// 項 j（1 から）だけの多項式（係数 1）
+fn term_group(j: usize, fringe: bool) -> ZGroup {
+    let (n, m, cs) = zern_nm(j, fringe);
+    let k = ((n - m) / 2) as usize;
+    let mut p = vec![0.0; k + 1];
+    p[k] = radial_norm(n, m, !fringe);
+    ZGroup::new(m, cs, p)
 }
 
 /// Σ_(m, cos/sin) A(u, v) P(ρ²) と (∂/∂x, ∂/∂y)
