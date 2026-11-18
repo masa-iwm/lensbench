@@ -33,6 +33,11 @@
   （読んだ行と `--term` の項）を書く
 - **スポット・波面の項の瞳の求積**: `spot`・`wavefront` の項に `quadrature`（`lensbench` が既定、`opticstudio` は OpticStudio の
   RSCE などと同じ腕 2·Ring 本を 90° 回した置き方）を足した。.zmx から読んだ RSCE・RSCH・RWCE・RWCH は `opticstudio` にする
+- **厚みの項**: 最適化の項 `thickness`（面 `surf` から `to` までの中心の厚みの和、`min`・`max` も可。`edge` で縁の厚み、`each` で面ごとの
+  境界）。.zmx の CTGT・CTLT・CTVA・TTHI・ETGT・ETLT・ETVA と範囲の境界 MNCT〜MNEG をこの項にし、書き出しも同じオペランドにする
+- **評価関数の Wizard の行**: .zmx の DMFS の後の光線の行（OPDX・TRAR・TRAC・TRAD・TRAE・TRCX・TRCY）を、視野ごとの
+  スポット・波面の項にまとめて読む（評価関数の値は OpticStudio と同じ）。そのために `spot`・`wavefront` の項に
+  `quadrature: "grid"`（`n` × `n` の升の中心）と `arms`（`opticstudio` の腕の数、0° から等間隔）、`spot` に `axis`（`x`・`y`）を足した
 - **利用者定義の形（面の種類 USERSHAPE）**: 外のクレートが `lensbench_sdk::shape::ShapeModel` を実装し
   `Extensions::shape_model` で足すと、二次曲面（`c`・`k`）にモデルの矢高を足した面を使える。屈折・反射・材料・膜・
   偏光・dOPL/dp・着地点の微分・玉の反転はほかの面と同じに効き、設定の数の項目はパラメータ `<面>.u_<項目>` で変数に

@@ -1,5 +1,6 @@
 //! 評価関数の項（[`Term`]・[`TermKind`]）と、項の量の種類
 use super::*;
+use crate::pupil::quad_len;
 
 /// MTF の向き
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,18 +20,57 @@ pub enum Quad {
     /// OpticStudio 26.1 の RSCE・RSCH・RWCE・RWCH と同じ: 腕 2 rings 本を 90° 回して置く
     /// （[`lensbench_core::analysis::pupil_gauss_os`]。.zmx から読んだ行の項）
     OpticStudio,
+    /// 腕を与えた数だけ 0° から等間隔に置く（腕の角度 a·360°/arms）。OpticStudio の評価関数の Wizard の
+    /// ガウス求積（GQ）と同じ
+    Arms(usize),
+    /// 輪を使わず、瞳を n × n の正方の格子に分けた升の中心のうち瞳の中の点を等しい重みで（OpticStudio の評価関数の
+    /// Wizard の Rectangular Array と同じ）
+    Grid(usize),
+}
+
+/// 厚みの項で面ごとに比べるとき（OpticStudio の範囲の境界 MNCT・MXCT・MNCA・MNEG など）: medium の面だけを数え、
+/// 下限なら残差 −Σmax(0, target − x_i)、上限（upper）なら Σmax(0, x_i − target)。値（残差 + target）は OpticStudio の Value と同じ
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Each {
+    pub medium: Medium,
+    pub upper: bool,
+}
+
+/// 厚みの境界が数える面の後ろの媒質
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Medium {
+    /// すべての面（MNCT など）
+    #[default]
+    All,
+    /// 空気（自分の媒質のない座標ブレーク・鏡も。MNCA など）
+    Air,
+    /// 空気でない自分の媒質のある面（ガラスなど。MNCG など）
+    Glass,
+}
+
+/// スポットの項が測る向き
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SpotAxis {
+    /// x と y（スポットの半径）
+    #[default]
+    Both,
+    /// x だけ
+    X,
+    /// y だけ
+    Y,
 }
 
 /// 項の種類
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    /// RMS スポット半径 [レンズ単位]。wave None なら重みのある全波長。quad は瞳の求積の点の置き方
+    /// RMS スポット半径 [レンズ単位]。wave None なら重みのある全波長。quad は瞳の求積の点の置き方、axis は測る向き
     Spot {
         field: FieldSel,
         wave: Option<usize>,
         rings: usize,
         reference: RmsRef,
         quad: Quad,
+        axis: SpotAxis,
     },
     /// RMS 波面収差 [波]。wave None なら重みのある全波長（波長ごとの分散を波長の重みで平均）
     Wavefront {
@@ -95,6 +135,16 @@ pub enum TermKind {
         wave: Option<usize>,
         opts: FiberOpts,
         target: f64,
+    },
+    /// 面 surf から to までの中心の厚みの和 [レンズ単位] − target（surf == to なら 1 面の厚み。OpticStudio の CTVA・TTHI）。
+    /// edge が Some(z) なら縁の厚み（面 i と i + 1 の矢高を、それぞれの半直径 × z の高さで。OpticStudio の ETVA）。
+    /// each なら面ごとの厚みを target と比べたはみ出しの和（[`Each`]）。面の番号は System の面の番号（物体面 0）
+    Thickness {
+        surf: usize,
+        to: usize,
+        target: f64,
+        edge: Option<f64>,
+        each: Option<Each>,
     },
     /// 利用者の項（残差はそのまま。目標との差は利用者の関数の中でとる）
     User(UserTermRef),
@@ -308,7 +358,8 @@ impl TermKind {
             | TermKind::Centroid { target, .. }
             | TermKind::Opd { target, .. }
             | TermKind::Zernike { target, .. }
-            | TermKind::Coupling { target, .. } => Some(*target),
+            | TermKind::Coupling { target, .. }
+            | TermKind::Thickness { target, .. } => Some(*target),
             _ => None,
         }
     }
@@ -446,5 +497,32 @@ pub(super) fn term_value(k: &TermKind, r: &[f64]) -> TermValue {
     match k.target() {
         Some(target) => TermValue::Quantity(r[0] + target),
         None => TermValue::Rms(r.iter().map(|v| v * v).sum::<f64>().sqrt()),
+    }
+}
+
+/// 項の残差の数
+pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
+    match k {
+        TermKind::Spot {
+            wave, rings, quad, ..
+        } => 2 * waves(s, *wave).len() * quad_len(*rings, *quad),
+        TermKind::Wavefront {
+            wave, rings, quad, ..
+        } => waves(s, *wave).len() * quad_len(*rings, *quad),
+        TermKind::Mtf { dir, .. } => {
+            if *dir == MtfDir::Both {
+                2
+            } else {
+                1
+            }
+        }
+        TermKind::Paraxial { .. }
+        | TermKind::Ray { .. }
+        | TermKind::Centroid { .. }
+        | TermKind::Opd { .. }
+        | TermKind::Zernike { .. }
+        | TermKind::Coupling { .. }
+        | TermKind::Thickness { .. } => 1,
+        TermKind::User(u) => u.0.rows(),
     }
 }

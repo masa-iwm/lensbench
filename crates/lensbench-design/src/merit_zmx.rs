@@ -13,6 +13,8 @@
 use lensbench_core::zmx::merit::{MeritFunction, MeritRow};
 use serde_json::{json, Map, Value};
 
+mod wizard;
+
 /// .zmx から写した評価関数
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ZmxMerit {
@@ -153,6 +155,68 @@ fn kind_of(
         return Ok(m);
     }
     match op {
+        // CTGT・CTLT・CTVA: Int1 の面の中心の厚み ≥・≤・＝ 目標。TTHI: Int1 から Int2 の面の厚みの和
+        "CTGT" | "CTLT" | "CTVA" | "TTHI" => {
+            let s1 = int(INT1)?;
+            let s2 = if op == "TTHI" { int(INT2)? } else { s1 };
+            if s1 < 1 || s2 < s1 || s2 as usize >= image {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            m.insert("type".into(), json!("thickness"));
+            m.insert("surf".into(), json!(s1));
+            if s2 != s1 {
+                m.insert("to".into(), json!(s2));
+            }
+            let key = match op {
+                "CTGT" => "min",
+                "CTLT" => "max",
+                _ => "target",
+            };
+            m.insert(key.into(), json!(target * unit));
+        }
+        // ETGT・ETLT・ETVA: Int1 の面の縁の厚み（半直径の矢高）≥・≤・＝ 目標
+        "ETGT" | "ETLT" | "ETVA" => {
+            let j = int(INT1)?;
+            if j < 1 || j as usize >= image {
+                return Err(format!("surface {j}"));
+            }
+            m.insert("type".into(), json!("thickness"));
+            m.insert("surf".into(), json!(j));
+            m.insert("edge".into(), json!(true));
+            let key = match op {
+                "ETGT" => "min",
+                "ETLT" => "max",
+                _ => "target",
+            };
+            m.insert(key.into(), json!(target * unit));
+        }
+        // 範囲の境界: Int1〜Int2 の面（像面は除く）のうち T すべて・A 空気・G ガラスの面の中心（C）・縁（E）の厚みを
+        // 1 面ずつ目標と比べる。縁は Data1 の Zone（0 は半直径、ほかは半直径に対する割合）
+        "MNCT" | "MXCT" | "MNCA" | "MXCA" | "MNCG" | "MXCG" | "MNET" | "MXET" | "MNEA" | "MNEG" => {
+            let s1 = int(INT1)?;
+            let s2 = int(INT2)?.min(image as i64 - 1);
+            if s1 < 1 || s2 < s1 {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            m.insert("type".into(), json!("thickness"));
+            m.insert("surf".into(), json!(s1));
+            m.insert("to".into(), json!(s2));
+            if &op[2..3] == "E" {
+                m.insert("edge".into(), json!(true));
+                let z = num(data(1))?;
+                if z != 0.0 {
+                    m.insert("zone".into(), json!(z));
+                }
+            }
+            let each = match &op[3..] {
+                "A" => "air",
+                "G" => "glass",
+                _ => "all",
+            };
+            m.insert("each".into(), json!(each));
+            let key = if op.starts_with("MN") { "min" } else { "max" };
+            m.insert(key.into(), json!(target * unit));
+        }
         "RSCE" | "RSCH" | "RWCE" | "RWCH" => {
             if target != 0.0 {
                 return Err(format!(
@@ -294,9 +358,19 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
         }
         row_config.push(config);
     }
+    // Wizard の光線の行は視野ごとのスポット・波面の項にまとめる
+    let mut wiz = wizard::group(&mf.rows, &row_config, cx.unit);
+    cx.notes.append(&mut wiz.notes);
     let mut terms = Vec::new();
     let mut sources = Vec::new();
     for (i, r) in mf.rows.iter().enumerate() {
+        if wiz.used[i] {
+            for m in wiz.terms.remove(&i).unwrap_or_default() {
+                terms.push(Value::Object(m));
+                sources.push(r.row);
+            }
+            continue;
+        }
         if r.op == "BLNK" || r.op == "CONF" {
             continue;
         }
@@ -398,7 +472,12 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
 /// 値が長さ（レンズ単位）の演算子
 fn is_length(op: &str) -> bool {
     PARAXIAL.iter().chain(RAY).any(|(o, _, l)| *o == op && *l)
-        || ["CENX", "CENY", "RSCE", "RSCH"].contains(&op)
+        || [
+            "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAR", "TRAC", "TRAD",
+            "TRAE", "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG",
+            "MXCG", "MNET", "MXET", "MNEA", "MNEG",
+        ]
+        .contains(&op)
 }
 
 /// 項の JSON（[`crate::merit`] の表）を .zmx のメリットファンクションの行にする（[`terms_from_zmx`] の逆）。
@@ -585,7 +664,9 @@ fn row_of(
             let Some((op, _, _)) = PARAXIAL.iter().find(|(_, n, _)| *n == q) else {
                 return Err(format!("paraxial {q} has no OpticStudio operand"));
             };
-            (op, [0.0; 8], bound(0.0))
+            // 近軸量は主波長（Wave 0 も OpticStudio 26.1 では主波長だが、番号で書く方が確か）
+            let p = [0.0, primary, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            (op, p, bound(0.0))
         }
         "spot" | "wavefront" => {
             let chief = t.get("reference").and_then(Value::as_str) == Some("chief");
@@ -698,6 +779,61 @@ fn row_of(
             ];
             (op, p, bound(0.0))
         }
+        "thickness" => {
+            let s1 = num("surf").unwrap_or(0.0);
+            let s2 = num("to").unwrap_or(s1);
+            let mut p = [s1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let edge = t.get("edge") == Some(&Value::Bool(true));
+            let zone = num("zone").unwrap_or(1.0);
+            if let Some(e) = t.get("each").and_then(Value::as_str) {
+                // 面ごとの境界: MN・MX ＋ C（中心）・E（縁）＋ T（すべて）・A（空気）・G（ガラス）。Zone 0 は半直径
+                p[1] = s2;
+                if edge {
+                    p[2] = if zone == 1.0 { 0.0 } else { zone };
+                }
+                let lower = match bound(0.0) {
+                    Bound::Side(s, b) => (s == "OPGT", b),
+                    _ => return Err("a thickness term with each needs min or max".into()),
+                };
+                let op =
+                    match (lower.0, edge, e) {
+                        (true, false, "air") => "MNCA",
+                        (true, false, "glass") => "MNCG",
+                        (true, false, _) => "MNCT",
+                        (false, false, "air") => "MXCA",
+                        (false, false, "glass") => "MXCG",
+                        (false, false, _) => "MXCT",
+                        (true, true, "air") => "MNEA",
+                        (true, true, "glass") => "MNEG",
+                        (true, true, _) => "MNET",
+                        (false, true, "all") => "MXET",
+                        _ => return Err(
+                            "OpticStudio has no maximum edge thickness of air or glass surfaces"
+                                .into(),
+                        ),
+                    };
+                (op, p, Bound::Target(lower.1))
+            } else if edge {
+                if s2 != s1 || zone != 1.0 {
+                    return Err("only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)".into());
+                }
+                match bound(0.0) {
+                    Bound::Side("OPGT", b) => ("ETGT", p, Bound::Target(b)),
+                    Bound::Side(_, b) => ("ETLT", p, Bound::Target(b)),
+                    b => ("ETVA", p, b),
+                }
+            } else if s2 != s1 {
+                p[1] = s2;
+                ("TTHI", p, bound(0.0))
+            } else {
+                // 1 面の min・max は CTGT・CTLT の 1 行で書ける
+                match bound(0.0) {
+                    Bound::Side("OPGT", b) => ("CTGT", p, Bound::Target(b)),
+                    Bound::Side(_, b) => ("CTLT", p, Bound::Target(b)),
+                    b => ("CTVA", p, b),
+                }
+            }
+        }
         "zplm" => match t.get("macro").and_then(Value::as_u64) {
             Some(m) if m <= 99 && t.get("file").is_none() => {
                 let p = [
@@ -781,6 +917,7 @@ mod tests {
             json!({"type": "ray", "surf": 5, "wave": 1, "field": [0.0, 0.5], "px": 0.0, "py": -1.0, "q": "y", "target": -5.0, "weight": 0.3}),
             json!({"type": "centroid", "wave": 1, "field": 3, "q": "y", "target": 14.0, "weight": 0.6}),
             json!({"type": "paraxial", "q": "efl", "min": 90.0, "weight": 2.0}),
+            json!({"type": "thickness", "surf": 2, "min": 1.5, "weight": 3.0}),
             json!({"type": "paraxial", "q": "wfno", "target": 4.0, "weight": 0.7, "config": 2}),
         ];
         assert_eq!(z.terms, want);
@@ -790,8 +927,8 @@ mod tests {
             .iter()
             .map(|n| n.split_whitespace().nth(4).unwrap().parse().unwrap())
             .collect();
-        // EFFL の波長 1（主波長でない）・RSCH の目標・Annular の ZERN・目標のない項への OPLT・CTGT・負の重み・読めない行
-        assert_eq!(skipped, [4, 7, 10, 16, 17, 18, 21], "{:?}", z.notes);
+        // EFFL の波長 1（主波長でない）・RSCH の目標・Annular の ZERN・目標のない項への OPLT・負の重み・読めない行
+        assert_eq!(skipped, [4, 7, 10, 16, 18, 21], "{:?}", z.notes);
         // 長さの目標はレンズ単位から mm に、MTF はレンズ単位が mm のときだけ
         let mf = merit_function_text(&zmx("IN", &rows)).unwrap();
         let z = terms_from_zmx(&mf, 2, 9);
@@ -803,6 +940,55 @@ mod tests {
         assert!(z.terms.iter().all(|t| t["type"] != "mtf"));
         let i = z.terms.iter().position(|t| t.get("min").is_some()).unwrap();
         assert_eq!(z.terms[i]["min"], json!(90.0 * 25.4));
+    }
+
+    #[test]
+    fn wizard_rows_become_terms() {
+        let rows = [
+            "DMFS 0 0 0 0 0 0 0 0 0 0",
+            "BLNK Sequential merit function: RMS spot x+y chief X Wgt = 1.0000 Y Wgt = 1.0000 RA 2 x 2 rays",
+            "BLNK Operands for field 1.",
+            "TRAD 0 1 0 0 0.5 0.5 0 0.5 0 0",
+            "TRAE 0 1 0 0 0.5 0.5 0 0.5 0 0",
+            "TRAD 0 2 0 0 0.5 0.5 0 0.25 0 0",
+            "TRAE 0 2 0 0 0.5 0.5 0 0.25 0 0",
+            "BLNK Operands for field 2.",
+            "TRAD 0 1 0 1 0.5 -0.5 0 0.0625 0 0",
+            "TRAE 0 1 0 1 0.5 -0.5 0 0.0625 0 0",
+            "TRAD 0 1 0 1 0.5 0.5 0 0.0625 0 0",
+            "TRAE 0 1 0 1 0.5 0.5 0 0.0625 0 0",
+            "BLNK Operands for field 3.",
+            "TRAD 0 1 0 0.5 0.5 0.5 0 0.1 0 0",
+            "EFFL 0 2 0 0 0 0 100 1 0 0",
+            "TRAD 0 1 0 1 0.25 0.75 0 1 0 0",
+            "DMFS 0 0 0 0 0 0 0 0 0 0",
+            "BLNK Sequential merit function: RMS wavefront centroid GQ 1 rings 2 arms",
+            "BLNK Operands for field 1.",
+            "PRIM 0 1 0 0 0 0 0 0 0 0",
+            "OPDX 0 1 0 0 0.70710678118654757 0 0 0.75 0 0",
+            "DMFS 0 0 0 0 0 0 0 0 0 0",
+            "BLNK Sequential merit function: PTV spot radius chief",
+        ];
+        let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+        let z = terms_from_zmx(&mf, 2, 9);
+        let spot = |f: [f64; 2], axis: &str, w: f64| json!({"type": "spot", "field": f, "wave": null, "reference": "chief", "quadrature": "grid", "n": 2, "axis": axis, "weight": w});
+        let want = vec![
+            spot([0.0, 0.0], "x", 0.75),
+            spot([0.0, 0.0], "y", 0.75),
+            spot([0.0, 1.0], "x", 0.125),
+            spot([0.0, 1.0], "y", 0.125),
+            json!({"type": "paraxial", "q": "efl", "target": 100.0, "weight": 1.0}),
+            json!({"type": "wavefront", "field": [0.0, 0.0], "wave": 1, "reference": "centroid", "quadrature": "opticstudio", "rings": 1, "arms": 2, "weight": 0.75}),
+        ];
+        assert_eq!(z.terms, want);
+        assert_eq!(z.sources, [4, 5, 9, 10, 15, 21]);
+        // 軸上（4 分の 1）・瞳の半分のどちらでもない視野 3 の 1 行と、視野の節の外の TRAD（行 16）は 1 行ずつ読んで飛ばし、
+        // RMS でない Wizard は注意にする
+        assert_eq!(z.notes.len(), 4, "{:?}", z.notes);
+        assert!(z.notes[0].contains("row 14:") && z.notes[0].contains("pupil sampling"));
+        assert!(z.notes[1].contains("row 23") && z.notes[1].contains("PTV"));
+        assert!(z.notes[2].contains("row 14 (TRAD"));
+        assert!(z.notes[3].contains("row 16 (TRAD"));
     }
 
     #[test]
@@ -837,6 +1023,44 @@ mod tests {
         let v = p.term_values(&[]).unwrap();
         assert_eq!(v.len(), 7);
         assert_eq!(v[0].value(), s.paraxial().efl);
+        // Wizard の行をまとめた項（格子・腕・x と y）
+        let rows = [
+            "DMFS 0 0 0 0 0 0 0 0 0 0",
+            "BLNK Sequential merit function: RMS spot x+y chief X Wgt = 1.0000 Y Wgt = 1.0000 RA 2 x 2 rays",
+            "BLNK Operands for field 1.",
+            "TRAD 0 1 0 1 0.5 0.5 0 1 0 0",
+            "TRAE 0 1 0 1 0.5 0.5 0 1 0 0",
+            "TRAD 0 1 0 1 0.5 -0.5 0 1 0 0",
+            "TRAE 0 1 0 1 0.5 -0.5 0 1 0 0",
+            "DMFS 0 0 0 0 0 0 0 0 0 0",
+            "BLNK Sequential merit function: RMS wavefront centroid GQ 1 rings 2 arms",
+            "BLNK Operands for field 1.",
+            "OPDX 0 1 0 1 0.70710678118654757 0 0 1 0 0",
+        ];
+        let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+        let z = terms_from_zmx(&mf, s.primary + 1, s.image());
+        assert!(z.notes.is_empty(), "{:?}", z.notes);
+        let t = crate::merit::terms_from_json(&Value::Array(z.terms), std::slice::from_ref(&s))
+            .unwrap();
+        p.terms = t;
+        p.check().unwrap();
+        let v = p.term_values(&[]).unwrap();
+        assert_eq!(v.len(), 3);
+        // x と y の 2 乗の和はスポット半径の 2 乗
+        let r = |axis: Option<&str>| {
+            let mut j = json!({"type": "spot", "field": [0.0, 1.0], "reference": "chief", "quadrature": "grid", "n": 4});
+            if let Some(a) = axis {
+                j["axis"] = json!(a);
+            }
+            let mut p = lensbench_optim::Problem::single(s.clone());
+            p.terms = crate::merit::terms_from_json(&j, std::slice::from_ref(&s)).unwrap();
+            p.term_values(&[]).unwrap()[0].value()
+        };
+        let (x, y, xy) = (r(Some("x")), r(Some("y")), r(None));
+        assert!(
+            (x * x + y * y - xy * xy).abs() < 1e-15 * xy * xy,
+            "{x} {y} {xy}"
+        );
     }
 
     /// 項 → 行 → 項で同じ項に戻る（表せない項は注意）
@@ -858,18 +1082,27 @@ mod tests {
             json!({"type": "mtf", "wave": null, "field": 1, "freq": 30.0, "dir": "tan", "target": 0.5, "weight": 1.0}),
             json!({"type": "ray", "surf": 3, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "m", "target": 0.0, "weight": 1.0}),
             json!({"type": "paraxial", "q": "totr", "max": 60.0, "weight": 4.0}),
+            json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
+            json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 1, "edge": true, "max": 3.0, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 1, "to": 5, "each": "air", "edge": true, "zone": 0.5, "min": 0.5, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 1, "to": 5, "each": "glass", "max": 10.0, "weight": 1.0}),
+            json!({"type": "thickness", "surf": 1, "to": 5, "each": "all", "edge": true, "max": 10.0, "weight": 1.0}),
             json!({"type": "centroid", "wave": null, "field": 1, "q": "x", "target": 0.0, "weight": 1.0, "config": 2}),
         ];
         let bad = [
             json!({"type": "paraxial", "q": "pwfn", "target": 1.0}),
             json!({"type": "mtf", "field": [0.0, 1.0], "freq": 30.0}),
             json!({"type": "coupling"}),
+            json!({"type": "thickness", "surf": 1, "to": 3, "edge": true, "target": 3.0}),
+            json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0}),
         ];
         let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
         let systems = [s.clone(), s.clone()];
         let before = [MeritRow::blank("from the zmx")];
         let (rows, notes) = rows_from_terms(&all, &systems, &before);
-        assert_eq!(notes.len(), 3, "{notes:?}");
+        assert_eq!(notes.len(), 5, "{notes:?}");
         // 行を .zmx に書いて読み直す
         let mut txt = String::new();
         for r in before.iter().chain(&rows) {

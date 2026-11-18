@@ -857,7 +857,25 @@ pub fn save_with_merit(
                     .into(),
             );
         } else {
-            txt = insert_merit(&txt, rows);
+            // 多重構成の表を書けない系（表の無い系・書けない構成の量）では、構成 2 以降の行（最初の CONF n > 1 から後）を書かない
+            let has_mce = txt.starts_with("MNUM ") || txt.contains("\r\nMNUM ");
+            let later = rows
+                .iter()
+                .position(|r| r.op == "CONF" && r.int(0).is_ok_and(|c| c > 1));
+            let cut = later.filter(|_| !has_mce);
+            if later.is_some() && has_mce {
+                notes.push(
+                    "the .zmx is written from configuration 1; the multi-configuration table keeps the values read"
+                        .into(),
+                );
+            }
+            if cut.is_some() {
+                notes.push(
+                    "the merit function rows of configurations 2 and later were not written (the .zmx has no multi-configuration table)"
+                        .into(),
+                );
+            }
+            txt = insert_merit(&txt, &rows[..cut.unwrap_or(rows.len())]);
         }
     }
     save_coating(path, &name, s)?;
@@ -1292,5 +1310,40 @@ mod merit_tests {
             insert_merit("SURF 0\r\n", &rows),
             format!("SURF 0\r\n{block}")
         );
+    }
+
+    /// 多重構成の表の無い系では、構成 2 以降の行（最初の CONF n > 1 から後）を書かずに注意を返す
+    #[test]
+    fn merit_without_mce_drops_later_configs() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let s = lensbench_core::zmx::load_with(
+            &root.join("tests/refs/A0/system.zmx"),
+            &lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let z = [0.0; 8];
+        let rows = [
+            MeritRow::new("EFFL", [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 50.0, 1.0),
+            MeritRow::new("CONF", [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.0, 0.0),
+            MeritRow::new("TOTR", z, 80.0, 1.0),
+        ];
+        let dir = std::env::temp_dir().join(format!("lb_merit_mce_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("out.zmx");
+        let notes = super::save_with_merit(&path, &s, &rows).unwrap();
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("configurations 2 and later")),
+            "{notes:?}"
+        );
+        let mf = lensbench_core::zmx::merit::merit_function(&path).unwrap();
+        let ops: Vec<&str> = mf.rows.iter().map(|r| r.op.as_str()).collect();
+        assert_eq!(ops, ["EFFL"]);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -15,8 +15,8 @@ pub(crate) struct ZmxMerit {
     pub rows: Vec<MeritRow>,
 }
 
-/// .zmx の評価関数を写した項。写せない行は標準エラーへ
-pub(crate) fn terms(c: &Common, s: &System) -> Result<ZmxMerit, AppError> {
+/// .zmx の評価関数を写した項。写せない行は標準エラーへ。out は --out があるとき（読んだ行を書けなければ注意する）
+pub(crate) fn terms(c: &Common, s: &System, out: bool) -> Result<ZmxMerit, AppError> {
     let is_zmx = c
         .file
         .extension()
@@ -31,6 +31,11 @@ pub(crate) fn terms(c: &Common, s: &System) -> Result<ZmxMerit, AppError> {
     let rows = if mf.lens_unit_mm == 1.0 {
         mf.rows
     } else {
+        if out {
+            warn_notes(vec![
+                "the merit function rows read from the .zmx are not written to --out (its lens unit is not mm)".into(),
+            ]);
+        }
         Vec::new()
     };
     let systems = if z.configs <= 1 {
@@ -98,10 +103,5 @@ pub(crate) fn rows_to_write(
         })
         .collect();
     rows.extend(more);
-    if systems.len() > 1 {
-        warn_notes(vec![
-            "the .zmx is written from configuration 1; the multi-configuration table keeps the values read".into(),
-        ]);
-    }
     rows
 }

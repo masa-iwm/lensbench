@@ -1,5 +1,5 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
-use crate::pupil::{apodized_gauss, quad_len};
+use crate::pupil::apodized_gauss;
 use lensbench_core::analysis::{mtf_only, ref_opl, to_ref, MtfMethod, ZernKind};
 use lensbench_core::error::{Error, Result};
 use lensbench_core::fiber::FiberOpts;
@@ -9,7 +9,7 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::pupil::{exit_pupil_near, RefSurface};
 use lensbench_core::surface::SurfType;
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::system::{Cols, FieldSel, RayBuf, System};
+use lensbench_core::system::{Cols, FieldSel, System};
 use lensbench_core::{invalid, Waves};
 use std::sync::Arc;
 
@@ -59,9 +59,13 @@ pub use lm::*;
 mod jac;
 use jac::{pupil_d, JacCache, PupilCache};
 
+#[path = "dls_spot.rs"]
+mod spot;
+use spot::{centroid_term, spot_term};
+
 #[path = "dls_trace.rs"]
 mod trace;
-use trace::{launch_of, trace_ok, trace_pupil, trace_pupil_cols, trace_pupil_rec};
+use trace::{launch_of, trace_ok, trace_pupil_cols, trace_pupil_rec};
 
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
@@ -198,6 +202,7 @@ impl Problem {
                         rings,
                         reference,
                         quad: Quad::Lensbench,
+                        axis: SpotAxis::Both,
                     },
                     DefaultMerit::Wavefront => TermKind::Wavefront {
                         field,
@@ -335,6 +340,15 @@ impl Problem {
                         invalid!("term {i}: fiber coupling is only for finite-object systems");
                     }
                     (FieldSel::Norm(0.0, 0.0), Some(wave.unwrap_or(s.primary)))
+                }
+                TermKind::Thickness { surf, to, .. } => {
+                    if *surf == 0 || surf > to || *to >= s.image() {
+                        invalid!(
+                            "term {i}: thickness of surfaces {surf} to {to} (1 to {})",
+                            s.image() - 1
+                        );
+                    }
+                    continue;
                 }
                 TermKind::User(u) => {
                     if u.0.rows() == 0 {
@@ -811,31 +825,6 @@ fn waves(s: &System, w: Option<usize>) -> Vec<usize> {
     }
 }
 
-fn term_rows(s: &System, k: &TermKind) -> usize {
-    match k {
-        TermKind::Spot {
-            wave, rings, quad, ..
-        } => 2 * waves(s, *wave).len() * quad_len(*rings, *quad),
-        TermKind::Wavefront {
-            wave, rings, quad, ..
-        } => waves(s, *wave).len() * quad_len(*rings, *quad),
-        TermKind::Mtf { dir, .. } => {
-            if *dir == MtfDir::Both {
-                2
-            } else {
-                1
-            }
-        }
-        TermKind::Paraxial { .. }
-        | TermKind::Ray { .. }
-        | TermKind::Centroid { .. }
-        | TermKind::Opd { .. }
-        | TermKind::Zernike { .. }
-        | TermKind::Coupling { .. } => 1,
-        TermKind::User(u) => u.0.rows(),
-    }
-}
-
 /// 像面が平面（波面の解析的な微分の前提）
 fn flat_image(s: &System) -> bool {
     let d = &s.surfaces[s.image()];
@@ -873,7 +862,16 @@ fn eval_term(
             rings,
             reference,
             quad,
-        } => spot_term(s, *field, *wave, (*rings, *quad), *reference, ps, keep),
+            axis,
+        } => spot_term(
+            s,
+            *field,
+            *wave,
+            (*rings, *quad, *axis),
+            *reference,
+            ps,
+            keep,
+        ),
         TermKind::Centroid {
             field,
             wave,
@@ -965,6 +963,50 @@ fn eval_term(
                 invalid!("can't compute the coupling efficiency");
             }
             Ok((vec![c.eta - target], None))
+        }
+        TermKind::Thickness {
+            surf,
+            to,
+            target,
+            edge,
+            each,
+        } => {
+            let x = |i: usize| match edge {
+                // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの半直径 × z の高さ、y の向き）
+                Some(z) => {
+                    let sag =
+                        |f: &lensbench_core::surface::Surface| f.shape().sag(0.0, z * f.semi).0;
+                    s.surfaces[i].t - sag(&s.surfaces[i]) + sag(&s.surfaces[i + 1])
+                }
+                None => s.surfaces[i].t,
+            };
+            let v: f64 = match each {
+                None => (*surf..=*to).map(x).sum(),
+                Some(e) => {
+                    (*surf..=*to)
+                        .filter(|&i| {
+                            let m = &s.surfaces[i].mat;
+                            match e.medium {
+                                Medium::All => true,
+                                Medium::Air => m.is_air() || !m.is_medium(),
+                                Medium::Glass => m.is_medium() && !m.is_air(),
+                            }
+                        })
+                        .map(|i| {
+                            if e.upper {
+                                (x(i) - target).max(0.0)
+                            } else {
+                                (x(i) - target).min(0.0)
+                            }
+                        })
+                        .sum::<f64>()
+                        + target
+                }
+            };
+            if !v.is_finite() {
+                invalid!("the thickness of surfaces {surf} to {to} is not finite");
+            }
+            Ok((vec![v - target], None))
         }
         TermKind::User(u) => Ok((u.eval_checked(&[s])?.remove(0), None)),
     }
@@ -1100,175 +1142,6 @@ fn opd_term(
         invalid!("can't find the OPD derivatives");
     }
     Ok((vec![v - target], Some(d)))
-}
-
-fn spot_term(
-    s: &System,
-    field: FieldSel,
-    wave: Option<usize>,
-    (rings, quad): (usize, Quad),
-    reference: RmsRef,
-    ps: Option<&[Param]>,
-    keep: bool,
-) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings, quad, false)?;
-    let (px, py, wts) = (&pg.0, &pg.1, &wts);
-    let n = px.len();
-    let ws = waves(s, wave);
-    let rec = ps.is_some();
-    let np = ps.map_or(0, |p| p.len());
-    // 像面の位置とけられ（微分が要るときだけ記録つきの Trace から写す）
-    let mut traces: Vec<RayBuf> = Vec::with_capacity(ws.len());
-    let mut grads = Vec::with_capacity(ws.len());
-    for &w in &ws {
-        if let Some(ps) = ps {
-            let t = trace_pupil(s, field, px, py, w, rec, keep)?;
-            grads.push(s.land_grad(&t, w, ps, None)?);
-            let mut b = RayBuf::with_cols(Cols::XYZ);
-            b.fill_from(&t);
-            traces.push(b);
-        } else {
-            traces.push(trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?);
-        }
-    }
-    // 重み（spot() と同じ: 単色は波長の重みによらない）
-    let mut wt = vec![0.0; ws.len() * n];
-    for (k, &w) in ws.iter().enumerate() {
-        let kw = if ws.len() == 1 { 1.0 } else { s.weights[w] };
-        for i in 0..n {
-            if traces[k].ok(i) {
-                wt[k * n + i] = wts[i] * kw;
-            }
-        }
-    }
-    let sw: f64 = wt.iter().sum();
-    if !(sw > 0.0) {
-        invalid!("no valid rays (all vignetted)");
-    }
-    let xy = |k: usize, i: usize| (traces[k].xyz[i][0], traces[k].xyz[i][1]);
-    // 基準とその微分
-    let (cx, cy, dc): (f64, f64, Vec<[f64; 2]>) = match reference {
-        RmsRef::Centroid => {
-            let (mut cx, mut cy) = (0.0, 0.0);
-            let mut dc = vec![[0.0; 2]; np];
-            for k in 0..ws.len() {
-                for i in 0..n {
-                    let a = wt[k * n + i];
-                    if a == 0.0 {
-                        continue;
-                    }
-                    let (x, y) = xy(k, i);
-                    cx += a * x;
-                    cy += a * y;
-                    for (q, d) in dc.iter_mut().enumerate() {
-                        let g = &grads[k][(i * np + q) * 4..];
-                        d[0] += a * g[0];
-                        d[1] += a * g[1];
-                    }
-                }
-            }
-            dc.iter_mut().for_each(|d| {
-                d[0] /= sw;
-                d[1] /= sw;
-            });
-            (cx / sw, cy / sw, dc)
-        }
-        RmsRef::Chief => {
-            let wc = wave.unwrap_or(s.primary);
-            let t = trace_ok(s, field, &[0.0], &[0.0], wc, rec)?;
-            if !t.traced(0) {
-                invalid!("the chief ray doesn't reach the image");
-            }
-            let mut dc = vec![[0.0; 2]; np];
-            if let Some(ps) = ps {
-                let g = s.land_grad(&t, wc, ps, None)?;
-                for (q, d) in dc.iter_mut().enumerate() {
-                    *d = [g[q * 4], g[q * 4 + 1]];
-                }
-            }
-            (t.rays[0].xyz[0], t.rays[0].xyz[1], dc)
-        }
-    };
-    let m = 2 * ws.len() * n;
-    let mut r = vec![0.0; m];
-    let mut j = ps.map(|_| vec![0.0; m * np]);
-    for k in 0..ws.len() {
-        for i in 0..n {
-            let a = wt[k * n + i];
-            if a == 0.0 {
-                continue;
-            }
-            let a = (a / sw).sqrt();
-            let (x, y) = xy(k, i);
-            let row = 2 * (k * n + i);
-            r[row] = a * (x - cx);
-            r[row + 1] = a * (y - cy);
-            if let Some(j) = j.as_mut() {
-                for q in 0..np {
-                    let g = &grads[k][(i * np + q) * 4..];
-                    j[row * np + q] = a * (g[0] - dc[q][0]);
-                    j[(row + 1) * np + q] = a * (g[1] - dc[q][1]);
-                }
-            }
-        }
-    }
-    Ok((r, j))
-}
-
-/// 像面の光束の重心（スポットの項と同じ光線・重み）の x か y − target と、その解析的な微分
-#[allow(clippy::too_many_arguments)]
-fn centroid_term(
-    s: &System,
-    field: FieldSel,
-    wave: Option<usize>,
-    rings: usize,
-    y: bool,
-    target: f64,
-    ps: Option<&[Param]>,
-    keep: bool,
-) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings, Quad::Lensbench, false)?;
-    let (px, py, wts) = (&pg.0, &pg.1, &wts);
-    let n = px.len();
-    let ws = waves(s, wave);
-    let np = ps.map_or(0, |p| p.len());
-    let c = usize::from(y);
-    let (mut sw, mut sc) = (0.0, 0.0);
-    let mut dc = vec![0.0; np];
-    for &w in &ws {
-        let (t, g) = match ps {
-            Some(ps) => {
-                let tr = trace_pupil(s, field, px, py, w, true, keep)?;
-                let g = s.land_grad(&tr, w, ps, None)?;
-                let mut b = RayBuf::with_cols(Cols::XYZ);
-                b.fill_from(&tr);
-                (b, Some(g))
-            }
-            None => (
-                trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?,
-                None,
-            ),
-        };
-        let kw = if ws.len() == 1 { 1.0 } else { s.weights[w] };
-        for i in 0..n {
-            if !t.ok(i) {
-                continue;
-            }
-            let a = wts[i] * kw;
-            sw += a;
-            sc += a * t.xyz[i][c];
-            if let Some(g) = &g {
-                for (q, d) in dc.iter_mut().enumerate() {
-                    *d += a * g[(i * np + q) * 4 + c];
-                }
-            }
-        }
-    }
-    if !(sw > 0.0) {
-        invalid!("no valid rays (all vignetted)");
-    }
-    let j = ps.map(|_| dc.iter().map(|d| d / sw).collect());
-    Ok((vec![sc / sw - target], j))
 }
 
 /// to_ref（[`lensbench_core::analysis`]）の値の微分。ni は像空間の屈折率（波長 w の [`System::image_index`]）、d は (dpc, dkc, dq, dk, dopl, dni, dexpp)

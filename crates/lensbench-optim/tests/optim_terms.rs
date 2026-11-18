@@ -541,6 +541,7 @@ fn term_value_kinds() {
             rings: 3,
             reference: RmsRef::Centroid,
             quad: Default::default(),
+            axis: Default::default(),
         },
     );
     p.terms.push(Term {
@@ -579,6 +580,7 @@ fn stopped_rays_as_vignetted() {
         rings: 6,
         reference: RmsRef::Centroid,
         quad: Default::default(),
+        axis: Default::default(),
     };
     let mut p = one(&s, spot.clone());
     assert!(p.merit(&[]).is_err());
@@ -655,4 +657,33 @@ fn cancel_during_trial_step_is_cancelled() {
     assert_eq!(r.stop, Stop::Cancelled);
     assert_eq!(r.x, r.x0);
     assert_eq!(u.calls.load(Ordering::SeqCst), 3);
+}
+
+/// 厚みの項は面 surf から to までの中心の厚みの和 − 目標。範囲の外は誤り
+#[test]
+fn thickness_term() {
+    let s = load("A0");
+    let want: f64 = s.surfaces[2..=4].iter().map(|f| f.t).sum();
+    let p = one(
+        &s,
+        TermKind::Thickness {
+            surf: 2,
+            to: 4,
+            target: 1.0,
+            edge: None,
+            each: None,
+        },
+    );
+    assert_eq!(p.term_values(&[]).unwrap()[0].value(), want);
+    let bad = one(
+        &s,
+        TermKind::Thickness {
+            surf: 2,
+            to: s.image(),
+            target: 0.0,
+            edge: None,
+            each: None,
+        },
+    );
+    assert!(bad.check().is_err());
 }

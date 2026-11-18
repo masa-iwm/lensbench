@@ -23,7 +23,7 @@
   既定の評価関数に項を足す（`--merit none` なら足した項だけ）。種類は `spot`・`wavefront`・`mtf`・`paraxial`（`q`: efl・pmag・
   enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna。値は System Data と同じ）・`ray`（1 本の実光線の面 `surf` の
   局所座標での `q`: x・y・z・l・m・n、OpticStudio の REAX〜REAC 相当）・`opd`（1 本の光線の OPD [波]、OPDC 相当）・
-  `zernike`（係数 [波]）・`coupling`（ファイバ結合効率）。視野・波長は 1 始まり（視野は `[hx, hy]` も可）、目標 `target` の
+  `zernike`（係数 [波]）・`coupling`（ファイバ結合効率）・`thickness`（面 `surf` から `to` までの中心の厚みの和。OpticStudio の CTVA・TTHI、`min`・`max` で CTGT・CTLT。`edge: true` で縁の厚み（面と次の面の矢高を、それぞれの半直径 × `zone`（既定 1）の高さで測る。ETVA・ETGT・ETLT）。`each` は和でなく面ごとに `min`・`max` と比べてはみ出しを足す（`all`・`air`・`glass` の面だけ。MNCT・MNCA・MNCG・MNET・MNEA・MNEG・MX* と同じ値））。視野・波長は 1 始まり（視野は `[hx, hy]` も可）、目標 `target` の
   既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・zernike・coupling）は `target` の代わりに
   片側の条件 `min`（値 ≥ min なら残差 0）・`max`（値 ≤ max なら残差 0）を書ける。キーの一覧は `lensbench_design::merit`、スキーマは [terms](schema/terms.schema.json)（種類ごとに使えるキーだけを受け、知らないキーはエラー）。結果の `terms` に足した項の前後の値。
 - 光線（z を除く）・OPD の項はスポット・波面と同じく解析的に微分し、近軸量・Zernike・結合効率は差分。
@@ -34,19 +34,25 @@
 - .zmx のメリットファンクション: `--zmx-merit` で .zmx に保存したメリットファンクション（面の後の行）を項にして使う
   （`--merit` のデフォルトのメリットファンクションは足さない。`--term`・`--terms` の項はその後に足す）。写すオペランドは
   EFFL・ENPP・EPDI・EXPD・EXPP・ISFN・ISNA・PIMH・PMAG・WFNO・OBSN・TOTR（波長は主波長だけ）、RSCE・RSCH・RWCE・RWCH（目標 0 だけ）、
-  OPDC、ZERN（Fringe・Standard）、MTFT・MTFS（FFT の変調）、REAX〜REAC、CENX・CENY（像面）と、それらを参照する OPGT・OPLT
+  OPDC、ZERN（Fringe・Standard）、MTFT・MTFS（FFT の変調）、REAX〜REAC、CENX・CENY（像面）、厚み（CTGT・CTLT・CTVA・TTHI・ETGT・ETLT・ETVA と範囲の境界 MNCT〜MNEG。Double Gauss 28 の 943 行で 6e-14 mm 一致。物体面からの TTHI と Surf1 > Surf2 の範囲は飛ばす）と、それらを参照する OPGT・OPLT
   （`min`・`max`）。CONF n の後の行は構成 n の項で、使う構成をまとめて最適化する。重み 0 の行は飛ばし、写せない行・負の重み
   （OpticStudio のラグランジュの拘束）は行の番号つきの警告にして残りで最適化する。長さの目標はレンズ単位から mm に直す。
   RSCE・RSCH・RWCE・RWCH は `quadrature: "opticstudio"` の項にし、瞳の求積を OpticStudio 26.1 と同じにする（腕 2·Ring 本を
   90° 回して置く。Double Gauss 28 の Ring 2〜6・6 視野・各波長で 1e-10 で一致。Ring 1 の Hx = 0・Hy ≠ 0 の RSCE だけは
   OpticStudio の置き方が分からず数 % 違う。多色の RWCE は波長ごとの傾きの除き方が違い、Ring 2 以上で 1.4e-5、Ring 1 では大きく
   違う）。lensbench の項の既定（`quadrature: "lensbench"`、腕 4·rings + 2 本）は少ない rings でも収束に近く、Ring が小さいと
-  OpticStudio の値と違う（DG28 の RSCH の Ring 2 で 14%）。MTF の標本は渡さず、
+  OpticStudio の値と違う（DG28 の RSCH の Ring 2 で 14%）。評価関数の Wizard の行（DMFS の後の「Operands for field N.」の
+  OPDX・TRAR・TRAC・TRAD・TRAE・TRCX・TRCY）は、構成・視野ごとにまとめてスポット・波面の項 1 つ（x+y の行は `axis` が x と y の
+  2 つ）にし、重みを行の重みの和にする。瞳の点は DMFS の次の BLNK の設定文から、GQ は `quadrature: "opticstudio"` と `arms`
+  （腕を 0° から等間隔に）、RA n × n は `quadrature: "grid"` と `n`（n × n の升の中心で瞳の中の点を等しい重みで）。Ignore
+  Lateral Color（PRIM の行）は波長ごとの単色の項にする。境界の行（MNCA など）も項にするので、評価関数の値は OpticStudio と
+  同じになる（DG28 の Wizard の 7 つの .zmx で、スポットは 3e-13、多色の波面は 7.7e-6。Wizard の設定は .zmx にこの文しか残らない）。Assume Axial Symmetry の Wizard は瞳の半分だけの行を
+  並べるが、項は瞳全体の点を使う（回転対称な系では同じ値）。PTV など RMS でない Wizard の行は 1 行ずつ読む。MTF の標本は渡さず、
   lensbench が収束する求積点の数を選ぶ。`--out` の .zmx には、読んだメリットファンクションの行（写せなかった行も含めそのまま）と、
   `--term`・`--terms` の項を写した行を面の後に書く（OpticStudio で開くとメリットファンクションに入る）。項を写せないもの
   （coupling・plugin・名前で指定した zplm・pwfn、正規化視野で書いた mtf・zernike・centroid）は警告にして書かない。`min`・`max`
   は重み 0 の行とそれを参照する OPGT・OPLT の 2 行に、MTF の both は MTFT・MTFS の 2 行にする。読んだ .zmx のレンズ単位が mm
-  でなければ読んだ行は書かない。読めなかった行は番号を保つため BLNK にして元の文字をコメントに残す。構成が 2 つ以上のときは構成 1 の系を書き、多重構成の表は読んだ値のまま。Rust は `lensbench_core::zmx::merit`（行）、`lensbench_design::merit_zmx`（項と行の写し）、
+  でなければ読んだ行は書かない（警告を出す）。読めなかった行は番号を保つため BLNK にして元の文字をコメントに残す。構成が 2 つ以上のときは構成 1 の系を書き、多重構成の表は読んだ値のまま（表を書けない系では構成 2 以降の行を書かない）。近軸量の行の波長は主波長の番号で書く。Rust は `lensbench_core::zmx::merit`（行）、`lensbench_design::merit_zmx`（項と行の写し）、
   `lensbench_formats::zmx_write::save_with_merit`。
 - Python で定義する項（UDOP 相当）: `System.optimize(vars, merit=None, terms=[{"type": "user", "fn": f}])`。`f(systems)` は
   System の list を受け取り、システムごとの残差を (システムの数, 残差の数) の配列で返す。差分のヤコビアンではずらしたシステムをまとめて

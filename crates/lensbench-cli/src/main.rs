@@ -940,7 +940,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let mut merit = merit;
             let mut zmx_rows = Vec::new();
             if zmx_merit {
-                let z = zmx_merit::terms(&c, &s)?;
+                let z = zmx_merit::terms(&c, &s, out.is_some())?;
                 specs.extend(z.terms);
                 if !z.systems.is_empty() {
                     systems = z.systems;

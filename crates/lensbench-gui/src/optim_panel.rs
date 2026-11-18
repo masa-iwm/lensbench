@@ -25,6 +25,8 @@ enum KeyKind {
     /// 「x, y」
     Pair,
     Choice(&'static [&'static str]),
+    /// true・false
+    Bool,
     /// ZPL マクロ: 番号（ZPLnn.ZPL）か名前
     Macro,
     /// 文字列（ファイルのパス）
@@ -41,6 +43,8 @@ const PARAXIAL_Q: &[&str] = &[
 ];
 const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n"];
 const REFERENCE: &[&str] = &["centroid", "chief"];
+/// スポット・波面の瞳の求積（arms は opticstudio、n は grid と使う）
+const QUADRATURE: &[&str] = &["lensbench", "opticstudio", "grid"];
 
 /// 項の種類
 pub(crate) const TERM_TYPES: &[&str] = &[
@@ -53,6 +57,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "opd",
     "zernike",
     "coupling",
+    "thickness",
     "zplm",
     "plugin",
 ];
@@ -61,12 +66,24 @@ pub(crate) const TERM_TYPES: &[&str] = &[
 fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
     use KeyKind::*;
     match ty {
-        "spot" | "wavefront" => &[
+        "spot" => &[
             ("field", Field),
             ("wave", Int),
             ("rings", Int),
             ("reference", Choice(REFERENCE)),
-            ("quadrature", Choice(&["lensbench", "opticstudio"])),
+            ("quadrature", Choice(QUADRATURE)),
+            ("arms", Int),
+            ("n", Int),
+            ("axis", Choice(&["xy", "x", "y"])),
+        ],
+        "wavefront" => &[
+            ("field", Field),
+            ("wave", Int),
+            ("rings", Int),
+            ("reference", Choice(REFERENCE)),
+            ("quadrature", Choice(QUADRATURE)),
+            ("arms", Int),
+            ("n", Int),
         ],
         "mtf" => &[
             ("field", Field),
@@ -108,6 +125,14 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("fit", Int),
             ("n", Int),
             ("target", Num),
+        ],
+        "thickness" => &[
+            ("surf", Int),
+            ("to", Int),
+            ("target", Num),
+            ("edge", Bool),
+            ("zone", Num),
+            ("each", Choice(&["all", "air", "glass"])),
         ],
         "zplm" => &[
             ("macro", Macro),
@@ -153,6 +178,7 @@ fn type_hint(ty: &str) -> &'static str {
         "opd" => tr("OPD of one ray [waves] − target (like OPDC)"),
         "zernike" => tr("Zernike coefficient [waves] − target"),
         "coupling" => tr("Fiber coupling efficiency − target (default target 1, finite object)"),
+        "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
         "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
@@ -167,6 +193,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "paraxial" => vec![("q", "efl"), ("target", "")],
         "ray" => vec![("field", "1"), ("py", "1"), ("q", "y"), ("target", "0")],
         "centroid" => vec![("field", "1"), ("q", "x"), ("target", "0")],
+        "thickness" => vec![("surf", "1"), ("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],
@@ -480,6 +507,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
             },
             KeyKind::Pair => pair(v).ok_or_else(bad)?,
             KeyKind::Choice(_) | KeyKind::Text => json!(v),
+            KeyKind::Bool => json!(v == "true"),
             KeyKind::Json => {
                 let x: Value = serde_json::from_str(v).map_err(|_| bad())?;
                 if !x.is_object() {
@@ -822,7 +850,11 @@ pub(crate) fn terms_ui(
                         ui.label(RichText::new(*k).small().color(weak));
                         let mut v = t.get(k).to_string();
                         let changed = match kind {
-                            KeyKind::Choice(opts) => {
+                            KeyKind::Choice(_) | KeyKind::Bool => {
+                                let opts = match kind {
+                                    KeyKind::Choice(o) => *o,
+                                    _ => &["true", "false"],
+                                };
                                 let mut ch = false;
                                 egui::ComboBox::from_id_salt((id, "term_k", i, *k))
                                     .selected_text(if v.is_empty() { "—" } else { v.as_str() })

@@ -82,6 +82,7 @@ fn merit_matches_rms() {
                                 rings: 4,
                                 reference,
                                 quad: Default::default(),
+                                axis: Default::default(),
                             },
                             want.spot,
                         ),
@@ -201,6 +202,7 @@ fn analytic_jacobian_matches_fd() {
                         rings: 3,
                         reference,
                         quad: Default::default(),
+                        axis: Default::default(),
                     },
                 );
                 check_jac(

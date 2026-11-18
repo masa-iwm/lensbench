@@ -1,5 +1,22 @@
 {
   "$defs": {
+    "AxisName": {
+      "description": "スポットの項が測る向き",
+      "oneOf": [
+        {
+          "enum": [
+            "x",
+            "y"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "xy",
+          "description": "x と y（スポットの半径、既定）",
+          "type": "string"
+        }
+      ]
+    },
     "DirName": {
       "description": "MTF の向き",
       "oneOf": [
@@ -16,6 +33,26 @@
         {
           "const": "both",
           "description": "両方（既定）",
+          "type": "string"
+        }
+      ]
+    },
+    "EachName": {
+      "description": "厚みの項で面ごとに比べる面の媒質",
+      "oneOf": [
+        {
+          "const": "all",
+          "description": "すべての面",
+          "type": "string"
+        },
+        {
+          "const": "air",
+          "description": "空気の面（自分の媒質のない座標ブレーク・鏡も）",
+          "type": "string"
+        },
+        {
+          "const": "glass",
+          "description": "空気でない媒質の面",
           "type": "string"
         }
       ]
@@ -82,7 +119,12 @@
         },
         {
           "const": "opticstudio",
-          "description": "OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）",
+          "description": "OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）。arms を与えると腕 arms 本を\n0° から等間隔に（評価関数の Wizard のガウス求積と同じ）",
+          "type": "string"
+        },
+        {
+          "const": "grid",
+          "description": "瞳を n × n の升に分けた中心の点を等しい重みで（評価関数の Wizard の Rectangular Array と同じ。rings は使わない）",
           "type": "string"
         }
       ]
@@ -109,6 +151,26 @@
           "additionalProperties": false,
           "description": "spot・wavefront の項",
           "properties": {
+            "arms": {
+              "description": "quadrature opticstudio の腕の数（省略は 2 rings 本を 90° 回して）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "spot の測る向き（既定 xy）"
+            },
             "config": {
               "description": "構成の番号（1 始まり、既定 1）",
               "type": [
@@ -130,6 +192,15 @@
               "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "quadrature grid の 1 辺の升の数",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
                 "null"
               ]
             },
@@ -194,6 +265,26 @@
           "additionalProperties": false,
           "description": "spot・wavefront の項",
           "properties": {
+            "arms": {
+              "description": "quadrature opticstudio の腕の数（省略は 2 rings 本を 90° 回して）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "axis": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "spot の測る向き（既定 xy）"
+            },
             "config": {
               "description": "構成の番号（1 始まり、既定 1）",
               "type": [
@@ -215,6 +306,15 @@
               "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "quadrature grid の 1 辺の升の数",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
                 "null"
               ]
             },
@@ -879,6 +979,98 @@
           },
           "required": [
             "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "thickness の項（中心の厚み。to を書くと surf から to までの和）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "each": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EachName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "和でなく面ごとに min・max と比べ、はみ出しを足す（その媒質の面だけ。OpticStudio の MNCT・MNCA・MNEG など）"
+            },
+            "edge": {
+              "description": "縁の厚み（面とその次の面の矢高を、それぞれの半直径 × zone の高さで測る）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "surf": {
+              "description": "面の番号（物体面 0）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "description": "目標 [レンズ単位]",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "to": {
+              "description": "和をとる最後の面（既定 surf）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "thickness",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "zone": {
+              "description": "縁の厚みを測る高さ（半直径に対する割合、既定 1）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "surf"
           ],
           "type": "object"
         },

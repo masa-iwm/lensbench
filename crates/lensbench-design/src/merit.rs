@@ -29,11 +29,12 @@ use lensbench_core::fiber::FiberOpts;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
-use lensbench_optim::{MtfDir, ParaxQ, Quad, RayQ, Side, Term, TermKind};
+use lensbench_optim::{Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, Term, TermKind};
 use serde_json::Value;
 
 use crate::term_spec::{
-    DirName, FieldRef, MacroRef, Nums, QuadName, RefName, TermSpec, Xy, ZernName, ZplmSpec,
+    AxisName, DirName, EachName, FieldRef, MacroRef, Nums, QuadName, RefName, RmsSpec, TermSpec,
+    Xy, ZernName, ZplmSpec,
 };
 
 /// 項の並び（配列か 1 つのオブジェクト）
@@ -70,11 +71,27 @@ fn reference(r: Option<RefName>) -> RmsRef {
     }
 }
 
-fn quad(q: Option<QuadName>) -> Quad {
-    match q.unwrap_or_default() {
-        QuadName::Lensbench => Quad::Lensbench,
-        QuadName::Opticstudio => Quad::OpticStudio,
+fn quad(r: &RmsSpec) -> lensbench_core::Result<Quad> {
+    let q = r.quadrature.unwrap_or_default();
+    let pos = |k: &str, v: usize| -> lensbench_core::Result<usize> {
+        if v == 0 {
+            return Err(format!("{k} must be 1 or more").into());
+        }
+        Ok(v)
+    };
+    if r.arms.is_some() && !matches!(q, QuadName::Opticstudio) {
+        return Err("arms goes with quadrature opticstudio".to_string().into());
     }
+    if r.n.is_some() && !matches!(q, QuadName::Grid) {
+        return Err("n goes with quadrature grid".to_string().into());
+    }
+    Ok(match (q, r.arms, r.n) {
+        (QuadName::Lensbench, ..) => Quad::Lensbench,
+        (QuadName::Opticstudio, None, _) => Quad::OpticStudio,
+        (QuadName::Opticstudio, Some(a), _) => Quad::Arms(pos("arms", a)?),
+        (QuadName::Grid, _, Some(n)) => Quad::Grid(pos("n", n)?),
+        (QuadName::Grid, _, None) => return Err("quadrature grid needs n".into()),
+    })
 }
 
 fn num(k: &str, v: &Value) -> lensbench_core::Result<f64> {
@@ -118,7 +135,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 11] = [
+    const TYPES: [&str; 12] = [
         "spot",
         "wavefront",
         "mtf",
@@ -128,6 +145,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "opd",
         "zernike",
         "coupling",
+        "thickness",
         "zplm",
         "plugin",
     ];
@@ -155,7 +173,16 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Opd { .. }
             | TermKind::Zernike { .. }
             | TermKind::Coupling { .. }
+            | TermKind::Thickness { .. }
     );
+    // 面ごとに比べる厚みの項は min・max の向きで残差を決める
+    let mut kind = kind;
+    if let TermKind::Thickness { each: Some(e), .. } = &mut kind {
+        if side == Side::Eq {
+            return Err("a thickness term with each needs min or max".into());
+        }
+        e.upper = side == Side::Max;
+    }
     if side != Side::Eq && !single {
         return Err(format!(
             "{ty} terms can't use min or max (only terms with a single target value)"
@@ -181,15 +208,25 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             wave: wave(r.wave, s)?,
             rings: r.rings.unwrap_or(3),
             reference: reference(r.reference),
-            quad: quad(r.quadrature),
+            quad: quad(&r)?,
+            axis: match r.axis.unwrap_or_default() {
+                AxisName::Xy => SpotAxis::Both,
+                AxisName::X => SpotAxis::X,
+                AxisName::Y => SpotAxis::Y,
+            },
         },
-        TermSpec::Wavefront(r) => TermKind::Wavefront {
-            field: field(r.field, s)?,
-            wave: wave(r.wave, s)?,
-            rings: r.rings.unwrap_or(3),
-            reference: reference(r.reference),
-            quad: quad(r.quadrature),
-        },
+        TermSpec::Wavefront(r) => {
+            if r.axis.is_some() {
+                return Err("axis goes with spot".to_string().into());
+            }
+            TermKind::Wavefront {
+                field: field(r.field, s)?,
+                wave: wave(r.wave, s)?,
+                rings: r.rings.unwrap_or(3),
+                reference: reference(r.reference),
+                quad: quad(&r)?,
+            }
+        }
         TermSpec::Mtf(t) => TermKind::Mtf {
             field: field(t.field, s)?,
             wave: wave(t.wave, s)?,
@@ -258,6 +295,29 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 wave: wave(t.wave, s)?,
                 opts,
                 target: t.target.unwrap_or(1.0),
+            }
+        }
+        TermSpec::Thickness(t) => {
+            let zone = t.zone.unwrap_or(1.0);
+            if t.zone.is_some() && t.edge != Some(true) {
+                return Err("zone goes with edge".to_string().into());
+            }
+            if !(zone > 0.0 && zone <= 1.0) {
+                return Err(format!("zone {zone} (more than 0, up to 1)").into());
+            }
+            TermKind::Thickness {
+                surf: t.surf,
+                to: t.to.unwrap_or(t.surf),
+                target: t.target.unwrap_or(0.0),
+                edge: (t.edge == Some(true)).then_some(zone),
+                each: t.each.map(|e| Each {
+                    medium: match e {
+                        EachName::All => Medium::All,
+                        EachName::Air => Medium::Air,
+                        EachName::Glass => Medium::Glass,
+                    },
+                    upper: false,
+                }),
             }
         }
         TermSpec::Zplm(t) => {
@@ -404,6 +464,24 @@ mod tests {
             }
         ));
         assert!(matches!(t[5].kind, TermKind::Mtf { target, .. } if target == 1.0));
+        // 評価関数の Wizard の求積（腕・格子）と、スポットの向き
+        let w = serde_json::json!({"type": "spot", "field": 1, "quadrature": "opticstudio", "arms": 6, "axis": "y"});
+        assert!(matches!(
+            term_from_json(&w, std::slice::from_ref(&s)).unwrap().kind,
+            TermKind::Spot {
+                quad: Quad::Arms(6),
+                axis: SpotAxis::Y,
+                ..
+            }
+        ));
+        let w = serde_json::json!({"type": "wavefront", "field": 1, "quadrature": "grid", "n": 4});
+        assert!(matches!(
+            term_from_json(&w, std::slice::from_ref(&s)).unwrap().kind,
+            TermKind::Wavefront {
+                quad: Quad::Grid(4),
+                ..
+            }
+        ));
         let mut p = lensbench_optim::Problem::single(s.clone());
         p.terms = t;
         p.check().unwrap();
@@ -414,6 +492,14 @@ mod tests {
             r#"{"type": "paraxial", "q": "foo", "target": 1}"#,
             r#"{"type": "nope"}"#,
             r#"{"field": 1}"#,
+            r#"{"type": "spot", "field": 1, "arms": 6}"#,
+            r#"{"type": "spot", "field": 1, "quadrature": "opticstudio", "arms": 0}"#,
+            r#"{"type": "spot", "field": 1, "quadrature": "grid"}"#,
+            r#"{"type": "spot", "field": 1, "n": 4}"#,
+            r#"{"type": "wavefront", "field": 1, "axis": "x"}"#,
+            r#"{"type": "thickness", "surf": 1, "to": 3, "each": "air", "target": 1}"#,
+            r#"{"type": "thickness", "surf": 1, "zone": 0.5, "target": 1}"#,
+            r#"{"type": "thickness", "surf": 1, "edge": true, "zone": 0, "target": 1}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

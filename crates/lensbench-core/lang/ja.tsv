@@ -165,6 +165,9 @@ term {i}: {} of the system is not finite	項 {i}: システムの {} が有限�
 term {i}: surface {j} (1 to {})	項 {i}: 面 {j}（1〜{}）
 term {i}: Zernike term {term} (1 to {max})	項 {i}: Zernike の項 {term}（1〜{max}）
 term {i}: Zernike terms to fit {f} ({term} to {max})	項 {i}: Zernike のフィッティングの項の数 {f}（{term}〜{max}）
+term {i}: thickness of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} の厚み（1〜{}）
+the thickness of surfaces {surf} to {to} is not finite	面 {surf}〜{to} の厚みが有限ではありません
+surfaces {s1} to {s2}	面 {s1}〜{s2}
 term {i}: Zernike grid {n}	項 {i}: Zernike のグリッド {n}
 term {i}: fiber coupling is only for finite-object systems	項 {i}: ファイバ結合は有限物体のシステムだけ
 term {i}: user term {} has 0 residuals	項 {i}: ユーザーの項 {} の残差が 0 個
@@ -1580,10 +1583,26 @@ the global coordinate reference surface {j} was deleted, so it is now surface 1	
 zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばしました（字下げのない古い .zmx）
 can't read the merit function line	メリットファンクションの行を読めません
 the .zmx is written from configuration 1; the multi-configuration table keeps the values read	.zmx は構成 1 から書きます。多重構成の表は読んだ値のままです
+the merit function rows of configurations 2 and later were not written (the .zmx has no multi-configuration table)	メリットファンクションの構成 2 以降の行は書きませんでした（.zmx に多重構成の表がありません）
+the merit function rows read from the .zmx are not written to --out (its lens unit is not mm)	.zmx から読んだメリットファンクションの行は --out に書きません（レンズ単位が mm ではありません）
 zmx line {} ({}): field {} must be an integer ({v})	zmx の {} 行目（{}）: 欄 {} は整数にしてください（{v}）
 zmx line {} ({})	zmx の {} 行目（{}）
 .zmx merit function row {} ({}, line {}): {why}; skipped	.zmx のメリットファンクションの行 {}（{}、ファイルの {} 行目）: {why}。飛ばしました
 .zmx merit function row {row}: {e}; skipped	.zmx のメリットファンクションの行 {row}: {e}。飛ばしました
+".zmx merit function row {}: {e}; its rows are read one by one	.zmx のメリットファンクションの行 {}: {e}。その後の行は 1 行ずつ読みます
+the Wizard's "{what}" is not supported (only RMS)	Wizard の「{what}」には対応していません（RMS だけです）
+can't read the pupil sampling of the Wizard's "{what}"	Wizard の「{what}」の瞳のサンプリングを読めません
+no Wizard settings	Wizard の設定がありません
+arms goes with quadrature opticstudio	arms は quadrature opticstudio と使います
+n goes with quadrature grid	n は quadrature grid と使います
+quadrature grid needs n	quadrature grid には n が要ります
+axis goes with spot	axis は spot の項と使います
+zone goes with edge	zone は edge と使います
+.zmx merit function row {}: the Wizard rows from here don't match the pupil sampling of its settings; they are read one by one	.zmx のメリットファンクションの行 {}: ここからの Wizard の行は設定の瞳のサンプリングと合わないので、1 行ずつ読みます
+zone {zone} (more than 0, up to 1)	zone {zone}（0 より大きく 1 以下）
+a thickness term with each needs min or max	each の厚みの項には min か max が要ります
+OpticStudio has no maximum edge thickness of air or glass surfaces	OpticStudio には空気・硝材の面の縁の厚みの上限のオペランドがありません
+only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)	書けるのは 1 面のクリア半径での縁の厚みだけです（ETGT・ETLT・ETVA）
 this operand is not supported	このオペランドには対応していません
 wavelength {w} (lensbench's paraxial terms use the primary wavelength {primary})	波長 {w}（lensbench の近軸量の項は主波長 {primary} だけです）
 a target other than 0 ({target}) can't be written as a spot or wavefront term	0 でない目標（{target}）はスポット・波面の項で表せません

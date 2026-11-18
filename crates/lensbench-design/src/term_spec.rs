@@ -34,8 +34,22 @@ pub enum QuadName {
     /// 腕 4 rings + 2 本（既定）
     #[default]
     Lensbench,
-    /// OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）
+    /// OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）。arms を与えると腕 arms 本を
+    /// 0° から等間隔に（評価関数の Wizard のガウス求積と同じ）
     Opticstudio,
+    /// 瞳を n × n の升に分けた中心の点を等しい重みで（評価関数の Wizard の Rectangular Array と同じ。rings は使わない）
+    Grid,
+}
+
+/// スポットの項が測る向き
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AxisName {
+    /// x と y（スポットの半径、既定）
+    #[default]
+    Xy,
+    X,
+    Y,
 }
 
 /// MTF の向き
@@ -100,6 +114,12 @@ pub struct RmsSpec {
     pub reference: Option<RefName>,
     /// 瞳の求積の点の置き方（既定 lensbench。.zmx から読んだ行は opticstudio）
     pub quadrature: Option<QuadName>,
+    /// quadrature opticstudio の腕の数（省略は 2 rings 本を 90° 回して）
+    pub arms: Option<usize>,
+    /// quadrature grid の 1 辺の升の数
+    pub n: Option<usize>,
+    /// spot の測る向き（既定 xy）
+    pub axis: Option<AxisName>,
 }
 
 /// mtf の項
@@ -185,6 +205,36 @@ pub struct ZernSpec {
     pub target: Option<f64>,
 }
 
+/// thickness の項（中心の厚み。to を書くと surf から to までの和）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ThickSpec {
+    /// 面の番号（物体面 0）
+    pub surf: usize,
+    /// 和をとる最後の面（既定 surf）
+    pub to: Option<usize>,
+    /// 目標 [レンズ単位]
+    pub target: Option<f64>,
+    /// 縁の厚み（面とその次の面の矢高を、それぞれの半直径 × zone の高さで測る）
+    pub edge: Option<bool>,
+    /// 縁の厚みを測る高さ（半直径に対する割合、既定 1）
+    pub zone: Option<f64>,
+    /// 和でなく面ごとに min・max と比べ、はみ出しを足す（その媒質の面だけ。OpticStudio の MNCT・MNCA・MNEG など）
+    pub each: Option<EachName>,
+}
+
+/// 厚みの項で面ごとに比べる面の媒質
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum EachName {
+    /// すべての面
+    All,
+    /// 空気の面（自分の媒質のない座標ブレーク・鏡も）
+    Air,
+    /// 空気でない媒質の面
+    Glass,
+}
+
 /// coupling の項
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -261,6 +311,7 @@ pub enum TermSpec {
     Opd(OpdSpec),
     Zernike(ZernSpec),
     Coupling(CouplingSpec),
+    Thickness(ThickSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
 }

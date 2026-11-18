@@ -595,6 +595,7 @@ No further decrease (local minimum)	これ以上減りません（局所解）
 All finite differences	すべて差分
 All forward differences	すべて前進差分
 Fiber coupling efficiency − target (default target 1, finite object)	ファイバ結合効率 − 目標（デフォルトの目標 1、有限物体）
+Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)	面 surf の中心の厚み（to までの和）− 目標（CTVA・TTHI 相当。CTGT・CTLT は min・max で）。edge: 縁の厚み（ETVA）。each: 面ごとに min・max と比べる（MNCT・MNCA・MNEG など）
 Rings	リング数
 Chief ray	主光線
 Adds the polychromatic RMS of every field (field weights) as terms.	全視野（視野のウェイト）・多色の RMS を項にします。

@@ -10,6 +10,9 @@
   数で低い次の係数が動き、Double Gauss 28 の視野 2 で Fringe Z9 が 0.0944 → 0.0917 波（OpticStudio 26.1 の ZERN と 9 桁一致）、
   Standard Z11 が 0.0422 → 0.0410 波（OpticStudio は 11 項で当てはめた 0.0422）。目標を前の値で決めていたら見直す。前と同じ値は
   当てはめる項の数 `fit` に `term` と同じ数を書く。
+- Rust の `lensbench_optim::TermKind::Spot` に測る向き `axis: SpotAxis` を足した（`SpotAxis::Both` が前と同じ）。`Quad` に
+  `Arms(n)`・`Grid(n)` が増えたので、`Quad` を網羅する `match` は書き足す。
+- `TermKind::Thickness` に `edge: Option<f64>`（縁の厚みの高さ）と `each: Option<Each>`（面ごとの境界）を足した（どちらも `None` が前と同じ）。
 
 ### ユーザーカタログの項目の型
 - `lensbench_project::catalog::UserItem` の中身を、レンズ・機構部品・未完成で分けた `body: ItemBody`（`Optic { blocks, frame }`・`Mech(MechSpec)`・
