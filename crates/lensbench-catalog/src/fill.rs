@@ -616,7 +616,7 @@ pub fn complete(
 ) -> lensbench_core::Result<UserItem> {
     use lensbench_project::catalog_spec::ItemKind;
     let mut it = item.clone();
-    for m in &item.missing {
+    for m in item.missing() {
         let ok = match m.as_str() {
             "thickness" => thickness.is_some_and(|t| t > 0.0 && t.is_finite()),
             "diameter" => diameter.as_ref().and_then(semi_of).is_some(),
@@ -689,7 +689,8 @@ pub fn complete(
             ] },
         })
     };
-    it.blocks = vec![serde_json::from_value(block).map_err(|e| format!("blocks: {e}"))?];
+    let blocks = vec![serde_json::from_value(block).map_err(|e| format!("blocks: {e}"))?];
+    let mut frame_spec = None;
     if let Some(f) = frame {
         f.validate().map_err(|e| format!("mount: {e}"))?;
         if f.bores.is_empty() {
@@ -728,10 +729,10 @@ pub fn complete(
             round6(clear),
             what = from.text(),
         ));
-        it.frame = Some(f);
+        frame_spec = Some(f);
     }
-    let thick = item.missing.iter().any(|m| m == "thickness");
-    let dia = item.missing.iter().any(|m| m != "thickness");
+    let thick = item.missing().iter().any(|m| m == "thickness");
+    let dia = item.missing().iter().any(|m| m != "thickness");
     let what = match (thick, dia) {
         (true, true) => "the thickness and diameter",
         (true, false) => "the thickness",
@@ -764,7 +765,13 @@ pub fn complete(
             t.map_or("—".into(), |x| format!("{x}")),
         );
     }
-    it.missing.clear();
+    it.body = lensbench_project::ItemBody::Optic {
+        blocks,
+        frame: frame_spec.map(|spec| lensbench_project::Frame {
+            spec,
+            reversed: false,
+        }),
+    };
     Ok(it)
 }
 
@@ -950,7 +957,7 @@ mod tests {
         // 品に枠を入れる
         let it = incomplete("filter", &["thickness"], json!({ "diameter": 25.0 }));
         let c = complete(&it, Some(2.0), None, Some(f), FillFrom::Page, "").unwrap();
-        assert_eq!(c.frame.as_ref().unwrap().length, 3.5);
+        assert_eq!(c.frame().unwrap().spec.length, 3.5);
         assert_eq!(c.specs["clear_aperture"], json!(21.0));
         assert!(
             c.notes.iter().any(|n| n.contains("middle of the mount")),
@@ -1013,14 +1020,14 @@ mod tests {
         assert!(it.is_incomplete());
         assert!(complete(&it, None, None, None, FillFrom::Page, "2026-11-10").is_err());
         let c = complete(&it, Some(3.0), None, None, FillFrom::Page, "2026-11-10").unwrap();
-        assert!(!c.is_incomplete() && c.missing.is_empty());
-        assert_eq!(c.blocks.len(), 1);
+        assert!(!c.is_incomplete() && c.missing().is_empty());
+        assert_eq!(c.blocks().len(), 1);
         assert_eq!(c.specs["thickness"], json!(3.0));
         assert_eq!(c.glass_catalogs, vec!["SCHOTT"]);
         assert_eq!(c.source, "https://example.com/p/1");
         assert_eq!(c.checked, "2026-11-10");
         assert!(c.notes.iter().any(|n| n.contains("use N-BK7 instead")));
-        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        let b = serde_json::to_value(&c.blocks()[0]).unwrap();
         assert_eq!(b["type"], "lens");
         // 鏡は平面鏡、径だけ
         let m = incomplete(
@@ -1037,7 +1044,7 @@ mod tests {
             "2026-11-10",
         )
         .unwrap();
-        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        let b = serde_json::to_value(&c.blocks()[0]).unwrap();
         assert_eq!(b["type"], "mirror");
         assert_eq!(b["semi"], json!(12.7));
         // 基板の分かる品
@@ -1057,7 +1064,7 @@ mod tests {
         .unwrap();
         assert_eq!(c.glass_catalogs, vec!["MISC"]);
         // 四角い品は両面に矩形の開口、semi は対角の半分
-        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        let b = serde_json::to_value(&c.blocks()[0]).unwrap();
         for q in b["source"]["surfaces"].as_array().unwrap() {
             assert_eq!(q["aperture"]["type"], "rect", "{q}");
             assert_eq!(q["aperture"]["hx"], json!(5.0));
@@ -1073,7 +1080,7 @@ mod tests {
             "",
         )
         .unwrap();
-        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        let b = serde_json::to_value(&c.blocks()[0]).unwrap();
         assert_eq!(b["aperture"]["hx"], json!(5.0));
         assert_eq!(b["aperture"]["hy"], json!(10.0));
         assert!(c.notes.iter().all(|n| !n.contains("N-BK7 instead")));

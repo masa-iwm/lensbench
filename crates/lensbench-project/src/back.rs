@@ -47,12 +47,11 @@ pub fn lens_item(s: &System, k: usize, description: &str) -> lensbench_core::Res
             }
         }
     }
-    Ok(UserItem {
-        description: description.to_string(),
-        glass_catalogs: cats,
-        blocks: vec![lens_to_block(&e, "")?],
-        ..Default::default()
-    })
+    Ok(UserItem::optic(
+        description,
+        cats,
+        vec![lens_to_block(&e, "")?],
+    ))
 }
 
 /// プロジェクトのブロック id（入れ子も探す）をユーザーカタログの項目にする。
@@ -131,12 +130,7 @@ pub fn block_item(
     if let Some(e) = c.flip_err.take() {
         return Err(e);
     }
-    Ok(UserItem {
-        description: description.to_string(),
-        glass_catalogs: cats,
-        blocks: vec![b],
-        ..Default::default()
-    })
+    Ok(UserItem::optic(description, cats, vec![b]))
 }
 
 /// プロジェクトの最上位の並びの、id `ids[0]` から `ids[last]` までのブロック（間の空気も含む）をユーザーカタログの
@@ -186,23 +180,20 @@ pub fn blocks_item(
                 continue;
             }
             let it = block_item(p, env, id, "")?;
-            for c in it.glass_catalogs {
-                if !cats.contains(&c) {
-                    cats.push(c);
+            for c in &it.glass_catalogs {
+                if !cats.contains(c) {
+                    cats.push(c.clone());
                 }
             }
-            blocks.extend(it.blocks);
+            blocks.extend(it.blocks().iter().cloned());
         }
-        UserItem {
-            description: description.to_string(),
-            glass_catalogs: cats,
-            blocks,
-            ..Default::default()
-        }
+        UserItem::optic(description, cats, blocks)
     };
     // 面の表の変更を焼き込む（操作は持ち出さない）
     let mut edited = Vec::new();
-    take_faces(&mut item.blocks, &mut edited)?;
+    if let Some(b) = item.blocks_mut() {
+        take_faces(b, &mut edited)?;
+    }
     if edited.is_empty() {
         return Ok(item);
     }
@@ -256,7 +247,16 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
             "block {id}: only lenses can bake in values changed in the surface table (undo the changes on others before saving)"
         )
     };
-    let b = find(&mut item.blocks, id).ok_or_else(nope)?;
+    let UserItem {
+        body,
+        glass_catalogs,
+        ..
+    } = item;
+    let b = match body {
+        ItemBody::Optic { blocks, .. } => find(blocks, id),
+        _ => None,
+    }
+    .ok_or_else(nope)?;
     let Block::Lens {
         reversed,
         source,
@@ -335,8 +335,8 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
     }
     for d in &faces {
         if let Some(g) = d.mat.glass().and_then(|g| s.glasses.get(g)) {
-            if !g.catalog.is_empty() && !item.glass_catalogs.contains(&g.catalog) {
-                item.glass_catalogs.push(g.catalog.clone());
+            if !g.catalog.is_empty() && !glass_catalogs.contains(&g.catalog) {
+                glass_catalogs.push(g.catalog.clone());
             }
         }
     }

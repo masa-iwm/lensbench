@@ -704,7 +704,7 @@ fn zmx_project_keeps_glass_catalogs() {
     v["blocks"]
         .as_array_mut()
         .unwrap()
-        .push(serde_json::to_value(&item.blocks[0]).unwrap());
+        .push(serde_json::to_value(&item.blocks()[0]).unwrap());
     v["blocks"]
         .as_array_mut()
         .unwrap()

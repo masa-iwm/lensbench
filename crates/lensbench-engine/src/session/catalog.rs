@@ -72,7 +72,7 @@ fn catalog_listing(path: &str, cat: &lensbench_project::UserCatalog) -> Value {
         .iter()
         .map(|(k, it)| {
             json!({ "name": k, "description": it.description, "glass_catalogs": it.glass_catalogs,
-                    "blocks": it.blocks.len() })
+                    "blocks": it.blocks().len() })
         })
         .collect();
     json!({ "catalog": path, "vendor": cat.vendor, "items": items })
@@ -342,8 +342,8 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         &today,
     )
     .map_err(RpcErr::params)?;
-    if filled.frame.is_some() {
-        filled.frame_reversed = p["frame_reversed"].as_bool().unwrap_or(false);
+    if let lensbench_project::ItemBody::Optic { frame: Some(f), .. } = &mut filled.body {
+        f.reversed = p["frame_reversed"].as_bool().unwrap_or(false);
     }
     // 仕様表の値と食い違う寸法は notes に残す
     if let Some(sv) = p.get("spec").filter(|v| v.is_object()) {
@@ -352,7 +352,7 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         let diffs = cf::spec_check(
             num("thickness"),
             num("diameter"),
-            filled.frame.as_ref(),
+            filled.frame().map(|f| &f.spec),
             p["glass_visible"].as_bool().unwrap_or(false),
             &spec,
         );
@@ -391,7 +391,7 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         "vendor": vendor,
         "specs": filled.specs,
         "notes": filled.notes,
-        "frame": filled.frame,
-        "frame_reversed": filled.frame_reversed,
+        "frame": filled.frame().map(|f| &f.spec),
+        "frame_reversed": filled.frame().is_some_and(|f| f.reversed),
     }))
 }

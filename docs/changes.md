@@ -5,6 +5,11 @@
 
 ## 次の版（v0.5.0 の後）
 
+### ユーザーカタログの項目の型
+- `lensbench_project::catalog::UserItem` の中身を、レンズ・機構部品・未完成で分けた `body: ItemBody`（`Optic { blocks, frame }`・`Mech(MechSpec)`・
+  `Incomplete { missing }`）にした。前の `blocks`・`frame`・`mech`・`missing` の欄は同じ名前の読む口（`blocks()`・`frame()`・`mech()`・`missing()`）から引く。JSON の形は変わらない。
+- `lensbench_catalog::spec` の絞り込みは、行を一度だけ読んだ `CatalogRow` に対して行う（`SpecFilter::matches`・`CatalogQuery::matches` の引数）。
+
 ### 過去の形式の読込をやめた
 - システムファイルの版 1（core の System の serde をそのまま書いた形）は読まない。誤り「version 1 is no longer read」。lensbench 0.5 で
   開いて保存し直すと版 2 になる。

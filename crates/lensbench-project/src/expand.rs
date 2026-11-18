@@ -1066,7 +1066,7 @@ pub(crate) fn place_mechanics(
                     .items
                     .get(item)
                     .ok_or_else(|| format!("{tag}: no item {item} in {}", path.display()))?;
-                let x = it.mech.clone().ok_or_else(|| {
+                let x = it.mech().cloned().ok_or_else(|| {
                     format!("{tag}: item {item} is not a mechanical part (no mech)")
                 })?;
                 // URL の無い品も、共有の置き場から取ってあればキャッシュにある（引き方は呼ぶ側が渡す）

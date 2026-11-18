@@ -4,7 +4,8 @@
 //! カタログ全体の `url_template` と `overlay` は、同じメーカーのほかのカタログ（ZMF・.zmx の玉など）の品にも
 //! 仕様とリンクを足す（元のファイルは書き換えない）。
 //!
-//! 一覧の 1 行は JSON のオブジェクト（CLI の browse・serve の行と同じ）。[`SpecFilter`] はその行に当てる。
+//! 一覧の 1 行は JSON のオブジェクト（CLI の browse・serve の行と同じ）。絞り込みは行から 1 回作る [`CatalogRow`]
+//! （メーカーの鍵・種類・仕様の値の型・検索の文字列）に当てる。
 
 pub use lensbench_project::catalog_spec::{spec_unit, ItemKind, Overlay, SPEC_NAMES};
 use serde_json::{json, Map, Value};
@@ -112,12 +113,132 @@ fn merge_overlay(obj: &mut Map<String, Value>, o: &Overlay) {
     }
 }
 
-/// 行の仕様の値: `specs` の中、無ければ行の同じ名前の欄（efl・diameter・thickness など一覧の値）
-pub fn spec_of<'a>(row: &'a Value, name: &str) -> Option<&'a Value> {
-    row["specs"]
-        .get(name)
-        .or_else(|| row.get(name))
-        .filter(|v| !v.is_null())
+/// 仕様の値（読み込みのときに 1 回だけ型を決める）
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpecValue {
+    /// 数（数として読める文字列も）。text は含むで比べるときの書いた形（小文字）
+    Num { value: f64, text: String },
+    /// 範囲 [下限, 上限]（下限 ≤ 上限に並べ直す）。text は書いた形
+    Range { lo: f64, hi: f64, text: String },
+    /// 文字列（含むで比べる。小文字にしたもの）
+    Text(String),
+    /// 範囲でない配列（要素のどれかが含めばよい。要素は小文字の文字列）
+    List(Vec<String>),
+}
+
+impl SpecValue {
+    /// JSON の値から（null は None）
+    pub fn of(v: &Value) -> Option<SpecValue> {
+        let text = |x: &Value| match x {
+            Value::String(t) => t.to_lowercase(),
+            other => other.to_string().to_lowercase(),
+        };
+        Some(match v {
+            Value::Null => return None,
+            Value::Number(n) => SpecValue::Num {
+                value: n.as_f64()?,
+                text: text(v),
+            },
+            Value::Array(a) if a.len() == 2 && a[0].is_number() && a[1].is_number() => {
+                let (x, y) = (a[0].as_f64()?, a[1].as_f64()?);
+                SpecValue::Range {
+                    lo: x.min(y),
+                    hi: x.max(y),
+                    text: text(v),
+                }
+            }
+            Value::Array(a) => SpecValue::List(a.iter().map(text).collect()),
+            Value::String(t) => match t.trim().parse::<f64>() {
+                Ok(x) => SpecValue::Num {
+                    value: x,
+                    text: t.to_lowercase(),
+                },
+                Err(_) => SpecValue::Text(t.to_lowercase()),
+            },
+            other => SpecValue::Text(text(other)),
+        })
+    }
+    /// 数で比べるときの範囲（数は [x, x]）
+    fn range(&self) -> Option<(f64, f64)> {
+        match *self {
+            SpecValue::Num { value, .. } => Some((value, value)),
+            SpecValue::Range { lo, hi, .. } => Some((lo, hi)),
+            _ => None,
+        }
+    }
+    /// 小文字の q を含むか（数は書いた形の文字列で、範囲は要素のどちらかで）
+    fn contains(&self, q: &str) -> bool {
+        match self {
+            SpecValue::Num { text, .. } | SpecValue::Text(text) => text.contains(q),
+            SpecValue::Range { text, .. } => serde_json::from_str::<Vec<Value>>(text)
+                .map(|a| a.iter().any(|x| x.to_string().contains(q)))
+                .unwrap_or(false),
+            SpecValue::List(a) => a.iter().any(|t| t.contains(q)),
+        }
+    }
+}
+
+/// 一覧の 1 行の、絞り込みに使う値（行を読んだときに 1 回だけ作る）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CatalogRow {
+    /// メーカーの鍵
+    pub vendor: VendorKey,
+    /// 品の種類（[`row_category`]）
+    pub category: String,
+    /// 機構部品の保持径 [mm]
+    pub hold: Option<f64>,
+    /// 仕様: `specs` の中と、行の同じ名前の欄（efl・diameter・thickness など一覧の値。`specs` が先）
+    pub specs: std::collections::BTreeMap<String, SpecValue>,
+    /// 検索の文字列（メーカー・型番・説明・タグ・ガラス・仕様の文字列を改行でつないで小文字に）
+    pub text: String,
+}
+
+impl CatalogRow {
+    pub fn new(row: &Value) -> CatalogRow {
+        let mut specs = std::collections::BTreeMap::new();
+        if let Some(m) = row.as_object() {
+            for (k, v) in m.iter().filter(|(k, _)| *k != "specs") {
+                if let Some(x) = SpecValue::of(v) {
+                    specs.insert(k.clone(), x);
+                }
+            }
+        }
+        let mut text = String::new();
+        for k in ["vendor", "part", "description"] {
+            text.push_str(row[k].as_str().unwrap_or(""));
+            text.push('\n');
+        }
+        for k in ["tags", "glasses"] {
+            for t in row[k].as_array().into_iter().flatten() {
+                text.push_str(t.as_str().unwrap_or(""));
+                text.push('\n');
+            }
+        }
+        if let Some(m) = row["specs"].as_object() {
+            for (k, v) in m {
+                match v {
+                    Value::String(t) => text.push_str(t),
+                    other => text.push_str(&other.to_string()),
+                }
+                text.push('\n');
+                if let Some(x) = SpecValue::of(v) {
+                    specs.insert(k.clone(), x);
+                }
+            }
+        }
+        CatalogRow {
+            vendor: VendorKey::new(row["vendor"].as_str().unwrap_or("")),
+            category: row_category(row).to_string(),
+            hold: row["mech"]["holds"]["diameter"].as_f64(),
+            specs,
+            text: text.to_lowercase(),
+        }
+    }
+
+    /// 仕様の値（[`CatalogRow::specs`]）
+    pub fn spec(&self, name: &str) -> Option<&SpecValue> {
+        self.specs.get(name)
+    }
 }
 
 /// 比べ方
@@ -200,35 +321,15 @@ impl SpecFilter {
     }
 
     /// 行がこの条件に合うか
-    pub fn matches(&self, row: &Value) -> bool {
-        let Some(v) = spec_of(row, &self.name) else {
+    pub fn matches(&self, row: &CatalogRow) -> bool {
+        let Some(v) = row.spec(&self.name) else {
             return false;
         };
         if self.op == Op::Has {
             return true;
         }
-        // 値の範囲（数は [x, x]、[a, b] は範囲、文字列の数も数として）
-        let range = match v {
-            Value::Number(n) => n.as_f64().map(|x| (x, x)),
-            Value::Array(a) if a.len() == 2 => match (a[0].as_f64(), a[1].as_f64()) {
-                (Some(a), Some(b)) => Some((a.min(b), a.max(b))),
-                _ => None,
-            },
-            Value::String(t) => t.trim().parse::<f64>().ok().map(|x| (x, x)),
-            _ => None,
-        };
-        // 文字列で含む（配列なら要素のどれか。大文字小文字は区別しない）
-        let contains = || {
-            let q = self.text.to_lowercase();
-            let has = |x: &Value| match x {
-                Value::String(t) => t.to_lowercase().contains(&q),
-                other => other.to_string().to_lowercase().contains(&q),
-            };
-            match v {
-                Value::Array(a) => a.iter().any(has),
-                other => has(other),
-            }
-        };
+        let range = v.range();
+        let contains = || v.contains(&self.text.to_lowercase());
         match self.op {
             Op::Eq if self.lo.is_nan() => contains(),
             Op::Eq => {
@@ -284,55 +385,24 @@ pub fn fits_row(row: &Value, d: f64) -> bool {
 }
 
 impl CatalogQuery {
-    pub fn matches(&self, row: &Value) -> bool {
+    pub fn matches(&self, row: &CatalogRow) -> bool {
         if let Some(d) = self.fits {
-            if !fits_row(row, d) {
+            if !row.hold.is_some_and(|h| fits(h, d)) {
                 return false;
             }
         }
-        if !self.kinds.is_empty() {
-            let cat = row_category(row);
-            if !self.kinds.iter().any(|k| k.as_str() == cat) {
-                return false;
-            }
-        }
-        if !self.vendor.trim().is_empty()
-            && !VendorKey::new(row["vendor"].as_str().unwrap_or(""))
-                .matches(&VendorKey::new(&self.vendor))
-        {
+        if !self.kinds.is_empty() && !self.kinds.iter().any(|k| k.as_str() == row.category) {
             return false;
         }
-        if !self.text.trim().is_empty() {
-            let mut hay = String::new();
-            for k in ["vendor", "part", "description"] {
-                hay.push_str(row[k].as_str().unwrap_or(""));
-                hay.push('\n');
-            }
-            for k in ["tags", "glasses"] {
-                if let Some(a) = row[k].as_array() {
-                    for t in a {
-                        hay.push_str(t.as_str().unwrap_or(""));
-                        hay.push('\n');
-                    }
-                }
-            }
-            if let Some(m) = row["specs"].as_object() {
-                for v in m.values() {
-                    match v {
-                        Value::String(t) => hay.push_str(t),
-                        other => hay.push_str(&other.to_string()),
-                    }
-                    hay.push('\n');
-                }
-            }
-            let hay = hay.to_lowercase();
-            if !self
-                .text
-                .split_whitespace()
-                .all(|w| hay.contains(&w.to_lowercase()))
-            {
-                return false;
-            }
+        if !self.vendor.trim().is_empty() && !row.vendor.matches(&VendorKey::new(&self.vendor)) {
+            return false;
+        }
+        if !self
+            .text
+            .split_whitespace()
+            .all(|w| row.text.contains(&w.to_lowercase()))
+        {
+            return false;
         }
         self.specs.iter().all(|f| f.matches(row))
     }
@@ -367,6 +437,7 @@ mod tests {
             "vendor": "LB", "part": "P1", "efl": 100.0,
             "specs": { "wavelength_nm": [400, 700], "extinction_ratio": 1000, "coating": "AR 400-700 nm", "split_ratio": "50:50" }
         });
+        let row = CatalogRow::new(&row);
         let ok = |s: &str| SpecFilter::parse(s).unwrap().matches(&row);
         assert!(ok("wavelength_nm=633"));
         assert!(!ok("wavelength_nm=800"));
@@ -395,6 +466,7 @@ mod tests {
     fn spec_filter_first_operator() {
         let row =
             json!({ "specs": { "damage_threshold": ">10 J/cm2", "mount": "SM1 <x>", "n": 5 } });
+        let row = CatalogRow::new(&row);
         let f = SpecFilter::parse("damage_threshold=>10 J/cm2").unwrap();
         assert_eq!(
             (f.name.as_str(), f.op, f.text.as_str()),
@@ -457,6 +529,7 @@ mod tests {
             json!({ "vendor": "LB", "part": "M1", "kind": "mirror", "tags": ["dielectric"] }),
             json!({ "vendor": "XY", "part": "L1", "kind": "lens", "glasses": ["N-BK7"] }),
         ];
+        let rows: Vec<CatalogRow> = rows.iter().map(CatalogRow::new).collect();
         let n = |q: &CatalogQuery| rows.iter().filter(|r| q.matches(r)).count();
         assert_eq!(n(&CatalogQuery::default()), 3);
         assert_eq!(

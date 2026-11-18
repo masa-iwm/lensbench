@@ -3778,7 +3778,7 @@
       "type": "object"
     },
     "UserItem": {
-      "description": "ユーザーカタログの項目",
+      "description": "ユーザーカタログの項目（JSON の形）。光学の面（blocks、枠付きなら frame も）・機構部品（mech）・未完（missing）の\nどれか 1 つで、意味のない組み合わせは読むときに誤り（[`UserItem`] に直す）",
       "properties": {
         "blocks": {
           "default": [],

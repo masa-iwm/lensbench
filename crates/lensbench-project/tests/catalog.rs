@@ -293,14 +293,14 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
     // 1 つ: 変更が焼き込まれ、反転は面の向きに入る
     let one = blocks_item(&p, &env, &["L1".into()], "edited").unwrap();
     assert_eq!(one.glass_catalogs, ["SCHOTT"]);
-    let js = serde_json::to_value(&one.blocks[0]).unwrap();
+    let js = serde_json::to_value(&one.blocks()[0]).unwrap();
     assert_eq!(js["reversed"], false, "{js}");
     assert_eq!(js["decenter"], serde_json::json!([0.1, 0.0]), "{js}");
     assert_eq!(js["source"]["surfaces"][1]["radius"], 70.0, "{js}");
     assert_eq!(js["source"]["surfaces"][1]["semi"], 7.5, "{js}");
     // 範囲: L1・空気・L2
     let range = blocks_item(&p, &env, &["L1".into(), "L2".into()], "").unwrap();
-    assert_eq!(range.blocks.len(), 3);
+    assert_eq!(range.blocks().len(), 3);
     let mut cat = UserCatalog::default();
     cat.items.insert("pair".into(), range);
     cat.save(&dir.join("my.json")).unwrap();
@@ -358,7 +358,7 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
         .map(|x| x.system)
         .unwrap();
     let item = blocks_item(&p, &env, &["L1".into()], "").unwrap();
-    let js = serde_json::to_value(&item.blocks[0]).unwrap();
+    let js = serde_json::to_value(&item.blocks()[0]).unwrap();
     let sf = &js["source"]["surfaces"];
     assert_eq!(sf.as_array().unwrap().len(), 3, "{js}");
     assert_eq!(sf[0]["aperture"]["max"], 4.5, "{js}");

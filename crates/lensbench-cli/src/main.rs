@@ -1310,7 +1310,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let v: Vec<Value> = cat
                 .items
                 .iter()
-                .map(|(k, it)| json!({ "name": k, "description": it.description, "glass_catalogs": it.glass_catalogs, "blocks": it.blocks.len() }))
+                .map(|(k, it)| json!({ "name": k, "description": it.description, "glass_catalogs": it.glass_catalogs, "blocks": it.blocks().len() }))
                 .collect();
             (json, json!({ "items": v }))
         }

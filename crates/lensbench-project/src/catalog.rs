@@ -36,9 +36,75 @@ impl Default for UserCatalog {
     }
 }
 
-/// ユーザーカタログの項目
-#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
+/// ユーザーカタログの項目。中身（光学の面・機構部品・未完）は [`ItemBody`] の 1 つで、意味のない欄の組み合わせは
+/// 読むときに誤り。JSON は欄を平たく並べる（[`RawItem`]）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(try_from = "RawItem", into = "RawItem")]
 pub struct UserItem {
+    pub description: String,
+    /// 項目の玉のガラスのカタログ（使うときに足す）
+    pub glass_catalogs: Vec<String>,
+    /// 中身
+    pub body: ItemBody,
+    /// 品の種類（一覧の分類。省略時はブロックから: 鏡・BS のブロック 1 つならそれ、ほかは玉）
+    pub kind: Option<catalog_spec::ItemKind>,
+    /// 製品ページ
+    pub url: String,
+    /// CAD データ（STEP・図面）の公式 URL
+    pub cad: CadLinks,
+    /// 仕様（名前 → 数・[下限, 上限]・文字列。名前の決まったものは `catalog_spec::SPEC_NAMES`）
+    pub specs: BTreeMap<String, serde_json::Value>,
+    pub tags: Vec<String>,
+    /// 仕様の出典（資料・ページ）
+    pub source: String,
+    /// 仕様を確かめた日（YYYY-MM-DD）
+    pub checked: String,
+    /// 品の名前（一覧のページの見出しなど）
+    pub title: String,
+    /// データを作ったときのメモ（読めなかった欄など）
+    pub notes: Vec<String>,
+}
+
+/// 品の中身
+#[derive(Debug, Clone)]
+pub enum ItemBody {
+    /// 光学の面（空なら面の無い光学の品）。枠付きの品（マウント済みのフィルタなど）は枠も
+    Optic {
+        blocks: Vec<Block>,
+        frame: Option<Frame>,
+    },
+    /// 機構部品の寸法
+    Mech(MechSpec),
+    /// 未完の品（足りない値 `thickness`・`diameter`）。配置できず、品ページの仕様表か STEP で補ってから使う
+    /// （[`catalog_fill`]）
+    Incomplete { missing: Vec<String> },
+}
+
+impl Default for ItemBody {
+    fn default() -> Self {
+        ItemBody::Optic {
+            blocks: Vec::new(),
+            frame: None,
+        }
+    }
+}
+
+/// 枠付きの品の枠
+#[derive(Debug, Clone)]
+pub struct Frame {
+    /// 枠の寸法。z は枠の端から光の進む向きで、`holds.seat_z` にガラスの前面の位置を書く。プロジェクトに置くと、
+    /// ガラスの最初の面に機構部品として付く（ケラレ・当たりの確認と描画）
+    pub spec: MechSpec,
+    /// 枠の向き: false なら光は枠の z の小さい端から入り、true なら大きい端から入る（STEP から測った枠は STEP の
+    /// 座標の向きなので、図面の矢印などで決める）
+    pub reversed: bool,
+}
+
+/// ユーザーカタログの項目（JSON の形）。光学の面（blocks、枠付きなら frame も）・機構部品（mech）・未完（missing）の
+/// どれか 1 つで、意味のない組み合わせは読むときに誤り（[`UserItem`] に直す）
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
+#[schemars(rename = "UserItem")]
+pub struct RawItem {
     #[serde(default)]
     pub description: String,
     /// 項目の玉のガラスのカタログ（使うときに足す）
@@ -92,54 +158,144 @@ pub struct UserItem {
     pub notes: Vec<String>,
 }
 
-/// 品の中身（[`UserItem::body`]）。欄の組み合わせのうち意味のあるものだけ
-#[derive(Debug, Clone, Copy)]
-pub enum ItemBody<'a> {
-    /// 光学の面。枠付きの品は枠（[`UserItem::frame`]）とその向き（`frame_reversed`）も
-    Optic {
-        blocks: &'a [Block],
-        frame: Option<(&'a MechSpec, bool)>,
-    },
-    /// 機構部品
-    Mech(&'a MechSpec),
-    /// 未完の品（足りない値。仕様表か STEP で補ってから使う）
-    Incomplete { missing: &'a [String] },
+impl TryFrom<RawItem> for UserItem {
+    type Error = String;
+    /// 意味のない組み合わせ（面と機構の寸法の両方、面の無い枠、枠の無い `frame_reversed`、面か機構の寸法のある品の
+    /// `missing`）は誤り。どれも無い品は面の無い光学の品
+    fn try_from(r: RawItem) -> Result<Self, String> {
+        let bad = |m: &str| Err(m.to_string());
+        if r.frame_reversed && r.frame.is_none() {
+            return bad("frame_reversed without a frame");
+        }
+        let body = match (r.mech, r.blocks.is_empty()) {
+            (Some(_), false) => {
+                return bad("both surfaces (blocks) and mechanism dimensions (mech)")
+            }
+            (Some(_), true) if r.frame.is_some() => return bad("a frame on a mechanical part"),
+            (Some(_), true) if !r.missing.is_empty() => {
+                return bad("missing values on a mechanical part")
+            }
+            (Some(m), true) => ItemBody::Mech(m),
+            (None, false) if !r.missing.is_empty() => {
+                return bad("missing values on an item with surfaces")
+            }
+            (None, true) if r.frame.is_some() => return bad("a frame without surfaces (blocks)"),
+            (None, true) if !r.missing.is_empty() => ItemBody::Incomplete { missing: r.missing },
+            (None, _) => ItemBody::Optic {
+                blocks: r.blocks,
+                frame: r.frame.map(|spec| Frame {
+                    spec,
+                    reversed: r.frame_reversed,
+                }),
+            },
+        };
+        Ok(UserItem {
+            description: r.description,
+            glass_catalogs: r.glass_catalogs,
+            body,
+            kind: r.kind,
+            url: r.url,
+            cad: r.cad,
+            specs: r.specs,
+            tags: r.tags,
+            source: r.source,
+            checked: r.checked,
+            title: r.title,
+            notes: r.notes,
+        })
+    }
+}
+
+impl From<UserItem> for RawItem {
+    fn from(u: UserItem) -> RawItem {
+        let mut r = RawItem {
+            description: u.description,
+            glass_catalogs: u.glass_catalogs,
+            kind: u.kind,
+            url: u.url,
+            cad: u.cad,
+            specs: u.specs,
+            tags: u.tags,
+            source: u.source,
+            checked: u.checked,
+            title: u.title,
+            notes: u.notes,
+            ..Default::default()
+        };
+        match u.body {
+            ItemBody::Optic { blocks, frame } => {
+                r.blocks = blocks;
+                if let Some(f) = frame {
+                    (r.frame, r.frame_reversed) = (Some(f.spec), f.reversed);
+                }
+            }
+            ItemBody::Mech(m) => r.mech = Some(m),
+            ItemBody::Incomplete { missing } => r.missing = missing,
+        }
+        r
+    }
+}
+
+impl JsonSchema for UserItem {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        RawItem::schema_name()
+    }
+    fn json_schema(g: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        RawItem::json_schema(g)
+    }
 }
 
 impl UserItem {
-    /// 品の中身。意味のない組み合わせ（面と機構の寸法の両方、面の無い枠、枠の無い `frame_reversed`、
-    /// 面か機構の寸法のある品の `missing`）は誤り。どれも無い品は面の無い光学の品
-    pub fn body(&self) -> lensbench_core::Result<ItemBody<'_>> {
-        let bad = |m: &str| -> lensbench_core::Result<ItemBody<'_>> {
-            Err(lensbench_core::Error::Invalid(m.to_string()))
-        };
-        if self.frame_reversed && self.frame.is_none() {
-            return bad("frame_reversed without a frame");
-        }
-        match (&self.mech, self.blocks.is_empty()) {
-            (Some(_), false) => bad("both surfaces (blocks) and mechanism dimensions (mech)"),
-            (Some(_), true) if self.frame.is_some() => bad("a frame on a mechanical part"),
-            (Some(_), true) if !self.missing.is_empty() => {
-                bad("missing values on a mechanical part")
-            }
-            (Some(m), true) => Ok(ItemBody::Mech(m)),
-            (None, false) if !self.missing.is_empty() => {
-                bad("missing values on an item with surfaces")
-            }
-            (None, true) if self.frame.is_some() => bad("a frame without surfaces (blocks)"),
-            (None, true) if !self.missing.is_empty() => Ok(ItemBody::Incomplete {
-                missing: &self.missing,
-            }),
-            (None, _) => Ok(ItemBody::Optic {
-                blocks: &self.blocks,
-                frame: self.frame.as_ref().map(|f| (f, self.frame_reversed)),
-            }),
+    /// 光学の面 blocks の品（枠なし）
+    pub fn optic(description: &str, glass_catalogs: Vec<String>, blocks: Vec<Block>) -> UserItem {
+        UserItem {
+            description: description.to_string(),
+            glass_catalogs,
+            body: ItemBody::Optic {
+                blocks,
+                frame: None,
+            },
+            ..Default::default()
         }
     }
-
+    /// 光学の面を書き換える（機構部品・未完の品は None）
+    pub fn blocks_mut(&mut self) -> Option<&mut Vec<Block>> {
+        match &mut self.body {
+            ItemBody::Optic { blocks, .. } => Some(blocks),
+            _ => None,
+        }
+    }
+    /// 光学の面（機構部品・未完の品は空）
+    pub fn blocks(&self) -> &[Block] {
+        match &self.body {
+            ItemBody::Optic { blocks, .. } => blocks,
+            _ => &[],
+        }
+    }
+    /// 機構部品の寸法
+    pub fn mech(&self) -> Option<&MechSpec> {
+        match &self.body {
+            ItemBody::Mech(m) => Some(m),
+            _ => None,
+        }
+    }
+    /// 枠付きの品の枠
+    pub fn frame(&self) -> Option<&Frame> {
+        match &self.body {
+            ItemBody::Optic { frame, .. } => frame.as_ref(),
+            _ => None,
+        }
+    }
+    /// 未完の品の足りない値（ほかの品は空）
+    pub fn missing(&self) -> &[String] {
+        match &self.body {
+            ItemBody::Incomplete { missing } => missing,
+            _ => &[],
+        }
+    }
     /// 未完の品（足りない値があり、面も機構の寸法も無い）か
     pub fn is_incomplete(&self) -> bool {
-        matches!(self.body(), Ok(ItemBody::Incomplete { .. }))
+        matches!(self.body, ItemBody::Incomplete { .. })
     }
 }
 
@@ -391,20 +547,23 @@ impl MechAt {
 }
 
 impl UserCatalog {
-    /// JSON から読む。品の欄の組み合わせも確かめる（[`UserItem::body`]）
+    /// JSON から読む。品の欄の組み合わせも確かめる（[`UserItem`]）。組み合わせの誤りは `items.<名前>: <理由>`
     pub fn from_json(txt: &str) -> lensbench_core::Result<UserCatalog> {
-        let c: UserCatalog = serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}"))?;
-        c.check()?;
-        Ok(c)
-    }
-    /// 品の欄の組み合わせ（[`UserItem::body`]）を確かめる。誤りは `items.<名前>: <理由>`
-    pub fn check(&self) -> lensbench_core::Result<()> {
-        for (k, it) in &self.items {
-            it.body().map_err(|e| {
-                lensbench_core::Error::Invalid(format!("user catalog: items.{k}: {e}"))
-            })?;
-        }
-        Ok(())
+        serde_json::from_str(txt).map_err(|e| {
+            // どの品の誤りかを探す（serde_json の誤りには道が付かない）
+            let v: serde_json::Value = serde_json::from_str(txt).unwrap_or_default();
+            let named = v["items"].as_object().and_then(|m| {
+                m.iter().find_map(|(k, x)| {
+                    let r = serde_json::from_value::<RawItem>(x.clone());
+                    let e = match r {
+                        Ok(r) => UserItem::try_from(r).err()?,
+                        Err(e) => e.to_string(),
+                    };
+                    Some(format!("user catalog: items.{k}: {e}"))
+                })
+            });
+            lensbench_core::Error::Invalid(named.unwrap_or_else(|| format!("user catalog: {e}")))
+        })
     }
     /// ユーザーカタログの JSON（先頭に `$schema` を付ける）
     pub fn to_json(&self) -> String {
@@ -565,22 +724,22 @@ mod tests {
             r#"{{"m": {{"mech": {mech}}}, "i": {{"missing": ["thickness"]}}, "e": {{}}}}"#
         ))
         .unwrap();
-        assert!(matches!(c.items["m"].body(), Ok(ItemBody::Mech(_))));
+        assert!(matches!(c.items["m"].body, ItemBody::Mech(_)));
         assert!(c.items["i"].is_incomplete());
         assert!(matches!(
-            c.items["e"].body(),
-            Ok(ItemBody::Optic { frame: None, .. })
+            c.items["e"].body,
+            ItemBody::Optic { frame: None, .. }
         ));
         let f = read(&format!(
             r#"{{"f": {{"blocks": {lens}, "frame": {mech}, "frame_reversed": true}}}}"#
         ))
         .unwrap();
         assert!(matches!(
-            f.items["f"].body(),
-            Ok(ItemBody::Optic {
-                frame: Some((_, true)),
+            f.items["f"].body,
+            ItemBody::Optic {
+                frame: Some(Frame { reversed: true, .. }),
                 ..
-            })
+            }
         ));
         for (bad, why) in [
             (
@@ -607,5 +766,20 @@ mod tests {
             let e = read(&format!(r#"{{"x": {bad}}}"#)).unwrap_err().to_string();
             assert!(e.contains("items.x") && e.contains(why), "{e}");
         }
+    }
+
+    /// 書いて読み直すと同じ品で、JSON の欄は平たいまま
+    #[test]
+    fn item_round_trips_with_flat_fields() {
+        let txt = r#"{"items": {"f": {"blocks": [{"type": "air", "t": 1}], "frame": {"length": 5},
+            "frame_reversed": true, "url": "u"}, "m": {"mech": {"length": 10}}, "i": {"missing": ["thickness"]}}}"#;
+        let c = UserCatalog::from_json(txt).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&c.to_json()).unwrap();
+        assert_eq!(v["items"]["f"]["frame_reversed"], true);
+        assert_eq!(v["items"]["f"]["frame"]["length"], 5.0);
+        assert_eq!(v["items"]["m"]["mech"]["length"], 10.0);
+        assert_eq!(v["items"]["i"]["missing"][0], "thickness");
+        let d = UserCatalog::from_json(&c.to_json()).unwrap();
+        assert_eq!(c.to_json(), d.to_json());
     }
 }

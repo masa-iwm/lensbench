@@ -7,7 +7,7 @@ use lensbench_project::UserItem;
 pub fn measure(item: &UserItem, text: &[u8]) -> (Option<step::StepSize>, Vec<String>) {
     match step::read_step(&String::from_utf8_lossy(text)) {
         Ok(s) => {
-            let notes = match &item.mech {
+            let notes = match item.mech() {
                 Some(m) => fill::cad_check(m, &s),
                 None => Vec::new(),
             };

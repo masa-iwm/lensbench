@@ -865,14 +865,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 name: item.clone(),
                 role: None,
                 shift: 0.0,
-                blocks: it.blocks.clone(),
+                blocks: it.blocks().to_vec(),
                 place: place.clone(),
                 // 項目のブロックの面の上書き・操作は当てない（User のブロックのものは User のブロックで当てる）
                 faces: FaceMods::default(),
             },
             dir,
             key,
-            it.frame.clone().map(|f| (f, it.frame_reversed)),
+            it.frame().map(|f| (f.spec.clone(), f.reversed)),
         ))
     }
 

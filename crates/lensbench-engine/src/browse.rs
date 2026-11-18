@@ -434,7 +434,7 @@ pub fn search(
 ) -> lensbench_core::Result<Value> {
     let mut v = lenses(paths, glass_dirs)?;
     if let Some(a) = v["lenses"].as_array_mut() {
-        a.retain(|r| q.matches(r));
+        a.retain(|r| q.matches(&lensbench_catalog::spec::CatalogRow::new(r)));
     }
     Ok(v)
 }
@@ -544,8 +544,8 @@ fn user_items(
                 row["checked"] = json!(it.checked);
             }
             // 枠付きの品の枠（置くと機構部品として付く）
-            if let Some(f) = &it.frame {
-                row["frame"] = json!(f);
+            if let Some(f) = it.frame() {
+                row["frame"] = json!(f.spec);
             }
             // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
             if it.is_incomplete() {
@@ -562,7 +562,7 @@ fn user_items(
                         "kind": "incomplete", "mirror": false, "efl": Value::Null,
                         "diameter": size("diameter"), "thickness": size("thickness"),
                         "elements": 0, "pieces": 0, "glasses": [],
-                        "incomplete": true, "missing": it.missing,
+                        "incomplete": true, "missing": it.missing(),
                     })
                     .as_object()
                     .expect("an object literal")
@@ -576,7 +576,7 @@ fn user_items(
                 }
                 return row;
             }
-            let summary = match (it.mech.as_ref(), it.blocks.as_slice()) {
+            let summary = match (it.mech(), it.blocks()) {
                 // 機構部品: 面が無く寸法だけ
                 (Some(m), []) => {
                     let id = m.bores.iter().map(|b| b.diameter).fold(f64::INFINITY, f64::min);

@@ -90,7 +90,7 @@ pub(crate) fn filter_lenses(
                             && fits_hold(f.d, r.diameter)
                     }
                 })
-                && specs.iter().all(|f| f.matches(&r.raw))
+                && specs.iter().all(|f| f.matches(&r.spec_row))
                 && (words.is_empty() || {
                     let hay = lens_search_text(r);
                     words.iter().all(|w| hay.contains(w.as_str()))

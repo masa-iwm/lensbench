@@ -60,8 +60,10 @@ pub(crate) struct LensRow {
     /// 仕様の出典・確かめた日
     pub spec_source: String,
     pub checked: String,
-    /// serve の行のまま（仕様 `specs`・タグ `tags` と、仕様での絞り込みに使う）
+    /// serve の行のまま（仕様 `specs`・タグ `tags`）
     pub raw: Value,
+    /// 仕様での絞り込みに使う値（行を読んだときに 1 回作る）
+    pub spec_row: lensbench_catalog::spec::CatalogRow,
 }
 
 /// 仕様の値を短く（範囲は a–b、単位つき）
@@ -239,6 +241,7 @@ pub(crate) fn parse_lenses(v: &Value) -> Vec<LensRow> {
                     spec_source: s(&l["spec_source"]),
                     checked: s(&l["checked"]),
                     raw: l.clone(),
+                    spec_row: lensbench_catalog::spec::CatalogRow::new(l),
                 })
                 .collect()
         })

@@ -755,7 +755,7 @@ pub fn upload_jobs(from: UploadFrom) -> lensbench_core::Result<UploadJobs> {
             let names = cat
                 .items
                 .iter()
-                .filter(|(_, it)| it.mech.is_some())
+                .filter(|(_, it)| it.mech().is_some())
                 .map(|(k, _)| k.as_str());
             let (got, miss) = match_files(names, &step_sources(dir)?);
             unmatched = miss;
