@@ -50,7 +50,7 @@ impl System {
             if !d.ignore && j > 0 {
                 ps.cry = match &d.bire {
                     Some(Bire::In { mode, axis, ne }) => {
-                        if !matches!(mode, 0 | 2) {
+                        if !d.bire.as_ref().is_some_and(|b| b.traceable()) {
                             self.check_crystals()?;
                         }
                         let ne = ne.get(w).copied().ok_or_else(|| {

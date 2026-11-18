@@ -568,8 +568,9 @@ impl System {
     /// 誤りを返さない入口でも光線はその面で止まる（常光の道で黙って追わない）
     pub fn check_crystals(&self) -> Result<()> {
         for (j, d) in self.surfaces.iter().enumerate() {
-            if let (Some(crate::surface::Bire::In { mode, .. }), false) = (&d.bire, d.ignore) {
-                if !matches!(mode, 0 | 2) {
+            if let (Some(b @ crate::surface::Bire::In { mode, .. }), false) = (&d.bire, d.ignore) {
+                // 追跡の準備（batch::Plan の blocked）と同じ判定
+                if !b.traceable() {
                     notimpl!(
                         "{}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)",
                         self.surf_label(j)

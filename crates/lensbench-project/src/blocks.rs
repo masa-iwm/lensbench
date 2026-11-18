@@ -1210,6 +1210,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 ));
                 // 物体空間・像空間が空気でない .zmx（液浸など）もまるごと取り込む（媒質は物体面・最後の要素が持ち越す）
                 let els = elements::split_any(&s);
+                // 取り込んだ .zmx の読込の注意（解けないソルブを保存された値で固定したもの・読めなかった行など）も
+                // 展開した系の注意に
+                for n in &s.import_notes {
+                    if !self.notes.contains(n) {
+                        self.notes.push(n.clone());
+                    }
+                }
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {
                     path: path.clone(),

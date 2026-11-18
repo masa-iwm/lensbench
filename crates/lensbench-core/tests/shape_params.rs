@@ -369,7 +369,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
 }
 
 /// 曲率のソルブは標準面・偶数次非球面・トロイダル面だけ。Odd Asphere（paraxial_extra に 2β₂ が入る）は
-/// 解かずに断るので、値は変わらない
+/// 解かずに断るので、値は変わらない（読込ではファイル全体を断らず、ソルブを外して保存された値で固定し理由を残す）
 #[test]
 fn odd_asphere_curvature_solve_is_rejected() {
     let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
@@ -380,6 +380,12 @@ SURF 2\n  TYPE ODDASPHE\n  CURV 0.01 2 -0.05 0 0 \"\"\n  PARM 1 0\n  PARM 2 4e-3
 SURF 3\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 30\n\
 SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     let raw = zmx::parse_text(txt).unwrap();
-    let e = zmx::build(&raw, &Default::default(), &[], None).unwrap_err();
-    assert!(e.to_string().contains("curvature solve"), "{e}");
+    let s = zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    assert!(s.solves.is_empty(), "{:?}", s.solves);
+    assert_eq!(s.surfaces[2].c, 0.01);
+    assert!(
+        s.import_notes.iter().any(|n| n.contains("curvature solve")),
+        "{:?}",
+        s.import_notes
+    );
 }

@@ -44,6 +44,8 @@ impl System {
         for q in macros {
             attach_macro(&mut s, q);
         }
+        // 解けないソルブ（周辺光線が光軸に平行な厚さのソルブなど）は外して保存された値で固定する（ファイルは開く）
+        s.drop_unsolvable_on_load();
         // OpticStudio は読込でソルブを解き直す（保存した値が古くても同じ系になる）
         crate::zpl_solve::resolve_on_load(&mut s);
         s.solve_thickness()?;

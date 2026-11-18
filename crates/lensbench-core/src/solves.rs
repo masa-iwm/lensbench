@@ -161,6 +161,69 @@ pub struct Solve {
 }
 
 impl System {
+    /// 読込で、解けないソルブ（周辺光線が光軸に平行な厚さのソルブなど）を外す。ファイル全体を断らず、マクロでない
+    /// ソルブをソルブのないところから 1 つずつ足して解けなくするものだけ外し、その面は保存された値で固定して理由を
+    /// [`System::import_notes`] に残す（マクロのソルブの `zpl_solve::resolve_on_load` と同じ方針）。マクロのソルブは
+    /// ここでは外して試し（マクロの誤りで普通のソルブを外さない）、この後に `resolve_on_load` が扱う。
+    /// ソルブを全部外しても解けない（ソルブの外の誤り）ときと、全部解けるときは何も変えない（誤りは後の
+    /// [`System::solve_thickness`] が返す）。読んだあとの編集で解けなくなったときは、今までどおり誤り
+    pub(crate) fn drop_unsolvable_on_load(&mut self) {
+        let is_macro = |k: &SolveKind| {
+            matches!(
+                k,
+                SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
+            )
+        };
+        let n = self.solves.len();
+        let with = |keep: &[bool]| {
+            let mut c = self.clone();
+            let mut i = 0;
+            let r = c.rx_mut();
+            r.solves.retain(|_| {
+                i += 1;
+                keep[i - 1]
+            });
+            r.macro_parms.clear();
+            c
+        };
+        let plain: Vec<bool> = self.solves.iter().map(|q| !is_macro(&q.kind)).collect();
+        if !plain.contains(&true) || with(&plain).solve_thickness().is_ok() {
+            return;
+        }
+        let mut keep = vec![false; n];
+        if with(&keep).solve_thickness().is_err() {
+            return;
+        }
+        let mut notes = Vec::new();
+        for j in 0..n {
+            if !plain[j] {
+                continue;
+            }
+            keep[j] = true;
+            if let Err(e) = with(&keep).solve_thickness() {
+                keep[j] = false;
+                let q = &self.solves[j];
+                let what = if q.kind.is_curv() {
+                    "curvature"
+                } else {
+                    "thickness"
+                };
+                let (kind, k) = (solve_kind_info(q.kind).0, q.surf);
+                notes.push(format!(
+                    "removed the {what} solve {kind} of surface {k} and fixed the saved value: can't solve it ({e})"
+                ));
+            }
+        }
+        // 外したソルブの面は保存された値のまま（ここでは解いた値を入れない）。マクロのソルブは残す
+        let mut i = 0;
+        let r = self.rx_mut();
+        r.solves.retain(|q| {
+            i += 1;
+            keep[i - 1] || is_macro(&q.kind)
+        });
+        r.import_notes.extend(notes);
+    }
+
     /// ソルブ（[`Solve`]: 厚さ・曲率）を解き直す。読込と、パラメータを変えた後に呼ぶ。
     /// 近軸の量は主波長で、無視した面は飛ばす（近軸の追跡と同じ）。面の順に解き、どれかを変えると前のソルブの
     /// 条件も変わりうる（入射瞳・F/# の絞りなど）ので、全部が収まるまで繰り返す。ピックアップは途中で解決し直す。

@@ -137,7 +137,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `tests/glass/LBCRYSTAL.AGF`（refractiveindex.info、CC0）。GUI の面の並びの波長板にも複屈折材・厚さ（2 材まで）の欄がある。
 - 複屈折材の板を面で直接書く: 面の並びに `{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [x, y, z]}}}`
   （結晶軸は面の局所座標、`"mode": 0` で常光の成分だけ）と `{"t": 5, "birefringent": "out"}`。入口と出口の間にほかの面は置けない。
-  .zmx の BIRE__IN・BIRE_OUT も読める。Mode 1・3（異常光の道）は読んで持つが追跡しない（光線の追跡・偏光・最適化はその面を名指しで断る）。Gradient Mode は未対応。
+  .zmx の BIRE__IN・BIRE_OUT も読める。Mode 1・3（異常光の道）は読んで持つが追跡しない（光線の追跡・偏光・最適化・レイアウトはその面を名指しで断る。近軸量は常光の屈折率で出る）。Gradient Mode は未対応。
 - ほかの欄で書けない面: 面の並び・自作の玉の面に `{"row": {…}}` と書くと、システムファイル（版 2）の面の行
   （`shape`・`action`・`medium`・`aperture`・`semi`・`t`・`ignore`・`dn`・`disp`・`comment`・`coating` など）で面を書ける。
   Zernike Standard / Fringe Sag・Grid Sag・Irregular・Tilted・Binary 2・Cylinder Fresnel・理想レンズ・GRIN の媒質・無視する面などに使う。

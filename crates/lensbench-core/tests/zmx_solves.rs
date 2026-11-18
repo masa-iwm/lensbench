@@ -232,12 +232,16 @@ fn position_solve_after_a_height_solve() {
     assert!((marg_at(&s, 3) - 2.0).abs() < 1e-12, "{}", marg_at(&s, 3));
     let sum: f64 = s.surfaces[2..=4].iter().map(|d| d.t).sum();
     assert!((sum - 40.0).abs() < 1e-12, "{sum}");
-    let e = build(&lens("  DISZ 30\n", "  DISZ 50\n  TOLE 9 40\n")).unwrap_err();
+    // 基準の面が無いソルブも、読込ではファイル全体を断らず、外して保存された値で固定し理由を残す
+    let s = build(&lens("  DISZ 30\n", "  DISZ 50\n  TOLE 9 40\n")).unwrap();
+    assert!(s.solves.is_empty(), "{:?}", s.solves);
+    assert_eq!(s.surfaces[4].t, 50.0);
     assert!(
-        e.message()
-            .unwrap_or_default()
-            .contains("reference surface"),
-        "{e}"
+        s.import_notes
+            .iter()
+            .any(|n| n.contains("reference surface")),
+        "{:?}",
+        s.import_notes
     );
 }
 

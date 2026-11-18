@@ -779,3 +779,33 @@ fn zmx_project_keeps_an_extraordinary_plate() {
     let t = t.replacen("  PARM 1 2\r\n", "  PARM 1 1\r\n", 1);
     zmx_project_roundtrip("bire-m1", move |_| t.clone(), |_, _| {});
 }
+
+/// 読込で解けない厚さのソルブ（周辺光線が光軸に平行）のある .zmx も組合せのプロジェクトで開き、ソルブを外して
+/// 保存された値で固定した注意が展開した系に残る
+#[test]
+fn zmx_project_opens_with_an_unsolvable_thickness_solve() {
+    zmx_project_roundtrip(
+        "unsolvable",
+        |_| {
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+             XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\n\
+             SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
+             SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 30\n  MAZH 0 0\n\
+             SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+                .to_string()
+        },
+        |p, env| {
+            let q = lensbench_project::Project::from_json(&p.to_string()).unwrap();
+            let e = lensbench_project::expand(&q, env, &Default::default()).unwrap();
+            assert_eq!(e.system.surfaces[1].t, 30.0);
+            assert!(
+                e.system
+                    .import_notes
+                    .iter()
+                    .any(|n| n.contains("thickness solve marginal_height of surface 1")),
+                "{:?}",
+                e.system.import_notes
+            );
+        },
+    );
+}

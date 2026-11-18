@@ -373,3 +373,29 @@ fn matches_opticstudio() {
         );
     }
 }
+
+/// 読込で解けない厚さのソルブ（周辺光線が光軸に平行）があってもファイル全体を断らない: そのソルブだけ外して
+/// 保存された値で固定し、理由を import_notes に残す。解けるソルブはそのまま解く
+#[test]
+fn an_unsolvable_thickness_solve_is_fixed_at_the_saved_value_on_load() {
+    let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+               XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\n\
+               SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
+               SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 30\n  MAZH 0 0\n\
+               SURF 2\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 50\n  PARM 2 1\n  DISZ 40\n  MAZH 0 0\n\
+               SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    let raw = lensbench_core::zmx::parse_text(txt).unwrap();
+    let s = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    // 面 1 の後ろは平行光で解けない: 保存された 30 のまま、ソルブは外す
+    assert_eq!(s.surfaces[1].t, 30.0);
+    assert_eq!(s.solves.len(), 1, "{:?}", s.solves);
+    assert_eq!(s.solves[0].surf, 2);
+    assert_eq!(s.import_notes.len(), 1, "{:?}", s.import_notes);
+    let n = &s.import_notes[0];
+    assert!(
+        n.contains("thickness solve marginal_height of surface 1") && n.contains("parallel"),
+        "{n}"
+    );
+    // 面 2 の後ろは集光（f = 50）: ソルブで像点へ
+    assert!((s.surfaces[2].t - 50.0).abs() < 1e-9, "{}", s.surfaces[2].t);
+}
