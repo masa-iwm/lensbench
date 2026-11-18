@@ -524,7 +524,7 @@ surface {k}: curvature solve on the object or image surface	面 {k}: 物体面�
 surface {k}: curvature solve and a multi-configuration CRVT	面 {k}: 曲率のソルブと多重構成の CRVT
 parameter pickups don't converge (a loop?)	パラメータのピックアップが収束しません（循環？）
 surface {k}: surface type {name}	面 {k}: 面タイプ {name}
-surface {k}: Birefringent In Mode {mode} (only 0 and 2)	面 {k}: Birefringent In の Mode {mode}（0 と 2 だけ）
+surface {k}: Birefringent In Mode {mode} (0 to 3)	面 {k}: Birefringent In の Mode {mode}（0〜3）
 surface {k}: Birefringent In Gradient Mode	面 {k}: Birefringent In の Gradient Mode
 surface {k}: Birefringent In crystal axis is 0	面 {k}: Birefringent In の結晶軸が 0
 paraxial lens (surface {k}) OPD mode {}	理想レンズ（面 {k}）の OPD モード {}
@@ -725,7 +725,7 @@ wavelength number {wn} ({nw} in all)	波長の番号 {wn}（全 {nw}）
 field number {} ({} in all)	視野の番号 {}（全 {}）
 vignetting factors of field ({hx}, {hy})	視野 ({hx}, {hy}) のケラレ係数
 angle field ({x}°, {y}°): a field of exactly 90°	角度の視野 ({x}°, {y}°): ちょうど 90° の視野
-{}: birefringent plate Mode {mode} is not supported (only 0 and 2)	{}: 複屈折材の板の Mode {mode} は未対応（0 と 2 だけ）
+{}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)	{}: 複屈折材の板の Mode {mode}（異常光の道）は追跡できません（0 と 2 だけ）
 {}: no index for the extraordinary material {}	{}: 異常光 {} の屈折率がありません
 user-defined surface (surface {j}) has no model (user)	ユーザー定義の面（面 {j}）にモデル（user）がありません
 user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})	空気以外の中・ミラーのユーザー定義の面（面 {j}: {nb} → {na}）
@@ -975,7 +975,7 @@ group {label}: surfaces {} to {} are in reverse order	群 {label}: 面 {}〜{} �
 group {label}: no imported lenses or surfaces in surfaces {} to {}	群 {label}: 面 {}〜{} にインポートしたレンズ・面がありません
 group {label} overlaps group {}	群 {label} が群 {} と重なります
 a surface can't have two or more of jones, polarizer, waveplate, coordbrk and birefringent	面に jones・polarizer・waveplate・coordbrk・birefringent のうち 2 つ以上は書けません
-birefringent plate mode {mode} (0 or 2)	複屈折材の板の mode {mode}（0 か 2）
+birefringent plate mode {mode} (0 to 3)	複屈折材の板の mode {mode}（0〜3）
 the crystal axis of the birefringent plate is 0 or not a number	複屈折材の板の結晶軸 axis が 0 か数ではありません
 write glass (the ordinary material) on the entrance surface of a birefringent plate	複屈折材の板の入口の面には glass（常光の材料）を書いてください
 a {what} surface can't have curvature, conic or asphere terms	{what} の面に曲率・コーニック・非球面は書けません

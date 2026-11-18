@@ -563,6 +563,23 @@ impl System {
 
     // ---------------------------------------------------------------------------------- 近軸
 
+    /// 追跡できるか: 複屈折材の板の Mode 1・3（異常光の道）は持てるが追跡しない（光線の屈折が常光と違う）。
+    /// 光線の追跡の入口（[`System::try_trace`]・[`System::try_trace_into`]・偏光）がこれで断り、
+    /// 誤りを返さない入口でも光線はその面で止まる（常光の道で黙って追わない）
+    pub fn check_crystals(&self) -> Result<()> {
+        for (j, d) in self.surfaces.iter().enumerate() {
+            if let (Some(crate::surface::Bire::In { mode, .. }), false) = (&d.bire, d.ignore) {
+                if !matches!(mode, 0 | 2) {
+                    notimpl!(
+                        "{}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)",
+                        self.surf_label(j)
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 追跡の前に、未対応の項目がないかを確かめる（理想レンズの媒質など）
     pub fn validate(&self) -> Result<()> {
         for (j, d) in self.surfaces.iter().enumerate() {

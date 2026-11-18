@@ -397,6 +397,7 @@ impl System {
         last: Option<usize>,
         buf: &mut RayBuf,
     ) -> Result<()> {
+        self.check_crystals()?;
         let w = w.unwrap_or(self.primary);
         let (hx, hy) = self.field_sel_norm(field, w)?;
         if let (Some(_), None) = (&self.cache.focus, last) {
@@ -695,6 +696,7 @@ impl System {
         last: Option<usize>,
         rec: impl Into<RecSel<'r>>,
     ) -> Result<Trace> {
+        self.check_crystals()?;
         let w = w.unwrap_or(self.primary);
         let (hx, hy) = self.field_sel_norm(field, w)?;
         let rec = rec.into();

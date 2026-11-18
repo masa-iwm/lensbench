@@ -204,7 +204,7 @@ impl SurfShape {
 #[serde(rename_all = "snake_case")]
 pub enum BireSpec {
     In {
-        /// 2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ（OpticStudio の Mode）
+        /// 2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ、1・3: 異常光の道（持つが追跡しない）。OpticStudio の Mode
         #[serde(default = "two_u8")]
         mode: u8,
         /// 結晶軸の向き（面の局所座標）

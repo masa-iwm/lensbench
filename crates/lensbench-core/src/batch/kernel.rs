@@ -226,6 +226,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
         let j = st.j;
         let d = &sys.surfaces[j];
         let jf = j as f64;
+        // 追跡できない面（複屈折材の板の Mode 1・3）: 残りの光線もここで止める
+        if st.blocked {
+            err = mark(err, err.eq(0.0), jf);
+        }
         // ここまでに止まった光線（以後は NaN）
         let es: V::B = err.ne(0.0);
         // 複屈折材の板の中の光線があるか（その面の偏光は光線ごとのスカラーで）

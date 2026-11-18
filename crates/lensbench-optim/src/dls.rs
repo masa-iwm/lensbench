@@ -220,6 +220,13 @@ impl Problem {
         if self.terms.is_empty() {
             invalid!("no merit function terms");
         }
+        // 項が使う構成が追跡できるか（複屈折材の板の Mode 1・3）。どの構成かを文に入れる
+        for (c, s) in self.configs.iter().enumerate() {
+            if self.terms.iter().any(|t| t.config == c) {
+                s.check_crystals()
+                    .map_err(|e| e.at(format!("configuration {}", c + 1)))?;
+            }
+        }
         for (q, v) in self.vars.iter().enumerate() {
             if v.param.kind.is_object() {
                 invalid!("variable {q}: moving the object point is not system data");

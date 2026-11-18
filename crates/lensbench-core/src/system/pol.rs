@@ -51,10 +51,7 @@ impl System {
                 ps.cry = match &d.bire {
                     Some(Bire::In { mode, axis, ne }) => {
                         if !matches!(mode, 0 | 2) {
-                            return Err(Error::Invalid(format!(
-                                "{}: birefringent plate Mode {mode} is not supported (only 0 and 2)",
-                                self.surf_label(j)
-                            )));
+                            self.check_crystals()?;
                         }
                         let ne = ne.get(w).copied().ok_or_else(|| {
                             Error::Invalid(format!(

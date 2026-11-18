@@ -341,9 +341,9 @@ fn birefringent(
 ) -> Result<()> {
     if name == "BIRE__IN" {
         let mode = p(1);
-        // Mode 1・3 は異常光の道（屈折が違う）で未対応
-        if !(mode == 0.0 || mode == 2.0) {
-            notimpl!("surface {k}: Birefringent In Mode {mode} (only 0 and 2)");
+        // Mode 1・3（異常光の道）も読んで持つ。追跡は System::check_crystals が断る
+        if !matches!(mode, 0.0 | 1.0 | 2.0 | 3.0) {
+            invalid!("surface {k}: Birefringent In Mode {mode} (0 to 3)");
         }
         if s.xdat.get(&1).copied().unwrap_or(0.0) != 0.0 {
             notimpl!("surface {k}: Birefringent In Gradient Mode");

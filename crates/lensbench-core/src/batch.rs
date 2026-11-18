@@ -116,6 +116,8 @@ struct Step {
     grin: Option<GrinIn>,
     /// この面の後ろから GRIN の媒質（屈折率は交点で求める）
     grin_eval: bool,
+    /// 追跡できない面（複屈折材の板の Mode 1・3）: 光線はここで止まる（常光の道で黙って追わない）
+    blocked: bool,
 }
 
 /// 面の後ろの屈折率が前の値を引き継ぐか（座標ブレーク、鏡。理想レンズ・利用者定義の面の鏡は表の値）
@@ -266,6 +268,7 @@ impl<'a> Plan<'a> {
                 },
                 grin,
                 grin_eval,
+                blocked: d.bire.as_ref().is_some_and(|b| !b.traceable()),
             });
             // 座標ブレークの後ろも同じ GRIN の媒質
             if let Some(g) = steps.last().expect("at least one step").grin {

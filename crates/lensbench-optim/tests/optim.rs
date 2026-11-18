@@ -599,3 +599,35 @@ fn degenerate_problems() {
         r.stop
     );
 }
+
+/// 項が使う構成に追跡できない板（複屈折材の Mode 1・3、異常光の道）があれば、どの構成かを言って断る
+#[test]
+fn a_configuration_with_an_extraordinary_plate_is_named() {
+    let dir = root().join("tests/birefringent");
+    let b = std::fs::read(dir.join("b1.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = String::from_utf16(&u).unwrap();
+    assert_eq!(t.matches("  PARM 1 2\r\n").count(), 1);
+    let t = t.replacen("  PARM 1 2\r\n", "  PARM 1 1\r\n", 1);
+    let f = std::env::temp_dir().join(format!("lb_optim_m1_{}.zmx", std::process::id()));
+    let mut out = vec![0xff, 0xfe];
+    out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
+    std::fs::write(&f, out).unwrap();
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    let m1 = zmx::load_with(&f, &opt).unwrap();
+    std::fs::remove_file(&f).ok();
+    let a = zmx::load_with(&dir.join("b1.zmx"), &opt).unwrap();
+    let mut p = Problem::new(vec![a, m1]);
+    p.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+    let e = p.check().unwrap_err().to_string();
+    assert!(e.contains("configuration 2") && e.contains("Mode 1"), "{e}");
+}

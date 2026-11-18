@@ -129,3 +129,81 @@ fn birefringent_zmx_roundtrip() {
         }
     }
 }
+
+/// Mode 1・3（異常光の道）の板も読んで持ち（書き出しても残る）、追跡はどの入口でも常光の道で黙って追わない:
+/// 誤りを返す入口（光線・偏光）は Mode を名指しで断り、誤りを返さない入口でも光線はその面で止まる
+#[test]
+fn extraordinary_modes_load_but_are_not_traced() {
+    let b1 = zmx_write::write(&load("b1")).unwrap();
+    assert_eq!(
+        b1.matches("  PARM 1 2\r\n").count(),
+        1,
+        "b1 の入口の Mode 2 の行"
+    );
+    for mode in [1, 3] {
+        let txt = b1.replacen("  PARM 1 2\r\n", &format!("  PARM 1 {mode}\r\n"), 1);
+        let p = std::env::temp_dir().join(format!("lb_bire_m{mode}_{}.zmx", std::process::id()));
+        std::fs::write(&p, &txt).unwrap();
+        let opt = zmx::LoadOptions {
+            catalog_dirs: vec![dir().join("../glass")],
+            ..Default::default()
+        };
+        let s = zmx::load_with(&p, &opt).unwrap();
+        std::fs::remove_file(&p).ok();
+        let j = s
+            .surfaces
+            .iter()
+            .position(|d| matches!(d.bire, Some(lensbench_core::surface::Bire::In { .. })))
+            .unwrap();
+        assert!(matches!(
+            s.surfaces[j].bire,
+            Some(lensbench_core::surface::Bire::In { mode: m, .. }) if m == mode
+        ));
+        // 書き出しても Mode は残る
+        assert!(zmx_write::write(&s)
+            .unwrap()
+            .contains(&format!("  PARM 1 {mode}\r\n")));
+        // 系の検査（プロジェクトの展開）は通る: ファイルは開ける
+        s.validate().unwrap();
+        let want = format!("Mode {mode}");
+        let e = s.check_crystals().unwrap_err().to_string();
+        assert!(e.contains(&want), "{e}");
+        let e = s
+            .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, false)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(&want), "{e}");
+        let mut buf = lensbench_core::system::RayBuf::default();
+        let e = s
+            .try_trace_into(FieldSel::Index(0), &[0.0], &[0.0], None, None, &mut buf)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(&want), "{e}");
+        let coat = Coatings::for_system(&s).unwrap();
+        let pols = [[C64::new(1.0, 0.0), C64::new(0.0, 0.0)]];
+        let e = s
+            .try_trace_pol(
+                FieldSel::Index(0),
+                &[0.0],
+                &[0.0],
+                None,
+                PolIn::new(&pols, &coat),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(&want), "{e}");
+        // 誤りを返さない入口（光線の開始点と方向を与える追跡）でも、光線は板の入口の面で止まる
+        let p0 = [[0.0, 0.0, -1.0], [0.5, 0.0, -1.0]];
+        let k0 = [[0.0, 0.0, 1.0], [0.0, 0.01, 1.0]];
+        let l = lensbench_core::system::Launch::Rays { p: &p0, k: &k0 };
+        s.trace_launch_into(&l, 0, None, &mut buf);
+        for i in 0..2 {
+            assert_eq!(
+                buf.status[i].surf(),
+                Some(j),
+                "光線 {i}: {:?}",
+                buf.status[i]
+            );
+        }
+    }
+}

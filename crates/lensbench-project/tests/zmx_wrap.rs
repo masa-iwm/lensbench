@@ -762,3 +762,20 @@ fn zmx_project_opens_a_paraxial_collimator() {
         |_, _| {},
     );
 }
+
+/// 複屈折材の板の Mode 1（異常光の道、追跡しない）の .zmx も組合せのプロジェクトで開き、Mode は残る
+#[test]
+fn zmx_project_keeps_an_extraordinary_plate() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let b = std::fs::read(root.join("tests/birefringent/b1.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = String::from_utf16(&u).unwrap();
+    assert_eq!(t.matches("  PARM 1 2\r\n").count(), 1);
+    let t = t.replacen("  PARM 1 2\r\n", "  PARM 1 1\r\n", 1);
+    zmx_project_roundtrip("bire-m1", move |_| t.clone(), |_, _| {});
+}

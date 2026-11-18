@@ -462,7 +462,7 @@ fn crystal_plate_surfaces_directly() {
         r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}"#,
         r#"{"t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}, {"birefringent": "out"}"#,
         r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [0, 0, 0]}}}, {"birefringent": "out"}"#,
-        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0], "mode": 1}}}, {"birefringent": "out"}"#,
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0], "mode": 4}}}, {"birefringent": "out"}"#,
         r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}, {"t": 1}, {"birefringent": "out"}"#,
         r#"{"birefringent": "out"}"#,
     ] {

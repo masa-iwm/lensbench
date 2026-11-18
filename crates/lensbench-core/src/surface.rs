@@ -363,7 +363,8 @@ impl Retarder {
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Clone, PartialEq)]
 pub enum Bire {
     In {
-        /// 0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は未対応
+        /// 0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は持つが追跡しない
+        /// （[`Bire::traceable`]、[`crate::System::check_crystals`]）
         mode: u8,
         /// 結晶軸の向き（入口の面の局所座標、規格化しなくてよい）
         axis: [f64; 3],
@@ -372,6 +373,13 @@ pub enum Bire {
         ne: Vec<f64>,
     },
     Out,
+}
+
+impl Bire {
+    /// 追跡できるか: 入口の Mode 1・3（異常光の道）は光線の屈折が常光と違い、未対応なので false
+    pub fn traceable(&self) -> bool {
+        !matches!(self, Bire::In { mode: 1 | 3, .. })
+    }
 }
 
 impl Bire {
