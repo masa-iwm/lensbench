@@ -474,7 +474,7 @@ fn user_items(
     glass_dirs: &[PathBuf],
     lens_cat: &LensCatalog,
 ) -> (Vec<Value>, Option<lensbench_project::UserCatalog>) {
-    use lensbench_project::{Block, UserCatalog};
+    use lensbench_project::UserCatalog;
     let abs = vfs::canonicalize(path).unwrap_or_else(|_| path.clone());
     let Ok(txt) = lensbench_project::read_text(&abs) else {
         return (Vec::new(), None);
@@ -511,150 +511,179 @@ fn user_items(
     } else {
         cat.vendor.clone()
     };
-    let rows = cat
-        .items
-        .iter()
-        .map(|(name, it)| {
-            let mut row = json!({
-                "vendor": vendor,
-                "part": name,
-                "description": it.description,
-                "source": { "catalog": abs.display().to_string(), "item": name },
-            });
-            if let Some(k) = it.kind {
-                row["category"] = json!(k.as_str());
-            }
-            if !it.url.is_empty() {
-                row["url"] = json!(it.url);
-            }
-            // CAD データ（STEP・図面）の公式 URL
-            if !it.cad.is_empty() {
-                row["cad"] = json!(it.cad);
-            }
-            if !it.specs.is_empty() {
-                row["specs"] = json!(it.specs);
-            }
-            if !it.tags.is_empty() {
-                row["tags"] = json!(it.tags);
-            }
-            if !it.source.is_empty() {
-                row["spec_source"] = json!(it.source);
-            }
-            if !it.checked.is_empty() {
-                row["checked"] = json!(it.checked);
-            }
-            // 枠付きの品の枠（置くと機構部品として付く）
-            if let Some(f) = it.frame() {
-                row["frame"] = json!(f.spec);
-            }
-            // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
-            if it.is_incomplete() {
-                let size = |k: &str| match it.specs.get(k) {
-                    Some(Value::Array(a)) => {
-                        num(a.iter().filter_map(Value::as_f64).fold(0.0, f64::max))
-                    }
-                    Some(x) => x.as_f64().map_or(Value::Null, num),
-                    None => Value::Null,
-                };
-                let m = row.as_object_mut().expect("rows are JSON objects");
-                m.extend(
-                    json!({
-                        "kind": "incomplete", "mirror": false, "efl": Value::Null,
-                        "diameter": size("diameter"), "thickness": size("thickness"),
-                        "elements": 0, "pieces": 0, "glasses": [],
-                        "incomplete": true, "missing": it.missing(),
-                    })
-                    .as_object()
-                    .expect("an object literal")
-                    .clone(),
-                );
-                if !it.title.is_empty() {
-                    row["title"] = json!(it.title);
-                }
-                if !it.notes.is_empty() {
-                    row["notes"] = json!(it.notes);
-                }
-                return row;
-            }
-            let summary = match (it.mech(), it.blocks()) {
-                // 機構部品: 面が無く寸法だけ
-                (Some(m), []) => {
-                    let id = m.bores.iter().map(|b| b.diameter).fold(f64::INFINITY, f64::min);
-                    let len = if m.length > 0.0 {
-                        m.length
-                    } else {
-                        m.bores.iter().map(|b| b.z1).fold(0.0, f64::max)
-                            - m.bores.iter().map(|b| b.z0).fold(f64::INFINITY, f64::min).min(0.0)
-                    };
-                    Ok(json!({
-                        "kind": "mech", "mirror": false, "efl": Value::Null,
-                        "diameter": num(if m.outer_diameter > 0.0 { m.outer_diameter } else { id }),
-                        "thickness": num(len),
-                        "elements": 0, "pieces": 0, "glasses": [],
-                        "mech": m,
-                        "inner_diameter": num(id),
-                    }))
-                }
-                (_, [Block::Mirror {
-                    radius,
-                    conic,
-                    semi,
-                    coat,
-                    ..
-                }]) => {
-                    let r = radius.unwrap_or(0.0);
-                    Ok(json!({
-                        "kind": "mirror", "mirror": true,
-                        "efl": num(if r == 0.0 { f64::INFINITY } else { -r / 2.0 }),
-                        "diameter": num(2.0 * semi), "thickness": 0.0,
-                        "elements": 0, "pieces": 0, "glasses": [],
-                        "radius": r, "conic": conic, "coat": coat,
-                    }))
-                }
-                (_, [Block::Splitter { spec, .. }]) => {
-                    use lensbench_project::SplitForm;
-                    let (d, t, pieces) = match spec.form {
-                        SplitForm::Cube => (spec.size, spec.size, 2),
-                        SplitForm::Plate => (2.0 * spec.semi, spec.thickness, 1),
-                        SplitForm::Ideal => (2.0 * spec.semi, 0.0, 0),
-                    };
-                    let mut sp = serde_json::to_value(spec).unwrap_or_default();
-                    for k in ["t", "r", "d", "arm", "angle"] {
-                        sp.as_object_mut().map(|m| m.remove(k));
-                    }
-                    Ok(json!({
-                        "kind": "splitter", "mirror": false,
-                        "efl": Value::Null, "diameter": num(d), "thickness": num(t),
-                        "elements": 0, "pieces": pieces,
-                        "glasses": if spec.glass.is_empty() { vec![] } else { vec![spec.glass.clone()] },
-                        "coat": spec.coat, "splitter": sp,
-                    }))
-                }
-                // 空気中の面の並びだけ（Jones 面の偏光子・波長板など）: 玉が無いので面から。ガラスのある面の
-                // 並びは玉の要約へ回し、そこで「面の並びは空気中の面だけ」のエラーにする
-                (_, [Block::Surfaces { surfaces, .. }])
-                    if surfaces.iter().all(|q| q.glass.is_none()) =>
-                {
-                    let semi = surfaces.iter().map(|q| q.semi.value()).fold(0.0, f64::max);
-                    Ok(json!({
-                        "kind": "surfaces", "mirror": false, "efl": Value::Null,
-                        "diameter": num(2.0 * semi),
-                        "thickness": surfaces.iter().map(|q| q.t).sum::<f64>(),
-                        "elements": 0, "pieces": 0, "surfaces": surfaces.len(), "glasses": [],
-                        "jones": surfaces.iter().any(|q| q.jones.is_some() || q.polarizer.is_some() || q.waveplate.is_some()),
-                    }))
-                }
-                _ => user_lens_summary(&abs, name, &it.glass_catalogs, glass_dirs, lens_cat),
-            };
-            match summary {
-                Ok(Value::Object(m)) => row.as_object_mut().expect("rows are JSON objects").extend(m),
-                Ok(_) => {}
-                Err(e) => row["error"] = json!(String::from(e)),
-            }
+    // 品ごとの要約は独立（玉は 1 つ置いた系を作って見るので重い）。並列に作り、行は品の順のまま。
+    // 読んだファイルの記録（一覧のキャッシュの読み直しの判定）はスレッドごとなので、品ごとに取って戻す
+    let items: Vec<_> = cat.items.iter().collect();
+    let rows = lensbench_core::par::map(&items, |&(name, it)| {
+        vfs::recording(|| user_item_row(&abs, &vendor, name, it, glass_dirs, lens_cat))
+    });
+    let rows = rows
+        .into_iter()
+        .map(|(row, read)| {
+            vfs::record(&read);
             row
         })
         .collect();
     (rows, Some(cat))
+}
+
+/// lensbench 形式のカタログの品 1 つの行
+fn user_item_row(
+    abs: &std::path::Path,
+    vendor: &str,
+    name: &str,
+    it: &lensbench_project::UserItem,
+    glass_dirs: &[PathBuf],
+    lens_cat: &LensCatalog,
+) -> Value {
+    use lensbench_project::Block;
+    let mut row = json!({
+        "vendor": vendor,
+        "part": name,
+        "description": it.description,
+        "source": { "catalog": abs.display().to_string(), "item": name },
+    });
+    if let Some(k) = it.kind {
+        row["category"] = json!(k.as_str());
+    }
+    if !it.url.is_empty() {
+        row["url"] = json!(it.url);
+    }
+    // CAD データ（STEP・図面）の公式 URL
+    if !it.cad.is_empty() {
+        row["cad"] = json!(it.cad);
+    }
+    if !it.specs.is_empty() {
+        row["specs"] = json!(it.specs);
+    }
+    if !it.tags.is_empty() {
+        row["tags"] = json!(it.tags);
+    }
+    if !it.source.is_empty() {
+        row["spec_source"] = json!(it.source);
+    }
+    if !it.checked.is_empty() {
+        row["checked"] = json!(it.checked);
+    }
+    // 枠付きの品の枠（置くと機構部品として付く）
+    if let Some(f) = it.frame() {
+        row["frame"] = json!(f.spec);
+    }
+    // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
+    if it.is_incomplete() {
+        let size = |k: &str| match it.specs.get(k) {
+            Some(Value::Array(a)) => num(a.iter().filter_map(Value::as_f64).fold(0.0, f64::max)),
+            Some(x) => x.as_f64().map_or(Value::Null, num),
+            None => Value::Null,
+        };
+        let m = row.as_object_mut().expect("rows are JSON objects");
+        m.extend(
+            json!({
+                "kind": "incomplete", "mirror": false, "efl": Value::Null,
+                "diameter": size("diameter"), "thickness": size("thickness"),
+                "elements": 0, "pieces": 0, "glasses": [],
+                "incomplete": true, "missing": it.missing(),
+            })
+            .as_object()
+            .expect("an object literal")
+            .clone(),
+        );
+        if !it.title.is_empty() {
+            row["title"] = json!(it.title);
+        }
+        if !it.notes.is_empty() {
+            row["notes"] = json!(it.notes);
+        }
+        return row;
+    }
+    let summary = match (it.mech(), it.blocks()) {
+        // 機構部品: 面が無く寸法だけ
+        (Some(m), []) => {
+            let id = m
+                .bores
+                .iter()
+                .map(|b| b.diameter)
+                .fold(f64::INFINITY, f64::min);
+            let len = if m.length > 0.0 {
+                m.length
+            } else {
+                m.bores.iter().map(|b| b.z1).fold(0.0, f64::max)
+                    - m.bores
+                        .iter()
+                        .map(|b| b.z0)
+                        .fold(f64::INFINITY, f64::min)
+                        .min(0.0)
+            };
+            Ok(json!({
+                "kind": "mech", "mirror": false, "efl": Value::Null,
+                "diameter": num(if m.outer_diameter > 0.0 { m.outer_diameter } else { id }),
+                "thickness": num(len),
+                "elements": 0, "pieces": 0, "glasses": [],
+                "mech": m,
+                "inner_diameter": num(id),
+            }))
+        }
+        (
+            _,
+            [Block::Mirror {
+                radius,
+                conic,
+                semi,
+                coat,
+                ..
+            }],
+        ) => {
+            let r = radius.unwrap_or(0.0);
+            Ok(json!({
+                "kind": "mirror", "mirror": true,
+                "efl": num(if r == 0.0 { f64::INFINITY } else { -r / 2.0 }),
+                "diameter": num(2.0 * semi), "thickness": 0.0,
+                "elements": 0, "pieces": 0, "glasses": [],
+                "radius": r, "conic": conic, "coat": coat,
+            }))
+        }
+        (_, [Block::Splitter { spec, .. }]) => {
+            use lensbench_project::SplitForm;
+            let (d, t, pieces) = match spec.form {
+                SplitForm::Cube => (spec.size, spec.size, 2),
+                SplitForm::Plate => (2.0 * spec.semi, spec.thickness, 1),
+                SplitForm::Ideal => (2.0 * spec.semi, 0.0, 0),
+            };
+            let mut sp = serde_json::to_value(spec).unwrap_or_default();
+            for k in ["t", "r", "d", "arm", "angle"] {
+                sp.as_object_mut().map(|m| m.remove(k));
+            }
+            Ok(json!({
+                "kind": "splitter", "mirror": false,
+                "efl": Value::Null, "diameter": num(d), "thickness": num(t),
+                "elements": 0, "pieces": pieces,
+                "glasses": if spec.glass.is_empty() { vec![] } else { vec![spec.glass.clone()] },
+                "coat": spec.coat, "splitter": sp,
+            }))
+        }
+        // 空気中の面の並びだけ（Jones 面の偏光子・波長板など）: 玉が無いので面から。ガラスのある面の
+        // 並びは玉の要約へ回し、そこで「面の並びは空気中の面だけ」のエラーにする
+        (_, [Block::Surfaces { surfaces, .. }]) if surfaces.iter().all(|q| q.glass.is_none()) => {
+            let semi = surfaces.iter().map(|q| q.semi.value()).fold(0.0, f64::max);
+            Ok(json!({
+                "kind": "surfaces", "mirror": false, "efl": Value::Null,
+                "diameter": num(2.0 * semi),
+                "thickness": surfaces.iter().map(|q| q.t).sum::<f64>(),
+                "elements": 0, "pieces": 0, "surfaces": surfaces.len(), "glasses": [],
+                "jones": surfaces.iter().any(|q| q.jones.is_some() || q.polarizer.is_some() || q.waveplate.is_some()),
+            }))
+        }
+        _ => user_lens_summary(abs, name, &it.glass_catalogs, glass_dirs, lens_cat),
+    };
+    match summary {
+        Ok(Value::Object(m)) => row
+            .as_object_mut()
+            .expect("rows are JSON objects")
+            .extend(m),
+        Ok(_) => {}
+        Err(e) => row["error"] = json!(String::from(e)),
+    }
+    row
 }
 
 /// lensbench 形式のカタログの玉の要約（項目を 1 つ置いた系を作って見る）。品がレンズカタログの玉
@@ -787,12 +816,15 @@ mod tests {
         vfs::create_dir_all(&out).unwrap();
         let lb = root().join("examples/lenses/LB");
         std::fs::copy(lb.join("PCX-100.zmx"), out.join("lens.zmx")).unwrap();
+        // 品は並列に要約する数だけ置く（外の .zmx を読むのは作業のスレッド。その記録も deps に入る）
+        let item = json!({
+            "glass_catalogs": ["SCHOTT"],
+            "blocks": [{"type": "zmx", "id": "Z", "path": "../outside/lens.zmx", "stop": false}]});
+        let items: serde_json::Map<String, Value> =
+            (1..=8).map(|i| (format!("Z{i}"), item.clone())).collect();
         vfs::write(
             d.join("mine.json"),
-            json!({"version": 1, "vendor": "ME", "items": {"Z1": {
-                "glass_catalogs": ["SCHOTT"],
-                "blocks": [{"type": "zmx", "id": "Z", "path": "../outside/lens.zmx", "stop": false}]}}})
-            .to_string(),
+            json!({"version": 1, "vendor": "ME", "items": items}).to_string(),
         )
         .unwrap();
         let g = [root().join("tests/glass")];

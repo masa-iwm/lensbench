@@ -438,9 +438,17 @@ fn note(p: &Path) {
     });
 }
 
+/// [`recording`] で得たパス paths を、このスレッドの記録に足す（並列の作業のスレッドで記録した分を、呼び出した
+/// スレッドの記録へ戻すのに使う。記録していなければ何もしない）
+pub fn record(paths: &[PathBuf]) {
+    for p in paths {
+        note(p);
+    }
+}
+
 /// f を呼び、その間にこのスレッドで [`read`]・[`read_dir`] で開いた（開こうとした）パスを並べて返す（読み直しの
 /// 判定に使う。カタログの一覧が参照する、見ているフォルダの外のファイル）。ほかのスレッドで読んだものは
-/// 入らない（f の中で並列に読むなら使えない）。入れ子にすると内側の分は外側にも入る
+/// 入らない（f の中で並列に読むなら、作業のスレッドごとに recording で取って [`record`] で戻す）。入れ子にすると内側の分は外側にも入る
 pub fn recording<R>(f: impl FnOnce() -> R) -> (R, Vec<PathBuf>) {
     let outer = RECORD.with(|r| r.borrow_mut().replace(Default::default()));
     let res = f();
