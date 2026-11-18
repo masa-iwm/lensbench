@@ -595,7 +595,7 @@
               ]
             },
             "q": {
-              "description": "量（x・y・z・l・m・n）",
+              "description": "量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長）",
               "type": "string"
             },
             "surf": {

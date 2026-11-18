@@ -141,7 +141,7 @@ set {i}: line break in the result	組 {i}: 結果に改行
 set {i}: {e}	組 {i}: {e}
 
 # optim
-ray quantity {s} (x, y, z, l, m, n)	光線の量 {s}（x・y・z・l・m・n）
+ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・opth）
 paraxial {s} ({})	近軸量 {s}（{}）
 user term {}: {} results for {} systems	ユーザーの項 {}: システム {} 個に結果 {} 個
 user term {}: {} residuals (expected {})	ユーザーの項 {}: 残差 {} 個（{} 個のはず）
@@ -187,7 +187,7 @@ can't compute the Zernike coefficients	Zernike 係数を計算できません
 can't compute the coupling efficiency	結合効率を計算できません
 the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})	光線が止まりました（波長 {w}、瞳 ({px:.3}, {py:.3})、面 {}）
 can't find the ray derivatives	光線の微分を求められません
-z of a ray is by differences	光線の z は差分
+z and opth of a ray are by differences	光線の z と opth は差分
 OPD reference {} (exit pupil or infinity only)	OPD の基準 {}（射出瞳・無限遠のみ）
 can't compute the OPD	OPD を計算できません
 a system with an ideal lens	理想レンズのシステム
@@ -1642,6 +1642,8 @@ OpticStudio's ZERN fits {os} terms, so its value differs from the term's	OpticSt
 OpticStudio's pupil quadrature (2·Ring arms) differs from the term's, so its value differs	OpticStudio の瞳の求積（腕 2·Ring 本）が項と違うので、値が違います
 paraxial {q} has no OpticStudio operand	近軸量 {q} に当たる OpticStudio のオペランドはありません
 ray quantity {q}	光線の量 {q}
+{op} of OpticStudio is on the image surface only	OpticStudio の {op} は像面だけです
+the chief ray stopped (surface {})	主光線が止まりました（面 {}）
 no field	視野がありません
 OpticStudio needs a field number here (not a normalized field)	OpticStudio ではここに視野の番号が要ります（正規化視野は使えません）
 only a ZPL macro given by number can be written as ZPLM	番号で指定した ZPL マクロだけ ZPLM として書けます

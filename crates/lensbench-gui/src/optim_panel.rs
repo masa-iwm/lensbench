@@ -43,7 +43,7 @@ const PARAXIAL_Q: &[&str] = &[
     "efl", "pmag", "enpp", "epd", "expp", "expd", "wfno", "pwfn", "isfn", "pimh", "totr", "obsn",
     "isna",
 ];
-const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n"];
+const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth"];
 const REFERENCE: &[&str] = &["centroid", "chief"];
 /// スポット・波面の瞳の求積（arms は opticstudio、n は grid と使う）
 const QUADRATURE: &[&str] = &["lensbench", "opticstudio", "grid"];

@@ -173,14 +173,26 @@ fn ray_and_opd_jacobian() {
     for name in SYSTEMS {
         let s = load(name);
         let field = FieldSel::Index(s.fields.len() - 1);
-        for q in [RayQ::X, RayQ::Y, RayQ::L, RayQ::M, RayQ::N] {
+        let qs = [
+            RayQ::X,
+            RayQ::Y,
+            RayQ::L,
+            RayQ::M,
+            RayQ::N,
+            RayQ::TraX,
+            RayQ::TraY,
+            RayQ::TraR,
+        ];
+        for q in qs {
             for surf in [None, Some(s.image() - 1)] {
+                // 主光線との差は主波長でない波長でも（主光線は主波長）
+                let wave = matches!(q, RayQ::TraX | RayQ::TraY | RayQ::TraR).then_some(0);
                 check_jac(
                     name,
                     &s,
                     TermKind::Ray {
                         field,
-                        wave: None,
+                        wave,
                         px: 0.3,
                         py: 0.8,
                         surf,

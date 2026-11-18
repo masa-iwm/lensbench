@@ -22,7 +22,7 @@
 - 項の追加: `--term '{"type":"paraxial","q":"efl","target":50,"weight":10}'`（複数可）か `--terms 項の配列.json` で
   既定の評価関数に項を足す（`--merit none` なら足した項だけ）。種類は `spot`・`wavefront`・`mtf`・`paraxial`（`q`: efl・pmag・
   enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna。値は System Data と同じ。efl・pimh は `wave` でその波長を主波長にした値、OpticStudio の EFFL・PIMH の Wave）・`ray`（1 本の実光線の面 `surf` の
-  局所座標での `q`: x・y・z・l・m・n、OpticStudio の REAX〜REAC 相当）・`opd`（1 本の光線の OPD [波]、OPDC 相当）・
+  局所座標での `q`: x・y・z・l・m・n、OpticStudio の REAX〜REAC 相当。`trax`・`tray`・`trar` は主波長の主光線からのずれ、TRAX・TRAY・TRAR。`opth` は面 `surf` までの光路長、OPTH。無限遠物体では同じ波長の主光線が面 1 を通る点を通り光線に垂直な面から測る）・`opd`（1 本の光線の OPD [波]、OPDC 相当）・
   `zernike`（係数 [波]）・`coupling`（ファイバ結合効率）・`thickness`（面 `surf` から `to` までの中心の厚みの和。OpticStudio の CTVA・TTHI、`min`・`max` で CTGT・CTLT。`edge: true` で縁の厚み（面と次の面の矢高を、それぞれの半直径 × `zone`（既定 1）の高さで測る。ETVA・ETGT・ETLT）。`each` は和でなく面ごとに `min`・`max` と比べてはみ出しを足す（`all`・`air`・`glass` の面だけ。MNCT・MNCA・MNCG・MNET・MNEA・MNEG・MX* と同じ値））。`calc`（`op`: sum・diff・prod・div・abs・sqrt（√|a|）・reci を、`args` の数か 1 つの値の項（weight・config・min・max は書かない）に。OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI。0 で割ると項の誤り）。視野・波長は 1 始まり（視野は `[hx, hy]` も可）、目標 `target` の
   既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・zernike・coupling）は `target` の代わりに
   片側の条件 `min`（値 ≥ min なら残差 0）・`max`（値 ≤ max なら残差 0）を書ける。キーの一覧は `lensbench_design::merit`、スキーマは [terms](schema/terms.schema.json)（種類ごとに使えるキーだけを受け、知らないキーはエラー）。結果の `terms` に足した項の前後の値。

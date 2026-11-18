@@ -880,7 +880,7 @@ fn supports_analytic(s: &System, k: &TermKind) -> bool {
         TermKind::Wavefront { .. } | TermKind::Opd { .. } => {
             flat_image(s) && (s.ropd == 1 || s.ropd == 2)
         }
-        TermKind::Ray { q, .. } => *q != RayQ::Z,
+        TermKind::Ray { q, .. } => !matches!(q, RayQ::Z | RayQ::Opth),
         _ => false,
     }
 }
@@ -1110,6 +1110,32 @@ fn ray_term(
             x.status.code()
         );
     }
+    // TRAX・TRAY・TRAR は主波長の主光線との差
+    let tra = matches!(q, RayQ::TraX | RayQ::TraY | RayQ::TraR);
+    let tc = if tra {
+        let tc = s.try_trace(
+            field,
+            &[0.0],
+            &[0.0],
+            Some(s.primary),
+            Some(j),
+            ps.is_some(),
+        )?;
+        if tc.rays[0].status.surf().is_some() {
+            invalid!(
+                "the chief ray stopped (surface {})",
+                tc.rays[0].status.code()
+            );
+        }
+        Some(tc)
+    } else {
+        None
+    };
+    let (dx, dy) = match &tc {
+        Some(tc) => (x.xyz[0] - tc.rays[0].xyz[0], x.xyz[1] - tc.rays[0].xyz[1]),
+        None => (0.0, 0.0),
+    };
+    let r = dx.hypot(dy);
     let v = match q {
         RayQ::X => x.xyz[0],
         RayQ::Y => x.xyz[1],
@@ -1117,18 +1143,43 @@ fn ray_term(
         RayQ::L => x.lmn[0],
         RayQ::M => x.lmn[1],
         RayQ::N => x.lmn[2],
+        RayQ::TraX => dx,
+        RayQ::TraY => dy,
+        RayQ::TraR => r,
+        RayQ::Opth if s.infinite() => {
+            // 平行な光線は光線に垂直な同じ面から出るので、主光線の面 1 までの光路長を引けば OpticStudio の基準になる
+            let c = s.try_trace(field, &[0.0], &[0.0], Some(w), Some(1), false)?;
+            if c.rays[0].status.surf().is_some() {
+                invalid!(
+                    "the chief ray stopped (surface {})",
+                    c.rays[0].status.code()
+                );
+            }
+            x.opl - c.rays[0].opl
+        }
+        RayQ::Opth => x.opl,
     };
     let jac = match ps {
-        Some(ps) if q != RayQ::Z => {
+        Some(ps) if !matches!(q, RayQ::Z | RayQ::Opth) => {
             let g = s.land_grad(&t, w, ps, None)?;
+            let gc = match &tc {
+                Some(tc) => s.land_grad(tc, s.primary, ps, None)?,
+                None => vec![0.0; g.len()],
+            };
             let d: Vec<f64> = (0..ps.len())
                 .map(|k| {
                     let g = &g[k * 4..k * 4 + 4];
+                    let (gx, gy) = (g[0] - gc[k * 4], g[1] - gc[k * 4 + 1]);
                     match q {
                         RayQ::X => g[0],
                         RayQ::Y => g[1],
                         RayQ::L => g[2],
                         RayQ::M => g[3],
+                        RayQ::TraX => gx,
+                        RayQ::TraY => gy,
+                        // 長さ 0 では向きが決まらないので 0
+                        RayQ::TraR if r > 0.0 => (dx * gx + dy * gy) / r,
+                        RayQ::TraR => 0.0,
                         // l² + m² + n² = 1
                         _ => -(x.lmn[0] * g[2] + x.lmn[1] * g[3]) / x.lmn[2],
                     }
@@ -1139,7 +1190,7 @@ fn ray_term(
             }
             Some(d)
         }
-        Some(_) => invalid!("z of a ray is by differences"),
+        Some(_) => invalid!("z and opth of a ray are by differences"),
         None => None,
     };
     Ok((vec![v - target], jac))

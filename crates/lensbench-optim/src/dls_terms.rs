@@ -223,6 +223,13 @@ pub enum RayQ {
     L,
     M,
     N,
+    /// 主波長の主光線（瞳の中心）からの x・y のずれと、その長さ（同じ面。OpticStudio の TRAX・TRAY・TRAR）
+    TraX,
+    TraY,
+    TraR,
+    /// 光路長 [レンズ単位]（OpticStudio の OPTH）。無限遠物体では、同じ波長の主光線が面 1 を通る点を通り光線に垂直な
+    /// 面から測る（OpticStudio 26.1 の実測どおり）。有限物体では物点から
+    Opth,
 }
 
 impl RayQ {
@@ -234,7 +241,11 @@ impl RayQ {
             "l" | "reaa" => RayQ::L,
             "m" | "reab" => RayQ::M,
             "n" | "reac" => RayQ::N,
-            _ => invalid!("ray quantity {s} (x, y, z, l, m, n)"),
+            "trax" => RayQ::TraX,
+            "tray" => RayQ::TraY,
+            "trar" => RayQ::TraR,
+            "opth" => RayQ::Opth,
+            _ => invalid!("ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth)"),
         })
     }
     pub fn name(&self) -> &'static str {
@@ -245,6 +256,10 @@ impl RayQ {
             RayQ::L => "l",
             RayQ::M => "m",
             RayQ::N => "n",
+            RayQ::TraX => "trax",
+            RayQ::TraY => "tray",
+            RayQ::TraR => "trar",
+            RayQ::Opth => "opth",
         }
     }
 }

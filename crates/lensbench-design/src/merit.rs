@@ -11,7 +11,7 @@
 //! | `mtf` | field、wave、freq [cycles/mm]、dir（"tan"・"sag"・"both"）、n（瞳の標本数）、target |
 //! | `paraxial` | q（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna）、wave（efl・pimh だけ、null は主波長）、target |
 //! | `centroid` | field、wave（null は多色）、rings（3）、q（x・y）、target [レンズ単位]。像面の光束の重心（スポットの項と同じ光線・重み） |
-//! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n）、target |
+//! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n、主波長の主光線からのずれ trax・tray・trar、光路長 opth）、target |
 //! | `opd` | field、wave、px・py、target [波] |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |

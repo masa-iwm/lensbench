@@ -69,6 +69,10 @@ const RAY: &[(&str, &str, bool)] = &[
     ("REAA", "l", false),
     ("REAB", "m", false),
     ("REAC", "n", false),
+    ("TRAX", "trax", true),
+    ("TRAY", "tray", true),
+    ("TRAR", "trar", true),
+    ("OPTH", "opth", true),
 ];
 
 /// 標本の番号（1 が 32 × 32、1 つ増すごとに 2 倍）から瞳の標本数
@@ -147,7 +151,10 @@ fn kind_of(
     }
     if let Some((_, q, len)) = RAY.iter().find(|(o, _, _)| *o == op) {
         m.insert("type".into(), json!("ray"));
-        m.insert("surf".into(), json!(int(INT1)?));
+        // TRAX・TRAY・TRAR は像面（Int1 は使わない）
+        if !op.starts_with("TRA") {
+            m.insert("surf".into(), json!(int(INT1)?));
+        }
         m.insert("wave".into(), wave(int(INT2)?)?);
         m.insert("field".into(), norm_field()?);
         m.insert("px".into(), json!(num(data(3))?));
@@ -428,6 +435,7 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
             unit: cx.unit,
             primary: cx.primary,
             image: cx.image,
+            nodes: Default::default(),
         };
         let (src_i, src) = (src, &cx.rows[src]);
         let mut m = match at.kind(src_i) {
@@ -483,9 +491,9 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
 fn is_length(op: &str) -> bool {
     PARAXIAL.iter().chain(RAY).any(|(o, _, l)| *o == op && *l)
         || [
-            "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAR", "TRAC", "TRAD",
-            "TRAE", "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG",
-            "MXCG", "MNET", "MXET", "MNEA", "MNEG",
+            "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAC", "TRAD", "TRAE",
+            "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
+            "MNET", "MXET", "MNEA", "MNEG",
         ]
         .contains(&op)
 }
@@ -726,7 +734,13 @@ fn row_of(
                 return Err(format!("ray quantity {q}"));
             };
             let (hx, hy) = field()?;
-            let surf = num("surf").unwrap_or(s.image() as f64);
+            let mut surf = num("surf").unwrap_or(s.image() as f64);
+            if op.starts_with("TRA") {
+                if surf != s.image() as f64 {
+                    return Err(format!("{op} of OpticStudio is on the image surface only"));
+                }
+                surf = 0.0;
+            }
             let w = if wave() == 0.0 { primary } else { wave() };
             let p = [
                 surf,
@@ -1006,6 +1020,28 @@ mod tests {
     }
 
     #[test]
+    fn calc_rows_stop_growing() {
+        // 前の 2 行を足す行を重ねると、入れ子の行の数は倍々に増える。上限を超えた行は注意にする
+        let mut rows = vec![
+            "CONS 0 0 0 0 0 0 1 0 0 0".to_string(),
+            "CONS 0 0 0 0 0 0 1 0 0 0".to_string(),
+        ];
+        for k in 3..=30 {
+            rows.push(format!("SUMM {} {} 0 0 0 0 0 1 0 0", k - 1, k - 2));
+        }
+        let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+        let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+        let z = terms_from_zmx(&mf, 2, 9);
+        assert!(
+            !z.notes.is_empty() && z.notes.iter().all(|n| n.contains("too deeply")),
+            "{:?}",
+            z.notes
+        );
+        assert!(z.terms.len() >= 10, "{}", z.terms.len());
+        assert!(serde_json::to_string(&z.terms).unwrap().len() < 2_000_000);
+    }
+
+    #[test]
     fn calc_rows_become_terms() {
         let rows = [
             "EFFL 0 2 0 0 0 0 100 0 0 0",
@@ -1153,6 +1189,8 @@ mod tests {
             json!({"type": "ray", "surf": 3, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "m", "target": 0.0, "weight": 1.0}),
             json!({"type": "paraxial", "q": "totr", "max": 60.0, "weight": 4.0}),
             json!({"type": "paraxial", "q": "pimh", "wave": 3, "target": 20.0, "weight": 1.0}),
+            json!({"type": "ray", "wave": 1, "field": [0.0, 1.0], "px": 0.5, "py": 0.5, "q": "trar", "target": 0.0, "weight": 1.0}),
+            json!({"type": "ray", "surf": 4, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "opth", "target": 50.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
             json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
@@ -1168,12 +1206,13 @@ mod tests {
             json!({"type": "coupling"}),
             json!({"type": "thickness", "surf": 1, "to": 3, "edge": true, "target": 3.0}),
             json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0}),
+            json!({"type": "ray", "surf": 3, "field": 1, "q": "trax"}),
         ];
         let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
         let systems = [s.clone(), s.clone()];
         let before = [MeritRow::blank("from the zmx")];
         let (rows, notes) = rows_from_terms(&all, &systems, &before);
-        assert_eq!(notes.len(), 5, "{notes:?}");
+        assert_eq!(notes.len(), 6, "{notes:?}");
         // 行を .zmx に書いて読み直す
         let mut txt = String::new();
         for r in before.iter().chain(&rows) {

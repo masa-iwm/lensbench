@@ -161,7 +161,7 @@ pub struct RaySpec {
     pub py: Option<f64>,
     /// 面の番号（物体 0、既定は像面）
     pub surf: Option<usize>,
-    /// 量（x・y・z・l・m・n）
+    /// 量（x・y・z・l・m・n。trax・tray・trar は主波長の主光線からのずれ、opth は光路長）
     pub q: String,
     pub target: Option<f64>,
 }

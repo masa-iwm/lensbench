@@ -13,6 +13,9 @@ pub(super) const OPS: &[&str] = &[
     "SUMM", "OSUM", "DIFF", "PROD", "DIVI", "ABSO", "SQRT", "RECI", "CONS",
 ];
 
+/// 1 行の項に入れ子にする行の数の上限（前の計算の行を 2 つずつ参照すると倍々に増える）
+const MAX_NODES: usize = 1000;
+
 /// 写すときの共通の値
 pub(super) struct Rows<'a> {
     pub(super) rows: &'a [MeritRow],
@@ -20,11 +23,14 @@ pub(super) struct Rows<'a> {
     pub(super) unit: f64,
     pub(super) primary: usize,
     pub(super) image: usize,
+    /// 今の行に入れ子にした行の数
+    pub(super) nodes: std::cell::Cell<usize>,
 }
 
 impl Rows<'_> {
     /// 行 k（0 始まり）の項の種類のキー。計算の行は calc、Standard の ZERN は fit も入れる
     pub(super) fn kind(&self, k: usize) -> Result<Map<String, Value>, String> {
+        self.nodes.set(0);
         self.kind_at(k, 0)
     }
 
@@ -40,7 +46,8 @@ impl Rows<'_> {
         if self.unit != 1.0 {
             return Err("calc rows are read only in mm lens units".into());
         }
-        if depth > 64 {
+        self.nodes.set(self.nodes.get() + 1);
+        if depth > 64 || self.nodes.get() > MAX_NODES {
             return Err("calc rows nested too deeply".into());
         }
         let int = |i: usize| r.int(i).map_err(|e| e.to_string());
