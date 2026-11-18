@@ -243,15 +243,14 @@ impl PupilInterp {
     /// 1 軸の Lagrange の重みと足の最初の番号
     fn weights(&self, x: f64) -> Option<([f64; LAG], usize)> {
         let t = (x - self.x0) / self.h;
-        if !t.is_finite() {
+        // 足が格子に収まる t は [LAG/2 − 1, m − LAG/2)。先に範囲を見る（NaN・無限大もここで落ちる）。
+        // t ≥ 0 なので、整数への変換（切り捨て）がそのまま floor になる
+        let lo = (LAG / 2 - 1) as f64;
+        if !(t >= lo && t < self.m as f64 - (LAG / 2) as f64) {
             return None;
         }
-        // floor（libm を呼ばない）
-        let fl = t as isize - ((t as isize) as f64 > t) as isize;
-        let i = fl - (LAG as isize / 2 - 1);
-        if i < 0 || i as usize + LAG > self.m {
-            return None;
-        }
+        let i = t as isize - (LAG as isize / 2 - 1);
+        debug_assert!(i >= 0 && i as usize + LAG <= self.m);
         let u = t - i as f64; // 足の点 0..LAG に対する位置
         let wv = crate::interp::lagrange::<LAG>(u);
         Some((wv, i as usize))
@@ -366,6 +365,29 @@ impl PupilInterp {
         if !have[0] && !have[1] {
             return;
         }
+        if have[0] && have[1] {
+            // 2 本とも求まる行（ほとんどの行）: 2 本の和を並べて計算する（それぞれの足し算の順は下と同じ）
+            let (c0, c1) = (&col[0][..], &col[1][..]);
+            for (i, &x) in v.iter().enumerate() {
+                let Some((wv, iv)) = self.weights(x) else {
+                    continue;
+                };
+                let a0: &[f64; LAG] = c0[iv..iv + LAG].try_into().expect("slice of LAG");
+                let a1: &[f64; LAG] = c1[iv..iv + LAG].try_into().expect("slice of LAG");
+                let mut acc = [0.0f64; 2];
+                for a in 0..LAG {
+                    acc[0] += a0[a] * wv[a];
+                    acc[1] += a1[a] * wv[a];
+                }
+                if acc[0].is_finite() {
+                    oa[i] = acc[0];
+                }
+                if acc[1].is_finite() {
+                    ob[i] = acc[1];
+                }
+            }
+            return;
+        }
         for (i, &x) in v.iter().enumerate() {
             let Some((wv, iv)) = self.weights(x) else {
                 continue;
@@ -374,7 +396,7 @@ impl PupilInterp {
                 if !have[j] {
                     continue;
                 }
-                let c = &col[j][iv..iv + LAG];
+                let c: &[f64; LAG] = col[j][iv..iv + LAG].try_into().expect("slice of LAG");
                 let mut acc = 0.0;
                 for a in 0..LAG {
                     acc += c[a] * wv[a];
