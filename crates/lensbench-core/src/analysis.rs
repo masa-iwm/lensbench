@@ -92,7 +92,17 @@ pub(crate) fn to_ref_plane_point(expp: f64, pc: V3, kc: V3) -> V3 {
 
 #[doc(hidden)]
 pub fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f64) -> f64 {
-    crate::pupil::RefSurface::of(s, pc, kc).opl(s.image_index(w), q, k, opl)
+    ref_opl(s, w, pc, kc)(q, k, opl)
+}
+
+/// [`to_ref`] を同じ参照の主光線 (pc, kc) で何本もの光線に使う形: 基準の面と像空間の屈折率を 1 度だけ求め、
+/// 光線 (q, k, opl) ごとの換算を返す（光線ごとに求め直すと、面の数だけの走査が光線の本数ぶん掛かる）。値は
+/// [`to_ref`] と同じビット
+#[doc(hidden)]
+pub fn ref_opl(s: &System, w: usize, pc: V3, kc: V3) -> impl Fn(V3, V3, f64) -> f64 {
+    let r = crate::pupil::RefSurface::of(s, pc, kc);
+    let ni = s.image_index(w);
+    move |q, k, opl| r.opl(ni, q, k, opl)
 }
 
 /// 視野の光線 (px, py) の OPD [波]。ref_primary: 参照球の中心を主波長の主光線に（OpticStudio の光線の OPD）、
@@ -140,10 +150,11 @@ pub(crate) fn opd_chief(
     }
     let (pc, kc) = (rp.rays[0].xyz, rp.rays[0].lmn);
     let c = &rc.rays[0];
-    let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
+    let to = ref_opl(s, w, pc, kc);
+    let lc = to(c.xyz, c.lmn, c.opl) + c.lens_opd;
     let wl = s.wave(w).mm();
     let opd = (0..r.len())
-        .map(|i| (lc - (to_ref(s, w, pc, kc, r.xyz[i], r.lmn[i], r.opl[i]) + r.lens_opd[i])) / wl)
+        .map(|i| (lc - (to(r.xyz[i], r.lmn[i], r.opl[i]) + r.lens_opd[i])) / wl)
         .collect();
     Ok((Opd { rays: r, opd }, rp))
 }

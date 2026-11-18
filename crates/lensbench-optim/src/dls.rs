@@ -1,6 +1,6 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
 use crate::pupil::{apodized_gauss, pupil_gauss_shared};
-use lensbench_core::analysis::{mtf_only, to_ref, MtfMethod, ZernKind};
+use lensbench_core::analysis::{mtf_only, ref_opl, to_ref, MtfMethod, ZernKind};
 use lensbench_core::error::{Error, Result};
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::math::*;
@@ -1068,7 +1068,7 @@ fn opd_term(
         let (dqc, dkcw, doc) = ray_d(ni, c.lmn, &glc[q * 4..q * 4 + 4], goc[q]);
         let dlc = to_ref_d(
             s,
-            w,
+            ni,
             pc,
             kc,
             c.xyz,
@@ -1076,7 +1076,7 @@ fn opd_term(
             (dpc, dkc, dqc, dkcw, doc, dn, de),
         );
         let (dq, dk, dop) = ray_d(ni, x.lmn, &gl[q * 4..q * 4 + 4], go[q]);
-        let dl = to_ref_d(s, w, pc, kc, x.xyz, x.lmn, (dpc, dkc, dq, dk, dop, dn, de));
+        let dl = to_ref_d(s, ni, pc, kc, x.xyz, x.lmn, (dpc, dkc, dq, dk, dop, dn, de));
         d.push((dlc - dl) / wl);
     }
     if d.iter().any(|v| !v.is_finite()) {
@@ -1254,11 +1254,11 @@ fn centroid_term(
     Ok((vec![sc / sw - target], j))
 }
 
-/// to_ref（[`lensbench_core::analysis`]）の値の微分。d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
+/// to_ref（[`lensbench_core::analysis`]）の値の微分。ni は像空間の屈折率（波長 w の [`System::image_index`]）、d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
 #[allow(clippy::too_many_arguments)]
 fn to_ref_d(
     s: &System,
-    w: usize,
+    ni: f64,
     pc: V3,
     kc: V3,
     q: V3,
@@ -1266,7 +1266,6 @@ fn to_ref_d(
     d: (V3, V3, V3, V3, f64, f64, f64),
 ) -> f64 {
     let (dpc, dkc, dq, dk, dopl, dni, dexpp) = d;
-    let ni = s.image_index(w);
     let expp = s.exit_pupil();
     let dd = sub(q, pc);
     let ddd = sub(dq, dpc);
@@ -1397,12 +1396,11 @@ fn wfe_term(
         };
         let (cxyz, clmn) = (bc.xyz[0], bc.lmn[0]);
         let (pc, kc) = (bp.xyz[0], bp.lmn[0]);
-        let lc = to_ref(s, w, pc, kc, cxyz, clmn, bc.opl[0]) + bc.lens_opd[0];
+        let to = ref_opl(s, w, pc, kc);
+        let lc = to(cxyz, clmn, bc.opl[0]) + bc.lens_opd[0];
         let wl = s.wave(w).mm();
         let opd: Vec<f64> = (0..b.len())
-            .map(|i| {
-                (lc - (to_ref(s, w, pc, kc, b.xyz[i], b.lmn[i], b.opl[i]) + b.lens_opd[i])) / wl
-            })
+            .map(|i| (lc - (to(b.xyz[i], b.lmn[i], b.opl[i]) + b.lens_opd[i])) / wl)
             .collect();
         let idx: Vec<usize> = (0..n).filter(|&i| b.ok(i) && opd[i].is_finite()).collect();
         let sw: f64 = idx.iter().map(|&i| wts[i]).sum();
@@ -1448,7 +1446,7 @@ fn wfe_term(
                 let (dqc, dkc_w, doc) = ray_d(ni, c.lmn, &glc[q * 4..q * 4 + 4], goc[q]);
                 let dlc = to_ref_d(
                     s,
-                    w,
+                    ni,
                     pc,
                     kc,
                     c.xyz,
@@ -1465,7 +1463,7 @@ fn wfe_term(
                     );
                     let dl = to_ref_d(
                         s,
-                        w,
+                        ni,
                         pc,
                         kc,
                         x.xyz,
