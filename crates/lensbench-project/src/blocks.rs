@@ -582,6 +582,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         "jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path".into(),
                     );
                 }
+                if v.iter()
+                    .any(|s| s.before.is_some() || s.after != After::None)
+                {
+                    return Err(
+                        "surfaces with tilts or decenters (before, after) are not supported in a surface list on the return path".into(),
+                    );
+                }
                 // 面の並びは空気中なので、理想レンズも向きを変えずに使える
                 if v.iter().any(|s| {
                     (!lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial)
@@ -1131,7 +1138,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         {
                             return Err("a mirror written as row can't have radius, conic, semi, aperture or coat (write them in the row)".into());
                         }
-                        mirror_row(r)?
+                        let m = mirror_row(r)?;
+                        if fold && (m.before.is_some() || m.after != After::None) {
+                            return Err("a mirror can't have both tilt of the block and tilts or decenters in the row".into());
+                        }
+                        m
                     }
                     None => Surface {
                         mat: Material::Mirror,
@@ -1374,7 +1385,8 @@ pub(crate) fn block_id(b: &Block) -> &str {
     }
 }
 
-/// 鏡のブロックの行（[`Block::Mirror`] の row）を面に。鏡の働きで、厚さ・媒質・絞り・傾きの無いもの
+/// 鏡のブロックの行（[`Block::Mirror`] の row）を面に。鏡の働きで、厚さ・媒質・絞りの無いもの。
+/// 面の前後の傾き偏心（before・after）は持てる（ブロックの tilt とは一緒に使えない）
 fn mirror_row(r: &crate::sysfile_v2::Row) -> lensbench_core::Result<Surface> {
     if r.stop || r.object || r.image || r.t != 0.0 || r.medium.is_some() {
         return Err("row of a mirror can't have stop, object, image, thickness or medium".into());
@@ -1383,8 +1395,8 @@ fn mirror_row(r: &crate::sysfile_v2::Row) -> lensbench_core::Result<Surface> {
     if !m.is_mirror() || m.reflect.is_some() {
         return Err("row of a mirror needs a reflecting action".into());
     }
-    if m.typ() == SurfType::CoordBrk || m.before.is_some() || m.after != After::None {
-        return Err("row of a mirror can't tilt or decenter (use tilt of the block)".into());
+    if m.typ() == SurfType::CoordBrk {
+        return Err("row of a mirror can't be a coordinate break (use tilt of the block)".into());
     }
     Ok(m)
 }

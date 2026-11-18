@@ -388,14 +388,32 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     let aps0: Vec<&Aperture> = s0.surfaces.iter().map(|x| &x.ap).collect();
     let aps1: Vec<&Aperture> = s1.surfaces.iter().map(|x| &x.ap).collect();
     assert_eq!(aps0, aps1);
-    // 面の前後の傾き偏心は書けないので誤り
+    // 面の前後の傾き偏心は面の行で書き、同じ系に戻る
     let q = Project::from_json(&proj(
         r#"[{"surface": 0, "fields": {"before": {"d": [0.5, 0, 0, 0, 0], "order": 0}}}]"#,
     ))
     .unwrap();
-    let e = blocks_item(&q, &env, &["L1".into()], "").unwrap_err();
+    let sq = expand(&q, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
+    let item = blocks_item(&q, &env, &["L1".into()], "").unwrap();
+    let js = serde_json::to_value(&item.blocks()[0]).unwrap();
+    assert_eq!(
+        js["source"]["surfaces"][0]["row"]["before"]["decenter"],
+        serde_json::json!([0.5, 0.0]),
+        "{js}"
+    );
+    cat.items.insert("L1".into(), item);
+    cat.save(&dir.join("my.json")).unwrap();
+    let s2 = expand(
+        &Project::from_json(&txt2).unwrap(),
+        &env,
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap();
     std::fs::remove_dir_all(&dir).ok();
-    assert!(e.message().unwrap_or_default().contains("before"), "{e}");
+    same_rays(&s2, &sq, 1e-12);
 }
 
 /// 標準面でない面（Odd Asphere・トロイダル・Fresnel）の玉も、面を直接書いた玉に保存して同じ光線になる

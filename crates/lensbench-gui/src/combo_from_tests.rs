@@ -231,8 +231,8 @@ fn raw_blocks_build_the_same() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// 試験用の .zmx は、像面を傾けた C0・C1 と多重構成のもの以外が組合せになり、組合せから作った系が元と同じ。
-/// 玉の表（units）は同じ玉に、要素の id の群（.zmx の全体）が 1 つ加わるだけ
+/// 試験用の .zmx は要素に分かれる（組合せから作った系が元と同じかは分けるときに確かめる）。まるごとの取り込み
+/// （分けられない .zmx）も C0・C1 で、系が元と同じで、玉の表（units）は同じ玉に要素の id の群（.zmx の全体）が 1 つ加わるだけ
 #[test]
 fn zmx_files_become_combos() {
     let gd = vec![root().join("tests/glass")];
@@ -260,10 +260,12 @@ fn zmx_files_become_combos() {
         };
         // 書ける .zmx は要素に分ける（同じ系かは分けるときに確かめる）
         if !c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange) {
-            split.push(name);
-            continue;
+            split.push(name.clone());
+            // まるごとの取り込みは C0・C1 で確かめる（分けられない .zmx に使う）
+            if !["C0", "C1"].contains(&name.as_str()) {
+                continue;
+            }
         }
-        assert_eq!(c.picks.len(), 1, "{name}");
         let o = lensbench_project::open::OpenSpec {
             glass_dirs: &gd,
             cfg: 1,
@@ -271,6 +273,10 @@ fn zmx_files_become_combos() {
         };
         let s = lensbench_project::open::open(f, &o).unwrap().system;
         let base = f.parent().unwrap();
+        let p = lensbench_project::zmx_project(std::slice::from_ref(&s), "system.zmx").unwrap();
+        let c = Combo::from_project(&p, base).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(c.picks.len(), 1, "{name}");
+        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");
         let t = lensbench_project::Project::from_json(&c.project().to_string())
             .and_then(|q| {
                 lensbench_project::expand(
@@ -298,13 +304,13 @@ fn zmx_files_become_combos() {
         );
         ok.push(name);
     }
-    assert!(ok.len() + split.len() >= 30, "{ok:?} {split:?} {no:?}");
+    assert!(split.len() >= 30, "{ok:?} {split:?} {no:?}");
     assert!(
-        ok.len() >= 2 && split.contains(&"A0".to_string()),
+        ok.len() == 2 && split.contains(&"A0".to_string()),
         "{ok:?} {split:?}"
     );
-    // 作業フォルダからの相対パスで開いても（GUI の引数）。C0 は面の傾きのある鏡があるので分けずに取り込む
-    let rel = Path::new("../../tests/refs/C0/system.zmx");
+    // 作業フォルダからの相対パスで開いても（GUI の引数）。o4 は要素に分けられないので、まるごと取り込む
+    let rel = Path::new("../../tests/opd_solve/o4.zmx");
     let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
     assert!(
         Path::new(&c.picks[0].path).is_absolute(),

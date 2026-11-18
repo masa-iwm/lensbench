@@ -360,14 +360,9 @@ pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec>
 }
 
 /// ほかの欄で書けない面を、システムファイル（版 2）の面の行で（[`SurfSpec::row`]）。鏡（ブロックの鏡で書く）・
-/// ゴーストの反射・座標ブレークと、面の前後の傾き偏心（玉を裏返す・往復するときに向きを決められない）は書かない
+/// ゴーストの反射・座標ブレークは書かない。面の前後の傾き偏心は行に書く（その玉は裏返せず、復路も通れない）
 fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
-    if f.is_mirror()
-        || f.reflect.is_some()
-        || f.typ() == SurfType::CoordBrk
-        || f.before.is_some()
-        || f.after != After::None
-    {
+    if f.is_mirror() || f.reflect.is_some() || f.typ() == SurfType::CoordBrk {
         return Err("this surface can't be written as a row".into());
     }
     let mut r = crate::sysfile_v2::write::surface_row(f, false)?;
@@ -384,15 +379,10 @@ fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     })
 }
 
-/// 鏡の面を、鏡のブロックの行（[`Block::Mirror`] の row）に。厚さ・絞りの印は書かない。傾き偏心のある鏡・
-/// ゴーストの反射は書けない
+/// 鏡の面を、鏡のブロックの行（[`Block::Mirror`] の row）に。厚さ・絞りの印は書かない。面の前後の傾き偏心
+/// （before・after）は行に書く。座標ブレーク・ゴーストの反射は書けない
 pub fn mirror_row(f: &Surface) -> lensbench_core::Result<crate::sysfile_v2::Row> {
-    if !f.is_mirror()
-        || f.reflect.is_some()
-        || f.typ() == SurfType::CoordBrk
-        || f.before.is_some()
-        || f.after != After::None
-    {
+    if !f.is_mirror() || f.reflect.is_some() || f.typ() == SurfType::CoordBrk {
         return Err("this surface can't be written as a mirror row".into());
     }
     let mut r = crate::sysfile_v2::write::surface_row(f, false)?;

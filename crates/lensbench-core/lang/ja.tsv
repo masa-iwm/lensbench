@@ -2174,7 +2174,9 @@ row of a surface can't have stop, object or image (use set_stop of the block)	�
 a mirror written as row can't have radius, conic, semi, aperture or coat (write them in the row)	行で書いたミラーには radius・conic・semi・aperture・coat を書けません（行に書く）
 row of a mirror can't have stop, object, image, thickness or medium	ミラーの row には stop・object・image・厚み・媒質を書けません
 row of a mirror needs a reflecting action	ミラーの row には反射の働きが要ります
-row of a mirror can't tilt or decenter (use tilt of the block)	ミラーの row では傾け・偏心できません（ブロックの tilt で）
+row of a mirror can't be a coordinate break (use tilt of the block)	ミラーの row は座標ブレークにできません（ブロックの tilt で）
+a mirror can't have both tilt of the block and tilts or decenters in the row	ミラーにはブロックの tilt と row のチルト・偏心を一緒に書けません
+surfaces with tilts or decenters (before, after) are not supported in a surface list on the return path	復路の面の並びでは、前後にチルト・偏心のある面（before・after）は使えません
 this surface can't be written as a mirror row	この面はミラーの行で書けません
 image: stop, object, t, medium and coordinate_break can't be written	image には stop・object・t・medium・coordinate_break を書けません
 object: stop, image, t, coordinate_break, before and after can't be written	object には stop・image・t・coordinate_break・before・after を書けません

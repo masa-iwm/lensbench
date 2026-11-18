@@ -162,7 +162,13 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
                 stop = Some((id.clone(), i));
             }
         }
-        blocks.push(json!({ "type": "air", "t": dirs[k].t }));
+        // 鏡の後の空気は鏡の後の向きで（dirs の鏡の面は鏡の前の向きのまま）
+        let t = if s.surfaces[k].is_mirror() {
+            -dirs[k].t
+        } else {
+            dirs[k].t
+        };
+        blocks.push(json!({ "type": "air", "t": t }));
         j = k + 1;
     }
     let at = |j: usize| -> Option<Value> {
@@ -293,7 +299,8 @@ mod tests {
         }
     }
 
-    /// tests/refs の .zmx: 分けられたものは元の系と同じ（split の中で確かめる）。分けられない .zmx も開ける
+    /// tests/refs の .zmx はどれも要素に分かれ、元の系と同じ（split の中で確かめる）。面の傾き偏心
+    /// （C0・C1 の玉の面と折り返しの鏡）も行で書く
     #[test]
     fn refs_split_or_import() {
         let glass = vec![root().join("tests/glass")];
@@ -310,6 +317,6 @@ mod tests {
             n[usize::from(split)] += 1;
             eprintln!("{} {}", f.display(), if split { "split" } else { "import" });
         }
-        assert!(n[1] > 0, "{n:?}");
+        assert!(n[1] > 0 && n[0] == 0, "{n:?}");
     }
 }

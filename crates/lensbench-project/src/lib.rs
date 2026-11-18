@@ -166,10 +166,12 @@ mod retarder_spec_tests {
         };
         let back = surface_spec(&surf(&q).unwrap(), true).unwrap();
         assert_eq!(back.tilt, Some([0.5, -0.25]));
-        // 順序 1（ty → tx）の傾きは、両方 0 でないと tilt では書けない（片方だけなら同じ向き）
+        // 順序 1（ty → tx）の傾きは、両方 0 でないと tilt では書けない（片方だけなら同じ向き）。面の行で書き、同じ面に戻る
         let mut s = surf(&q).unwrap();
         s.before.as_mut().unwrap().order = 1;
-        assert!(surface_spec(&s, true).is_err());
+        let r = surface_spec(&s, true).unwrap();
+        assert!(r.tilt.is_none() && r.row.is_some());
+        assert_eq!(surf(&r).unwrap().before, s.before);
         let q1 = SurfSpec {
             tilt: Some([0.0, -0.25]),
             ..Default::default()
