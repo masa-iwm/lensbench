@@ -195,8 +195,15 @@ pub(crate) fn spot(
             .unwrap_or(0.55)
             * f
     });
-    // 縮尺は点と Airy 円が入る大きさ（µm）
-    let half_um = (rmax * 1e3).max(airy_um.unwrap_or(0.0)).max(1e-3) * 1.15;
+    // 枠の幅（µm）は OpticStudio の Scale と同じ: 指定（spot_bar）があればその長さ、無ければ点と Airy 円が入る
+    // きりのよい長さ（1・2・5×10^n）。枠の下の縮尺は倍率 1 のとき枠の幅
+    let fit_um = (rmax * 1e3).max(airy_um.unwrap_or(0.0)).max(1e-3) * 2.3;
+    let box_um = if st.spot_bar > 0.0 {
+        st.spot_bar
+    } else {
+        crate::widgets::scale_bar::nice_up(fit_um * 1e-3).map_or(fit_um, |mm| mm * 1e3)
+    };
+    let half_um = box_um / 2.0;
     let n = fields.len();
     let avail = ui.available_width();
     let cols = ((avail / 150.0).floor() as usize).clamp(1, n.max(1));
@@ -214,6 +221,35 @@ pub(crate) fn spot(
             .small()
             .color(theme::weak_text(&vis)),
         );
+        // 縮尺の長さ（0 は自動）
+        ui.label(
+            RichText::new(tr("Scale bar"))
+                .small()
+                .color(theme::weak_text(&vis)),
+        );
+        ui.add(
+            egui::DragValue::new(&mut st.spot_bar)
+                .speed(1.0)
+                .range(0.0..=1e6)
+                .custom_formatter(|v, _| {
+                    if v <= 0.0 {
+                        tr("Auto").to_string()
+                    } else {
+                        format!("{} µm", fmt_sig(v, 6))
+                    }
+                })
+                // 「40 µm」も「40」も読む。数でなければ（「自動」など）0＝自動
+                .custom_parser(|t| {
+                    Some(
+                        t.trim()
+                            .trim_end_matches("µm")
+                            .trim()
+                            .parse::<f64>()
+                            .unwrap_or(0.0),
+                    )
+                }),
+        )
+        .on_hover_text(tr("Width of each box and length of the scale bar below it (0: automatic), like Scale in OpticStudio"));
         if let Some(a) = airy_um {
             ui.label(
                 RichText::new(trf("Dashed circle: Airy radius {} µm", &[&fmt_sig(a, 3)]))
@@ -294,6 +330,30 @@ pub(crate) fn spot(
                             );
                             painter.circle_filled(p, 1.3, col);
                         }
+                    }
+                    // 枠の下に縮尺（OpticStudio と同じく倍率 1 では枠の幅、拡大したら見えている幅までのきりのよい長さ）
+                    let (br, bp) = ui.allocate_painter(egui::vec2(cell, 18.0), Sense::hover());
+                    let at = br.rect.left_bottom() + egui::vec2(4.0, -1.0);
+                    let al = egui::Align2::LEFT_BOTTOM;
+                    let weak = theme::weak_text(&vis);
+                    if (view.0 - 1.0).abs() < 1e-4 {
+                        crate::widgets::scale_bar::draw_len(
+                            &bp,
+                            at,
+                            al,
+                            s as f64 * 1e3,
+                            box_um * 1e-3,
+                            weak,
+                        );
+                    } else {
+                        crate::widgets::scale_bar::draw(
+                            &bp,
+                            at,
+                            al,
+                            s as f64 * 1e3,
+                            cell - 8.0,
+                            weak,
+                        );
                     }
                     // 指した所の座標（重心から µm）
                     if let Some(p) = resp.hover_pos() {

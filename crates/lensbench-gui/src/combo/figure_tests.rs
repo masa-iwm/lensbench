@@ -108,6 +108,15 @@ fn hits_follow_paint_order() {
         let h = at(80.0, 204.0);
         assert_eq!((h.num, h.dim), (None, Some(7)));
         assert_eq!(at(80.0, 210.0).dim, None);
+        // 先頭に自動で置く絞りが BS の平らな前面に重なる（間隔 0）: 面の線の上は絞り、少し中は BS
+        let mut sc = sc;
+        sc.lead = true;
+        sc.stop = Some((Pos2::new(0.0, 10.0), Vec2::new(0.0, -1.0), 5.0));
+        let at = |x, y| hits(&sc, Some(Pos2::new(x, y)));
+        let h = at(1.0, 10.0);
+        assert_eq!((h.lead, h.el), (true, None));
+        let h = at(5.0, 10.0);
+        assert_eq!((h.lead, h.el), (true, Some(0)));
     });
 }
 

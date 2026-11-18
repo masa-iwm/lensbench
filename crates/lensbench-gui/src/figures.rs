@@ -406,6 +406,8 @@ pub(crate) struct FigState {
     /// スポット図の倍率と、中心のずれ [µm]
     pub spot_zoom: f32,
     pub spot_pan: [f32; 2],
+    /// スポット図の縮尺の長さ [µm]（0 は自動: 枠に合わせたきりのよい長さ）
+    pub spot_bar: f64,
 }
 
 impl Default for FigState {
@@ -419,6 +421,7 @@ impl Default for FigState {
             mtf_prev: true,
             spot_zoom: 1.0,
             spot_pan: [0.0; 2],
+            spot_bar: 0.0,
         }
     }
 }

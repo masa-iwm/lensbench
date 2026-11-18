@@ -115,6 +115,17 @@ pub(super) fn figure(
         view.hover_surfs = h.surfs;
     }
     paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak);
+    // 縮尺（レイアウトのパネルの図。OpticStudio と同じく左下）
+    if view.nav {
+        crate::widgets::scale_bar::draw(
+            &painter,
+            rect.left_bottom() + egui::vec2(12.0, -6.0),
+            Align2::LEFT_BOTTOM,
+            xf.s,
+            (rect.width() / 5.0).clamp(40.0, 160.0),
+            weak,
+        );
+    }
     // 組合せを変える操作（寸法の書き換え・ドラッグで動かす）は組合せの図だけ
     interact(ui, resp, combo.as_deref_mut(), view, &h, xf.s);
     let editable = combo.is_some();
@@ -688,6 +699,10 @@ pub(super) fn hits(sc: &Scene, q: Option<Pos2>) -> Hits {
         let u = Vec2::new(-n.y, n.x);
         if w.dot(u).abs() < 6.0 && w.dot(n).abs() < r + 14.0 {
             h.lead = true;
+            // 面の線の上（3 pt 以内）なら、重なる BS・玉より絞り（間隔 0 で最初の要素の平らな前面に重なるとき）
+            if w.dot(u).abs() < 3.0 {
+                h.el = None;
+            }
         }
     }
     for (i, (_, polys)) in sc.mechs.iter().enumerate() {

@@ -88,6 +88,8 @@ Recent files	最近のファイル
 Recent file: {}	最近のファイル: {}
 Back to main window	メインウィンドウに戻す
 Half width of a box {} µm	枠の半幅 {} µm
+Scale bar	縮尺
+Width of each box and length of the scale bar below it (0: automatic), like Scale in OpticStudio	各枠の幅と、枠の下の縮尺の長さ（0 は自動）。OpticStudio の Scale と同じ
 Next panel (Shift for previous)	次のパネルへ（Shift で前へ）
 Positive	正
 Both signs	正負とも

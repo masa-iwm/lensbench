@@ -8,6 +8,7 @@ use crate::i18n::trf;
 pub(crate) mod cell;
 pub(crate) mod choices;
 pub(crate) mod menu;
+pub(crate) mod scale_bar;
 #[cfg(test)]
 mod ui_tests;
 

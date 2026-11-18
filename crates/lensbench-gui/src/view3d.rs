@@ -406,6 +406,15 @@ pub(crate) fn show(
             );
         }
     }
+    // 縮尺（正射影なので図のどこでも同じ。OpticStudio と同じく左下）
+    crate::widgets::scale_bar::draw(
+        &painter,
+        rect.left_bottom() + Vec2::new(12.0, -6.0),
+        egui::Align2::LEFT_BOTTOM,
+        s as f64,
+        (rect.width() / 5.0).clamp(40.0, 160.0),
+        weak,
+    );
     painter.text(
         rect.right_bottom() - Vec2::new(10.0, 8.0),
         egui::Align2::RIGHT_BOTTOM,
