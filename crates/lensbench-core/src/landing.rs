@@ -16,7 +16,6 @@ use crate::action::Action;
 use crate::error::Result;
 use crate::fermat::{raw_frames_d, PrepParam};
 use crate::math::*;
-use crate::par::scoped;
 use crate::param::{Kind, Param};
 use crate::shape::{sag, Shape};
 use crate::shape_param::sag_uu;
@@ -46,6 +45,16 @@ enum Mode {
 }
 
 /// 1 本の光線の、1 つの面での幾何（局所座標）
+/// 光線ごとの作業の配列（[`System::land_grad_raw`]、スレッドごとに使い回す）
+struct Scratch {
+    geo: Vec<Geo>,
+    xg: Vec<V3>,
+    kg: Vec<V3>,
+    q_shape: Vec<[f64; NY * 3]>,
+    q_dn: Vec<[f64; NY * 2]>,
+    cum: Vec<[f64; NY * 6]>,
+}
+
 #[derive(Clone, Copy)]
 struct Geo {
     /// 面の座標系の回転（物体に固定した座標系）
@@ -365,16 +374,35 @@ impl System {
             .min()
             .unwrap_or(ns);
 
-        let one = |i: usize| -> Vec<f64> {
+        // 光線ごとの作業の配列はスレッドごとに使い回す（光線ごとに確保・ゼロ埋めしない）。q_shape・q_dn・cum の
+        // k_min 以降は、読む前にその光線で書く。cum[ns] は 0 のまま書かない
+        let new_scratch = || Scratch {
+            geo: Vec::with_capacity(ns),
+            xg: Vec::with_capacity(ns),
+            kg: Vec::with_capacity(ns),
+            q_shape: vec![[0.0; NY * 3]; ns],
+            q_dn: vec![[0.0; NY * 2]; ns],
+            cum: vec![[0.0; NY * 6]; ns + 1],
+        };
+        let one = |scr: &mut Scratch, i: usize, out: &mut [f64]| {
             if t.rays[i].status.surf().is_some() {
-                return vec![f64::NAN; np * NY];
+                out.fill(f64::NAN);
+                return;
             }
+            let Scratch {
+                geo,
+                xg,
+                kg,
+                q_shape,
+                q_dn,
+                cum,
+            } = scr;
             // 面ごとの幾何
-            let mut geo: Vec<Geo> = Vec::with_capacity(ns);
+            geo.clear();
+            xg.clear();
+            kg.clear();
             let mut kprev_g = mv(&br[0].1, mtv(&r_first_glrs, t.k0[i]));
             let mut opl_prev = 0.0;
-            let mut xg: Vec<V3> = Vec::with_capacity(ns);
-            let mut kg: Vec<V3> = Vec::with_capacity(ns);
             for (k, rs) in t.rec.iter().enumerate() {
                 let d = &sf[rs.surf];
                 let (o, r) = br[k];
@@ -464,10 +492,7 @@ impl System {
                 }
                 r
             };
-            let mut q_shape = vec![[0.0; NY * 3]; ns];
-            let mut q_dn = vec![[0.0; NY * 2]; ns];
-            // 剛体運動の Q の後ろからの累積和（cum[k] = Σ_{j≥k} Q_j）
-            let mut cum = vec![[0.0; NY * 6]; ns + 1];
+            // 剛体運動の Q の後ろからの累積和（cum[k] = Σ_{j≥k} Q_j。q_shape・q_dn・cum は scr のもの）
             // 最後の面の出力そのものは y（W = 単位）
             let mut id = [0.0; NY * 6];
             for y in 0..NY {
@@ -598,7 +623,6 @@ impl System {
                 }
                 w_cur = mul(&wk, &m.j, 6, nout);
             }
-            let mut out = vec![0.0; np * NY];
             for q in 0..np {
                 let o = &mut out[q * NY..(q + 1) * NY];
                 for &(s, e, a, om) in &runs[q] {
@@ -631,18 +655,26 @@ impl System {
                     }
                 }
             }
-            out
         };
-        let rows: Vec<Vec<f64>> = if n >= 64 && !crate::par::sequential() {
-            (0..n)
-                .into_par_iter()
+        let mut out = vec![0.0; n * np * NY];
+        if np == 0 {
+            return Ok(out);
+        }
+        if n >= 64 && !crate::par::sequential() {
+            let c = crate::par::current();
+            out.par_chunks_mut(np * NY)
+                .enumerate()
                 .with_min_len(16)
-                .map(scoped(one))
-                .collect()
+                .for_each_init(new_scratch, |scr, (i, o)| {
+                    crate::par::with_ctx(&c, || one(scr, i, o))
+                });
         } else {
-            (0..n).map(one).collect()
-        };
-        Ok(rows.concat())
+            let mut scr = new_scratch();
+            for (i, o) in out.chunks_mut(np * NY).enumerate() {
+                one(&mut scr, i, o);
+            }
+        }
+        Ok(out)
     }
 
     /// 最後の面（t.last）の局所座標の z = dz の平面まで、追跡の結果 t を進める。位置 xyz・大域の p・
