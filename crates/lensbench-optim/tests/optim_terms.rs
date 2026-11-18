@@ -226,7 +226,14 @@ fn paraxial_zernike_coupling_values() {
         (ParaxQ::Isna, d.isna),
     ] {
         assert_eq!(ParaxQ::parse(q.name()).unwrap(), q);
-        let p = one(&s, TermKind::Paraxial { q, target: 0.0 });
+        let p = one(
+            &s,
+            TermKind::Paraxial {
+                q,
+                wave: None,
+                target: 0.0,
+            },
+        );
         let got = p.term_values(&[]).unwrap()[0].value();
         assert!(got == v || (got.is_nan() && v.is_nan()), "{q:?} {got} {v}");
     }
@@ -550,6 +557,7 @@ fn term_value_kinds() {
         weight: 1.0,
         kind: TermKind::Paraxial {
             q: ParaxQ::Efl,
+            wave: None,
             target: 1.0,
         },
     });

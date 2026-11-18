@@ -27,6 +27,8 @@ enum KeyKind {
     Choice(&'static [&'static str]),
     /// true・false
     Bool,
+    /// JSON の値の並び（`[` `]` を除いて、カンマで区切る。calc の引数）
+    JsonList,
     /// ZPL マクロ: 番号（ZPLnn.ZPL）か名前
     Macro,
     /// 文字列（ファイルのパス）
@@ -60,6 +62,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "thickness",
     "zplm",
     "plugin",
+    "calc",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -93,7 +96,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("n", Int),
             ("target", Num),
         ],
-        "paraxial" => &[("q", Choice(PARAXIAL_Q)), ("target", Num)],
+        "paraxial" => &[("q", Choice(PARAXIAL_Q)), ("wave", Int), ("target", Num)],
         "ray" => &[
             ("field", Field),
             ("wave", Int),
@@ -145,6 +148,14 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("file", Text),
             ("macro_dirs", Dirs),
         ],
+        "calc" => &[
+            (
+                "op",
+                Choice(&["sum", "diff", "prod", "div", "abs", "sqrt", "reci"]),
+            ),
+            ("args", JsonList),
+            ("target", Num),
+        ],
         "plugin" => &[
             ("name", Text),
             ("field", Field),
@@ -179,6 +190,7 @@ fn type_hint(ty: &str) -> &'static str {
         "zernike" => tr("Zernike coefficient [waves] − target"),
         "coupling" => tr("Fiber coupling efficiency − target (default target 1, finite object)"),
         "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
+        "calc" => tr("op of args (numbers or terms with a single value, e.g. {\"type\": \"paraxial\", \"q\": \"efl\", \"target\": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
         "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
@@ -508,6 +520,9 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
             KeyKind::Pair => pair(v).ok_or_else(bad)?,
             KeyKind::Choice(_) | KeyKind::Text => json!(v),
             KeyKind::Bool => json!(v == "true"),
+            KeyKind::JsonList => {
+                serde_json::from_str::<Value>(&format!("[{v}]")).map_err(|_| bad())?
+            }
             KeyKind::Json => {
                 let x: Value = serde_json::from_str(v).map_err(|_| bad())?;
                 if !x.is_object() {
@@ -871,7 +886,7 @@ pub(crate) fn terms_ui(
                             KeyKind::Field | KeyKind::Pair | KeyKind::Macro => {
                                 small_edit(ui, &mut v, 56.0, "").changed()
                             }
-                            KeyKind::Text | KeyKind::Dirs | KeyKind::Json => {
+                            KeyKind::Text | KeyKind::Dirs | KeyKind::Json | KeyKind::JsonList => {
                                 small_edit(ui, &mut v, 140.0, "").changed()
                             }
                             _ => small_edit(ui, &mut v, 48.0, "").changed(),

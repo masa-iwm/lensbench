@@ -17,6 +17,31 @@
         }
       ]
     },
+    "CalcArgSpec": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "$ref": "#"
+        }
+      ],
+      "description": "calc の引数"
+    },
+    "CalcName": {
+      "description": "calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci）",
+      "enum": [
+        "sum",
+        "diff",
+        "prod",
+        "div",
+        "abs",
+        "sqrt",
+        "reci"
+      ],
+      "type": "string"
+    },
     "DirName": {
       "description": "MTF の向き",
       "oneOf": [
@@ -502,6 +527,15 @@
             "type": {
               "const": "paraxial",
               "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号（efl・pimh だけ、その波長を主波長にした系の値）。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "weight": {
               "description": "重み（既定 1）",
@@ -1274,6 +1308,67 @@
             "type",
             "name",
             "output"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "calc の項: 引数（数か、1 つの値の項。項には weight・config・min・max を書かない）の op − target",
+          "properties": {
+            "args": {
+              "items": {
+                "$ref": "#/$defs/CalcArgSpec"
+              },
+              "type": "array"
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "op": {
+              "$ref": "#/$defs/CalcName"
+            },
+            "target": {
+              "description": "目標（既定 0）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "calc",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "op",
+            "args"
           ],
           "type": "object"
         }

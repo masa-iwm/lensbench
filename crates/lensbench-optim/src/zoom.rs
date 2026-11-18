@@ -189,6 +189,7 @@ fn problem(
             weight: weight * w,
             kind: TermKind::Paraxial {
                 q: spec.q,
+                wave: None,
                 target: t,
             },
         });

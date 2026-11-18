@@ -48,6 +48,57 @@ pub enum Medium {
     Glass,
 }
 
+/// 計算の項の演算
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalcOp {
+    /// 和（1 つ以上）
+    Sum,
+    /// a − b
+    Diff,
+    /// 積（1 つ以上）
+    Prod,
+    /// a / b（b = 0 は誤り）
+    Div,
+    /// |a|
+    Abs,
+    /// √|a|（OpticStudio の SQRT と同じく負の値も絶対値の根）
+    Sqrt,
+    /// 1 / a（a = 0 は誤り）
+    Reci,
+}
+
+impl CalcOp {
+    /// 項の JSON の名前
+    pub fn name(self) -> &'static str {
+        match self {
+            CalcOp::Sum => "sum",
+            CalcOp::Diff => "diff",
+            CalcOp::Prod => "prod",
+            CalcOp::Div => "div",
+            CalcOp::Abs => "abs",
+            CalcOp::Sqrt => "sqrt",
+            CalcOp::Reci => "reci",
+        }
+    }
+
+    /// 引数の数（下限, 上限）
+    pub fn arity(self) -> (usize, usize) {
+        match self {
+            CalcOp::Sum | CalcOp::Prod => (1, usize::MAX),
+            CalcOp::Diff | CalcOp::Div => (2, 2),
+            CalcOp::Abs | CalcOp::Sqrt | CalcOp::Reci => (1, 1),
+        }
+    }
+}
+
+/// 計算の項の引数
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalcArg {
+    /// 1 つの値の項の値（項と同じ構成で）
+    Term(Box<TermKind>),
+    Const(f64),
+}
+
 /// スポットの項が測る向き
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SpotAxis {
@@ -89,8 +140,13 @@ pub enum TermKind {
         dir: MtfDir,
         target: f64,
     },
-    /// 近軸量 − target（主波長の近軸追跡。[`System::paraxial`]）。ズーム軌跡の焦点距離・倍率の条件
-    Paraxial { q: ParaxQ, target: f64 },
+    /// 近軸量 − target（[`System::paraxial`]）。ズーム軌跡の焦点距離・倍率の条件。wave（0 始まり）は efl・pimh だけに
+    /// 書け、その波長を主波長にした系の値（OpticStudio の EFFL・PIMH の Wave）。None は主波長
+    Paraxial {
+        q: ParaxQ,
+        wave: Option<usize>,
+        target: f64,
+    },
     /// 像面の光束の重心の x（`y` が false）か y − target [レンズ単位]。光線・重みはスポットの項と同じ（ガウス求積、
     /// rings、wave None なら重みのある全波長）。けられた光線は除く。鏡で像点を合わせる補償など
     Centroid {
@@ -145,6 +201,13 @@ pub enum TermKind {
         target: f64,
         edge: Option<f64>,
         each: Option<Each>,
+    },
+    /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
+    /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
+    Calc {
+        op: CalcOp,
+        args: Vec<CalcArg>,
+        target: f64,
     },
     /// 利用者の項（残差はそのまま。目標との差は利用者の関数の中でとる）
     User(UserTermRef),
@@ -263,6 +326,26 @@ impl ParaxQ {
             ParaxQ::Isna => "isna",
         }
     }
+    /// 波長 wave（0 始まり、None は主波長）を主波長にした系の値。主波長を変えた系を作れなければ NaN
+    pub fn value_at(&self, s: &System, wave: Option<usize>) -> f64 {
+        match wave {
+            Some(w) if w != s.primary => {
+                let mut d = s.clone();
+                match d.edit_raw(|rx| {
+                    rx.primary = w;
+                    Ok(())
+                }) {
+                    Ok(()) => self.value(&d),
+                    Err(_) => f64::NAN,
+                }
+            }
+            _ => self.value(s),
+        }
+    }
+    /// 波長を選べる量（efl・pimh。OpticStudio の EFFL・PIMH の Wave）
+    pub fn has_wave(&self) -> bool {
+        matches!(self, ParaxQ::Efl | ParaxQ::Pimh)
+    }
     /// 系の値
     pub fn value(&self, s: &System) -> f64 {
         let p = s.paraxial();
@@ -350,7 +433,7 @@ impl UserTermRef {
 
 impl TermKind {
     /// 1 つの値と目標の差を残差にする項の目標
-    pub(crate) fn target(&self) -> Option<f64> {
+    pub fn target(&self) -> Option<f64> {
         match self {
             TermKind::Mtf { dir, target, .. } if *dir != MtfDir::Both => Some(*target),
             TermKind::Paraxial { target, .. }
@@ -359,7 +442,8 @@ impl TermKind {
             | TermKind::Opd { target, .. }
             | TermKind::Zernike { target, .. }
             | TermKind::Coupling { target, .. }
-            | TermKind::Thickness { target, .. } => Some(*target),
+            | TermKind::Thickness { target, .. }
+            | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
     }
@@ -522,7 +606,8 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Opd { .. }
         | TermKind::Zernike { .. }
         | TermKind::Coupling { .. }
-        | TermKind::Thickness { .. } => 1,
+        | TermKind::Thickness { .. }
+        | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }
 }

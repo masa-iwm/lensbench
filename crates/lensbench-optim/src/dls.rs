@@ -271,112 +271,7 @@ impl Problem {
             if !(t.weight >= 0.0) {
                 invalid!("term {i}: weight {}", t.weight);
             }
-            let (field, wave) = match &t.kind {
-                TermKind::Spot {
-                    field, wave, rings, ..
-                }
-                | TermKind::Wavefront {
-                    field, wave, rings, ..
-                }
-                | TermKind::Centroid {
-                    field, wave, rings, ..
-                } => {
-                    if *rings == 0 {
-                        invalid!("term {i}: the number of rings must be 1 or more");
-                    }
-                    (*field, *wave)
-                }
-                TermKind::Mtf {
-                    field, wave, freq, ..
-                } => {
-                    if !(*freq >= 0.0) {
-                        invalid!("term {i}: frequency {freq}");
-                    }
-                    (*field, *wave)
-                }
-                TermKind::Paraxial { q, target } => {
-                    if !target.is_finite() {
-                        invalid!("term {i}: target {target} of {}", q.name());
-                    }
-                    if !q.value(s).is_finite() {
-                        invalid!("term {i}: {} of the system is not finite", q.name());
-                    }
-                    continue;
-                }
-                TermKind::Ray {
-                    field, wave, surf, ..
-                } => {
-                    if let Some(j) = surf {
-                        if *j == 0 || *j > s.image() {
-                            invalid!("term {i}: surface {j} (1 to {})", s.image());
-                        }
-                    }
-                    (*field, Some(wave.unwrap_or(s.primary)))
-                }
-                TermKind::Opd { field, wave, .. } => (*field, Some(wave.unwrap_or(s.primary))),
-                TermKind::Zernike {
-                    field,
-                    wave,
-                    kind,
-                    term,
-                    fit,
-                    n,
-                    ..
-                } => {
-                    let max = if *kind == ZernKind::Fringe { 37 } else { 2016 };
-                    if *term == 0 || *term > max {
-                        invalid!("term {i}: Zernike term {term} (1 to {max})");
-                    }
-                    if let Some(f) = fit.filter(|f| *f < *term || *f > max) {
-                        invalid!("term {i}: Zernike terms to fit {f} ({term} to {max})");
-                    }
-                    if *n < 8 {
-                        invalid!("term {i}: Zernike grid {n}");
-                    }
-                    (*field, Some(wave.unwrap_or(s.primary)))
-                }
-                TermKind::Coupling { wave, .. } => {
-                    if s.infinite() {
-                        invalid!("term {i}: fiber coupling is only for finite-object systems");
-                    }
-                    (FieldSel::Norm(0.0, 0.0), Some(wave.unwrap_or(s.primary)))
-                }
-                TermKind::Thickness { surf, to, .. } => {
-                    if *surf == 0 || surf > to || *to >= s.image() {
-                        invalid!(
-                            "term {i}: thickness of surfaces {surf} to {to} (1 to {})",
-                            s.image() - 1
-                        );
-                    }
-                    continue;
-                }
-                TermKind::User(u) => {
-                    if u.0.rows() == 0 {
-                        invalid!("term {i}: user term {} has 0 residuals", u.0.name());
-                    }
-                    continue;
-                }
-            };
-            if let Some(tg) = t.kind.target() {
-                if !tg.is_finite() {
-                    invalid!("term {i}: target {tg}");
-                }
-            } else if t.side != Side::Eq {
-                invalid!("term {i}: min and max need a term with a target");
-            }
-            if let FieldSel::Index(f) = field {
-                if f >= s.fields.len() {
-                    invalid!("term {i}: field {f} (of {})", s.fields.len());
-                }
-            }
-            if let Some(w) = wave {
-                if w >= s.wavelengths.len() {
-                    invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
-                }
-            }
-            if wave.is_none() && waves(s, None).is_empty() {
-                invalid!("term {i}: no weighted wavelength");
-            }
+            check_kind(i, &t.kind, t.side, s)?;
         }
         Ok(())
     }
@@ -785,6 +680,11 @@ fn overlap(a: &Var, b: &Var) -> bool {
 
 /// 差分が射出瞳の揺れに負ける組（回転対称でない系か、対称を崩す変数での波面の項）
 fn noisy_fd(s: &System, k: &TermKind, v: Kind) -> bool {
+    if let TermKind::Calc { args, .. } = k {
+        return args
+            .iter()
+            .any(|a| matches!(a, CalcArg::Term(k) if noisy_fd(s, k, v)));
+    }
     matches!(
         k,
         TermKind::Wavefront { .. } | TermKind::Opd { .. } | TermKind::Zernike { .. }
@@ -831,6 +731,147 @@ fn flat_image(s: &System) -> bool {
     matches!(d.typ(), SurfType::Standard | SurfType::EvenAsph)
         && d.c == 0.0
         && d.asph().iter().all(|&a| a == 0.0)
+}
+
+/// 項の種類ごとの確かめ（i は項の番号、計算の項の引数は同じ番号で）
+fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
+    let (field, wave) = match k {
+        TermKind::Spot {
+            field, wave, rings, ..
+        }
+        | TermKind::Wavefront {
+            field, wave, rings, ..
+        }
+        | TermKind::Centroid {
+            field, wave, rings, ..
+        } => {
+            if *rings == 0 {
+                invalid!("term {i}: the number of rings must be 1 or more");
+            }
+            (*field, *wave)
+        }
+        TermKind::Mtf {
+            field, wave, freq, ..
+        } => {
+            if !(*freq >= 0.0) {
+                invalid!("term {i}: frequency {freq}");
+            }
+            (*field, *wave)
+        }
+        TermKind::Paraxial { q, wave, target } => {
+            if !target.is_finite() {
+                invalid!("term {i}: target {target} of {}", q.name());
+            }
+            if let Some(w) = wave {
+                if !q.has_wave() {
+                    invalid!("term {i}: wave goes with efl and pimh, not {}", q.name());
+                }
+                if *w >= s.wavelengths.len() {
+                    invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
+                }
+            }
+            if !q.value_at(s, *wave).is_finite() {
+                invalid!("term {i}: {} of the system is not finite", q.name());
+            }
+            return Ok(());
+        }
+        TermKind::Ray {
+            field, wave, surf, ..
+        } => {
+            if let Some(j) = surf {
+                if *j == 0 || *j > s.image() {
+                    invalid!("term {i}: surface {j} (1 to {})", s.image());
+                }
+            }
+            (*field, Some(wave.unwrap_or(s.primary)))
+        }
+        TermKind::Opd { field, wave, .. } => (*field, Some(wave.unwrap_or(s.primary))),
+        TermKind::Zernike {
+            field,
+            wave,
+            kind,
+            term,
+            fit,
+            n,
+            ..
+        } => {
+            let max = if *kind == ZernKind::Fringe { 37 } else { 2016 };
+            if *term == 0 || *term > max {
+                invalid!("term {i}: Zernike term {term} (1 to {max})");
+            }
+            if let Some(f) = fit.filter(|f| *f < *term || *f > max) {
+                invalid!("term {i}: Zernike terms to fit {f} ({term} to {max})");
+            }
+            if *n < 8 {
+                invalid!("term {i}: Zernike grid {n}");
+            }
+            (*field, Some(wave.unwrap_or(s.primary)))
+        }
+        TermKind::Coupling { wave, .. } => {
+            if s.infinite() {
+                invalid!("term {i}: fiber coupling is only for finite-object systems");
+            }
+            (FieldSel::Norm(0.0, 0.0), Some(wave.unwrap_or(s.primary)))
+        }
+        TermKind::Thickness { surf, to, .. } => {
+            if *surf == 0 || surf > to || *to >= s.image() {
+                invalid!(
+                    "term {i}: thickness of surfaces {surf} to {to} (1 to {})",
+                    s.image() - 1
+                );
+            }
+            return Ok(());
+        }
+        TermKind::Calc { op, args, .. } => {
+            let (lo, hi) = op.arity();
+            let n = args.len();
+            if n < lo || n > hi {
+                let op = op.name();
+                if lo == hi {
+                    invalid!("term {i}: {op} takes {lo} arguments ({n})");
+                }
+                invalid!("term {i}: {op} takes {lo} or more arguments ({n})");
+            }
+            for a in args {
+                match a {
+                    CalcArg::Term(k) if k.target().is_none() => {
+                        invalid!("term {i}: an argument of a calc term must be a term with a single value");
+                    }
+                    CalcArg::Term(k) => check_kind(i, k, Side::Eq, s)?,
+                    CalcArg::Const(c) if !c.is_finite() => invalid!("term {i}: constant {c}"),
+                    CalcArg::Const(_) => {}
+                }
+            }
+            (FieldSel::Norm(0.0, 0.0), Some(s.primary))
+        }
+        TermKind::User(u) => {
+            if u.0.rows() == 0 {
+                invalid!("term {i}: user term {} has 0 residuals", u.0.name());
+            }
+            return Ok(());
+        }
+    };
+    if let Some(tg) = k.target() {
+        if !tg.is_finite() {
+            invalid!("term {i}: target {tg}");
+        }
+    } else if side != Side::Eq {
+        invalid!("term {i}: min and max need a term with a target");
+    }
+    if let FieldSel::Index(f) = field {
+        if f >= s.fields.len() {
+            invalid!("term {i}: field {f} (of {})", s.fields.len());
+        }
+    }
+    if let Some(w) = wave {
+        if w >= s.wavelengths.len() {
+            invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
+        }
+    }
+    if wave.is_none() && waves(s, None).is_empty() {
+        invalid!("term {i}: no weighted wavelength");
+    }
+    Ok(())
 }
 
 fn supports_analytic(s: &System, k: &TermKind) -> bool {
@@ -912,8 +953,8 @@ fn eval_term(
             }
             Ok((r, None))
         }
-        TermKind::Paraxial { q, target } => {
-            let v = q.value(s);
+        TermKind::Paraxial { q, wave, target } => {
+            let v = q.value_at(s, *wave);
             if !v.is_finite() {
                 invalid!("{} of the system is not finite", q.name());
             }
@@ -1007,6 +1048,40 @@ fn eval_term(
                 invalid!("the thickness of surfaces {surf} to {to} is not finite");
             }
             Ok((vec![v - target], None))
+        }
+        TermKind::Calc { op, args, target } => {
+            let v: Vec<f64> = args
+                .iter()
+                .map(|a| match a {
+                    CalcArg::Const(c) => Ok(*c),
+                    CalcArg::Term(k) => {
+                        let r = eval_term(s, k, None, None, keep)?.0;
+                        Ok(r[0] + k.target().unwrap_or(0.0))
+                    }
+                })
+                .collect::<Result<_>>()?;
+            let x = match op {
+                CalcOp::Sum => v.iter().sum(),
+                CalcOp::Diff => v[0] - v[1],
+                CalcOp::Prod => v.iter().product(),
+                CalcOp::Div | CalcOp::Reci => {
+                    let (a, b) = if *op == CalcOp::Div {
+                        (v[0], v[1])
+                    } else {
+                        (1.0, v[0])
+                    };
+                    if b == 0.0 {
+                        invalid!("division by zero in a calc term");
+                    }
+                    a / b
+                }
+                CalcOp::Abs => v[0].abs(),
+                CalcOp::Sqrt => v[0].abs().sqrt(),
+            };
+            if !x.is_finite() {
+                invalid!("a calc term is not finite");
+            }
+            Ok((vec![x - target], None))
         }
         TermKind::User(u) => Ok((u.eval_checked(&[s])?.remove(0), None)),
     }

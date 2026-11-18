@@ -1598,13 +1598,27 @@ n goes with quadrature grid	n は quadrature grid と使います
 quadrature grid needs n	quadrature grid には n が要ります
 axis goes with spot	axis は spot の項と使います
 zone goes with edge	zone は edge と使います
+term {i}: {op} takes {lo} arguments ({n})	項 {i}: {op} の引数は {lo} 個です（{n} 個）
+term {i}: {op} takes {lo} or more arguments ({n})	項 {i}: {op} の引数は {lo} 個以上です（{n} 個）
+term {i}: an argument of a calc term must be a term with a single value	項 {i}: calc の項の引数は 1 つの値の項にしてください
+an argument of a calc term must be a term with a single value	calc の項の引数は 1 つの値の項にしてください
+term {i}: constant {c}	項 {i}: 定数 {c}
+division by zero in a calc term	calc の項で 0 で割りました
+the {op} calc term takes {lo} arguments ({n})	calc の項 {op} の引数は {lo} 個です（{n} 個）
+the {op} calc term takes {lo} or more arguments ({n})	calc の項 {op} の引数は {lo} 個以上です（{n} 個）
+a calc term is not finite	calc の項の値が有限ではありません
+calc rows are read only in mm lens units	計算の行はレンズ単位が mm のときだけ読みます
+calc rows nested too deeply	計算の行の入れ子が深すぎます
+the referenced row {} is in another configuration	参照する行 {} は別の構成にあります
+the referenced row {} ({}) is a bound, whose value OpticStudio moves to its target	参照する行 {}（{}）は片側の条件で、OpticStudio は値を目標に寄せます
 .zmx merit function row {}: the Wizard rows from here don't match the pupil sampling of its settings; they are read one by one	.zmx のメリットファンクションの行 {}: ここからの Wizard の行は設定の瞳のサンプリングと合わないので、1 行ずつ読みます
 zone {zone} (more than 0, up to 1)	zone {zone}（0 より大きく 1 以下）
 a thickness term with each needs min or max	each の厚みの項には min か max が要ります
 OpticStudio has no maximum edge thickness of air or glass surfaces	OpticStudio には空気・硝材の面の縁の厚みの上限のオペランドがありません
 only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)	書けるのは 1 面のクリア半径での縁の厚みだけです（ETGT・ETLT・ETVA）
 this operand is not supported	このオペランドには対応していません
-wavelength {w} (lensbench's paraxial terms use the primary wavelength {primary})	波長 {w}（lensbench の近軸量の項は主波長 {primary} だけです）
+wavelength {w} (lensbench reads the wavelength only for EFFL and PIMH)	波長 {w}（lensbench が波長を読むのは EFFL と PIMH だけです）
+term {i}: wave goes with efl and pimh, not {}	項 {i}: wave は efl と pimh の項と使います（{} には使えません）
 a target other than 0 ({target}) can't be written as a spot or wavefront term	0 でない目標（{target}）はスポット・波面の項で表せません
 only the FFT MTF modulation (Grid 0, Data Type 0) is supported	FFT MTF の変調（Grid 0、Data Type 0）だけに対応しています
 MTF frequencies in lens units other than mm are not checked	mm 以外のレンズ単位の MTF の周波数は確かめていません

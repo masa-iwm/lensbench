@@ -12,7 +12,9 @@
   当てはめる項の数 `fit` に `term` と同じ数を書く。
 - Rust の `lensbench_optim::TermKind::Spot` に測る向き `axis: SpotAxis` を足した（`SpotAxis::Both` が前と同じ）。`Quad` に
   `Arms(n)`・`Grid(n)` が増えたので、`Quad` を網羅する `match` は書き足す。
+- `TermKind` に計算の項 `Calc { op, args, target }` が増えた（`TermKind` を網羅する `match` は書き足す）。`TermKind::target()` は外から使える。
 - `TermKind::Thickness` に `edge: Option<f64>`（縁の厚みの高さ）と `each: Option<Each>`（面ごとの境界）を足した（どちらも `None` が前と同じ）。
+- `TermKind::Paraxial` に `wave: Option<usize>`（efl・pimh の波長、`None` が前と同じ主波長）を足した。
 
 ### ユーザーカタログの項目の型
 - `lensbench_project::catalog::UserItem` の中身を、レンズ・機構部品・未完成で分けた `body: ItemBody`（`Optic { blocks, frame }`・`Mech(MechSpec)`・

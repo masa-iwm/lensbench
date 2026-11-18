@@ -592,6 +592,7 @@ fn degenerate_problems() {
         weight: 1.0,
         kind: TermKind::Paraxial {
             q: ParaxQ::Efl,
+            wave: None,
             target: s.paraxial().efl,
         },
     });

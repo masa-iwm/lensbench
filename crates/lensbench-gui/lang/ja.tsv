@@ -820,6 +820,7 @@ Design wavelength	設計波長
 Fast axis	進相軸
 Order	次数
 Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)	ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番号 nn = ZPLnn.ZPL か名前、file は .ZPL のパス、macro_dirs は探すフォルダを ; で区切ります）
+op of args (numbers or terms with a single value, e.g. {"type": "paraxial", "q": "efl", "target": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)	args（数か 1 つの値の項。例 {"type": "paraxial", "q": "efl", "target": 0}, 5）の op − 目標（SUMM・DIFF・PROD・DIVI・ABSO・SQRT・RECI 相当）
 Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {"rings": 4}; index picks one element)	登録したプラグインの出力 output − 目標（name は rms・zernike など、args は設定の JSON 例 {"rings": 4}、index は出力の要素）
 Tube	チューブ
 Cage plate	ケージプレート

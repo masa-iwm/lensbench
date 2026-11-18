@@ -13,6 +13,7 @@
 use lensbench_core::zmx::merit::{MeritFunction, MeritRow};
 use serde_json::{json, Map, Value};
 
+mod calc;
 mod wizard;
 
 /// .zmx から写した評価関数
@@ -125,15 +126,19 @@ fn kind_of(
     let norm_field = || -> Result<Value, String> { Ok(json!([num(data(1))?, num(data(2))?])) };
     let op = r.op.as_str();
     if let Some((_, q, len)) = PARAXIAL.iter().find(|(o, _, _)| *o == op) {
-        // EFFL・PIMH・PMAG などは Int2 が波長（0 は主波長）。lensbench の近軸量は主波長だけ
+        // EFFL・PIMH・PMAG などは Int2 が波長（0 は主波長）。EFFL・PIMH はその波長の近軸値（OpticStudio 26.1 で実測）。
+        // ほかの量の波長は確かめていないので主波長だけ読む
         let w = int(INT2)?;
-        if w != 0 && w as usize != primary {
-            return Err(format!(
-                "wavelength {w} (lensbench's paraxial terms use the primary wavelength {primary})"
-            ));
-        }
         m.insert("type".into(), json!("paraxial"));
         m.insert("q".into(), json!(q));
+        if w != 0 && w as usize != primary {
+            if !matches!(*q, "efl" | "pimh") || w < 0 {
+                return Err(format!(
+                    "wavelength {w} (lensbench reads the wavelength only for EFFL and PIMH)"
+                ));
+            }
+            m.insert("wave".into(), json!(w));
+        }
         m.insert(
             "target".into(),
             json!(if *len { target * unit } else { target }),
@@ -413,11 +418,19 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
                     continue;
                 };
                 let side = if r.op == "OPGT" { "min" } else { "max" };
-                (&cx.rows[k], Some(side), row_config[k])
+                (k, Some(side), row_config[k])
             }
-            _ => (r, None, row_config[i]),
+            _ => (i, None, row_config[i]),
         };
-        let mut m = match kind_of(src, cx.unit, cx.primary, cx.image) {
+        let at = calc::Rows {
+            rows: cx.rows,
+            row_config: &row_config,
+            unit: cx.unit,
+            primary: cx.primary,
+            image: cx.image,
+        };
+        let (src_i, src) = (src, &cx.rows[src]);
+        let mut m = match at.kind(src_i) {
             Ok(m) => m,
             Err(e) => {
                 let why = if side.is_some() {
@@ -429,9 +442,6 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
                 continue;
             }
         };
-        if src.op == "ZERN" && m.get("kind").and_then(Value::as_str) == Some("standard") {
-            m.insert("fit".into(), json!(zern_standard_fit(cx.rows, src.row - 1)));
-        }
         let len = is_length(&src.op);
         if let Some(side) = side {
             let single = m.get("type").and_then(Value::as_str) != Some("zplm");
@@ -664,8 +674,12 @@ fn row_of(
             let Some((op, _, _)) = PARAXIAL.iter().find(|(_, n, _)| *n == q) else {
                 return Err(format!("paraxial {q} has no OpticStudio operand"));
             };
-            // 近軸量は主波長（Wave 0 も OpticStudio 26.1 では主波長だが、番号で書く方が確か）
-            let p = [0.0, primary, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            // 波長のない近軸量は主波長（Wave 0 も OpticStudio 26.1 では主波長だが、番号で書く方が確か）
+            let w = match t.get("wave").and_then(Value::as_u64) {
+                Some(w) => w as f64,
+                None => primary,
+            };
+            let p = [0.0, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             (op, p, bound(0.0))
         }
         "spot" | "wavefront" => {
@@ -887,7 +901,7 @@ mod tests {
             "DMFS 0 0 0 0 0 0 0 0 0 0",
             "BLNK comment",
             "EFFL 0 2 0 0 0 0 100 1 0 0",
-            "EFFL 0 1 0 0 0 0 100 1 0 0",
+            "PMAG 0 1 0 0 0 0 100 1 0 0",
             "EXPD 0 0 0 0 0 0 25 0 0 0",
             "RSCE 3 0 0 0.69999999999999996 0 0 0 1 0 0",
             "RSCH 2 1 0 1 0 0 0.001 2 0 0",
@@ -927,7 +941,7 @@ mod tests {
             .iter()
             .map(|n| n.split_whitespace().nth(4).unwrap().parse().unwrap())
             .collect();
-        // EFFL の波長 1（主波長でない）・RSCH の目標・Annular の ZERN・目標のない項への OPLT・負の重み・読めない行
+        // PMAG の波長 1（主波長でない）・RSCH の目標・Annular の ZERN・目標のない項への OPLT・負の重み・読めない行
         assert_eq!(skipped, [4, 7, 10, 16, 18, 21], "{:?}", z.notes);
         // 長さの目標はレンズ単位から mm に、MTF はレンズ単位が mm のときだけ
         let mf = merit_function_text(&zmx("IN", &rows)).unwrap();
@@ -989,6 +1003,62 @@ mod tests {
         assert!(z.notes[1].contains("row 23") && z.notes[1].contains("PTV"));
         assert!(z.notes[2].contains("row 14 (TRAD"));
         assert!(z.notes[3].contains("row 16 (TRAD"));
+    }
+
+    #[test]
+    fn calc_rows_become_terms() {
+        let rows = [
+            "EFFL 0 2 0 0 0 0 100 0 0 0",
+            "CONS 0 0 0 0 0 0 5 0 0 0",
+            "BLNK",
+            "DIFF 1 2 0 0 0 0 0.5 1 0 0",
+            "OSUM 1 3 0 0 0 0 0 1 0 0",
+            "CTGT 2 0 0 0 0 0 1 0 0 0",
+            "ABSO 6 0 0 0 0 0 0 1 0 0",
+            "ABSO 9 0 0 0 0 0 0 1 0 0",
+            "ABSO 4 0 0 0 0 0 0 1 0 0",
+            "OPGT 4 0 0 0 0 0 1 2 0 0",
+        ];
+        let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+        let z = terms_from_zmx(&mf, 2, 9);
+        let efl = json!({"type": "paraxial", "q": "efl", "target": 100.0});
+        let diff = json!({"type": "calc", "op": "diff", "args": [efl, 5.0], "target": 0.5});
+        let mut want = vec![
+            diff.clone(),
+            json!({"type": "calc", "op": "sum", "args": [0.0, efl, 5.0, 0.0], "target": 0.0}),
+            // 後ろの行の値は 0
+            json!({"type": "calc", "op": "abs", "args": [0.0], "target": 0.0}),
+            json!({"type": "calc", "op": "abs", "args": [diff], "target": 0.0}),
+            json!({"type": "calc", "op": "diff", "args": [efl, 5.0], "min": 1.0}),
+        ];
+        for (t, w) in want.iter_mut().zip([1.0, 1.0, 1.0, 1.0, 2.0]) {
+            t["weight"] = json!(w);
+        }
+        assert_eq!(z.terms, want);
+        // 片側の条件（CTGT）を参照する ABSO は飛ばす
+        assert_eq!(z.notes.len(), 1, "{:?}", z.notes);
+        assert!(z.notes[0].contains("row 7 (ABSO") && z.notes[0].contains("bound"));
+        // 項として読める
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let s = lensbench_core::zmx::load_with(
+            &root.join("tests/refs/A0/system.zmx"),
+            &lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let t = crate::merit::terms_from_json(&Value::Array(z.terms), std::slice::from_ref(&s))
+            .unwrap();
+        let mut p = lensbench_optim::Problem::single(s.clone());
+        p.terms = t;
+        p.check().unwrap();
+        let v = p.term_values(&[]).unwrap();
+        let f = s.paraxial().efl;
+        assert!((v[0].value() - (f - 5.0)).abs() < 1e-12);
+        assert!((v[1].value() - (f + 5.0)).abs() < 1e-12);
+        assert!((v[3].value() - (f - 5.0).abs()).abs() < 1e-12);
     }
 
     #[test]
@@ -1082,6 +1152,7 @@ mod tests {
             json!({"type": "mtf", "wave": null, "field": 1, "freq": 30.0, "dir": "tan", "target": 0.5, "weight": 1.0}),
             json!({"type": "ray", "surf": 3, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "m", "target": 0.0, "weight": 1.0}),
             json!({"type": "paraxial", "q": "totr", "max": 60.0, "weight": 4.0}),
+            json!({"type": "paraxial", "q": "pimh", "wave": 3, "target": 20.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
             json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
             json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),

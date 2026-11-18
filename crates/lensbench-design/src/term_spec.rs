@@ -143,6 +143,8 @@ pub struct MtfSpec {
 pub struct ParaxSpec {
     /// 量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna、OpticStudio の名前も可）
     pub q: String,
+    /// 波長の番号（efl・pimh だけ、その波長を主波長にした系の値）。null・省略は主波長
+    pub wave: Option<usize>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }
@@ -314,6 +316,38 @@ pub enum TermSpec {
     Thickness(ThickSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
+    Calc(CalcSpec),
+}
+
+/// calc の項: 引数（数か、1 つの値の項。項には weight・config・min・max を書かない）の op − target
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct CalcSpec {
+    pub op: CalcName,
+    pub args: Vec<CalcArgSpec>,
+    /// 目標（既定 0）
+    pub target: Option<f64>,
+}
+
+/// calc の演算（OpticStudio の SUMM・OSUM は sum、DIFF は diff、PROD は prod、DIVI は div、ABSO は abs、SQRT は sqrt（√|a|）、RECI は reci）
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum CalcName {
+    Sum,
+    Diff,
+    Prod,
+    Div,
+    Abs,
+    Sqrt,
+    Reci,
+}
+
+/// calc の引数
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(untagged)]
+pub enum CalcArgSpec {
+    Num(f64),
+    Term(Box<TermSpec>),
 }
 
 /// 共通のキー（`terms.schema.json` の各種類に足す）

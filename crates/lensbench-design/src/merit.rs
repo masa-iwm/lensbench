@@ -9,7 +9,7 @@
 //! |---|---|
 //! | `spot`・`wavefront` | field、wave（null は多色）、rings（3）、reference（"centroid"・"chief"） |
 //! | `mtf` | field、wave、freq [cycles/mm]、dir（"tan"・"sag"・"both"）、n（瞳の標本数）、target |
-//! | `paraxial` | q（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna）、target |
+//! | `paraxial` | q（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna）、wave（efl・pimh だけ、null は主波長）、target |
 //! | `centroid` | field、wave（null は多色）、rings（3）、q（x・y）、target [レンズ単位]。像面の光束の重心（スポットの項と同じ光線・重み） |
 //! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n）、target |
 //! | `opd` | field、wave、px・py、target [波] |
@@ -29,12 +29,14 @@ use lensbench_core::fiber::FiberOpts;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
-use lensbench_optim::{Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, Term, TermKind};
+use lensbench_optim::{
+    CalcArg, CalcOp, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, Term, TermKind,
+};
 use serde_json::Value;
 
 use crate::term_spec::{
-    AxisName, DirName, EachName, FieldRef, MacroRef, Nums, QuadName, RefName, RmsSpec, TermSpec,
-    Xy, ZernName, ZplmSpec,
+    AxisName, CalcArgSpec, CalcName, DirName, EachName, FieldRef, MacroRef, Nums, QuadName,
+    RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
 };
 
 /// 項の並び（配列か 1 つのオブジェクト）
@@ -94,6 +96,47 @@ fn quad(r: &RmsSpec) -> lensbench_core::Result<Quad> {
     })
 }
 
+/// calc の項（引数の数と、引数の項が 1 つの値の項かを確かめる）
+fn calc_kind(c: crate::term_spec::CalcSpec, s: &System) -> lensbench_core::Result<TermKind> {
+    let k = TermKind::Calc {
+        op: match c.op {
+            CalcName::Sum => CalcOp::Sum,
+            CalcName::Diff => CalcOp::Diff,
+            CalcName::Prod => CalcOp::Prod,
+            CalcName::Div => CalcOp::Div,
+            CalcName::Abs => CalcOp::Abs,
+            CalcName::Sqrt => CalcOp::Sqrt,
+            CalcName::Reci => CalcOp::Reci,
+        },
+        args: c
+            .args
+            .into_iter()
+            .map(|a| match a {
+                CalcArgSpec::Num(x) => Ok(CalcArg::Const(x)),
+                CalcArgSpec::Term(t) => Ok(CalcArg::Term(Box::new(kind_of(*t, s)?))),
+            })
+            .collect::<lensbench_core::Result<_>>()?,
+        target: c.target.unwrap_or(0.0),
+    };
+    if let TermKind::Calc { op, args, .. } = &k {
+        let (lo, hi) = op.arity();
+        if args.len() < lo || args.len() > hi {
+            let (op, n) = (op.name(), args.len());
+            if lo == hi {
+                return Err(format!("the {op} calc term takes {lo} arguments ({n})").into());
+            }
+            return Err(format!("the {op} calc term takes {lo} or more arguments ({n})").into());
+        }
+        if args
+            .iter()
+            .any(|a| matches!(a, CalcArg::Term(t) if t.target().is_none()))
+        {
+            return Err("an argument of a calc term must be a term with a single value".into());
+        }
+    }
+    Ok(k)
+}
+
 fn num(k: &str, v: &Value) -> lensbench_core::Result<f64> {
     Ok(v.as_f64()
         .ok_or_else(|| format!("{k} must be a number ({v})"))?)
@@ -135,7 +178,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 12] = [
+    const TYPES: [&str; 13] = [
         "spot",
         "wavefront",
         "mtf",
@@ -148,6 +191,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "thickness",
         "zplm",
         "plugin",
+        "calc",
     ];
     if !TYPES.contains(&ty.as_str()) {
         return Err(format!("type {ty} (one of {})", TYPES.join(", ")).into());
@@ -174,6 +218,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Zernike { .. }
             | TermKind::Coupling { .. }
             | TermKind::Thickness { .. }
+            | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
     let mut kind = kind;
@@ -241,6 +286,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
         },
         TermSpec::Paraxial(t) => TermKind::Paraxial {
             q: ParaxQ::parse(&t.q)?,
+            wave: wave(t.wave, s)?,
             target: t
                 .target
                 .ok_or("paraxial term has no target (or min and max)")?,
@@ -320,6 +366,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 }),
             }
         }
+        TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
             let pv = [t.hx, t.hy, t.px, t.py].map(|x| x.unwrap_or(0.0));
@@ -452,6 +499,7 @@ mod tests {
             t[1].kind,
             TermKind::Paraxial {
                 q: ParaxQ::Efl,
+                wave: None,
                 target: 50.0
             }
         );
@@ -497,6 +545,10 @@ mod tests {
             r#"{"type": "spot", "field": 1, "quadrature": "grid"}"#,
             r#"{"type": "spot", "field": 1, "n": 4}"#,
             r#"{"type": "wavefront", "field": 1, "axis": "x"}"#,
+            r#"{"type": "calc", "op": "diff", "args": [1]}"#,
+            r#"{"type": "calc", "op": "abs", "args": [{"type": "spot", "field": 1}]}"#,
+            r#"{"type": "calc", "op": "sum", "args": []}"#,
+            r#"{"type": "calc", "op": "sum", "args": [{"type": "paraxial", "q": "efl", "target": 0, "weight": 2}]}"#,
             r#"{"type": "thickness", "surf": 1, "to": 3, "each": "air", "target": 1}"#,
             r#"{"type": "thickness", "surf": 1, "zone": 0.5, "target": 1}"#,
             r#"{"type": "thickness", "surf": 1, "edge": true, "zone": 0, "target": 1}"#,

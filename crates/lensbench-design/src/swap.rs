@@ -786,6 +786,7 @@ impl<'a> SwapSearch<'a> {
                     weight: 10.0 * w,
                     kind: TermKind::Paraxial {
                         q: ParaxQ::Efl,
+                        wave: None,
                         target: t,
                     },
                 });

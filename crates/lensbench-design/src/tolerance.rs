@@ -550,6 +550,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Zernike { .. } => "zernike",
         K::Coupling { .. } => "coupling",
         K::Thickness { .. } => "thickness",
+        K::Calc { .. } => "calc",
         K::User(_) => "user",
     }
 }
