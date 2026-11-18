@@ -23,7 +23,7 @@ static CAD_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
 /// キャッシュのフォルダを決める（起動時に 1 回。無ければ CLI と同じ既定の場所）
 #[cfg(not(target_arch = "wasm32"))]
-pub fn set_cad_dir(settings_dir: Option<PathBuf>) {
+pub(crate) fn set_cad_dir(settings_dir: Option<PathBuf>) {
     if let Some(d) = settings_dir {
         let _ = CAD_DIR.set(d.join("cad"));
         // 系を開くときも同じキャッシュを見る（詳しい形の描画）
@@ -44,7 +44,7 @@ fn cad_dir() -> PathBuf {
 static WEB_STORE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 #[cfg(target_arch = "wasm32")]
-pub fn set_web_store(url: Option<String>) {
+pub(crate) fn set_web_store(url: Option<String>) {
     *WEB_STORE.lock_ok() = url.filter(|u| !u.trim().is_empty());
 }
 
@@ -142,7 +142,7 @@ async fn web_fetch(
 
 /// 下書きの Worker の `cad_measure` {catalog, item, path, base}: 置き場に入れた STEP（gzip）を品の簡易外形と照らし、
 /// base に measured・notes を足して serve の `cad_step` と同じ形の結果にする
-pub fn measure_call(p: &Value) -> Result<Value, String> {
+pub(crate) fn measure_call(p: &Value) -> Result<Value, String> {
     let s = |k: &str| {
         p[k].as_str()
             .ok_or_else(|| format!("cad_measure needs {k}"))
@@ -169,7 +169,7 @@ pub fn measure_call(p: &Value) -> Result<Value, String> {
 
 /// 品の取得の状態
 #[derive(Debug, Clone)]
-pub enum CadState {
+pub(crate) enum CadState {
     Pending,
     /// serve の `cad_step` と同じ結果
     Done(Value),
@@ -178,7 +178,7 @@ pub enum CadState {
 
 /// 品ごとの取得の状態（鍵はカタログのファイルと品の名前）
 #[derive(Default)]
-pub struct CadFetcher {
+pub(crate) struct CadFetcher {
     pub state: HashMap<(String, String), CadState>,
     rx: Option<std::sync::mpsc::Receiver<((String, String), Msg)>>,
     tx: Option<std::sync::mpsc::Sender<((String, String), Msg)>>,
@@ -204,7 +204,7 @@ fn key_of(r: &LensRow) -> Option<(String, String)> {
 
 impl CadFetcher {
     /// 終わった取得の結果を受け取る
-    pub fn poll(&mut self) {
+    pub(crate) fn poll(&mut self) {
         if let Some(rx) = &self.rx {
             while let Ok((k, m)) = rx.try_recv() {
                 match m {
@@ -218,13 +218,13 @@ impl CadFetcher {
     }
 
     /// 下書きの Worker に頼む照合（`cad_measure` の引数）。毎フレーム呼ぶ
-    pub fn take_measure(&mut self) -> Vec<Value> {
+    pub(crate) fn take_measure(&mut self) -> Vec<Value> {
         self.poll();
         std::mem::take(&mut self.measure)
     }
 
     /// 照合の結果（下書きの Worker の `cad_measure`）を受け取る
-    pub fn measured(&mut self, params: &Value, r: Result<&Value, &str>) {
+    pub(crate) fn measured(&mut self, params: &Value, r: Result<&Value, &str>) {
         let (Some(c), Some(n)) = (params["catalog"].as_str(), params["item"].as_str()) else {
             return;
         };
@@ -292,7 +292,7 @@ impl CadFetcher {
     }
 
     /// 品の CAD の欄: STEP を取るボタン・結果と、図面（PDF）のリンク。CAD の URL の無い品は何も出さない
-    pub fn ui(&mut self, ui: &mut Ui, r: &LensRow) {
+    pub(crate) fn ui(&mut self, ui: &mut Ui, r: &LensRow) {
         let step = r.raw["cad"]["step"].as_str().unwrap_or("").to_string();
         let pdf = r.raw["cad"]["pdf"].as_str().unwrap_or("").to_string();
         // STEP の URL の無い機構部品も、共有の置き場があれば置き場から取れる

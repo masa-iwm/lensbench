@@ -3,7 +3,7 @@
 use super::*;
 
 /// 品の種類の選択肢（serve の `category`、表示名）
-pub const CATEGORIES: &[(&str, &str)] = &[
+pub(crate) const CATEGORIES: &[(&str, &str)] = &[
     ("lens", n_("Lenses")),
     ("mirror", n_("Mirror")),
     ("splitter", "BS"),
@@ -51,7 +51,12 @@ pub(super) fn text_match(query: &str, fields: &[&str]) -> bool {
     })
 }
 
-pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: bool) -> Vec<usize> {
+pub(crate) fn filter_lenses(
+    rows: &[LensRow],
+    q: &LensFilter,
+    sort: LensSort,
+    desc: bool,
+) -> Vec<usize> {
     // 読めない仕様の条件は無視する（欄の横に誤りを出す）
     let specs = parse_spec_filters(&q.spec).unwrap_or_default();
     // 検索語は 1 度だけ小文字に。行の文字列は安い条件を通った行だけ、検索語があるときだけ作る
@@ -119,7 +124,7 @@ pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: boo
     v
 }
 
-pub fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
+pub(crate) fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
     (0..rows.len())
         .filter(|&i| {
             let r = &rows[i];

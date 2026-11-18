@@ -4,7 +4,7 @@ use egui::{Color32, CornerRadius, Stroke, Theme, ThemePreference, Visuals};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum Mode {
+pub(crate) enum Mode {
     #[default]
     Dark,
     Light,
@@ -13,7 +13,7 @@ pub enum Mode {
 }
 
 /// アクセント色の候補（デザイン案の 4 色）
-pub const ACCENTS: [[u8; 3]; 4] = [
+pub(crate) const ACCENTS: [[u8; 3]; 4] = [
     [0x4D, 0xB6, 0xFF],
     [0x7C, 0x9C, 0xFF],
     [0x3D, 0xD6, 0xB5],
@@ -22,7 +22,7 @@ pub const ACCENTS: [[u8; 3]; 4] = [
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Look {
+pub(crate) struct Look {
     pub mode: Mode,
     pub accent: [u8; 3],
 }
@@ -49,7 +49,7 @@ pub fn series(i: usize) -> Color32 {
 }
 
 /// 波長 [µm] の色（青 0.45 → 赤 0.68、範囲の外は端の色）
-pub fn wave_color(um: f64) -> Color32 {
+pub(crate) fn wave_color(um: f64) -> Color32 {
     let t = ((um - 0.45) / (0.68 - 0.45)).clamp(0.0, 1.0) as f32;
     let stops = [rgb(0x6FA8FF), rgb(0x8FD19E), rgb(0xF2C94C), rgb(0xFF7A6B)];
     let x = t * 3.0;
@@ -105,7 +105,7 @@ fn light(accent: Color32) -> Visuals {
 }
 
 /// 窓の配色に使う（パネルの見出しの文字など）
-pub fn weak_text(v: &Visuals) -> Color32 {
+pub(crate) fn weak_text(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0x9AA3AF)
     } else {
@@ -114,7 +114,7 @@ pub fn weak_text(v: &Visuals) -> Color32 {
 }
 
 /// 誤りの文字・印（色は場所ごとに書かずここから取る）
-pub fn error(v: &Visuals) -> Color32 {
+pub(crate) fn error(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0xFF7A6B)
     } else {
@@ -123,7 +123,7 @@ pub fn error(v: &Visuals) -> Color32 {
 }
 
 /// 注意（計算中・確かめてほしい値）
-pub fn warn(v: &Visuals) -> Color32 {
+pub(crate) fn warn(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0xF2C94C)
     } else {
@@ -132,7 +132,7 @@ pub fn warn(v: &Visuals) -> Color32 {
 }
 
 /// うまくいった・準備ができた
-pub fn ok(v: &Visuals) -> Color32 {
+pub(crate) fn ok(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0x8FD19E)
     } else {
@@ -141,12 +141,12 @@ pub fn ok(v: &Visuals) -> Color32 {
 }
 
 /// 前の結果より良い（小さい）差
-pub fn better(v: &Visuals) -> Color32 {
+pub(crate) fn better(v: &Visuals) -> Color32 {
     ok(v)
 }
 
 /// 前の結果より悪い（大きい）差。誤りの赤とは別の橙にする
-pub fn worse(v: &Visuals) -> Color32 {
+pub(crate) fn worse(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0xFF9F43)
     } else {
@@ -155,7 +155,7 @@ pub fn worse(v: &Visuals) -> Color32 {
 }
 
 /// 図の上で選んだものの強調（面の縁・ガラスマップの点）
-pub fn highlight(v: &Visuals) -> Color32 {
+pub(crate) fn highlight(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0xFF8A3D)
     } else {
@@ -164,7 +164,7 @@ pub fn highlight(v: &Visuals) -> Color32 {
 }
 
 /// 図のガラスの塗り（断面は半透明、3D は面の陰を付けて塗るので不透明）
-pub fn glass_fill(v: &Visuals) -> Color32 {
+pub(crate) fn glass_fill(v: &Visuals) -> Color32 {
     if v.dark_mode {
         Color32::from_rgba_unmultiplied(0x2B, 0x4A, 0x66, 150)
     } else {
@@ -173,7 +173,7 @@ pub fn glass_fill(v: &Visuals) -> Color32 {
 }
 
 /// 3D の図のガラスの色（陰を付ける前）
-pub fn glass_3d(v: &Visuals) -> Color32 {
+pub(crate) fn glass_3d(v: &Visuals) -> Color32 {
     if v.dark_mode {
         rgb(0x4A7AA6)
     } else {
@@ -182,35 +182,35 @@ pub fn glass_3d(v: &Visuals) -> Color32 {
 }
 
 /// 図の鏡・BS の分ける面の塗り
-pub fn mirror_fill(_v: &Visuals) -> Color32 {
+pub(crate) fn mirror_fill(_v: &Visuals) -> Color32 {
     Color32::from_rgba_unmultiplied(0x9A, 0xA3, 0xAF, 160)
 }
 
 /// 3D の図の鏡の色（陰を付ける前）
-pub fn mirror_3d(_v: &Visuals) -> Color32 {
+pub(crate) fn mirror_3d(_v: &Visuals) -> Color32 {
     rgb(0xA8AFB8)
 }
 
 /// 図の機構部品の塗りと縁
-pub fn mech_fill(_v: &Visuals) -> Color32 {
+pub(crate) fn mech_fill(_v: &Visuals) -> Color32 {
     Color32::from_rgba_unmultiplied(0x9A, 0x8C, 0x7A, 0x60)
 }
-pub fn mech_line(_v: &Visuals) -> Color32 {
+pub(crate) fn mech_line(_v: &Visuals) -> Color32 {
     rgb(0x7A6C5A)
 }
 /// 3D の図の機構部品の色（陰を付ける前）
-pub fn mech_3d(_v: &Visuals) -> Color32 {
+pub(crate) fn mech_3d(_v: &Visuals) -> Color32 {
     rgb(0x9A8C7A)
 }
 
 /// 3D の座標軸 x・y・z の色
-pub const AXES: [Color32; 3] = [
+pub(crate) const AXES: [Color32; 3] = [
     Color32::from_rgb(0xD9, 0x53, 0x4F),
     Color32::from_rgb(0x4C, 0xAF, 0x50),
     Color32::from_rgb(0x42, 0x8B, 0xCA),
 ];
 
-pub fn apply(ctx: &egui::Context, look: &Look) {
+pub(crate) fn apply(ctx: &egui::Context, look: &Look) {
     let a = Color32::from_rgb(look.accent[0], look.accent[1], look.accent[2]);
     for (theme, mut v) in [(Theme::Dark, dark(a)), (Theme::Light, light(a))] {
         v.selection.bg_fill = a.gamma_multiply(if v.dark_mode { 0.45 } else { 0.35 });
@@ -243,6 +243,6 @@ pub fn apply(ctx: &egui::Context, look: &Look) {
 }
 
 /// アクセント色
-pub fn accent(look: &Look) -> Color32 {
+pub(crate) fn accent(look: &Look) -> Color32 {
     Color32::from_rgb(look.accent[0], look.accent[1], look.accent[2])
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// 半径は [`Pick::semi`]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct CustomLens {
+pub(crate) struct CustomLens {
     /// 前・後の面の曲率半径 [mm]（0 は平面。平板は 0）
     pub r1: f64,
     pub r2: f64,
@@ -19,7 +19,7 @@ pub struct CustomLens {
 
 impl CustomLens {
     /// ほかの種類の要素が読むときの値（硝材は空）
-    pub const NONE: CustomLens = CustomLens {
+    pub(crate) const NONE: CustomLens = CustomLens {
         r1: 0.0,
         r2: 0.0,
         t: 0.0,

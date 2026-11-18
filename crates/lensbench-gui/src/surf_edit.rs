@@ -35,7 +35,7 @@ const TYP_NAMES: &[(&str, &str)] = &[
 ];
 
 /// 面データの typ を .zmx の名前に
-pub fn zmx_type(typ: &str) -> &'static str {
+pub(crate) fn zmx_type(typ: &str) -> &'static str {
     TYP_NAMES
         .iter()
         .find(|x| x.0 == typ)
@@ -58,7 +58,7 @@ const JSON_ITEMS: &[(&str, &str)] = &[
 
 /// 面の設定の状態
 #[derive(Debug, Clone, Default)]
-pub struct Inspector {
+pub(crate) struct Inspector {
     /// 読んだ面と、serve の surface_data の結果
     pub data: Option<(usize, Value)>,
     /// 頼んだ面（結果を待っている）
@@ -71,12 +71,12 @@ pub struct Inspector {
 
 impl Inspector {
     /// 面 j の値を読み直す（結果は [`Inspector::set`]）
-    pub fn stale(&mut self) {
+    pub(crate) fn stale(&mut self) {
         self.data = None;
         self.asked = None;
     }
 
-    pub fn set(&mut self, j: usize, v: Value) {
+    pub(crate) fn set(&mut self, j: usize, v: Value) {
         self.data = Some((j, v));
         self.asked = None;
         self.bufs.clear();
@@ -85,7 +85,7 @@ impl Inspector {
 }
 
 /// 複屈折材の板の欄（入口: mode・結晶軸、出口）。変えたら面のデータの bire の値（ne は材料「名前-E」から作り直す）
-pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
+pub(crate) fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
     let kind = match cur {
         Value::String(s) if s == "Out" => 2,
         Value::Object(o) if o.contains_key("In") => 1,
@@ -145,7 +145,7 @@ pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
 }
 
 /// 書き換え用の数の文字（丸めない）
-pub fn full(x: f64) -> String {
+pub(crate) fn full(x: f64) -> String {
     if x.is_infinite() {
         if x > 0.0 { "Infinity" } else { "-Infinity" }.into()
     } else {
@@ -165,7 +165,7 @@ fn nums_text(v: &Value) -> String {
 }
 
 /// 「1, 2.5, -3」を数の並びに
-pub fn parse_nums(s: &str) -> Result<Vec<f64>, String> {
+pub(crate) fn parse_nums(s: &str) -> Result<Vec<f64>, String> {
     s.split([',', ' ', ';'])
         .filter(|x| !x.trim().is_empty())
         .map(|x| {
@@ -195,7 +195,7 @@ fn text_field(
 }
 
 /// 面 j の設定の欄。read_only は変えられない理由（ロック・組合せの要素の設定で変える面など）
-pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) -> Vec<Act> {
+pub(crate) fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let Some((dj, v)) = st.data.clone().filter(|(dj, _)| *dj == j) else {

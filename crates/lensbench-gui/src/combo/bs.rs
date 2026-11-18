@@ -9,7 +9,7 @@ use crate::i18n::tr;
 /// BS の形・分け方・膜（[`Pick::bs`]。BS の要素だけが持つ）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Bs {
+pub(crate) struct Bs {
     /// 形
     pub form: BsForm,
     /// キューブの一辺・平板の厚さ [mm]
@@ -38,7 +38,7 @@ pub struct Bs {
 
 impl Bs {
     /// 既定（BS でない要素が読むときもこの値）
-    pub const DEFAULT: Bs = Bs {
+    pub(crate) const DEFAULT: Bs = Bs {
         form: BsForm::Cube,
         size: 12.7,
         glass: String::new(),
@@ -63,7 +63,7 @@ impl Default for Bs {
 /// BS の形
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BsForm {
+pub(crate) enum BsForm {
     /// キューブ（斜面が 45°）
     #[default]
     Cube,
@@ -74,7 +74,7 @@ pub enum BsForm {
 }
 
 impl BsForm {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             BsForm::Cube => tr("Cube"),
             BsForm::Plate => tr("Plate"),
@@ -89,7 +89,7 @@ impl BsForm {
         }
     }
     /// 面ごとの膜を付ける面（分ける面を除く）
-    pub fn faces(self) -> &'static [&'static str] {
+    pub(crate) fn faces(self) -> &'static [&'static str] {
         match self {
             BsForm::Cube => &["a", "b", "c", "d"],
             BsForm::Plate => &["front", "back"],
@@ -101,7 +101,7 @@ impl BsForm {
 /// BS の分ける面の分け方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BsSplit {
+pub(crate) enum BsSplit {
     /// 偏光によらない理想の分岐比
     Ratio,
     /// 膜（膜ファイル・膜モデル）
@@ -111,7 +111,7 @@ pub enum BsSplit {
 }
 
 impl BsSplit {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             BsSplit::Ratio => tr("Split ratio"),
             BsSplit::Coat => tr("Coating"),
@@ -122,7 +122,7 @@ impl BsSplit {
 
 impl Pick {
     /// BS の分ける面の分け方
-    pub fn split_mode(&self) -> BsSplit {
+    pub(crate) fn split_mode(&self) -> BsSplit {
         self.bs().split.unwrap_or(if self.coat.trim().is_empty() {
             BsSplit::Ratio
         } else {
@@ -131,7 +131,7 @@ impl Pick {
     }
 
     /// BS の分ける面の傾き（反射を逆向きにすると x の符号が変わる）
-    pub fn split_angle(&self) -> [f64; 2] {
+    pub(crate) fn split_angle(&self) -> [f64; 2] {
         let a = match self.bs().form {
             BsForm::Cube => [45.0, 0.0],
             _ => self.bs().bs_angle,
@@ -196,7 +196,7 @@ impl Pick {
     }
 
     /// カタログの BS の中身（[`Pick::extra`]）のうち、欄のある項目を欄へ移す
-    pub fn absorb_extra(&mut self) {
+    pub(crate) fn absorb_extra(&mut self) {
         if self.kind != ElemKind::Splitter {
             return;
         }

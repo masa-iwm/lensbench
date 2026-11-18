@@ -10,14 +10,14 @@ use egui::{CursorIcon, Id, Rect, Sense, Ui, UiBuilder};
 const GAP: f32 = 7.0;
 
 /// 左右に並べるか（横に広く低い）
-pub fn side_by_side(w: f32, h: f32) -> bool {
+pub(crate) fn side_by_side(w: f32, h: f32) -> bool {
     w >= 700.0 && w >= 2.5 * h
 }
 
 /// 残りの領域を 2 つに分けて、前（上・左）と後（下・右）の Ui を返す。
 /// `frac` は前の既定の割合（上下、左右）、`min` は各欄に残す最低の大きさ（領域が足りなければ半分ずつ）。
 /// 境を動かすまでは既定の割合（呼ぶたびに変わってよい）、動かした後はその割合を覚える。
-pub fn two(ui: &mut Ui, id: impl std::hash::Hash, frac: (f32, f32), min: f32) -> (Ui, Ui) {
+pub(crate) fn two(ui: &mut Ui, id: impl std::hash::Hash, frac: (f32, f32), min: f32) -> (Ui, Ui) {
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, Sense::hover());
     let side = side_by_side(rect.width(), rect.height());

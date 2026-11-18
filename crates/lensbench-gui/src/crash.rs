@@ -21,7 +21,7 @@ fn text(info: &PanicHookInfo<'_>) -> String {
 
 /// 起動時に一度呼ぶ。`dir` は crash.log を書くフォルダ（設定の隣。None なら書かない）
 #[cfg(not(target_arch = "wasm32"))]
-pub fn install(dir: Option<std::path::PathBuf>) {
+pub(crate) fn install(dir: Option<std::path::PathBuf>) {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let t = text(info);
@@ -64,7 +64,7 @@ pub fn install(dir: Option<std::path::PathBuf>) {
 
 /// Web 版: panic をブラウザのコンソールに出す（場所つき）
 #[cfg(target_arch = "wasm32")]
-pub fn install() {
+pub(crate) fn install() {
     std::panic::set_hook(Box::new(|info| {
         let t = text(info);
         lensbench_engine::note_panic(&t);

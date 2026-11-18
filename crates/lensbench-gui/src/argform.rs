@@ -16,7 +16,7 @@ use crate::theme;
 
 /// 1 つの引数・設定の項目
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArgSpec {
+pub(crate) struct ArgSpec {
     pub name: String,
     /// num・count・int・flag・str・choice・nums・path
     pub ty: String,
@@ -39,7 +39,7 @@ pub struct ArgSpec {
 }
 
 impl ArgSpec {
-    pub fn parse(v: &Value) -> Option<ArgSpec> {
+    pub(crate) fn parse(v: &Value) -> Option<ArgSpec> {
         let doc = v["doc"].as_str().unwrap_or_default();
         Some(ArgSpec {
             name: v["name"].as_str()?.to_string(),
@@ -73,7 +73,7 @@ impl ArgSpec {
     }
 
     /// 欄に出す名前: 決めた短い名前、日本語なら説明の頭（短いとき）、ほかは引数の名前
-    pub fn title(&self) -> String {
+    pub(crate) fn title(&self) -> String {
         if let Some(l) = self.label {
             return tr(l).to_string();
         }
@@ -91,7 +91,7 @@ impl ArgSpec {
     }
 
     /// 単位: 項目の単位か、説明の最初の [ ] の中（「、」の前）。英語で日本語の単位は出さない
-    pub fn unit_text(&self) -> String {
+    pub(crate) fn unit_text(&self) -> String {
         let u = if !self.unit.is_empty() {
             self.unit.clone()
         } else {
@@ -104,19 +104,19 @@ impl ArgSpec {
         }
     }
 
-    pub fn parse_list(v: &Value) -> Vec<ArgSpec> {
+    pub(crate) fn parse_list(v: &Value) -> Vec<ArgSpec> {
         v.as_array()
             .map(|a| a.iter().filter_map(ArgSpec::parse).collect())
             .unwrap_or_default()
     }
 
     /// 既定値を欄に書く形で（無ければ空）
-    pub fn default_text(&self) -> String {
+    pub(crate) fn default_text(&self) -> String {
         value_text(&self.default)
     }
 
     /// 欄の文字列を JSON の値に（空なら None）
-    pub fn value(&self, t: &str) -> Result<Option<Value>, String> {
+    pub(crate) fn value(&self, t: &str) -> Result<Option<Value>, String> {
         let t = t.trim();
         if t.is_empty() {
             return Ok(None);
@@ -297,7 +297,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
 }
 
 /// 一緒に使えない旗の組（2 つ以上。並びは一覧の順）。組は 1 つの選択で見せる
-pub fn exclusive_groups(specs: &[&ArgSpec]) -> Vec<Vec<usize>> {
+pub(crate) fn exclusive_groups(specs: &[&ArgSpec]) -> Vec<Vec<usize>> {
     let flag = |i: usize| specs[i].ty == "flag";
     let clash = |i: usize, j: usize| {
         specs[i].conflicts.contains(&specs[j].name) || specs[j].conflicts.contains(&specs[i].name)
@@ -329,7 +329,7 @@ pub fn exclusive_groups(specs: &[&ArgSpec]) -> Vec<Vec<usize>> {
 }
 
 /// 解析 `cmd` の引数の一覧（CLI の定義から。プロセスの中で 1 度だけ作る）
-pub fn analysis_specs(cmd: &str) -> std::sync::Arc<[ArgSpec]> {
+pub(crate) fn analysis_specs(cmd: &str) -> std::sync::Arc<[ArgSpec]> {
     static CACHE: OnceLock<Mutex<HashMap<String, std::sync::Arc<[ArgSpec]>>>> = OnceLock::new();
     let mut c = CACHE.get_or_init(Default::default).lock_ok();
     c.entry(cmd.to_string())
@@ -346,7 +346,7 @@ pub fn analysis_specs(cmd: &str) -> std::sync::Arc<[ArgSpec]> {
 }
 
 /// 設定のオブジェクトの欄の項目（拡張の解析の [`crate::ext::ObjectArg`]。`chosen` は specs_from で選んだプラグイン）
-pub fn object_specs(o: &crate::ext::ObjectArg, chosen: Option<&str>) -> Vec<ArgSpec> {
+pub(crate) fn object_specs(o: &crate::ext::ObjectArg, chosen: Option<&str>) -> Vec<ArgSpec> {
     ArgSpec::parse_list(&Value::Array(o.specs_for(chosen)))
 }
 
@@ -366,7 +366,7 @@ fn split(t: &str) -> impl Iterator<Item = &str> {
 }
 
 /// JSON の値を欄の文字列に
-pub fn value_text(v: &Value) -> String {
+pub(crate) fn value_text(v: &Value) -> String {
     match v {
         Value::Null => String::new(),
         Value::String(s) => s.clone(),
@@ -377,7 +377,7 @@ pub fn value_text(v: &Value) -> String {
 }
 
 /// 欄の値を名前 → JSON の値に（空の欄は省く）
-pub fn to_map(
+pub(crate) fn to_map(
     specs: &[ArgSpec],
     vals: &BTreeMap<String, String>,
 ) -> Result<Map<String, Value>, String> {
@@ -399,7 +399,7 @@ pub fn to_map(
 }
 
 /// 「.」でつないだ名前を入れ子のオブジェクトに（`mla.pitch` → {"mla": {"pitch": …}}）
-pub fn nest(m: &Map<String, Value>) -> Value {
+pub(crate) fn nest(m: &Map<String, Value>) -> Value {
     let mut root = Map::new();
     for (k, v) in m {
         let parts: Vec<&str> = k.split('.').collect();
@@ -417,7 +417,7 @@ pub fn nest(m: &Map<String, Value>) -> Value {
 }
 
 /// 入れ子のオブジェクトを「.」でつないだ名前 → 欄の文字列に（[`nest`] の逆）
-pub fn flatten(v: &Value) -> BTreeMap<String, String> {
+pub(crate) fn flatten(v: &Value) -> BTreeMap<String, String> {
     fn walk(prefix: &str, v: &Value, out: &mut BTreeMap<String, String>) {
         match v {
             Value::Object(m) => {
@@ -442,7 +442,7 @@ pub fn flatten(v: &Value) -> BTreeMap<String, String> {
 }
 
 /// 数の欄を ↑↓ で 1 刻み動かす（整数は 1、実数は書いた最後の桁の 1）。空なら既定から。動かせなければ None
-pub fn step_text(t: &str, default: &Value, ty: &str, up: bool) -> Option<String> {
+pub(crate) fn step_text(t: &str, default: &Value, ty: &str, up: bool) -> Option<String> {
     let base = if t.trim().is_empty() {
         value_text(default)
     } else {
@@ -470,7 +470,7 @@ pub fn step_text(t: &str, default: &Value, ty: &str, up: bool) -> Option<String>
 
 /// 欄を並べる（名前・入力・単位・既定に戻す）。一緒に使えない旗は 1 つの選択に。値を変えたら true
 /// （文字の欄は入力を終えたとき・Enter・数の欄の ↑↓）
-pub fn form(
+pub(crate) fn form(
     ui: &mut Ui,
     salt: impl std::hash::Hash + Copy,
     specs: &[&ArgSpec],

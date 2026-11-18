@@ -19,7 +19,7 @@ const MAGIC: &[u8; 4] = b"LBF2";
 
 /// 受けた画面
 #[derive(Debug, Default)]
-pub struct Frame {
+pub(crate) struct Frame {
     /// テクスチャの設定（送った側の id、位置（部分の更新）、設定、画像）
     pub set: Vec<(TextureId, Option<[usize; 2]>, TextureOptions, ColorImage)>,
     pub free: Vec<TextureId>,
@@ -57,7 +57,7 @@ fn byte_filter(b: u8) -> TextureFilter {
 }
 
 /// 画面をバイト列に（テクスチャの変更と網）
-pub fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
+pub(crate) fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
     let mut b = Vec::with_capacity(64 * 1024);
     b.extend_from_slice(MAGIC);
     put_u32(&mut b, delta.set.len() as u32);
@@ -136,7 +136,7 @@ pub fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
 
 /// 網の部分だけの指紋（同じ画面を送り直さない）。毎フレーム全頂点を通すので、SipHash ではなく
 /// 32 ビットずつ混ぜる軽いもの（FxHash と同じ式。見比べるだけで、悪意のある入力は無い）
-pub fn mesh_hash(prims: &[ClippedPrimitive]) -> u64 {
+pub(crate) fn mesh_hash(prims: &[ClippedPrimitive]) -> u64 {
     #[inline]
     fn mix(h: u64, x: u32) -> u64 {
         (h.rotate_left(5) ^ u64::from(x)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95)
@@ -210,7 +210,7 @@ impl Rd<'_> {
     }
 }
 
-pub fn decode(b: &[u8]) -> Result<Frame, String> {
+pub(crate) fn decode(b: &[u8]) -> Result<Frame, String> {
     if b.get(..4) != Some(MAGIC.as_slice()) {
         return Err("not frame data".into());
     }
@@ -290,7 +290,11 @@ pub fn decode(b: &[u8]) -> Result<Frame, String> {
 
 /// 受けたテクスチャの設定を ImageDelta に
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub fn delta_of(pos: Option<[usize; 2]>, options: TextureOptions, img: ColorImage) -> ImageDelta {
+pub(crate) fn delta_of(
+    pos: Option<[usize; 2]>,
+    options: TextureOptions,
+    img: ColorImage,
+) -> ImageDelta {
     let image = ImageData::Color(std::sync::Arc::new(img));
     match pos {
         Some(p) => ImageDelta::partial(p, image, options),

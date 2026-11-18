@@ -74,7 +74,7 @@ use crate::worker::{CatOp, Done, Tag, Worker};
 /// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
-pub struct Settings {
+pub(crate) struct Settings {
     pub glass_dirs: Vec<String>,
     pub lens_dirs: Vec<String>,
     pub recent: Vec<String>,
@@ -96,7 +96,7 @@ pub struct Settings {
 
 impl Settings {
     /// 設定の中のパス（硝材・レンズのフォルダ、最近のファイル、組合せの .zmx）をそれぞれ f で変える
-    pub fn map_paths(&mut self, f: impl Fn(&str) -> String) {
+    pub(crate) fn map_paths(&mut self, f: impl Fn(&str) -> String) {
         for p in self
             .glass_dirs
             .iter_mut()
@@ -133,7 +133,7 @@ impl Settings {
 /// レイアウト図の見る面（serve の layout の plane）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum ViewPlane {
+pub(crate) enum ViewPlane {
     #[default]
     Yz,
     Xz,
@@ -145,7 +145,7 @@ pub enum ViewPlane {
 }
 
 impl ViewPlane {
-    pub const ALL: [ViewPlane; 4] = [
+    pub(crate) const ALL: [ViewPlane; 4] = [
         ViewPlane::Yz,
         ViewPlane::Xz,
         ViewPlane::Unfold,
@@ -153,7 +153,7 @@ impl ViewPlane {
     ];
 
     /// serve の layout の plane
-    pub fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             ViewPlane::Yz | ViewPlane::Unfold => "yz",
             ViewPlane::Xz => "xz",
@@ -161,14 +161,14 @@ impl ViewPlane {
         }
     }
     /// 図の縦の軸の名前
-    pub fn vert(self) -> &'static str {
+    pub(crate) fn vert(self) -> &'static str {
         match self {
             ViewPlane::Xz => "x",
             _ => "y",
         }
     }
     /// 見る面の選択の表示
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ViewPlane::Yz => "YZ",
             ViewPlane::Xz => "XZ",
@@ -200,7 +200,7 @@ impl Default for Settings {
 /// 保存するときだけ今の文書と画面から作る（毎フレーム写さない）
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
-pub struct Session {
+pub(crate) struct Session {
     pub combo: Combo,
     /// 今の並び
     pub layout: Option<Layout>,
@@ -424,7 +424,7 @@ struct Core {
     saves: save_as::Saves,
 }
 
-pub struct App {
+pub(crate) struct App {
     c: Core,
     dock: egui_dock::DockState<Pane>,
     windows: Vec<OsWin>,
@@ -470,7 +470,7 @@ fn sample_name(f: &str) -> String {
 }
 
 /// 窓のアイコン（assets/icon.png、元は icon.svg: 両凸レンズで平行光が 1 点に集まる）
-pub fn icon() -> std::sync::Arc<egui::IconData> {
+pub(crate) fn icon() -> std::sync::Arc<egui::IconData> {
     // 別の窓は毎フレーム作るので、PNG の復号は 1 回だけ
     static ICON: std::sync::OnceLock<std::sync::Arc<egui::IconData>> = std::sync::OnceLock::new();
     ICON.get_or_init(|| {
@@ -1630,7 +1630,7 @@ fn add_kinds() -> Vec<Kind> {
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> App {
+    pub(crate) fn new(cc: &eframe::CreationContext<'_>, args: Args) -> App {
         let font = crate::fonts::install(&cc.egui_ctx);
         crate::files::set_ctx(&cc.egui_ctx);
         #[cfg(not(target_arch = "wasm32"))]
@@ -2240,7 +2240,7 @@ impl eframe::App for App {
 }
 /// レイアウト図に重ねる構成（.zmx の多重構成・プロジェクトの状態・BS の経路）
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Overlay {
+pub(crate) struct Overlay {
     /// 選べる構成（serve の layout の鍵 cfgs・states・paths と名前）と、重ねるか
     pub items: Vec<(&'static str, String, bool)>,
     /// 構成 k を k 倍ずらす量 [dz, dy] mm
@@ -2250,7 +2250,7 @@ pub struct Overlay {
 impl Overlay {
     /// serve の configs の結果から。前に選んでいた名前は選んだまま
     /// 選べる構成を読み直す。選んでいたものが無くなったら true（レイアウトを頼み直す）
-    pub fn update(&mut self, v: &Value) -> bool {
+    pub(crate) fn update(&mut self, v: &Value) -> bool {
         let was: Vec<(&str, String)> = self
             .items
             .iter()
@@ -2286,7 +2286,7 @@ impl Overlay {
     }
 
     /// [`Self::params`] に見る面を足したもの。ずらす量の縦は見る面の縦（xz 面なら x）
-    pub fn params_in(&self, plane: ViewPlane) -> Value {
+    pub(crate) fn params_in(&self, plane: ViewPlane) -> Value {
         let mut v = self.params();
         if plane == ViewPlane::Xz {
             if let Some(o) = v.get_mut("offset") {
@@ -2303,7 +2303,7 @@ impl Overlay {
     }
 
     /// serve の layout の params（何も選ばなければ今の構成だけ、見る面は yz。BS の経路の鍵は beam_paths）
-    pub fn params(&self) -> Value {
+    pub(crate) fn params(&self) -> Value {
         let mut m = Map::new();
         for key in ["cfgs", "states", "paths"] {
             let on: Vec<Value> = self
@@ -2332,7 +2332,7 @@ impl Overlay {
     }
 
     /// 選ぶ欄（選べる構成が無ければ出さない）。変えたら true。vert は図の縦の軸の名前
-    pub fn ui(&mut self, ui: &mut Ui, vert: &str) -> bool {
+    pub(crate) fn ui(&mut self, ui: &mut Ui, vert: &str) -> bool {
         if self.items.is_empty() {
             return false;
         }

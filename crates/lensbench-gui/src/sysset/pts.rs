@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 視野の点（x, y と重み）
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct FieldPt {
+pub(crate) struct FieldPt {
     #[serde(default)]
     pub x: f64,
     #[serde(default)]
@@ -21,11 +21,11 @@ fn no_vig(v: &[f64; 5]) -> bool {
 }
 
 impl FieldPt {
-    pub fn y(y: f64) -> FieldPt {
+    pub(crate) fn y(y: f64) -> FieldPt {
         FieldPt::xyw(0.0, y, 1.0)
     }
 
-    pub fn xyw(x: f64, y: f64, w: f64) -> FieldPt {
+    pub(crate) fn xyw(x: f64, y: f64, w: f64) -> FieldPt {
         FieldPt {
             x,
             y,
@@ -35,21 +35,21 @@ impl FieldPt {
     }
 
     /// ケラレ係数があるか
-    pub fn has_vig(&self) -> bool {
+    pub(crate) fn has_vig(&self) -> bool {
         !no_vig(&self.vig)
     }
 }
 
 /// 波長 [µm] と重み
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct WavePt {
+pub(crate) struct WavePt {
     pub um: f64,
     #[serde(default = "one")]
     pub w: f64,
 }
 
 impl WavePt {
-    pub fn um(um: f64) -> WavePt {
+    pub(crate) fn um(um: f64) -> WavePt {
         WavePt { um, w: 1.0 }
     }
 }

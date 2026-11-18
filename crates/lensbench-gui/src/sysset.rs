@@ -15,13 +15,13 @@ use crate::theme;
 
 pub(crate) mod form;
 mod pts;
-pub use pts::{FieldPt, WavePt};
+pub(crate) use pts::{FieldPt, WavePt};
 
 /// 開口・視野の種類・エイミング（core の型。名前はプロジェクトファイルと同じ）
-pub use lensbench_core::system::{Aiming, ApertureKind, FieldKind};
+pub(crate) use lensbench_core::system::{Aiming, ApertureKind, FieldKind};
 
 /// 画面で選ぶ種類（並びと表示の名前・プロジェクトの JSON の名前）
-pub trait Choice: Sized + Copy + 'static {
+pub(crate) trait Choice: Sized + Copy + 'static {
     const ALL: &'static [Self];
     fn label(self) -> &'static str;
     fn key(self) -> &'static str;
@@ -59,7 +59,7 @@ impl Choice for ApertureKind {
 }
 
 /// 開口の種類の欄の決まり
-pub trait ApertureField {
+pub(crate) trait ApertureField {
     /// 値を入れる種類か（EPD は入射瞳径、Float は絞りの径で、どちらも「絞りの径」の欄）
     fn has_value(self) -> bool;
     /// 種類を変えたときの初めの値
@@ -132,7 +132,7 @@ fn field_unit(k: FieldKind) -> &'static str {
 /// 条件で定める視野の条件（プロジェクトの `fields.solve`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum SolveCond {
+pub(crate) enum SolveCond {
     /// 面での主光線の位置
     #[default]
     Position,
@@ -156,7 +156,7 @@ impl SolveCond {
 /// 条件で定める視野の条件と面（番号か名前）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct FieldSolve {
+pub(crate) struct FieldSolve {
     pub cond: SolveCond,
     pub s1: String,
     pub s2: String,
@@ -200,12 +200,12 @@ const AFOCAL_UNITS: [AfocalUnit; 6] = [
 ];
 
 /// 浮動開口の欄の説明
-pub const FLOATING_CLIP_HINT: &str = "Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)";
+pub(crate) const FLOATING_CLIP_HINT: &str = "Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)";
 
 /// 状態ごとに変えられる系の値（プロジェクトの状態の `project`）。絞りの位置・硝材カタログは全部の状態で共通
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct SysSnap {
+pub(crate) struct SysSnap {
     pub aperture: ApertureKind,
     pub ap_value: f64,
     pub epd: f64,
@@ -228,7 +228,7 @@ impl Default for SysSnap {
 
 impl Combo {
     /// 状態ごとに変えられる系の値
-    pub fn snap(&self) -> SysSnap {
+    pub(crate) fn snap(&self) -> SysSnap {
         SysSnap {
             aperture: self.aperture,
             ap_value: self.ap_value,
@@ -246,7 +246,7 @@ impl Combo {
     }
 
     /// [`Self::snap`] の値を当てる
-    pub fn apply_snap(&mut self, s: &SysSnap) {
+    pub(crate) fn apply_snap(&mut self, s: &SysSnap) {
         self.aperture = s.aperture;
         self.ap_value = s.ap_value;
         self.epd = s.epd;
@@ -262,7 +262,7 @@ impl Combo {
     }
 
     /// 状態 n の系の値を基本と比べ、違う項目をプロジェクトの状態の `project` の形で返す
-    pub fn state_project(&self, n: &str) -> serde_json::Map<String, Value> {
+    pub(crate) fn state_project(&self, n: &str) -> serde_json::Map<String, Value> {
         let mut out = serde_json::Map::new();
         if let Some(s) = self.state_sys.get(n) {
             let mut a = json!({});
@@ -316,7 +316,7 @@ impl Combo {
 
 /// 絞りがどこにあるか
 #[derive(Debug, Clone, PartialEq)]
-pub enum StopAt {
+pub(crate) enum StopAt {
     /// 絞りの要素が無く、最初の要素の前に置く
     Lead,
     /// k 番目（0 始まり）の絞りの要素
@@ -326,7 +326,7 @@ pub enum StopAt {
 }
 
 impl Combo {
-    pub fn stop_at(&self) -> StopAt {
+    pub(crate) fn stop_at(&self) -> StopAt {
         // 分岐の先も含めた全部の要素（[`Combo::all`] の順。分岐が無ければ並びの番号）
         let ks: Vec<usize> = self
             .all()
@@ -343,7 +343,7 @@ impl Combo {
     }
 
     /// 前に自動で置いている絞りを、並びの先頭の「絞り」の要素にする（間隔・径はそのまま）
-    pub fn make_stop_element(&mut self) -> Option<usize> {
+    pub(crate) fn make_stop_element(&mut self) -> Option<usize> {
         if !self.lead_stop() {
             return None;
         }
@@ -355,7 +355,7 @@ impl Combo {
     }
 
     /// プロジェクトの `aperture`
-    pub fn aperture_json(&self) -> Value {
+    pub(crate) fn aperture_json(&self) -> Value {
         let value = match self.aperture {
             ApertureKind::Epd => self.epd,
             ApertureKind::Float => 0.0,
@@ -365,7 +365,7 @@ impl Combo {
     }
 
     /// プロジェクトの `fields`
-    pub fn fields_json(&self) -> Value {
+    pub(crate) fn fields_json(&self) -> Value {
         let mut f = json!({
             "type": self.field_kind.key(),
             "points": self.fields.iter().map(|p| json!([p.x, p.y])).collect::<Vec<_>>(),
@@ -383,7 +383,7 @@ impl Combo {
     }
 
     /// プロジェクトの系の値（波長・開口・視野・物体距離・エイミング・アフォーカル）を足す
-    pub fn put_settings(&self, v: &mut Value) {
+    pub(crate) fn put_settings(&self, v: &mut Value) {
         v["wavelengths"] = json!(self
             .waves
             .iter()
@@ -424,7 +424,7 @@ impl Combo {
     }
 
     /// 設定の一行の要約（開口・視野・波長・物体）
-    pub fn settings_summary(&self) -> String {
+    pub(crate) fn settings_summary(&self) -> String {
         let ap = match self.aperture {
             ApertureKind::Epd => format!("EPD {} mm", fmt_num(self.epd)),
             ApertureKind::Float => format!("{} {} mm", tr("Stop diameter"), fmt_num(self.epd)),
@@ -447,7 +447,7 @@ impl Combo {
     }
 
     /// 系を作れない設定の説明（作る前に画面で示す）
-    pub fn settings_problems(&self) -> Vec<String> {
+    pub(crate) fn settings_problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(Err(e)) = self.detector.as_ref().map(|d| d.block()) {
             out.push(trf("Detector settings: {}", &[&e]));
@@ -577,7 +577,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
         });
 }
 
-pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
+pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let Some(n) = c.active_state().map(str::to_string) else {
         body(ui, c, cats);
         return;

@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum Lang {
+pub(crate) enum Lang {
     /// OS の言語に合わせる
     #[default]
     Auto,
@@ -24,21 +24,21 @@ pub enum Lang {
 
 impl Lang {
     /// メニューに出す名前（その言語で書く）
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Lang::Auto => "Auto / 自動",
             Lang::Ja => "日本語",
             Lang::En => "English",
         }
     }
-    pub const ALL: [Lang; 3] = [Lang::Auto, Lang::Ja, Lang::En];
+    pub(crate) const ALL: [Lang; 3] = [Lang::Auto, Lang::Ja, Lang::En];
 }
 
 /// 表の言語（Auto を解いた後）。0 日本語、1 英語（既定。テストも英語で動く）
 static CURRENT: AtomicU8 = AtomicU8::new(1);
 
 /// 言語を選ぶ（Auto は OS の言語。日本語でなければ英語）
-pub fn set(l: Lang) {
+pub(crate) fn set(l: Lang) {
     let l = match l {
         Lang::Auto => {
             let os = sys_locale::get_locale().unwrap_or_default();
@@ -60,7 +60,7 @@ pub fn set(l: Lang) {
 }
 
 /// 今の言語は日本語か
-pub fn is_ja() -> bool {
+pub(crate) fn is_ja() -> bool {
     CURRENT.load(Ordering::Relaxed) == 0
 }
 
@@ -83,7 +83,7 @@ static EXTRA: std::sync::RwLock<Option<HashMap<&'static str, &'static str>>> =
     std::sync::RwLock::new(None);
 
 /// 日本語の訳を足す（`(English, 日本語)`。同梱の表にあるものは同梱の方を使う）
-pub fn add(pairs: &'static [(&'static str, &'static str)]) {
+pub(crate) fn add(pairs: &'static [(&'static str, &'static str)]) {
     let mut g = EXTRA.write_ok();
     let m = g.get_or_insert_with(HashMap::new);
     for (en, ja) in pairs {
@@ -93,7 +93,7 @@ pub fn add(pairs: &'static [(&'static str, &'static str)]) {
 
 /// 訳す文字列の印（表の鍵の英語。表示するときに `tr` で引く）。何もしないで返す。
 /// 網羅の試験は `tr("…")`・`trf("…")` と同じくこの中の文字列も拾う
-pub const fn n_(en: &'static str) -> &'static str {
+pub(crate) const fn n_(en: &'static str) -> &'static str {
     en
 }
 

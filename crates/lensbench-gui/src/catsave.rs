@@ -16,7 +16,7 @@ use crate::worker::CatOp;
 
 /// カタログの項目（一覧の 1 行）
 #[derive(Debug, Clone, PartialEq)]
-pub struct Item {
+pub(crate) struct Item {
     pub name: String,
     pub description: String,
     pub blocks: usize,
@@ -27,7 +27,7 @@ pub struct Item {
 
 /// 窓の状態
 #[derive(Debug, Default)]
-pub struct CatSave {
+pub(crate) struct CatSave {
     pub open: bool,
     /// 範囲（要素の番号、両端を含む）
     pub from: usize,
@@ -48,11 +48,11 @@ pub struct CatSave {
 }
 
 /// ウィンドウから頼む操作と params
-pub type Req = (CatOp, Value);
+pub(crate) type Req = (CatOp, Value);
 
 impl CatSave {
     /// 要素 k を選んで開く
-    pub fn open_for(&mut self, k: usize, combo: &Combo) {
+    pub(crate) fn open_for(&mut self, k: usize, combo: &Combo) {
         self.open = true;
         self.from = k;
         self.to = k;
@@ -63,7 +63,7 @@ impl CatSave {
     }
 
     /// serve の一覧・保存・変更の結果（`catalog_items` と同じ形）を受け取る
-    pub fn take(&mut self, v: &Value) {
+    pub(crate) fn take(&mut self, v: &Value) {
         self.listed = v["catalog"].as_str().unwrap_or_default().to_string();
         if let Some(x) = v["vendor"].as_str() {
             self.vendor = x.to_string();
@@ -89,7 +89,7 @@ impl CatSave {
     }
 
     /// 窓を描く。`ready` は読み込んだ系が今の組合せ（保存できる）か。頼む操作を返す
-    pub fn window(
+    pub(crate) fn window(
         &mut self,
         ctx: &egui::Context,
         combo: &Combo,

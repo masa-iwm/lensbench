@@ -7,7 +7,7 @@ use super::{ApData, Bs, CustomLens, MirrorData, Pick, ZmxSrc};
 /// 要素の種類だけが持つ欄（[`Pick::data`]）。書き出すと `data` の下の種類の鍵（`custom`・`mirror`・`bs`・`ap`・`zmx`）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum KindData {
+pub(crate) enum KindData {
     /// 自作の玉（2 面の単玉）・平板
     Custom(CustomLens),
     /// 鏡
@@ -26,7 +26,7 @@ macro_rules! kind_access {
     ($get:ident, $get_mut:ident, $variant:ident, $ty:ty, $none:expr, $new:expr, $doc:literal) => {
         impl Pick {
             #[doc = concat!($doc, "の欄（ほかの種類では既定）")]
-            pub fn $get(&self) -> &$ty {
+            pub(crate) fn $get(&self) -> &$ty {
                 static NONE: $ty = $none;
                 match self.data.as_deref() {
                     Some(KindData::$variant(x)) => x,
@@ -35,7 +35,7 @@ macro_rules! kind_access {
             }
 
             #[doc = concat!($doc, "の欄を変える（無ければ作る。", $doc, "の要素だけで呼ぶ）")]
-            pub fn $get_mut(&mut self) -> &mut $ty {
+            pub(crate) fn $get_mut(&mut self) -> &mut $ty {
                 if !matches!(self.data.as_deref(), Some(KindData::$variant(_))) {
                     self.data = Some(Box::new(KindData::$variant($new)));
                 }

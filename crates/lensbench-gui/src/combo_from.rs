@@ -45,7 +45,11 @@ impl Combo {
     /// .zmx・システムファイルを、まるごと取り込む要素 1 つの組合せにする（書ければ要素に分ける）。多重構成の .zmx は
     /// 構成ごとの状態「Config k」を持つ組合せにする（要素には分けない）。プロジェクトで書けない設定があり、作り直した系が
     /// 元（多重構成なら構成ごと）と違えば誤り
-    pub fn from_zmx(f: &Path, glass_dirs: &[PathBuf], lens_catalogs: &[PathBuf]) -> R<Combo> {
+    pub(crate) fn from_zmx(
+        f: &Path,
+        glass_dirs: &[PathBuf],
+        lens_catalogs: &[PathBuf],
+    ) -> R<Combo> {
         // 組合せの系は一時のフォルダに書いて読むので、パスは作業フォルダから絶対にしておく
         let f = &absolute(f);
         let o = lensbench_project::open::OpenSpec {
@@ -111,7 +115,7 @@ impl Combo {
     }
 
     /// プロジェクトの JSON（`gui` は見ない）を組合せにする。相対パスは base から。組合せで同じ系を書けなければ誤り
-    pub fn from_project(v: &Value, base: &Path) -> R<Combo> {
+    pub(crate) fn from_project(v: &Value, base: &Path) -> R<Combo> {
         let mut v = v.clone();
         if let Some(o) = v.as_object_mut() {
             o.remove("gui");

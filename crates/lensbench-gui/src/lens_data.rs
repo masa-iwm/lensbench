@@ -15,13 +15,13 @@ mod names;
 mod strip;
 mod table;
 use cell_menu::{cell_menu, override_item};
-pub use names::TYPE_NAMES;
+pub(crate) use names::TYPE_NAMES;
 
 use std::collections::BTreeSet;
 
 #[cfg(test)]
 use lines::{fold_lines, lines_of, run_end, visible_key, Line};
-pub use table::ui;
+pub(crate) use table::ui;
 
 use egui::{RichText, Ui};
 use lensbench_engine::session::views;
@@ -33,7 +33,7 @@ use crate::theme;
 
 /// 表の 1 行（1 つの面）
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Row {
+pub(crate) struct Row {
     pub typ: String,
     pub comment: String,
     /// 曲率半径（平面は inf）
@@ -69,13 +69,13 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn is_cb(&self) -> bool {
+    pub(crate) fn is_cb(&self) -> bool {
         self.typ == "COORDBRK"
     }
 }
 
 /// 玉・群（serve の surface の units）
-pub use lensbench_engine::session::views::UnitView as Unit;
+pub(crate) use lensbench_engine::session::views::UnitView as Unit;
 
 /// ソルブ（serve の solves の 1 つ）の量と説明
 fn solve_text(q: &views::SolveView) -> (String, String) {
@@ -99,7 +99,7 @@ fn pickup_text(p: &views::PickupView) -> (String, String) {
 }
 
 /// serve の `surface`（全部の面）の結果を engine の型で読む（鍵が足りない・綴りが違えば誤り）
-pub fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
+pub(crate) fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
     let r: views::SurfacesView = views::read(v).map_err(|e| format!("surface: {e}"))?;
     let rows = r
         .surfaces
@@ -133,7 +133,7 @@ pub fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
 
 /// 表のブロック（木の節）
 #[derive(Debug, Clone, PartialEq)]
-pub struct Block {
+pub(crate) struct Block {
     pub name: String,
     /// 面（光の通る順、重なりなし）
     pub surfs: Vec<usize>,
@@ -142,7 +142,7 @@ pub struct Block {
 }
 
 /// 玉・群を面の範囲の入れ子で木にする。読込で作った玉は、名前のあるブロックの中にあれば外す。同じ面の組は最初の 1 つ
-pub fn tree(units: &[Unit]) -> Vec<Block> {
+pub(crate) fn tree(units: &[Unit]) -> Vec<Block> {
     let sets: Vec<BTreeSet<usize>> = units
         .iter()
         .map(|u| u.spans.iter().flat_map(|s| s[0]..=s[1]).collect())
@@ -183,23 +183,19 @@ pub fn tree(units: &[Unit]) -> Vec<Block> {
 
 /// 組合せの要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（組合せの図と同じ、
 /// [`crate::combo::LayoutData::spans_for`]）
-pub fn elem_spans(
+pub(crate) fn elem_spans(
     ids: &[String],
     blocks: &[(String, Vec<[usize; 2]>)],
     lead_stop: bool,
     rows: &[Row],
 ) -> Vec<Option<[usize; 2]>> {
-    let d = crate::combo::LayoutData {
-        stop: rows.iter().position(|r| r.stop),
-        blocks: blocks.to_vec(),
-        ..Default::default()
-    };
-    d.spans_for(ids, lead_stop)
+    // ブロックの表は写さない（画面ごとに呼ぶ）
+    crate::combo::spans_in(blocks, rows.iter().position(|r| r.stop), ids, lead_stop)
 }
 
 /// 表の列（変えられる値）。Par は面タイプのパラメータ（OpticStudio の Par 1〜8 と同じ番号）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Col {
+pub(crate) enum Col {
     Type,
     Comment,
     R,
@@ -212,10 +208,10 @@ pub enum Col {
 }
 
 /// パラメータの列の数の上限
-pub const MAX_PAR: u8 = 8;
+pub(crate) const MAX_PAR: u8 = 8;
 
 /// 種類の列に打った文字に合う面タイプ（前方一致を先に、次に名前・説明の部分一致）
-pub fn type_matches(s: &str) -> Vec<&'static str> {
+pub(crate) fn type_matches(s: &str) -> Vec<&'static str> {
     let q = s.trim().to_uppercase();
     let mut out: Vec<&'static str> = TYPE_NAMES
         .iter()
@@ -294,7 +290,7 @@ fn icon_label(t: &str) -> Option<&'static str> {
 
 /// tr で引く名前（パラメータの名前・面タイプの説明。訳の表の検査用）
 #[cfg(test)]
-pub fn labels() -> Vec<&'static str> {
+pub(crate) fn labels() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = TYPE_NAMES.iter().map(|x| x.1).collect();
     v.extend([
         "Drill-down",
@@ -316,7 +312,7 @@ pub fn labels() -> Vec<&'static str> {
 }
 
 /// 面タイプ typ のパラメータ i（1〜）の名前。そのタイプに無ければ None（番号は計算側の surf_parm と同じ）
-pub fn par_label(typ: &str, i: u8) -> Option<&'static str> {
+pub(crate) fn par_label(typ: &str, i: u8) -> Option<&'static str> {
     let i = i as usize;
     let l = match typ {
         "EVENASPH" | "FRESNELS" | "CFRESNEL" | "BINARY_2" => ASPH_LABELS.get(i.checked_sub(1)?)?,
@@ -331,14 +327,14 @@ pub fn par_label(typ: &str, i: u8) -> Option<&'static str> {
 }
 
 /// 面タイプのパラメータの数
-pub fn par_count(typ: &str) -> u8 {
+pub(crate) fn par_count(typ: &str) -> u8 {
     (1..=MAX_PAR)
         .take_while(|&i| par_label(typ, i).is_some())
         .count() as u8
 }
 
 /// 面 r のパラメータ i の値
-pub fn par_value(r: &Row, i: u8) -> Option<f64> {
+pub(crate) fn par_value(r: &Row, i: u8) -> Option<f64> {
     par_label(&r.typ, i)?;
     let i = i as usize;
     let at = |v: &[f64], j: usize| v.get(j).copied().unwrap_or(0.0);
@@ -360,7 +356,7 @@ pub fn par_value(r: &Row, i: u8) -> Option<f64> {
 }
 
 /// 面 r のパラメータ i を v にする面の値（serve の edit の set_surface の fields）
-pub fn par_fields(r: &Row, i: u8, v: f64) -> Result<Map<String, Value>, String> {
+pub(crate) fn par_fields(r: &Row, i: u8, v: f64) -> Result<Map<String, Value>, String> {
     let mut f = Map::new();
     let i = i as usize;
     let put = |a: &[f64], j: usize, n: usize| -> Value {
@@ -407,7 +403,7 @@ pub fn par_fields(r: &Row, i: u8, v: f64) -> Result<Map<String, Value>, String> 
 
 impl Col {
     /// 表の列（パラメータは npar 列）
-    pub fn all(npar: u8) -> Vec<Col> {
+    pub(crate) fn all(npar: u8) -> Vec<Col> {
         let mut v = vec![
             Col::Type,
             Col::Comment,
@@ -423,7 +419,7 @@ impl Col {
     }
 
     /// 面の値の名前（serve の edit の set_surface。パラメータは面タイプで変わるので [`par_fields`]）
-    pub fn field(self) -> &'static str {
+    pub(crate) fn field(self) -> &'static str {
         match self {
             Col::Type => "type",
             Col::Comment => "comment",
@@ -457,7 +453,7 @@ impl Col {
 
     /// ピックアップの量の名前（serve の add_pickup の what）。種類・コメントは None。硝材は dn（材料と一緒に追従し、
     /// disp も組で足す）、膜は coating（名前を写す）
-    pub fn pick_what(self) -> Option<String> {
+    pub(crate) fn pick_what(self) -> Option<String> {
         Some(match self {
             Col::R => "r".into(),
             Col::T => "t".into(),
@@ -471,7 +467,7 @@ impl Col {
     }
 
     /// セルの右端の [...]（ソルブ・ピックアップ・硝材の追加設定）があるか
-    pub fn has_extra(self) -> bool {
+    pub(crate) fn has_extra(self) -> bool {
         self.solve_what().is_some() || self.pick_what().is_some()
     }
 
@@ -484,7 +480,7 @@ impl Col {
     }
 
     /// ソルブの量（c・t）
-    pub fn solve_what(self) -> Option<&'static str> {
+    pub(crate) fn solve_what(self) -> Option<&'static str> {
         match self {
             Col::R => Some("c"),
             Col::T => Some("t"),
@@ -493,7 +489,7 @@ impl Col {
     }
 
     /// 面 r のこの値のソルブ・ピックアップ（説明）
-    pub fn solved(self, r: &Row) -> Option<(char, String)> {
+    pub(crate) fn solved(self, r: &Row) -> Option<(char, String)> {
         if let Some(w) = self.solve_what() {
             if let Some((_, t)) = r.solves.iter().find(|s| s.0 == w) {
                 return Some(('S', trf("Solve: {}", &[t])));
@@ -506,7 +502,7 @@ impl Col {
             .map(|(_, t)| ('P', trf("Pickup: {}", &[t])))
     }
 
-    pub fn text(self, r: &Row) -> String {
+    pub(crate) fn text(self, r: &Row) -> String {
         let n = |x: f64| {
             if x.is_infinite() {
                 if x > 0.0 { "Infinity" } else { "-Infinity" }.to_string()
@@ -532,7 +528,7 @@ impl Col {
     }
 
     /// 書き換えの最初の文字（丸めない値）
-    pub fn edit_text(self, r: &Row) -> String {
+    pub(crate) fn edit_text(self, r: &Row) -> String {
         let full = crate::surf_edit::full;
         match self {
             Col::R if r.r.is_infinite() => String::new(),
@@ -551,12 +547,12 @@ impl Col {
     }
 
     /// 入力できるドロップダウンの列（種類・硝材）
-    pub fn has_list(self) -> bool {
+    pub(crate) fn has_list(self) -> bool {
         matches!(self, Col::Type | Col::Material)
     }
 
     /// 入力の文字を値に（曲率半径の inf・空は平面 = 0）
-    pub fn parse(self, s: &str) -> Result<Value, String> {
+    pub(crate) fn parse(self, s: &str) -> Result<Value, String> {
         let s = s.trim();
         match self {
             Col::Comment | Col::Material | Col::Coating => Ok(json!(s)),
@@ -593,7 +589,7 @@ impl Col {
 
 /// 表から GUI に頼むこと
 #[derive(Debug, Clone, PartialEq)]
-pub enum Act {
+pub(crate) enum Act {
     /// 面 j の値を変える
     Edit { j: usize, col: Col, value: Value },
     /// ブロックを選ぶ（None は選ばない）
@@ -724,7 +720,7 @@ fn list_choices(
 
 /// 硝材の候補（GUI のガラスカタログの名前と、カタログ・nd・νd の説明）
 #[derive(Debug, Clone, PartialEq)]
-pub struct GlassChoice {
+pub(crate) struct GlassChoice {
     pub name: String,
     pub desc: String,
 }
@@ -754,7 +750,7 @@ struct CellMenu {
 
 /// 面・玉・群のピックアップの向き
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum RangePick {
+pub(crate) enum RangePick {
     /// 同じ向き（元と同じ値）
     #[default]
     Same,
@@ -862,7 +858,7 @@ fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
 }
 
 /// 面 j の列 col の多重構成の行の名前（serve の add_config_row の param）。行にできない列は None
-pub fn config_param(r: &Row, j: usize, col: Col) -> Option<String> {
+pub(crate) fn config_param(r: &Row, j: usize, col: Col) -> Option<String> {
     let k = match col {
         Col::R => "r".to_string(),
         Col::T => "t".into(),
@@ -894,7 +890,7 @@ fn selection(rows: &[usize], anchor: Option<usize>, cur: Option<usize>) -> Vec<u
 
 impl LensData {
     /// 足した面が表の at と違う行に入るとき（組合せの系で前の絞りの前に足すと絞りの後に入る）、今のセルを移す先を直す
-    pub fn insert_lands_at(&mut self, row: usize) {
+    pub(crate) fn insert_lands_at(&mut self, row: usize) {
         if let Some((at, _)) = self.ins_at.as_mut() {
             *at = row;
         }
@@ -1059,7 +1055,7 @@ fn range_src(text: &str, blocks: &[Block], n: usize) -> Result<Vec<usize>, Strin
 /// 面の並び dst を面の並び src からピックアップする操作（serve の edit の add_pickup）。形（曲率・コーニック・
 /// 面タイプのパラメータ）と膜は対応する面（反転・戻りは逆の順）から、面の間の硝材・厚さは対応する間から。
 /// 1 面だけ（面としてのピックアップ）を同じ向きでするときは、その面の後の硝材も
-pub fn range_pick_ops(
+pub(crate) fn range_pick_ops(
     rows: &[Row],
     dst: &[usize],
     src: &[usize],
@@ -1258,7 +1254,7 @@ fn popup(ui: &mut Ui, r: &egui::Response, id: &str, add: impl FnOnce(&mut Ui)) {
 
 /// 表の状態
 #[derive(Debug, Clone, Default)]
-pub struct LensData {
+pub(crate) struct LensData {
     /// 右クリックの貼り付けを頼んだ（Some(true) は面を挿入して）。次の Paste で使う
     paste_insert: Option<bool>,
     /// 貼り付けを頼んだ画面の回（届かなければ数回で忘れる。次の Ctrl+V が挿入にならない）
@@ -1304,7 +1300,7 @@ pub struct LensData {
 }
 
 /// 表を描くときに渡すもの
-pub struct Ctx<'a> {
+pub(crate) struct Ctx<'a> {
     pub rows: &'a [Row],
     pub blocks: &'a [Block],
     /// ロックしたブロックの名前
@@ -1323,7 +1319,7 @@ pub struct Ctx<'a> {
 
 impl LensData {
     /// 系が変わった（別のファイル）: 階層・選択・ロックを戻す
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         // 表示の切り替えは系が変わっても残す
         *self = LensData {
             tree: self.tree,
@@ -1332,7 +1328,7 @@ impl LensData {
     }
 
     /// ブロック name に入る（name までの道をたどる）
-    pub fn enter(&mut self, blocks: &[Block], name: &str) {
+    pub(crate) fn enter(&mut self, blocks: &[Block], name: &str) {
         if let Some(path) = path_to(blocks, name) {
             self.scope = path;
             self.sel = None;
@@ -1360,7 +1356,7 @@ fn path_to(blocks: &[Block], name: &str) -> Option<Vec<String>> {
 }
 
 /// 面 j がロックしたブロックの中か
-pub fn locked_at(blocks: &[Block], locked: &BTreeSet<String>, j: usize) -> Option<String> {
+pub(crate) fn locked_at(blocks: &[Block], locked: &BTreeSet<String>, j: usize) -> Option<String> {
     blocks
         .iter()
         .find(|b| locked.contains(&b.name) && b.surfs.contains(&j))
@@ -1369,7 +1365,7 @@ pub fn locked_at(blocks: &[Block], locked: &BTreeSet<String>, j: usize) -> Optio
 
 /// 面 j の欄 col を書き換えられないロックのブロック。ロックは中身（面・硝材）だけを止め、
 /// ブロックの最後の面の厚さ（= ブロックの後の間隔）は変えられる
-pub fn locked_cell(
+pub(crate) fn locked_cell(
     blocks: &[Block],
     locked: &BTreeSet<String>,
     j: usize,
@@ -1386,7 +1382,7 @@ pub fn locked_cell(
 }
 
 /// ブロック i がロックされているか（親がロックされていても）
-pub fn block_locked(blocks: &[Block], locked: &BTreeSet<String>, mut i: usize) -> bool {
+pub(crate) fn block_locked(blocks: &[Block], locked: &BTreeSet<String>, mut i: usize) -> bool {
     loop {
         if locked.contains(&blocks[i].name) {
             return true;

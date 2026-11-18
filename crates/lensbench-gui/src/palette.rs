@@ -5,7 +5,7 @@ use egui::{Key, RichText};
 use crate::i18n::tr;
 
 /// パレットの 1 行
-pub struct Item<C> {
+pub(crate) struct Item<C> {
     pub label: String,
     /// 探すときにも見る別名（英語名・キー）
     pub hint: String,
@@ -15,7 +15,7 @@ pub struct Item<C> {
 }
 
 #[derive(Default)]
-pub struct Palette {
+pub(crate) struct Palette {
     pub open: bool,
     pub query: String,
     pub sel: usize,
@@ -46,7 +46,7 @@ fn order<'a, C>(items: &'a [Item<C>], query: &str, recent: &[String]) -> Vec<&'a
 }
 
 /// 空白で区切った語がすべて含まれる（大文字・小文字を区別しない）
-pub fn matches(q: &str, label: &str, hint: &str) -> bool {
+pub(crate) fn matches(q: &str, label: &str, hint: &str) -> bool {
     let hay = format!("{label} {hint}").to_lowercase();
     q.split_whitespace()
         .all(|w| hay.contains(&w.to_lowercase()))
@@ -65,7 +65,7 @@ fn pos_under(screen: egui::Rect, anchor: Option<egui::Rect>, width: f32) -> egui
 }
 
 impl Palette {
-    pub fn show(&mut self) {
+    pub(crate) fn show(&mut self) {
         self.open = true;
         self.query.clear();
         self.sel = 0;
@@ -73,7 +73,7 @@ impl Palette {
     }
 
     /// 表示して、選ばれたコマンドを返す
-    pub fn ui<C: Clone>(&mut self, ctx: &egui::Context, items: &[Item<C>]) -> Option<C> {
+    pub(crate) fn ui<C: Clone>(&mut self, ctx: &egui::Context, items: &[Item<C>]) -> Option<C> {
         if !self.open {
             return None;
         }

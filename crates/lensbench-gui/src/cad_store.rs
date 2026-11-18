@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// 品の STEP の共有の置き場（`lensbench_cad::Store`）。取るときは配布元より先に見て、配布元から取った STEP を上げる
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct CadStore {
+pub(crate) struct CadStore {
     /// 口の URL（例 `https://<プロジェクト>.pages.dev/cad`）
     pub url: String,
     /// Cloudflare Access のサービストークン（Client ID・Client Secret）。空なら送らない
@@ -21,7 +21,7 @@ pub struct CadStore {
 
 impl CadStore {
     /// 取るときに使う置き場に決める（アプリ版。URL が空なら環境変数か組み込みの置き場）
-    pub fn apply(&self) {
+    pub(crate) fn apply(&self) {
         #[cfg(not(target_arch = "wasm32"))]
         lensbench_cad::set_store(Some(lensbench_cad::Store {
             url: self.url.trim().to_string(),
@@ -40,7 +40,7 @@ impl CadStore {
 
 /// 品の STEP の共有の置き場の欄（カタログのフォルダの窓）。変えたらすぐ使う
 #[cfg(not(target_arch = "wasm32"))]
-pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
+pub(crate) fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
     ui.label(tr("Shared store for item STEP files"));
     let before = st.clone();
     egui::Grid::new("cad_store").num_columns(2).show(ui, |ui| {

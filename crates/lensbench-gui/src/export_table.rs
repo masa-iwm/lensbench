@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 
 /// 表 1 つ
 #[derive(Debug, Clone, PartialEq)]
-pub struct Table {
+pub(crate) struct Table {
     /// 結果の中の場所（例 `mtf`、`spot`、空は一番上）
     pub name: String,
     pub cols: Vec<String>,
@@ -192,14 +192,14 @@ fn walk(name: &str, v: &Value, top: bool, out: &mut Vec<Table>) {
 }
 
 /// 結果を表に
-pub fn tables(v: &Value) -> Vec<Table> {
+pub(crate) fn tables(v: &Value) -> Vec<Table> {
     let mut out = Vec::new();
     walk("", v, true, &mut out);
     out
 }
 
 /// 表を区切りの文字 sep で（CSV は ','、テキストは '\t'）。表が 2 つ以上なら、表ごとに `# 名前` の行と空行
-pub fn delimited(ts: &[Table], sep: char) -> String {
+pub(crate) fn delimited(ts: &[Table], sep: char) -> String {
     let q = |s: &str| -> String {
         if s.contains(sep) || s.contains('"') || s.contains('\n') {
             format!("\"{}\"", s.replace('"', "\"\""))

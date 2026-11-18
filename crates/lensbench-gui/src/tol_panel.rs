@@ -43,14 +43,14 @@ fn dist_label(k: &str) -> &'static str {
 
 /// 玉ごとの上書き（組を選ぶ）
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct LensRow {
+pub(crate) struct LensRow {
     pub name: String,
     pub preset: String,
 }
 
 /// 群・ブロックの公差（空は作らない）
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct GroupRow {
+pub(crate) struct GroupRow {
     pub name: String,
     pub decenter: String,
     pub tilt: String,
@@ -59,7 +59,7 @@ pub struct GroupRow {
 
 /// 個別の公差
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct TolRow {
+pub(crate) struct TolRow {
     pub param: String,
     pub pm: String,
     /// "" は既定の分布
@@ -69,7 +69,7 @@ pub struct TolRow {
 
 /// パネルの操作（app が serve に送る）
 #[derive(Clone, Debug)]
-pub enum Action {
+pub(crate) enum Action {
     Run(Value),
     Stop,
     Save(Value),
@@ -80,7 +80,7 @@ pub enum Action {
     SaveCsv(String),
 }
 
-pub struct TolPanel {
+pub(crate) struct TolPanel {
     pub trials: usize,
     pub seed: u64,
     pub dist: String,
@@ -152,7 +152,7 @@ impl Default for TolPanel {
 
 impl TolPanel {
     /// serve の tolerance の params（保存するファイルと同じ。configs も入る）
-    pub fn spec(&self) -> Result<Value, String> {
+    pub(crate) fn spec(&self) -> Result<Value, String> {
         let op = self.opt.params()?;
         let mut m = self.extra.clone();
         m.insert("trials".into(), json!(self.trials));
@@ -310,7 +310,7 @@ impl TolPanel {
     }
 
     /// 保存したファイル（spec と同じ形）から
-    pub fn set_spec(&mut self, v: &Value) -> Result<(), String> {
+    pub(crate) fn set_spec(&mut self, v: &Value) -> Result<(), String> {
         let m = v.as_object().ok_or(tr("Settings are not an object"))?;
         let mut n = TolPanel::default();
         // 最適化のパネルの欄（vars・merit・terms・configs）
@@ -473,7 +473,7 @@ impl TolPanel {
 }
 
 /// パネルを描く。progress は走っている間の (終えた数, 全体の数)
-pub fn ui(
+pub(crate) fn ui(
     ui: &mut Ui,
     p: &mut TolPanel,
     c: &op::Cands,

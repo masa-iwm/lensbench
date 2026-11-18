@@ -7,7 +7,7 @@ use super::*;
 
 /// 欄の詳しさ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Detail {
+pub(super) enum Detail {
     /// 図の下: 置き方は偏心 y・傾き x
     Compact,
     /// レンズデータの下: 置き方は偏心 x・y、傾き x・y・z と群の役割
@@ -17,7 +17,7 @@ pub enum Detail {
 impl Pick {
     /// 種類を変えた要素。置き方・後の空気・ON/OFF・状態ごとの値・群・id・ロックは残し、種類ごとの欄は新しい種類の
     /// 既定にする（前の種類のファイル・面・上書きなどを持ち越さない）
-    pub fn retyped(&self, kind: ElemKind) -> Pick {
+    pub(crate) fn retyped(&self, kind: ElemKind) -> Pick {
         Pick {
             air: self.air,
             decenter: self.decenter,
@@ -38,7 +38,7 @@ impl Pick {
 
     /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）。自作の玉は、係数の符号を変えるだけで
     /// 反転できる面だけのとき（Zernike・Grid Sag などの面があれば反転しない）。反転したものは戻せる
-    pub fn can_reverse(&self) -> bool {
+    pub(crate) fn can_reverse(&self) -> bool {
         let kind = matches!(
             self.kind,
             ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx

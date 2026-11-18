@@ -9,7 +9,7 @@ use crate::i18n::{tr, trf};
 
 impl Pick {
     /// ブロックの JSON をそのまま持つ要素
-    pub fn raw(block: &Value) -> Pick {
+    pub(crate) fn raw(block: &Value) -> Pick {
         let mut extra = block.clone();
         if let Some(o) = extra.as_object_mut() {
             o.remove("id");

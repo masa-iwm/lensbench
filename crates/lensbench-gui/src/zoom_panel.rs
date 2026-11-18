@@ -18,7 +18,7 @@ use lensbench_engine::session::views::{ZoomPoint, ZoomView};
 /// 状態の行（名前で覚える。選べる状態に無い行は出さない）
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct StateRow {
+pub(crate) struct StateRow {
     pub on: bool,
     /// 目標（空は目標なし）
     pub target: String,
@@ -36,16 +36,16 @@ impl Default for StateRow {
 /// 解くパラメータ（範囲は空なら無し）
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct VarRow {
+pub(crate) struct VarRow {
     pub name: String,
     pub lo: String,
     pub hi: String,
 }
 
 /// 選べる状態: (.zmx の構成の番号か, 名前)
-pub type Cand = (bool, String);
+pub(crate) type Cand = (bool, String);
 
-pub struct ZoomPanel {
+pub(crate) struct ZoomPanel {
     pub states: BTreeMap<String, StateRow>,
     pub vars: Vec<VarRow>,
     /// 目標を近軸倍率にする（false は焦点距離）
@@ -98,7 +98,7 @@ struct Saved {
 
 impl ZoomPanel {
     /// 設定・プロジェクトに残す形（既定のままなら None）
-    pub fn saved(&self) -> Option<Value> {
+    pub(crate) fn saved(&self) -> Option<Value> {
         let z = ZoomPanel::default();
         let s = |p: &ZoomPanel| Saved {
             states: p.states.clone(),
@@ -119,7 +119,7 @@ impl ZoomPanel {
     }
 
     /// [`ZoomPanel::saved`] を戻す（読めなければ何もしない）
-    pub fn restore(&mut self, v: &Value) {
+    pub(crate) fn restore(&mut self, v: &Value) {
         if let Ok(s) = serde_json::from_value::<Saved>(v.clone()) {
             *self = ZoomPanel {
                 states: s.states,
@@ -137,7 +137,7 @@ impl ZoomPanel {
     }
 
     /// serve の zoom の params。cands は選べる状態（並びの順に解く）
-    pub fn params(&self, cands: &[Cand]) -> Result<Value, String> {
+    pub(crate) fn params(&self, cands: &[Cand]) -> Result<Value, String> {
         let mut configs = Vec::new();
         let mut targets = Vec::new();
         for (is_cfg, name) in cands {
@@ -191,7 +191,7 @@ impl ZoomPanel {
 }
 
 /// パネルを描く。走らせるなら params を返す。sys は名前の欄の補完の候補（群の名前は移動の候補にも）
-pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Option<Value> {
+pub(crate) fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Option<Value> {
     let mut run = None;
     let weak = theme::weak_text(ui.visuals());
     egui::ScrollArea::vertical()

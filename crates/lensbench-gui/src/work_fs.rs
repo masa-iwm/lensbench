@@ -13,7 +13,7 @@ use lensbench_core::vfs::{Fs, MemFs, Stamp};
 
 /// 作業フォルダ dir の下だけメモリ、ほかは base
 #[cfg(not(target_arch = "wasm32"))]
-pub struct Overlay {
+pub(crate) struct Overlay {
     dir: PathBuf,
     mem: MemFs,
     base: Arc<dyn Fs>,
@@ -21,7 +21,7 @@ pub struct Overlay {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Overlay {
-    pub fn new(dir: PathBuf, base: Arc<dyn Fs>) -> Overlay {
+    pub(crate) fn new(dir: PathBuf, base: Arc<dyn Fs>) -> Overlay {
         Overlay {
             dir,
             mem: MemFs::new(),
@@ -89,14 +89,14 @@ impl Fs for Overlay {
 
 /// プロセスの置き場の口（作業フォルダの下はメモリ）
 #[cfg(not(target_arch = "wasm32"))]
-pub fn fs() -> Arc<Overlay> {
+pub(crate) fn fs() -> Arc<Overlay> {
     static S: std::sync::OnceLock<Arc<Overlay>> = std::sync::OnceLock::new();
     S.get_or_init(|| Arc::new(Overlay::new(work_dir(), lensbench_core::vfs::default_fs())))
         .clone()
 }
 
 /// f を置き場の口の下で回す
-pub fn with<R>(f: impl FnOnce() -> R) -> R {
+pub(crate) fn with<R>(f: impl FnOnce() -> R) -> R {
     #[cfg(not(target_arch = "wasm32"))]
     return lensbench_core::vfs::with(fs(), f);
     #[cfg(target_arch = "wasm32")]
@@ -104,7 +104,7 @@ pub fn with<R>(f: impl FnOnce() -> R) -> R {
 }
 
 /// 作業フォルダ（組合せの系・カタログの玉の断面を置く。ネイティブはプロセスごと）
-pub fn work_dir() -> PathBuf {
+pub(crate) fn work_dir() -> PathBuf {
     let d = lensbench_core::vfs::temp_dir().join("lensbench-gui");
     #[cfg(not(target_arch = "wasm32"))]
     let d = d.join(std::process::id().to_string());

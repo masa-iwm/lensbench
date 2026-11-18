@@ -27,7 +27,7 @@ const COLORS: &[(&str, &str)] = &[
 
 /// 表の表示名（翻訳の検査用）
 #[cfg(test)]
-pub const LABELS: [&str; 9] = [
+pub(crate) const LABELS: [&str; 9] = [
     n_("Default"),
     n_("y fan"),
     n_("x fan"),
@@ -41,7 +41,7 @@ pub const LABELS: [&str; 9] = [
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct RaySet {
+pub(crate) struct RaySet {
     /// 描く視野の番号（1 始まり）。空は全視野
     pub fields: Vec<usize>,
     /// 描く波長の番号（1 始まり）。空は主波長
@@ -68,7 +68,7 @@ pub struct RaySet {
 impl RaySet {
     /// serve の layout（export なら layout_export）の params に足す。n_fields・n_waves は今の系の数
     /// （範囲の外の番号は落とす。0 なら数がわからないので落とさない）
-    pub fn apply(&self, v: &mut Value, n_fields: usize, n_waves: usize, export: bool) {
+    pub(crate) fn apply(&self, v: &mut Value, n_fields: usize, n_waves: usize, export: bool) {
         let pick = |a: &[usize], n: usize| -> Vec<usize> {
             a.iter()
                 .copied()
@@ -118,12 +118,12 @@ impl RaySet {
     }
 
     /// 既定から変えた項目があるか
-    pub fn is_default(&self) -> bool {
+    pub(crate) fn is_default(&self) -> bool {
         *self == RaySet::default()
     }
 
     /// 設定の欄。変えたら true（図を作り直す）。書き出しだけの項目を変えても false
-    pub fn ui(&mut self, ui: &mut Ui, n_fields: usize, n_waves: usize) -> bool {
+    pub(crate) fn ui(&mut self, ui: &mut Ui, n_fields: usize, n_waves: usize) -> bool {
         let before = self.clone();
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Fields"));
@@ -248,7 +248,7 @@ fn combo(ui: &mut Ui, id: &str, v: &mut String, items: &[(&str, &'static str)]) 
 }
 
 /// 光線の色の番号（パレットの番号）: color は layout の結果の `color`（field・wave・cfg、空なら by_cfg で決める）
-pub fn ray_class(r: &Value, color: &str, by_cfg: bool) -> usize {
+pub(crate) fn ray_class(r: &Value, color: &str, by_cfg: bool) -> usize {
     let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
     match color {
         "wave" => us(&r["wave"]),

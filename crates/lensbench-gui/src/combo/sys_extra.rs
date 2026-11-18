@@ -8,7 +8,7 @@ use lensbench_project::Environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct SysExtra {
+pub(crate) struct SysExtra {
     /// 視野の正規化が矩形（プロジェクトの fields.norm = rect）
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub field_rect: bool,
@@ -32,12 +32,12 @@ pub struct SysExtra {
 }
 
 impl SysExtra {
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         *self == SysExtra::default()
     }
 
     /// プロジェクトの値から（fields は norm だけを見る）
-    pub fn read(v: &Value) -> Result<SysExtra, String> {
+    pub(crate) fn read(v: &Value) -> Result<SysExtra, String> {
         let environment = match v.get("environment") {
             Some(x) => Some(serde_json::from_value(x.clone()).map_err(|e| e.to_string())?),
             None => None,
@@ -61,7 +61,7 @@ impl SysExtra {
     }
 
     /// プロジェクトの系の値に足す（fields は先に書いておく）
-    pub fn put(&self, v: &mut Value) {
+    pub(crate) fn put(&self, v: &mut Value) {
         if self.field_rect {
             v["fields"]["norm"] = json!("rect");
         }

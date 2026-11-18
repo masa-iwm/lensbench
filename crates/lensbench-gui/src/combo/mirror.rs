@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// 鏡だけが持つ欄（[`Pick::mirror`]）。膜は BS と同じ [`Pick::coat`]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct MirrorData {
+pub(crate) struct MirrorData {
     /// 曲率半径 [mm]（0 は平面）
     pub radius: f64,
     /// コーニック
@@ -15,7 +15,7 @@ pub struct MirrorData {
 }
 
 impl MirrorData {
-    pub const DEFAULT: MirrorData = MirrorData {
+    pub(crate) const DEFAULT: MirrorData = MirrorData {
         radius: 0.0,
         conic: 0.0,
         back: false,
@@ -24,7 +24,7 @@ impl MirrorData {
 
 impl super::Pick {
     /// 行で書いた鏡（Zernike・Grid Sag など、.zmx を分けた鏡）の行。欄（半径・半直径・膜）は使わない
-    pub fn mirror_row(&self) -> Option<&serde_json::Value> {
+    pub(crate) fn mirror_row(&self) -> Option<&serde_json::Value> {
         self.extra.get("row").filter(|r| !r.is_null())
     }
 }

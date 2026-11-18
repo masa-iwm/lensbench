@@ -10,7 +10,7 @@ use super::StatePlace;
 /// [`Pick::path`] に持つ
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ZmxSrc {
+pub(crate) struct ZmxSrc {
     /// .zmx の玉: 何番目の玉か（1 始まり）
     pub lens: usize,
     /// マルチコンフィグの番号（1 始まり）
@@ -25,7 +25,7 @@ pub struct ZmxSrc {
 }
 
 impl ZmxSrc {
-    pub const DEFAULT: ZmxSrc = ZmxSrc {
+    pub(crate) const DEFAULT: ZmxSrc = ZmxSrc {
         lens: 1,
         config: 1,
         range: [0, 0],
@@ -43,7 +43,7 @@ impl Default for ZmxSrc {
 /// .zmx の取り込みの中の群（プロジェクトの zmx の groups）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct ZGroup {
+pub(crate) struct ZGroup {
     pub from: usize,
     pub to: usize,
     pub name: String,
@@ -60,7 +60,7 @@ pub struct ZGroup {
 
 impl ZGroup {
     /// 状態が指す id
-    pub fn key(&self) -> &str {
+    pub(crate) fn key(&self) -> &str {
         if self.id.is_empty() {
             self.name.trim()
         } else {
@@ -69,7 +69,7 @@ impl ZGroup {
     }
 
     /// プロジェクトの zmx の groups の項目（面の範囲が無ければ None）
-    pub fn json(&self) -> Option<Value> {
+    pub(crate) fn json(&self) -> Option<Value> {
         if self.from == 0 || self.to < self.from {
             return None;
         }
@@ -87,7 +87,7 @@ impl ZGroup {
     }
 
     /// 状態 n の値（状態の set の項目。無ければ None）
-    pub fn state_set(&self, n: &str) -> Option<Map<String, Value>> {
+    pub(crate) fn state_set(&self, n: &str) -> Option<Map<String, Value>> {
         let mut m = Map::new();
         if let Some(x) = self.state_shift.get(n) {
             m.insert("shift".into(), json!(x));

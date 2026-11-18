@@ -43,7 +43,7 @@ const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n"];
 const REFERENCE: &[&str] = &["centroid", "chief"];
 
 /// 項の種類
-pub const TERM_TYPES: &[&str] = &[
+pub(crate) const TERM_TYPES: &[&str] = &[
     "spot",
     "wavefront",
     "mtf",
@@ -172,7 +172,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct VarRow {
+pub(crate) struct VarRow {
     pub name: String,
     pub lo: String,
     pub hi: String,
@@ -181,7 +181,7 @@ pub struct VarRow {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct TermRow {
+pub(crate) struct TermRow {
     pub ty: String,
     /// キーの値（空は省く）
     pub vals: Vec<(String, String)>,
@@ -190,7 +190,7 @@ pub struct TermRow {
 }
 
 impl TermRow {
-    pub fn new(ty: &str) -> TermRow {
+    pub(crate) fn new(ty: &str) -> TermRow {
         let mut t = TermRow {
             ty: ty.into(),
             ..Default::default()
@@ -217,7 +217,7 @@ impl TermRow {
 
 /// パネルの操作（app が serve に送る）
 #[derive(Clone, Debug)]
-pub enum Action {
+pub(crate) enum Action {
     Run(Value),
     Stop,
     /// 結果の値を系（組合せ）に当てる
@@ -229,7 +229,7 @@ pub enum Action {
 }
 
 #[derive(Default)]
-pub struct OptPanel {
+pub(crate) struct OptPanel {
     pub vars: Vec<VarRow>,
     pub terms: Vec<TermRow>,
     /// 既定の評価関数: spot・wavefront・none
@@ -255,7 +255,7 @@ pub struct OptPanel {
 }
 
 impl OptPanel {
-    pub fn new() -> OptPanel {
+    pub(crate) fn new() -> OptPanel {
         // 既定値は設定の型（CLI・serve・Python と同じ）
         let d = lensbench_design::dls_spec::OptimizeParams::default();
         OptPanel {
@@ -270,7 +270,7 @@ impl OptPanel {
     }
 
     /// serve の optimize の params（保存するファイルと同じ）
-    pub fn params(&self) -> Result<Value, String> {
+    pub(crate) fn params(&self) -> Result<Value, String> {
         let num = |s: &str, what: &str| -> Result<Option<f64>, String> {
             let t = s.trim();
             if t.is_empty() {
@@ -330,7 +330,7 @@ impl OptPanel {
     }
 
     /// 保存したファイル（params と同じ形）から
-    pub fn set_params(&mut self, p: &Value) -> Result<(), String> {
+    pub(crate) fn set_params(&mut self, p: &Value) -> Result<(), String> {
         let mut n = OptPanel::new();
         if let Some(m) = p["merit"].as_str() {
             n.merit = m.into();
@@ -519,7 +519,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
 }
 
 /// 変数の候補（面の表の行・玉と群）
-pub struct Cands<'a> {
+pub(crate) struct Cands<'a> {
     /// 玉・群の名前
     pub units: Vec<String>,
     /// 組合せの系（面の値は t・r・k だけ組合せに当てられる）
@@ -531,7 +531,7 @@ pub struct Cands<'a> {
 }
 
 /// 変数の今の値（面の値 `<面>.<t|r|c|k>` だけ。玉・群・ほかは None）
-pub fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
+pub(crate) fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
     let (j, f) = name.trim().split_once('.')?;
     let r = rows.get(j.parse::<usize>().ok()?)?;
     Some(match f {
@@ -557,7 +557,12 @@ pub(crate) fn small_edit(ui: &mut Ui, s: &mut String, w: f32, hint: &str) -> egu
 }
 
 /// パネルを描く。`progress` は走っている間の評価関数の履歴
-pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) -> Vec<Action> {
+pub(crate) fn ui(
+    ui: &mut Ui,
+    p: &mut OptPanel,
+    c: &Cands,
+    progress: Option<&[f64]>,
+) -> Vec<Action> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     egui::ScrollArea::vertical()
@@ -1053,7 +1058,7 @@ fn result_ui(
 }
 
 /// 結果の (名前, 値) のうち開いている系に当てられるもの。before なら最適化の前の値
-pub fn result_values(r: &OptimizeView, before: bool) -> Vec<(String, f64)> {
+pub(crate) fn result_values(r: &OptimizeView, before: bool) -> Vec<(String, f64)> {
     let x = if before { &r.x0 } else { &r.x };
     r.names
         .iter()
@@ -1064,7 +1069,7 @@ pub fn result_values(r: &OptimizeView, before: bool) -> Vec<(String, f64)> {
 }
 
 /// 組合せに当てる面の値: "7.t" → (7, "t", 値)。曲率 c は曲率半径 r に。当てられない変数は Err（名前）
-pub fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Value), String> {
+pub(crate) fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Value), String> {
     let bad = || name.to_string();
     let (s, k) = name.rsplit_once('.').ok_or_else(bad)?;
     let j: usize = s.trim().parse().map_err(|_| bad())?;

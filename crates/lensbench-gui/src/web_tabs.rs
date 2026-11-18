@@ -31,10 +31,10 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 /// BroadcastChannel の名前
-pub const CHANNEL: &str = "lensbench-panels";
+pub(crate) const CHANNEL: &str = "lensbench-panels";
 
 /// ページの URL の `?panel=<id>&main=<sid>`（別のタブのパネルのとき）
-pub fn panel_of_location() -> Option<(u64, String)> {
+pub(crate) fn panel_of_location() -> Option<(u64, String)> {
     let q = web_sys::window()?.location().search().ok()?;
     let q = web_sys::UrlSearchParams::new_with_str(&q).ok()?;
     let id = q.get("panel")?.parse().ok()?;
@@ -43,7 +43,7 @@ pub fn panel_of_location() -> Option<(u64, String)> {
 }
 
 /// このページが解析のパネルを出した別の窓か（`?panel=` に `&calc=1`。自分で計算する）
-pub fn calc_panel() -> bool {
+pub(crate) fn calc_panel() -> bool {
     let q = web_sys::window().and_then(|w| w.location().search().ok());
     let q = q.and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok());
     panel_of_location().is_some() && q.and_then(|q| q.get("calc")).as_deref() == Some("1")
@@ -192,7 +192,7 @@ fn now_ms() -> f64 {
 // ---- 元のタブ
 
 /// 元のタブで起きたこと
-pub enum Ev {
+pub(crate) enum Ev {
     /// 子のタブを閉じた（ドックに戻す）
     Gone(u64),
     /// 別の窓のパネル（解析以外）が始まった（画面を初めから送り直す）
@@ -214,7 +214,7 @@ struct Open {
 }
 
 /// 元のタブ: 別のタブに出したパネル
-pub struct Tabs {
+pub(crate) struct Tabs {
     chan: Option<Chan>,
     sid: String,
     open: HashMap<u64, Open>,
@@ -227,7 +227,7 @@ pub struct Tabs {
 }
 
 impl Tabs {
-    pub fn new(ctx: &egui::Context) -> Tabs {
+    pub(crate) fn new(ctx: &egui::Context) -> Tabs {
         let sid = format!("{:x}", (js_sys::Math::random() * 1e15) as u64);
         Tabs {
             chan: Chan::new(ctx, CHANNEL, Some(json!({ "sid": sid, "closed": true }))),
@@ -240,21 +240,21 @@ impl Tabs {
     }
 
     /// パネル id は自分で計算する別の窓に出した解析のパネルか
-    pub fn is_calc(&self, id: u64) -> bool {
+    pub(crate) fn is_calc(&self, id: u64) -> bool {
         self.calc.contains(&id) && self.open.contains_key(&id)
     }
 
-    pub fn is_open(&self, id: u64) -> bool {
+    pub(crate) fn is_open(&self, id: u64) -> bool {
         self.open.contains_key(&id)
     }
 
-    pub fn any_open(&self) -> bool {
+    pub(crate) fn any_open(&self) -> bool {
         !self.open.is_empty()
     }
 
     /// パネル id を別の窓（ポップアップ）で開く（同じ窓のタブだと元のタブが裏に回り、ブラウザが元のタブの画面を
     /// 止めるため）。calc なら別の窓が自分で計算する（解析のパネル）。ブラウザに止められたら false
-    pub fn open(&mut self, id: u64, size: [f32; 2], calc: bool) -> bool {
+    pub(crate) fn open(&mut self, id: u64, size: [f32; 2], calc: bool) -> bool {
         if self.chan.is_none() || self.blocked.contains(&id) {
             return false;
         }
@@ -296,7 +296,7 @@ impl Tabs {
     }
 
     /// 子のタブから届いたこと（閉じたタブも）
-    pub fn events(&mut self) -> Vec<Ev> {
+    pub(crate) fn events(&mut self) -> Vec<Ev> {
         let mut out = Vec::new();
         if let Some(c) = &self.chan {
             for m in c.take() {
@@ -372,26 +372,26 @@ impl Tabs {
     }
 
     /// 解析のパネルの別の窓に、系の写しを送る（how は読み方と変更の JSON、bytes は読むファイルの中身）
-    pub fn send_doc(&mut self, id: u64, how: &Value, bytes: &[u8]) {
+    pub(crate) fn send_doc(&mut self, id: u64, how: &Value, bytes: &[u8]) {
         let j = how.to_string();
         let n = (j.len() as u32).to_le_bytes();
         self.post_bytes(id, DOC, &[&n, j.as_bytes(), bytes]);
     }
 
     /// 解析のパネルの別の窓に、パネル（[`crate::layout::Pane`] の JSON）を送る
-    pub fn send_pane(&mut self, id: u64, pane: &Value) {
+    pub(crate) fn send_pane(&mut self, id: u64, pane: &Value) {
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "to": id, "pane": pane }));
         }
     }
 
     /// 別の窓のパネルに画面（[`crate::remote_frame`] のバイト列）を送る
-    pub fn send_frame(&mut self, id: u64, frame: &[u8]) {
+    pub(crate) fn send_frame(&mut self, id: u64, frame: &[u8]) {
         self.post_bytes(id, FRAME, &[frame]);
     }
 
     /// 別の窓のパネルに画面の外の出力（カーソル・写した文字・IME の位置）を送る
-    pub fn send_out(&mut self, id: u64, out: Value) {
+    pub(crate) fn send_out(&mut self, id: u64, out: Value) {
         if let Some(o) = self.open.get_mut(&id) {
             o.ack = false;
         }
@@ -402,14 +402,14 @@ impl Tabs {
 
     /// 元のタブが裏に回っている間: 別の窓に、ms のあとに入力（空でも）を送って合図するよう頼む。
     /// 動き続けるもの（計算中の印など）で回り続けないよう、100 ms より短くはしない
-    pub fn send_again(&mut self, id: u64, ms: f64) {
+    pub(crate) fn send_again(&mut self, id: u64, ms: f64) {
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "to": id, "again": ms.max(100.0) }));
         }
     }
 
     /// 入力を受けたのに画面も出力も送らなかった窓に、受けたことだけ返す（窓が「止まった」と出さないように）
-    pub fn flush_acks(&mut self) {
+    pub(crate) fn flush_acks(&mut self) {
         let Some(c) = &self.chan else {
             return;
         };
@@ -425,7 +425,7 @@ impl Tabs {
     }
 
     /// keep に無いパネルのタブを閉じる（並びを呼び出して窓のパネルが無くなったときなど）
-    pub fn retain(&mut self, keep: &[u64]) {
+    pub(crate) fn retain(&mut self, keep: &[u64]) {
         self.open.retain(|id, o| {
             let k = keep.contains(id);
             if !k {
@@ -437,7 +437,7 @@ impl Tabs {
 }
 
 /// この窓を閉じる（元のタブに戻す）
-pub fn close_this() {
+pub(crate) fn close_this() {
     if let Some(w) = web_sys::window() {
         let _ = w.close();
     }
@@ -452,7 +452,7 @@ fn focus_opener() {
 }
 
 /// ブラウザのタブの題
-pub fn set_title(t: &str) {
+pub(crate) fn set_title(t: &str) {
     if let Some(d) = web_sys::window().and_then(|w| w.document()) {
         d.set_title(t);
     }
@@ -461,7 +461,7 @@ pub fn set_title(t: &str) {
 // ---- 解析以外のパネル: 元のタブで描いて画面を送る
 
 /// 元のタブ: 別の窓に出した解析以外のパネルを描く別の画面（egui の Context）。入力は別の窓から届く
-pub struct Host {
+pub(crate) struct Host {
     ctx: egui::Context,
     events: Vec<egui::Event>,
     rect: egui::Rect,
@@ -482,7 +482,7 @@ pub struct Host {
 }
 
 impl Host {
-    pub fn new(main: &egui::Context) -> Host {
+    pub(crate) fn new(main: &egui::Context) -> Host {
         let ctx = egui::Context::default();
         crate::fonts::install(&ctx);
         let m = main.clone();
@@ -512,12 +512,12 @@ impl Host {
 
     /// このパネルの egui が描き直しを頼んでいれば、その時間 [ms]（取ると消える）。元のタブが裏に回っている間は
     /// 元のタブの画面（rAF）が回らないので、別の窓にこの時間のあとの合図を頼む（[`Tabs::send_again`]）
-    pub fn take_again(&self) -> Option<f64> {
+    pub(crate) fn take_again(&self) -> Option<f64> {
         self.again.lock().ok().and_then(|mut a| a.take())
     }
 
     /// 別の窓の入力（{events, rect: [x0, y0, x1, y1], ppp, mods}）
-    pub fn input(&mut self, v: &Value) {
+    pub(crate) fn input(&mut self, v: &Value) {
         if let Ok(ev) = serde_json::from_value::<Vec<egui::Event>>(v["events"].clone()) {
             self.events.extend(ev);
         }
@@ -538,7 +538,7 @@ impl Host {
     }
 
     /// パネルを描き、変わっていれば送る画面（バイト列）と画面の外の出力を返す
-    pub fn frame(
+    pub(crate) fn frame(
         &mut self,
         main: &egui::Context,
         mut ui: impl FnMut(&mut egui::Ui),
@@ -610,7 +610,7 @@ impl Host {
 }
 
 /// 別の窓: 元のタブから届く画面を描き、入力を返す（解析以外のパネル）
-pub struct Viewer {
+pub(crate) struct Viewer {
     chan: Option<Chan>,
     /// このパネルの画面を受ける口（[`Frames`]）
     frames: Option<Frames>,
@@ -637,7 +637,7 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    pub fn new(ctx: &egui::Context, id: u64, sid: String) -> Viewer {
+    pub(crate) fn new(ctx: &egui::Context, id: u64, sid: String) -> Viewer {
         Viewer {
             chan: Chan::new(
                 ctx,
@@ -662,7 +662,7 @@ impl Viewer {
         }
     }
 
-    pub fn update(&mut self, ctx: &egui::Context) {
+    pub(crate) fn update(&mut self, ctx: &egui::Context) {
         let Some(c) = &self.chan else {
             return;
         };
@@ -855,7 +855,7 @@ impl Viewer {
 // ---- 解析のパネル: 別の窓が自分で計算する
 
 /// 別の窓（解析のパネル）に元のタブから届いたもの
-pub enum CalcEv {
+pub(crate) enum CalcEv {
     /// パネル（[`crate::layout::Pane`] の JSON）
     Pane(Value),
     /// 系の写し（読み方と変更の JSON、読むファイルの中身）
@@ -863,7 +863,7 @@ pub enum CalcEv {
 }
 
 /// 別の窓（解析のパネル）: 元のタブから系とパネルの設定を受ける口。計算と描くのは画面（`App`）が自分で
-pub struct Calc {
+pub(crate) struct Calc {
     chan: Option<Chan>,
     frames: Option<Frames>,
     pub id: u64,
@@ -879,7 +879,7 @@ pub struct Calc {
 }
 
 impl Calc {
-    pub fn new(ctx: &egui::Context, id: u64, sid: String) -> Calc {
+    pub(crate) fn new(ctx: &egui::Context, id: u64, sid: String) -> Calc {
         Calc {
             chan: Chan::new(
                 ctx,
@@ -897,7 +897,7 @@ impl Calc {
     }
 
     /// ブラウザのタブの題をパネルの名前 t に（変わったときだけ）
-    pub fn set_title(&mut self, t: &str) {
+    pub(crate) fn set_title(&mut self, t: &str) {
         if t != self.title {
             self.title = t.to_string();
             set_title(&format!("lensbench — {t}"));
@@ -906,7 +906,7 @@ impl Calc {
 
     /// 元のタブから届いたもの。パネルが届くまでは 1 秒ごとに hello、届いた後は 2 秒ごとに知らせる
     /// （元のタブは知らせが途切れると窓を閉じたとみる）
-    pub fn events(&mut self, ctx: &egui::Context) -> Vec<CalcEv> {
+    pub(crate) fn events(&mut self, ctx: &egui::Context) -> Vec<CalcEv> {
         let mut out = Vec::new();
         let Some(c) = &self.chan else {
             return out;
@@ -953,14 +953,14 @@ impl Calc {
     }
 
     /// 写した文書を読めなかったと元のタブへ知らせる（平たい系ファイルで送り直してもらう）
-    pub fn ask_flat(&self) {
+    pub(crate) fn ask_flat(&self) {
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "from": self.id, "flat": true }));
         }
     }
 
     /// パネル（[`crate::layout::Pane`] の JSON）を変えたら元のタブへ送る（元のタブに戻したときに同じ設定にする）
-    pub fn send_pane(&mut self, pane: Value) {
+    pub(crate) fn send_pane(&mut self, pane: Value) {
         if self.pane.as_ref() == Some(&pane) || self.closed {
             return;
         }

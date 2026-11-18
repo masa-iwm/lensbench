@@ -26,14 +26,14 @@ thread_local! {
 }
 
 /// このタブが見えていないか
-pub fn hidden() -> bool {
+pub(crate) fn hidden() -> bool {
     web_sys::window()
         .and_then(|w| w.document())
         .is_some_and(|d| d.hidden())
 }
 
 /// 起動のときに 1 回（元のタブだけ）。`app` は eframe に渡したのと同じ画面
-pub fn install(app: Weak<RefCell<App>>, ctx: egui::Context) {
+pub(crate) fn install(app: Weak<RefCell<App>>, ctx: egui::Context) {
     let Ok(ch) = web_sys::MessageChannel::new() else {
         return;
     };
@@ -62,7 +62,7 @@ pub fn install(app: Weak<RefCell<App>>, ctx: egui::Context) {
 
 /// 裏に回っていれば、次のタスクで [`App::background`] を回す（何度呼んでも 1 回にまとめる）。
 /// 別の窓の入力・計算の結果が届いたときに呼ぶ
-pub fn kick() {
+pub(crate) fn kick() {
     if QUEUED.get() || !hidden() {
         return;
     }

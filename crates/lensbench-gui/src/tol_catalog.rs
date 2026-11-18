@@ -9,7 +9,7 @@ use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 
 /// 玉の公差の項目（名前、表示名、単位）
-pub const FIELDS: [(&str, &str, &str); 9] = [
+pub(crate) const FIELDS: [(&str, &str, &str); 9] = [
     ("radius_rel", n_("Radius"), n_("Ratio")),
     ("focal_rel", n_("Focal length"), n_("Ratio")),
     ("thickness", n_("Center thickness"), "mm"),
@@ -27,7 +27,7 @@ const HI_OPS: [&str; 2] = ["lt", "le"];
 
 /// 条件つきの上書き（rules の 1 つ）。空の欄は条件・項目なし
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Rule {
+pub(crate) struct Rule {
     /// 外径 [mm] の下限（比べ方 ge・gt）と上限（lt・le）
     pub dia_lo: (String, String),
     pub dia_hi: (String, String),
@@ -41,7 +41,7 @@ pub struct Rule {
 
 /// メーカー 1 つ
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct VendorTol {
+pub(crate) struct VendorTol {
     /// メーカー名（大文字小文字・空白・記号を無視して、ブロックのメーカー名に含まれれば合う。複数が合えばいちばん長い名前。"*" はほか）
     pub vendor: String,
     /// 組の名前（commercial など）か "none"（公差なし）。空なら下の項目
@@ -64,7 +64,7 @@ fn put_fields(o: &mut Map<String, Value>, f: &[String; 9], what: &str) -> Result
 }
 
 /// 整数の値は整数で書く（読んだファイルと同じ形に戻す）
-pub fn num_val(x: f64) -> Value {
+pub(crate) fn num_val(x: f64) -> Value {
     if x.fract() == 0.0 && x.abs() < 1e15 {
         json!(x as i64)
     } else {
@@ -73,7 +73,7 @@ pub fn num_val(x: f64) -> Value {
 }
 
 /// 欄から catalog_tols の JSON（メーカーが無ければ None）
-pub fn to_json(v: &[VendorTol]) -> Result<Option<Value>, String> {
+pub(crate) fn to_json(v: &[VendorTol]) -> Result<Option<Value>, String> {
     let mut out = Map::new();
     for t in v {
         let name = t.vendor.trim();
@@ -134,7 +134,7 @@ fn fields_of(m: &Map<String, Value>, what: &str) -> Result<[String; 9], String> 
 }
 
 /// catalog_tols の JSON から欄へ。欄で書けない形（同じ量の同じ向きの条件が 2 つなど）は Err（設定にそのまま残す）
-pub fn from_json(v: &Value) -> Result<Vec<VendorTol>, String> {
+pub(crate) fn from_json(v: &Value) -> Result<Vec<VendorTol>, String> {
     let m = v.as_object().ok_or("catalog_tols")?;
     let mut out = Vec::new();
     for (name, x) in m {
@@ -231,7 +231,7 @@ fn bound(ui: &mut Ui, id: impl std::hash::Hash, b: &mut (String, String), ops: &
 }
 
 /// 欄を描く。presets は組の（名前, 表示名）
-pub fn ui(
+pub(crate) fn ui(
     ui: &mut Ui,
     v: &mut Vec<VendorTol>,
     presets: &[(&str, &'static str)],

@@ -145,7 +145,7 @@ impl Out {
 }
 
 /// 返す Ui は設定の欄（ブロックの設定はパネルの側でここに描く）
-pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
+pub(crate) fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut out = Out::default();
     let weak = theme::weak_text(ui.visuals());
     let accent = ui.visuals().selection.stroke.color;

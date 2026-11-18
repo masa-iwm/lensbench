@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// 開口・遮蔽の形
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ApShape {
+pub(crate) enum ApShape {
     /// 円の開口（内径があれば輪帯）
     #[default]
     Circle,
@@ -21,7 +21,7 @@ pub enum ApShape {
 }
 
 impl ApShape {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ApShape::Circle => tr("Circular aperture"),
             ApShape::Rect => tr("Rectangular aperture"),
@@ -35,7 +35,7 @@ impl ApShape {
 /// 開口の要素の形と寸法（[`Pick::ap`]）
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ApData {
+pub(crate) struct ApData {
     pub shape: ApShape,
     /// 矩形・楕円の x・y の半幅 [mm]
     pub half: [f64; 2],
@@ -48,7 +48,7 @@ pub struct ApData {
 }
 
 impl ApData {
-    pub const DEFAULT: ApData = ApData {
+    pub(crate) const DEFAULT: ApData = ApData {
         shape: ApShape::Circle,
         half: [5.0, 5.0],
         min: 0.0,

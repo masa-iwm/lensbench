@@ -16,7 +16,7 @@ pub(super) struct Folders {
 
 impl Folders {
     /// 次に調べ直す（カタログを読み直したとき）
-    pub fn stale(&mut self) {
+    pub(super) fn stale(&mut self) {
         self.asked = None;
     }
 }

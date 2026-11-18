@@ -9,18 +9,18 @@ use egui::{RichText, Sense, Ui};
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use serde_json::{json, Value};
 mod filter;
-pub use filter::CATEGORIES;
+pub(crate) use filter::CATEGORIES;
 
 use std::sync::Arc;
 
-pub use filter::{filter_glasses, filter_lenses};
+pub(crate) use filter::{filter_glasses, filter_lenses};
 use filter::{kind_combo, range_ui};
 
 use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct GlassRow {
+pub(crate) struct GlassRow {
     pub name: String,
     pub catalog: String,
     pub nd: f64,
@@ -29,7 +29,7 @@ pub struct GlassRow {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct LensRow {
+pub(crate) struct LensRow {
     /// 最初の玉の前・後ろの面の曲率 [1/mm]（カタログに無ければ None）
     pub curv: Option<[f64; 2]>,
     pub vendor: String,
@@ -65,7 +65,7 @@ pub struct LensRow {
 }
 
 /// 仕様の値を短く（範囲は a–b、単位つき）
-pub fn spec_text(name: &str, v: &Value) -> String {
+pub(crate) fn spec_text(name: &str, v: &Value) -> String {
     let unit = lensbench_catalog::spec::spec_unit(name);
     let n = |x: &Value| match x {
         Value::Number(_) => fmt_num(x.as_f64().unwrap_or(f64::NAN)),
@@ -89,18 +89,18 @@ pub fn spec_text(name: &str, v: &Value) -> String {
 impl LensRow {
     /// 仕様（名前と値）
     /// 未完の品（厚さ・径が足りず、補うまで配置できない）か
-    pub fn is_incomplete(&self) -> bool {
+    pub(crate) fn is_incomplete(&self) -> bool {
         self.raw["incomplete"] == true
     }
     /// 未完の品の足りない値の名前（thickness・diameter）
-    pub fn missing(&self) -> Vec<String> {
+    pub(crate) fn missing(&self) -> Vec<String> {
         self.raw["missing"]
             .as_array()
             .map(|a| a.iter().map(s).collect())
             .unwrap_or_default()
     }
     /// 足りない値の表示名（「厚さ・径」）
-    pub fn missing_text(&self) -> String {
+    pub(crate) fn missing_text(&self) -> String {
         self.missing()
             .iter()
             .map(|m| match m.as_str() {
@@ -112,17 +112,17 @@ impl LensRow {
             .join(tr(", "))
     }
     /// 置けない理由（誤り・未完の品）
-    pub fn placeable(&self) -> bool {
+    pub(crate) fn placeable(&self) -> bool {
         self.error.is_none() && !self.is_incomplete()
     }
-    pub fn specs(&self) -> Vec<(&str, &Value)> {
+    pub(crate) fn specs(&self) -> Vec<(&str, &Value)> {
         self.raw["specs"]
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.as_str(), v)).collect())
             .unwrap_or_default()
     }
     /// 表の「仕様」の列: 種類ごとに要の仕様を先に、ほかは後ろ
-    pub fn spec_summary(&self) -> String {
+    pub(crate) fn spec_summary(&self) -> String {
         let first: &[&str] = match self.category.as_str() {
             "splitter" => &[
                 "split_ratio",
@@ -154,7 +154,7 @@ impl LensRow {
 
 /// カタログの品の種類
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum RowKind {
+pub(crate) enum RowKind {
     #[default]
     Lens,
     Mirror,
@@ -172,7 +172,7 @@ fn s(v: &Value) -> String {
 }
 
 /// serve の `glasses` の結果
-pub fn parse_glasses(v: &Value) -> Vec<GlassRow> {
+pub(crate) fn parse_glasses(v: &Value) -> Vec<GlassRow> {
     v["glasses"]
         .as_array()
         .map(|a| {
@@ -193,7 +193,7 @@ pub fn parse_glasses(v: &Value) -> Vec<GlassRow> {
 }
 
 /// serve の `lenses` の結果
-pub fn parse_lenses(v: &Value) -> Vec<LensRow> {
+pub(crate) fn parse_lenses(v: &Value) -> Vec<LensRow> {
     v["lenses"]
         .as_array()
         .map(|a| {
@@ -314,13 +314,13 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
 
 /// 下限・上限（None は制限なし）。NaN の値は制限があれば外す
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Range {
+pub(crate) struct Range {
     pub min: Option<f64>,
     pub max: Option<f64>,
 }
 
 impl Range {
-    pub fn contains(&self, x: f64) -> bool {
+    pub(crate) fn contains(&self, x: f64) -> bool {
         if self.min.is_none() && self.max.is_none() {
             return true;
         }
@@ -329,7 +329,7 @@ impl Range {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct LensFilter {
+pub(crate) struct LensFilter {
     pub text: String,
     /// 空ならすべてのメーカー
     pub vendor: String,
@@ -353,7 +353,7 @@ pub struct LensFilter {
 
 /// 玉と機構部品の対応での絞り込みの向き
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FitMode {
+pub(crate) enum FitMode {
     /// 径 `d` の素子が入る機構部品（保持径が d 以上、d + FIT_TOL 以下）
     MechFor,
     /// 保持径 `d` の機構部品に入る素子（径が d − FIT_TOL 以上、d 以下）
@@ -362,7 +362,7 @@ pub enum FitMode {
 
 /// 玉と機構部品の対応での絞り込み
 #[derive(Debug, Clone, PartialEq)]
-pub struct FitFilter {
+pub(crate) struct FitFilter {
     pub mode: FitMode,
     /// 素子の径（MechFor）か、機構部品の保持径（OpticsFor）[mm]
     pub d: f64,
@@ -385,7 +385,7 @@ fn hold_diameter(r: &LensRow) -> Option<f64> {
 
 /// 一覧にある品の種類（種類の選択肢。[`Browser::lens_meta`] で一覧が変わったときだけ作る）
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct KindChoices {
+pub(crate) struct KindChoices {
     /// 光学素子の種類・機構部品の種類（[`CATEGORIES`] の順）
     pub optics: Vec<&'static str>,
     pub mech: Vec<&'static str>,
@@ -469,14 +469,16 @@ fn row_detail(r: &LensRow) -> String {
 }
 
 /// 仕様の条件を読む（読めない条件は誤りの文に）
-pub fn parse_spec_filters(q: &str) -> Result<Vec<lensbench_catalog::spec::SpecFilter>, String> {
+pub(crate) fn parse_spec_filters(
+    q: &str,
+) -> Result<Vec<lensbench_catalog::spec::SpecFilter>, String> {
     q.split_whitespace()
         .map(lensbench_catalog::spec::SpecFilter::parse)
         .collect()
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Sign {
+pub(crate) enum Sign {
     #[default]
     Any,
     Positive,
@@ -484,7 +486,7 @@ pub enum Sign {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum LensSort {
+pub(crate) enum LensSort {
     #[default]
     Vendor,
     Part,
@@ -494,18 +496,18 @@ pub enum LensSort {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct GlassFilter {
+pub(crate) struct GlassFilter {
     pub text: String,
     pub catalog: String,
     pub nd: Range,
     pub vd: Range,
 }
 
-pub use crate::combo::{Combo, Pick};
-pub use crate::combo_doc::ComboDoc;
+pub(crate) use crate::combo::{Combo, Pick};
+pub(crate) use crate::combo_doc::ComboDoc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Tab {
+pub(crate) enum Tab {
     #[default]
     Lenses,
     Glasses,
@@ -513,7 +515,7 @@ pub enum Tab {
 
 /// ブラウザの操作で GUI に頼むこと
 #[derive(Clone, Debug)]
-pub enum Action {
+pub(crate) enum Action {
     /// 一覧を読み直す
     Refresh,
     /// 組合せを系にして読む
@@ -527,7 +529,7 @@ pub enum Action {
 }
 
 #[derive(Default)]
-pub struct Browser {
+pub(crate) struct Browser {
     pub tab: Tab,
     pub glasses: Vec<GlassRow>,
     pub lenses: Vec<LensRow>,
@@ -567,7 +569,7 @@ type LensIdx = (ListKey, LensFilter, LensSort, bool, Arc<[usize]>);
 /// [`Browser`] の一覧から作るもの。`gen` は一覧を入れ替えた回数（[`Browser::set_lenses`]）。
 /// 毎フレーム渡すので中身は Arc（複製しない）
 #[derive(Default)]
-pub struct ListCache {
+pub(crate) struct ListCache {
     lens_gen: u64,
     glass_gen: u64,
     /// メーカー・品の種類の選択肢
@@ -583,7 +585,7 @@ pub struct ListCache {
 
 /// カタログレンズの一覧の列
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LensCol {
+pub(crate) enum LensCol {
     Vendor,
     Part,
     Efl,
@@ -594,7 +596,7 @@ pub enum LensCol {
 }
 
 impl LensCol {
-    pub const ALL: [LensCol; 7] = [
+    pub(crate) const ALL: [LensCol; 7] = [
         LensCol::Vendor,
         LensCol::Part,
         LensCol::Efl,
@@ -605,7 +607,7 @@ impl LensCol {
     ];
 
     /// 設定に書く名前
-    pub fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             LensCol::Vendor => "vendor",
             LensCol::Part => "part",
@@ -655,7 +657,7 @@ impl LensCol {
 }
 
 /// 一覧に出す列（型番は必ず出す）
-pub fn shown_cols(hide: &[String]) -> Vec<LensCol> {
+pub(crate) fn shown_cols(hide: &[String]) -> Vec<LensCol> {
     LensCol::ALL
         .into_iter()
         .filter(|c| *c == LensCol::Part || !hide.iter().any(|h| h == c.key()))
@@ -696,7 +698,7 @@ fn negative_preview_focus(efl: f64, t: f64, curv: Option<[f64; 2]>) -> (bool, f6
 }
 
 /// カタログの玉 1 枚の断面を見るためのプロジェクト（玉の径の 6 割の平行光、像面は焦点距離の所）
-pub fn preview_project(r: &LensRow) -> serde_json::Value {
+pub(crate) fn preview_project(r: &LensRow) -> serde_json::Value {
     // 機構部品: 絞りの後に部品を置き、外径の 45 % の平行光を通す
     if r.kind == RowKind::Mech {
         // diameter は外径。光束は外径の 45 %（内径を少しはみ出すと切れて見える）
@@ -961,7 +963,7 @@ fn num_cell(ui: &mut Ui, x: f64) {
 impl Browser {
     /// カタログレンズの一覧を入れ替える（絞り込みの結果を作り直させる）
     /// 一覧を入れ替える。選んでいた品は (メーカー, 型番) で探し直す（無ければ外す）
-    pub fn set_lenses(&mut self, v: Vec<LensRow>) {
+    pub(crate) fn set_lenses(&mut self, v: Vec<LensRow>) {
         let key = self
             .lens_sel
             .and_then(|i| self.lenses.get(i))
@@ -974,7 +976,7 @@ impl Browser {
 
     /// ガラスの一覧を入れ替える
     /// 一覧を入れ替える。選んでいたガラスは (カタログ, 名前) で探し直す
-    pub fn set_glasses(&mut self, v: Vec<GlassRow>) {
+    pub(crate) fn set_glasses(&mut self, v: Vec<GlassRow>) {
         let key = self
             .glass_sel
             .and_then(|i| self.glasses.get(i))
@@ -1101,7 +1103,7 @@ impl Browser {
         self.cache.glass_idx.as_ref().unwrap().2.clone()
     }
 
-    pub fn ui(
+    pub(crate) fn ui(
         &mut self,
         ui: &mut Ui,
         doc: &mut ComboDoc,
@@ -1569,7 +1571,7 @@ impl Browser {
     }
 
     /// 素子 `lens` に合わせて機構部品を足す（[`ComboDoc::add_mech_for`]）
-    pub fn add_mech_for(&mut self, doc: &mut ComboDoc, mech: &LensRow, lens: &LensRow) {
+    pub(crate) fn add_mech_for(&mut self, doc: &mut ComboDoc, mech: &LensRow, lens: &LensRow) {
         if mech.is_incomplete() {
             self.fill_req = Some(mech.clone());
             return;
@@ -1578,7 +1580,7 @@ impl Browser {
     }
 
     /// 組合せに足す。未完の品は置かず、補う窓を開く
-    pub fn add_pick(&mut self, doc: &mut ComboDoc, r: &LensRow) {
+    pub(crate) fn add_pick(&mut self, doc: &mut ComboDoc, r: &LensRow) {
         if r.is_incomplete() {
             self.fill_req = Some(r.clone());
             return;
@@ -1880,7 +1882,7 @@ impl Browser {
 }
 
 /// カタログの行を組合せの要素にする
-pub fn pick_from(r: &LensRow) -> Pick {
+pub(crate) fn pick_from(r: &LensRow) -> Pick {
     // 後の空気の初めの値: 正のレンズなら焦点距離（平行光がおおよそ集まる所）、ほかは 5 mm
     let air = if r.efl.is_finite() && r.efl > 0.0 {
         (r.efl * 1e3).round() / 1e3
@@ -1970,7 +1972,7 @@ fn splitter_detail(r: &LensRow) -> String {
 
 /// ガラスマップの見えている範囲（νd は vd0 が左。左ほど大きい）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MapView {
+pub(crate) struct MapView {
     pub vd0: f64,
     pub vd1: f64,
     pub nd0: f64,
@@ -1979,7 +1981,7 @@ pub struct MapView {
 
 impl MapView {
     /// 全体表示
-    pub const FULL: MapView = MapView {
+    pub(crate) const FULL: MapView = MapView {
         vd0: 95.0,
         vd1: 15.0,
         nd0: 1.4,
@@ -1989,12 +1991,12 @@ impl MapView {
     const MIN_VD: f64 = 0.5;
     const MIN_ND: f64 = 0.005;
 
-    pub fn is_full(&self) -> bool {
+    pub(crate) fn is_full(&self) -> bool {
         *self == Self::FULL
     }
 
     /// (vd, nd) を中心に factor 倍に拡大する（1 より小さければ縮小）。全体より広くはしない
-    pub fn zoom(&mut self, vd: f64, nd: f64, factor: f64) {
+    pub(crate) fn zoom(&mut self, vd: f64, nd: f64, factor: f64) {
         if !(factor.is_finite() && factor > 0.0) {
             return;
         }
@@ -2013,7 +2015,7 @@ impl MapView {
     }
 
     /// 範囲を (dvd, dnd) だけずらす（全体の外へは出さない）
-    pub fn pan(&mut self, dvd: f64, dnd: f64) {
+    pub(crate) fn pan(&mut self, dvd: f64, dnd: f64) {
         self.vd0 += dvd;
         self.vd1 += dvd;
         self.nd0 += dnd;

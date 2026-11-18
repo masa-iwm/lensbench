@@ -11,7 +11,7 @@ use crate::theme;
 
 /// スポット図の光線の点（1 視野・1 波長）
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SpotRays {
+pub(crate) struct SpotRays {
     /// 視野の番号（1 始まり）
     pub field: usize,
     /// 波長の番号（1 始まり）
@@ -22,7 +22,7 @@ pub struct SpotRays {
 }
 
 /// 瞳の点（同心円。中心と、k 番目の輪に 6k 点）。最初の点は主光線（0, 0）
-pub fn pupil_grid(rings: usize) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn pupil_grid(rings: usize) -> (Vec<f64>, Vec<f64>) {
     let mut px = vec![0.0];
     let mut py = vec![0.0];
     for k in 1..=rings {
@@ -38,7 +38,7 @@ pub fn pupil_grid(rings: usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 /// trace の結果（配列）から通った光線の点を取る
-pub fn rays_from(field: usize, wave: usize, arrays: &[(String, Vec<f64>)]) -> SpotRays {
+pub(crate) fn rays_from(field: usize, wave: usize, arrays: &[(String, Vec<f64>)]) -> SpotRays {
     let get = |k: &str| {
         arrays
             .iter()
@@ -64,7 +64,7 @@ pub fn rays_from(field: usize, wave: usize, arrays: &[(String, Vec<f64>)]) -> Sp
 }
 
 /// 図に要る系の値
-pub struct SysInfo<'a> {
+pub(crate) struct SysInfo<'a> {
     pub waves_um: &'a [f64],
     pub primary: usize,
     pub wfno: Option<f64>,
@@ -170,7 +170,7 @@ fn spot_scale(rays: &[SpotRays], primary: usize) -> (Vec<usize>, Vec<(f64, f64)>
 }
 
 /// スポット図。rays_gen は光線の世代（届くたびに変わる。中心・縮尺はそのときだけ求める）
-pub fn spot(
+pub(crate) fn spot(
     ui: &mut Ui,
     rays: &[SpotRays],
     rays_gen: u64,
@@ -331,10 +331,10 @@ pub fn spot(
 }
 
 /// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）
-pub const FIELD_LABELS: &str = "lensbench-field-labels";
+pub(crate) const FIELD_LABELS: &str = "lensbench-field-labels";
 
 /// 視野の名前「視野 2 (0, 14)」を作る関数（座標が分かれば添える）。視野の番号は 1 から
-pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
+pub(crate) fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
     let coords: Vec<String> = ui
         .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
         .unwrap_or_default();
@@ -345,7 +345,7 @@ pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
 }
 
 /// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
-pub fn mtf(
+pub(crate) fn mtf(
     ui: &mut Ui,
     result: &Value,
     prev: Option<&Value>,
@@ -358,7 +358,7 @@ pub fn mtf(
 
 /// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
 /// （曲線はそのときだけ JSON から作る）
-pub fn mtf_curves(
+pub(crate) fn mtf_curves(
     ui: &mut Ui,
     result: &Value,
     prev: Option<&Value>,

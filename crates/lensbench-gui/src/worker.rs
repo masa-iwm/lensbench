@@ -17,7 +17,7 @@ use web_time::Instant;
 use lensbench_core::par::CancelToken;
 use serde_json::{json, Value};
 
-pub use lensbench_engine::Arrays;
+pub(crate) use lensbench_engine::Arrays;
 
 mod doc_peek;
 #[cfg(test)]
@@ -26,7 +26,7 @@ use doc_peek::doc_peek;
 
 /// 要求の目的（結果をどこに入れるか）。u64 はパネルの番号
 #[derive(Debug, Clone, PartialEq)]
-pub enum Tag {
+pub(crate) enum Tag {
     Load,
     Info,
     Analyze(u64),
@@ -85,7 +85,7 @@ pub enum Tag {
 
 /// ユーザーカタログへの操作
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CatOp {
+pub(crate) enum CatOp {
     /// 読み込んだ組合せを項目として保存する
     Add,
     /// 一覧
@@ -96,7 +96,7 @@ pub enum CatOp {
 
 impl Tag {
     /// serve の method（呼び出しを束ねる [`Tag::Refresh`] だけは None）
-    pub fn method(&self) -> Option<&'static str> {
+    pub(crate) fn method(&self) -> Option<&'static str> {
         Some(match self {
             Tag::Load => "load",
             Tag::Info | Tag::Analyze(_) => "analyze",
@@ -137,7 +137,7 @@ impl Tag {
 
     /// 利用者の操作でなく、画面が自分で頼む要求（解析・一覧・表の読み直し）。うまくいっても下の行の文を
     /// 上書きしない（「元に戻した」が続く解析の完了で消えない）
-    pub fn quiet(&self) -> bool {
+    pub(crate) fn quiet(&self) -> bool {
         matches!(
             self,
             Tag::Info
@@ -160,7 +160,7 @@ impl Tag {
     }
 
     /// [`Tag::Refresh`] の呼び出しの結果の行き先
-    pub fn of_refresh(method: &str) -> Tag {
+    pub(crate) fn of_refresh(method: &str) -> Tag {
         match method {
             "surface" => Tag::Surfaces,
             _ => Tag::Info,
@@ -169,7 +169,7 @@ impl Tag {
 
     /// 系を変えた後に読み直す表（[`Tag::Refresh`] の呼び出し、面の表と要約）。系を変える要求に続けて付けることも
     /// ある。途中の誤りで止まれば残りは 1 つずつ頼み直す
-    pub fn refresh_calls() -> Vec<(String, Value)> {
+    pub(crate) fn refresh_calls() -> Vec<(String, Value)> {
         [
             (Tag::Surfaces, json!({})),
             (Tag::Info, json!({ "cmd": "info" })),
@@ -200,14 +200,14 @@ struct Job {
 /// 呼び出しの誤り: 文と、計算の側の誤りの符号（`lensbench_core::error::code` の値か種類の名前、
 /// 無ければ None）。画面は符号で案内を選ぶ
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct CallErr {
+pub(crate) struct CallErr {
     pub message: String,
     pub code: Option<String>,
 }
 
 impl CallErr {
     /// 符号 c の誤り
-    pub fn coded(message: impl Into<String>, code: impl Into<String>) -> CallErr {
+    pub(crate) fn coded(message: impl Into<String>, code: impl Into<String>) -> CallErr {
         CallErr {
             message: message.into(),
             code: Some(code.into()),
@@ -215,7 +215,7 @@ impl CallErr {
     }
 
     /// 符号が c か
-    pub fn is(&self, c: &str) -> bool {
+    pub(crate) fn is(&self, c: &str) -> bool {
         self.code.as_deref() == Some(c)
     }
 }
@@ -269,13 +269,13 @@ impl From<lensbench_engine::CallError> for CallErr {
 }
 
 /// 1 つの呼び出しの結果
-pub struct Reply {
+pub(crate) struct Reply {
     pub method: String,
     pub params: Value,
     pub result: Result<(Value, Arrays), CallErr>,
 }
 
-pub struct Done {
+pub(crate) struct Done {
     pub tag: Tag,
     pub replies: Vec<Reply>,
     pub ms: f64,
@@ -287,7 +287,7 @@ pub struct Done {
 
 impl Done {
     /// 最初の呼び出しの method・params・結果（1 つだけの要求のとき）
-    pub fn first(&self) -> (&str, &Value, Result<&Value, &CallErr>) {
+    pub(crate) fn first(&self) -> (&str, &Value, Result<&Value, &CallErr>) {
         let r = &self.replies[0];
         (&r.method, &r.params, r.result.as_ref().map(|x| &x.0))
     }
@@ -295,7 +295,7 @@ impl Done {
     /// 最初の呼び出しの params と結果を取り出す（深い複製をしない）。エラーなら結果は null。
     /// 取り出した後の replies[0] の params・結果の値は null（method と配列は残る）。
     /// 光線（Rays・Focus）は返事ごとの params・配列を見るので取り出さず、null を返す
-    pub fn take_first(&mut self) -> (Value, Value) {
+    pub(crate) fn take_first(&mut self) -> (Value, Value) {
         if matches!(self.tag, Tag::Rays(_) | Tag::Focus) {
             return (Value::Null, Value::Null);
         }
@@ -308,7 +308,7 @@ impl Done {
     }
 
     /// 系を変える要求に付けた読み直し（GUI の send_change）を分ける: 変更の返事と、残りを [`Tag::Refresh`] の返事として
-    pub fn split_change(mut self) -> (Done, Done) {
+    pub(crate) fn split_change(mut self) -> (Done, Done) {
         let rest = self.replies.split_off(1.min(self.replies.len()));
         let r = Done {
             tag: Tag::Refresh,
@@ -321,7 +321,7 @@ impl Done {
     }
 
     /// 返事ごとに同じ tag の Done に分ける（束ねた get）
-    pub fn split_same(self) -> Vec<Done> {
+    pub(crate) fn split_same(self) -> Vec<Done> {
         let (tag, ms, gen) = (self.tag, self.ms, self.gen);
         self.replies
             .into_iter()
@@ -336,7 +336,7 @@ impl Done {
     }
 
     /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info）
-    pub fn split(self) -> Vec<Done> {
+    pub(crate) fn split(self) -> Vec<Done> {
         let (ms, gen) = (self.ms, self.gen);
         self.replies
             .into_iter()
@@ -351,7 +351,7 @@ impl Done {
     }
 
     /// 最初のエラー
-    pub fn error(&self) -> Option<(&str, &CallErr)> {
+    pub(crate) fn error(&self) -> Option<(&str, &CallErr)> {
         self.replies
             .iter()
             .find_map(|r| r.result.as_ref().err().map(|e| (r.method.as_str(), e)))
@@ -363,7 +363,7 @@ type CallFn = fn(&str, &Value, Option<usize>) -> Result<(Value, Arrays), CallErr
 
 /// 何を受ける Worker か（Web Worker の中でも同じ呼び出しを使う）
 #[derive(Clone, Copy)]
-pub enum Kind {
+pub(crate) enum Kind {
     /// serve と同じ要求（系はプロセスに 1 つ）
     Main,
     /// 下書き（[`Worker::preview`]）
@@ -499,7 +499,7 @@ fn folders_of_test_glass() {
     assert_eq!(v["missing"], serde_json::json!(["/no/such/dir"]));
 }
 
-pub struct Worker {
+pub(crate) struct Worker {
     tx: Sender<Job>,
     /// 長い要求のスレッド（ネイティブの本体の Worker だけ。無ければ tx）
     tx_long: Option<Sender<Job>>,
@@ -585,19 +585,22 @@ impl Runner {
 
 impl Worker {
     /// `repaint` は結果が出たときに呼ぶ（GUI を描き直させる）
-    pub fn new(threads: Option<usize>, repaint: impl Fn() + Send + Sync + 'static) -> Worker {
+    pub(crate) fn new(
+        threads: Option<usize>,
+        repaint: impl Fn() + Send + Sync + 'static,
+    ) -> Worker {
         Self::with_call(threads, repaint, true, Kind::Main)
     }
 
     /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit`・`folders`・`cad_measure`・`doc_peek` だけを受ける。serve の系・順番待ちとは
     /// 別に回すので、解析を回している間も図とカタログが出る）
-    pub fn preview(repaint: impl Fn() + Send + Sync + 'static) -> Worker {
+    pub(crate) fn preview(repaint: impl Fn() + Send + Sync + 'static) -> Worker {
         Self::with_call(None, repaint, false, Kind::Preview)
     }
 
     /// 計算しない Worker（Web 版の別のタブのパネル。要求を出せば下書きとして回す）
     #[cfg(target_arch = "wasm32")]
-    pub fn idle() -> Worker {
+    pub(crate) fn idle() -> Worker {
         Self::with_call(None, || {}, false, Kind::Idle)
     }
 
@@ -678,12 +681,12 @@ impl Worker {
     }
 
     /// 1 つの呼び出し。method は印から決める（[`Tag::method`]）
-    pub fn send(&mut self, tag: Tag, params: Value) {
+    pub(crate) fn send(&mut self, tag: Tag, params: Value) {
         self.send_each(tag, vec![params]);
     }
 
     /// 同じ method の呼び出しを 1 つの要求として順に（途中でエラーになればそこで止める）
-    pub fn send_each(&mut self, tag: Tag, params: Vec<Value>) {
+    pub(crate) fn send_each(&mut self, tag: Tag, params: Vec<Value>) {
         let Some(m) = tag.method() else {
             debug_assert!(false, "{tag:?} has no single method");
             return;
@@ -694,7 +697,7 @@ impl Worker {
 
     /// 印の要求に、面の表・要約の読み直し（[`Tag::refresh_calls`]）を続けて付ける。印だけなら（[`Tag::Refresh`]）
     /// 読み直しだけ
-    pub fn send_refreshing(&mut self, tag: Tag, params: Value) {
+    pub(crate) fn send_refreshing(&mut self, tag: Tag, params: Value) {
         let mut calls: Vec<(String, Value)> = tag
             .method()
             .map(|m| (m.to_string(), params))
@@ -752,7 +755,7 @@ impl Worker {
     }
 
     /// 終わった要求（無ければ None）
-    pub fn poll(&mut self) -> Option<Done> {
+    pub(crate) fn poll(&mut self) -> Option<Done> {
         self.release_held();
         // wasm: Web Worker の結果を受け取り、空いていれば次の要求を渡す
         #[cfg(target_arch = "wasm32")]
@@ -772,28 +775,28 @@ impl Worker {
     }
 
     /// 何か待っている（長い要求も）
-    pub fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.pending > 0
     }
 
     /// 待っている要求の数（下の行の「計算中（n）」）
-    pub fn pending(&self) -> usize {
+    pub(crate) fn pending(&self) -> usize {
         self.pending
     }
 
     /// 長い要求（最適化など）のほかに待っている
-    pub fn busy_short(&self) -> bool {
+    pub(crate) fn busy_short(&self) -> bool {
         self.pending > self.pending_long
     }
 
     /// 解析でない要求（系の読み込み・レイアウトなど）を待っている
-    pub fn busy_core(&self) -> bool {
+    pub(crate) fn busy_core(&self) -> bool {
         self.pending_core > 0
     }
 
     /// 待っている解析を捨て、回している解析には途中でやめるよう頼む（結果は [`Worker::poll`] で捨てる）。
     /// 系を変える要求（[`Tag::changes_system`]）を出すときは自動で呼ぶ
-    pub fn drop_queued(&self) {
+    pub(crate) fn drop_queued(&self) {
         let r = self.running.lock_ok();
         self.gen.fetch_add(1, Ordering::Relaxed);
         if let Some(t) = r.as_ref() {
@@ -810,9 +813,9 @@ impl Worker {
 /// 最適化・公差・差し替え探索の進み具合と停止。ネイティブは同じプロセスの serve
 /// （[`lensbench_engine::optimize_progress`] など）、Web 版は計算の Web Worker の見張りのスレッドに訊く
 /// （スレッドありの版だけ。1 スレッドの版では進み具合は出ず、止められない）
-pub mod progress {
+pub(crate) mod progress {
     /// 最適化の反復ごとの評価関数の値（走っていなければ None）
-    pub fn optimize() -> Option<Vec<f64>> {
+    pub(crate) fn optimize() -> Option<Vec<f64>> {
         #[cfg(not(target_arch = "wasm32"))]
         return lensbench_engine::optimize_progress();
         #[cfg(target_arch = "wasm32")]
@@ -821,7 +824,7 @@ pub mod progress {
     }
 
     /// 公差の（終えた数、全体の数）
-    pub fn tolerance() -> Option<(usize, usize)> {
+    pub(crate) fn tolerance() -> Option<(usize, usize)> {
         #[cfg(not(target_arch = "wasm32"))]
         return lensbench_engine::tolerance_progress();
         #[cfg(target_arch = "wasm32")]
@@ -830,7 +833,7 @@ pub mod progress {
     }
 
     /// 差し替え探索の（終えた数、全体の数）
-    pub fn swap() -> Option<(usize, usize)> {
+    pub(crate) fn swap() -> Option<(usize, usize)> {
         #[cfg(not(target_arch = "wasm32"))]
         return lensbench_engine::swap_progress();
         #[cfg(target_arch = "wasm32")]
@@ -838,7 +841,7 @@ pub mod progress {
     }
 
     /// 最適化（"optimize"）・公差（"tolerance"）・差し替え探索（"swap"）を止める（そこまでの結果を返す）
-    pub fn stop(what: &str) {
+    pub(crate) fn stop(what: &str) {
         #[cfg(not(target_arch = "wasm32"))]
         match what {
             "optimize" => lensbench_engine::optimize_cancel(),
@@ -979,7 +982,7 @@ pub mod entry {
 /// 画面の側: 置き場のこの版より後の変更を、計算の Web Worker に渡す（それまでは Worker も持っている見本）。
 /// 起動の前に 1 回（[`crate::start_web`]）
 #[cfg(target_arch = "wasm32")]
-pub fn set_sync_base(seq: u64) {
+pub(crate) fn set_sync_base(seq: u64) {
     remote::BASE.with(|b| b.set(Some(seq)));
 }
 
@@ -1009,7 +1012,7 @@ mod remote {
     }
 
     /// 見張りのスレッド（`monitor.js`）への口
-    pub struct Monitor {
+    pub(super) struct Monitor {
         port: web_sys::MessagePort,
         _on_message: Closure<dyn FnMut(web_sys::MessageEvent)>,
         /// 最後に進み具合を訊いた時刻 [ms]
@@ -1031,7 +1034,7 @@ mod remote {
     }
 
     /// [`super::progress::stop`]
-    pub fn stop(what: &str) {
+    pub(super) fn stop(what: &str) {
         let id = RUNNING.with(|r| r.get());
         if id != 0 {
             tell(serde_json::json!({ "stop": what, "id": id }));
@@ -1073,7 +1076,7 @@ mod remote {
         }
     }
 
-    pub struct Remote {
+    pub(super) struct Remote {
         kind: Kind,
         threads: Option<usize>,
         jobs: Receiver<Job>,
@@ -1092,7 +1095,7 @@ mod remote {
     }
 
     impl Remote {
-        pub fn new(
+        pub(super) fn new(
             kind: Kind,
             threads: Option<usize>,
             jobs: Receiver<Job>,
@@ -1124,7 +1127,7 @@ mod remote {
         }
 
         /// 次のフレームを描かせる（そこで pump が待っている要求を Web Worker に渡す）
-        pub fn wake(&self) {
+        pub(super) fn wake(&self) {
             (self.repaint)();
         }
 
@@ -1197,7 +1200,7 @@ mod remote {
         }
 
         /// 結果を受け取り、空いていれば次の要求を渡す。`gen` は今の世代（古い解析は渡さない）
-        pub fn pump(&mut self, gen: u64) {
+        pub(super) fn pump(&mut self, gen: u64) {
             // 今ある分だけ（作り直しのエラーは次のフレームで）
             let msgs: Vec<_> = self.inbox.borrow_mut().drain(..).collect();
             for m in msgs {
@@ -1275,7 +1278,7 @@ mod remote {
         }
 
         /// 回している解析に途中でやめるよう、見張りに頼む（解析でない要求は止めない）
-        pub fn cancel_running(&self) {
+        pub(super) fn cancel_running(&self) {
             if self.inflight.as_ref().is_some_and(|j| j.tag.skippable()) {
                 tell(serde_json::json!({ "cancel": self.inflight_id }));
             }

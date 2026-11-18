@@ -9,14 +9,14 @@ use egui_plot::{Plot, PlotPoint, PlotUi};
 use crate::i18n::tr;
 
 /// カーソルの値を出す曲線
-pub struct Series {
+pub(crate) struct Series {
     pub name: String,
     pub color: Color32,
     pub pts: Vec<[f64; 2]>,
 }
 
 impl Series {
-    pub fn new(name: impl Into<String>, color: Color32, pts: &[[f64; 2]]) -> Self {
+    pub(crate) fn new(name: impl Into<String>, color: Color32, pts: &[[f64; 2]]) -> Self {
         Series {
             name: name.into(),
             color,
@@ -26,7 +26,7 @@ impl Series {
 }
 
 /// 折れ線 pts の横軸 x での値（線形補間）。x が曲線の範囲の外なら None
-pub fn interp(pts: &[[f64; 2]], x: f64) -> Option<f64> {
+pub(crate) fn interp(pts: &[[f64; 2]], x: f64) -> Option<f64> {
     if !x.is_finite() {
         return None;
     }
@@ -50,12 +50,12 @@ enum Cmd {
 }
 
 /// [`show`] がグラフの上に置く道具の行の高さ（グラフの高さをパネルの残りから決めるときに引く）
-pub fn bar_height(ui: &Ui) -> f32 {
+pub(crate) fn bar_height(ui: &Ui) -> f32 {
     ui.spacing().interact_size.y + ui.spacing().item_spacing.y
 }
 
 /// グラフを描く。body で線を描き、カーソルの値を出す曲線を series に足す。x_unit はカーソルの値の横軸の単位
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     plot: Plot,
     x_unit: &str,

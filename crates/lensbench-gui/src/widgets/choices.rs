@@ -4,7 +4,7 @@
 use egui::{Id, Rect, Ui};
 
 /// 候補の一覧の出し方
-pub struct Choices<'a> {
+pub(crate) struct Choices<'a> {
     /// 候補（名前, 説明）。説明が空なら名前だけ
     pub items: &'a [(String, String)],
     /// 選んでいる行
@@ -21,7 +21,7 @@ pub struct Choices<'a> {
 
 /// 一覧を出したときの結果
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Shown {
+pub(crate) struct Shown {
     /// クリックした行
     pub clicked: Option<usize>,
     /// ポインタが一覧の上にある（欄のフォーカスが外れても決めない判断に使う）
@@ -29,7 +29,7 @@ pub struct Shown {
 }
 
 impl<'a> Choices<'a> {
-    pub fn new(items: &'a [(String, String)], pick: usize) -> Self {
+    pub(crate) fn new(items: &'a [(String, String)], pick: usize) -> Self {
         Choices {
             items,
             pick,
@@ -42,7 +42,7 @@ impl<'a> Choices<'a> {
     }
 
     /// `anchor`（ふつうは入力欄）の左下に出す。候補が無く `empty` も無ければ何も出さない
-    pub fn show(self, ui: &Ui, id: Id, anchor: Rect) -> Shown {
+    pub(crate) fn show(self, ui: &Ui, id: Id, anchor: Rect) -> Shown {
         if self.items.is_empty() && self.empty.is_none() {
             return Shown::default();
         }

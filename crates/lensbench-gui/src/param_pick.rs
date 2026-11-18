@@ -8,7 +8,7 @@ use lensbench_core::surface::SurfType;
 
 /// 名前の候補を作るための系の面・玉・群
 #[derive(Debug, Clone, Default)]
-pub struct Sys {
+pub(crate) struct Sys {
     /// 面ごとの (面タイプ, コメント, 鏡か)
     pub surfs: Vec<(String, String, bool)>,
     /// 玉・群の名前
@@ -19,7 +19,7 @@ pub struct Sys {
 
 /// どの名前を候補にするか
 #[derive(Debug, Clone, Copy)]
-pub enum Set<'a> {
+pub(crate) enum Set<'a> {
     /// 最適化・ズームの変数（組合せの系なら面の t・r・k と形の係数だけ）
     Var { combo: bool },
     /// 公差・系のパネル（物体の位置・波長も）
@@ -31,7 +31,7 @@ pub enum Set<'a> {
 }
 
 /// パラメータの名前の説明（3.t → 面 3 の厚さ、G1.shift → G1 の移動）
-pub fn param_desc(name: &str) -> String {
+pub(crate) fn param_desc(name: &str) -> String {
     let Some((who, k)) = name.trim().rsplit_once('.') else {
         let n = name.trim();
         return match n {
@@ -133,7 +133,7 @@ fn unit_kinds(set: Set) -> &'static [&'static str] {
 }
 
 /// 候補の (名前, 説明) の全部
-pub fn names(sys: &Sys, set: Set) -> Vec<(String, String)> {
+pub(crate) fn names(sys: &Sys, set: Set) -> Vec<(String, String)> {
     let mut v: Vec<String> = Vec::new();
     if let Set::Swap { gaps } = set {
         let mut out: Vec<(String, String)> = gaps
@@ -277,7 +277,7 @@ struct CompState {
 /// 補完つきの名前の欄。戻り値の bool は名前を決めた（Enter・候補のクリック）とき true
 ///
 /// 打つと候補（説明付き）が出て、↑↓ で選び、Tab で欄に入れ、Enter・クリックで決める（打った名前が候補と同じなら Enter はそのまま）。
-pub fn edit(
+pub(crate) fn edit(
     ui: &mut Ui,
     s: &mut String,
     width: f32,
@@ -345,7 +345,7 @@ pub fn edit(
 }
 
 /// 名前を階層で選ぶ欄の中身（面 → 面番号 → 種類、玉・群 → 名前 → 種類、ほか）。選んだ名前を返す
-pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
+pub(crate) fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
     let mut out = None;
     let mut pick = |ui: &mut Ui, n: &str, label: String| {
         if ui.button(label).clicked() {
@@ -433,14 +433,14 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
 }
 
 /// 階層で選ぶ […] ボタン。選んだ名前を返す
-pub fn menu_button(ui: &mut Ui, sys: &Sys, set: Set, hover: &str) -> Option<String> {
+pub(crate) fn menu_button(ui: &mut Ui, sys: &Sys, set: Set, hover: &str) -> Option<String> {
     let r = ui.menu_button("…", |ui| menu(ui, sys, set));
     r.response.on_hover_text(hover);
     r.inner.flatten()
 }
 
 /// 補完つきの欄と […] を並べる（欄の名前を […] で選んだ名前に置き換える）。戻り値の bool は名前を決めたとき true
-pub fn edit_pick(
+pub(crate) fn edit_pick(
     ui: &mut Ui,
     s: &mut String,
     width: f32,

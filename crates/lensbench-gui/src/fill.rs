@@ -26,7 +26,7 @@ static FILL_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
 /// 補足のカタログのフォルダを決める（起動時に 1 回）
 #[cfg(not(target_arch = "wasm32"))]
-pub fn set_fill_dir(settings_dir: Option<PathBuf>) {
+pub(crate) fn set_fill_dir(settings_dir: Option<PathBuf>) {
     if let Some(d) = settings_dir {
         load_timings(Some(&d));
         let _ = FILL_DIR.set(d.join("catalog-fill"));
@@ -34,7 +34,7 @@ pub fn set_fill_dir(settings_dir: Option<PathBuf>) {
 }
 
 /// 補足のカタログのフォルダ（レンズのフォルダに足す）
-pub fn fill_dir() -> Option<PathBuf> {
+pub(crate) fn fill_dir() -> Option<PathBuf> {
     #[cfg(target_arch = "wasm32")]
     return Some(PathBuf::from(crate::web_store::USER_CATALOGS));
     #[cfg(not(target_arch = "wasm32"))]
@@ -42,7 +42,7 @@ pub fn fill_dir() -> Option<PathBuf> {
 }
 
 /// メーカーの補足のカタログのファイル
-pub fn fill_file(vendor: &str) -> Option<PathBuf> {
+pub(crate) fn fill_file(vendor: &str) -> Option<PathBuf> {
     let safe: String = vendor
         .chars()
         .map(|c| {
@@ -65,7 +65,7 @@ pub fn fill_file(vendor: &str) -> Option<PathBuf> {
 }
 
 /// 径の欄の文字（`25`・`25 x 35`）を値（数か [幅, 高さ]）に
-pub fn parse_diameter(s: &str) -> Option<Value> {
+pub(crate) fn parse_diameter(s: &str) -> Option<Value> {
     let nums: Vec<f64> = s
         .split(|c: char| c == 'x' || c == 'X' || c == '×' || c == ',' || c.is_whitespace())
         .filter(|t| !t.is_empty())
@@ -79,7 +79,7 @@ pub fn parse_diameter(s: &str) -> Option<Value> {
 }
 
 /// 値（数か [幅, 高さ]）を欄の文字に
-pub fn value_text(v: &Value) -> String {
+pub(crate) fn value_text(v: &Value) -> String {
     match v {
         Value::Array(a) => a
             .iter()
@@ -118,7 +118,7 @@ fn spawn(r: &LensRow, hidden: bool) -> Result<crate::webview::Child, String> {
 /// 値を待って窓を見せるまで（wait）
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Timing {
+pub(crate) struct Timing {
     pub dwell_s: f64,
     pub gap_s: f64,
     pub wait_s: f64,
@@ -137,7 +137,7 @@ impl Default for Timing {
 /// サイトごとのタイミングの上書き（書いた項目だけ）
 #[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct TimingPatch {
+pub(crate) struct TimingPatch {
     pub dwell_s: Option<f64>,
     pub gap_s: Option<f64>,
     pub wait_s: Option<f64>,
@@ -148,18 +148,18 @@ pub struct TimingPatch {
 /// サイトはホスト名（そのサブドメインにも当たる、長い名前が先）。書かない項目は default、default も書かなければ組込みの値
 #[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Timings {
+pub(crate) struct Timings {
     pub default: Timing,
     pub sites: std::collections::BTreeMap<String, TimingPatch>,
 }
 
 /// タイミングの設定のファイルの名前（設定のフォルダ）
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-pub const TIMING_FILE: &str = "catalog-fill-timing.json";
+pub(crate) const TIMING_FILE: &str = "catalog-fill-timing.json";
 
 /// URL のホスト名（小文字）
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
-pub fn url_host(url: &str) -> String {
+pub(crate) fn url_host(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     let host = rest.split(['/', '?', '#']).next().unwrap_or("");
     let host = host.rsplit('@').next().unwrap_or(host);
@@ -169,7 +169,7 @@ pub fn url_host(url: &str) -> String {
 impl Timings {
     /// 設定の文字から。読めない・負の値は誤り
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    pub fn parse(text: &str) -> Result<Timings, String> {
+    pub(crate) fn parse(text: &str) -> Result<Timings, String> {
         let t: Timings = serde_json::from_str(text).map_err(|e| format!("{TIMING_FILE}: {e}"))?;
         let bad = |x: f64| !(x.is_finite() && x >= 0.0);
         let d = t.default;
@@ -194,7 +194,7 @@ impl Timings {
 
     /// サイト（品ページの URL のホスト）の名前と、そのタイミング。設定に無いサイトはホスト名で default
     #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
-    pub fn for_url(&self, url: &str) -> (String, Timing) {
+    pub(crate) fn for_url(&self, url: &str) -> (String, Timing) {
         let host = url_host(url);
         let hit = self
             .sites
@@ -244,7 +244,7 @@ fn load_timings(settings_dir: Option<&std::path::Path>) {
 }
 
 /// 使うタイミングの設定と、読めなかったときの誤り
-pub fn timings() -> (Timings, Option<String>) {
+pub(crate) fn timings() -> (Timings, Option<String>) {
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(t) = TIMINGS.get() {
         return t.clone();
@@ -255,7 +255,10 @@ pub fn timings() -> (Timings, Option<String>) {
 /// ページの読み取りから、足りない値がすべて一通りに決まるなら catalog_fill の値（厚さ・径）。
 /// 同じ値の欄に違う値が並ぶ・決められない欄だけ・ありえない大きさなら None（窓に出してユーザーが決める）
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
-pub fn sure_values(missing: &[String], r: &PageRead) -> Option<(Option<f64>, Option<Value>)> {
+pub(crate) fn sure_values(
+    missing: &[String],
+    r: &PageRead,
+) -> Option<(Option<f64>, Option<Value>)> {
     let mut t = None;
     let mut d = None;
     for m in missing {
@@ -332,7 +335,7 @@ pub type Handover = (LensRow, crate::webview::Child, Option<(String, String)>);
 
 /// 裏の読み取りの結果
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
-pub enum AutoOut {
+pub(crate) enum AutoOut {
     /// 値が決まったので保存する（catalog_fill の params）
     Save(Value),
     /// 決まらないので補う窓に出す
@@ -346,7 +349,7 @@ pub enum AutoOut {
 /// （欄が無い・食い違う・ボットの判定や captcha）ときは wait の後に窓を見せて補う窓へ
 #[derive(Default)]
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
-pub struct AutoFill {
+pub(crate) struct AutoFill {
     /// 選んでいる未完の品（メーカー・型番）と選んだ時刻
     sel: Option<(String, web_time::Instant)>,
     /// 開いた品
@@ -373,7 +376,7 @@ struct AutoJob {
 
 impl AutoFill {
     /// 毎フレーム: 選んでいる行（未完の品なら）を見て、開く・読む・保存する
-    pub fn tick(&mut self, ctx: &egui::Context, sel: Option<&LensRow>) -> Option<AutoOut> {
+    pub(crate) fn tick(&mut self, ctx: &egui::Context, sel: Option<&LensRow>) -> Option<AutoOut> {
         let now = web_time::Instant::now();
         let row = sel.filter(|r| r.is_incomplete() && !r.url.is_empty() && r.source.is_some());
         let key = row.map(|r| format!("{}\t{}", r.vendor, r.part));
@@ -427,7 +430,7 @@ impl AutoFill {
     }
 
     /// タイミングの設定が読めなかったときの誤り（1 度だけ）
-    pub fn take_timing_error(&mut self) -> Option<String> {
+    pub(crate) fn take_timing_error(&mut self) -> Option<String> {
         if self.warned {
             return None;
         }
@@ -436,7 +439,7 @@ impl AutoFill {
     }
 
     /// 補う窓を開いた品は裏で読まない（読んでいれば止める）
-    pub fn forget(&mut self, part: &str) {
+    pub(crate) fn forget(&mut self, part: &str) {
         #[cfg(all(windows, feature = "webview"))]
         if self.job.as_ref().is_some_and(|j| j.row.part == part) {
             self.job = None;
@@ -488,7 +491,7 @@ impl AutoFill {
 
 /// 窓の状態
 #[derive(Default)]
-pub struct FillWin {
+pub(crate) struct FillWin {
     pub open: bool,
     row: Option<LensRow>,
     thickness: String,
@@ -520,7 +523,7 @@ pub struct FillWin {
 
 impl FillWin {
     /// 未完の品を選んで開く
-    pub fn start(&mut self, r: LensRow) {
+    pub(crate) fn start(&mut self, r: LensRow) {
         *self = FillWin {
             open: true,
             from: "manual",
@@ -558,7 +561,7 @@ impl FillWin {
     }
 
     /// serve の `catalog_fill` の結果（この窓の品でなければ何もしない。裏の読み取りの保存も同じ結果で来る）
-    pub fn done(&mut self, v: &Value) {
+    pub(crate) fn done(&mut self, v: &Value) {
         if self.row.as_ref().map(|r| r.part.as_str()) != v["item"].as_str() {
             return;
         }
@@ -578,7 +581,7 @@ impl FillWin {
         }
     }
 
-    pub fn failed(&mut self, e: &str) {
+    pub(crate) fn failed(&mut self, e: &str) {
         self.pending = false;
         self.note = Some((lensbench_core::i18n::tr(e), true));
     }
@@ -786,7 +789,7 @@ impl FillWin {
     }
 
     /// 窓を描く。確定したら serve の `catalog_fill` の params を返す
-    pub fn window(&mut self, ctx: &egui::Context) -> Option<Value> {
+    pub(crate) fn window(&mut self, ctx: &egui::Context) -> Option<Value> {
         let r = self.row.clone()?;
         if !self.opened {
             self.open_page(ctx);

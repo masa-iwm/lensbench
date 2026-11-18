@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 /// 組合せに置く機構部品: カタログの品を、要素（ブロック id）の面に置く
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct MechPick {
+pub(crate) struct MechPick {
     pub name: String,
     /// ユーザーカタログのファイル（絶対パス）と品の名前
     pub catalog: String,
@@ -29,7 +29,7 @@ pub struct MechPick {
 
 impl MechPick {
     /// プロジェクトの mechanics の項目
-    pub fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         let at = if self.at.is_empty() {
             json!({ "surface": 1 })
         } else {

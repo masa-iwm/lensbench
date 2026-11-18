@@ -13,7 +13,7 @@ use std::time::Duration;
 use web_time::Instant;
 
 /// 通し確認が失敗したか（main が終了コードにする）
-pub static FAILED: AtomicBool = AtomicBool::new(false);
+pub(crate) static FAILED: AtomicBool = AtomicBool::new(false);
 
 /// 全体の時間の上限の既定（`--tour-timeout` で変えられる。ソフト描画では足りないことがある）
 const TIMEOUT: Duration = Duration::from_secs(240);
@@ -41,7 +41,7 @@ pub struct Args {
 
 /// `--help` の使い方（Web 版は引数を取らない）
 #[cfg(not(target_arch = "wasm32"))]
-pub const USAGE: &str =
+pub(crate) const USAGE: &str =
     "usage: lensbench-gui [FILE] [--glass-dir DIR]... [--lens-catalog DIR]... [--settings FILE]
                      [--tour DIR [--tour-timeout SECONDS]]
 
@@ -83,7 +83,7 @@ impl Args {
 
 /// 通し確認の設定: 日本語、確かめる窓で止まらない（答えは「いいえ」）、引数でフォルダを渡さなければ通常の起動と
 /// 同じく exe の隣の catalogs/ を使う（配る版の確認）
-pub fn prepare(args: &Args, s: &mut crate::app::Settings) {
+pub(crate) fn prepare(args: &Args, s: &mut crate::app::Settings) {
     s.lang = crate::i18n::Lang::Ja;
     crate::files::set_unattended(true);
     if args.glass_dirs.is_empty() && args.lens_dirs.is_empty() {
@@ -94,7 +94,7 @@ pub fn prepare(args: &Args, s: &mut crate::app::Settings) {
 }
 
 /// ズームの段の例の系（P17）。例のフォルダの無い配る版でも回るように、exe に埋めた系を出力先に書く
-pub fn zoom_sample(dir: &Path) -> PathBuf {
+pub(crate) fn zoom_sample(dir: &Path) -> PathBuf {
     let p = dir.join("P17_zoom_three_groups.json");
     let _ = lensbench_core::vfs::write(
         &p,
@@ -105,7 +105,7 @@ pub fn zoom_sample(dir: &Path) -> PathBuf {
 
 /// 1 段: 操作して、計算が終わったら撮る
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Step {
+pub(crate) enum Step {
     Open,
     Analysis,
     Pop,
@@ -170,7 +170,7 @@ impl Step {
         Step::Done,
     ];
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Step::Open => "01_open",
             Step::Analysis => "02_analysis",
@@ -209,7 +209,7 @@ impl Step {
     }
 }
 
-pub struct Tour {
+pub(crate) struct Tour {
     pub dir: PathBuf,
     pub step: Step,
     /// この段の操作をしたか
@@ -224,14 +224,14 @@ pub struct Tour {
 }
 
 /// 環境変数 LENSBENCH_TOUR_SIZE（"幅x高さ"）の窓の大きさ
-pub fn size_from_env() -> Option<[f32; 2]> {
+pub(crate) fn size_from_env() -> Option<[f32; 2]> {
     let v = std::env::var("LENSBENCH_TOUR_SIZE").ok()?;
     let (w, h) = v.split_once('x')?;
     Some([w.trim().parse().ok()?, h.trim().parse().ok()?])
 }
 
 impl Tour {
-    pub fn new(dir: PathBuf, timeout: Option<Duration>) -> Tour {
+    pub(crate) fn new(dir: PathBuf, timeout: Option<Duration>) -> Tour {
         Tour {
             dir,
             timeout: timeout.unwrap_or(TIMEOUT),
@@ -246,7 +246,7 @@ impl Tour {
     }
 
     /// 計算中かどうかを渡し、撮る時か（操作の後、計算が終わって落ち着いた）を返す
-    pub fn ready(&mut self, busy: bool) -> bool {
+    pub(crate) fn ready(&mut self, busy: bool) -> bool {
         if busy {
             self.idle = 0;
             return false;
@@ -255,12 +255,12 @@ impl Tour {
         self.idle >= SETTLE
     }
 
-    pub fn timed_out(&self) -> bool {
+    pub(crate) fn timed_out(&self) -> bool {
         self.start.elapsed() > self.timeout
     }
 
     /// 撮影を頼む（一度だけ）
-    pub fn request_shot(&mut self, ctx: &egui::Context) {
+    pub(crate) fn request_shot(&mut self, ctx: &egui::Context) {
         if !self.shooting {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
             self.shooting = true;
@@ -268,7 +268,7 @@ impl Tour {
     }
 
     /// 届いた画像を保存して次の段へ。まだ届いていなければ false
-    pub fn take_shot(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn take_shot(&mut self, ctx: &egui::Context) -> bool {
         let img = ctx.input(|i| {
             i.events.iter().find_map(|e| match e {
                 egui::Event::Screenshot { image, .. } => Some(image.clone()),
@@ -292,7 +292,7 @@ impl Tour {
     }
 
     /// report.json を書き、失敗なら FAILED を立てる
-    pub fn finish(&self) {
+    pub(crate) fn finish(&self) {
         let ok = self.errors.is_empty() && self.step == Step::Done;
         let v = serde_json::json!({
             "ok": ok,

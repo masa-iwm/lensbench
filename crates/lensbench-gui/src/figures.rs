@@ -13,7 +13,7 @@ use crate::plots::fmt_sig;
 use crate::theme;
 
 /// 図を描ける解析（スポット・回折 MTF を含む）
-pub fn has_figure(cmd: &str) -> bool {
+pub(crate) fn has_figure(cmd: &str) -> bool {
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some();
     }
@@ -36,7 +36,12 @@ pub fn has_figure(cmd: &str) -> bool {
 
 /// 図に要る引数（figure のとき）と、省けない引数の既定を足す（利用者が与えた引数はそのまま）。
 /// cutoff は主波長の遮断周波数 [cycles/mm]
-pub fn figure_params(cmd: &str, m: &mut Map<String, Value>, cutoff: Option<f64>, figure: bool) {
+pub(crate) fn figure_params(
+    cmd: &str,
+    m: &mut Map<String, Value>,
+    cutoff: Option<f64>,
+    figure: bool,
+) {
     if let Some(f) = crate::ext::get(cmd).and_then(|a| a.figure_params) {
         f(m, figure);
         return;
@@ -58,7 +63,7 @@ pub fn figure_params(cmd: &str, m: &mut Map<String, Value>, cutoff: Option<f64>,
 }
 
 /// 周波数を頼まれていないときの既定（有効数字 2 桁）
-pub fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
+pub(crate) fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
     match cutoff {
         Some(c) if c.is_finite() && c > 0.0 => [0.1, 0.25, 0.5]
             .iter()
@@ -90,7 +95,7 @@ pub(crate) fn memo<T: Send + Sync + 'static>(
 }
 
 /// 図を描く。描けない結果なら false（呼び手が表で見せる）。gen は結果の世代（届くたびに変わる）
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     id: u64,
     gen: u64,
@@ -385,7 +390,7 @@ pub fn f64s(v: &Value) -> Vec<f64> {
 /// 解析パネルの図の見せ方（パネルごと。[`crate::layout::AnaCfg`] に入れて並びと一緒に保存する）
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-pub struct FigState {
+pub(crate) struct FigState {
     /// 全視野の結果で選んだ視野の位置（図の種類ごと: wavefront・psf）
     pub pick: std::collections::BTreeMap<String, usize>,
     /// 波面の図の干渉縞
@@ -461,7 +466,7 @@ pub fn weak(ui: &Ui, s: impl Into<String>) -> RichText {
 // ------------------------------------------------------------------------------------- 波面・干渉縞
 
 /// 波面の JSON（1 視野）から格子を作る（行 0 = +y）
-pub fn wavefront_grid(item: &Value) -> Option<Grid> {
+pub(crate) fn wavefront_grid(item: &Value) -> Option<Grid> {
     let p = f64s(&item["p"]);
     let rows = item["map"].as_array()?;
     let n = p.len();
@@ -493,7 +498,7 @@ pub fn wavefront_grid(item: &Value) -> Option<Grid> {
 /// 干渉縞の設定（パネルごと。[`FigState`] に入れて並びと一緒に保存する）
 #[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-pub struct FringeCfg {
+pub(crate) struct FringeCfg {
     pub on: bool,
     /// OPD にかける数（ダブルパスは 2）
     pub scale: f64,
@@ -514,7 +519,7 @@ impl Default for FringeCfg {
 }
 
 /// 参照球との干渉縞: Δ = scale·W + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2（OpticStudio の Interferogram）
-pub fn interferogram(g: &Grid, f: &FringeCfg) -> Grid {
+pub(crate) fn interferogram(g: &Grid, f: &FringeCfg) -> Grid {
     let [x0, x1, y0, y1] = g.extent;
     let mut out = g.clone();
     for iy in 0..g.h {
@@ -629,7 +634,7 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
 // ------------------------------------------------------------------------------------- PSF
 
 /// PSF の JSON（field・x・y・i の並び）から視野ごとの格子を作る。座標は µm
-pub fn psf_grids(v: &Value) -> Vec<(u64, Grid)> {
+pub(crate) fn psf_grids(v: &Value) -> Vec<(u64, Grid)> {
     type Pts = Vec<(f64, f64, f64)>;
     let mut out: Vec<(u64, Pts)> = Vec::new();
     for p in v["psf"].as_array().into_iter().flatten() {
@@ -692,7 +697,7 @@ pub fn psf_grids(v: &Value) -> Vec<(u64, Grid)> {
 }
 
 /// 値がピークの rel 倍を超える所を 1.5 倍に広げた正方形に切り出す（PSF の像の格子は広いので）
-pub fn crop_to_signal(g: &Grid, rel: f64) -> Grid {
+pub(crate) fn crop_to_signal(g: &Grid, rel: f64) -> Grid {
     let Some((_, peak)) = g.range() else {
         return g.clone();
     };
@@ -1156,7 +1161,7 @@ fn interference_cmap(v: &Value, gray_intensity: bool) -> Cmap {
 }
 
 /// 簡易 POP の出力の照度の格子（`grid_irradiance`、番号 j·nx + i、j は +y の向き）。上の行から並べ直す
-pub fn pop_grid(v: &Value) -> Option<Grid> {
+pub(crate) fn pop_grid(v: &Value) -> Option<Grid> {
     let xs = f64s(&v["x"]);
     let ys = f64s(&v["y"]);
     let g = f64s(&v["grid_irradiance"]);

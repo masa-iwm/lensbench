@@ -3,7 +3,7 @@
 use crate::i18n::n_;
 
 /// 面タイプの名前と説明（種類の列の候補）
-pub const TYPE_NAMES: &[(&str, &str)] = &[
+pub(crate) const TYPE_NAMES: &[(&str, &str)] = &[
     ("STANDARD", n_("Standard")),
     ("EVENASPH", n_("Even asphere")),
     ("COORDBRK", n_("Coordinate break")),

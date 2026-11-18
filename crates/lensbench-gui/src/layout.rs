@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::i18n::{n_, tr};
 
 /// 解析の種類（serve の analyze の cmd）、表示名、視野・波長を選べるか
-pub const ANALYSES: &[(&str, &str, bool)] = &[
+pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("spot", n_("Spot"), true),
     ("mtf", n_("Diffraction MTF"), true),
     ("wavefront", n_("Wavefront Map"), true),
@@ -33,7 +33,7 @@ pub const ANALYSES: &[(&str, &str, bool)] = &[
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
-pub fn analyses() -> Vec<(&'static str, &'static str, bool)> {
+pub(crate) fn analyses() -> Vec<(&'static str, &'static str, bool)> {
     let mut v = ANALYSES.to_vec();
     v.extend(
         crate::ext::list()
@@ -44,7 +44,7 @@ pub fn analyses() -> Vec<(&'static str, &'static str, bool)> {
 }
 
 /// 解析の説明（ツールチップ、日本語。表示は tr で）。無ければ None
-pub fn analysis_help(cmd: &str) -> Option<&'static str> {
+pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
         "spot" => "Spot diagram: ray positions on the image and RMS/GEO radius",
         "mtf" => "Diffraction MTF: modulation per frequency (tangential/sagittal), from the pupil autocorrelation",
@@ -69,7 +69,7 @@ pub fn analysis_help(cmd: &str) -> Option<&'static str> {
 }
 
 /// 解析の群の並び
-pub const ANALYSIS_GROUPS: &[&str] = &[
+pub(crate) const ANALYSIS_GROUPS: &[&str] = &[
     n_("Image quality"),
     n_("MTF / PSF"),
     n_("Interference / propagation"),
@@ -78,7 +78,7 @@ pub const ANALYSIS_GROUPS: &[&str] = &[
 ];
 
 /// 解析の群（一覧の見出し、日本語。表示は tr で）。拡張の解析は「追加の解析」
-pub fn analysis_group(cmd: &str) -> &'static str {
+pub(crate) fn analysis_group(cmd: &str) -> &'static str {
     match cmd {
         "spot" | "wavefront" | "zernike" | "rms" => "Image quality",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
@@ -98,19 +98,19 @@ fn find_analysis(cmd: &str) -> Option<(&'static str, &'static str, bool)> {
 }
 
 /// 解析の表示名（今の言語）
-pub fn analysis_label(cmd: &str) -> String {
+pub(crate) fn analysis_label(cmd: &str) -> String {
     find_analysis(cmd)
         .map(|a| tr(a.1).to_string())
         .unwrap_or_else(|| cmd.to_string())
 }
 
-pub fn takes_sel(cmd: &str) -> bool {
+pub(crate) fn takes_sel(cmd: &str) -> bool {
     find_analysis(cmd).is_some_and(|a| a.2)
 }
 
 /// 解析の結果の見せ方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum View {
+pub(crate) enum View {
     /// 図（figures::has_figure の解析）。図の無い解析は表
     #[default]
     Figure,
@@ -121,7 +121,7 @@ pub enum View {
 /// 解析パネルの設定
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct AnaCfg {
+pub(crate) struct AnaCfg {
     pub cmd: String,
     /// 0 は全視野
     pub field: usize,
@@ -160,7 +160,7 @@ impl Default for AnaCfg {
 }
 
 impl AnaCfg {
-    pub fn new(cmd: &str) -> AnaCfg {
+    pub(crate) fn new(cmd: &str) -> AnaCfg {
         AnaCfg {
             cmd: cmd.into(),
             ..Default::default()
@@ -169,7 +169,7 @@ impl AnaCfg {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Kind {
+pub(crate) enum Kind {
     /// 系の要約とパラメータ
     System,
     /// カタログ（レンズ・ガラス）と組合せ
@@ -195,18 +195,18 @@ pub enum Kind {
 
 impl Kind {
     /// 1 枚だけ置くパネル（解析のほかは全部）。足す操作は、あれば表に出す
-    pub fn single(&self) -> bool {
+    pub(crate) fn single(&self) -> bool {
         !matches!(self, Kind::Analysis(_))
     }
 
     /// 解析でないパネルの定義（解析は None）
-    pub fn tool(&self) -> Option<&'static Tool> {
+    pub(crate) fn tool(&self) -> Option<&'static Tool> {
         TOOLS.iter().find(|t| t.kind == *self)
     }
 }
 
 /// 解析でないパネル（1 枚だけ）の定義。メニュー・パレット・タブの名前はここから作る
-pub struct Tool {
+pub(crate) struct Tool {
     pub kind: Kind,
     /// 名前（tr の鍵）
     pub title: &'static str,
@@ -217,7 +217,7 @@ pub struct Tool {
 }
 
 /// 解析でないパネルの一覧（メニューの順）
-pub const TOOLS: &[Tool] = &[
+pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         kind: Kind::System,
         title: n_("System"),
@@ -282,7 +282,7 @@ pub const TOOLS: &[Tool] = &[
 
 /// 1 つのパネル。id で見分ける
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pane {
+pub(crate) struct Pane {
     pub id: u64,
     pub kind: Kind,
 }
@@ -294,7 +294,7 @@ impl PartialEq for Pane {
 }
 
 impl Pane {
-    pub fn title(&self) -> String {
+    pub(crate) fn title(&self) -> String {
         match &self.kind {
             Kind::Analysis(a) => analysis_label(&a.cmd),
             k => k
@@ -307,7 +307,7 @@ impl Pane {
 
 /// 別の OS の窓に出したパネル
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OsWin {
+pub(crate) struct OsWin {
     pub pane: Pane,
     /// 画面上の位置（論理座標。None は OS に任せる）
     pub pos: Option<[f32; 2]>,
@@ -319,7 +319,7 @@ pub struct OsWin {
 
 /// 別の窓に出す前のドックの位置。ドックの番号は並べ替えで変わるので、近くのタブの id で覚える
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Home {
+pub(crate) enum Home {
     /// 同じタブの並びに残ったタブと、その並びの何番目にあったか
     With { tab: u64, index: usize },
     /// 並びに 1 つだけだったとき: 隣の側のタブ、そのタブから何段上が隣の側の根か、分け方（0 左・1 右・2 上・3 下）と割合
@@ -343,7 +343,7 @@ fn probe(id: u64) -> Pane {
 }
 
 /// ドックの (面, ノード, タブ) にあるパネルの、戻す先を覚える（取り出す前に呼ぶ）
-pub fn home_of(
+pub(crate) fn home_of(
     dock: &DockState<Pane>,
     (s, n, t): (egui_dock::SurfaceIndex, NodeIndex, egui_dock::TabIndex),
 ) -> Option<Home> {
@@ -401,7 +401,7 @@ pub fn home_of(
 }
 
 /// 別の窓から戻したパネルを、覚えた所（無ければ選んでいる所）に入れる
-pub fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>) {
+pub(crate) fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>) {
     match home {
         Some(Home::With { tab, index }) => {
             if let Some((s, n, _)) = dock.find_tab(&probe(*tab)) {
@@ -450,14 +450,14 @@ pub fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>) {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Layout {
+pub(crate) struct Layout {
     pub dock: DockState<Pane>,
     pub windows: Vec<OsWin>,
 }
 
 impl Layout {
     /// パネルの id の最大
-    pub fn max_id(&self) -> u64 {
+    pub(crate) fn max_id(&self) -> u64 {
         self.dock
             .iter_all_tabs()
             .map(|(_, p)| p.id)
@@ -469,7 +469,7 @@ impl Layout {
 
 /// 初期の並び
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Preset {
+pub(crate) enum Preset {
     /// 系・レイアウト図・レンズデータ・スポット・MTF
     Analysis,
     /// 組合せのレイアウト図を大きく、横にカタログと解析
@@ -479,9 +479,9 @@ pub enum Preset {
 }
 
 impl Preset {
-    pub const ALL: [Preset; 3] = [Preset::Analysis, Preset::Catalog, Preset::TwoScreens];
+    pub(crate) const ALL: [Preset; 3] = [Preset::Analysis, Preset::Catalog, Preset::TwoScreens];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Preset::Analysis => tr("Analysis-focused"),
             Preset::Catalog => tr("Catalog and combination"),
@@ -489,7 +489,7 @@ impl Preset {
         }
     }
 
-    pub fn build(self) -> Layout {
+    pub(crate) fn build(self) -> Layout {
         let mut id = 0;
         let mut pane = |kind: Kind| {
             id += 1;

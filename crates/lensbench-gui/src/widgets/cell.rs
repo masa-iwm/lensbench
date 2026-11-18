@@ -8,7 +8,7 @@ use crate::i18n::trf;
 
 /// 入力欄が受けたキー（このフレーム）
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CellKeys {
+pub(crate) struct CellKeys {
     pub tab: bool,
     pub shift: bool,
     pub up: bool,
@@ -18,7 +18,7 @@ pub struct CellKeys {
 }
 
 impl CellKeys {
-    pub fn read(ui: &Ui) -> CellKeys {
+    pub(crate) fn read(ui: &Ui) -> CellKeys {
         ui.input(|i| CellKeys {
             tab: i.key_pressed(Key::Tab),
             shift: i.modifiers.shift,
@@ -30,7 +30,7 @@ impl CellKeys {
     }
 
     /// 決めて移る先（行・列の差）。Tab は横（Shift で前）、arrows なら ↑↓ で縦
-    pub fn nav(&self, arrows: bool) -> Option<(i32, i32)> {
+    pub(crate) fn nav(&self, arrows: bool) -> Option<(i32, i32)> {
         if self.tab {
             Some((0, if self.shift { -1 } else { 1 }))
         } else if arrows && self.up {
@@ -44,7 +44,7 @@ impl CellKeys {
 }
 
 /// 入力欄を開いた最初のフレーム: フォーカスを取り、select_all なら全部を選ぶ（でなければ後ろにカーソル）
-pub fn start(ui: &Ui, resp: &Response, text: &str, select_all: bool) {
+pub(crate) fn start(ui: &Ui, resp: &Response, text: &str, select_all: bool) {
     resp.request_focus();
     if let Some(mut s) = egui::TextEdit::load_state(ui.ctx(), resp.id) {
         let n = text.chars().count();
@@ -58,7 +58,7 @@ pub fn start(ui: &Ui, resp: &Response, text: &str, select_all: bool) {
 }
 
 /// 決められなかった理由を、欄の赤枠と下の吹き出しで出す（Esc でやめる）
-pub fn show_error(ui: &Ui, resp: &Response, why: &str) {
+pub(crate) fn show_error(ui: &Ui, resp: &Response, why: &str) {
     ui.painter().rect_stroke(
         resp.rect.expand(1.0),
         2.0,
@@ -81,7 +81,7 @@ pub fn show_error(ui: &Ui, resp: &Response, why: &str) {
 
 /// 表のセルの入力欄（セルの幅いっぱい、right なら右寄せ）。started は開いた後の最初のフレームを済ませたか、
 /// error は前に決められなかった理由。キーは欄を描く前に読む
-pub fn input(
+pub(crate) fn input(
     ui: &mut Ui,
     text: &mut String,
     started: &mut bool,

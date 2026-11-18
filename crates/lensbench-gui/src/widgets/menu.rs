@@ -4,13 +4,13 @@
 use egui::{Id, Key, Pos2, Ui};
 
 /// 右クリックの欄を開くキー（Shift+F10）が押された
-pub fn menu_key(ui: &Ui) -> bool {
+pub(crate) fn menu_key(ui: &Ui) -> bool {
     ui.input(|i| i.modifiers.shift && i.key_pressed(Key::F10))
 }
 
 /// `pos` に浮かせた欄を出す。`add` は中身を描き、何かを選んだら true を返す。
 /// 戻り値は欄を閉じるとき true（選んだ・Esc・外のクリック。`fresh`（開いたフレーム）の外のクリックは数えない）
-pub fn float_menu(
+pub(crate) fn float_menu(
     ui: &Ui,
     id: Id,
     pos: Pos2,

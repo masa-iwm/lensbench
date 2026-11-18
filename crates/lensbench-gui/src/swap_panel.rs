@@ -22,7 +22,7 @@ use crate::theme;
 
 /// 差し替える所の行
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct SlotRow {
+pub(crate) struct SlotRow {
     /// 玉のブロックの id
     pub block: String,
     pub vendor: String,
@@ -33,7 +33,7 @@ pub struct SlotRow {
 
 /// 組ごとに最適化する変数の行
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct VarRow {
+pub(crate) struct VarRow {
     pub name: String,
     pub lo: String,
     pub hi: String,
@@ -41,7 +41,7 @@ pub struct VarRow {
 
 /// パネルの操作（app が serve に送る）
 #[derive(Clone, Debug)]
-pub enum Action {
+pub(crate) enum Action {
     /// 組の数と候補だけ数える（spec）
     Count(Value),
     /// 回す（spec）
@@ -57,7 +57,7 @@ pub enum Action {
 
 /// 候補（差し替えられる玉・間隔）
 #[derive(Default)]
-pub struct Cands {
+pub(crate) struct Cands {
     /// 玉のブロック (id, 説明)
     pub blocks: Vec<(String, String)>,
     /// id のある空気 (id, 説明)
@@ -68,7 +68,7 @@ pub struct Cands {
     pub sys: std::rc::Rc<crate::param_pick::Sys>,
 }
 
-pub struct SwapPanel {
+pub(crate) struct SwapPanel {
     pub slots: Vec<SlotRow>,
     pub vars: Vec<VarRow>,
     pub merit: String,
@@ -150,7 +150,7 @@ fn num_text(v: &Value) -> String {
 
 impl SwapPanel {
     /// `lensbench swap --spec` の JSON（保存するファイルと同じ）
-    pub fn spec(&self) -> Result<Value, String> {
+    pub(crate) fn spec(&self) -> Result<Value, String> {
         let mut slots = Vec::new();
         for s in &self.slots {
             if s.block.trim().is_empty() {
@@ -226,7 +226,7 @@ impl SwapPanel {
     }
 
     /// 保存したファイル（spec と同じ形）から
-    pub fn set_spec(&mut self, p: &Value) -> Result<(), String> {
+    pub(crate) fn set_spec(&mut self, p: &Value) -> Result<(), String> {
         let o = p
             .as_object()
             .ok_or_else(|| tr("Swap search settings are not an object").to_string())?;
@@ -326,7 +326,7 @@ impl SwapPanel {
 }
 
 /// 出発点の欄（1 行に 1 つ、「d1.t=10, d2.t=5」）から {名前: 値} の並びへ
-pub fn parse_starts(s: &str) -> Result<Vec<serde_json::Map<String, Value>>, String> {
+pub(crate) fn parse_starts(s: &str) -> Result<Vec<serde_json::Map<String, Value>>, String> {
     let mut out = Vec::new();
     for line in s.lines().flat_map(|l| l.split(';')).map(str::trim) {
         if line.is_empty() {
@@ -364,7 +364,7 @@ fn starts_text(v: &Value) -> String {
 }
 
 /// 組合せのプロジェクトの空気に id（d0・d1…）を付けたもの、玉の候補、間隔の候補
-pub fn combo_project(c: &Combo) -> (Value, Cands) {
+pub(crate) fn combo_project(c: &Combo) -> (Value, Cands) {
     let mut p = c.project();
     let ids = c.ids();
     let mut cands = Cands {
@@ -408,7 +408,7 @@ pub fn combo_project(c: &Combo) -> (Value, Cands) {
 
 /// 結果の行の組を組合せに入れる（玉の型番・向き、変数の間隔 dK.t）。`ids` は回したときの組合せの id。
 /// 入れられなければ理由
-pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(), String> {
+pub(crate) fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(), String> {
     let mut n = c.clone();
     for l in &row.lenses {
         let b = &l.block;
@@ -457,7 +457,7 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(),
 }
 
 /// パネルを描く。`progress` は走っている間の (終えた組, 組の数)
-pub fn ui(
+pub(crate) fn ui(
     ui: &mut Ui,
     p: &mut SwapPanel,
     c: &Cands,

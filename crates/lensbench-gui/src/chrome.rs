@@ -11,7 +11,7 @@
 use egui::{CursorIcon, ResizeDirection, Sense, Ui, ViewportCommand};
 
 /// 自前の枠を使うか（アプリ版で、OS のタイトルバーを使う設定でないとき）
-pub fn custom(os_titlebar: bool) -> bool {
+pub(crate) fn custom(os_titlebar: bool) -> bool {
     cfg!(not(target_arch = "wasm32")) && !os_titlebar
 }
 
@@ -76,7 +76,7 @@ fn glyph_button(ui: &mut Ui, g: Glyph, tip: &str) -> egui::Response {
 }
 
 /// 帯の右端の最小化・最大化・閉じる（右から左へ並べる帯の中で呼ぶ）
-pub fn window_buttons(ui: &mut Ui) {
+pub(crate) fn window_buttons(ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
     if glyph_button(ui, Glyph::Close, crate::i18n::tr("Close")).clicked() {
@@ -97,7 +97,7 @@ pub fn window_buttons(ui: &mut Ui) {
 }
 
 /// 帯の残りの空き所を、窓を動かす所にする（ダブルクリックで最大化・戻す）
-pub fn drag_area(ui: &mut Ui) {
+pub(crate) fn drag_area(ui: &mut Ui) {
     let rect = ui.available_rect_before_wrap();
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;
@@ -115,7 +115,7 @@ pub fn drag_area(ui: &mut Ui) {
 const EDGE: f32 = 5.0;
 
 /// 窓の中の位置 p が縁のどこか（角を先に見る）
-pub fn edge_at(screen: egui::Rect, p: egui::Pos2) -> Option<ResizeDirection> {
+pub(crate) fn edge_at(screen: egui::Rect, p: egui::Pos2) -> Option<ResizeDirection> {
     if !screen.contains(p) {
         return None;
     }
@@ -137,7 +137,7 @@ pub fn edge_at(screen: egui::Rect, p: egui::Pos2) -> Option<ResizeDirection> {
 }
 
 /// 窓の縁のカーソルと、押したら大きさを変え始める。最大化中はしない
-pub fn resize_edges(ctx: &egui::Context) {
+pub(crate) fn resize_edges(ctx: &egui::Context) {
     let (max, pos, pressed, screen) = ctx.input(|i| {
         (
             i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false),

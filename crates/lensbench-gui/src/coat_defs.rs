@@ -11,12 +11,12 @@ use crate::i18n::{n_, tr, trf};
 use crate::theme;
 
 /// 次の描画で膜の定義の欄を開いて見せる（通し確認）
-pub fn focus(ctx: &egui::Context) {
+pub(crate) fn focus(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("lensbench_coat_focus"), true));
 }
 
 /// [`focus`] を受け取る（一度だけ true）
-pub fn take_focus(ctx: &egui::Context) -> bool {
+pub(crate) fn take_focus(ctx: &egui::Context) -> bool {
     ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("lensbench_coat_focus")))
         .unwrap_or(false)
 }
@@ -34,7 +34,7 @@ const KINDS: &[(&str, &str)] = &[
 
 /// 表示名の表（翻訳の検査用）
 #[cfg(test)]
-pub const LABELS: [&str; 7] = [
+pub(crate) const LABELS: [&str; 7] = [
     n_("Longpass"),
     n_("Shortpass"),
     n_("Bandpass"),
@@ -119,7 +119,7 @@ fn with_kind(s: &CoatSpec, k: &str) -> CoatSpec {
 }
 
 /// 膜の定義の欄。変えたら true
-pub fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
+pub(crate) fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
     let weak = theme::weak_text(ui.visuals());
     let before = coatings.clone();
     ui.label(
@@ -488,7 +488,13 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
 }
 
 /// 膜の名前の欄（鏡・BS の分ける面）
-pub fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: egui::Color32, coats: &[String]) {
+pub(crate) fn coat_edit(
+    ui: &mut Ui,
+    coat: &mut String,
+    k: usize,
+    weak: egui::Color32,
+    coats: &[String],
+) {
     ui.label(RichText::new(tr("Coating")).color(weak));
     ui.add(
         egui::TextEdit::singleline(coat)

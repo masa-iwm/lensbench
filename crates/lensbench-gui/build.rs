@@ -58,8 +58,9 @@ fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>, keep: &dyn Fn(&Path) -> b
 /// Web 版は lensbench-web が同じものを置き場に入れるので、ここでは空にする
 fn samples() {
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("samples.rs");
-    let mut src =
-        String::from("/// (リポジトリの中のパス, 中身)\npub static FILES: &[(&str, &[u8])] = &[\n");
+    let mut src = String::from(
+        "/// (リポジトリの中のパス, 中身)\npub(crate) static FILES: &[(&str, &[u8])] = &[\n",
+    );
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
         let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("../..")

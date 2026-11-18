@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 /// ファイルを選ぶ窓の設定（ネイティブは rfd の FileDialog に渡す）
 #[derive(Default, Clone, Debug, PartialEq)]
-pub struct FileDialog {
+pub(crate) struct FileDialog {
     filters: Vec<(String, Vec<String>)>,
     file_name: Option<String>,
     /// 始めのフォルダ（開いているファイルのフォルダなど。無ければ OS が決める）
@@ -24,20 +24,20 @@ pub struct FileDialog {
 }
 
 impl FileDialog {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
-    pub fn add_filter(mut self, name: impl Into<String>, ext: &[impl ToString]) -> Self {
+    pub(crate) fn add_filter(mut self, name: impl Into<String>, ext: &[impl ToString]) -> Self {
         self.filters
             .push((name.into(), ext.iter().map(|e| e.to_string()).collect()));
         self
     }
-    pub fn set_file_name(mut self, n: impl Into<String>) -> Self {
+    pub(crate) fn set_file_name(mut self, n: impl Into<String>) -> Self {
         self.file_name = Some(n.into());
         self
     }
     /// 始めのフォルダ（もう決めてあれば変えない）
-    pub fn or_directory(mut self, dir: Option<PathBuf>) -> Self {
+    pub(crate) fn or_directory(mut self, dir: Option<PathBuf>) -> Self {
         if self.directory.is_none() {
             self.directory = dir.filter(|d| d.is_dir());
         }
@@ -92,13 +92,13 @@ fn file_name_only(n: &str) -> String {
 
 /// wasm: ダウンロードにするファイルを書く場所
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub const DOWNLOADS: &str = "/downloads";
+pub(crate) const DOWNLOADS: &str = "/downloads";
 /// wasm: 読み込んだファイルを置く場所
-pub const UPLOADS: &str = "/uploads";
+pub(crate) const UPLOADS: &str = "/uploads";
 
 /// ファイルを開く。`start` のフレームで選び始め、選んだファイルを返す（ネイティブはその場で返す。
 /// wasm は選び終わった後のフレームで、同じ `id` の呼び出しが返す）
-pub fn open(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
+pub(crate) fn open(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if start {
@@ -116,7 +116,11 @@ pub fn open(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Optio
 }
 
 /// フォルダを選ぶ（wasm は複数のファイルを選んで 1 つのフォルダに入れ、そのフォルダを返す）
-pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
+pub(crate) fn open_folder(
+    id: &str,
+    start: bool,
+    dialog: impl FnOnce() -> FileDialog,
+) -> Option<PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if start {
@@ -136,7 +140,7 @@ pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -
 /// 保存先を選ぶ。`start` のフレームで選び始め、選んだパスを返す（ネイティブは選び終わった後のフレームで、同じ `id` の
 /// 呼び出しが返す。wasm はその場で `/downloads/名前` を返し、書かれたら [`flush_downloads`] がダウンロードにする）
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-pub fn save(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
+pub(crate) fn save(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Option<PathBuf> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if start {
@@ -153,7 +157,7 @@ pub fn save(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Optio
 
 /// ファイルの窓の種類
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DialogKind {
+pub(crate) enum DialogKind {
     /// ファイルを開く（答えは同じ id の [`open`] が返す）
     Open,
     /// 保存先を選ぶ（答えは [`finished`] で受ける）
@@ -161,7 +165,7 @@ pub enum DialogKind {
 }
 
 /// ファイルの窓を出し始める（答えは [`DialogKind`] の所で受ける）
-pub fn start(id: &str, kind: DialogKind, d: FileDialog) {
+pub(crate) fn start(id: &str, kind: DialogKind, d: FileDialog) {
     match kind {
         DialogKind::Save => start_save(id, d),
         DialogKind::Open => {
@@ -174,7 +178,7 @@ pub fn start(id: &str, kind: DialogKind, d: FileDialog) {
 }
 
 /// 保存先を選び始める（答えは [`finished`] で受ける。毎フレーム同じ所で呼べない所から使う）
-pub fn start_save(id: &str, d: FileDialog) {
+pub(crate) fn start_save(id: &str, d: FileDialog) {
     #[cfg(not(target_arch = "wasm32"))]
     native::spawn(id, d, |d| d.rfd().save_file());
     #[cfg(target_arch = "wasm32")]
@@ -182,7 +186,7 @@ pub fn start_save(id: &str, d: FileDialog) {
 }
 
 /// [`start_save`] の答え: 選び終わっていなければ None、選んだら Some(パス)、やめたら Some(None)
-pub fn finished(id: &str) -> Option<Option<PathBuf>> {
+pub(crate) fn finished(id: &str) -> Option<Option<PathBuf>> {
     #[cfg(not(target_arch = "wasm32"))]
     return native::take(id);
     #[cfg(target_arch = "wasm32")]
@@ -210,7 +214,7 @@ mod native {
     static OPEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
     static CTX: Mutex<Option<egui::Context>> = Mutex::new(None);
 
-    pub fn set_ctx(ctx: &egui::Context) {
+    pub(super) fn set_ctx(ctx: &egui::Context) {
         *CTX.lock_ok() = Some(ctx.clone());
     }
 
@@ -219,7 +223,7 @@ mod native {
     static OWNER: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
     /// 本体の窓を覚える（Windows だけ。ほかは何もしない）
-    pub fn set_owner(cc: &eframe::CreationContext<'_>) {
+    pub(crate) fn set_owner(cc: &eframe::CreationContext<'_>) {
         #[cfg(windows)]
         {
             use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -234,13 +238,13 @@ mod native {
     }
 
     #[cfg(windows)]
-    pub fn owner() -> Option<Owner> {
+    pub(crate) fn owner() -> Option<Owner> {
         std::num::NonZeroIsize::new(OWNER.load(std::sync::atomic::Ordering::Relaxed)).map(Owner)
     }
 
     /// rfd の set_parent に渡す本体の窓
     #[cfg(windows)]
-    pub struct Owner(std::num::NonZeroIsize);
+    pub(crate) struct Owner(std::num::NonZeroIsize);
 
     #[cfg(windows)]
     impl raw_window_handle::HasWindowHandle for Owner {
@@ -267,7 +271,7 @@ mod native {
     }
 
     /// 窓を出す（同じ id の窓が出ている間は出さない）
-    pub fn spawn(
+    pub(super) fn spawn(
         id: &str,
         d: FileDialog,
         f: impl FnOnce(&FileDialog) -> Option<PathBuf> + Send + 'static,
@@ -295,7 +299,7 @@ mod native {
     }
 
     /// 選び終わっていれば Some（やめたら Some(None)）
-    pub fn take(id: &str) -> Option<Option<PathBuf>> {
+    pub(super) fn take(id: &str) -> Option<Option<PathBuf>> {
         DONE.lock_ok().as_mut().and_then(|d| d.remove(id))
     }
 }
@@ -305,12 +309,12 @@ mod native {
 static FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 前に呼んでから、ファイルを選ぶ窓が出せなかったことがあったか（読むと戻る）
-pub fn take_failed() -> bool {
+pub(crate) fn take_failed() -> bool {
     FAILED.swap(false, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// 窓に落としたファイルのパス（wasm は中身を `/uploads/` に入れてそのパス）
-pub fn dropped(f: &egui::DroppedFile) -> Option<PathBuf> {
+pub(crate) fn dropped(f: &egui::DroppedFile) -> Option<PathBuf> {
     if let Some(p) = &f.path {
         return Some(p.clone());
     }
@@ -321,13 +325,13 @@ pub fn dropped(f: &egui::DroppedFile) -> Option<PathBuf> {
 }
 
 /// wasm: `/downloads/` に書かれたファイルをブラウザのダウンロードにする（毎フレーム呼ぶ）。ネイティブは何もしない
-pub fn flush_downloads() {
+pub(crate) fn flush_downloads() {
     #[cfg(target_arch = "wasm32")]
     web::flush_downloads();
 }
 
 /// 結果が出たときに画面を描き直させる（選び終わったときに使う）
-pub fn set_ctx(ctx: &egui::Context) {
+pub(crate) fn set_ctx(ctx: &egui::Context) {
     #[cfg(target_arch = "wasm32")]
     web::set_ctx(ctx);
     #[cfg(not(target_arch = "wasm32"))]
@@ -336,14 +340,14 @@ pub fn set_ctx(ctx: &egui::Context) {
 
 /// 本体の窓を覚える（Windows はファイルの窓の持ち主にする）
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::set_owner;
+pub(crate) use native::set_owner;
 
 /// 人の答えを待たない運転（画面の通し確認 `--tour`）。確かめる窓は出さずに「いいえ」（CI の Linux で
 /// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない
 static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 人の答えを待たない運転にする（確かめ（`Core::ask`）は「いいえ」、[`error_box`] は出さない）
-pub fn set_unattended(on: bool) {
+pub(crate) fn set_unattended(on: bool) {
     UNATTENDED.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
@@ -353,7 +357,7 @@ pub(crate) fn unattended() -> bool {
 
 /// エラーを窓で知らせる（Linux は zenity、無ければ何もしない）
 #[cfg(not(target_arch = "wasm32"))]
-pub fn error_box(title: &str, text: &str) {
+pub(crate) fn error_box(title: &str, text: &str) {
     if unattended() {
         return;
     }
@@ -397,7 +401,7 @@ mod zenity {
         }
     }
 
-    pub struct FileDialog<'a>(pub &'a super::FileDialog);
+    pub(super) struct FileDialog<'a>(pub &'a super::FileDialog);
 
     impl FileDialog<'_> {
         fn args(&self, extra: &[&str]) -> Vec<String> {
@@ -419,18 +423,18 @@ mod zenity {
             }
             a
         }
-        pub fn pick_file(self) -> Option<PathBuf> {
+        pub(super) fn pick_file(self) -> Option<PathBuf> {
             run(&self.args(&[])).map(PathBuf::from)
         }
-        pub fn pick_folder(self) -> Option<PathBuf> {
+        pub(super) fn pick_folder(self) -> Option<PathBuf> {
             run(&self.args(&["--directory"])).map(PathBuf::from)
         }
-        pub fn save_file(self) -> Option<PathBuf> {
+        pub(super) fn save_file(self) -> Option<PathBuf> {
             run(&self.args(&["--save", "--confirm-overwrite"])).map(PathBuf::from)
         }
     }
 
-    pub fn error(title: &str, text: &str) {
+    pub(super) fn error(title: &str, text: &str) {
         let _ = Command::new("zenity")
             .args([
                 "--error",
@@ -455,11 +459,11 @@ mod web {
         static CTX: RefCell<Option<egui::Context>> = const { RefCell::new(None) };
     }
 
-    pub fn set_ctx(ctx: &egui::Context) {
+    pub(super) fn set_ctx(ctx: &egui::Context) {
         CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
     }
 
-    pub fn take(id: &str) -> Option<PathBuf> {
+    pub(super) fn take(id: &str) -> Option<PathBuf> {
         DONE.with(|d| d.borrow_mut().remove(id))
     }
 
@@ -476,7 +480,7 @@ mod web {
         }
     }
 
-    pub fn pick(id: &str, d: FileDialog, folder: bool) {
+    pub(super) fn pick(id: &str, d: FileDialog, folder: bool) {
         let id = id.to_string();
         let mut a = rfd::AsyncFileDialog::new();
         // フォルダ（カタログなど）は形式を限らない
@@ -526,7 +530,7 @@ mod web {
         });
     }
 
-    pub fn flush_downloads() {
+    pub(super) fn flush_downloads() {
         let Ok(files) = lensbench_core::vfs::read_dir(DOWNLOADS) else {
             return;
         };

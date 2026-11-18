@@ -11,7 +11,7 @@ const MAX_NUMS: usize = 12;
 const MAX_ROWS: usize = 200;
 
 /// 数を有効 6 桁くらいで（整数はそのまま）
-pub fn fmt_num(x: f64) -> String {
+pub(crate) fn fmt_num(x: f64) -> String {
     if x == x.trunc() && x.abs() < 1e15 {
         format!("{}", x as i64)
     } else if x != 0.0 && (x.abs() < 1e-3 || x.abs() >= 1e6) {
@@ -117,7 +117,7 @@ fn table_columns(a: &[Value]) -> Option<Vec<String>> {
     Some(cols)
 }
 
-pub fn show(ui: &mut Ui, v: &Value) {
+pub(crate) fn show(ui: &mut Ui, v: &Value) {
     let u = Units {
         unit: v["unit"].as_str(),
     };

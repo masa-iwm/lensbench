@@ -8,11 +8,11 @@ use serde_json::Value;
 use crate::worker::{Arrays, CallErr};
 
 /// ファイルの変更（パス、中身。None は消した）
-pub type Files = Vec<(String, Option<Vec<u8>>)>;
+pub(crate) type Files = Vec<(String, Option<Vec<u8>>)>;
 
 /// 計算の側へ渡す要求
 #[derive(Debug, PartialEq)]
-pub struct Request {
+pub(crate) struct Request {
     /// 要求の番号（1 から。中断・停止をこの要求に限る、[`crate::worker::entry`]）
     pub id: u32,
     pub threads: Option<usize>,
@@ -22,7 +22,7 @@ pub struct Request {
 
 /// 計算の側から戻る結果（呼び出しごと。エラーで止めたらそこまで）
 #[derive(Debug, PartialEq)]
-pub struct Response {
+pub(crate) struct Response {
     /// 答えた要求の番号（[`Request::id`]。要求が読めなかったときは 0）。画面の側は待っている要求の番号と
     /// 合わない返事を捨てる
     pub id: u32,
@@ -113,7 +113,7 @@ impl<'a> R<'a> {
 }
 
 impl Request {
-    pub fn encode(&self) -> Vec<u8> {
+    pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = W::default();
         w.u32(self.id as usize);
         w.u32(self.threads.map_or(0, |t| t + 1));
@@ -126,7 +126,7 @@ impl Request {
         w.0
     }
 
-    pub fn decode(b: &[u8]) -> Result<Request, String> {
+    pub(crate) fn decode(b: &[u8]) -> Result<Request, String> {
         let mut r = R(b);
         let id = r.u32()? as u32;
         let threads = r.u32()?.checked_sub(1);
@@ -147,7 +147,7 @@ impl Request {
 }
 
 impl Response {
-    pub fn encode(&self) -> Vec<u8> {
+    pub(crate) fn encode(&self) -> Vec<u8> {
         let mut w = W::default();
         w.u32(self.id as usize);
         w.f64(self.ms);
@@ -177,7 +177,7 @@ impl Response {
         w.0
     }
 
-    pub fn decode(b: &[u8]) -> Result<Response, String> {
+    pub(crate) fn decode(b: &[u8]) -> Result<Response, String> {
         let mut r = R(b);
         let id = r.u32()? as u32;
         let ms = r.f64()?;

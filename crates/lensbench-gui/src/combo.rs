@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 use crate::combo_tree::Loc;
-pub use crate::combo_tree::{Branch, Gap};
+pub(crate) use crate::combo_tree::{Branch, Gap};
 use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 use crate::sysset::{Aiming, ApertureKind, FieldKind, FieldPt, FieldSolve, WavePt};
@@ -31,23 +31,23 @@ mod raw;
 mod sys_extra;
 mod write_face;
 mod zgroup;
-pub use ap_shape::{ApData, ApShape};
-pub use bs::{Bs, BsForm, BsSplit};
-pub use custom_lens::CustomLens;
-pub use detector::DetectorPick;
+pub(crate) use ap_shape::{ApData, ApShape};
+pub(crate) use bs::{Bs, BsForm, BsSplit};
+pub(crate) use custom_lens::CustomLens;
+pub(crate) use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
-pub use kind_data::KindData;
-pub use mech::MechPick;
-pub use mirror::MirrorData;
-pub use sys_extra::SysExtra;
-pub use zgroup::{ZGroup, ZmxSrc};
+pub(crate) use kind_data::KindData;
+pub(crate) use mech::MechPick;
+pub(crate) use mirror::MirrorData;
+pub(crate) use sys_extra::SysExtra;
+pub(crate) use zgroup::{ZGroup, ZmxSrc};
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum ElemKind {
+pub(crate) enum ElemKind {
     /// レンズカタログの玉（vendor・part）
     #[default]
     Catalog,
@@ -76,7 +76,7 @@ pub enum ElemKind {
 /// 面の並びの面の種類
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SurfKind {
+pub(crate) enum SurfKind {
     #[default]
     Standard,
     /// Jones 行列の面（偏光子・波長板など）
@@ -90,7 +90,7 @@ pub enum SurfKind {
 }
 
 impl SurfKind {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             SurfKind::Standard => tr("Surface"),
             SurfKind::Jones => tr("Jones matrix"),
@@ -104,7 +104,7 @@ impl SurfKind {
 /// 面 1 つ（自作の玉・面の並びの表の行。project の SurfSpec）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct SurfRow {
+pub(crate) struct SurfRow {
     pub kind: SurfKind,
     /// 曲率半径 [mm]（0 は平面）
     pub radius: f64,
@@ -144,7 +144,7 @@ pub struct SurfRow {
 }
 
 /// [`SurfRow::more`] に持つ SurfSpec の鍵
-pub const SURF_MORE: &[&str] = &[
+pub(crate) const SURF_MORE: &[&str] = &[
     "asph",
     "shape",
     "radius_x",
@@ -187,12 +187,12 @@ impl Default for SurfRow {
 impl SurfRow {
     /// ほかの欄で書けない面（Zernike・Grid Sag・GRIN など）の、システムファイル（版 2）の行。値はレンズデータの
     /// 表で変え、面の上書きになる
-    pub fn special(&self) -> Option<&Value> {
+    pub(crate) fn special(&self) -> Option<&Value> {
         self.more.get("row")
     }
 
     /// project の SurfSpec の JSON
-    pub fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         // ほかの欄で書けない面（システムファイルの行で持つ面）はその行だけ
         if let (SurfKind::Standard, Some(r)) = (self.kind, self.special()) {
             return json!({ "row": r });
@@ -259,7 +259,7 @@ impl SurfRow {
 }
 
 impl ElemKind {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ElemKind::Catalog => tr("Catalog element"),
             ElemKind::Lens => tr("Custom lens"),
@@ -275,11 +275,11 @@ impl ElemKind {
         }
     }
     /// ON/OFF を持つ（絞りは無い。そのまま持つブロックは中身の on）
-    pub fn has_on(self) -> bool {
+    pub(crate) fn has_on(self) -> bool {
         !matches!(self, ElemKind::Stop | ElemKind::Raw)
     }
     /// OFF の残し方（詰める・空気）を選べる（鏡は長さが無い）
-    pub fn has_off_mode(self) -> bool {
+    pub(crate) fn has_off_mode(self) -> bool {
         !matches!(self, ElemKind::Stop | ElemKind::Mirror)
     }
     /// ブロックの id の頭
@@ -303,7 +303,7 @@ impl ElemKind {
 /// 組合せの 1 つの要素（項目は種類ごとに使うものだけ。無い項目は既定）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Pick {
+pub(crate) struct Pick {
     pub kind: ElemKind,
     pub vendor: String,
     pub part: String,
@@ -368,7 +368,7 @@ pub struct Pick {
 
 /// 要素の面の値の上書き（面は要素の面のうち座標ブレークを除いた番号）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SurfEdit {
+pub(crate) struct SurfEdit {
     pub surface: usize,
     pub field: String,
     pub value: Value,
@@ -414,7 +414,7 @@ impl Default for Pick {
 impl Pick {
     /// 面の上書き（edits・ops）の面番号を決める並びの印。種類・元（型番・ファイル・何番目の玉・構成・範囲）・
     /// 反転・面の並びの種類が変わると変わる
-    pub fn surf_sig(&self) -> String {
+    pub(crate) fn surf_sig(&self) -> String {
         let kinds: Vec<SurfKind> = self.surfs.iter().map(|r| r.kind).collect();
         format!(
             "{:?}|{}|{}|{}|{}|{}|{:?}|{}|{:?}|{:?}",
@@ -433,7 +433,7 @@ impl Pick {
 
     /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
     /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
-    pub fn drop_stale_edits(&mut self) -> usize {
+    pub(crate) fn drop_stale_edits(&mut self) -> usize {
         if self.edits.is_empty() && self.ops.is_empty() {
             self.edits_for.clear();
             return 0;
@@ -454,12 +454,12 @@ impl Pick {
     }
 
     /// 位置もロックしている（図・キーで動かせず、偏心・傾き・後の空気も変えられない）
-    pub fn fixed(&self) -> bool {
+    pub(crate) fn fixed(&self) -> bool {
         self.locked && self.lock_place
     }
 
     /// 前面を絞りにできる要素（玉のブロックになるもの。ユーザーカタログの項目は群なので除く）
-    pub fn can_stop_front(&self) -> bool {
+    pub(crate) fn can_stop_front(&self) -> bool {
         match self.kind {
             ElemKind::Catalog => self.path.is_empty(),
             ElemKind::Lens | ElemKind::Plate | ElemKind::Zmx | ElemKind::ZmxRange => true,
@@ -468,7 +468,7 @@ impl Pick {
     }
 
     /// 絞りの要素か、前面を絞りにした玉か、.zmx の絞りを使う取り込み（範囲に絞りの面があるときだけ）
-    pub fn is_stop(&self) -> bool {
+    pub(crate) fn is_stop(&self) -> bool {
         match self.kind {
             ElemKind::Stop => true,
             ElemKind::Raw => self.raw_is_stop(),
@@ -478,7 +478,7 @@ impl Pick {
     }
 
     /// .zmx の取り込みの範囲に .zmx の絞りの面があるか（ファイルが読めなければ、あるとみなす）
-    pub fn range_has_stop(&self) -> bool {
+    pub(crate) fn range_has_stop(&self) -> bool {
         let Some((stop, image)) = zmx_stop_info(&self.path) else {
             return true;
         };
@@ -492,7 +492,7 @@ impl Pick {
         a <= stop && stop <= z
     }
 
-    pub fn new(kind: ElemKind) -> Pick {
+    pub(crate) fn new(kind: ElemKind) -> Pick {
         let mut p = Pick {
             kind,
             ..Pick::default()
@@ -545,7 +545,7 @@ impl Pick {
     }
 
     /// 一覧・図に出す名前
-    pub fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         match self.kind {
             ElemKind::Catalog => format!("{} {}", self.vendor, self.part),
             ElemKind::Zmx => {
@@ -603,7 +603,7 @@ impl Pick {
     }
 
     /// 開口・遮蔽の、図の縦の広がり（光軸から）。外の縁
-    pub fn ap_extent(&self) -> f64 {
+    pub(crate) fn ap_extent(&self) -> f64 {
         let h = match self.ap().shape {
             ApShape::Rect | ApShape::Ellipse => self.ap().half[0].hypot(self.ap().half[1]),
             // スパイダーの腕は無限に伸びるので、図では半径（semi）まで
@@ -621,7 +621,7 @@ impl Pick {
         }
     }
 
-    pub fn radius(r: f64) -> Value {
+    pub(crate) fn radius(r: f64) -> Value {
         if r == 0.0 {
             Value::Null
         } else {
@@ -630,7 +630,7 @@ impl Pick {
     }
 
     /// ブロック（id 付き）
-    pub fn block(&self, id: &str) -> Value {
+    pub(crate) fn block(&self, id: &str) -> Value {
         let mut b = match self.kind {
             ElemKind::Raw => return self.raw_block(id),
             // lensbench 形式のカタログの玉（ユーザーカタログの項目）
@@ -782,7 +782,7 @@ impl Pick {
     }
 
     /// 自作の玉の面の表（2 面の単玉なら r1・r2・t・glass から作る）
-    pub fn lens_rows(&self) -> Vec<SurfRow> {
+    pub(crate) fn lens_rows(&self) -> Vec<SurfRow> {
         if self.surfs.len() >= 2 {
             return self.surfs.clone();
         }
@@ -805,24 +805,24 @@ impl Pick {
     }
 
     /// 状態 st での ON/OFF
-    pub fn on_in(&self, st: Option<&str>) -> bool {
+    pub(crate) fn on_in(&self, st: Option<&str>) -> bool {
         st.and_then(|n| self.state_on.get(n).copied())
             .unwrap_or(self.on)
     }
 
     /// 状態 st での後の空気
-    pub fn air_in(&self, st: Option<&str>) -> f64 {
+    pub(crate) fn air_in(&self, st: Option<&str>) -> f64 {
         st.and_then(|n| self.state_air.get(n).copied())
             .unwrap_or(self.air)
     }
 
     /// 状態ごとに偏心・傾きを変えられる要素か（置き方を持つ要素と鏡）
-    pub fn has_state_place(&self) -> bool {
+    pub(crate) fn has_state_place(&self) -> bool {
         place_fields(self.kind) || self.kind == ElemKind::Mirror
     }
 
     /// 状態 st での偏心・傾き
-    pub fn place_in(&self, st: Option<&str>) -> StatePlace {
+    pub(crate) fn place_in(&self, st: Option<&str>) -> StatePlace {
         st.and_then(|n| self.state_place.get(n).copied())
             .filter(|_| self.has_state_place())
             .unwrap_or(StatePlace {
@@ -832,7 +832,7 @@ impl Pick {
     }
 
     /// 状態 st で変える偏心・傾き（状態なら状態の値を作る）
-    pub fn place_mut(&mut self, st: Option<&str>) -> (&mut [f64; 2], &mut [f64; 3]) {
+    pub(crate) fn place_mut(&mut self, st: Option<&str>) -> (&mut [f64; 2], &mut [f64; 3]) {
         match st {
             Some(n) if self.has_state_place() => {
                 let base = StatePlace {
@@ -847,7 +847,7 @@ impl Pick {
     }
 
     /// 状態 n で変えた値があるか
-    pub fn has_state_values(&self, n: &str) -> bool {
+    pub(crate) fn has_state_values(&self, n: &str) -> bool {
         self.state_on.contains_key(n)
             || self.state_air.contains_key(n)
             || self.state_place.contains_key(n)
@@ -855,7 +855,7 @@ impl Pick {
     }
 
     /// 状態 n で変えた値をやめる
-    pub fn clear_state(&mut self, n: &str) {
+    pub(crate) fn clear_state(&mut self, n: &str) {
         self.state_on.remove(n);
         self.state_air.remove(n);
         self.state_place.remove(n);
@@ -865,13 +865,13 @@ impl Pick {
     }
 
     /// .zmx の取り込みの、状態 st でのマルチコンフィグの番号
-    pub fn config_in(&self, st: Option<&str>) -> usize {
+    pub(crate) fn config_in(&self, st: Option<&str>) -> usize {
         st.and_then(|n| self.zmx().state_config.get(n).copied())
             .unwrap_or(self.zmx().config)
     }
 
     /// 状態 st で変える後の空気（状態なら状態の値を作る）
-    pub fn air_mut(&mut self, st: Option<&str>) -> &mut f64 {
+    pub(crate) fn air_mut(&mut self, st: Option<&str>) -> &mut f64 {
         match st {
             Some(n) => self.state_air.entry(n.to_string()).or_insert(self.air),
             None => &mut self.air,
@@ -882,7 +882,7 @@ impl Pick {
 /// 状態ごとの偏心 [mm]・傾き [deg]（[`Pick::state_place`]）
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct StatePlace {
+pub(crate) struct StatePlace {
     pub decenter: [f64; 2],
     pub tilt: [f64; 3],
 }
@@ -890,7 +890,7 @@ pub struct StatePlace {
 /// 組合せ（要素の並びと、系の条件。系の設定は [`crate::sysset`]）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Combo {
+pub(crate) struct Combo {
     pub name: String,
     pub picks: Vec<Pick>,
     /// 置く機構部品
@@ -955,7 +955,7 @@ pub struct Combo {
 /// 組合せの群（プロジェクトの group ブロック）の役割と移動
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct GroupDef {
+pub(crate) struct GroupDef {
     pub name: String,
     /// zoom・focus・fixed（空は無し）
     pub role: String,
@@ -1003,7 +1003,7 @@ impl Default for Combo {
 
 impl Combo {
     /// 要素の数（分岐の先も）・状態の数・面の上書きの数（消す操作の後に「Ctrl+Z で戻す」を出す）
-    pub fn census(&self) -> [usize; 3] {
+    pub(crate) fn census(&self) -> [usize; 3] {
         fn walk(ps: &[Pick], n: &mut [usize; 3]) {
             for p in ps {
                 n[0] += 1;
@@ -1019,7 +1019,7 @@ impl Combo {
     }
 
     /// 面の並びが変わった要素（分岐の先も）の面の上書きを外す。外した数
-    pub fn drop_stale_edits(&mut self) -> usize {
+    pub(crate) fn drop_stale_edits(&mut self) -> usize {
         fn walk(ps: &mut [Pick]) -> usize {
             let mut n = 0;
             for p in ps {
@@ -1034,7 +1034,7 @@ impl Combo {
     }
 
     /// 要素（分岐の先も）の .zmx のファイルのパスを f で変える（設定の相対パス）
-    pub fn map_paths(&mut self, f: &impl Fn(&str) -> String) {
+    pub(crate) fn map_paths(&mut self, f: &impl Fn(&str) -> String) {
         fn walk(ps: &mut [Pick], f: &impl Fn(&str) -> String) {
             for p in ps {
                 if !p.path.is_empty() {
@@ -1055,7 +1055,7 @@ impl Combo {
     }
 
     /// 前に絞りを置くか（絞りの要素が分岐の先にも無いとき）
-    pub fn lead_stop(&self) -> bool {
+    pub(crate) fn lead_stop(&self) -> bool {
         !self
             .all()
             .iter()
@@ -1064,7 +1064,7 @@ impl Combo {
     }
 
     /// 絞りにした要素の面（要素の場所、要素の面の番号）
-    pub fn stop_face(&self) -> Option<(Loc, usize)> {
+    pub(crate) fn stop_face(&self) -> Option<(Loc, usize)> {
         self.all().into_iter().find_map(|l| {
             let i = self.get(&l)?.ops.iter().find_map(SurfaceOp::stop_index)?;
             Some((l.clone(), i))
@@ -1072,7 +1072,7 @@ impl Combo {
     }
 
     /// 絞りを場所 loc の要素の面 i に（None なら要素の面の絞りをやめる）
-    pub fn set_stop_face(&mut self, at: Option<(Loc, usize)>) {
+    pub(crate) fn set_stop_face(&mut self, at: Option<(Loc, usize)>) {
         for l in self.all() {
             if let Some(p) = self.get_mut(&l) {
                 p.ops.retain(|o| !matches!(o, SurfaceOp::SetStop(_)));
@@ -1092,7 +1092,7 @@ impl Combo {
     }
 
     /// 今の経路に沿った要素のブロックの id（= 玉・群の名前、[`Combo::ids_all`]）
-    pub fn ids(&self) -> Vec<String> {
+    pub(crate) fn ids(&self) -> Vec<String> {
         let mut all: BTreeMap<Loc, String> = self.ids_all().into_iter().collect();
         self.chain()
             .iter()
@@ -1101,7 +1101,7 @@ impl Combo {
     }
 
     /// プロジェクトファイル（JSON）にする
-    pub fn project(&self) -> Value {
+    pub(crate) fn project(&self) -> Value {
         let mut blocks = Vec::new();
         if self.lead_stop() {
             blocks.push(json!({ "type": "stop", "semi": self.epd / 2.0 }));
@@ -1213,14 +1213,14 @@ impl Combo {
     }
 
     /// 今の状態（名前が states にあるときだけ）
-    pub fn active_state(&self) -> Option<&str> {
+    pub(crate) fn active_state(&self) -> Option<&str> {
         self.state
             .as_deref()
             .filter(|n| self.states.iter().any(|s| s == n))
     }
 
     /// 要素と系の玉の対応に使う id（今の状態で OFF の要素は空。[`LayoutData::spans_for`]）
-    pub fn span_ids(&self) -> Vec<String> {
+    pub(crate) fn span_ids(&self) -> Vec<String> {
         let st = self.active_state();
         self.ids()
             .into_iter()
@@ -1230,7 +1230,7 @@ impl Combo {
     }
 
     /// 経路に沿った要素 k を光軸に沿って d [mm] 動かす（前の間隔を d 増やし、後の間隔を d 減らす）
-    pub fn shift(&mut self, k: usize, d: f64) {
+    pub(crate) fn shift(&mut self, k: usize, d: f64) {
         let Some(s) = self.chain().get(k).cloned() else {
             return;
         };
@@ -1251,7 +1251,7 @@ impl Combo {
 
 /// serve の `layout` の結果
 #[derive(Debug, Clone, Default)]
-pub struct LayoutData {
+pub(crate) struct LayoutData {
     pub solids: Vec<Solid>,
     /// 像面・物体面などの線
     pub plates: Vec<(String, usize, Vec<[f64; 2]>)>,
@@ -1277,14 +1277,14 @@ pub struct LayoutData {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Solid {
+pub(crate) struct Solid {
     pub mirror: bool,
     pub surfaces: [usize; 2],
     pub pts: Vec<[f64; 2]>,
 }
 
 /// serve の `blocks`（load・layout の返事）: id のあるブロック・群と、その往路の面の範囲
-pub fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
+pub(crate) fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
     let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
     v["blocks"]
         .as_array()
@@ -1315,7 +1315,7 @@ fn pts(v: &Value) -> Vec<[f64; 2]> {
 }
 
 impl LayoutData {
-    pub fn parse(v: &Value) -> LayoutData {
+    pub(crate) fn parse(v: &Value) -> LayoutData {
         let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
         let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
         let configs: Vec<String> = arr("configs")
@@ -1404,25 +1404,18 @@ impl LayoutData {
 
     /// 要素ごとの面の範囲（最初・最後）。要素のブロックの id で serve の `blocks` から引く（前後の面からの推定は
     /// しない）。往路で同じブロックを 2 度通る系は、前の要素より後の通りを当てる
-    pub fn spans_for(&self, ids: &[String], lead_stop: bool) -> Vec<Option<[usize; 2]>> {
-        let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
-        let mut prev = if lead_stop { self.stop } else { None };
-        for id in ids {
-            // 空の id（OFF の要素）は系に無い
-            let s = (!id.is_empty())
-                .then(|| self.block_after(id, prev, ids))
-                .flatten();
-            if let Some(s) = s {
-                prev = Some(s[1]);
-            }
-            v.push(s);
-        }
-        v
+    pub(crate) fn spans_for(&self, ids: &[String], lead_stop: bool) -> Vec<Option<[usize; 2]>> {
+        spans_in(&self.blocks, self.stop, ids, lead_stop)
     }
 
     /// id のブロックの、面 after より後の往路の通りの範囲。続く通りは、ほかの要素（ids）の面が間に入るまでつなぐ
-    fn block_after(&self, id: &str, after: Option<usize>, ids: &[String]) -> Option<[usize; 2]> {
-        let (_, all) = self.blocks.iter().find(|(n, _)| n == id)?;
+    fn block_after(
+        blocks: &[(String, Vec<[usize; 2]>)],
+        id: &str,
+        after: Option<usize>,
+        ids: &[String],
+    ) -> Option<[usize; 2]> {
+        let (_, all) = blocks.iter().find(|(n, _)| n == id)?;
         let mut sp: Vec<[usize; 2]> = all.clone();
         sp.sort();
         let first = sp
@@ -1430,8 +1423,7 @@ impl LayoutData {
             .copied()
             .find(|s| after.is_none_or(|a| s[0] > a))
             .or_else(|| sp.first().copied())?;
-        let limit = self
-            .blocks
+        let limit = blocks
             .iter()
             .filter(|(n, _)| n != id && ids.contains(n))
             .flat_map(|(_, s)| s.iter().map(|x| x[0]))
@@ -1449,7 +1441,7 @@ impl LayoutData {
 
     /// 物体が最初の面より後ろ（虚物体）のとき、入る光を最初の面の前から描く。
     /// 光線の最初の点（後ろの物点）を、最初の面に当たる点から前へ物点までの距離の半分だけ伸ばした点に替え、物体面の線は消す
-    pub fn virtual_object_from_front(&mut self) {
+    pub(crate) fn virtual_object_from_front(&mut self) {
         let (Some(Some(o)), Some(Some(s1))) = (self.vertices.first(), self.vertices.get(1)) else {
             return;
         };
@@ -1473,7 +1465,7 @@ impl LayoutData {
     }
 
     /// 像面の面の番号
-    pub fn image_surface(&self) -> Option<usize> {
+    pub(crate) fn image_surface(&self) -> Option<usize> {
         self.plates.iter().find(|p| p.0 == "image").map(|p| p.1)
     }
 
@@ -1484,7 +1476,7 @@ impl LayoutData {
 }
 
 /// 像面の前の面の座標での、軸上の細い光線（位置 y・z、方向 m・n）が軸と交わる所までの距離（光の進む向きに正）
-pub fn paraxial_focus(y: f64, z: f64, m: f64, n: f64) -> Option<f64> {
+pub(crate) fn paraxial_focus(y: f64, z: f64, m: f64, n: f64) -> Option<f64> {
     if m.abs() < 1e-15 || !(y.is_finite() && z.is_finite() && m.is_finite() && n.is_finite()) {
         return None;
     }
@@ -1495,7 +1487,7 @@ pub fn paraxial_focus(y: f64, z: f64, m: f64, n: f64) -> Option<f64> {
 
 /// レイアウト図の画面の状態（選んだ要素・寸法）
 #[derive(Default)]
-pub struct View {
+pub(crate) struct View {
     /// 選んだ要素（[`View::sel`]・[`View::set_sel`]。変えると [`View::take_moved`] が知らせる）
     sel: Option<usize>,
     /// 選んだ要素を変えた（面の表が受け取るまで）
@@ -1536,7 +1528,7 @@ pub struct View {
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
-pub struct DropPick(pub Pick);
+pub(crate) struct DropPick(pub Pick);
 
 impl View {
     /// 2D の図を画面の点 c を中心に f 倍する（c の下の図の点は動かない）。fit_center は全体表示の中心
@@ -1607,29 +1599,29 @@ impl View {
     }
 
     /// 選んだ要素
-    pub fn sel(&self) -> Option<usize> {
+    pub(crate) fn sel(&self) -> Option<usize> {
         self.sel
     }
 
     /// 選ぶ要素を変える（違えば [`View::take_moved`] で知らせる）
-    pub fn set_sel(&mut self, k: Option<usize>) {
+    pub(crate) fn set_sel(&mut self, k: Option<usize>) {
         self.moved |= self.sel != k;
         self.sel = k;
     }
 
     /// 前に聞いてから選んだ要素を変えたか（聞くと消える）
-    pub fn take_moved(&mut self) -> bool {
+    pub(crate) fn take_moved(&mut self) -> bool {
         std::mem::take(&mut self.moved)
     }
 
     /// 要素 k を選ぶ
-    pub fn select(&mut self, k: usize) {
+    pub(crate) fn select(&mut self, k: usize) {
         self.set_sel(Some(k));
         self.dim = None;
         self.edit = None;
     }
 
-    pub fn start_edit(&mut self, combo: &mut Combo, g: usize) {
+    pub(crate) fn start_edit(&mut self, combo: &mut Combo, g: usize) {
         let v = gap_get(combo, g).unwrap_or(0.0);
         self.dim = Some(g);
         self.set_sel(None);
@@ -1639,7 +1631,7 @@ impl View {
 
 /// 画面から GUI に頼むこと
 #[derive(Clone, Debug)]
-pub enum Act {
+pub(crate) enum Act {
     /// カタログのパネルを出す
     Catalog,
     /// 像面を近軸の焦点に合わせる
@@ -1656,7 +1648,7 @@ const STOP_GAP: usize = usize::MAX;
 
 /// 要素を足すボタンの並び・図・選んだ要素の設定
 #[allow(clippy::too_many_arguments)]
-pub fn ui(
+pub(crate) fn ui(
     ui: &mut Ui,
     combo: &mut Combo,
     data: Option<&LayoutData>,
@@ -1947,7 +1939,7 @@ fn fig_name(d3: bool) -> &'static str {
 }
 
 /// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方。カタログの下見）
-pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32) {
+pub(crate) fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32) {
     // 3D は回す・拡大の操作を受ける
     let sense = if d.d3.is_some() {
         Sense::click_and_drag()
@@ -2003,7 +1995,7 @@ fn drop_marker(ui: &Ui, rect: Rect, view: &View, at: usize, accent: Color32) {
 }
 
 /// 経路に沿った at 番目に差し込む。間に入れるときは前の要素の後ろの空気を半分ずつ分ける。差し込んだ番号を返す
-pub fn insert_pick(combo: &mut Combo, at: usize, p: Pick) -> usize {
+pub(crate) fn insert_pick(combo: &mut Combo, at: usize, p: Pick) -> usize {
     combo.insert_chain(at, p)
 }
 
@@ -2172,7 +2164,7 @@ fn gap_mut(combo: &mut Combo, g: usize) -> Option<&mut f64> {
 }
 
 /// 面の表で選んだ要素 k（ブロック）の設定。図の下の欄と同じで、置き方（偏心 x・y、傾き x・y・z）まで全部出す
-pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
+pub(crate) fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     element::element_settings(ui, combo, k, element::Detail::Full, |_, _| {});
 }
 
@@ -2390,7 +2382,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
 }
 
 /// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値。k は欄の id
-pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
+pub(crate) fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
     if p.kind.has_on() {
         let mut on = p.on_in(st);
         let hint = match st {
@@ -2891,7 +2883,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
 }
 
 /// BS の残りの項目（形ごとの欄・面ごとの膜）と、口 B・C・D の先の並び
-pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
+pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
     let Some(p) = combo.get_mut(loc) else {
         return;
     };
@@ -3027,7 +3019,7 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
 
 /// .zmx の絞りの面と像面の番号（読めなければ None）。ファイルの更新時刻ごとに覚えておく（図を描くたびに呼ぶので）。
 /// 更新時刻の読み出し（stat）も 1 秒に 1 回まで（1 フレームに何十回も呼ばれ、ネットワークの上では遅い）
-pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
+pub(crate) fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     /// 更新時刻、確かめた時刻、値
@@ -3277,3 +3269,26 @@ fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
 #[cfg(test)]
 #[path = "combo_tests.rs"]
 mod tests;
+
+/// 要素ごとの面の範囲（[`LayoutData::spans_for`]）。blocks は serve の `blocks`、stop は絞りの面（表の行から
+/// 引けるので、レイアウト図の結果を作らずに引ける）
+pub(crate) fn spans_in(
+    blocks: &[(String, Vec<[usize; 2]>)],
+    stop: Option<usize>,
+    ids: &[String],
+    lead_stop: bool,
+) -> Vec<Option<[usize; 2]>> {
+    let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
+    let mut prev = if lead_stop { stop } else { None };
+    for id in ids {
+        // 空の id（OFF の要素）は系に無い
+        let s = (!id.is_empty())
+            .then(|| LayoutData::block_after(blocks, id, prev, ids))
+            .flatten();
+        if let Some(s) = s {
+            prev = Some(s[1]);
+        }
+        v.push(s);
+    }
+    v
+}

@@ -15,7 +15,7 @@ use crate::i18n::tr;
 /// BS の口の先の並び
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Branch {
+pub(crate) struct Branch {
     /// BS の口から最初の要素まで（要素が無ければ像面まで）[mm]
     pub air: f64,
     pub picks: Vec<Pick>,
@@ -31,15 +31,15 @@ impl Default for Branch {
 }
 
 /// 口の名前（[`Pick::ports`] の番号の順）
-pub const PORTS: [&str; 3] = ["B", "C", "D"];
+pub(crate) const PORTS: [&str; 3] = ["B", "C", "D"];
 
 /// 要素の場所: 並びの中の番号と口の番号（0 = B, 1 = C, 2 = D）を交互に並べる。
 /// `[i]` は最上位の i 番目、`[i, p, j]` は最上位の i 番目の BS の口 p の先の j 番目
-pub type Loc = Vec<usize>;
+pub(crate) type Loc = Vec<usize>;
 
 /// 間隔（空気）の場所
 #[derive(Debug, Clone, PartialEq)]
-pub enum Gap {
+pub(crate) enum Gap {
     /// 前の絞りから最初の要素まで
     Stop,
     /// 要素の後の空気
@@ -50,7 +50,7 @@ pub enum Gap {
 
 /// 今の経路に沿った要素の 1 つ
 #[derive(Debug, Clone, PartialEq)]
-pub struct Step {
+pub(crate) struct Step {
     pub loc: Loc,
     /// BS: 光が出る口（0 = B, 1 = C）
     pub port: Option<usize>,
@@ -69,7 +69,7 @@ enum Flow {
 
 impl Pick {
     /// 分岐を持つ BS
-    pub fn is_branched(&self) -> bool {
+    pub(crate) fn is_branched(&self) -> bool {
         self.kind == ElemKind::Splitter && self.branched
     }
 }
@@ -148,14 +148,14 @@ fn walk(
 }
 
 /// 経路に沿った要素（[`Combo::chain_view`]）。steps と picks は同じ長さ
-pub struct ChainView<'a> {
+pub(crate) struct ChainView<'a> {
     pub steps: Vec<Step>,
     pub picks: Vec<&'a Pick>,
 }
 
 impl Combo {
     /// 場所の並び（場所の長さは偶数: 番号と口の組の並び）
-    pub fn list_at(&self, prefix: &[usize]) -> Option<&Vec<Pick>> {
+    pub(crate) fn list_at(&self, prefix: &[usize]) -> Option<&Vec<Pick>> {
         let mut l = &self.picks;
         for c in prefix.chunks(2) {
             l = &l.get(c[0])?.ports.get(c[1])?.picks;
@@ -163,7 +163,7 @@ impl Combo {
         Some(l)
     }
 
-    pub fn list_at_mut(&mut self, prefix: &[usize]) -> Option<&mut Vec<Pick>> {
+    pub(crate) fn list_at_mut(&mut self, prefix: &[usize]) -> Option<&mut Vec<Pick>> {
         let mut l = &mut self.picks;
         for c in prefix.chunks(2) {
             l = &mut l.get_mut(c[0])?.ports.get_mut(c[1])?.picks;
@@ -171,18 +171,18 @@ impl Combo {
         Some(l)
     }
 
-    pub fn get(&self, loc: &[usize]) -> Option<&Pick> {
+    pub(crate) fn get(&self, loc: &[usize]) -> Option<&Pick> {
         let (last, prefix) = loc.split_last()?;
         self.list_at(prefix)?.get(*last)
     }
 
-    pub fn get_mut(&mut self, loc: &[usize]) -> Option<&mut Pick> {
+    pub(crate) fn get_mut(&mut self, loc: &[usize]) -> Option<&mut Pick> {
         let (last, prefix) = loc.split_last()?;
         self.list_at_mut(prefix)?.get_mut(*last)
     }
 
     /// 全部の要素の場所（木を深さ優先で。BS の後に口 B・C・D の先）
-    pub fn all(&self) -> Vec<Loc> {
+    pub(crate) fn all(&self) -> Vec<Loc> {
         fn go(list: &[Pick], prefix: &[usize], out: &mut Vec<Loc>) {
             for (i, p) in list.iter().enumerate() {
                 let mut loc = prefix.to_vec();
@@ -203,7 +203,7 @@ impl Combo {
     }
 
     /// 今の経路（[`Combo::path`]）に沿った要素の並び。往路を戻る鏡で戻り、BS で口 D へ出れば D の先へ続く
-    pub fn chain(&self) -> Vec<Step> {
+    pub(crate) fn chain(&self) -> Vec<Step> {
         let letters: Vec<char> = self
             .path
             .chars()
@@ -227,28 +227,28 @@ impl Combo {
     }
 
     /// 経路に沿った要素の数
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.chain().len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.picks.is_empty()
     }
 
     /// 経路に沿った k 番目の要素
-    pub fn el(&self, k: usize) -> Option<&Pick> {
+    pub(crate) fn el(&self, k: usize) -> Option<&Pick> {
         let c = self.chain();
         self.get(&c.get(k)?.loc)
     }
 
-    pub fn el_mut(&mut self, k: usize) -> Option<&mut Pick> {
+    pub(crate) fn el_mut(&mut self, k: usize) -> Option<&mut Pick> {
         let c = self.chain();
         let loc = c.get(k)?.loc.clone();
         self.get_mut(&loc)
     }
 
     /// 経路に沿った要素の借用のビュー（経路を 1 度だけ作り、要素を写さない）
-    pub fn chain_view(&self) -> ChainView<'_> {
+    pub(crate) fn chain_view(&self) -> ChainView<'_> {
         let steps = self.chain();
         let picks = steps
             .iter()
@@ -258,7 +258,7 @@ impl Combo {
     }
 
     /// 間隔を変える。要素の後の空気は、状態を選んでいればその状態の値（無ければ作る）
-    pub fn gap(&mut self, g: &Gap) -> Option<&mut f64> {
+    pub(crate) fn gap(&mut self, g: &Gap) -> Option<&mut f64> {
         let st = self.active_state().map(str::to_string);
         match g {
             Gap::Stop => Some(&mut self.stop_gap),
@@ -268,7 +268,7 @@ impl Combo {
     }
 
     /// 間隔の今の値（状態の値。読むだけで状態の値を作らない）
-    pub fn gap_val(&self, g: &Gap) -> Option<f64> {
+    pub(crate) fn gap_val(&self, g: &Gap) -> Option<f64> {
         match g {
             Gap::Stop => Some(self.stop_gap),
             Gap::Air(l) => self.get(l).map(|p| p.air_in(self.active_state())),
@@ -277,19 +277,19 @@ impl Combo {
     }
 
     /// 経路に沿った k 番目の要素の後の間隔の値
-    pub fn gap_after_val(&self, k: usize) -> Option<f64> {
+    pub(crate) fn gap_after_val(&self, k: usize) -> Option<f64> {
         let g = self.chain().get(k)?.after.clone()?;
         self.gap_val(&g)
     }
 
     /// 経路に沿った k 番目の要素の後の間隔
-    pub fn gap_after(&mut self, k: usize) -> Option<&mut f64> {
+    pub(crate) fn gap_after(&mut self, k: usize) -> Option<&mut f64> {
         let g = self.chain().get(k)?.after.clone()?;
         self.gap(&g)
     }
 
     /// 像面までの空気（経路の最後の要素の後。最上位の往路を戻る鏡なら、戻った後の空気）
-    pub fn image_gap(&mut self) -> Option<&mut f64> {
+    pub(crate) fn image_gap(&mut self) -> Option<&mut f64> {
         let last = self.chain().pop()?;
         match last.after {
             Some(g) => self.gap(&g),
@@ -303,7 +303,7 @@ impl Combo {
 
     /// 要素のブロックの id（場所と組）。カタログの玉は型番（重なれば）、ほかは種類の頭と番号。
     /// 木の全部の要素で重ならない
-    pub fn ids_all(&self) -> Vec<(Loc, String)> {
+    pub(crate) fn ids_all(&self) -> Vec<(Loc, String)> {
         let mut ids: Vec<(Loc, String)> = Vec::new();
         // 要素が持つ id（開いたプロジェクトの id）は先に取っておく。重なれば前の要素だけ
         let locs = self.all();
@@ -366,7 +366,7 @@ impl Combo {
 
     /// 分岐のある BS の後の要素は、その BS の既定の口（透過なら B、反射なら C）の先の頭へ移す。
     /// カタログの BS の中身（`extra`）のうち欄のある項目は欄へ
-    pub fn normalize(&mut self) {
+    pub(crate) fn normalize(&mut self) {
         fn go(list: &mut Vec<Pick>) {
             if let Some(i) = list.iter().position(Pick::is_branched) {
                 if i + 1 < list.len() {
@@ -388,7 +388,7 @@ impl Combo {
 
     /// BS（場所）の分岐を作る・やめる。作るときは、並びの BS の後の要素を既定の口の先へ移す
     /// （BS の後の空気は口の先の最初の空気に）。やめるときは既定の口の先を BS の後へ戻し、ほかの口の先は捨てる
-    pub fn set_branched(&mut self, loc: &[usize], on: bool) {
+    pub(crate) fn set_branched(&mut self, loc: &[usize], on: bool) {
         let Some((&i, prefix)) = loc.split_last() else {
             return;
         };
@@ -421,12 +421,12 @@ impl Combo {
 
     /// 経路に沿った at 番目の前に差し込む（at が数以上なら最後の要素の後）。間に入れるときは前の空気を
     /// 半分ずつ分ける。差し込んだ要素の、経路に沿った番号を返す
-    pub fn insert_chain(&mut self, at: usize, p: Pick) -> usize {
+    pub(crate) fn insert_chain(&mut self, at: usize, p: Pick) -> usize {
         self.insert_chain_with(at, p, true)
     }
 
     /// [`Combo::insert_chain`]。split が false なら前の空気を分けない
-    pub fn insert_chain_with(&mut self, at: usize, mut p: Pick, split: bool) -> usize {
+    pub(crate) fn insert_chain_with(&mut self, at: usize, mut p: Pick, split: bool) -> usize {
         let chain = self.chain();
         if chain.is_empty() {
             self.picks.push(p);
@@ -479,7 +479,7 @@ impl Combo {
     }
 
     /// 経路に沿った k 番目の要素を外す（分岐のある BS なら分岐ごと）
-    pub fn remove_chain(&mut self, k: usize) {
+    pub(crate) fn remove_chain(&mut self, k: usize) {
         if let Some(s) = self.chain().get(k) {
             let (i, pre) = s.loc.split_last().expect("場所");
             if let Some(l) = self.list_at_mut(pre) {
@@ -490,7 +490,7 @@ impl Combo {
 
     /// 経路に沿った k 番目の要素を、同じ並びの中で前（-1）・後（+1）と入れ替える。入れ替えた先の、経路に
     /// 沿った番号を返す
-    pub fn swap_chain(&mut self, k: usize, dir: i32) -> Option<usize> {
+    pub(crate) fn swap_chain(&mut self, k: usize, dir: i32) -> Option<usize> {
         let s = self.chain().get(k)?.clone();
         let (&i, pre) = s.loc.split_last()?;
         let l = self.list_at_mut(pre)?;
@@ -505,7 +505,7 @@ impl Combo {
     }
 
     /// 経路に沿った k 番目の要素を同じ並びの中で前・後と入れ替えられるか
-    pub fn can_swap(&self, k: usize, dir: i32) -> bool {
+    pub(crate) fn can_swap(&self, k: usize, dir: i32) -> bool {
         let Some(s) = self.chain().get(k).cloned() else {
             return false;
         };
@@ -527,7 +527,7 @@ impl Combo {
     }
 
     /// 場所の分かりやすい名前（「BS1 の C の先」など）
-    pub fn where_label(&self, loc: &[usize]) -> String {
+    pub(crate) fn where_label(&self, loc: &[usize]) -> String {
         let ids = self.ids_all();
         let mut v = Vec::new();
         for i in (0..loc.len().saturating_sub(1)).step_by(2) {
@@ -546,7 +546,7 @@ impl Combo {
 impl Combo {
     /// 例: Twyman-Green 干渉計（examples の P16 と同じ並び。通し確認・テスト）。絞り → キューブ BS、
     /// 口 B の先に試験レンズと往路を戻る鏡、口 C の先に参照の鏡、口 D の先は像面まで 50 mm
-    pub fn twyman_green() -> Combo {
+    pub(crate) fn twyman_green() -> Combo {
         let mut c = Combo {
             name: "Twyman-Green".into(),
             ..Combo::default()
@@ -591,7 +591,7 @@ impl Combo {
 
 impl Pick {
     /// 後の空気のブロックの id（持っている id か、状態で変える空気なら「要素の id_air」）
-    pub fn air_name(&self, id: &str) -> Option<String> {
+    pub(crate) fn air_name(&self, id: &str) -> Option<String> {
         if !self.air_id.is_empty() {
             Some(self.air_id.clone())
         } else {

@@ -9,10 +9,10 @@ use std::cell::Cell;
 use wasm_bindgen::prelude::*;
 
 /// 残すフォルダ（読み込んだファイルとユーザーカタログ）
-pub const KEEP: [&str; 2] = ["/uploads/", "/user/"];
+pub(crate) const KEEP: [&str; 2] = ["/uploads/", "/user/"];
 
 /// ユーザーカタログを置くフォルダ（レンズのフォルダにも入れる）
-pub const USER_CATALOGS: &str = "/user/catalogs";
+pub(crate) const USER_CATALOGS: &str = "/user/catalogs";
 
 #[wasm_bindgen(inline_js = r#"
 const DB = "lensbench", ST = "files";
@@ -81,7 +81,7 @@ fn kept(p: &str) -> bool {
 }
 
 /// ブラウザに残したファイルを置き場に戻す（起動の前に 1 回）。戻したファイルの数
-pub async fn restore() -> usize {
+pub(crate) async fn restore() -> usize {
     let n = match store_load().await {
         Ok(v) => {
             let a: js_sys::Array = v.unchecked_into();
@@ -113,7 +113,7 @@ pub async fn restore() -> usize {
 }
 
 /// 前の呼び出しから後に書いた・消した [`KEEP`] の下のファイルを IndexedDB に写す（毎フレーム呼ぶ）
-pub fn flush() {
+pub(crate) fn flush() {
     let Some(last) = SEQ.with(Cell::get) else {
         return; // restore の前（通し確認など）
     };
@@ -139,7 +139,7 @@ pub fn flush() {
 }
 
 /// ブラウザに残したファイルを全部消す（置き場からも）
-pub fn clear() {
+pub(crate) fn clear() {
     for (p, _) in lensbench_core::vfs::files() {
         let s = p.to_string_lossy();
         if kept(&s) {
@@ -158,7 +158,7 @@ pub fn clear() {
 }
 
 /// ブラウザに残しているファイルの数と大きさの合計 [バイト]
-pub fn usage() -> (usize, u64) {
+pub(crate) fn usage() -> (usize, u64) {
     lensbench_core::vfs::files()
         .into_iter()
         .filter(|(p, _)| kept(&p.to_string_lossy()))
@@ -166,7 +166,7 @@ pub fn usage() -> (usize, u64) {
 }
 
 /// 硝材・レンズのフォルダのうち、[`KEEP`] の下で置き場に無いものを外す
-pub fn prune_dirs(glass: &mut Vec<String>, lens: &mut Vec<String>) {
+pub(crate) fn prune_dirs(glass: &mut Vec<String>, lens: &mut Vec<String>) {
     let gone = |d: &String| kept(d) && !lensbench_core::vfs::exists(d);
     glass.retain(|d| !gone(d));
     lens.retain(|d| !gone(d));

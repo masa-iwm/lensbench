@@ -6,7 +6,7 @@ use crate::combo::Combo;
 
 /// 組合せと、カタログから足すときの位置
 #[derive(Default)]
-pub struct ComboDoc {
+pub(crate) struct ComboDoc {
     pub combo: Combo,
     /// 足す玉をこの要素の直後へ（組合せの図で選んでいる要素。無ければ後ろ）
     pub insert_after: Option<usize>,
@@ -23,27 +23,27 @@ pub struct ComboDoc {
 
 /// 組合せの写し（最後に系を作った・保存した組合せ）と、今の組合せと比べた版とその答え。版が同じ間は比べ直さない
 #[derive(Default)]
-pub struct Snap {
+pub(crate) struct Snap {
     combo: Option<Combo>,
     /// 今の組合せと比べた版と、そのときの答え
     seen_at: std::cell::Cell<Option<(u64, bool)>>,
 }
 
 impl Snap {
-    pub fn new(combo: Option<Combo>) -> Snap {
+    pub(crate) fn new(combo: Option<Combo>) -> Snap {
         Snap {
             combo,
             seen_at: Default::default(),
         }
     }
 
-    pub fn is_none(&self) -> bool {
+    pub(crate) fn is_none(&self) -> bool {
         self.combo.is_none()
     }
 
     /// doc の今の組合せと同じか。比べた版のままなら前の答え（同じ・違う）を返す（版は画面ごとの [`ComboDoc::sync`] で進むので、
     /// 同じ画面の中で組合せを変えた直後は、次の sync まで前の答えのことがある）
-    pub fn same(&self, doc: &ComboDoc) -> bool {
+    pub(crate) fn same(&self, doc: &ComboDoc) -> bool {
         if let Some((rev, same)) = self.seen_at.get() {
             if rev == doc.rev {
                 return same;
@@ -56,7 +56,7 @@ impl Snap {
 }
 
 impl ComboDoc {
-    pub fn new(combo: Combo) -> Self {
+    pub(crate) fn new(combo: Combo) -> Self {
         Self {
             combo,
             ..Default::default()
@@ -64,7 +64,7 @@ impl ComboDoc {
     }
 
     /// 画面ごとに 1 回呼ぶ: 組合せが前の版と違えば版を進める（組合せを比べるのはここだけ）
-    pub fn sync(&mut self) {
+    pub(crate) fn sync(&mut self) {
         if self.seen.as_ref() != Some(&self.combo) {
             self.seen = Some(self.combo.clone());
             self.rev += 1;
@@ -72,7 +72,7 @@ impl ComboDoc {
     }
 
     /// 素子 `lens` に合わせて機構部品を足す: 組合せにその素子があれば、そこに置いて保持する
-    pub fn add_mech_for(&mut self, mech: &LensRow, lens: &LensRow, lenses: &[LensRow]) {
+    pub(crate) fn add_mech_for(&mut self, mech: &LensRow, lens: &LensRow, lenses: &[LensRow]) {
         let chain = self.combo.chain_view().picks;
         let same = |p: &crate::combo::Pick| {
             p.kind == crate::combo::ElemKind::Catalog
@@ -93,7 +93,7 @@ impl ComboDoc {
     }
 
     /// カタログの行を足す（未完の品は呼び手が除く）。`lenses` は機構部品が保持する玉を探す一覧
-    pub fn add_row(&mut self, r: &LensRow, lenses: &[LensRow]) {
+    pub(crate) fn add_row(&mut self, r: &LensRow, lenses: &[LensRow]) {
         // 機構部品は要素の並びでなく「機構部品」へ（選んでいる要素に置く）
         if r.kind == RowKind::Mech {
             let ids = self.combo.ids();

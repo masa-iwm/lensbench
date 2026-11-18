@@ -19,7 +19,7 @@ use crate::theme;
 
 /// 系の設定の共通の値
 #[derive(Debug, Clone, PartialEq)]
-pub struct SysForm {
+pub(crate) struct SysForm {
     pub aperture: ApertureKind,
     /// 開口の値（F 値・NA など。Float の値は使わない）
     pub ap_value: f64,
@@ -41,7 +41,7 @@ pub struct SysForm {
 }
 
 /// 片方にしかない項目を共通の欄の間に差し込む
-pub trait Extra {
+pub(crate) trait Extra {
     /// 開口の表の終わりの行（2 列の Grid の中）
     fn aperture_rows(&mut self, _ui: &mut Ui, _f: &mut SysForm) {}
     /// 開口の表の後
@@ -56,7 +56,7 @@ pub trait Extra {
 
 impl SysForm {
     /// 組合せの値から
-    pub fn of_combo(c: &Combo) -> SysForm {
+    pub(crate) fn of_combo(c: &Combo) -> SysForm {
         SysForm {
             aperture: c.aperture,
             ap_value: c.ap_value,
@@ -76,7 +76,7 @@ impl SysForm {
     }
 
     /// 組合せへ書き戻す
-    pub fn apply_to(&self, c: &mut Combo) {
+    pub(crate) fn apply_to(&self, c: &mut Combo) {
         c.aperture = self.aperture;
         c.ap_value = self.ap_value;
         c.epd = self.epd;
@@ -101,7 +101,7 @@ fn drag(ui: &mut Ui, dv: egui::DragValue, busy: &mut bool) {
 }
 
 /// 共通の欄を描く。ドラッグ中・入力中なら true
-pub fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
+pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
     let weak = theme::weak_text(ui.visuals());
     let id = ui.id().with("sysform");
     let mut busy = false;

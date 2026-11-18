@@ -32,7 +32,7 @@ const CANDIDATES: &[(&str, u32)] = &[
 ];
 
 /// 日本語のフォントを足す。読めたファイルを返す
-pub fn install(ctx: &egui::Context) -> Option<String> {
+pub(crate) fn install(ctx: &egui::Context) -> Option<String> {
     let windir = std::env::var("WINDIR").ok();
     let mut found = None;
     // LENSBENCH_GUI_FONT で好きなフォント（.ttf・.otf・.ttc の最初）を選べる
@@ -91,7 +91,7 @@ static DEFS: std::sync::Mutex<Option<FontDefinitions>> = std::sync::Mutex::new(N
 
 /// 文章のフォントの順を今の言語に合わせる: 日本語は日本語のフォントを先に、英語は欧文のフォントを先に
 /// （日本語のフォントの英字は字間が広く、英語の文が切れ・折り返しやすい）。日本語のフォントが無ければ何もしない
-pub fn follow_lang(ctx: &egui::Context) {
+pub(crate) fn follow_lang(ctx: &egui::Context) {
     let Some(mut fonts) = DEFS.lock().ok().and_then(|d| d.clone()) else {
         return;
     };
@@ -116,7 +116,7 @@ fn reorder(fam: &mut Vec<String>, ja: bool) -> bool {
 }
 
 /// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない）
-pub fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
+pub(crate) fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
     let id = egui::FontId::proportional(16.0);
     if ui.fonts(|f| f.has_glyphs(&id, sym)) {
         sym
@@ -130,7 +130,7 @@ pub fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
 /// egui は行の高さをフォントの ascent・descent・line gap で決め、字を行の上から ascent の所に置く。游ゴシックなど
 /// descent・line gap の大きいフォントでは字が行の上に寄って見えるので、全角の字面（ベースラインの下 0.12 em から
 /// 上 0.88 em）が行の真ん中に来るようにずらす。egui の字の大きさ（PxScale）は ascent − descent の高さ
-pub fn center_tweak(bytes: &[u8], index: u32) -> Option<f32> {
+pub(crate) fn center_tweak(bytes: &[u8], index: u32) -> Option<f32> {
     let f = ab_glyph::FontRef::try_from_slice_and_index(bytes, index).ok()?;
     let (asc, desc, gap) = (
         f.ascent_unscaled(),

@@ -13,7 +13,7 @@ use crate::theme;
 
 /// 3D の場面（serve の結果を読んだもの）
 #[derive(Debug, Clone, Default)]
-pub struct Scene3 {
+pub(crate) struct Scene3 {
     pub meshes: Vec<Mesh3>,
     /// 光線の色の番号（1 始まり。視野、構成を重ねたときは構成）と点
     pub rays: Vec<(usize, Vec<[f32; 3]>)>,
@@ -25,7 +25,7 @@ pub struct Scene3 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Kind {
+pub(crate) enum Kind {
     Glass,
     Mirror,
     /// 機構部品
@@ -35,7 +35,7 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mesh3 {
+pub(crate) struct Mesh3 {
     pub kind: Kind,
     pub surfaces: [usize; 2],
     pub pos: Vec<[f32; 3]>,
@@ -43,7 +43,7 @@ pub struct Mesh3 {
 }
 
 impl Scene3 {
-    pub fn parse(v: &Value, by_cfg: bool) -> Scene3 {
+    pub(crate) fn parse(v: &Value, by_cfg: bool) -> Scene3 {
         let arr = |x: &Value| x.as_array().cloned().unwrap_or_default();
         let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
         let meshes: Vec<Mesh3> = arr(&v["meshes"])
@@ -139,7 +139,7 @@ impl Scene3 {
 
 /// 見る向きと拡大（egui の記憶に図ごとに持つ）
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Cam {
+pub(crate) struct Cam {
     /// 縦軸まわり・横軸まわりの回転 [rad]
     pub yaw: f32,
     pub pitch: f32,
@@ -163,7 +163,7 @@ impl Default for Cam {
 
 impl Cam {
     /// 大域座標（真ん中からの差）を見る座標 [右, 上, 手前] に
-    pub fn view(&self, p: [f32; 3]) -> [f32; 3] {
+    pub(crate) fn view(&self, p: [f32; 3]) -> [f32; 3] {
         // 回す前: 右 = z、上 = y、手前 = 右 × 上 = −x
         let (x, y, z) = (p[2], p[1], -p[0]);
         let (sy, cy) = self.yaw.sin_cos();
@@ -175,7 +175,7 @@ impl Cam {
 }
 
 /// 図の中の 3D 表示。クリックで選んだ要素（`owner` が面の範囲から決める番号）を返す（何もない所なら Some(None)）
-pub fn show(
+pub(crate) fn show(
     ui: &mut Ui,
     resp: &egui::Response,
     sc: &Scene3,

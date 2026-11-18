@@ -108,7 +108,7 @@ fn write_after(row: &mut SurfRow, key: &str, v: &Value) -> bool {
 
 impl Pick {
     /// 面の値の上書きを足す（同じ面・同じ値の前の上書きは置き換える）
-    pub fn set_edit(&mut self, surface: usize, field: &str, value: Value) {
+    pub(crate) fn set_edit(&mut self, surface: usize, field: &str, value: Value) {
         self.edits
             .retain(|e| !(e.surface == surface && e.field == field));
         self.edits.push(SurfEdit {
@@ -119,7 +119,7 @@ impl Pick {
     }
 
     /// 要素の面 rel（座標ブレークを除いた番号、系の並びの向き）の値 key を変える。中身に書けなければ面の上書き
-    pub fn write_face(&mut self, rel: usize, key: &str, value: Value) {
+    pub(crate) fn write_face(&mut self, rel: usize, key: &str, value: Value) {
         if self.write_source(rel, key, &value) {
             // 中身に書いた値を、前の上書きが隠さないように
             self.edits.retain(|e| !(e.surface == rel && e.field == key));
@@ -129,7 +129,7 @@ impl Pick {
     }
 
     /// 前に保存した面の上書きのうち、中身に書けるものを中身に移す（開いたとき。前は自作の玉の値も上書きだった）
-    pub fn bake_edits(&mut self) {
+    pub(crate) fn bake_edits(&mut self) {
         if self.edits.is_empty() {
             return;
         }
@@ -352,7 +352,7 @@ impl Pick {
 
 impl Pick {
     /// 面を足す（[`Self::insert_rows`]）。この要素の面の上書き・絞り・ソルブ・ピックアップは番号をずらして残す
-    pub fn insert_face(&mut self, pos: usize) -> Result<(), String> {
+    pub(crate) fn insert_face(&mut self, pos: usize) -> Result<(), String> {
         let n = self.lens_rows().len();
         self.insert_rows(pos)?;
         self.shift_faces(&|i| Some(if i >= pos { i + 1 } else { i }));
@@ -369,7 +369,7 @@ impl Pick {
     }
 
     /// 面を消す（[`Self::delete_rows`]）。消した面の上書き・操作は外し、後ろの面の番号を詰める
-    pub fn delete_face(&mut self, rel: usize) -> Result<(), String> {
+    pub(crate) fn delete_face(&mut self, rel: usize) -> Result<(), String> {
         self.delete_rows(rel)?;
         self.shift_faces(&|i| match i.cmp(&rel) {
             std::cmp::Ordering::Less => Some(i),
@@ -380,7 +380,7 @@ impl Pick {
     }
 
     /// この要素の面（座標ブレークを除く番号）を map で付け替える。None になった面の上書き・操作は外す
-    pub fn shift_faces(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
+    pub(crate) fn shift_faces(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
         self.edits.retain_mut(|e| match map(e.surface) {
             Some(i) => {
                 e.surface = i;
@@ -413,7 +413,7 @@ fn map_refs(o: &mut SurfaceOp, f: &dyn Fn(&mut BlockRef) -> bool) -> bool {
 
 impl Combo {
     /// 要素 id の面を map で付け替えたとき、ほかの要素の操作（{"block": id, "surface": i}）も合わせる
-    pub fn shift_block_refs(&mut self, id: &str, map: &dyn Fn(usize) -> Option<usize>) {
+    pub(crate) fn shift_block_refs(&mut self, id: &str, map: &dyn Fn(usize) -> Option<usize>) {
         fn walk(ps: &mut [Pick], f: &dyn Fn(&mut BlockRef) -> bool) {
             for p in ps {
                 p.ops.retain_mut(|o| map_refs(o, f));
@@ -432,7 +432,7 @@ impl Combo {
 
 impl Combo {
     /// 要素（分岐の先も）の前に保存した面の上書きのうち、中身に書けるものを中身に移す（開いたとき）
-    pub fn bake_edits(&mut self) {
+    pub(crate) fn bake_edits(&mut self) {
         fn walk(ps: &mut [Pick]) {
             for p in ps {
                 p.bake_edits();

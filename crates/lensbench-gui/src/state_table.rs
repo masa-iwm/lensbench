@@ -12,7 +12,7 @@ use crate::theme;
 
 /// 表の表示の設定
 #[derive(Debug, Clone, Default)]
-pub struct View {
+pub(crate) struct View {
     /// 状態で変えていない値の行も出す
     pub all: bool,
 }
@@ -281,7 +281,7 @@ fn items(c: &Combo, all: bool) -> Vec<Item> {
 }
 
 /// 状態の表。値を変えたら true（呼ぶ側が組み直す）
-pub fn ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
+pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
     let weak = theme::weak_text(ui.visuals());
     let accent = ui.visuals().selection.stroke.color;
     let mut changed = false;

@@ -7,14 +7,14 @@ use std::collections::BTreeMap;
 /// 組合せの最後の検出器のブロック: 種類と、欄の文字列（項目の名前 → 欄に書いた文字列、空は既定）
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct DetectorPick {
+pub(crate) struct DetectorPick {
     pub kind: String,
     pub vals: BTreeMap<String, String>,
 }
 
 impl DetectorPick {
     /// プロジェクトのブロック（{"type": kind, 項目…}）。種類が登録されていなければ欄の値をそのまま入れ子に
-    pub fn block(&self) -> Result<Value, String> {
+    pub(crate) fn block(&self) -> Result<Value, String> {
         let mut v = match crate::ext::detector(&self.kind) {
             Some(d) => d.object.json(&self.vals, false)?,
             None => crate::argform::nest(

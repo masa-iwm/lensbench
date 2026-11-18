@@ -22,7 +22,7 @@ fn names() -> &'static Vec<(String, String)> {
 
 /// 系の面の材料のうち、同梱のカタログから取ったもの（設定のフォルダに同じ名前の AGF が無いカタログのガラス）。
 /// 同梱のカタログは屈折率だけ（内部透過率・熱膨張が無く、温度係数の無いガラスもある）なので、使ったら知らせる
-pub fn used(materials: &[&str], user_agf: &[String]) -> Vec<String> {
+pub(crate) fn used(materials: &[&str], user_agf: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for m in materials {
         let hit = names().iter().any(|(c, n)| {

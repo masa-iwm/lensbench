@@ -10,7 +10,7 @@ include!(concat!(env!("OUT_DIR"), "/samples.rs"));
 static BASE: OnceLock<PathBuf> = OnceLock::new();
 
 /// 起動時に 1 回: 書き出す先 `base/samples`（base は設定のフォルダ。無ければ一時フォルダ）
-pub fn install(base: Option<PathBuf>) {
+pub(crate) fn install(base: Option<PathBuf>) {
     let d = base
         .unwrap_or_else(|| std::env::temp_dir().join("lensbench"))
         .join("samples");
@@ -24,7 +24,7 @@ fn base() -> PathBuf {
 }
 
 /// 見本の一覧（書き出した先のパス）。並びは Web 版と同じ: 組合せ・プロジェクト・tests/refs の系
-pub fn list() -> Vec<String> {
+pub(crate) fn list() -> Vec<String> {
     list_in(&base())
 }
 
@@ -42,7 +42,7 @@ fn list_in(base: &Path) -> Vec<String> {
 }
 
 /// 見本の全ファイルを書き出す（中身が同じなら書かない）。書けたら (ガラスのフォルダ, レンズのフォルダ)
-pub fn extract() -> Result<(String, String), String> {
+pub(crate) fn extract() -> Result<(String, String), String> {
     extract_to(&base())
 }
 
@@ -64,7 +64,7 @@ fn extract_to(base: &Path) -> Result<(String, String), String> {
 }
 
 /// このパスが見本か（開く前に書き出す）
-pub fn is_sample(f: &str) -> bool {
+pub(crate) fn is_sample(f: &str) -> bool {
     Path::new(f).starts_with(base())
 }
 

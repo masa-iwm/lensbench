@@ -11,13 +11,13 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 /// ポータブルの印のファイル
-pub const MARKER: &str = "lensbench.portable";
+pub(crate) const MARKER: &str = "lensbench.portable";
 /// ポータブルの設定のファイル
-pub const FILE: &str = "settings.ron";
+pub(crate) const FILE: &str = "settings.ron";
 
 /// 決めた保存先
 #[derive(Debug, Clone, PartialEq)]
-pub struct Store {
+pub(crate) struct Store {
     /// 設定のファイル（None なら eframe の既定の OS の場所）
     pub file: Option<PathBuf>,
     /// 相対パスの基準（ポータブル・`--settings` のときの設定のフォルダ）
@@ -47,21 +47,21 @@ impl Notice {
 static STORE: OnceLock<(Option<PathBuf>, Option<PathBuf>)> = OnceLock::new();
 
 /// 相対パスの基準（[`set`] の後）
-pub fn base() -> Option<&'static Path> {
+pub(crate) fn base() -> Option<&'static Path> {
     STORE.get().and_then(|b| b.1.as_deref())
 }
 
 /// 設定のファイル（OS の場所なら eframe の既定の場所）
-pub fn location() -> Option<PathBuf> {
+pub(crate) fn location() -> Option<PathBuf> {
     STORE.get().and_then(|b| b.0.clone()).or_else(os_file)
 }
 
 /// 決めた保存先を覚える（1 回だけ）
-pub fn set(s: &Store) {
+pub(crate) fn set(s: &Store) {
     STORE.set((s.file.clone(), s.base.clone())).ok();
 }
 
-pub fn exe_dir() -> Option<PathBuf> {
+pub(crate) fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))
@@ -76,7 +76,7 @@ fn writable(d: &Path) -> bool {
 }
 
 /// 保存先を決める。初めてのポータブルは空の設定から始める（OS の場所の設定は写さない）
-pub fn choose(settings: Option<PathBuf>, exe: Option<&Path>) -> Store {
+pub(crate) fn choose(settings: Option<PathBuf>, exe: Option<&Path>) -> Store {
     if let Some(f) = settings {
         let base = f.parent().map(Path::to_path_buf);
         return Store {
@@ -115,7 +115,7 @@ pub fn choose(settings: Option<PathBuf>, exe: Option<&Path>) -> Store {
 }
 
 /// OS の場所の設定のファイル（eframe と同じ決め方）
-pub fn os_file() -> Option<PathBuf> {
+pub(crate) fn os_file() -> Option<PathBuf> {
     // Web 版はファイルでなくブラウザの保存領域（eframe が決める）
     #[cfg(target_arch = "wasm32")]
     return None;
@@ -141,7 +141,7 @@ fn clean(p: &Path) -> PathBuf {
 }
 
 /// 保存する形: `base` の中なら相対（区切り `/`）、外は元のまま
-pub fn to_stored(p: &str, base: &Path) -> String {
+pub(crate) fn to_stored(p: &str, base: &Path) -> String {
     let path = Path::new(p);
     if p.is_empty() || !path.is_absolute() {
         return p.to_string();
@@ -158,7 +158,7 @@ pub fn to_stored(p: &str, base: &Path) -> String {
 }
 
 /// 読んだ形を使う形へ: 相対なら `base` からの絶対パス
-pub fn from_stored(p: &str, base: &Path) -> String {
+pub(crate) fn from_stored(p: &str, base: &Path) -> String {
     let path = Path::new(p);
     if p.is_empty() || path.is_absolute() {
         return p.to_string();
@@ -171,7 +171,7 @@ pub fn from_stored(p: &str, base: &Path) -> String {
 }
 
 /// 設定が空のときの既定のカタログ: `dir` の `catalogs/glass`（硝材）と `catalogs/lens`・`catalogs/items`（レンズ）
-pub fn default_catalogs(dir: &Path) -> (Vec<String>, Vec<String>) {
+pub(crate) fn default_catalogs(dir: &Path) -> (Vec<String>, Vec<String>) {
     let c = dir.join("catalogs");
     let has = |n: &str| {
         c.join(n)
