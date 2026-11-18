@@ -278,6 +278,32 @@ pub struct FNumSpec {
     pub target: Option<f64>,
 }
 
+/// seidel の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SeidelSpec {
+    /// 量（spha・coma・asti・fcur・dist、波面収差の係数 W040・W131・W222・W220・W311 [波]）
+    pub q: String,
+    /// 面の番号（0・省略は全部の面の和）
+    pub surf: Option<usize>,
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// distortion の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DistortionSpec {
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// true で実像高 − 近軸像高 [レンズ単位]、false・省略で近軸像高に対する %
+    pub absolute: Option<bool>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -370,6 +396,8 @@ pub enum TermSpec {
     Surface(SurfSpec),
     Cardinal(CardSpec),
     Fnum(FNumSpec),
+    Seidel(SeidelSpec),
+    Distortion(DistortionSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

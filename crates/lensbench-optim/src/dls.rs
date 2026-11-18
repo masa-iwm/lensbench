@@ -70,6 +70,10 @@ mod ray;
 mod card;
 pub use card::CardQ;
 
+#[path = "dls_seidel.rs"]
+mod seidel;
+pub use seidel::SeidelQ;
+
 #[path = "dls_surf.rs"]
 mod surf;
 use surf::reads_semi;
@@ -876,6 +880,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
         }
         TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
         TermKind::Cardinal { .. } => return card::check(i, k, s),
+        TermKind::Seidel { .. } | TermKind::Distortion { .. } => return seidel::check(i, k, s),
         TermKind::Calc { op, args, .. } => {
             let (lo, hi) = op.arity();
             let n = args.len();
@@ -1106,6 +1111,7 @@ fn eval_term(
         }
         TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Cardinal { .. } => card::term(s, k),
+        TermKind::Seidel { .. } | TermKind::Distortion { .. } => seidel::term(s, k),
         TermKind::FNum { .. } => ray::fnum_term(s, k),
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args

@@ -308,6 +308,21 @@ pub enum TermKind {
         sag: bool,
         target: f64,
     },
+    /// 面 surf（0 は全部の面の和）のザイデル収差係数 [波] − target（[`SeidelQ`]、波長 wave、None は主波長。
+    /// OpticStudio の SPHA・COMA・ASTI・FCUR・DIST（面の寄与））。微分は差分
+    Seidel {
+        surf: usize,
+        q: SeidelQ,
+        wave: Option<usize>,
+        target: f64,
+    },
+    /// 最大の視野の主光線の歪曲 − target（absolute なら実像高 − 近軸像高 [レンズ単位]、でなければ近軸像高に対する %。
+    /// OpticStudio の DIST の Surf 0 と Absolute）。微分は差分
+    Distortion {
+        wave: Option<usize>,
+        absolute: bool,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -714,6 +729,8 @@ impl TermKind {
             | TermKind::Surface { target, .. }
             | TermKind::Cardinal { target, .. }
             | TermKind::FNum { target, .. }
+            | TermKind::Seidel { target, .. }
+            | TermKind::Distortion { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -883,6 +900,8 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Surface { .. }
         | TermKind::Cardinal { .. }
         | TermKind::FNum { .. }
+        | TermKind::Seidel { .. }
+        | TermKind::Distortion { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

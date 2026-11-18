@@ -16,6 +16,8 @@
 //! | `surface` | surf、q（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）、x・y（sag・thick の点 [レンズ単位]、0）、target |
 //! | `cardinal` | q（efl・f_object・f_image・focal_*・principal_*・anti_principal_*・nodal_*・anti_nodal_*、* は object・image）、from・to（面の範囲、面 1 から像面の手前の面まで）、wave、target [レンズ単位] |
 //! | `fnum` | field、wave、dir（"tan"（既定）・"sag"）、target。実光線の F ナンバー 1/(n′(sin θ₊ + sin θ₋))（主光線と瞳の縁の 2 本の角度） |
+//! | `seidel` | q（spha・coma・asti・fcur・dist）、surf（0 は和、0）、wave、target [波] |
+//! | `distortion` | wave、absolute（true で実像高 − 近軸像高 [レンズ単位]、false で %）、target。最大の視野の主光線 |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -33,8 +35,8 @@ use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, CardQ, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, SurfQ, Term,
-    TermKind,
+    CalcArg, CalcOp, CardQ, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, SeidelQ, Side, SpotAxis,
+    SurfQ, Term, TermKind,
 };
 use serde_json::Value;
 
@@ -191,7 +193,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 16] = [
+    const TYPES: [&str; 18] = [
         "spot",
         "wavefront",
         "mtf",
@@ -205,6 +207,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "surface",
         "cardinal",
         "fnum",
+        "seidel",
+        "distortion",
         "zplm",
         "plugin",
         "calc",
@@ -239,6 +243,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Surface { .. }
             | TermKind::Cardinal { .. }
             | TermKind::FNum { .. }
+            | TermKind::Seidel { .. }
+            | TermKind::Distortion { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -469,6 +475,21 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             },
             target: t.target.ok_or("fnum term has no target (or min and max)")?,
         },
+        TermSpec::Seidel(t) => TermKind::Seidel {
+            surf: t.surf.unwrap_or(0),
+            q: SeidelQ::parse(&t.q)?,
+            wave: wave(t.wave, s)?,
+            target: t
+                .target
+                .ok_or("seidel term has no target (or min and max)")?,
+        },
+        TermSpec::Distortion(t) => TermKind::Distortion {
+            wave: wave(t.wave, s)?,
+            absolute: t.absolute.unwrap_or(false),
+            target: t
+                .target
+                .ok_or("distortion term has no target (or min and max)")?,
+        },
         TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
@@ -662,6 +683,8 @@ mod tests {
             r#"{"type": "cardinal", "q": "efl"}"#,
             r#"{"type": "fnum", "field": 1, "dir": "both", "target": 3}"#,
             r#"{"type": "fnum", "field": 1}"#,
+            r#"{"type": "seidel", "q": "petz", "target": 0}"#,
+            r#"{"type": "distortion"}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

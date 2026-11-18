@@ -100,6 +100,8 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "surface",
     "cardinal",
     "fnum",
+    "seidel",
+    "distortion",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -206,6 +208,13 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("wave", Int),
             ("target", Num),
         ],
+        "seidel" => &[
+            ("q", Choice(&["spha", "coma", "asti", "fcur", "dist"])),
+            ("surf", Int),
+            ("wave", Int),
+            ("target", Num),
+        ],
+        "distortion" => &[("wave", Int), ("absolute", Bool), ("target", Num)],
         "fnum" => &[
             ("field", Field),
             ("wave", Int),
@@ -255,6 +264,8 @@ fn type_hint(ty: &str) -> &'static str {
         "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
         "calc" => tr("op of args (numbers or terms with a single value, e.g. {\"type\": \"paraxial\", \"q\": \"efl\", \"target\": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)"),
         "surface" => tr("Curvature, conic, sag, thickness at a point, diameter or global vertex position of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, DMVA and GLCX; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick"),
+        "seidel" => tr("Seidel aberration coefficient [waves] of surface surf (0 = sum) − target: spha W040, coma W131, asti W222, fcur W220, dist W311 (like SPHA, COMA, ASTI, FCUR and DIST)"),
+        "distortion" => tr("Real-ray distortion of the chief ray of the largest field − target: percent of the paraxial image height, or real − paraxial height with absolute (like DIST of surface 0)"),
         "fnum" => tr("Real-ray F-number 1/(n′(sin θ₊ + sin θ₋)) from the chief ray and the two rays at the pupil edge (y for tan, x for sag) − target (like TFNO and SFNO)"),
         "cardinal" => tr("Focal length or cardinal point of surfaces from to to − target (like CARD, EFLX and EFLY; empty from and to = surface 1 to the last surface before the image). Object-side points are measured from surface from, image-side points from surface to"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
@@ -275,6 +286,8 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "surface" => vec![("surf", "1"), ("q", "curv"), ("target", "")],
         "cardinal" => vec![("q", "efl"), ("target", "")],
         "fnum" => vec![("field", "1"), ("dir", "tan"), ("target", "")],
+        "seidel" => vec![("q", "spha"), ("surf", "0"), ("target", "")],
+        "distortion" => vec![("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],

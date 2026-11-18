@@ -544,6 +544,34 @@ fn kind_of(
         }
         // CENX・CENY: Int1 面、Int2 波長、Data1 視野の番号、Data2 偏光、Data3 標本（格子）。lensbench の重心は像面だけで、
         // 光線はスポットの項と同じガウス求積（格子の標本とは近似の仕方が違う）
+        // SPHA・COMA・ASTI・FCUR・DIST: 面 Int1（0 は和）・波長 Int2 のザイデル収差係数 [波]。DIST の Data1（Absolute）が
+        // 0 でなければ最大の視野の主光線の実像高 − 近軸像高、Surf 0 なら近軸像高に対する %（OpticStudio 26.1 で実測）
+        "SPHA" | "COMA" | "ASTI" | "FCUR" | "DIST" => {
+            let j = int(INT1)?;
+            if j < 0 || j as usize > image {
+                return Err(format!("surface {j}"));
+            }
+            let abs = if op == "DIST" {
+                num(data(1))? != 0.0
+            } else {
+                false
+            };
+            if op == "DIST" && (j == 0 || abs) {
+                m.insert("type".into(), json!("distortion"));
+                m.insert("wave".into(), wave(int(INT2)?)?);
+                m.insert("absolute".into(), json!(abs));
+                m.insert(
+                    "target".into(),
+                    json!(if abs { target * unit } else { target }),
+                );
+            } else {
+                m.insert("type".into(), json!("seidel"));
+                m.insert("q".into(), json!(op.to_ascii_lowercase()));
+                m.insert("surf".into(), json!(j));
+                m.insert("wave".into(), wave(int(INT2)?)?);
+                m.insert("target".into(), json!(target));
+            }
+        }
         // SFNO・TFNO: 視野 Int1・波長 Int2 の実光線の F ナンバー（OpticStudio 26.1 で実測）
         "SFNO" | "TFNO" => {
             m.insert("type".into(), json!("fnum"));
@@ -695,7 +723,8 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
                 continue;
             }
         };
-        let len = is_length(&src.op);
+        // DIST は Absolute のときだけ長さ
+        let len = is_length(&src.op) || m.get("absolute") == Some(&json!(true));
         if let Some(side) = side {
             let single = m.get("type").and_then(Value::as_str) != Some("zplm");
             let Some(_) = m.remove("target").filter(|_| single) else {
@@ -1083,6 +1112,29 @@ fn row_of(
                 "sag" => ("MTFS", p, bound(1.0)),
                 _ => ("MTFT,MTFS", p, Bound::Both(num("target").unwrap_or(1.0))),
             }
+        }
+        "seidel" => {
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let q = lensbench_optim::SeidelQ::parse(q).map_err(|e| e.to_string())?;
+            let j = num("surf").unwrap_or(0.0);
+            if q == lensbench_optim::SeidelQ::Dist && j == 0.0 {
+                return Err("the sum of the Seidel distortion has no OpticStudio operand (DIST of surface 0 is the real distortion)".into());
+            }
+            let w = if wave() == 0.0 { primary } else { wave() };
+            let op = match q.name() {
+                "spha" => "SPHA",
+                "coma" => "COMA",
+                "asti" => "ASTI",
+                "fcur" => "FCUR",
+                _ => "DIST",
+            };
+            (op, [j, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+        }
+        "distortion" => {
+            let w = if wave() == 0.0 { primary } else { wave() };
+            let abs = t.get("absolute").and_then(Value::as_bool) == Some(true);
+            let p = [0.0, w, if abs { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0];
+            ("DIST", p, bound(0.0))
         }
         "fnum" => {
             let op = match t.get("dir").and_then(Value::as_str) {

@@ -361,6 +361,10 @@ fn terms_to_rows_and_back() {
         json!({"type": "cardinal", "q": "principal_image", "from": 2, "to": 5, "wave": 3, "min": -10.0, "weight": 1.0}),
         json!({"type": "fnum", "field": 2, "wave": 1, "dir": "sag", "target": 3.0, "weight": 1.0}),
         json!({"type": "fnum", "field": 1, "wave": 3, "dir": "tan", "max": 4.0, "weight": 1.0}),
+        json!({"type": "seidel", "q": "spha", "surf": 0, "wave": 2, "target": 1.0, "weight": 1.0}),
+        json!({"type": "seidel", "q": "dist", "surf": 3, "wave": 1, "max": 2.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "absolute": false, "target": -1.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "absolute": true, "target": -0.2, "weight": 1.0}),
         json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
         json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
@@ -388,12 +392,13 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "surf": 1, "to": 3, "wave": 3, "field": 1, "q": "opth"}),
         json!({"type": "ray", "surf": 1, "to": 3, "field": 1, "q": "x"}),
         json!({"type": "cardinal", "q": "efl", "wave": 1, "target": 40.0}),
+        json!({"type": "seidel", "q": "dist", "target": 0.0}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 8, "{notes:?}");
+    assert_eq!(notes.len(), 9, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {

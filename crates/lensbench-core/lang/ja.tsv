@@ -2309,6 +2309,18 @@ x and y go with sag and thick	x と y は sag と thick と使います
 surface term has no target (or min and max)	surface の項に target（か min・max）がありません
 cardinal term has no target (or min and max)	cardinal の項に target（か min・max）がありません
 fnum term has no target (or min and max)	fnum の項に target（か min・max）がありません
+seidel term has no target (or min and max)	seidel の項に target（か min・max）がありません
+distortion term has no target (or min and max)	distortion の項に target（か min・max）がありません
+Seidel quantity {s} ({})	ザイデルの量 {s}（{}）
+term {i}: surface {surf} (0 to {})	項 {i}: 面 {surf}（0〜{}）
+term {i}: target {target}	項 {i}: 目標 {target}
+Seidel coefficients of systems with mirrors are not supported yet (surface {j})	ミラーのあるシステムのザイデル収差係数にはまだ対応していません（面 {j}）
+Seidel coefficients need standard or even asphere surfaces (surface {j})	ザイデル収差係数には標準面か偶数次非球面が必要です（面 {j}）
+Seidel coefficients need refracting or reflecting surfaces (surface {j})	ザイデル収差係数には屈折か反射の面が必要です（面 {j}）
+Seidel coefficients of surface {j} are not finite	面 {j} のザイデル収差係数が有限ではありません
+the chief ray of the largest field stopped (surface {j})	最大の視野の主光線が止まりました（面 {j}）
+the distortion is not finite	歪曲が有限ではありません
+the sum of the Seidel distortion has no OpticStudio operand (DIST of surface 0 is the real distortion)	ザイデルの歪曲の和に当たる OpticStudio のオペランドはありません（面 0 の DIST は実光線の歪曲）
 dir of an fnum term is tan or sag	fnum の項の dir は tan か sag です
 the F-number is not finite (wavelength {w})	F ナンバーが有限ではありません（波長 {w}）
 cardinal quantity {s} ({})	基点の量 {s}（{}）

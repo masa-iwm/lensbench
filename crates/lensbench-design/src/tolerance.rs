@@ -546,6 +546,8 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Paraxial { .. } => "paraxial",
         K::Cardinal { .. } => "cardinal",
         K::FNum { .. } => "fnum",
+        K::Seidel { .. } => "seidel",
+        K::Distortion { .. } => "distortion",
         K::Centroid { .. } => "centroid",
         K::Ray { .. } => "ray",
         K::RayPath { .. } => "ray",

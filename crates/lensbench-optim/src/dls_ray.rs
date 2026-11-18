@@ -342,9 +342,12 @@ pub(super) fn fnum_value(s: &System, field: FieldSel, w: usize, sag: bool) -> Re
             );
         }
     }
+    // 縁の 2 本が主光線の同じ側に来たら 2 本目の正弦を負にして、和を開き角に合わせる
     let k0 = t.rays[0].lmn;
-    let sin = |k: V3| norm(cross(k, k0));
-    let v = 1.0 / (s.image_index(w).abs() * (sin(t.rays[1].lmn) + sin(t.rays[2].lmn)));
+    let a = cross(t.rays[1].lmn, k0);
+    let b = cross(k0, t.rays[2].lmn);
+    let sb = if dot(a, b) < 0.0 { -norm(b) } else { norm(b) };
+    let v = 1.0 / (s.image_index(w).abs() * (norm(a) + sb));
     if !v.is_finite() {
         invalid!("the F-number is not finite (wavelength {w})");
     }

@@ -52,6 +52,7 @@ pub mod plugin;
 pub mod pupil;
 pub mod quantity;
 pub mod report;
+pub mod seidel;
 pub mod semi;
 pub mod shape;
 mod shape_param;

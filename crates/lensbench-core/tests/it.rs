@@ -34,6 +34,7 @@ mod pop;
 mod pop_os;
 mod pupil_cache;
 mod record_sel;
+mod seidel;
 mod semi_auto;
 mod shape_params;
 mod spider;
