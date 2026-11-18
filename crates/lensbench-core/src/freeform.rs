@@ -16,7 +16,7 @@ use crate::surface::{SurfType, Surface};
 
 /// Zernike の矢高の項
 ///
-/// serde では内部の `groups`・`mmax` を書き出さず、読み直したら `coef` から作り直す。
+/// serde では内部の `groups` を書き出さず、読み直したら `coef` から作り直す。
 /// 項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(try_from = "ZernSagData")]
@@ -32,12 +32,9 @@ pub struct ZernSag {
     /// Zernike の項の中心の偏心（Zern Decenter X・Y）[mm]。ρ・φ は (x − dx, y − dy) から
     pub dx: f64,
     pub dy: f64,
-    /// (m, cos か) ごとにまとめた Jacobi 多項式 P_k^(0, m)(2ρ² − 1) の係数（項の係数と規格化を掛けたもの、k = (n − m)/2 の順）
+    /// (m, cos か) ごとにまとめた多項式（項の係数と規格化を掛けたもの）
     #[serde(skip)]
-    groups: Vec<ZGroup>,
-    /// m の最大
-    #[serde(skip)]
-    mmax: u32,
+    groups: ZPoly,
 }
 
 /// [`ZernSag`] の serde の読み直し用（内部の多項式なし）。順番は ZernSag の書き出しと同じ
@@ -181,13 +178,55 @@ impl ZGroup {
     }
 
     /// Σ_k a_k Q_k(x) と d/dx
+    #[cfg(test)]
     fn eval(&self, x: f64) -> (f64, f64) {
-        let (mut v, mut d) = (0.0, 0.0);
-        for &c in self.px.iter().rev() {
-            d = d * x + v;
-            v = v * x + c;
+        horner(&self.px, x)
+    }
+}
+
+/// Σ c_i x^i と d/dx（c は低い次数から）
+#[inline(always)]
+fn horner(c: &[f64], x: f64) -> (f64, f64) {
+    let (mut v, mut d) = (0.0, 0.0);
+    for &c in c.iter().rev() {
+        d = d * x + v;
+        v = v * x + c;
+    }
+    (v, d)
+}
+
+/// 群（[`ZGroup`]）を並べたもの。光線ごとの評価で群ごとの確保の先を辿らないよう、係数は 1 本の配列につなぐ
+#[derive(Debug, Clone, PartialEq, Default)]
+struct ZPoly {
+    /// 群ごとの m・cos か・係数の範囲（m の小さい順。m = 0 は高々 1 つで先頭）
+    heads: Vec<ZHead>,
+    /// 群の x のべきの係数をつないだもの
+    px: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ZHead {
+    m: u32,
+    cos: bool,
+    /// px の中の範囲
+    start: u32,
+    end: u32,
+}
+
+impl ZPoly {
+    fn from_groups(groups: impl IntoIterator<Item = ZGroup>) -> ZPoly {
+        let mut p = ZPoly::default();
+        for g in groups {
+            let start = p.px.len() as u32;
+            p.px.extend_from_slice(&g.px);
+            p.heads.push(ZHead {
+                m: g.m,
+                cos: g.cos,
+                start,
+                end: p.px.len() as u32,
+            });
         }
-        (v, d)
+        p
     }
 }
 
@@ -200,8 +239,7 @@ impl ZernSag {
             extrapolate,
             dx: 0.0,
             dy: 0.0,
-            groups: Vec::new(),
-            mmax: 0,
+            groups: ZPoly::default(),
         };
         z.rebuild();
         z
@@ -229,21 +267,16 @@ impl ZernSag {
             e[k] += a * radial_norm(n, m, !self.fringe);
         }
         g.sort_by_key(|e| (e.0, !e.1));
-        self.mmax = g.iter().map(|e| e.0).max().unwrap_or(0);
-        self.groups = g
-            .into_iter()
-            .map(|(m, cs, a)| ZGroup::new(m, cs, a))
-            .collect();
+        self.groups = ZPoly::from_groups(g.into_iter().map(|(m, cs, a)| ZGroup::new(m, cs, a)));
     }
 
     /// Zernike の項の和と (∂/∂x, ∂/∂y)
     pub fn eval(&self, x: f64, y: f64) -> (f64, f64, f64) {
-        if self.groups.is_empty() {
+        if self.groups.heads.is_empty() {
             return (0.0, 0.0, 0.0);
         }
         eval_groups(
             &self.groups,
-            self.mmax,
             self.norm,
             self.extrapolate,
             x - self.dx,
@@ -256,7 +289,7 @@ impl ZernSag {
     /// 項ひとつの多項式は係数に依らないので、項の数の上限までは一度だけ作って使い回す（光線・パラメータごとに
     /// 呼ばれるので、呼ぶたびに作ると確保が重い）
     pub fn term(&self, j: usize, x: f64, y: f64) -> (f64, f64, f64) {
-        static TERMS: std::sync::OnceLock<[Vec<ZGroup>; 2]> = std::sync::OnceLock::new();
+        static TERMS: std::sync::OnceLock<[Vec<ZPoly>; 2]> = std::sync::OnceLock::new();
         let terms = TERMS.get_or_init(|| {
             [false, true].map(|fringe| {
                 (1..=ZernSag::max_terms(fringe))
@@ -276,14 +309,7 @@ impl ZernSag {
             }
         };
         let (x, y) = (x - self.dx, y - self.dy);
-        eval_groups(
-            std::slice::from_ref(g),
-            g.m,
-            self.norm,
-            self.extrapolate,
-            x,
-            y,
-        )
+        eval_groups(g, self.norm, self.extrapolate, x, y)
     }
 
     /// 面を z について裏返す（z → −z）: 項の係数の符号を全部変える
@@ -316,23 +342,16 @@ impl ZernSag {
 }
 
 /// 項 j（1 から）だけの多項式（係数 1）
-fn term_group(j: usize, fringe: bool) -> ZGroup {
+fn term_group(j: usize, fringe: bool) -> ZPoly {
     let (n, m, cs) = zern_nm(j, fringe);
     let k = ((n - m) / 2) as usize;
     let mut p = vec![0.0; k + 1];
     p[k] = radial_norm(n, m, !fringe);
-    ZGroup::new(m, cs, p)
+    ZPoly::from_groups([ZGroup::new(m, cs, p)])
 }
 
 /// Σ_(m, cos/sin) A(u, v) P(ρ²) と (∂/∂x, ∂/∂y)
-fn eval_groups(
-    groups: &[ZGroup],
-    mmax: u32,
-    norm: f64,
-    extrapolate: bool,
-    x: f64,
-    y: f64,
-) -> (f64, f64, f64) {
+fn eval_groups(g: &ZPoly, norm: f64, extrapolate: bool, x: f64, y: f64) -> (f64, f64, f64) {
     if !(norm > 0.0) {
         return (0.0, 0.0, 0.0);
     }
@@ -341,44 +360,46 @@ fn eval_groups(
     if !extrapolate && r2 > 1.0 {
         return (0.0, 0.0, 0.0);
     }
-    // w^m = (u + i v)^m の実部・虚部（m = 0..=mmax）
-    let mm = mmax as usize;
-    // ふつうは固定長の配列（m ≤ 31 は Standard 231 項・Fringe 37 項まで）。項数の上限を超えた係数を
-    // API から渡されても落ちないよう、超えるときだけ確保する
-    let (mut br, mut bi) = ([0.0; 32], [0.0; 32]);
-    let (mut vr, mut vi);
-    let (wr, wi): (&mut [f64], &mut [f64]) = if mm < 32 {
-        (&mut br, &mut bi)
-    } else {
-        vr = vec![0.0; mm + 1];
-        vi = vec![0.0; mm + 1];
-        (&mut vr, &mut vi)
-    };
-    wr[0] = 1.0;
-    for m in 1..=mm {
-        wr[m] = wr[m - 1] * u - wi[m - 1] * v;
-        wi[m] = wr[m - 1] * v + wi[m - 1] * u;
-    }
+    // x = 2ρ² − 1 の多項式 Σ a_k Q_k(x) と d/dx。dP/d(ρ²) = 2 d/dx なので、∂/∂u は 2u·dP/d(ρ²)·A = 4u·d/dx·A
+    // （2 のべきを掛けるだけなので、(2u)(2 d/dx) と丸めは同じ）
+    let x2 = 2.0 * r2 - 1.0;
+    let (u4, v4) = (4.0 * u, 4.0 * v);
+    let px = &g.px[..];
     let (mut z, mut zu, mut zv) = (0.0, 0.0, 0.0);
-    for gr in groups {
-        let (m, cs) = (gr.m as usize, gr.cos);
-        // P(ρ²) = Σ a_k Q_k(2ρ² − 1) と dP/d(ρ²)
-        let (pv, dq) = gr.eval(2.0 * r2 - 1.0);
-        let dp = 2.0 * dq;
+    let mut heads = &g.heads[..];
+    // m = 0 の群（あれば先頭に 1 つ）: A = 1、∂A/∂u = ∂A/∂v = 0
+    if let Some((h, rest)) = heads.split_first() {
+        if h.m == 0 {
+            let (pv, dq) = horner(&px[h.start as usize..h.end as usize], x2);
+            z += pv * 1.0;
+            zu += u4 * dq * 1.0 + pv * 0.0;
+            zv += v4 * dq * 1.0 + pv * 0.0;
+            heads = rest;
+        }
+    }
+    // w^m = (u + i v)^m の実部・虚部。群は m の小さい順なので、要る m まで漸化式で進める
+    // （(wr, wi) が w^m、(pr, pi) が w^(m−1)）
+    let (mut wr, mut wi, mut pr, mut pi) = (1.0, 0.0, 0.0, 0.0);
+    let mut k = 0;
+    for h in heads {
+        debug_assert!(h.m >= k.max(1));
+        while k < h.m {
+            (pr, pi) = (wr, wi);
+            wr = pr * u - pi * v;
+            wi = pr * v + pi * u;
+            k += 1;
+        }
+        let (pv, dq) = horner(&px[h.start as usize..h.end as usize], x2);
         // A = Re w^m（cos）か Im w^m（sin）、∂A/∂u・∂A/∂v
-        let (a, au, av) = if m == 0 {
-            (1.0, 0.0, 0.0)
+        let mf = h.m as f64;
+        let (a, au, av) = if h.cos {
+            (wr, mf * pr, -mf * pi)
         } else {
-            let mf = m as f64;
-            if cs {
-                (wr[m], mf * wr[m - 1], -mf * wi[m - 1])
-            } else {
-                (wi[m], mf * wi[m - 1], mf * wr[m - 1])
-            }
+            (wi, mf * pi, mf * pr)
         };
         z += pv * a;
-        zu += 2.0 * u * dp * a + pv * au;
-        zv += 2.0 * v * dp * a + pv * av;
+        zu += u4 * dq * a + pv * au;
+        zv += v4 * dq * a + pv * av;
     }
     (z, zu / norm, zv / norm)
 }

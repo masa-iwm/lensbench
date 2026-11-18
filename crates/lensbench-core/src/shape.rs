@@ -271,6 +271,19 @@ pub(crate) fn conic_root(ff: f64, gg: f64, aa: f64, disc: f64, sig: f64) -> f64 
     }
 }
 
+/// Zernike Sag の矢高と (∂z/∂x, ∂z/∂y): 偶数次非球面 + Zernike の項
+#[inline]
+fn zernike_sag(base: Base<'_>, terms: Option<&ZernSag>, x: f64, y: f64) -> (f64, f64, f64) {
+    let (mut z, mut zx, mut zy) = even_xy(base.c, base.k, base.a, x, y);
+    if let Some(zs) = terms {
+        let (a, ax, ay) = zs.eval(x, y);
+        z += a;
+        zx += ax;
+        zy += ay;
+    }
+    (z, zx, zy)
+}
+
 /// 偶数次非球面の矢高と (∂z/∂x, ∂z/∂y)
 #[inline]
 fn even_xy(c: f64, k: f64, a: &[f64], x: f64, y: f64) -> (f64, f64, f64) {
@@ -469,16 +482,7 @@ impl Shape<'_> {
                 }
                 (z, zx, zy)
             }
-            Shape::Zernike { base, terms, .. } => {
-                let (mut z, mut zx, mut zy) = even_xy(base.c, base.k, base.a, x, y);
-                if let Some(zs) = terms {
-                    let (a, ax, ay) = zs.eval(x, y);
-                    z += a;
-                    zx += ax;
-                    zy += ay;
-                }
-                (z, zx, zy)
-            }
+            Shape::Zernike { base, terms } => zernike_sag(base, terms, x, y),
             Shape::GridSag { base, terms, grid } => {
                 let (mut z, mut zx, mut zy) = even_xy(base.c, base.k, base.a, x, y);
                 // Grid Sag にも Zernike（Standard）の項がある（外挿する）
@@ -658,14 +662,14 @@ impl Shape<'_> {
             Shape::Cylinder(_) | Shape::Plane | Shape::Tilted { .. } => {
                 isect_with(0.0, 0.0, pl, kl, sig, |x, y| self.sag(x, y))
             }
+            // Zernike は追跡で多いので、矢高（[`Shape::sag`] と同じ式）を直に渡して面の種類の分岐を外す
+            Shape::Zernike { base, terms } => isect_with(base.c, base.k, pl, kl, sig, |x, y| {
+                zernike_sag(base, terms, x, y)
+            }),
             Shape::Conic { c, k }
             | Shape::ConicTilted { c, k, .. }
             | Shape::OddAsphere { c, k, .. }
             | Shape::EvenAsphere(Base { c, k, .. })
-            | Shape::Zernike {
-                base: Base { c, k, .. },
-                ..
-            }
             | Shape::GridSag {
                 base: Base { c, k, .. },
                 ..
