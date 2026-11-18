@@ -420,7 +420,6 @@ fn psf_once(
 
     // 瞳の格子（区間の中心、重みは円内の面積の割合）。像面の上で J に非対角の項があれば波長ごとに写す
     let h = 2.0 / np as f64;
-    let pcx: Vec<f64> = PupilGrid::Cells(np).axis().unwrap_or_default();
 
     let mut tot = vec![vec![0.0; ni]; ni];
     let (mut norm, mut wsum) = (0.0, 0.0);
@@ -470,62 +469,35 @@ fn psf_once(
             invalid!("PSF: no valid rays (all vignetted)");
         }
         step = step.max(phase_step(np, &w_ok));
-        // 行列の DFT: U[y][x] = Σ_iy e^{−2πi b py y} Σ_ix e^{−2πi a px x} P[iy][ix]
-        let ex: Vec<Vec<C64>> = xs
-            .iter()
-            .map(|&x| {
-                pcx.iter()
-                    .map(|&u| {
-                        let t = -2.0 * std::f64::consts::PI * a * u * x;
-                        C64::new(t.cos(), t.sin())
-                    })
-                    .collect()
-            })
-            .collect();
-        let ey: Vec<Vec<C64>> = ys
-            .iter()
-            .map(|&y| {
-                pcx.iter()
-                    .map(|&v| {
-                        let t = -2.0 * std::f64::consts::PI * b * v * y;
-                        C64::new(t.cos(), t.sin())
-                    })
-                    .collect()
-            })
-            .collect();
-        // 1 段目: 各瞳の行 iy について x 方向の変換 G[iy][mx]。行の両端の 0（瞳の外の区間）は和に入れない
-        // （0 の項は和を変えないので、全部を足したときと同じビット）。行は互いに独立なので、大きければ並列に
-        let stage1 = |row: &Vec<C64>| -> Vec<C64> {
-            let nz = |c: &C64| c.re != 0.0 || c.im != 0.0;
-            let lo = row.iter().position(nz).unwrap_or(row.len());
-            let hi = row.iter().rposition(nz).map_or(lo, |i| i + 1);
-            ex.iter()
-                .map(|e| row[lo..hi].iter().zip(&e[lo..hi]).map(|(a, b)| a * b).sum())
-                .collect()
-        };
-        let g: Vec<Vec<C64>> = if np * np * ni >= 1 << 20 && !crate::par::sequential() {
+        // 行列の DFT: U[y][x] = Σ_iy e^{−2πi b py y} Σ_ix e^{−2πi a px x} P[iy][ix]。
+        // 瞳の標本 px = h (ix + n0) も像の点 x = Δ (mx + m0) も等間隔なので、軸ごとにチャープ z 変換（FFT 3 回分）で
+        // 計算する（直接の和との差は丸めの範囲）
+        let (n0, m0) = (0.5 - 0.5 * np as f64, -half);
+        let cx = Czt::new(a * h * pixel.0, np, n0, ni, m0);
+        let cy = Czt::new(b * h * pixel.1, np, n0, ni, m0);
+        let big = np * ni >= 1 << 14 && !crate::par::sequential();
+        // 1 段目: 各瞳の行 iy について x 方向の変換 G[iy][mx]。行は互いに独立なので、大きければ並列に
+        let stage1 = |row: &Vec<C64>| -> Vec<C64> { cx.apply(row) };
+        let g: Vec<Vec<C64>> = if big {
             use rayon::prelude::*;
             p.par_iter().map(scoped(stage1)).collect()
         } else {
             p.iter().map(stage1).collect()
         };
-        let one = |my: usize| -> Vec<f64> {
-            (0..ni)
-                .map(|mx| {
-                    let mut u = C64::new(0.0, 0.0);
-                    for iy in 0..np {
-                        u += g[iy][mx] * ey[my][iy];
-                    }
-                    u.norm_sqr()
-                })
-                .collect()
+        // 2 段目: 像の列 mx ごとに y 方向の変換。強度 |U|² の列を返す
+        let one = |mx: usize| -> Vec<f64> {
+            let col: Vec<C64> = g.iter().map(|r| r[mx]).collect();
+            cy.apply(&col).iter().map(|u| u.norm_sqr()).collect()
         };
-        let iw: Vec<Vec<f64>> = if ni * ni * np >= 1 << 20 && !crate::par::sequential() {
+        let cols: Vec<Vec<f64>> = if big {
             use rayon::prelude::*;
             (0..ni).into_par_iter().map(scoped(one)).collect()
         } else {
             (0..ni).map(one).collect()
         };
+        let iw: Vec<Vec<f64>> = (0..ni)
+            .map(|my| cols.iter().map(|c| c[my]).collect())
+            .collect();
         // 格子の点の強度は |Σ P|²（U の連続の積分の 1/h² 倍）。全強度は Parseval で
         // ∫|U|² dx dy = ∫|P|² dp / |a b| なので、同じ単位で Σ f A² / |a b h²|
         let e_w = s2 / (a * b * h * h).abs();
@@ -563,6 +535,78 @@ fn psf_once(
         enclosed,
         warnings: sampling_warnings("PSF", np, step, enclosed),
     })
+}
+
+/// 等間隔の標本どうしの DFT y[m] = Σ_n x[n] exp(−2πi α (n + n0)(m + m0))（n は 0..n_in、m は 0..n_out）を、
+/// チャープ z 変換（Bluestein）で計算する。(n + n0)(m + m0) の nm を (n² + m² − (m − n)²) / 2 と書くと、和は
+/// チャープ exp(iπα k²) との畳み込みになり、長さ L ≥ n_in + n_out − 1 の FFT で計算できる
+struct Czt {
+    l: usize,
+    /// 入力にかける exp(−iπα (n² + 2 n m0))
+    pre: Vec<C64>,
+    /// 出力にかける exp(−iπα (m² + 2 n0 m + 2 n0 m0)) / L
+    post: Vec<C64>,
+    /// チャープ exp(iπα k²)（k = −(n_in − 1)..n_out、L で折り返して置く）の FFT
+    kern: Vec<C64>,
+    fwd: std::sync::Arc<dyn rustfft::Fft<f64>>,
+    inv: std::sync::Arc<dyn rustfft::Fft<f64>>,
+}
+
+impl Czt {
+    fn new(alpha: f64, n_in: usize, n0: f64, n_out: usize, m0: f64) -> Czt {
+        let l = (n_in + n_out).next_power_of_two();
+        // exp(iπα t)。α t を 2 で割った余りにしてから π をかける（t が大きくても位相の誤差が増えない）
+        let chirp = |t: f64| -> C64 {
+            let v = alpha * t;
+            let v = v - 2.0 * (0.5 * v).floor();
+            let (sn, cs) = (std::f64::consts::PI * v).sin_cos();
+            C64::new(cs, sn)
+        };
+        let pre = (0..n_in)
+            .map(|n| {
+                let n = n as f64;
+                chirp(-(n * n + 2.0 * n * m0))
+            })
+            .collect();
+        let post = (0..n_out)
+            .map(|m| {
+                let m = m as f64;
+                chirp(-(m * m + 2.0 * n0 * m + 2.0 * n0 * m0)) / l as f64
+            })
+            .collect();
+        let mut kern = vec![C64::new(0.0, 0.0); l];
+        for (k, v) in kern.iter_mut().enumerate().take(n_out) {
+            *v = chirp((k * k) as f64);
+        }
+        for k in 1..n_in {
+            kern[l - k] = chirp((k * k) as f64);
+        }
+        let mut planner = rustfft::FftPlanner::<f64>::new();
+        let (fwd, inv) = (planner.plan_fft_forward(l), planner.plan_fft_inverse(l));
+        fwd.process(&mut kern);
+        Czt {
+            l,
+            pre,
+            post,
+            kern,
+            fwd,
+            inv,
+        }
+    }
+
+    /// x（長さ n_in）の変換（長さ n_out）
+    fn apply(&self, x: &[C64]) -> Vec<C64> {
+        let mut buf = vec![C64::new(0.0, 0.0); self.l];
+        for ((o, v), p) in buf.iter_mut().zip(x).zip(&self.pre) {
+            *o = v * p;
+        }
+        self.fwd.process(&mut buf);
+        for (o, k) in buf.iter_mut().zip(&self.kern) {
+            *o *= k;
+        }
+        self.inv.process(&mut buf);
+        buf.iter().zip(&self.post).map(|(v, p)| v * p).collect()
+    }
 }
 
 // ------------------------------------------------------------------------------------------ 幾何 MTF
@@ -738,6 +782,38 @@ mod tests {
         assert_eq!(diffraction_limit(-2.5), 0.0);
         assert_eq!(diffraction_limit(-0.5), diffraction_limit(0.5));
         assert!((diffraction_limit(0.5) - 0.391_002_218_955_6).abs() < 1e-12);
+    }
+
+    /// チャープ z 変換が直接の和 Σ x[n]·exp(−2πi α (n + n0)(m + m0)) と丸めの範囲で合う
+    #[test]
+    fn czt_matches_the_direct_sum() {
+        for &(alpha, n_in, n_out) in &[
+            (0.0137, 64usize, 33usize),
+            (0.25, 7, 12),
+            (1.0 / 96.0, 96, 200),
+        ] {
+            let (n0, m0) = (0.5 - 0.5 * n_in as f64, -0.5 * (n_out as f64 - 1.0));
+            let x: Vec<C64> = (0..n_in)
+                .map(|n| {
+                    let t = n as f64;
+                    C64::new((0.37 * t).cos(), (0.11 * t * t).sin())
+                })
+                .collect();
+            let got = Czt::new(alpha, n_in, n0, n_out, m0).apply(&x);
+            assert_eq!(got.len(), n_out);
+            for (m, g) in got.iter().enumerate() {
+                let mut want = C64::new(0.0, 0.0);
+                for (n, v) in x.iter().enumerate() {
+                    let ph =
+                        -2.0 * std::f64::consts::PI * alpha * (n as f64 + n0) * (m as f64 + m0);
+                    want += v * C64::new(ph.cos(), ph.sin());
+                }
+                assert!(
+                    (g - want).norm() < 1e-12 * n_in as f64,
+                    "α={alpha} m={m}: {g} vs {want}"
+                );
+            }
+        }
     }
 
     #[test]
