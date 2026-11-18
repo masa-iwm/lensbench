@@ -862,19 +862,46 @@ fn partial_branch_band(
     r: &[Vec<[C64; 2]>],
     brb: &[Option<MirrorBranch>],
 ) -> Option<(f64, f64)> {
-    let lo = brb.iter().flatten().map(|v| b2[v.k - 1]).reduce(f64::min)?;
     let n = b2.len();
-    // 分岐点の見つからない波長は、上端のそば（mirror_branch が分岐点とみるのに要る点の数の内）でも |r| が 1 から
-    // はっきり離れている（分岐点が範囲の上か、上端に近すぎる）こと。全部 |r| = 1 なら分岐点の無い鏡で、ここでは扱わない
-    let lossy_top = |rw: &Vec<[C64; 2]>| {
-        rw[n.saturating_sub(6)..]
+    let dev = |rw: &Vec<[C64; 2]>, j: usize| {
+        rw[j]
             .iter()
-            .flatten()
-            .any(|v| (v.norm() - 1.0).abs() >= MIRROR_BRANCH_MIN_DEV)
+            .map(|v| (v.norm() - 1.0).abs())
+            .fold(0.0, f64::max)
     };
-    r.iter()
-        .zip(brb)
-        .filter(|(_, b)| b.is_none())
-        .all(|(rw, _)| lossy_top(rw))
-        .then_some((lo, b2[n - 1]))
+    // 波長ごとの分岐点の手前の点。見つかった分岐点か、上端に近すぎて mirror_branch が見ない分岐点（上端の点まで
+    // |r| = 1 が続き、その手前で |r| が 1 からはっきり離れている）。上端でも |r| が 1 から離れている（分岐点が範囲の上）は None、
+    // 全部 |r| = 1 に近い（分岐点の無い鏡）はこの帯を作らない
+    let mut lo: Option<f64> = None;
+    for (rw, b) in r.iter().zip(brb) {
+        let edge = match b {
+            Some(v) => Some(v.k - 1),
+            None => {
+                let kt = (0..n)
+                    .rev()
+                    .find(|&j| !(dev(rw, j) < MIRROR_TIR_TOL))
+                    .map_or(0, |j| j + 1);
+                if kt == n {
+                    let lossy = rw[n.saturating_sub(6)..]
+                        .iter()
+                        .flatten()
+                        .any(|v| (v.norm() - 1.0).abs() >= MIRROR_BRANCH_MIN_DEV);
+                    if !lossy {
+                        return None;
+                    }
+                    None
+                } else if kt >= 1 && n - kt < 8 && dev(rw, kt - 1) >= MIRROR_BRANCH_MIN_DEV {
+                    Some(kt - 1)
+                } else {
+                    return None;
+                }
+            }
+        };
+        if let Some(e) = edge {
+            // その 2 点下から。分岐点に揃えずに補間するので、すぐ下でも分岐点の sqrt の曲がりで 1e-4 ほどずれる
+            let e = e.saturating_sub(2);
+            lo = Some(lo.map_or(b2[e], |l: f64| l.min(b2[e])));
+        }
+    }
+    lo.map(|l| (l, b2[n - 1]))
 }

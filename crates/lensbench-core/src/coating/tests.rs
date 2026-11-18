@@ -314,8 +314,13 @@ fn mirror_model_does_not_cross_the_branch() {
 fn mirror_model_stops_where_the_branch_leaves_the_range() {
     // mirror_model_does_not_cross_the_branch と同じ鏡で、基板の屈折率が波長で大きく変わり、分岐点が測った β の上端（2.0）を
     // 横切る（短い波長では範囲の上、長い波長では中）。補間に使う波長の一部にだけ分岐点があるところでは、上端の近くを
-    // notimpl にし、ほかの点は正しい値を返すこと
-    let ns = |wl: f64| 1.95 + 0.018 / (wl * wl);
+    // notimpl にし、ほかの点は正しい値を返すこと。分岐点がどの波長でも上端の 4 点以内にある（mirror_branch が見ない）ときも同じ
+    for (a, c) in [(1.95, 0.018), (1.9960, 0.0012)] {
+        branch_leaves_the_range(&|wl: f64| a + c / (wl * wl));
+    }
+}
+
+fn branch_leaves_the_range(ns: &dyn Fn(f64) -> f64) {
     let layers = [
         (C64::new(2.10, 0.0), 0.12),
         (C64::new(2.30, 0.0), 0.08),
@@ -346,7 +351,9 @@ fn mirror_model_stops_where_the_branch_leaves_the_range() {
         ..Default::default()
     };
     let (mut worst, mut skipped) = (0.0f64, 0);
-    for wl in [0.5853, 0.5971, 0.6082, 0.6204] {
+    for wl in [
+        0.5553, 0.5671, 0.5782, 0.5853, 0.5904, 0.5971, 0.6082, 0.61, 0.6204, 0.65,
+    ] {
         let f = Iface {
             kind: prepare_model(
                 "T",
@@ -370,11 +377,12 @@ fn mirror_model_stops_where_the_branch_leaves_the_range() {
                 continue;
             };
             let e = exact(wl, b);
-            worst = worst.max((v[0] - e[0]).norm().max((v[1] - e[1]).norm()));
+            let d = (v[0] - e[0]).norm().max((v[1] - e[1]).norm());
+            worst = worst.max(d);
         }
     }
     assert!(skipped > 0);
-    assert!(worst < 1e-4, "{worst:e}");
+    assert!(worst < 1e-5, "{worst:e}");
 }
 
 #[test]
