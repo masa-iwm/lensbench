@@ -484,7 +484,8 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
                         let blk = v.child_of(j).filter(|&i| Some(i) != v.scope);
                         let in_sel =
                             blk.is_some_and(|i| Some(&c.blocks[i].name) == v.sel_block.as_ref());
-                        row.set_selected(in_sel || v.selected.contains(&j));
+                        let in_hl = st.hl.iter().any(|r| r[0] <= j && j <= r[1]);
+                        row.set_selected(in_sel || in_hl || v.selected.contains(&j));
                         row.col(|ui| num_cell(ui, st, c, v, out, j));
                         row.col(|ui| block_cell(ui, st, c, v, out, j));
                         for &col in &v.cols {

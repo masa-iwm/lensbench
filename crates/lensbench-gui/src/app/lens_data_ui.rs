@@ -56,6 +56,38 @@ impl Core {
                     self.p.ld.cur = None;
                 }
             }
+            // 先頭に自動で置く絞りを選んだ: 絞りの面の行に印（今の面は外す）
+            if self.p.combo_view.lead() {
+                self.p.ld.cur = None;
+            }
+        }
+        // 表のブロックで選べない要素（BS の面・先頭に自動で置く絞りの面は表のブロックの名前を持たない）は、
+        // 要素の面の行を選んだ印にする。表で範囲の外の行を選んだら外す
+        self.p.ld.hl = if !self.p.ld.scope.is_empty() {
+            Vec::new()
+        } else if self.p.combo_view.lead() && lead {
+            self.sys
+                .ld_rows
+                .iter()
+                .position(|r| r.stop)
+                .map(|j| vec![[j, j]])
+                .unwrap_or_default()
+        } else {
+            match self.p.combo_view.sel().and_then(|k| ids.get(k)) {
+                Some(id) if !self.sys.ld_blocks.iter().any(|b| &b.name == id) => self
+                    .sys
+                    .elem_blocks
+                    .iter()
+                    .find(|(b, _)| b == id)
+                    .map(|(_, r)| r.clone())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        };
+        if let Some((j, _)) = self.p.ld.cur {
+            if !self.p.ld.hl.iter().any(|r| r[0] <= j && j <= r[1]) {
+                self.p.ld.hl.clear();
+            }
         }
         let rows = &self.sys.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {

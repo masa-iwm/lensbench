@@ -536,6 +536,47 @@ fn last_row_of_the_table_is_above_the_details_bar() {
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
 }
 
+/// 図で選んだ BS・先頭に自動で置く絞り（表のブロックの名前を持たない）も、レンズデータの表でその面の行を選ぶ
+/// （BS は往路と、鏡で戻って口 D へ出る復路の両方）
+#[test]
+fn layout_selection_marks_bs_and_lead_stop_rows() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P16_twyman_green.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    assert_eq!(h.state().c.doc.combo.ids(), ["BS", "TEST", "M_TEST"]);
+    let comments = |h: &Harness<'static, App>| -> Vec<String> {
+        let c = &h.state().c;
+        c.p.ld
+            .hl
+            .iter()
+            .flat_map(|r| r[0]..=r[1])
+            .map(|j| c.sys.ld_rows[j].comment.clone())
+            .collect()
+    };
+    h.state_mut().c.p.combo_view.select(0);
+    settle(&mut h);
+    assert_eq!(
+        comments(&h),
+        ["BS face", "", "BS split", "", "BS face", "BS face", "", "BS split", "", "BS face"],
+        "{:?}",
+        h.state().c.p.ld.hl
+    );
+    h.state_mut().c.p.combo_view.select_lead();
+    settle(&mut h);
+    let c = &h.state().c;
+    assert!(c.p.ld.hl.len() == 1 && c.sys.ld_rows[c.p.ld.hl[0][0]].stop);
+    // 表のブロックのある要素はブロックで選ぶ（印は付けない）
+    h.state_mut().c.p.combo_view.select(1);
+    settle(&mut h);
+    let c = &h.state().c;
+    assert!(c.p.ld.hl.is_empty());
+    assert_eq!(c.p.ld.sel.as_deref(), Some("TEST"));
+}
+
 /// 欄の値の書き換えも操作で当てる: 組合せを変えた所だけが書き換えになり、当てると文書が変わって描き直しを
 /// 頼む。元に戻す段は書き換えでは区切らず（入力の途中を 1 段にまとめる）、戻すと前の値に戻る
 #[test]

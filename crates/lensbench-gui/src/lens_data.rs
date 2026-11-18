@@ -1263,6 +1263,8 @@ pub(crate) struct LensData {
     pub scope: Vec<String>,
     /// 選んだブロック
     pub sel: Option<String>,
+    /// 選んだ印を付ける面の範囲（図で選んだ要素のうち、表のブロックで選べないもの: BS・先頭に自動で置く絞り）
+    pub hl: Vec<[usize; 2]>,
     /// 今のセル（面、列）
     pub cur: Option<(usize, Col)>,
     /// 書き換え中のセル

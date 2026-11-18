@@ -696,15 +696,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let t = self.letter(spec.arm)?;
         let start = self.sf.len();
         let out = self.split_pass(&key, A, t)?;
-        // BS の面に BS の id を付ける（口の先の面は入れない。GUI の要素の面の範囲）。玉・群の
-        // パラメータ（System::units）は増やさないので note は使わない
-        if !id.is_empty() {
-            for o in &mut self.map[start..] {
-                if !o.blocks.iter().any(|b| b == id) {
-                    o.blocks.push(id.to_string());
-                }
-            }
-        }
+        self.tag_split(id, start);
         if spec.has_branches() {
             self.traverse_branch(&key, out)?;
         } else {
@@ -730,11 +722,27 @@ impl<'a, 'b> Ctx<'a, 'b> {
             return Ok(());
         }
         let t = self.letter(info.spec.arm)?;
+        let start = self.sf.len();
         let out = self.split_pass(&key, info.fwd, t)?;
+        self.tag_split(id, start);
         if out != A {
             self.split.stopped = true;
         }
         Ok(())
+    }
+
+    /// BS を通って sf の start から足した面に BS の id を付ける（口の先の面は入れない。往路も復路も。GUI の要素の
+    /// 面の範囲・レンズデータの表で BS の面の行を選ぶ）。玉・群のパラメータ（System::units）は増やさないので
+    /// note は使わない
+    fn tag_split(&mut self, id: &str, start: usize) {
+        if id.is_empty() {
+            return;
+        }
+        for o in &mut self.map[start..] {
+            if !o.blocks.iter().any(|b| b == id) {
+                o.blocks.push(id.to_string());
+            }
+        }
     }
 
     fn split_off_air(&self, info: &SplitInfo) -> bool {
@@ -756,7 +764,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
         } else {
             let t = self.letter(info.spec.arm)?;
+            let start = self.sf.len();
             let out = self.split_pass(&key, port, t)?;
+            self.tag_split(&info.id, start);
             if out != A {
                 if !info.spec.branch(out).is_empty() {
                     self.traverse_branch(&key, out)?;

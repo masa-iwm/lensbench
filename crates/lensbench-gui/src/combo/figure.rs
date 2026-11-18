@@ -117,10 +117,11 @@ pub(super) fn figure(
     paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak);
     // 組合せを変える操作（寸法の書き換え・ドラッグで動かす）は組合せの図だけ
     interact(ui, resp, combo.as_deref_mut(), view, &h, xf.s);
+    let editable = combo.is_some();
     if let Some(combo) = combo {
         dim_edit(ui, resp, combo, view, &sc.dims);
     }
-    if h.el.is_some() || h.dim.is_some() {
+    if h.el.is_some() || h.dim.is_some() || (h.lead && editable) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 }
@@ -255,6 +256,9 @@ pub(super) struct Scene {
     pub(super) mechs: Vec<(String, Vec<Vec<Pos2>>)>,
     /// 絞りの面の中心・光軸に垂直な向き・半径 [pt]
     stop: Option<(Pos2, Vec2, f32)>,
+    /// 絞りが先頭に自動で置く絞り（要素ではない。クリックで [`View::select_lead`]）と、それを選んでいるか
+    lead: bool,
+    lead_sel: bool,
     pub(super) marks: Vec<Mark>,
     pub(super) dims: Vec<Dim>,
     /// 選んだ要素（縁を太く）
@@ -584,6 +588,8 @@ fn scene(
         hl_vertex,
         mechs,
         stop,
+        lead: combo.lead_stop(),
+        lead_sel: combo.lead_stop() && view.lead(),
         marks,
         dims,
         sel: view.sel,
@@ -645,6 +651,8 @@ fn ap_segments(p: &Pick, iv: usize, s: f64) -> Vec<(f64, f64)> {
 pub(super) struct Hits {
     /// 要素（後に描くものほど上: BS → 玉 → 開口・絞り・名前）
     pub(super) el: Option<usize>,
+    /// 先頭に自動で置く絞り（要素ではない）の面の線の近く
+    pub(super) lead: bool,
     /// 寸法線（数字の近くか、線から 5 pt 以内）
     pub(super) dim: Option<usize>,
     /// 寸法の数字の上
@@ -672,6 +680,14 @@ pub(super) fn hits(sc: &Scene, q: Option<Pos2>) -> Hits {
             if let Some(k) = b.k {
                 h.el = Some(k);
             }
+        }
+    }
+    // 先頭に自動で置く絞り: 要素の絞りと同じく、面の線（光軸に垂直）の近く（厚さが無いので玉の中の判定では選べない）
+    if let (true, Some((c, n, r))) = (sc.lead, sc.stop) {
+        let w = q - c;
+        let u = Vec2::new(-n.y, n.x);
+        if w.dot(u).abs() < 6.0 && w.dot(n).abs() < r + 14.0 {
+            h.lead = true;
         }
     }
     for (i, (_, polys)) in sc.mechs.iter().enumerate() {
@@ -849,11 +865,19 @@ fn paint(
     }
     // 絞り（面の上下に短い線）
     if let Some((c, n, r)) = sc.stop {
+        let (w, col) = if sc.lead_sel {
+            (3.0_f32, accent)
+        } else {
+            (2.0, weak)
+        };
         for sgn in [-1.0f32, 1.0] {
             painter.line_segment(
                 [c + n * sgn * r, c + n * sgn * (r + 14.0)],
-                Stroke::new(2.0_f32, weak),
+                Stroke::new(w, col),
             );
+        }
+        if sc.lead_sel {
+            painter.circle_stroke(c, 6.0, Stroke::new(2.0_f32, accent));
         }
     }
     // 要素: 開口・遮蔽の光を遮る所の太線、名前、選んだ鏡・絞り・開口の丸
@@ -929,6 +953,8 @@ fn interact(
             // 寸法線（数字の外）のクリックは選ぶだけ（スライダー・← →）
             view.dim = Some(g);
             view.set_sel(None);
+        } else if h.el.is_none() && h.lead && combo.is_some() {
+            view.select_lead();
         } else {
             view.set_sel(h.el);
             view.dim = None;

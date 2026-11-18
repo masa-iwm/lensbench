@@ -1508,6 +1508,8 @@ pub(crate) struct View {
     sel: Option<usize>,
     /// 選んだ要素を変えた（面の表が受け取るまで）
     moved: bool,
+    /// 先頭に自動で置く絞り（要素ではない）を選んだ（[`View::select_lead`]。要素を選ぶと外れる）
+    lead: bool,
     /// 足す状態の名前の欄
     pub new_state: String,
     /// 選んだ寸法（要素 k の後の空気。usize::MAX は絞りから最初の要素）
@@ -1621,8 +1623,23 @@ impl View {
 
     /// 選ぶ要素を変える（違えば [`View::take_moved`] で知らせる）
     pub(crate) fn set_sel(&mut self, k: Option<usize>) {
-        self.moved |= self.sel != k;
+        self.moved |= self.sel != k || self.lead;
         self.sel = k;
+        self.lead = false;
+    }
+
+    /// 先頭に自動で置く絞りを選ぶ（要素の選択は外す）
+    pub(crate) fn select_lead(&mut self) {
+        self.set_sel(None);
+        self.moved |= !self.lead;
+        self.lead = true;
+        self.dim = None;
+        self.edit = None;
+    }
+
+    /// 先頭に自動で置く絞りを選んでいる
+    pub(crate) fn lead(&self) -> bool {
+        self.lead
     }
 
     /// 前に聞いてから選んだ要素を変えたか（聞くと消える）
@@ -1779,13 +1796,9 @@ pub(crate) fn ui(
         return act;
     }
     // 図の下に、選んだ要素・寸法の設定
-    let sel = view.sel.and_then(|k| combo.el(k));
-    let bs_sel = sel.is_some_and(|p| p.kind == ElemKind::Splitter);
-    // 面の表（面の並び。自作の玉の面はレンズデータの表で編集）を出すときはその分も
-    let rows = sel
-        .filter(|p| p.kind == ElemKind::Surfaces)
-        .map_or(0, |p| p.surfs.len() + 1);
-    let editor_h = if bs_sel { 200.0 } else { 96.0 } + 24.0 * rows as f32;
+    // 欄の高さは選んだ要素ではなく組合せ全体で決める（選ぶたびに図の高さ＝全体表示の縮尺が変わらないように。
+    // 欄に収まらなければスクロール）
+    let editor_h = editor_height(combo);
     // 図と設定に残りを分ける（パネルが低くても設定が押し出されないように。横に広く低いと左右に並べる）
     let avail = ui.available_height().max(1.0);
     let (mut top, mut bottom) = crate::split::two(
@@ -1869,6 +1882,51 @@ pub(crate) fn ui(
         act = Some(Act::SaveToCatalog(k));
     }
     act
+}
+
+/// 先頭に自動で置く絞り（図でクリックして選んだ）の設定: 最初の要素までの間隔と、要素にするボタン
+/// （径・偏心・傾きを変えるには要素にする。システムの設定の「開口絞り」と同じ）
+fn lead_stop_settings(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(tr("Aperture stop")).strong());
+        ui.label(tr("Before the first element (automatic)"));
+        ui.label(tr("Gap"));
+        ui.add(
+            egui::DragValue::new(&mut combo.stop_gap)
+                .speed(0.05)
+                .range(0.0..=1e5)
+                .suffix(" mm")
+                .max_decimals(4),
+        );
+        if ui
+            .button(tr("Make the stop an element"))
+            .on_hover_text(tr(
+                "Put a \"Stop\" element at the head of the sequence. Drag it in the figure to move it anywhere",
+            ))
+            .clicked()
+        {
+            if let Some(k) = combo.make_stop_element() {
+                view.select(k);
+            }
+        }
+    });
+}
+
+/// 図の下の要素の設定の欄に取る高さ。いちばん高い欄（BS の欄・面の並びの表）に合わせ、どの要素を選んでも同じ
+/// （面の並びの表の行は 8 行まで。それより多ければ欄の中でスクロール）
+pub(crate) fn editor_height(combo: &Combo) -> f32 {
+    let mut bs = false;
+    let mut rows = 0;
+    for l in combo.all() {
+        if let Some(p) = combo.get(&l) {
+            bs |= p.kind == ElemKind::Splitter;
+            if p.kind == ElemKind::Surfaces {
+                rows = rows.max(p.surfs.len() + 1);
+            }
+        }
+    }
+    let base = if bs { 200.0 } else { 96.0 };
+    base + 24.0 * rows.min(8) as f32
 }
 
 /// BS の経路（T・R の並び）を選ぶ欄（BS が無ければ出さない）。変えたら true
@@ -2825,6 +2883,14 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                 .color(weak),
         );
         return None;
+    }
+    if view.lead {
+        if !combo.lead_stop() {
+            view.lead = false;
+        } else {
+            lead_stop_settings(ui, combo, view);
+            return None;
+        }
     }
     let Some(k) = view.sel.filter(|&k| k < n) else {
         ui.label(

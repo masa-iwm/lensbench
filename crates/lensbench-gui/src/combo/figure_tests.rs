@@ -51,6 +51,8 @@ fn hits_follow_paint_order() {
             hl_vertex: None,
             mechs: vec![("tube".into(), vec![sq(100.0, 0.0, 10.0)])],
             stop: None,
+            lead: false,
+            lead_sel: false,
             marks: vec![
                 // 名前が玉 1 の上にある要素 2
                 mark(
@@ -287,6 +289,29 @@ fn click_selects_and_double_click_opens() {
     f.frame(button(m0, true));
     f.frame(button(m0, false));
     assert_eq!((f.view.sel, f.view.open), (Some(0), Some(0)));
+}
+
+/// 先頭に自動で置く絞り（厚さの無い、要素でない絞り）もクリックで選べ、要素を選ぶと外れる
+#[test]
+fn click_selects_lead_stop() {
+    let mut f = Fig::new();
+    let sh = f.frame(Vec::new());
+    assert!(sh.sc.lead);
+    let (c, n, r) = sh.sc.stop.unwrap();
+    // 面の線の上（光軸の上と、絞りの縁の短い線の上）
+    for p in [c, c + n * (r + 7.0)] {
+        f.click(Pos2::new(5.0, 5.0));
+        assert!(!f.view.lead());
+        f.click(p);
+        assert!(f.view.lead() && f.view.sel.is_none(), "{p:?}");
+        assert!(f.frame(Vec::new()).sc.lead_sel);
+    }
+    let m0 = f.mid(0);
+    f.click(m0);
+    assert!(!f.view.lead() && f.view.sel == Some(0));
+    // 絞りを要素にした後は、絞りの要素として選ぶ
+    f.combo.make_stop_element();
+    assert!(!f.frame(Vec::new()).sc.lead);
 }
 
 /// 寸法の数字をクリックして打ち、Enter で決める。負の値は欄を残し、Esc でやめる
