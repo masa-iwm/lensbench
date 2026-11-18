@@ -105,6 +105,14 @@ pub enum Shape<'a> {
     /// y だけの偶数次非球面（Cylinder Fresnel の基板）
     Cylinder(Base<'a>),
     Irregular(Irregular),
+    /// 利用者定義の形: 二次曲面（c・k）+ 登録のモデルの矢高（裏返しを含む、[`crate::usershape`]）
+    User {
+        c: f64,
+        k: f64,
+        shape: &'a crate::usershape::UserShape,
+        /// 近軸の曲率を求める差分の幅 [mm]（クリア半径に比例）
+        h: f64,
+    },
 }
 
 impl Surface {
@@ -154,6 +162,15 @@ impl Surface {
                 },
             },
             SurfType::CylFresnel => Shape::Cylinder(base),
+            SurfType::UserShape => match self.user_shape() {
+                Some(shape) => Shape::User {
+                    c,
+                    k,
+                    shape,
+                    h: crate::usershape::paraxial_step(self.semi),
+                },
+                None => Shape::Conic { c, k },
+            },
             SurfType::Irregular => Shape::Irregular(Irregular {
                 c,
                 k,
@@ -507,6 +524,11 @@ impl Shape<'_> {
                 (z, zx, zy)
             }
             Shape::Zernike { base, terms } => zernike_sag(base, terms, x, y),
+            Shape::User { c, k, shape, .. } => {
+                let (z0, zx0, zy0) = even_xy(c, k, &[], x, y);
+                let (z, zx, zy) = shape.sag(x, y);
+                (z0 + z, zx0 + zx, zy0 + zy)
+            }
             Shape::GridSag { base, terms, grid } => grid_sag(base, terms, grid, x, y),
         }
     }
@@ -521,6 +543,7 @@ impl Shape<'_> {
                 | Shape::OddAsphere { .. }
                 | Shape::Tilted { .. }
                 | Shape::Irregular(_)
+                | Shape::User { .. }
         )
     }
 
@@ -544,6 +567,7 @@ impl Shape<'_> {
             Shape::Irregular(ir) => ir.c,
             Shape::Zernike { base, terms } => zern_grid_curv(base, terms, None),
             Shape::GridSag { base, terms, grid } => zern_grid_curv(base, terms, grid),
+            Shape::User { c, shape, h, .. } => c + shape.paraxial_curv(h),
         }
     }
 
@@ -558,6 +582,7 @@ impl Shape<'_> {
             | Shape::Cylinder(Base { a, .. })
             | Shape::Toroid { a, .. } => Some(2.0 * a.first().copied().unwrap_or(0.0)),
             Shape::OddAsphere { b, .. } => Some(2.0 * b.get(1).copied().unwrap_or(0.0)),
+            Shape::User { shape, h, .. } => Some(shape.paraxial_curv(h)),
             Shape::Plane | Shape::Tilted { .. } | Shape::Zernike { .. } | Shape::GridSag { .. } => {
                 None
             }
@@ -606,7 +631,8 @@ impl Shape<'_> {
             | Shape::GridSag { .. }
             | Shape::OddAsphere { .. }
             | Shape::Tilted { .. }
-            | Shape::Irregular(_) => Isect::Newton,
+            | Shape::Irregular(_)
+            | Shape::User { .. } => Isect::Newton,
         }
     }
 
@@ -679,9 +705,8 @@ impl Shape<'_> {
             | Shape::ConicTilted { c, k, .. }
             | Shape::OddAsphere { c, k, .. }
             | Shape::EvenAsphere(Base { c, k, .. })
-            | Shape::Irregular(Irregular { c, k, .. }) => {
-                isect_with(c, k, pl, kl, sig, |x, y| self.sag(x, y))
-            }
+            | Shape::Irregular(Irregular { c, k, .. })
+            | Shape::User { c, k, .. } => isect_with(c, k, pl, kl, sig, |x, y| self.sag(x, y)),
         }
     }
 }

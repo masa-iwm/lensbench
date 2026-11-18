@@ -1,4 +1,4 @@
-//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、Python の関数 1 つ。
+//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、Python の関数 1 つ。
 //!
 //! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel・Web 版の入口がそれを渡す
 //! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`・`web`）。
@@ -10,6 +10,7 @@ use lensbench_sdk::plugin::{
 };
 use lensbench_sdk::schemars::JsonSchema;
 use lensbench_sdk::serde::{Deserialize, Serialize};
+use lensbench_sdk::shape::{ShapeInstance, ShapeModel};
 use lensbench_sdk::trace::FieldSel;
 use lensbench_sdk::{Extensions, Result};
 use std::sync::Arc;
@@ -18,7 +19,8 @@ use std::sync::Arc;
 pub fn extensions() -> Extensions {
     let e = Extensions::named("example")
         .plugins(|r| r.register(Arc::new(Gain)))
-        .analysis(Chief);
+        .analysis(Chief)
+        .shape_model(Arc::new(Saddle));
     #[cfg(feature = "gui")]
     let e = gui::add(e);
     #[cfg(feature = "py")]
@@ -72,6 +74,51 @@ impl Instance for GainRun {
             "y".to_string(),
             Array::f64(shape.to_vec(), y)?,
         )]))
+    }
+}
+
+// ------------------------------------------------------------------------------------------ 面の形
+
+/// 鞍形の形（名前 example_saddle、設定 a [1/mm]）: 面の種類 USERSHAPE の面に、編集の操作
+/// （`set_surface_data`）では `"shape": {"model": "example_saddle", "config": {"a": 1e-4}}`、システムファイルでは
+/// `"shape": {"user": {"model": "example_saddle", "config": {"a": 1e-4}}}` で付ける。土台の二次曲面に a x y を足す。
+/// a は変数にできる（パラメータ `<面>.u_a`）
+pub struct Saddle;
+
+impl ShapeModel for Saddle {
+    fn name(&self) -> &str {
+        "example_saddle"
+    }
+    fn doc(&self) -> String {
+        "Saddle a x y added to the conic".into()
+    }
+    fn params(&self) -> Vec<ParamSpec> {
+        vec![ParamSpec::new(
+            "a",
+            ParamType::Num,
+            Some(Value::Num(1e-4)),
+            "1/mm",
+            "Saddle coefficient",
+        )]
+    }
+    fn prepare(&self, config: &Config) -> Result<Arc<dyn ShapeInstance>> {
+        let a = ConfigReader::new(config).num("a", 0.0)?;
+        Ok(Arc::new(SaddleShape { a }))
+    }
+}
+
+struct SaddleShape {
+    a: f64,
+}
+
+impl ShapeInstance for SaddleShape {
+    /// 土台に足す矢高と勾配 (z, ∂z/∂x, ∂z/∂y)
+    fn sag(&self, x: f64, y: f64) -> (f64, f64, f64) {
+        (self.a * x * y, self.a * y, self.a * x)
+    }
+    /// 設定 a による微分（変数・dOPL/dp 用）
+    fn dsag(&self, key: &str, x: f64, y: f64) -> Option<[f64; 3]> {
+        (key == "a").then_some([x * y, y, x])
     }
 }
 

@@ -216,6 +216,11 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         if d.typ() == SurfType::User && !d.ignore {
             notimpl!("surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)");
         }
+        if d.typ() == SurfType::UserShape && !d.ignore {
+            notimpl!(
+                "surface {k}: a user-defined shape can't be written to .zmx (OpticStudio has none)"
+            );
+        }
         w(&mut o, format!("SURF {k}"));
         let typ = match d.typ() {
             SurfType::Standard => "STANDARD",
@@ -236,7 +241,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::TiltSurf => "TILTSURF",
             SurfType::Irregular => "IRREGULA",
             // 無視する面は標準面として書く
-            SurfType::User => "STANDARD",
+            SurfType::User | SurfType::UserShape => "STANDARD",
         };
         // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）
         let bire = match (&d.bire, d.typ()) {
@@ -426,7 +431,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 w(&mut o, format!("  PARM 1 {}", f(d.parm(1).unwrap_or(0.0))));
                 w(&mut o, format!("  PARM 2 {}", d.opd_mode()));
             }
-            SurfType::User => {}
+            SurfType::User | SurfType::UserShape => {}
             SurfType::Toroidal => {
                 w(&mut o, format!("  PARM 1 {}", f(d.parm(1).unwrap_or(0.0))));
                 for (i, a) in d.asph().iter().enumerate() {

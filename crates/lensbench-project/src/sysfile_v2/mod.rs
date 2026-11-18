@@ -416,6 +416,23 @@ pub enum Shape {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         a: Vec<f64>,
     },
+    /// 利用者定義の形: 二次曲面（c・k）に、登録したモデル model の矢高を足す
+    User {
+        #[serde(default, skip_serializing_if = "zero")]
+        c: f64,
+        #[serde(default, skip_serializing_if = "zero")]
+        k: f64,
+        /// モデルの名前（空は未設定）
+        model: String,
+        #[serde(default)]
+        config: Config,
+        /// z について裏返した（鏡の後・玉の反転。矢高の符号が逆）
+        #[serde(default, skip_serializing_if = "no")]
+        flip_z: bool,
+        /// x について映した（玉の反転。x の向きが逆）
+        #[serde(default, skip_serializing_if = "no")]
+        mirror_x: bool,
+    },
 }
 
 /// Zernike Sag の形

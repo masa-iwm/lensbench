@@ -44,6 +44,7 @@ pub fn surf_type_parse(s: &str) -> Result<SurfType> {
         "TILTSURF" | "TILTED" => SurfType::TiltSurf,
         "IRREGULA" | "IRREGULAR" => SurfType::Irregular,
         "USER" => SurfType::User,
+        "USERSHAPE" => SurfType::UserShape,
         _ => invalid!("surface type {s}"),
     })
 }
@@ -69,6 +70,7 @@ pub(crate) fn surf_type_name(t: SurfType) -> &'static str {
         SurfType::TiltSurf => "TILTSURF",
         SurfType::Irregular => "IRREGULA",
         SurfType::User => "USER",
+        SurfType::UserShape => "USERSHAPE",
     }
 }
 
@@ -81,6 +83,7 @@ fn type_data_ok(d: &Surface) -> Result<()> {
         SurfType::Binary2 => d.bin2().is_some(),
         SurfType::Gradium | SurfType::Gradient9 => d.grin().is_some(),
         SurfType::User => d.user().is_some(),
+        SurfType::UserShape => d.user_shape().is_some(),
         _ => true,
     };
     if !ok {

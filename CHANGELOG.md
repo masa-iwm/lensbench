@@ -14,6 +14,14 @@
 - **条件で定める視野の条件の JSON**: core のシステムの形（serve の `system_data` など）でも、システムファイルと同じ
   `{"cond": "position", "surface": 5}` の形にした。
 
+### 足したもの
+
+- **利用者定義の形（面の種類 USERSHAPE）**: 外のクレートが `lensbench_sdk::shape::ShapeModel` を実装し
+  `Extensions::shape_model` で足すと、二次曲面（`c`・`k`）にモデルの矢高を足した面を使える。屈折・反射・材料・膜・
+  偏光・dOPL/dp・着地点の微分・玉の反転はほかの面と同じに効き、設定の数の項目はパラメータ `<面>.u_<項目>` で変数に
+  できる。システムファイルは `"shape": {"user": {…}}`。.zmx には書けない。約束は [ライブラリ](docs/rust.md) と
+  `check_shape`。雛形 `examples/extension` に例（`example_saddle`）
+
 ### 速さ
 
 - 波面を使う計算（最適化の波面の評価関数・公差・PSF・波面）を少し速くした（値は同じ）

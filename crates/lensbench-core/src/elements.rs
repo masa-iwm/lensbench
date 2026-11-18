@@ -216,6 +216,7 @@ pub fn reversible(s: &Surface) -> bool {
             | T::Irregular
             | T::Gradium
             | T::Gradient9
+            | T::UserShape
     )
 }
 

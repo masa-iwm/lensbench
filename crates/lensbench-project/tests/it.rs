@@ -23,6 +23,7 @@ mod surface_edits;
 mod surface_ops;
 mod sysfile;
 mod units;
+mod usershape;
 mod usersurf;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）

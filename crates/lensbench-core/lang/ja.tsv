@@ -347,7 +347,7 @@ solve {n} needs another surface (other)	ソルブ {n} には別の面（other）
 macro number {param}	マクロの番号 {param}
 solve type {name} ({})	ソルブの種類 {name}（{}）
 pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)	ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）
-parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.., for pickups also semi p1.. before0..4 after0..4 coating)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜、ピックアップでは semi p1〜 before0〜4 after0〜4 coating も）
+parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜 u_<設定>、ピックアップでは semi p1〜 before0〜4 after0〜4 coating も）
 no surface named {t}	名前 {t} の面がありません
 several surfaces are named {t} ({hits:?}); use the number	名前 {t} の面が複数あります（{hits:?}）。番号で指定してください
 parameter {s} (write surface.type, e.g. 3.t)	パラメータ {s}（面.種類 の形で、例 3.t）
@@ -566,6 +566,7 @@ surface {k}: Grid Sag interpolation {interp}	面 {k}: Grid Sag の補間 {interp
 a field set by a condition ({c:?}) can't be written to .zmx (OpticStudio has none)	条件で定める視野（{c:?}）は .zmx に書けません（OpticStudio にありません）
 surface {k}: an index offset (dn {}, disp {}) can't be written to .zmx	面 {k}: 屈折率オフセット（dn {}、disp {}）は .zmx に書けません
 surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)	面 {k}: ユーザー定義の面は .zmx に書けません（OpticStudio にありません）
+surface {k}: a user-defined shape can't be written to .zmx (OpticStudio has none)	面 {k}: ユーザー定義の形は .zmx に書けません（OpticStudio にありません）
 surface {k}: the Gradium profile {name} is flipped (after a mirror or in a reversed lens) and differs from the profile file, so it can't be written to .zmx	面 {k}: Gradium の分布 {name} はミラーの後か反転したレンズの中で反転したもので分布のファイルと違うため、.zmx に書けません
 surface {k}: the birefringent plate surface is {t:?} (standard only)	面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）
 surface {k}: no Binary 2 phase	面 {k}: Binary 2 の位相がありません
@@ -728,6 +729,7 @@ angle field ({x}°, {y}°): a field of exactly 90°	角度の視野 ({x}°, {y}�
 {}: birefringent plate Mode {mode} (the extraordinary ray path) can't be traced (only 0 and 2)	{}: 複屈折材の板の Mode {mode}（異常光の道）は追跡できません（0 と 2 だけ）
 {}: no index for the extraordinary material {}	{}: 異常光 {} の屈折率がありません
 user-defined surface (surface {j}) has no model (user)	ユーザー定義の面（面 {j}）にモデル（user）がありません
+user-defined shape (surface {j}) has no model (shape)	ユーザー定義の形（面 {j}）にモデル（shape）がありません
 user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})	空気以外の中・ミラーのユーザー定義の面（面 {j}: {nb} → {na}）
 paraxial lens in a medium other than air (surface {j}: {nb} → {na})	空気以外の中の理想レンズ（面 {j}: {nb} → {na}）
 field condition surface {j} (surfaces not ignored, 1 to {img_s})	視野の条件の面 {j}（無視しない面 1〜{img_s}）
@@ -751,6 +753,15 @@ lens or group {} range {:?}: the entrance direction differs from the first range
 no coordinate system for surface {b}	面 {b} の座標系がありません
 lens or group {} range {:?}: the return rotation can't be made into coordinate break angles	レンズ・群 {} の範囲 {:?}: 戻りの回転を座標ブレークの角にできません
 no user-defined surface model {name} (registered: {})	ユーザー定義の面のモデル {name} はありません（登録: {}）
+no user-defined shape model {name} (registered: {})	ユーザー定義の形のモデル {name} はありません（登録: {}）
+no user-defined shape has the number setting {n}	ユーザー定義の形に数の設定 {n} はありません
+no user-defined shape has the number setting {s}	ユーザー定義の形に数の設定 {s} はありません
+surface {j} is not a user-defined shape with the number setting {kind}	面 {j} は数の設定 {kind} を持つユーザー定義の形ではありません
+check_shape: radius must be positive ({radius})	check_shape: 半径は正にしてください（{radius}）
+user-defined shape model {name}: dsag of {key} at ({x}, {y}) is {d:?} but the difference of the sag gives {num:?}	ユーザー定義の形のモデル {name}: ({x}, {y}) での {key} の dsag は {d:?} ですが、矢高の差分では {num:?} です
+user-defined shape model {name}: dsag of {key} is given at the vertex but not at ({x}, {y})	ユーザー定義の形のモデル {name}: {key} の dsag は頂点では返りますが、({x}, {y}) では返りません
+user-defined shape model {name}: the gradient ({zx}, {zy}) at ({x}, {y}) does not match the difference of the sag ({nx}, {ny})	ユーザー定義の形のモデル {name}: ({x}, {y}) での勾配 ({zx}, {zy}) が矢高の差分 ({nx}, {ny}) と合いません
+user-defined shape model {name}: the sag is not finite at ({x}, {y}) (inside 1.2 × radius)	ユーザー定義の形のモデル {name}: ({x}, {y})（半径の 1.2 倍の内側）で矢高が有限ではありません
 the table theta_deg and height need 2 or more points of the same length	表の theta_deg・height は同じ長さの 2 点以上に
 the table theta_deg must be ascending finite values	表の theta_deg は増える順の有限の値に
 ideal_mapping f must be finite and not 0 ({f})	ideal_mapping の f は 0 以外の有限の値に（{f}）

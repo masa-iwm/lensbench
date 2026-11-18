@@ -401,8 +401,8 @@ pub(crate) fn set_surface_data(
             )
             .into());
         }
-        // user（利用者定義の面）と semi_auto は無ければ書き出さないので、無くても足せる
-        if !o.contains_key(k) && !["user", "semi_auto", "bire"].contains(&k.as_str()) {
+        // user（利用者定義の面）・shape（利用者定義の形）と semi_auto は無ければ書き出さないので、無くても足せる
+        if !o.contains_key(k) && !["user", "shape", "semi_auto", "bire"].contains(&k.as_str()) {
             return Err(format!("no surface item {k}").into());
         }
         let x = coerce(x.clone(), o.get(k), k, k == "bin2");

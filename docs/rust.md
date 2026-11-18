@@ -27,18 +27,18 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 
 ## 拡張の約束: 外のクレートから足す
 
-別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面・カタログの形式を足し、自分の exe・wheel を組める
+別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・カタログの形式を足し、自分の exe・wheel を組める
 （DLL は使わない。静的にリンクする）。依存するのは `lensbench-sdk` 1 つ。
 
 - 足すものは `lensbench_sdk::Extensions` 1 つにまとめる: `.plugins(..)`・`.analysis(..)`・`.detector(..)`・
-  `.surface_model(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
+  `.surface_model(..)`・`.shape_model(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
   （`gui_analysis`・`gui_detector`・`gui_translations`）、Python の関数は `lensbench_sdk::py::PyExtensions`（`py_module`）。
 - 入口に渡す: CLI は `lensbench_sdk::cli::main(ext)`、GUI は `lensbench_sdk::gui::main(ext)`、Python の拡張モジュールは
   `#[pymodule]` から `lensbench_sdk::py::module(m, ext)`。呼ぶ順の約束は無い。
-- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面のモデル・カタログの拡張子）は誤りになる
+- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・カタログの拡張子）は誤りになる
   （置き換えるときは後の方に `.replacing()`）。`Extensions::named(..)` の名前は誤りの文にだけ使い、サブコマンドなど
   利用者に見える名前には入らない。
-- 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面）。
+- 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面・勾配が矢高の差分と合わない形）。
   試験で呼ぶ。
 - **約束の型** は `lensbench-sdk` が再輸出するものだけ（一覧は `crates/lensbench-sdk/API.txt`）。各クレートのほかの
   `pub` は中の都合で変わる。一覧の試験（`tests/api.rs`）が見るのは再輸出の名前だけで、型の中身（関数の引数・
@@ -71,6 +71,19 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   同梱のモデル `ideal_mapping`: 画角 θ → 像高 h を与える理想レンズ（`f`、`mapping` = `tan`（f tan θ、理想レンズとビット同じ）・`theta`（f θ）・
   `sin`（f sin θ）・`equisolid`（2f sin(θ/2)）・`stereographic`（2f tan(θ/2)）・`poly`（h = f(θ + c₁θ³ + c₂θ⁵ + …)、`coef`）・
   `table`（`theta_deg`・`height` の表を PCHIP で補間））。同じ方向の光線は焦点面の (h(θ), f) に無収差で集まる（物体は無限遠を想定）
+- `lensbench_core::usershape`（SDK では `lensbench_sdk::shape`）: 利用者が定義する形の口。面の形は土台の二次曲面
+  （`c`・`k`）にモデルの矢高を足したもので、働きはふつうの屈折・反射（材料・膜・偏光・dOPL/dp・着地点の微分・
+  玉の反転はほかの面と同じに効く）。`ShapeModel`（名前・`prepare(&Config)`）の `ShapeInstance::sag(x, y)`
+  （土台に足す矢高と勾配 (z, ∂z/∂x, ∂z/∂y)）を実装し、変数にしたい設定の項目は `dsag(項目, x, y)` も返す。
+  `Extensions::shape_model` か拡張の表の `add_shape_model` で足す。面は種類 `USERSHAPE` で、書き方は 2 通り:
+  - 編集の操作（`set_surface_data` の `data`）: `"typ": "UserShape", "shape": {"model": 名前, "config": {…}, "flip_z": …, "mirror_x": …}`
+  - システムファイルの面の行: `"shape": {"user": {"c": …, "k": …, "model": 名前, "config": {…}, "flip_z": …, "mirror_x": …}}`
+
+  設定の数の項目（`Num`。数の並びは除く）はパラメータ `3.u_<項目>`（変数・ピックアップ・微分）。約束は、クリア半径の少し外まで
+  有限で勾配が連続、`prepare` は軽い（値を変えるたびに作り直す）、状態を持たずどのスレッドから呼んでもよい。
+  鏡の後・玉の反転の裏返し（z・x の向き）は core が包むので、モデルは何もしなくてよい。近軸の曲率は土台の c に頂点の
+  2 階（勾配の差分、幅はクリア半径の 1e-6）を足したもので、YZ 面だけ。.zmx には書けない。`check_shape(モデル, 設定, 半径)` で約束を確かめられる
+  （`lensbench_sdk::check` は `example_config`・`example_radius` で呼ぶ）
 
 - `lensbench_core::param`: システムを作り直さずにパラメータを変える。面は番号か名前（コメント）で、`sys.param("L1.t")`・
   `sys.param("3.c")` のように指定し、`set_param`・`with_params`（軽い複製）で変える。種類は `c` `r` `k` `a2`〜`a16`

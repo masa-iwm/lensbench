@@ -1,4 +1,4 @@
-//! 足したものの試験: 足し忘れの検査と、CLI・serve と同じ呼び出しで解析とプラグインが動くこと
+//! 足したものの試験: 足し忘れの検査と、CLI・serve と同じ呼び出しで解析とプラグインが動くこと、形の約束
 
 use lensbench_extension_example::extensions;
 
@@ -27,4 +27,12 @@ fn the_plugin_runs() {
         )
         .unwrap();
     assert_eq!(out["y"].as_f64().unwrap(), [3.0, 6.0]);
+}
+
+#[test]
+fn the_shape_keeps_the_contract() {
+    use lensbench_sdk::plugin::{Config, Value};
+    use lensbench_sdk::shape::check_shape;
+    let cfg = Config::from([("a".to_string(), Value::Num(2e-4))]);
+    check_shape(&lensbench_extension_example::Saddle, &cfg, 10.0).unwrap();
 }

@@ -3089,6 +3089,52 @@
             "cylinder"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "利用者定義の形: 二次曲面（c・k）に、登録したモデル model の矢高を足す",
+          "properties": {
+            "user": {
+              "additionalProperties": false,
+              "properties": {
+                "c": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "config": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/Value"
+                  },
+                  "default": {},
+                  "type": "object"
+                },
+                "flip_z": {
+                  "description": "z について裏返した（鏡の後・玉の反転。矢高の符号が逆）",
+                  "type": "boolean"
+                },
+                "k": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "mirror_x": {
+                  "description": "x について映した（玉の反転。x の向きが逆）",
+                  "type": "boolean"
+                },
+                "model": {
+                  "description": "モデルの名前（空は未設定）",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "user"
+          ],
+          "type": "object"
         }
       ]
     },

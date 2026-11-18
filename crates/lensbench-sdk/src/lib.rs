@@ -64,6 +64,11 @@ pub mod surface {
     pub use lensbench_core::usersurf::{check_flip, Flip, SurfaceInstance, SurfaceModel};
 }
 
+/// 利用者定義の形のモデル（面の種類 USERSHAPE: 二次曲面に足す矢高と勾配。追跡・grad・偏光・膜・反転は本体が受け持つ）
+pub mod shape {
+    pub use lensbench_core::usershape::{check_shape, ShapeInstance, ShapeModel};
+}
+
 /// レンズカタログの形式
 pub mod catalog {
     pub use lensbench_core::catalog::{CatalogLens, LensCatalogSource};
@@ -75,7 +80,7 @@ pub mod detector {
 }
 
 /// 足し忘れの検査: GUI の見せ方の無い解析、検出器の欄の無い検出器（feature `gui` のとき）、反転の約束を守らない
-/// 利用者定義の面のモデル。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
+/// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
 pub fn check(ext: &Extensions) -> Vec<String> {
     let mut out = Vec::new();
     let table = match ext.ext() {
@@ -106,6 +111,14 @@ pub fn check(ext: &Extensions) -> Vec<String> {
         if let Some(c) = m.example_config() {
             if let Err(e) = lensbench_core::usersurf::check_flip(m.as_ref(), &c) {
                 out.push(format!("surface model {}: {e}", m.name()));
+            }
+        }
+    }
+    for m in ext.shape_models() {
+        if let Some(c) = m.example_config() {
+            let r = m.example_radius();
+            if let Err(e) = lensbench_core::usershape::check_shape(m.as_ref(), &c, r) {
+                out.push(format!("shape model {}: {e}", m.name()));
             }
         }
     }

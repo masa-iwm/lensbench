@@ -288,6 +288,26 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
                 angle,
             ]));
         }
+        Some(Shape::User {
+            c,
+            k,
+            model,
+            config,
+            flip_z,
+            mirror_x,
+        }) => {
+            (d.c, d.k) = (c, k);
+            let shape = if model.is_empty() {
+                None
+            } else {
+                let mut u = lensbench_core::usershape::UserShape::new(&model, config)
+                    .map_err(|e| format!("shape.user: {e}"))?;
+                u.flip_z = flip_z;
+                u.mirror_x = mirror_x;
+                Some(u)
+            };
+            d.form = Form::UserShape { shape };
+        }
         Some(Shape::Cylinder { c, k, a }) => {
             cyl = true;
             (d.c, d.k) = (c, k);

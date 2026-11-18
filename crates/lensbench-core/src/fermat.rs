@@ -608,7 +608,12 @@ impl System {
             .map(|pp| {
                 if matches!(
                     pp.kind,
-                    Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+                    Kind::Curv
+                        | Kind::Radius
+                        | Kind::Conic
+                        | Kind::Asph(_)
+                        | Kind::Zern(_)
+                        | Kind::User(_)
                 ) && sf[pp.surf].takes_shape_param(pp.kind)
                 {
                     t.rec.iter().position(|rs| rs.surf == pp.surf)

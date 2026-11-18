@@ -44,6 +44,9 @@ pub enum SurfType {
     Irregular,
     /// 利用者定義の面（[`crate::usersurf`]）: 形は頂点の平面、曲げ方と位相は登録のモデル（`Surface::user`）
     User,
+    /// 利用者定義の形の面（[`crate::usershape`]）: 形は二次曲面（c・k）＋登録のモデルの矢高（`Surface::user_shape`）、
+    /// 働きはふつうの屈折・反射
+    UserShape,
 }
 
 /// Binary 2 の位相 Φ = order · Σ coef[i] ρ^{2(i+1)}（ρ = r / norm、係数の単位は rad）

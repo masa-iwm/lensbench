@@ -10,6 +10,7 @@
 use crate::freeform::{GridSag, ZernSag};
 use crate::grin::Grin;
 use crate::surface::{Binary2, CylFresnel, SurfType, Surface};
+use crate::usershape::UserShape;
 use crate::usersurf::UserSurf;
 use std::sync::Arc;
 
@@ -77,6 +78,8 @@ pub enum Form {
     Irregular { p: [f64; 8] },
     /// 利用者定義の面のモデルと設定
     User { user: Option<UserSurf> },
+    /// 利用者定義の形のモデルと設定（土台は面の c・k）
+    UserShape { shape: Option<UserShape> },
 }
 
 impl Form {
@@ -129,6 +132,7 @@ impl Form {
             SurfType::TiltSurf => Form::TiltSurf { tan: [0.0; 2] },
             SurfType::Irregular => Form::Irregular { p: [0.0; 8] },
             SurfType::User => Form::User { user: None },
+            SurfType::UserShape => Form::UserShape { shape: None },
         }
     }
 
@@ -153,6 +157,7 @@ impl Form {
             Form::TiltSurf { .. } => SurfType::TiltSurf,
             Form::Irregular { .. } => SurfType::Irregular,
             Form::User { .. } => SurfType::User,
+            Form::UserShape { .. } => SurfType::UserShape,
         }
     }
 }
@@ -307,6 +312,14 @@ impl Surface {
         }
     }
 
+    /// 利用者定義の形のモデルと設定
+    pub fn user_shape(&self) -> Option<&UserShape> {
+        match &self.form {
+            Form::UserShape { shape } => shape.as_ref(),
+            _ => None,
+        }
+    }
+
     /// 座標ブレークのずらしと順序の置き場（座標ブレークだけ）
     pub fn cb_mut(&mut self) -> Option<(&mut [f64; 5], &mut u8)> {
         match &mut self.form {
@@ -375,6 +388,14 @@ impl Surface {
     pub fn user_mut(&mut self) -> Option<&mut Option<UserSurf>> {
         match &mut self.form {
             Form::User { user } => Some(user),
+            _ => None,
+        }
+    }
+
+    /// 利用者定義の形のモデルの置き場（利用者定義の形の面だけ）
+    pub fn user_shape_mut(&mut self) -> Option<&mut Option<UserShape>> {
+        match &mut self.form {
+            Form::UserShape { shape } => Some(shape),
             _ => None,
         }
     }
@@ -473,6 +494,7 @@ impl Surface {
                 }
             }
             Form::TiltSurf { tan } => tan.iter_mut().for_each(|a| *a = -*a),
+            Form::UserShape { shape: Some(u) } => u.flip_z = !u.flip_z,
             Form::Irregular { p } => {
                 for i in 2..7 {
                     p[i] = -p[i];
@@ -520,6 +542,7 @@ impl Surface {
                 }
             }
             Form::TiltSurf { tan } => tan[0] = -tan[0],
+            Form::UserShape { shape: Some(u) } => u.mirror_x = !u.mirror_x,
             Form::Irregular { p } => {
                 p[0] = -p[0];
                 p[3] = -p[3];
@@ -669,6 +692,8 @@ struct FormFlat {
     jones: [f64; 8],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     user: Option<UserSurf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shape: Option<UserShape>,
 }
 
 impl From<Form> for FormFlat {
@@ -693,6 +718,7 @@ impl From<Form> for FormFlat {
             opd_mode: s.opd_mode(),
             jones: s.jones(),
             user: s.user_mut().and_then(|u| u.take()),
+            shape: s.user_shape_mut().and_then(|u| u.take()),
         }
     }
 }
@@ -728,6 +754,7 @@ impl TryFrom<FormFlat> for Form {
         put!("grin", s.grin_mut(), v.grin, None);
         put!("jones", s.jones_mut(), v.jones, JONES_IDENTITY);
         put!("user", s.user_mut(), v.user, None);
+        put!("shape", s.user_shape_mut(), v.shape, None);
         match &mut s.form {
             Form::GridSag { grid_file, .. } => *grid_file = v.grid_file,
             _ if !v.grid_file.is_empty() => unused.push("grid_file"),

@@ -331,7 +331,12 @@ impl System {
             .map(|pp| {
                 let shape = matches!(
                     pp.kind,
-                    Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+                    Kind::Curv
+                        | Kind::Radius
+                        | Kind::Conic
+                        | Kind::Asph(_)
+                        | Kind::Zern(_)
+                        | Kind::User(_)
                 ) && sf[pp.surf].takes_shape_param(pp.kind);
                 if shape {
                     t.rec.iter().position(|rs| rs.surf == pp.surf)
@@ -770,7 +775,12 @@ impl System {
             let shape = p.surface() == Some(j)
                 && matches!(
                     p.kind,
-                    Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+                    Kind::Curv
+                        | Kind::Radius
+                        | Kind::Conic
+                        | Kind::Asph(_)
+                        | Kind::Zern(_)
+                        | Kind::User(_)
                 )
                 && d.takes_shape_param(p.kind);
             if dn == 0.0 && !shape {

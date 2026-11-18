@@ -99,6 +99,8 @@ impl Shape<'_> {
             (Shape::Zernike { terms, .. } | Shape::GridSag { terms, .. }, Kind::Zern(_)) => {
                 terms.is_some()
             }
+            (Shape::User { .. }, Kind::Curv | Kind::Radius | Kind::Conic) => true,
+            (Shape::User { shape, .. }, Kind::User(k)) => shape.dsag(k.name(), 0.0, 0.0).is_some(),
             _ => false,
         }
     }
@@ -138,7 +140,11 @@ impl Shape<'_> {
                 }
             }
             (Shape::Irregular(ir), _) => ir.dsag(kind, x, y),
-            (Shape::Conic { c, k } | Shape::OddAsphere { c, k, .. }, _) => rot(c, k),
+            (Shape::User { shape, .. }, Kind::User(k)) => shape.dsag(k.name(), x, y)?,
+            (
+                Shape::Conic { c, k } | Shape::OddAsphere { c, k, .. } | Shape::User { c, k, .. },
+                _,
+            ) => rot(c, k),
             (
                 Shape::EvenAsphere(b)
                 | Shape::Zernike { base: b, .. }

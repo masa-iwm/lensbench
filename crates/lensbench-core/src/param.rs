@@ -88,10 +88,22 @@ pub enum Kind {
     After(u8),
     /// 膜の名前（ピックアップだけ。倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）
     Coating,
+    /// 利用者定義の形の面の設定の数の項目（名前、[`crate::usershape`]）。名前は `u_<項目>`（面の番号と `.` で区切るので、項目の名前に `.` は使えない）
+    User(crate::usershape::UserKey),
 }
 
 impl Kind {
     pub fn parse(s: &str) -> Result<Kind> {
+        if let Some(n) = s
+            .trim()
+            .strip_prefix("u_")
+            .filter(|n| !n.is_empty() && !n.contains('.'))
+        {
+            return match crate::usershape::UserKey::get(n) {
+                Some(k) => Ok(Kind::User(k)),
+                None => invalid!("no user-defined shape has the number setting {n}"),
+            };
+        }
         let l = s.trim().to_ascii_lowercase();
         Ok(match l.as_str() {
             "c" | "curv" => Kind::Curv,
@@ -135,7 +147,7 @@ impl Kind {
                         return Ok(Kind::Asph(n / 2 - 1));
                     }
                 }
-                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.., for pickups also semi p1.. before0..4 after0..4 coating)")
+                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)")
             }
         })
     }
@@ -164,6 +176,7 @@ impl Kind {
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
             Kind::Coating => "coating".into(),
+            Kind::User(k) => format!("u_{}", k.name()),
         }
     }
 
@@ -449,9 +462,15 @@ impl System {
         }
         // 形に効かない値（Tilted の c・k、Tilted の 3 番目からの asph など）は
         // 変数・微分にしない
+        if let Kind::User(k) = p.kind {
+            if d.user_shape().and_then(|u| u.value(k.name())).is_none() {
+                let kind = p.kind.name();
+                invalid!("surface {j} is not a user-defined shape with the number setting {kind}");
+            }
+        }
         if matches!(
             p.kind,
-            Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+            Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_) | Kind::User(_)
         ) && !d.takes_shape_param(p.kind)
         {
             let (typ, kind) = (d.typ(), p.kind.name());
@@ -525,6 +544,10 @@ impl System {
                 .zern()
                 .as_ref()
                 .and_then(|z| z.coef.get(n as usize - 1).copied())
+                .unwrap_or(0.0),
+            Kind::User(k) => d
+                .user_shape()
+                .and_then(|u| u.value(k.name()))
                 .unwrap_or(0.0),
             Kind::Thick => d.t,
             Kind::Dn => d.dn,
@@ -820,6 +843,14 @@ impl System {
                     }
                     z.coef[i] = v;
                     z.rebuild();
+                }
+                Kind::User(k) => {
+                    let slot = d.user_shape_mut().expect("user-defined shape");
+                    let u = slot
+                        .as_ref()
+                        .expect("user-defined shape")
+                        .with_value(k.name(), v)?;
+                    *slot = Some(u);
                 }
                 Kind::Thick => d.t = v,
                 Kind::Dn => {

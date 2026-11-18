@@ -44,6 +44,10 @@ mimalloc = { version = "0.1", default-features = false }
 name = "trace"
 harness = false
 
+[[bench]]
+name = "usershape"
+harness = false
+
 # 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない）
 [[test]]
 name = "it"

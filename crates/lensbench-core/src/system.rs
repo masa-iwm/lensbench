@@ -492,6 +492,12 @@ impl System {
         {
             notimpl!("Jones matrix surface {j} on a curved surface");
         }
+        // モデルの無い USERSHAPE の面は二次曲面として追うことになるので、組み立てで止める
+        if let Some(j) = sf.iter().position(|d| {
+            d.typ() == crate::surface::SurfType::UserShape && d.user_shape().is_none() && !d.ignore
+        }) {
+            invalid!("user-defined shape (surface {j}) has no model (shape)");
+        }
         let st = self.stop();
         if st == 0 || st >= sf.len() - 1 {
             invalid!("stop surface {st}");

@@ -13,6 +13,7 @@
 use crate::catalog::{LbcatSource, LensCatalogSource, ZmxFileSource};
 use crate::error::Result;
 use crate::plugin::Registry;
+use crate::usershape::ShapeModel;
 use crate::usersurf::{IdealMapping, SurfaceModel};
 use crate::{invalid, RwLockExt};
 use std::any::{Any, TypeId};
@@ -29,6 +30,7 @@ pub struct Ext {
     /// 足した形式（後から足したものが先に引かれる）。同梱の形式は [`Ext::catalog_sources`] が最後に付ける
     sources: Vec<CatalogSource>,
     surfaces: BTreeMap<String, Arc<dyn SurfaceModel>>,
+    shapes: BTreeMap<String, Arc<dyn ShapeModel>>,
     plugins: Registry,
     /// 上の層の表（型ごとに 1 つ）
     slots: BTreeMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -41,6 +43,7 @@ impl Default for Ext {
         Ext {
             sources: Vec::new(),
             surfaces,
+            shapes: BTreeMap::new(),
             plugins: Registry::new(),
             slots: BTreeMap::new(),
         }
@@ -52,6 +55,7 @@ impl std::fmt::Debug for Ext {
         f.debug_struct("Ext")
             .field("sources", &self.sources.len())
             .field("surfaces", &self.surfaces.keys().collect::<Vec<_>>())
+            .field("shapes", &self.shapes.keys().collect::<Vec<_>>())
             .field("plugins", &self.plugins.list())
             .field("slots", &self.slots.len())
             .finish()
@@ -78,6 +82,18 @@ impl Ext {
     /// 面のモデルを外す（あれば true）
     pub fn remove_surface_model(&mut self, name: &str) -> bool {
         self.surfaces.remove(name).is_some()
+    }
+
+    /// 利用者定義の形のモデルを足す（同じ名前は差し替える）
+    pub fn add_shape_model(&mut self, m: Arc<dyn ShapeModel>) -> &mut Self {
+        crate::usershape::declare(m.as_ref());
+        self.shapes.insert(m.name().to_string(), m);
+        self
+    }
+
+    /// 形のモデルを外す（あれば true）
+    pub fn remove_shape_model(&mut self, name: &str) -> bool {
+        self.shapes.remove(name).is_some()
     }
 
     /// プラグインの表
@@ -120,6 +136,9 @@ impl Ext {
         for (k, m) in &other.surfaces {
             self.surfaces.insert(k.clone(), m.clone());
         }
+        for (k, m) in &other.shapes {
+            self.shapes.insert(k.clone(), m.clone());
+        }
         for p in other.plugins.plugins() {
             self.plugins.register(p.clone());
         }
@@ -151,6 +170,22 @@ impl Ext {
     /// 面のモデルの名前（名前の順）
     pub fn surface_models(&self) -> Vec<String> {
         self.surfaces.keys().cloned().collect()
+    }
+
+    /// 名前の形のモデル
+    pub fn shape_model(&self, name: &str) -> Result<Arc<dyn ShapeModel>> {
+        match self.shapes.get(name) {
+            Some(m) => Ok(m.clone()),
+            None => invalid!(
+                "no user-defined shape model {name} (registered: {})",
+                self.shape_models().join(", ")
+            ),
+        }
+    }
+
+    /// 形のモデルの名前（名前の順）
+    pub fn shape_models(&self) -> Vec<String> {
+        self.shapes.keys().cloned().collect()
     }
 }
 

@@ -311,6 +311,27 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
                 mirror,
             })?,
         ),
+        SurfType::UserShape => (
+            Some(match d.user_shape() {
+                Some(u) => Shape::User {
+                    c,
+                    k,
+                    model: u.model.clone(),
+                    config: u.config.clone(),
+                    flip_z: u.flip_z,
+                    mirror_x: u.mirror_x,
+                },
+                None => Shape::User {
+                    c,
+                    k,
+                    model: String::new(),
+                    config: Default::default(),
+                    flip_z: false,
+                    mirror_x: false,
+                },
+            }),
+            plain_action()?,
+        ),
         SurfType::User => (
             None,
             own_action(match &d.user() {
