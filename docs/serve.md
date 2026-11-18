@@ -112,7 +112,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 - パラメータの名前は Python の `get_param`・`set_param` と同じ（`3.t`・`STOP.r`・`lens2.tx`・`G1.shift` など）
 - `analyze` で動くのは、解析の登録簿の解析（info・spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf・
-  rays・pop・mech-check・elements・interference と、`ext::register` で登録した解析）と `coatings` だけ。
+  rays・pop・mech-check・elements・interference と、拡張（`Extensions::analysis`）で足した解析）と `coatings` だけ。
   最適化・公差・差し替え・ズーム・レイアウトの書き出しは専用のメソッド（`optimize`・`tolerance`・`swap`・`zoom`・`layout_export`）で。
   設定の JSON をそのまま渡す。鍵は CLI の旗の `-` を `_` にしたもの（`-` のままでもよい）、値は型のまま（数・`true`・数の並びは配列・
   パスの並びは配列）。前の受け方の数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つのパスも受ける。`json` は読み飛ばす。

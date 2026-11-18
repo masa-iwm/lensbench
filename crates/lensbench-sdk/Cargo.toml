@@ -15,9 +15,15 @@ default = []
 # CLI の入口（cli::main）
 cli = ["dep:lensbench-cli"]
 # GUI の入口と見せ方（gui::main・GuiExtensions、egui の再輸出）
-gui = ["dep:lensbench-gui", "dep:egui"]
+gui = ["dep:lensbench-gui", "dep:egui", "lensbench-web?/gui"]
 # Python の拡張モジュールの入口と関数の足し方（py::module、pyo3 の再輸出）
 py = ["dep:lensbench-py", "dep:pyo3"]
+# Web 版の入口（web::Extra・set_extra、wasm-bindgen の再輸出）。scripts/build_web.sh は画面用と計算の Web Worker 用の
+# wasm を分けて作るので、外の wasm のクレートは自分の feature gui・worker・threads から gui（web と一緒なら画面用）・
+# web-worker・web-threads を選ぶ
+web = ["dep:lensbench-web", "dep:wasm-bindgen"]
+web-worker = ["web", "lensbench-web/worker"]
+web-threads = ["web-worker", "lensbench-web/threads"]
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
@@ -33,3 +39,8 @@ lensbench-gui = { path = "../lensbench-gui", optional = true }
 lensbench-py = { path = "../lensbench-py", optional = true, default-features = false }
 egui = { version = "0.31", default-features = false, optional = true }
 pyo3 = { version = "0.30", features = ["abi3-py39"], optional = true }
+# ネイティブでは中身の無いライブラリ
+lensbench-web = { path = "../lensbench-web", optional = true, default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2", optional = true }

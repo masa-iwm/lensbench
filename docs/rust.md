@@ -49,6 +49,11 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 - 雛形は `examples/extension`（プラグイン・解析と GUI の見せ方・Python の関数・試験）。写して始める。profile・
   `[patch]` は git 依存から伝わらないので雛形の Cargo.toml に写してある。Cargo.lock は公開のものを写すと、公開の CI で
   試した依存の版になる。
+- Web 版: 雛形の `web`（wasm32 だけ）が `#[wasm_bindgen(start)]` で拡張を入れる（wasm-bindgen は
+  `lensbench_sdk::web::wasm_bindgen`）。組み立ては同じタグの公開リポジトリで
+  `CRATE=<パッケージ名> MANIFEST=<外の Cargo.toml> scripts/build_web.sh <出力先>`。画面用（feature `gui`）・
+  計算の Web Worker 用（`worker`・`threads`）の wasm を作り、公開の Web 版のページ・JS と一緒に置く
+  （[Web 版](web.md)）。同梱のファイルは `lensbench_sdk::web::set_extra`。
 
 ## パラメータ変更・光路長の微分・光線の解き
 

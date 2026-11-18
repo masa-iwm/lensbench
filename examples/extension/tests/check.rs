@@ -5,6 +5,8 @@ use lensbench_extension_example::extensions;
 #[test]
 fn nothing_is_missing() {
     assert_eq!(lensbench_sdk::check(&extensions()), Vec::<String>::new());
+    // 組み込みと名前が重ならない（Web 版の入口はここが通る前提で expect する）
+    extensions().install().unwrap();
 }
 
 #[test]

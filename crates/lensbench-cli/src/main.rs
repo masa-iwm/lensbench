@@ -1397,7 +1397,7 @@ fn quiet_broken_pipe() {
     }));
 }
 
-/// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足し、
+/// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の `Extensions::analysis` で足した解析も）を足し、
 /// help（英語が元）を表示の言語に訳したもの
 fn cli_command() -> clap::Command {
     cli_command_with(|_| true)

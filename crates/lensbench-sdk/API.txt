@@ -73,3 +73,6 @@ trace: RayStatus = lensbench_core::trace::RayStatus
 trace: RecSel = lensbench_core::system::RecSel
 trace: Trace = lensbench_core::system::Trace
 trace: TraceOpts = lensbench_core::system::TraceOpts
+web: Extra = lensbench_web::Extra
+web: set_extra = lensbench_web::set_extra
+web: wasm_bindgen = wasm_bindgen

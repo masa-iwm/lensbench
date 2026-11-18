@@ -111,6 +111,9 @@ GitHub Pages は COOP/COEP のヘッダーを付けられないので、index.ht
 （`gui`・`worker`）で分ける。片方だけにすると、使わない側のコードがリンクで落ちる。どちらを使うかは
 index.html と worker.js が決める。
 
+外のクレートの拡張を足した Web 版は、`CRATE`（パッケージ名）と `MANIFEST`（その Cargo.toml）を渡すと同じ 3 つを
+そのクレートで作る（出力の名前は `lensbench_web.js` のまま。[ライブラリ（Rust）](rust.md) の「拡張の約束」）。
+
 - そのまま（stable、`gui`）: 画面（index.html）。JS の口 `start` だけ
 - `worker/`（stable、`worker`）: 計算の Web Worker の 1 スレッドの版。どこでも動く
 - `mt/`（nightly、atomics・共有メモリ、`worker`）: 計算の Web Worker（serve と同じ要求を受ける方）が rayon のスレッドを

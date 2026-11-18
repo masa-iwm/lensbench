@@ -3165,10 +3165,12 @@ dependencies = [
  "lensbench-gui",
  "lensbench-project",
  "lensbench-py",
+ "lensbench-web",
  "pyo3",
  "schemars",
  "serde",
  "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 //! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、Python の関数 1 つ。
 //!
-//! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel の入口がそれを渡す
-//! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`）。
+//! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel・Web 版の入口がそれを渡す
+//! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`・`web`）。
 
 use lensbench_sdk::analysis::{Analysis, Cx, Meta};
 use lensbench_sdk::plugin::{
@@ -183,5 +183,23 @@ mod py {
     #[pyo3(name = "lensbench", crate = "lensbench_sdk::py::pyo3")]
     fn lensbench_example(m: &Bound<'_, PyModule>) -> PyResult<()> {
         lensbench_sdk::py::module(m, super::extensions())
+    }
+}
+
+// ------------------------------------------------------------------------------------------ Web 版
+
+/// Web 版の入口（wasm32 だけ）。公開の scripts/build_web.sh に `CRATE=lensbench-extension-example
+/// MANIFEST=<この Cargo.toml>` を渡すと、画面用（feature gui）・計算の Web Worker 用（worker・threads）の wasm を
+/// 作り、公開の Web 版のページと一緒に置く。wasm が読み込まれると（画面・Worker のどれでも）先にこれが動く
+#[cfg(target_arch = "wasm32")]
+mod web {
+    use lensbench_sdk::web::wasm_bindgen::prelude::wasm_bindgen;
+
+    #[wasm_bindgen(start, wasm_bindgen = lensbench_sdk::web::wasm_bindgen)]
+    pub fn init() {
+        // 名前の重なりは組み立ての誤り（tests/check.rs の試験が止める）
+        super::extensions()
+            .install()
+            .expect("no name clashes with the built-in ones");
     }
 }

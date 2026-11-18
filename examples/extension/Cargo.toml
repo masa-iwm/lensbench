@@ -25,13 +25,24 @@ required-features = ["gui"]
 
 [features]
 default = []
+# GUI（ネイティブの exe。wasm では Web 版の画面用）
 gui = ["lensbench-sdk/gui"]
 # Python の拡張モジュール（import 名は lensbench。公開の wheel と同じ環境に入れない）
 py = ["lensbench-sdk/py"]
+# Web 版の計算の Web Worker 用（threads はスレッドありの版）。公開の scripts/build_web.sh が gui・worker・threads を
+# 1 つずつ選んで wasm を作る
+worker = ["lensbench-sdk/web-worker"]
+threads = ["lensbench-sdk/web-threads"]
 
 [dependencies]
-# egui・pyo3・serde・schemars は直接依存せず、SDK の再輸出を使う（版がずれると型が合わない）
+# egui・pyo3・serde・schemars・wasm-bindgen は直接依存せず、SDK の再輸出を使う（版がずれると型が合わない）
+lensbench-sdk = { path = "../../crates/lensbench-sdk" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 lensbench-sdk = { path = "../../crates/lensbench-sdk", features = ["cli"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+lensbench-sdk = { path = "../../crates/lensbench-sdk", features = ["web"] }
 
 # 公開のリポジトリと同じ設定（git 依存からは伝わらないので写す）
 [profile.release]

@@ -9,7 +9,8 @@
 //! }
 //! ```
 //!
-//! GUI は [`gui::main`]（feature `gui`）、Python の拡張モジュールは [`py::module`]（feature `py`）。
+//! GUI は [`gui::main`]（feature `gui`）、Python の拡張モジュールは [`py::module`]（feature `py`）、Web 版は
+//! [`web`]（feature `web` と、画面用は `gui`、計算の Web Worker 用は `web-worker`）。
 //!
 //! **約束の型** はこのクレートが再輸出するものだけ（下のモジュール）。各クレートのほかの pub は中の都合で変わる。
 //! 0.x の間はマイナー版で約束の型を壊してよく、壊す変更は CHANGELOG の「拡張の約束」に書く。外は git のタグか
@@ -145,6 +146,19 @@ pub mod py {
     ) -> pyo3::PyResult<()> {
         lensbench::ext::module_with(m, ext)
     }
+}
+
+/// Web 版の入口（feature `web`。画面用は `gui` も、計算の Web Worker 用は `web-worker`・`web-threads`）。
+///
+/// 外の wasm のクレート（`crate-type = ["cdylib", "rlib"]`）は、`#[wasm_bindgen(start)]` の関数で拡張を入れ
+/// （[`crate::Extensions::install`]）、要れば [`set_extra`] で同梱のファイルを足す。JS の口とページは公開の
+/// Web 版のまま。組み立ては公開のリポジトリの `scripts/build_web.sh` に `CRATE`・`MANIFEST` を渡す
+/// （docs/rust.md の「拡張の約束」）。
+#[cfg(feature = "web")]
+pub mod web {
+    pub use lensbench_web::{set_extra, Extra};
+    #[cfg(target_arch = "wasm32")]
+    pub use wasm_bindgen;
 }
 
 #[cfg(test)]

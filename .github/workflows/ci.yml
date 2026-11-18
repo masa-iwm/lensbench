@@ -210,6 +210,13 @@ jobs:
       - run: cp Cargo.lock examples/extension/Cargo.lock
       - run: cargo clippy --manifest-path examples/extension/Cargo.toml --all-features --all-targets -- -D warnings
       - run: cargo test --manifest-path examples/extension/Cargo.toml --profile ci --features gui
+      # Web 版の入口（画面用・計算の Web Worker 用の wasm。組み立て全体と起動は web ジョブが公開の Web 版で見る）
+      - run: rustup target add wasm32-unknown-unknown
+      - run: |
+          for f in gui worker; do
+            cargo clippy --manifest-path examples/extension/Cargo.toml --lib --target wasm32-unknown-unknown \
+              --features "$f" -- -D warnings
+          done
 
   # Web 版: wasm でビルドし、配る形のフォルダを作って Chromium で起動を確かめる。フォルダは成果物
   # lensbench-web（GitHub Pages への公開は pages.yml）
