@@ -126,12 +126,9 @@ fn written(
     Ok((before, proj, notes, spec))
 }
 
-pub(super) fn save_project(sess: &Session, p: &Value) -> Result<(Value, Vec<Bin>), RpcErr> {
-    let path = p["path"]
-        .as_str()
-        .ok_or_else(|| RpcErr::params("save_project needs path"))?;
+pub(super) fn save_project(sess: &Session, path: &Path) -> Result<Value, RpcErr> {
     let (_, proj, mut notes, spec) = written(sess, None)?;
-    let out = sess.files.check_path(Path::new(path), true)?;
+    let out = sess.files.check_path(path, true)?;
     // 相対パス（.zmx・カタログ・ユーザーカタログ）は書いたまま。別のフォルダへ書くと指す先が変わる
     if out.parent() != spec.file.parent() {
         notes.push(
@@ -139,14 +136,14 @@ pub(super) fn save_project(sess: &Session, p: &Value) -> Result<(Value, Vec<Bin>
                 .into(),
         );
     }
-    std::fs::write(&out, proj.to_json()).map_err(|e| RpcErr::app(format!("{path}: {e}")))?;
-    Ok((json!({ "written": path, "notes": notes }), Vec::new()))
+    std::fs::write(&out, proj.to_json())
+        .map_err(|e| RpcErr::app(format!("{}: {e}", path.display())))?;
+    Ok(json!({ "written": path, "notes": notes }))
 }
 
 /// `write_back`: 読み込んだプロジェクトに面の操作 ops（edit の操作）を書き戻し、面の上書き・操作が変わった
 /// ブロック（id のあるもの）を返す。保存も、読み込んだ系の変更もしない（GUI の組合せが要素へ当てて組み直す）
-pub(super) fn write_back(sess: &Session, p: &Value) -> Result<(Value, Vec<Bin>), RpcErr> {
-    let ops = lensbench_project::edit_ops::parse(&p["ops"])?;
+pub(super) fn write_back(sess: &Session, ops: Vec<EditOp>) -> Result<Value, RpcErr> {
     let (before, after, notes, _) = written(sess, Some(ops))?;
     let old = lensbench_project::writeback::face_mods(&before);
     let blocks: Vec<Value> = lensbench_project::writeback::face_mods(&after)
@@ -157,7 +154,7 @@ pub(super) fn write_back(sess: &Session, p: &Value) -> Result<(Value, Vec<Bin>),
         })
         .map(|(id, f)| json!({ "id": id, "faces": f }))
         .collect();
-    Ok((json!({ "blocks": blocks, "notes": notes }), Vec::new()))
+    Ok(json!({ "blocks": blocks, "notes": notes }))
 }
 
 #[cfg(test)]

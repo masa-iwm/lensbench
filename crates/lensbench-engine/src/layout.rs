@@ -18,11 +18,14 @@ pub const SEGMENTS: (usize, usize) = (4, 1024);
 pub const RINGS: (usize, usize) = (1, 256);
 
 /// 見る面: 断面図（yz・xz）か 3D
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum View {
     #[default]
+    #[serde(rename = "yz")]
     YZ,
+    #[serde(rename = "xz")]
     XZ,
+    #[serde(rename = "3d")]
     D3,
 }
 
@@ -50,7 +53,8 @@ impl View {
 }
 
 /// 視野・波長の選び方: 全部か、番号（1 始まり）の並び
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Pick {
     All,
     List(Vec<usize>),

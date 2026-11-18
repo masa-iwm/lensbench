@@ -15,9 +15,11 @@ use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
 use lensbench_core::par::CancelToken;
-use serde_json::{json, Value};
+use serde_json::{Map, Value};
 
-pub(crate) use lensbench_engine::Arrays;
+pub(crate) use lensbench_engine::{
+    AnalyzeReq, Answer, Arrays, GetReq, LayoutReq, Request as Call, TraceReq,
+};
 
 mod doc_peek;
 #[cfg(test)]
@@ -169,14 +171,18 @@ impl Tag {
 
     /// 系を変えた後に読み直す表（[`Tag::Refresh`] の呼び出し、面の表と要約）。系を変える要求に続けて付けることも
     /// ある。途中の誤りで止まれば残りは 1 つずつ頼み直す
-    pub(crate) fn refresh_calls() -> Vec<(String, Value)> {
-        [
-            (Tag::Surfaces, json!({})),
-            (Tag::Info, json!({ "cmd": "info" })),
+    pub(crate) fn refresh_calls() -> Vec<Call> {
+        vec![
+            Call::Surfaces,
+            Call::Analyze(Box::new(AnalyzeReq::new("info", Map::new()))),
         ]
-        .into_iter()
-        .filter_map(|(t, p)| Some((t.method()?.to_string(), p)))
-        .collect()
+    }
+
+    /// この印の method の呼び出し: serve の JSON の params（パネルの設定など）を型の要求に読む。読めなければ
+    /// JSON のまま渡し、計算の側が serve と同じ誤りを返す（画面は誤りを同じ道で受ける）
+    pub(crate) fn call(&self, params: Value) -> Call {
+        let m = self.method().unwrap_or_default();
+        Call::from_json(m, &params).unwrap_or_else(|_| Call::json(m, params))
     }
 
     /// 長い計算（ネイティブは別のスレッドで回し、[`Worker::busy_core`]・[`Worker::busy_short`] に数えない）
@@ -192,7 +198,7 @@ impl Tag {
 
 struct Job {
     tag: Tag,
-    calls: Vec<(String, Value)>,
+    calls: Vec<Call>,
     /// 出したときの世代（[`Worker::drop_queued`] より前に出した解析は回さない）
     gen: u64,
 }
@@ -271,8 +277,57 @@ impl From<lensbench_engine::CallError> for CallErr {
 /// 1 つの呼び出しの結果
 pub(crate) struct Reply {
     pub method: String,
-    pub params: Value,
+    /// 呼び出し（型の要求か、型を付けていない method の JSON）
+    pub call: Call,
     pub result: Result<(Value, Arrays), CallErr>,
+    /// 型の決まった答え（同じプロセスの計算から。そのとき result の値は null。Web 版は JSON の result だけ）
+    pub typed: Option<Answer>,
+}
+
+impl Reply {
+    /// 型を付けていない呼び出しの JSON の params（型の呼び出しは null）
+    pub(crate) fn params(&self) -> &Value {
+        json_params(&self.call)
+    }
+}
+
+/// 型を付けていない呼び出しの JSON の params（型の呼び出しは null）
+pub(crate) fn json_params(c: &Call) -> &Value {
+    static NULL: Value = Value::Null;
+    match c {
+        Call::Json { params, .. } => params,
+        _ => &NULL,
+    }
+}
+
+/// 型を付けていない呼び出しの JSON の params を取り出す（型の呼び出しは null）
+pub(crate) fn into_params(c: Call) -> Value {
+    match c {
+        Call::Json { params, .. } => params,
+        // 解析は serve の params の形（cmd と設定）に
+        Call::Analyze(r) => {
+            let mut m = r.args;
+            m.insert("cmd".into(), Value::from(r.cmd));
+            Value::Object(m)
+        }
+        _ => Value::Null,
+    }
+}
+
+/// load で読むファイル
+pub(crate) fn load_file(c: &Call) -> Option<&std::path::Path> {
+    match c {
+        Call::Load(l) => Some(&l.file),
+        _ => None,
+    }
+}
+
+/// get の 1 つのパラメータの名前
+pub(crate) fn get_param(c: &Call) -> Option<&str> {
+    match c {
+        Call::Get(GetReq::One(p)) => Some(p),
+        _ => None,
+    }
 }
 
 pub(crate) struct Done {
@@ -294,25 +349,31 @@ impl Done {
     /// 最初の呼び出しの method・params・結果（1 つだけの要求のとき）
     pub(crate) fn first(&self) -> (&str, &Value, Result<&Value, &CallErr>) {
         let r = &self.replies[0];
-        (&r.method, &r.params, r.result.as_ref().map(|x| &x.0))
+        (&r.method, r.params(), r.result.as_ref().map(|x| &x.0))
     }
 
-    /// 最初の呼び出しの params と結果を取り出す（深い複製をしない）。エラーなら結果は null。
-    /// 取り出した後の replies[0] の params・結果の値は null（method と配列は残る）。
-    /// 光線（Rays・Focus）は返事ごとの params・配列を見るので取り出さず、null を返す
-    pub(crate) fn take_first(&mut self) -> (Value, Value) {
+    /// 最初の呼び出しと結果を取り出す（深い複製をしない）。エラーなら結果は null。
+    /// 取り出した後の replies[0] の呼び出しは中身の無いもの、結果の値は null（method と配列は残る）。
+    /// 光線（Rays・Focus）は返事ごとの params・配列を見るので取り出さず、中身の無いものを返す
+    pub(crate) fn take_first(&mut self) -> (Call, Value) {
+        let empty = || Call::json("", Value::Null);
         if matches!(self.tag, Tag::Rays(_) | Tag::Focus) {
-            return (Value::Null, Value::Null);
+            return (empty(), Value::Null);
         }
         let r = &mut self.replies[0];
         let v = match &mut r.result {
             Ok((v, _)) => v.take(),
             Err(_) => Value::Null,
         };
-        (r.params.take(), v)
+        (std::mem::replace(&mut r.call, empty()), v)
     }
 
-    /// 系を変える要求に付けた読み直し（GUI の send_change）を分ける: 変更の返事と、残りを [`Tag::Refresh`] の返事として
+    /// 最初の呼び出しの型の答えを取り出す（無ければ None。そのときは [`Done::take_first`] の JSON を読む）
+    pub(crate) fn take_typed(&mut self) -> Option<Answer> {
+        self.replies.first_mut().and_then(|r| r.typed.take())
+    }
+
+    /// 系を変える要求に付けた読み直し（GUI の call_refreshing）を分ける: 変更の返事と、残りを [`Tag::Refresh`] の返事として
     pub(crate) fn split_change(mut self) -> (Done, Done) {
         let rest = self.replies.split_off(1.min(self.replies.len()));
         let r = Done {
@@ -363,8 +424,25 @@ impl Done {
     }
 }
 
-/// 1 つの呼び出し（method・params・スレッド数）
-type CallFn = fn(&str, &Value, Option<usize>) -> Result<(Value, Arrays), CallErr>;
+/// 1 つの呼び出し（呼び出し・スレッド数）
+type CallFn = fn(&Call, Option<usize>) -> Result<(Answer, Arrays), CallErr>;
+
+/// 答えを JSON の結果と型の答えに分ける（型の答えなら JSON の値は null）
+#[cfg(not(target_arch = "wasm32"))]
+fn split_answer(
+    r: Result<(Answer, Arrays), CallErr>,
+) -> (Result<(Value, Arrays), CallErr>, Option<Answer>) {
+    match r {
+        Ok((Answer::Json(v), a)) => (Ok((v, a)), None),
+        // 解析の結果は、図が型を読むまで JSON も添える
+        Ok((Answer::Analysis(t), a)) => match t.to_json() {
+            Ok(v) => (Ok((v, a)), Some(Answer::Analysis(t))),
+            Err(e) => (Err(e.into()), None),
+        },
+        Ok((t, a)) => (Ok((Value::Null, a)), Some(t)),
+        Err(e) => (Err(e), None),
+    }
+}
 
 /// 何を受ける Worker か（Web Worker の中でも同じ呼び出しを使う）
 #[derive(Clone, Copy)]
@@ -414,24 +492,39 @@ impl Kind {
     }
 }
 
-fn main_call(m: &str, p: &Value, t: Option<usize>) -> Result<(Value, Arrays), CallErr> {
-    lensbench_engine::call_arrays(m, p, t).map_err(Into::into)
+fn main_call(c: &Call, t: Option<usize>) -> Result<(Answer, Arrays), CallErr> {
+    match c {
+        // 型を付けていない method は JSON の口で（params を写さない）
+        Call::Json { method, params } => lensbench_engine::call_answer(method, params, t),
+        c => lensbench_engine::request(c.clone(), t),
+    }
+    .map_err(Into::into)
 }
 
-fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays), CallErr> {
-    match m {
-        "preview" => lensbench_engine::preview_layout(&p["load"], &p["layout"])
-            .map(|v| (v, Vec::new()))
-            .map_err(Into::into),
-        "glasses" | "lenses" => lensbench_engine::browse(m, p)
-            .map(|v| (v, Vec::new()))
-            .map_err(Into::into),
-        // ユーザーカタログの一覧・変更（読み込んだ系は要らない）
-        "catalog_items" | "catalog_edit" | "catalog_fill" => {
-            lensbench_engine::user_catalog_edit(m, p)
-                .map(|v| (v, Vec::new()))
-                .map_err(Into::into)
+fn preview_call(c: &Call, t: Option<usize>) -> Result<(Answer, Arrays), CallErr> {
+    match c {
+        Call::Json { method, params } => {
+            preview_json(method, params, t).map(|(v, a)| (Answer::Json(v), a))
         }
+        // 組合せの図の下書き（系をファイルから読む。読み込んだ系は変えない）
+        Call::Preview { load, layout } => lensbench_engine::preview(load, layout)
+            .map(|v| (Answer::Json(v), Vec::new()))
+            .map_err(Into::into),
+        // カタログの一覧・ユーザーカタログの一覧と変更（読み込んだ系は要らない）
+        c @ (Call::Glasses(_)
+        | Call::Lenses(_)
+        | Call::CatalogSearch(_)
+        | Call::CatalogItems { .. }
+        | Call::CatalogEdit(_)
+        | Call::CatalogFill(_)) => lensbench_engine::catalog(c)
+            .map(|v| (Answer::Json(v), Vec::new()))
+            .map_err(Into::into),
+        c => Err(format!("{} is not available for drafts", c.method()).into()),
+    }
+}
+
+fn preview_json(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays), CallErr> {
+    match m {
         // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる）
         "folders" => Ok((folders(p), Vec::new())),
         "cad_measure" => crate::cad_fetch::measure_call(p)
@@ -560,15 +653,17 @@ impl Runner {
         }
         let t0 = Instant::now();
         let mut replies = Vec::with_capacity(j.calls.len());
-        for (method, params) in j.calls {
-            let result = lensbench_core::par::with_cancel(token.as_ref(), || {
-                (self.call)(&method, &params, self.threads)
-            });
+        for call in j.calls {
+            let (result, typed) =
+                split_answer(lensbench_core::par::with_cancel(token.as_ref(), || {
+                    (self.call)(&call, self.threads)
+                }));
             let failed = result.is_err();
             replies.push(Reply {
-                method,
-                params,
+                method: call.method().to_string(),
+                call,
                 result,
+                typed,
             });
             if failed {
                 break;
@@ -685,35 +780,21 @@ impl Worker {
         }
     }
 
-    /// 1 つの呼び出し。method は印から決める（[`Tag::method`]）
-    pub(crate) fn send(&mut self, tag: Tag, params: Value) {
-        self.send_each(tag, vec![params]);
+    /// 1 つの呼び出し
+    pub(crate) fn send(&mut self, tag: Tag, call: Call) {
+        self.send_batch(tag, vec![call]);
     }
 
-    /// 同じ method の呼び出しを 1 つの要求として順に（途中でエラーになればそこで止める）
-    pub(crate) fn send_each(&mut self, tag: Tag, params: Vec<Value>) {
-        let Some(m) = tag.method() else {
-            debug_assert!(false, "{tag:?} has no single method");
-            return;
-        };
-        let calls = params.into_iter().map(|p| (m.to_string(), p)).collect();
-        self.send_batch(tag, calls);
-    }
-
-    /// 印の要求に、面の表・要約の読み直し（[`Tag::refresh_calls`]）を続けて付ける。印だけなら（[`Tag::Refresh`]）
-    /// 読み直しだけ
-    pub(crate) fn send_refreshing(&mut self, tag: Tag, params: Value) {
-        let mut calls: Vec<(String, Value)> = tag
-            .method()
-            .map(|m| (m.to_string(), params))
-            .into_iter()
-            .collect();
+    /// 印の要求に、面の表・要約の読み直し（[`Tag::refresh_calls`]）を続けて付ける。呼び出しが無ければ
+    /// （[`Tag::Refresh`]）読み直しだけ
+    pub(crate) fn send_refreshing(&mut self, tag: Tag, call: Option<Call>) {
+        let mut calls: Vec<Call> = call.into_iter().collect();
         calls.extend(Tag::refresh_calls());
         self.send_batch(tag, calls);
     }
 
     /// 複数の呼び出しを 1 つの要求として順に（途中でエラーになればそこで止める）
-    fn send_batch(&mut self, tag: Tag, calls: Vec<(String, Value)>) {
+    pub(crate) fn send_batch(&mut self, tag: Tag, calls: Vec<Call>) {
         if calls.is_empty() {
             return;
         }
@@ -964,8 +1045,10 @@ pub mod entry {
         let call = Kind::from_code(KIND.with(Cell::get)).call();
         let t0 = Instant::now();
         let mut results = Vec::with_capacity(q.calls.len());
-        for (m, p) in &q.calls {
-            let r = lensbench_core::par::with_cancel(token.as_ref(), || call(m, p, q.threads));
+        for c in &q.calls {
+            // Web Worker の外へは JSON で渡す
+            let r = lensbench_core::par::with_cancel(token.as_ref(), || call(c, q.threads))
+                .and_then(|(a, arrays)| Ok((a.into_json()?, arrays)));
             let failed = r.is_err();
             results.push(r);
             if failed {
@@ -1340,10 +1423,11 @@ mod remote {
                 .calls
                 .into_iter()
                 .zip(results)
-                .map(|((method, params), result)| Reply {
-                    method,
-                    params,
+                .map(|(call, result)| Reply {
+                    method: call.method().to_string(),
+                    call,
                     result,
+                    typed: None,
                 })
                 .collect();
             let _ = self.done.send(Done {
@@ -1369,109 +1453,5 @@ mod remote {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::AtomicBool;
-    use std::time::Duration;
-
-    static STARTED: AtomicBool = AtomicBool::new(false);
-    static LOADED: AtomicBool = AtomicBool::new(false);
-
-    /// 中断を頼まれるまで回る解析（"spin"）と、すぐ終わる要求
-    fn fake(m: &str, _p: &Value, _t: Option<usize>) -> Result<(Value, Arrays), CallErr> {
-        if m == "spin" {
-            STARTED.store(true, Ordering::SeqCst);
-            let t0 = Instant::now();
-            while !lensbench_core::par::cancelled() {
-                if t0.elapsed() > Duration::from_secs(2) {
-                    return Ok((Value::from("timeout"), Vec::new()));
-                }
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            return Err("cancelled".into());
-        }
-        // 時間のかかる系の読み込みと、それが終わっていたかを返す要求
-        if m == "slowload" {
-            std::thread::sleep(Duration::from_millis(100));
-            LOADED.store(true, Ordering::SeqCst);
-        }
-        if m == "loaded" {
-            return Ok((Value::from(LOADED.load(Ordering::SeqCst)), Vec::new()));
-        }
-        Ok((Value::from(m), Vec::new()))
-    }
-
-    fn wait_all(w: &mut Worker, n: usize) -> Vec<Done> {
-        let t0 = Instant::now();
-        let mut out = Vec::new();
-        while out.len() < n && t0.elapsed() < Duration::from_secs(10) {
-            match w.poll() {
-                Some(d) => out.push(d),
-                None => std::thread::sleep(Duration::from_millis(1)),
-            }
-        }
-        out
-    }
-
-    fn wait_started() {
-        let t0 = Instant::now();
-        while !STARTED.load(Ordering::SeqCst) && t0.elapsed() < Duration::from_secs(5) {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        STARTED.store(false, Ordering::SeqCst);
-    }
-
-    // 順番待ちと世代は Worker で 1 つなので、1 つのテストの中で順に確かめる
-    #[test]
-    fn refresh_calls_come_back_to_their_tags() {
-        for (m, _) in Tag::refresh_calls() {
-            assert_eq!(Tag::of_refresh(&m).method(), Some(m.as_str()));
-        }
-        assert_eq!(Tag::UserCatalog(CatOp::Edit).method(), Some("catalog_edit"));
-    }
-
-    #[test]
-    fn changing_the_system_cancels_and_drops_analyses_but_not_other_jobs() {
-        let mut w = Worker::with_call(Some(1), || {}, true, Kind::Test(fake));
-        // 回っている解析は中断され、待っていた解析は回らず、どちらも捨てた扱い。系の変更は回る
-        w.send_batch(Tag::Analyze(1), vec![("spin".into(), Value::Null)]);
-        w.send_batch(Tag::Analyze(2), vec![("info".into(), Value::Null)]);
-        wait_started();
-        w.send_batch(Tag::Set, vec![("set".into(), Value::Null)]);
-        w.send_batch(Tag::Analyze(3), vec![("info".into(), Value::Null)]);
-        let d = wait_all(&mut w, 4);
-        let got: Vec<(Tag, bool)> = d.iter().map(|d| (d.tag.clone(), d.skipped)).collect();
-        assert_eq!(
-            got,
-            vec![
-                (Tag::Analyze(1), true),
-                (Tag::Analyze(2), true),
-                (Tag::Set, false),
-                (Tag::Analyze(3), false),
-            ]
-        );
-        assert!(!w.busy());
-        // 解析でない長い要求（最適化など）は系の変更で止めない（中の解析も止めない）。
-        // 別のスレッドで回るので、その間の系の変更・解析は先に終わる
-        w.send_batch(Tag::Optimize, vec![("spin".into(), Value::Null)]);
-        wait_started();
-        assert!(w.busy() && !w.busy_short() && !w.busy_core());
-        w.send_batch(Tag::Set, vec![("set".into(), Value::Null)]);
-        w.send_batch(Tag::Analyze(4), vec![("info".into(), Value::Null)]);
-        let d = wait_all(&mut w, 3);
-        let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();
-        assert_eq!(tags, vec![Tag::Set, Tag::Analyze(4), Tag::Optimize]);
-        assert!(!d[2].skipped);
-        assert_eq!(d[2].first().2, Ok(&Value::from("timeout")));
-        assert!(!w.busy());
-        // 系の読み込みの直後に出した長い要求は、読み込みが終わってから回る（前の系で計算しない）
-        w.send_batch(Tag::Load, vec![("slowload".into(), Value::Null)]);
-        w.send_batch(Tag::Zoom, vec![("loaded".into(), Value::Null)]);
-        assert!(w.busy_core() && w.busy());
-        let d = wait_all(&mut w, 2);
-        let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();
-        assert_eq!(tags, vec![Tag::Load, Tag::Zoom]);
-        assert_eq!(d[1].first().2, Ok(&Value::from(true)));
-        assert!(!w.busy());
-    }
-}
+#[path = "worker_tests.rs"]
+mod tests;

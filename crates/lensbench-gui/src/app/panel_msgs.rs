@@ -162,7 +162,10 @@ impl Core {
                 self.p.cat_save.open_for(k, &self.doc.combo);
                 let c = self.p.cat_save.catalog.trim().to_string();
                 if !c.is_empty() && self.p.cat_save.listed != c {
-                    self.draft(Tag::UserCatalog(CatOp::Items), json!({ "catalog": c }));
+                    self.draft_call(
+                        Tag::UserCatalog(CatOp::Items),
+                        Call::CatalogItems { catalog: c },
+                    );
                 }
             }
             combo::Act::Open(k) => {
@@ -226,10 +229,14 @@ impl Core {
                 let d = crate::files::FileDialog::new()
                     .add_filter(tr("System file"), &["json"])
                     .set_file_name(format!("{stem}_{a}-{b}.json"));
-                self.save_as(d, move |c, p| {
-                    c.calc(
+                self.save_as(d, move |c, path| {
+                    c.call(
                         Tag::SaveRange,
-                        json!({ "path": p.display().to_string(), "from": a, "to": b }),
+                        Call::SaveRange {
+                            path,
+                            from: a,
+                            to: b,
+                        },
                     );
                 });
             }
@@ -302,7 +309,12 @@ impl Core {
                 self.info(trf("Added {} to the optimization variables", &[&name]));
             }
             Act::NeedData(j) => {
-                self.calc(Tag::SurfData(j), json!({ "surface": j }));
+                self.call(
+                    Tag::SurfData(j),
+                    Call::SurfaceData {
+                        surface: lensbench_project::edit_spec::Ref::Index(j),
+                    },
+                );
             }
         }
     }

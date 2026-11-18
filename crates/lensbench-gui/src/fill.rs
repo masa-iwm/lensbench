@@ -13,6 +13,7 @@ use lensbench_catalog::fill::{
     page_frame, read_page, spec_check, spec_glass_diameter, PageRead, SpecValues,
 };
 use lensbench_catalog::step::StepSize;
+use lensbench_engine::CatalogFillReq as FillReq;
 use lensbench_project::MechSpec;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -295,7 +296,7 @@ pub(crate) fn sure_values(
     Some((t, d))
 }
 
-/// catalog_fill の params
+/// catalog_fill の要求
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 fn fill_params(
     r: &LensRow,
@@ -304,29 +305,28 @@ fn fill_params(
     frame: Option<(&MechSpec, bool)>,
     spec: Option<(SpecValues, bool)>,
     from: &str,
-) -> Option<Value> {
+) -> Option<FillReq> {
     let out = fill_file(&r.vendor)?;
-    let mut p = json!({
-        "catalog": r.source.clone()?,
-        "item": r.part,
-        "out": out.display().to_string(),
-        "from": from,
-    });
-    if let Some(t) = t {
-        p["thickness"] = json!(t);
-    }
-    if let Some(d) = d {
-        p["diameter"] = d.clone();
-    }
-    if let Some((f, rev)) = frame {
-        p["frame"] = serde_json::to_value(f).ok()?;
-        p["frame_reversed"] = json!(rev);
-    }
-    if let Some((sv, visible)) = spec {
-        p["spec"] = sv.to_value();
-        p["glass_visible"] = json!(visible);
-    }
-    Some(p)
+    let (frame, frame_reversed) = match frame {
+        Some((f, rev)) => (Some(f.clone()), rev),
+        None => (None, false),
+    };
+    let (spec, glass_visible) = match spec {
+        Some((sv, visible)) => (Some(sv.to_value()), visible),
+        None => (None, false),
+    };
+    Some(FillReq {
+        catalog: r.source.clone()?,
+        item: r.part.clone(),
+        out: out.display().to_string(),
+        from: from.to_string(),
+        thickness: t,
+        diameter: d.cloned(),
+        frame,
+        frame_reversed,
+        spec,
+        glass_visible,
+    })
 }
 
 /// 補う窓へ引き継ぐもの: 品・見せていないブラウザ・最後に届いたページ（URL と文字）
@@ -336,8 +336,8 @@ pub(crate) type Handover = (LensRow, crate::webview::Child, Option<(String, Stri
 /// 裏の読み取りの結果
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub(crate) enum AutoOut {
-    /// 値が決まったので保存する（catalog_fill の params）
-    Save(Value),
+    /// 値が決まったので保存する（catalog_fill の要求）
+    Save(FillReq),
     /// 決まらないので補う窓に出す
     #[cfg(all(windows, feature = "webview"))]
     Show(Box<Handover>),
@@ -789,7 +789,7 @@ impl FillWin {
     }
 
     /// 窓を描く。確定したら serve の `catalog_fill` の params を返す
-    pub(crate) fn window(&mut self, ctx: &egui::Context) -> Option<Value> {
+    pub(crate) fn window(&mut self, ctx: &egui::Context) -> Option<FillReq> {
         let r = self.row.clone()?;
         if !self.opened {
             self.open_page(ctx);
@@ -833,7 +833,7 @@ impl FillWin {
         req
     }
 
-    fn body(&mut self, ui: &mut Ui, r: &LensRow) -> Option<Value> {
+    fn body(&mut self, ui: &mut Ui, r: &LensRow) -> Option<FillReq> {
         let warn = ui.visuals().warn_fg_color;
         if let Some(t) = r.raw["title"].as_str() {
             ui.label(t);

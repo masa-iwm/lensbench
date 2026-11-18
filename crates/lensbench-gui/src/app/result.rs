@@ -1,6 +1,7 @@
 //! 解析パネルの結果（見せ方の選択・時間・書き出しと、図・表・JSON）。計算中は図を薄くしてスピナーを重ねる
 
 use super::*;
+use lensbench_analysis::defs::SpotOut;
 
 /// 頼んでからこれだけたっても返らなければ「計算中」を重ねる（速い解析でちらつかせない）
 const BUSY_AFTER: f64 = 0.25;
@@ -14,6 +15,10 @@ pub(super) struct AnaRes {
     pub(super) value: Option<Value>,
     /// 値を変える前の結果（同じ解析のとき）
     pub(super) prev: Option<Value>,
+    /// 組み込みの解析の結果の型（同じプロセスの計算から。Web 版と拡張は無く、図は JSON から読む）
+    pub(super) typed: Option<lensbench_analysis::Typed>,
+    /// 値を変える前の結果の型
+    pub(super) prev_typed: Option<lensbench_analysis::Typed>,
     pub(super) ms: f64,
     pub(super) rays: Vec<SpotRays>,
     /// 光線の世代（届いたときの rev。スポット図の中心・縮尺を作り直す目安）
@@ -162,14 +167,22 @@ impl Core {
             .collect();
         ui.data_mut(|d| d.insert_temp(egui::Id::new(plots::FIELD_LABELS), coords));
         // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
+        let out = figures::Out::new(v, r.typed.as_ref());
+        let prev = r
+            .prev
+            .as_ref()
+            .map(|p| figures::Out::new(p, r.prev_typed.as_ref()));
         if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
-            egui::ScrollArea::vertical()
+            let shown = egui::ScrollArea::vertical()
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    plots::mtf(ui, v, r.prev.as_ref(), id, r.gen, &mut cfg.fig.mtf_prev)
-                });
-            return;
+                    plots::mtf(ui, out, prev, id, r.gen, &mut cfg.fig.mtf_prev)
+                })
+                .inner;
+            if shown {
+                return;
+            }
         }
         // スポット以外の図（描けない結果なら表）
         if fig && r.cmd != "spot" {
@@ -177,7 +190,7 @@ impl Core {
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    figures::show(ui, id, r.gen, &r.cmd, v, r.prev.as_ref(), &mut cfg.fig)
+                    figures::show(ui, id, r.gen, &r.cmd, out, prev, &mut cfg.fig)
                 })
                 .inner;
             if shown {
@@ -199,8 +212,9 @@ impl Core {
                         ui,
                         &r.rays,
                         r.rays_gen,
-                        v,
-                        r.prev.as_ref(),
+                        out.get::<SpotOut>(ui, ("spot", id, "now"), r.gen).as_deref(),
+                        prev.and_then(|p| p.get::<SpotOut>(ui, ("spot", id, "prev"), r.gen))
+                            .as_deref(),
                         &sys,
                         &mut cfg.fig,
                     );

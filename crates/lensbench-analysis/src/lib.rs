@@ -14,6 +14,7 @@ pub mod defs;
 pub mod ghost;
 pub mod huygens;
 pub mod interference;
+mod nan;
 pub mod plugins;
 pub mod polgrid;
 pub mod pupil_amp;
@@ -21,5 +22,5 @@ pub mod registry;
 
 pub use plugins::{register, Analysis as PluginAnalysis, Prepared};
 pub use registry::{
-    Analyses, Analysis, Cx, DynAnalysis, Meta, Param, ParamTy, Saved, Source, Variant,
+    Analyses, Analysis, Cx, DynAnalysis, Meta, Param, ParamTy, Saved, Source, Typed, Variant,
 };

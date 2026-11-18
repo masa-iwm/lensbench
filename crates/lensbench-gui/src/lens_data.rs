@@ -99,8 +99,14 @@ fn pickup_text(p: &views::PickupView) -> (String, String) {
 }
 
 /// serve の `surface`（全部の面）の結果を engine の型で読む（鍵が足りない・綴りが違えば誤り）
+#[cfg(test)]
 pub(crate) fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
     let r: views::SurfacesView = views::read(v).map_err(|e| format!("surface: {e}"))?;
+    Ok(parse_view(r))
+}
+
+/// 面の表の型（[`views::SurfacesView`]）を、表の行と玉・群に
+pub(crate) fn parse_view(r: views::SurfacesView) -> (Vec<Row>, Vec<Unit>) {
     let rows = r
         .surfaces
         .into_iter()
@@ -128,7 +134,7 @@ pub(crate) fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
             disp: f.disp,
         })
         .collect();
-    Ok((rows, r.units))
+    (rows, r.units)
 }
 
 /// 表のブロック（木の節）

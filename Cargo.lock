@@ -3075,6 +3075,7 @@ dependencies = [
  "egui_kittest",
  "egui_plot",
  "js-sys",
+ "lensbench-analysis",
  "lensbench-cad",
  "lensbench-catalog",
  "lensbench-core",

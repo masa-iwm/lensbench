@@ -6,6 +6,17 @@ mod basic;
 mod image;
 mod mtfs;
 
+/// 同梱の解析の結果の型（同じプロセスの呼び手は [`crate::Typed::get`] で引く。JSON は同じ形）
+pub use basic::{
+    GhostOut, GhostRow, RayCountsOut, SpotOut, SpotRow, WavefrontOut, WavefrontRow, ZKind,
+    ZernikeOut, ZernikeRow,
+};
+pub use image::{
+    Plane as PsfPlane, PsfAxes, PsfOut, PsfPoint, PsfSampling, Reference as RmsReference, RmsOut,
+    RmsRow, Vs as RmsVs,
+};
+pub use mtfs::{FieldRow, FocusRow, GeoMtfOut, MtfFieldOut, MtfFocusOut, MtfOut};
+
 use lensbench_core::{Error, Result, System};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -152,14 +163,17 @@ impl Axis {
 }
 
 /// 回折 MTF の 1 視野（mtf・geo-mtf・huygens-mtf の共通の形）
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MtfRow {
     /// Field number (from 1)
     pub field: usize,
+    #[serde(deserialize_with = "crate::nan::v")]
     pub freqs: Vec<f64>,
     /// 子午
+    #[serde(deserialize_with = "crate::nan::v")]
     pub tangential: Vec<f64>,
     /// 球欠
+    #[serde(deserialize_with = "crate::nan::v")]
     pub sagittal: Vec<f64>,
     /// 回折限界の遮断周波数 [cycles/mm]（計算した波長。多色は主波長）
     pub cutoff: Cutoff,
@@ -169,18 +183,22 @@ pub struct MtfRow {
 }
 
 /// 子午・球欠の遮断周波数
-#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 pub struct Cutoff {
+    #[serde(deserialize_with = "crate::nan::f")]
     pub tangential: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub sagittal: f64,
 }
 
 /// 1 波長の MTF
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WaveMtf {
     /// 波長の番号（1 始まり）
     pub wave: usize,
+    #[serde(deserialize_with = "crate::nan::v")]
     pub tangential: Vec<f64>,
+    #[serde(deserialize_with = "crate::nan::v")]
     pub sagittal: Vec<f64>,
 }
 

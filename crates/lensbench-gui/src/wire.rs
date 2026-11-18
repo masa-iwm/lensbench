@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use crate::worker::{Arrays, CallErr};
+use crate::worker::{Arrays, Call, CallErr};
 
 /// ファイルの変更（パス、中身。None は消した）
 pub(crate) type Files = Vec<(String, Option<Vec<u8>>)>;
@@ -16,7 +16,8 @@ pub(crate) struct Request {
     /// 要求の番号（1 から。中断・停止をこの要求に限る、[`crate::worker::entry`]）
     pub id: u32,
     pub threads: Option<usize>,
-    pub calls: Vec<(String, Value)>,
+    /// 呼び出し（型の要求は serde の JSON で渡す）
+    pub calls: Vec<Call>,
     pub files: Files,
 }
 
@@ -118,9 +119,8 @@ impl Request {
         w.u32(self.id as usize);
         w.u32(self.threads.map_or(0, |t| t + 1));
         w.u32(self.calls.len());
-        for (m, p) in &self.calls {
-            w.str(m);
-            w.str(&p.to_string());
+        for c in &self.calls {
+            w.str(&serde_json::to_string(c).unwrap_or_default());
         }
         w.files(&self.files);
         w.0
@@ -133,8 +133,7 @@ impl Request {
         let n = r.u32()?;
         let mut calls = Vec::with_capacity(n.min(1 << 16));
         for _ in 0..n {
-            let m = r.str()?;
-            calls.push((m, r.json()?));
+            calls.push(serde_json::from_slice(&r.bytes()?).map_err(|e| e.to_string())?);
         }
         let files = r.files()?;
         Ok(Request {
@@ -225,11 +224,17 @@ mod tests {
             id: 7,
             threads: Some(0),
             calls: vec![
-                (
-                    "load".into(),
-                    json!({"file": "/uploads/1/a.zmx", "x": [1.5, null]}),
-                ),
-                ("info".into(), Value::Null),
+                Call::json("analyze", json!({"cmd": "spot", "x": [1.5, null]})),
+                Call::json("info", Value::Null),
+                // 型の要求も
+                Call::Load(Box::new(lensbench_engine::LoadReq {
+                    file: "/uploads/1/a.zmx".into(),
+                    state: Some("Wide".into()),
+                    ..Default::default()
+                })),
+                Call::Set {
+                    values: vec![("3.t".into(), 2.5)],
+                },
             ],
             files: vec![
                 ("/uploads/1/a.zmx".into(), Some(b"VERS".to_vec())),

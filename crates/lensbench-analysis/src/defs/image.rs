@@ -17,7 +17,7 @@ use crate::registry::{Analysis, Cx, Meta};
 /// RMS の横軸
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Vs {
+pub enum Vs {
     /// 正規化視野 0〜1
     #[default]
     Field,
@@ -30,7 +30,7 @@ pub(super) enum Vs {
 /// RMS の基準
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Reference {
+pub enum Reference {
     /// 重心
     #[default]
     Centroid,
@@ -82,15 +82,20 @@ impl Default for RmsParams {
 }
 
 /// RMS の 1 点
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct RmsRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RmsRow {
     /// スポット半径の RMS
+    #[serde(deserialize_with = "crate::nan::f")]
     pub spot: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub spot_x: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub spot_y: f64,
     /// 波面収差の RMS [波]
+    #[serde(deserialize_with = "crate::nan::f")]
     pub wfe: f64,
     /// ストレール比の近似
+    #[serde(deserialize_with = "crate::nan::f")]
     pub strehl: f64,
     /// 正規化視野（vs field）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,8 +132,8 @@ impl RmsRow {
 }
 
 /// RMS の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct RmsOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RmsOut {
     pub unit: String,
     pub wfe_unit: String,
     pub vs: Vs,
@@ -235,7 +240,7 @@ impl Analysis for Rms {
 /// PSF の像の面
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Plane {
+pub enum Plane {
     /// 像面の上（像面の局所座標）
     #[default]
     Image,
@@ -282,48 +287,58 @@ impl Default for PsfParams {
 }
 
 /// PSF の格子の 1 点
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct PsfPoint {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PsfPoint {
     pub field: usize,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub x: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub y: f64,
     /// 強度（収差のない同じ瞳の中心の値を 1）
+    #[serde(deserialize_with = "crate::nan::f")]
     pub i: f64,
 }
 
 /// PSF の格子の向き
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct PsfAxes {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PsfAxes {
     pub field: usize,
     /// 主波長の主光線の像点（像面の局所座標）
+    #[serde(deserialize_with = "crate::nan::a2")]
     pub center: [f64; 2],
     /// 格子の面（image か chief）
     pub plane: Plane,
     /// 格子の x の向き（像空間の単位ベクトル）
+    #[serde(deserialize_with = "crate::nan::a3")]
     pub e1: [f64; 3],
     /// 格子の y の向き
+    #[serde(deserialize_with = "crate::nan::a3")]
     pub e2: [f64; 3],
 }
 
 /// PSF の標本化
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct PsfSampling {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PsfSampling {
     pub field: usize,
     /// 使った瞳の格子の一辺
     pub pupil: usize,
     /// 瞳の隣り合う標本の位相差の最大 [rad]
+    #[serde(deserialize_with = "crate::nan::f")]
     pub phase_step: f64,
     /// 像の格子に入った光量の割合
+    #[serde(deserialize_with = "crate::nan::f")]
     pub enclosed: f64,
     /// 格子の最大値（ストレール比の目安）
+    #[serde(deserialize_with = "crate::nan::f")]
     pub peak: f64,
     /// 像の格子の間隔（x, y）
+    #[serde(deserialize_with = "crate::nan::a2")]
     pub pixel: [f64; 2],
 }
 
 /// PSF の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct PsfOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PsfOut {
     pub unit: String,
     /// fft か huygens
     pub method: String,

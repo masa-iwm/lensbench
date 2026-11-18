@@ -195,6 +195,8 @@ impl Core {
         for r in self.results.values_mut() {
             r.value = None;
             r.prev = None;
+            r.typed = None;
+            r.prev_typed = None;
             r.error = None;
         }
     }

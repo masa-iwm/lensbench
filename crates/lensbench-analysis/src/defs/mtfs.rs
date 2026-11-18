@@ -73,8 +73,8 @@ impl Default for MtfParams {
 }
 
 /// MTF の結果（mtf・huygens-mtf）
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct MtfOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MtfOut {
     pub unit: String,
     /// 求め方（huygens-mtf は huygens）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -191,18 +191,22 @@ impl Default for MtfFocusParams {
 }
 
 /// スルーフォーカス MTF の 1 点
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct FocusRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FocusRow {
     pub field: usize,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub freq: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub dz: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub tangential: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub sagittal: f64,
 }
 
 /// スルーフォーカス MTF の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct MtfFocusOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MtfFocusOut {
     pub unit: String,
     pub through_focus: Vec<FocusRow>,
     pub warnings: Vec<String>,
@@ -299,20 +303,25 @@ impl Default for MtfFieldParams {
 }
 
 /// フィールド MTF の 1 点
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct FieldRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FieldRow {
+    #[serde(deserialize_with = "crate::nan::f")]
     pub freq: f64,
     /// 正規化視野
+    #[serde(deserialize_with = "crate::nan::f")]
     pub h: f64,
     /// 視野の値（系の視野の単位）
+    #[serde(deserialize_with = "crate::nan::f")]
     pub field_value: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub tangential: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub sagittal: f64,
 }
 
 /// フィールド MTF の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct MtfFieldOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MtfFieldOut {
     pub unit: String,
     pub field_mtf: Vec<FieldRow>,
     pub warnings: Vec<String>,
@@ -403,8 +412,8 @@ impl Default for GeoMtfParams {
 }
 
 /// 幾何 MTF の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct GeoMtfOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GeoMtfOut {
     pub unit: String,
     pub geometric_mtf: Vec<MtfRow>,
 }

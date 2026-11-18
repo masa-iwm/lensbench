@@ -115,24 +115,24 @@ impl Core {
         // 別のファイルを開いたら、待たせていた組合せの読み直しはやめる（後から組合せで上書きしない）
         self.load_stale &= self.loc.combo_path.as_deref() == Some(p);
         // 元に戻すは組合せの段と文書の段（GUI）が持つので、serve の段は積まない
-        let params = self.load_params(p);
-        self.calc(Tag::Load, params);
+        let req = self.load_req(p);
+        self.call(Tag::Load, Call::Load(Box::new(req)));
         self.info(trf("Reading {}…", &[&file]));
     }
 
-    pub(super) fn load_params(&self, p: &Path) -> Value {
-        let mut v = json!({
-            "file": p.display().to_string(),
-            "glass_dirs": dirs(&self.s.glass_dirs),
-            "lens_catalogs": dirs(&self.s.lens_dirs),
-        });
-        // 組合せの今の状態
-        if self.loc.combo_path.as_deref() == Some(p) {
-            if let Some(st) = self.doc.combo.active_state() {
-                v["state"] = json!(st);
-            }
+    /// 系のファイル p の読み方（ガラス・レンズのフォルダ、組合せの今の状態）
+    pub(super) fn load_req(&self, p: &Path) -> lensbench_engine::LoadReq {
+        let dirs = |v: &[String]| v.iter().map(PathBuf::from).collect();
+        lensbench_engine::LoadReq {
+            file: p.to_path_buf(),
+            glass_dirs: dirs(&self.s.glass_dirs),
+            lens_catalogs: dirs(&self.s.lens_dirs),
+            // 組合せの今の状態
+            state: (self.loc.combo_path.as_deref() == Some(p))
+                .then(|| self.doc.combo.active_state().map(str::to_string))
+                .flatten(),
+            ..Default::default()
         }
-        v
     }
 }
 

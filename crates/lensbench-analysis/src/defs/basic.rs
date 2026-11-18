@@ -38,21 +38,26 @@ impl Default for SpotParams {
 }
 
 /// スポットの 1 視野
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct SpotRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SpotRow {
     pub field: usize,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms_centroid: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms_chief: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub geo: f64,
+    #[serde(deserialize_with = "crate::nan::a2")]
     pub centroid: [f64; 2],
+    #[serde(deserialize_with = "crate::nan::a2")]
     pub chief: [f64; 2],
     /// Traced rays and why the excluded ones were dropped (summed over wavelengths, chief ray not counted)
     pub rays: RayCountsOut,
 }
 
 /// 追跡した光線の本数と、除いた光線の理由ごとの本数
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct RayCountsOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RayCountsOut {
     /// Traced rays
     pub total: usize,
     /// Rays clipped by a surface aperture
@@ -78,8 +83,8 @@ impl From<lensbench_core::trace::RayCounts> for RayCountsOut {
 }
 
 /// スポットの結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct SpotOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SpotOut {
     /// 位置の単位（lens、アフォーカル像空間では角度の単位）
     pub unit: String,
     pub spot: Vec<SpotRow>,
@@ -149,22 +154,32 @@ impl Default for WavefrontParams {
 }
 
 /// 波面収差の 1 視野
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct WavefrontRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WavefrontRow {
     pub field: usize,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub pv: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms: f64,
     /// 格子の正規化瞳座標（map のとき）
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nan::ov",
+        default
+    )]
     pub p: Option<Vec<f64>>,
     /// OPD [波] W[iy][ix]（map のとき。瞳の外・けられは null）
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nan::ovv",
+        default
+    )]
     pub map: Option<Vec<Vec<f64>>>,
 }
 
 /// 波面収差の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct WavefrontOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WavefrontOut {
     pub unit: String,
     pub wavefront: Vec<WavefrontRow>,
 }
@@ -208,7 +223,7 @@ impl Analysis for Wavefront {
 /// Zernike の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum ZKind {
+pub enum ZKind {
     /// Standard（Noll の順）
     #[default]
     Standard,
@@ -247,21 +262,27 @@ impl Default for ZernikeParams {
 }
 
 /// Zernike の 1 視野
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct ZernikeRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ZernikeRow {
     pub field: usize,
     /// 係数 [波]（1 項目から）
+    #[serde(deserialize_with = "crate::nan::v")]
     pub coef: Vec<f64>,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub pv: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms_chief: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms_centroid: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub rms_fit: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub strehl: f64,
 }
 
 /// Zernike の結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct ZernikeOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ZernikeOut {
     pub unit: String,
     pub kind: ZKind,
     pub zernike: Vec<ZernikeRow>,
@@ -342,16 +363,19 @@ impl Default for GhostParams {
 }
 
 /// ゴーストの 1 組
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct GhostRow {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GhostRow {
     /// 先に反射する面
     pub a: usize,
     /// 後で反射する面
     pub b: usize,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub marginal_y: f64,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub marginal_u: f64,
     /// ゴーストの焦点の位置（無限遠は null）
     pub focus: Option<f64>,
+    #[serde(deserialize_with = "crate::nan::f")]
     pub wfno: f64,
     /// 軸上の主光線の強度の比（膜込み）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -362,8 +386,8 @@ pub(super) struct GhostRow {
 }
 
 /// ゴーストの結果
-#[derive(Debug, Serialize, JsonSchema)]
-pub(super) struct GhostOut {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GhostOut {
     pub first: usize,
     pub last: usize,
     pub ghosts: Vec<GhostRow>,

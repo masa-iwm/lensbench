@@ -61,6 +61,32 @@ fn every_builtin_runs_with_defaults() {
         let r = a.run_json(&cx, &p);
         let v = r.unwrap_or_else(|e| panic!("{name}: {e}"));
         assert!(v.is_object(), "{name}");
+        // 型のままの結果は公開した結果の型で、JSON は同じ。JSON から型へ読み直せる（Web 版の画面）
+        let t = a.run_typed(&cx, &p).unwrap();
+        assert_eq!(t.to_json().unwrap(), v, "{name}");
+        fn back<T: serde::de::DeserializeOwned + serde::Serialize + 'static>(
+            t: &crate::Typed,
+            v: &serde_json::Value,
+        ) {
+            assert!(t.get::<T>().is_some(), "{}", t.name());
+            let x: T =
+                serde_json::from_value(v.clone()).unwrap_or_else(|e| panic!("{}: {e}", t.name()));
+            assert_eq!(&serde_json::to_value(&x).unwrap(), v, "{}", t.name());
+        }
+        use super::*;
+        match name {
+            "spot" => back::<SpotOut>(&t, &v),
+            "wavefront" => back::<WavefrontOut>(&t, &v),
+            "zernike" => back::<ZernikeOut>(&t, &v),
+            "ghost" => back::<GhostOut>(&t, &v),
+            "rms" => back::<RmsOut>(&t, &v),
+            "psf" => back::<PsfOut>(&t, &v),
+            "mtf" | "huygens-mtf" => back::<MtfOut>(&t, &v),
+            "mtf-focus" => back::<MtfFocusOut>(&t, &v),
+            "mtf-field" => back::<MtfFieldOut>(&t, &v),
+            "geo-mtf" => back::<GeoMtfOut>(&t, &v),
+            n => panic!("no result type listed for {n}"),
+        }
     }
     let v = Analyses::builtin()
         .get("spot")

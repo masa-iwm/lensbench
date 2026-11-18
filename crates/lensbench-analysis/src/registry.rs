@@ -95,8 +95,8 @@ pub trait Source {
 pub trait Analysis: Send + Sync + 'static {
     /// 設定。既定値は `Default` に書く（ほかには書かない）
     type Params: DeserializeOwned + Serialize + JsonSchema + Default;
-    /// 結果
-    type Output: Serialize + JsonSchema;
+    /// 結果（同じプロセスの呼び手へは型のまま渡す: [`DynAnalysis::run_typed`]）
+    type Output: Serialize + JsonSchema + Send + Sync + 'static;
     fn meta(&self) -> Meta;
     fn run(&self, cx: &Cx<'_>, p: &Self::Params) -> Result<Self::Output>;
     /// 結果を書き出す（拡張子で形式を自分で決める解析だけ。None なら呼び手が結果の JSON か表で書く）
@@ -241,6 +241,80 @@ pub trait DynAnalysis: Send + Sync {
         params: &Value,
         save: Option<&Path>,
     ) -> Result<(Value, Option<Value>)>;
+    /// [`DynAnalysis::run_json`] と同じに解析し、結果を型のまま返す（同じプロセスの呼び手が JSON を通さずに読む）。
+    /// 既定は JSON の結果（[`Typed::json`]）
+    fn run_typed(&self, cx: &Cx<'_>, params: &Value) -> Result<Typed> {
+        Ok(Typed::json(self.meta().name, self.run_json(cx, params)?))
+    }
+}
+
+/// 型のままの解析の結果（[`DynAnalysis::run_typed`]）。同じプロセスの呼び手は [`Typed::get`] で結果の型
+/// （[`Analysis::Output`]）を引き、要求を運ぶ道は [`Typed::to_json`] で JSON に書く。形の決まっていない解析
+/// （型を消した拡張など）は JSON の値そのもの（`get::<Value>()`）
+#[derive(Clone)]
+pub struct Typed {
+    name: &'static str,
+    value: Arc<dyn std::any::Any + Send + Sync>,
+    json: fn(&(dyn std::any::Any + Send + Sync), &str) -> Result<Value>,
+}
+
+impl Typed {
+    /// 解析 name の結果 v
+    pub fn new<T: Serialize + Send + Sync + 'static>(name: &'static str, v: T) -> Typed {
+        Typed {
+            name,
+            value: Arc::new(v),
+            json: |x, name| {
+                let v = x
+                    .downcast_ref::<T>()
+                    .expect("the value has the type it was made with");
+                serde_json::to_value(v)
+                    .map_err(|e| Error::Invalid(format!("results of {name}: {e}")))
+            },
+        }
+    }
+
+    /// JSON の結果
+    pub fn json(name: &'static str, v: Value) -> Typed {
+        Typed::new(name, v)
+    }
+
+    /// 解析の名前
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// 結果が型 T なら、その値
+    pub fn get<T: 'static>(&self) -> Option<&T> {
+        self.value.downcast_ref::<T>()
+    }
+
+    /// 結果が型 T なら、その値を分けて持つ（写さない）
+    pub fn get_arc<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.value.clone().downcast::<T>().ok()
+    }
+
+    /// 結果の JSON（serve の analyze の result と同じ）
+    pub fn to_json(&self) -> Result<Value> {
+        (self.json)(&*self.value, self.name)
+    }
+}
+
+impl std::fmt::Debug for Typed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Typed")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+/// 同じ解析の、JSON で同じ結果か
+impl PartialEq for Typed {
+    fn eq(&self, o: &Typed) -> bool {
+        self.name == o.name
+            && (Arc::ptr_eq(&self.value, &o.value)
+                || matches!((self.to_json(), o.to_json()), (Ok(a), Ok(b)) if a == b))
+    }
 }
 
 struct Erased<A: Analysis>(A, PhantomData<fn() -> A>);
@@ -278,6 +352,10 @@ impl<A: Analysis> DynAnalysis for Erased<A> {
     }
     fn check_params(&self, params: &Value) -> Result<()> {
         self.parse(params).map(|_| ())
+    }
+    fn run_typed(&self, cx: &Cx<'_>, params: &Value) -> Result<Typed> {
+        let p = self.parse(params)?;
+        Ok(Typed::new(self.0.meta().name, self.0.run(cx, &p)?))
     }
     fn run_save(
         &self,

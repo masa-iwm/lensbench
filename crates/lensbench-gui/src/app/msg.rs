@@ -75,21 +75,20 @@ pub(super) enum Pool {
 /// 1 つの要求の呼び出し
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Calls {
-    /// 印の method を 1 回（[`Worker::send`]）
-    One(Value),
-    /// 同じ method を順に（[`Worker::send_each`]）
-    Each(Vec<Value>),
-    /// 印の method に面の表・要約の読み直しを付ける（[`Worker::send_refreshing`]）
-    Refreshing(Value),
+    /// 1 回（[`Worker::send`]）
+    One(Call),
+    /// 順に（[`Worker::send_batch`]）
+    Each(Vec<Call>),
+    /// 面の表・要約の読み直しを付ける（[`Worker::send_refreshing`]。None は読み直しだけ）
+    Refreshing(Option<Call>),
 }
 
 impl Calls {
     /// 順番待ちに入る要求か（呼び出しが空なら何も出さない）
-    fn sends(&self, tag: &Tag) -> bool {
+    fn sends(&self, _tag: &Tag) -> bool {
         match self {
-            Calls::One(_) => tag.method().is_some(),
-            Calls::Each(v) => tag.method().is_some() && !v.is_empty(),
-            Calls::Refreshing(_) => true,
+            Calls::One(_) | Calls::Refreshing(_) => true,
+            Calls::Each(v) => !v.is_empty(),
         }
     }
 }
@@ -161,39 +160,61 @@ impl Fx {
 }
 
 impl Core {
-    /// 本体に要求を出す
+    /// 本体に型を付けていない要求を出す（method は印から、params は serve の JSON）
     pub(super) fn calc(&mut self, tag: Tag, params: Value) {
+        // method の無い印（読み直しを束ねた印）は出さない
+        if tag.method().is_none() {
+            return;
+        }
+        let c = tag.call(params);
+        self.call(tag, c);
+    }
+
+    /// 本体に型の要求を出す（JSON を通さない）
+    pub(super) fn call(&mut self, tag: Tag, c: Call) {
         self.fx.push(Effect::Calc {
             pool: Pool::Main,
             tag,
-            calls: Calls::One(params),
+            calls: Calls::One(c),
         });
     }
 
-    /// 本体に同じ method の呼び出しを 1 つの要求として出す
-    pub(super) fn calc_each(&mut self, tag: Tag, params: Vec<Value>) {
+    /// 本体に型の呼び出しを 1 つの要求として出す
+    pub(super) fn call_each(&mut self, tag: Tag, calls: Vec<Call>) {
         self.fx.push(Effect::Calc {
             pool: Pool::Main,
             tag,
-            calls: Calls::Each(params),
+            calls: Calls::Each(calls),
         });
     }
 
-    /// 本体に、面の表・要約の読み直しを付けた要求を出す
+    /// 本体に、面の表・要約の読み直しを付けた要求を出す（印が [`Tag::Refresh`] なら読み直しだけ）
     pub(super) fn calc_refreshing(&mut self, tag: Tag, params: Value) {
+        let c = tag.method().map(|_| tag.call(params));
+        self.call_refreshing(tag, c);
+    }
+
+    /// 型の要求に、面の表・要約の読み直しを付けて出す
+    pub(super) fn call_refreshing(&mut self, tag: Tag, c: Option<Call>) {
         self.fx.push(Effect::Calc {
             pool: Pool::Main,
             tag,
-            calls: Calls::Refreshing(params),
+            calls: Calls::Refreshing(c),
         });
     }
 
     /// 下書きの順番待ちに要求を出す
     pub(super) fn draft(&mut self, tag: Tag, params: Value) {
+        let c = tag.call(params);
+        self.draft_call(tag, c);
+    }
+
+    /// 下書きの worker に型の要求を出す
+    pub(super) fn draft_call(&mut self, tag: Tag, c: Call) {
         self.fx.push(Effect::Calc {
             pool: Pool::Preview,
             tag,
-            calls: Calls::One(params),
+            calls: Calls::One(c),
         });
     }
 
@@ -248,9 +269,9 @@ impl Core {
                         Pool::Preview => &mut self.preview,
                     };
                     match calls {
-                        Calls::One(p) => w.send(tag, p),
-                        Calls::Each(v) => w.send_each(tag, v),
-                        Calls::Refreshing(p) => w.send_refreshing(tag, p),
+                        Calls::One(c) => w.send(tag, c),
+                        Calls::Each(v) => w.send_batch(tag, v),
+                        Calls::Refreshing(c) => w.send_refreshing(tag, c),
                     }
                 }
                 Effect::DropQueued => self.worker.drop_queued(),
@@ -399,7 +420,7 @@ impl App {
                     self.c.run(id, &cfg);
                 }
             }
-            Msg::AddParam(p) => self.c.calc(Tag::Get, json!({ "param": p })),
+            Msg::AddParam(p) => self.c.call(Tag::Get, Call::Get(GetReq::One(p))),
             Msg::RemoveParam(i) => {
                 if i < self.c.ses.params.len() {
                     let p = self.c.ses.params.remove(i);

@@ -163,11 +163,15 @@ impl Core {
             .map(|(n, x)| crate::optim_panel::combo_edit(n, *x).ok())
             .collect::<Option<Vec<_>>>()
         else {
-            let ops: Vec<Value> = vals
+            use lensbench_project::edit_spec::{EditOp, Num};
+            let ops = vals
                 .iter()
-                .map(|(k, x)| json!({ "op": "set_param", "param": k, "value": x }))
+                .map(|(k, x)| EditOp::SetParam {
+                    param: k.clone(),
+                    value: Num(*x),
+                })
                 .collect();
-            self.calc(Tag::WriteBack, json!({ "ops": ops }));
+            self.call(Tag::WriteBack, Call::WriteBack { ops });
             return true;
         };
         let ids = self.doc.combo.span_ids();

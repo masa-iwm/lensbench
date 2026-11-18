@@ -245,7 +245,9 @@ impl Session {
         bins: Vec<Bin>,
         threads: Option<usize>,
     ) -> Result<(Value, Vec<Bin>), CallError> {
-        dispatch(self, method, params, bins, threads).map_err(CallError::from)
+        dispatch(self, method, params, bins, threads)
+            .and_then(|(a, b)| Ok((a.into_json()?, b)))
+            .map_err(CallError::from)
     }
 
     fn served(&self) -> std::sync::MutexGuard<'_, Option<Served>> {
@@ -294,30 +296,6 @@ fn store(sess: &Session, r: ReadFile, spec: LoadSpec) {
     });
 }
 
-/// load・reload の段の扱い（`history`）
-#[derive(Clone, Copy, PartialEq)]
-enum LoadHistory {
-    /// 段を空にする（既定）
-    Clear,
-    /// 前の系を 1 段として積む（開く・読み直すを元に戻せる）
-    Push,
-    /// 段はそのまま（GUI の組合せの作り直しなど、段を別に持つとき）
-    Keep,
-}
-
-fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
-    Ok(match p.get("history").and_then(Value::as_str) {
-        None | Some("clear") => LoadHistory::Clear,
-        Some("push") => LoadHistory::Push,
-        Some("keep") => LoadHistory::Keep,
-        Some(x) => {
-            return Err(RpcErr::params(format!(
-                "history must be clear, push or keep ({x})"
-            )))
-        }
-    })
-}
-
 /// 読み込んだ系を置く。h が Push なら前の系を段に積み、Keep なら段はそのまま
 fn store_loaded(sess: &Session, r: ReadFile, spec: LoadSpec, h: LoadHistory, reload: bool) {
     let mut g = sess.served();
@@ -350,6 +328,12 @@ fn store_loaded(sess: &Session, r: ReadFile, spec: LoadSpec, h: LoadHistory, rel
     *g = Some(x);
 }
 
+mod answer;
+use answer::surfaces_view;
+pub use answer::Answer;
+mod request;
+mod run;
+pub use request::{AnalyzeReq, GetReq, LoadHistory, LoadReq, Request};
 #[path = "session_hist.rs"]
 mod hist;
 
@@ -364,17 +348,22 @@ mod trace;
 pub mod views;
 use args::{known_keys, opt_f64, opt_usize, str_list};
 pub use catalog::range_system;
-use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
+pub use catalog::{
+    BrowseReq, CadStepReq, CatalogAddReq, CatalogEditReq, CatalogFillReq, SearchReq,
+};
 use hist::{change_label, config_only, history_json, snap_was_load, summary, CONFIG_KEY};
 use layout::{configs, layout, layout_export, layout_with};
+pub use layout::{LayoutExportReq, LayoutReq};
 use optim::{apply_pending, optimize, swap, tolerance, zoom, PendingApply};
 pub use optim::{
     optimize_cancel, optimize_progress, swap_cancel, swap_progress, tolerance_cancel,
     tolerance_progress,
 };
+pub use optim::{SwapReq, TolReq};
 pub use proto::{Access, METHODS, PROTOCOL};
 use replay::replay;
 use trace::{plugin, trace};
+pub use trace::{PluginInput, PluginReq, PluginValue, TraceReq};
 
 /// 今の系の写し
 fn snap(x: &Served) -> Snap {
@@ -477,8 +466,7 @@ fn add_history(sess: &Session, v: &mut Value) {
 }
 
 /// steps 段まとめて戻す・やり直す（途中で尽きたらそこまで）
-fn step_history_n(sess: &Session, back: bool, p: &Value) -> Result<Value, RpcErr> {
-    let n = opt_usize(p, "steps")?.unwrap_or(1).max(1);
+fn step_history_n(sess: &Session, back: bool, n: usize) -> Result<Value, RpcErr> {
     let mut v = step_history(sess, back)?;
     let mut loaded = v.get("loaded").is_some();
     for _ in 1..n {
@@ -659,13 +647,41 @@ fn dispatch(
     params: &Value,
     bins: Vec<Bin>,
     threads: Option<usize>,
-) -> Result<Reply, RpcErr> {
+) -> Result<(Answer, Vec<Bin>), RpcErr> {
     // 進み具合・中断・停止は、処理している要求を待たずに答える（別の接続から）
     if let Some(r) = status(sess, method, params) {
-        return r;
+        return r.map(|(v, b)| (Answer::Json(v), b));
     }
+    // params を読む所の panic も誤りにする
+    let req = catch_panic(|| Request::parse(method, params))?;
+    dispatch_req(sess, req, bins, threads)
+}
+
+/// f の panic を誤り「internal error (panic)」にする（panic の hook が残した文と場所を添える）
+pub(crate) fn catch_panic<T>(f: impl FnOnce() -> Result<T, RpcErr>) -> Result<T, RpcErr> {
+    LAST_PANIC.with(|l| l.borrow_mut().take());
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|e| {
+        // panic の hook（GUI の crash.rs）が残した文と場所。無ければ panic の文だけ
+        let t = LAST_PANIC
+            .with(|l| l.borrow_mut().take())
+            .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+            .or_else(|| e.downcast_ref::<String>().cloned());
+        Err(RpcErr::app(match t {
+            Some(t) => format!("internal error (panic): {t}"),
+            None => "internal error (panic)".into(),
+        }))
+    })
+}
+
+/// 型の要求を 1 つ処理する（鍵は [`Access`]。panic はエラーにする）
+fn dispatch_req(
+    sess: &Session,
+    req: Request,
+    bins: Vec<Bin>,
+    threads: Option<usize>,
+) -> Result<(Answer, Vec<Bin>), RpcErr> {
     let (_r, _w, _l);
-    let access = Access::of(method);
+    let access = Access::of(req.method());
     match access {
         Access::Read => _r = sess.request.read_ok(),
         Access::Write => _w = sess.request.write_ok(),
@@ -686,21 +702,7 @@ fn dispatch(
     }
     let _d = Done(sess, tok.clone());
     let run = || {
-        LAST_PANIC.with(|l| l.borrow_mut().take());
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            lensbench_core::par::with_cancel(Some(&tok), || handle(sess, method, params, bins))
-        }))
-        .unwrap_or_else(|e| {
-            // panic の hook（GUI の crash.rs）が残した文と場所。無ければ panic の文だけ
-            let t = LAST_PANIC
-                .with(|l| l.borrow_mut().take())
-                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                .or_else(|| e.downcast_ref::<String>().cloned());
-            Err(RpcErr::app(match t {
-                Some(t) => format!("internal error (panic): {t}"),
-                None => "internal error (panic)".into(),
-            }))
-        })
+        catch_panic(|| lensbench_core::par::with_cancel(Some(&tok), || run::run(sess, req, bins)))
     };
     if access != Access::Long {
         return lensbench_core::with_threads(threads, run);
@@ -777,54 +779,6 @@ impl std::fmt::Display for CallError {
 /// 結果の配列（`trace` の x・y・z・opl・err・vig など。名前と f64 の並び、整数も f64 にする）
 pub type Arrays = Vec<(String, Vec<f64>)>;
 
-/// load の params から系の読み方
-fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
-    let file = p["file"]
-        .as_str()
-        .ok_or_else(|| RpcErr::params("load needs file"))?;
-    let read_all = |v: Vec<PathBuf>| -> Result<Vec<PathBuf>, RpcErr> {
-        v.iter().map(|x| sess.files.check_path(x, false)).collect()
-    };
-    // 名前は Python と同じ
-    let keys = [
-        "file",
-        "glass_dirs",
-        "lens_catalogs",
-        "cfg",
-        "state",
-        "beam_path",
-        "history",
-        "strict_macros",
-    ];
-    known_keys(p, &keys)?;
-    let (glass, lens) = (&p["glass_dirs"], &p["lens_catalogs"]);
-    let path = match &p["beam_path"] {
-        Value::Null => None,
-        v => Some(
-            v.as_str()
-                .ok_or_else(|| {
-                    RpcErr::params("beam_path must be a string (the BS path, e.g. \"TR\")")
-                })?
-                .to_string(),
-        ),
-    };
-    Ok(LoadSpec {
-        file: sess.files.check_path(Path::new(file), false)?,
-        glass_dir: read_all(str_list(glass, "glass_dirs")?)?,
-        lens_catalog: read_all(str_list(lens, "lens_catalogs")?)?,
-        cfg: opt_usize(p, "cfg")?.unwrap_or(1),
-        state: p["state"].as_str().map(str::to_string),
-        path,
-        names: lensbench_project::open::ArgNames::SERVE,
-        strict_macros: match &p["strict_macros"] {
-            Value::Null => false,
-            v => v
-                .as_bool()
-                .ok_or_else(|| RpcErr::params("strict_macros must be true or false"))?,
-        },
-    })
-}
-
 impl Session {
     /// serve と同じ method を同じプロセスの中から呼ぶ（GUI が使う）。params・result は TCP の要求と同じ JSON。
     /// 系は場に 1 つで、TCP の要求と同じく 1 つずつ順に処理する。bin（配列）を使う `trace`・`echo` は
@@ -845,76 +799,124 @@ impl Session {
         params: &Value,
         threads: Option<usize>,
     ) -> Result<(Value, Arrays), CallError> {
+        let (a, arrays) = self.call_answer(method, params, threads)?;
+        Ok((
+            a.into_json()
+                .map_err(|e| CallError::from(RpcErr::from(e)))?,
+            arrays,
+        ))
+    }
+
+    /// [`call_arrays`] と同じで、結果の型が決まっている method（面の表・最適化・差し替え探索・公差・ズーム軌跡）は
+    /// JSON を通さずに型のまま返す（[`Answer`]。GUI が使う）
+    pub fn call_answer(
+        &self,
+        method: &str,
+        params: &Value,
+        threads: Option<usize>,
+    ) -> Result<(Answer, Arrays), CallError> {
         dispatch(self, method, params, Vec::new(), threads)
-            .map(|(v, bins)| {
-                let a = bins
-                    .into_iter()
-                    .flat_map(|b| {
-                        let d = match b.data {
-                            Data::F64(x) => x,
-                            Data::I32(x) => x.into_iter().map(f64::from).collect(),
-                            Data::U8(x) => x.into_iter().map(f64::from).collect(),
-                            Data::Bool(x) => x.into_iter().map(|b| b as u8 as f64).collect(),
-                            // 複素数は 名前.re・名前.im の 2 つに分ける
-                            Data::C64(x) => {
-                                let im = x.iter().map(|z| z.im).collect();
-                                return vec![
-                                    (format!("{}.re", b.name), x.iter().map(|z| z.re).collect()),
-                                    (format!("{}.im", b.name), im),
-                                ];
-                            }
-                        };
-                        vec![(b.name, d)]
-                    })
-                    .collect();
-                (v, a)
-            })
+            .map(arrays_of)
             .map_err(CallError::from)
+    }
+
+    /// 型の要求を同じプロセスの中から渡す（JSON を通さない。GUI が使う）。答えは [`call_answer`] と同じ
+    pub fn request(
+        &self,
+        req: Request,
+        threads: Option<usize>,
+    ) -> Result<(Answer, Arrays), CallError> {
+        let r = match req {
+            // 型を付けていない method は JSON の口で（進み具合・中断・停止は待たずに答える）
+            Request::Json { method, params } => {
+                dispatch(self, &method, &params, Vec::new(), threads)
+            }
+            req => dispatch_req(self, req, Vec::new(), threads),
+        };
+        r.map(arrays_of).map_err(CallError::from)
     }
 
     /// 系を読んで（`load` と同じ params）、そのレイアウト図（`layout` と同じ結果）を返す。読み込んだ系は変えず、
     /// 他の要求の順番も待たない。GUI が、解析を回している間も組合せの図だけ先に描き直すのに使う
     pub fn preview_layout(&self, load: &Value, opts: &Value) -> Result<Value, CallError> {
+        let f = || -> Result<(LoadReq, LayoutReq), RpcErr> {
+            Ok((LoadReq::parse(load)?, LayoutReq::parse(opts)?))
+        };
+        let (l, o) = f().map_err(CallError::from)?;
+        self.preview(&l, &o)
+    }
+
+    /// [`Session::preview_layout`] の型の口
+    pub fn preview(&self, load: &LoadReq, opts: &LayoutReq) -> Result<Value, CallError> {
+        let f = || preview_of(self, load, opts);
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+            .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
+            .map_err(CallError::from)
+    }
+
+    /// カタログの要求（`glasses`・`lenses`・`catalog_search`・`catalog_items`・`catalog_edit`・`catalog_fill`）を、
+    /// 読み込んだ系に関係なく、他の要求の順番も待たずに処理する。GUI が、解析を回している間もカタログを読み・
+    /// 下書きの worker からユーザーカタログを変えるのに使う（`catalog_add` は読み込んだ系が要るので [`Session::request`] で）
+    pub fn catalog(&self, req: &Request) -> Result<Value, CallError> {
         let sess = self;
-        let f = || -> Result<Value, RpcErr> {
-            let spec = load_spec(sess, load)?;
-            let r = read_file_notes(&spec)?;
-            let mut v = layout_with(&r.sys, &spec, opts, None)?;
-            // 要素ごとの面の範囲（GUI の組合せの図・レンズデータの要素の行）
-            v["blocks"] = json!(r.blocks);
-            Ok(v)
+        let f = || match req {
+            Request::Glasses(r) => catalog::glasses(sess, r),
+            Request::Lenses(r) => catalog::lenses(sess, r),
+            Request::CatalogSearch(r) => catalog::catalog_search(sess, r),
+            Request::CatalogItems { catalog } => catalog::catalog_items(sess, catalog),
+            Request::CatalogEdit(r) => catalog::catalog_edit(sess, r),
+            Request::CatalogFill(r) => catalog::catalog_fill(sess, r),
+            r => {
+                let m = r.method();
+                Err(RpcErr::params(format!(
+                    "{m} must be glasses, lenses, catalog_search, catalog_items, catalog_edit or catalog_fill"
+                )))
+            }
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
             .map_err(CallError::from)
     }
 
-    /// カタログの一覧（`glasses`・`lenses` と同じ params・結果）。読み込んだ系に関係なく、他の要求の順番も待たない。
-    /// GUI が、解析を回している間もカタログを読めるように使う
-    /// ユーザーカタログの一覧・名前と説明の変更・削除（`catalog_items`・`catalog_edit`）を、読み込んだ系と関係なく
-    /// 呼ぶ（GUI の下書きの worker から。`catalog_add` は読み込んだ系が要るので [`call`] で）
-    pub fn user_catalog_edit(&self, method: &str, params: &Value) -> Result<Value, CallError> {
-        let sess = self;
-        let f = || match method {
-            "catalog_items" | "catalog_edit" => user_catalog(sess, method, params),
-            "catalog_fill" => catalog_fill(sess, params),
-            m => Err(RpcErr::params(format!(
-                "{m} must be catalog_items, catalog_edit or catalog_fill"
-            ))),
-        };
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
-            .map_err(CallError::from)
-    }
-
+    /// [`Session::catalog`] の JSON の口（method と serve の params）
     pub fn browse(&self, method: &str, params: &Value) -> Result<Value, CallError> {
-        let sess = self;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            browse_of(sess, method, params)
-        }))
-        .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
-        .map_err(CallError::from)
+        self.catalog(&Request::from_json(method, params)?)
     }
+}
+
+/// [`Session::preview`]（読み込んだ系は変えない）
+fn preview_of(sess: &Session, load: &LoadReq, opts: &LayoutReq) -> Result<Value, RpcErr> {
+    let spec = load.spec(sess)?;
+    let r = read_file_notes(&spec)?;
+    let mut v = layout_with(&r.sys, &spec, opts, None)?;
+    // 要素ごとの面の範囲（GUI の組合せの図・レンズデータの要素の行）
+    v["blocks"] = json!(r.blocks);
+    Ok(v)
+}
+
+/// 答えの bin を名前と f64 の並びに（整数・真偽も f64、複素数は 名前.re・名前.im の 2 つ）
+fn arrays_of((v, bins): (Answer, Vec<Bin>)) -> (Answer, Arrays) {
+    let a = bins
+        .into_iter()
+        .flat_map(|b| {
+            let d = match b.data {
+                Data::F64(x) => x,
+                Data::I32(x) => x.into_iter().map(f64::from).collect(),
+                Data::U8(x) => x.into_iter().map(f64::from).collect(),
+                Data::Bool(x) => x.into_iter().map(|b| b as u8 as f64).collect(),
+                // 複素数は 名前.re・名前.im の 2 つに分ける
+                Data::C64(x) => {
+                    let im = x.iter().map(|z| z.im).collect();
+                    return vec![
+                        (format!("{}.re", b.name), x.iter().map(|z| z.re).collect()),
+                        (format!("{}.im", b.name), im),
+                    ];
+                }
+            };
+            vec![(b.name, d)]
+        })
+        .collect();
+    (v, a)
 }
 
 /// [`global`] の場の [`Session::call`]
@@ -931,14 +933,33 @@ pub fn call_arrays(
     global().call_arrays(method, params, threads)
 }
 
+/// [`global`] の場の [`Session::request`]
+pub fn request(req: Request, threads: Option<usize>) -> Result<(Answer, Arrays), CallError> {
+    global().request(req, threads)
+}
+
+/// [`global`] の場の [`Session::call_answer`]
+pub fn call_answer(
+    method: &str,
+    params: &Value,
+    threads: Option<usize>,
+) -> Result<(Answer, Arrays), CallError> {
+    global().call_answer(method, params, threads)
+}
+
 /// [`global`] の場の [`Session::preview_layout`]
 pub fn preview_layout(load: &Value, opts: &Value) -> Result<Value, CallError> {
     global().preview_layout(load, opts)
 }
 
-/// [`global`] の場の [`Session::user_catalog_edit`]
-pub fn user_catalog_edit(method: &str, params: &Value) -> Result<Value, CallError> {
-    global().user_catalog_edit(method, params)
+/// [`global`] の場の [`Session::preview`]
+pub fn preview(load: &LoadReq, opts: &LayoutReq) -> Result<Value, CallError> {
+    global().preview(load, opts)
+}
+
+/// [`global`] の場の [`Session::catalog`]
+pub fn catalog(req: &Request) -> Result<Value, CallError> {
+    global().catalog(req)
 }
 
 /// [`global`] の場の [`Session::browse`]
@@ -948,313 +969,15 @@ pub fn browse(method: &str, params: &Value) -> Result<Value, CallError> {
 
 type Reply = (Value, Vec<Bin>);
 
-fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
+/// 型を付けていない method（`echo` と、知らない method の誤り）
+fn answer(method: &str, p: &Value, bins: Vec<Bin>) -> Result<(Answer, Vec<Bin>), RpcErr> {
+    handle(method, p, bins).map(|(v, b)| (Answer::Json(v), b))
+}
+
+fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     match method {
-        "ping" => Ok((json!({ "version": lensbench_core::VERSION }), Vec::new())),
-        "describe" => {
-            let a: Vec<&str> = crate::analyses().iter().map(|d| d.meta().name).collect();
-            let v = lensbench_core::VERSION;
-            let d =
-                json!({ "version": v, "protocol": PROTOCOL, "methods": METHODS, "analyses": a });
-            Ok((d, Vec::new()))
-        }
-        "shutdown" => Ok((json!(true), Vec::new())),
         // 配列をそのまま返す（往復の時間を測る）
         "echo" => Ok((json!({ "params": p }), bins)),
-        "load" => {
-            let h = load_history(p)?;
-            let spec = load_spec(sess, p)?;
-            let l = read_file_notes(&spec)?;
-            let mut v = summary(&l.sys, &spec, &l.notes, &l.blocks);
-            store_loaded(sess, l, spec, h, false);
-            add_history(sess, &mut v);
-            Ok((v, Vec::new()))
-        }
-        // 同じ読み方でファイルを読み直す（set で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に使う
-        "reload" => {
-            let h = load_history(p)?;
-            let (_, spec) = sess.current()?;
-            let l = read_file_notes(&spec)?;
-            let mut v = summary(&l.sys, &spec, &l.notes, &l.blocks);
-            store_loaded(sess, l, spec, h, true);
-            add_history(sess, &mut v);
-            Ok((v, Vec::new()))
-        }
-        "system" => {
-            let g = sess.served();
-            let x = g
-                .as_ref()
-                .ok_or_else(|| RpcErr::app("no system (load first)"))?;
-            Ok((summary(&x.sys, &x.spec, &x.notes, &x.blocks), Vec::new()))
-        }
-        // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
-        // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる。history: "push" で読めば読む前の系も 1 段）
-        "undo" => Ok((step_history_n(sess, true, p)?, Vec::new())),
-        "redo" => Ok((step_history_n(sess, false, p)?, Vec::new())),
-        "history" => Ok((history(sess), Vec::new())),
-        "get" => {
-            let (s, _) = sess.current()?;
-            if let Some(one) = p.get("param").and_then(Value::as_str) {
-                let v = s.get_param(s.param(one)?)?;
-                return Ok((json!({ "value": v }), Vec::new()));
-            }
-            let list = p["params"]
-                .as_array()
-                .ok_or_else(|| RpcErr::params("get needs param or params (a list)"))?;
-            let mut out = Vec::with_capacity(list.len());
-            for x in list {
-                let spec = x
-                    .as_str()
-                    .ok_or_else(|| RpcErr::params("params must be a list of strings"))?;
-                out.push(s.get_param(s.param(spec)?)?);
-            }
-            Ok((json!({ "values": out }), Vec::new()))
-        }
-        "set" => {
-            let (s, spec) = sess.current()?;
-            let changes = parse_changes(&s, p)?;
-            let mut n = s.with_params(&changes)?;
-            // 多重構成の表の行の値なら、表の今の構成の列も
-            n.sync_active_config();
-            let names: Vec<String> = changes.iter().map(|(q, _)| n.param_name(*q)).collect();
-            let rec = changes
-                .iter()
-                .zip(&names)
-                .map(|((q, v), name)| Ok((name.clone(), s.get_param(*q)?, *v)))
-                .collect::<Result<Vec<_>, lensbench_core::Error>>()?;
-            store_changed(sess, n, spec, Change::Set(rec));
-            let mut v = history(sess);
-            v["changed"] = json!(names);
-            Ok((v, Vec::new()))
-        }
-        // 系を .zmx に書き出す（別アプリに渡す）
-        "write" => {
-            let (s, _) = sess.current()?;
-            let path = p["path"]
-                .as_str()
-                .ok_or_else(|| RpcErr::params("write needs path"))?;
-            let notes = zmx_write::save(&sess.files.check_path(Path::new(path), true)?, &s)?;
-            Ok((json!({ "written": path, "notes": notes }), Vec::new()))
-        }
-        // 系の編集: ops の操作の列を順に当てる（どれかが失敗すれば系は変えない）
-        "edit" => {
-            let (s, spec) = sess.current()?;
-            let mut n = (*s).clone();
-            let ops = lensbench_project::edit_ops::parse(&p["ops"]).map_err(RpcErr::params)?;
-            let notes = lensbench_project::edit_ops::apply(&mut n, &ops).map_err(RpcErr::app)?;
-            let hash = lensbench_project::sysfile::system_hash(&n).map_err(RpcErr::app)?;
-            let count = n.surfaces.len();
-            store_changed(sess, n, spec, Change::Edit(ops));
-            let mut v = history(sess);
-            v["notes"] = json!(notes);
-            v["surfaces"] = json!(count);
-            v["system_hash"] = json!(hash);
-            Ok((v, Vec::new()))
-        }
-        // 面の値（surface は番号か名前。省略で全部の面と、玉・群の面の範囲 units）
-        "surface" => {
-            let (s, _) = sess.current()?;
-            let one = |j: usize| {
-                lensbench_project::edit_ops::surf_fields_json(&s, j).map_err(RpcErr::app)
-            };
-            match p.get("surface") {
-                None | Some(Value::Null) => {
-                    // 面ごとのソルブ・ピックアップも（GUI の面の表の印。形は surface_data と同じ）
-                    let all = (0..s.surfaces.len())
-                        .map(|j| {
-                            let mut f = one(j)?;
-                            let sp = lensbench_project::edit_ops::surface_solves(&s, j);
-                            if let (Some(o), Value::Object(x)) = (f.as_object_mut(), sp) {
-                                o.extend(x);
-                            }
-                            views::read::<views::SurfaceView>(&f).map_err(RpcErr::app)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    // 玉・群（ブロック）の面の範囲も（GUI の面の表の階層）
-                    // 玉・群の偏心・傾き（motion: dx dy tx ty tz）・移動 shift・媒質の dn・disp（面ごとに違えば null）
-                    let units: Vec<views::UnitView> = s
-                        .units
-                        .iter()
-                        .enumerate()
-                        .map(|(i, u)| {
-                            let get =
-                                |k| s.get_param(lensbench_core::param::Param::unit(i, k)).ok();
-                            views::UnitView {
-                                name: u.name.clone(),
-                                spans: u.spans.clone(),
-                                auto: u.auto,
-                                motion: u.motion,
-                                shift: u.shift,
-                                dn: get(lensbench_core::units::UnitKind::Dn),
-                                disp: get(lensbench_core::units::UnitKind::Disp),
-                            }
-                        })
-                        .collect();
-                    // 機構部品（系ファイルの mechanics と同じ形、GUI の面の表で編集）
-                    let mechs = serde_json::to_value(&s.mechanics).unwrap_or_default();
-                    let v = views::SurfacesView {
-                        surfaces: all,
-                        units,
-                        mechanics: mechs,
-                    };
-                    Ok((json!(v), Vec::new()))
-                }
-                Some(v) => {
-                    let j = match v {
-                        Value::String(t) => s.find_surface(t)?,
-                        _ => s.find_surface(&v.to_string())?,
-                    };
-                    Ok((json!({ "surface": j, "fields": one(j)? }), Vec::new()))
-                }
-            }
-        }
-        // 面のデータを全部の項目で（set_surface_data と同じ形）と、その面のソルブ・ピックアップ（GUI の面の設定）
-        "surface_data" => {
-            let (s, _) = sess.current()?;
-            let j = match p.get("surface") {
-                Some(Value::String(t)) => s.find_surface(t)?,
-                Some(v) => v
-                    .as_u64()
-                    .map(|x| x as usize)
-                    .ok_or_else(|| RpcErr::params("surface must be a surface number or name"))?,
-                None => return Err(RpcErr::params("surface_data needs surface")),
-            };
-            let v = lensbench_project::edit_ops::surface_data(&s, j).map_err(RpcErr::app)?;
-            Ok((v, Vec::new()))
-        }
-        // 多重構成の表: 構成の数 n・今の構成 active・行（パラメータの名前と構成ごとの値）。
-        // .zmx なら、ファイルの多重構成の数 zmx_cfgs と読んだ構成 zmx_cfg も
-        // 系の設定: 波長・視野・開口・エイミング・環境・GLRS・ROPD・膜ファイルなど（edit の set_system_data と同じ形）
-        "system_data" => {
-            let (s, _) = sess.current()?;
-            let v = lensbench_project::edit_ops::system_data(&s).map_err(RpcErr::app)?;
-            Ok((json!({ "data": v }), Vec::new()))
-        }
-        "config_table" => {
-            let Current {
-                sys: s, spec, src, ..
-            } = sess.current_full()?;
-            let rows: Vec<views::ConfigRow> = s
-                .configs()
-                .map(|c| {
-                    c.rows
-                        .iter()
-                        .map(|r| views::ConfigRow {
-                            param: s.param_name(r.param),
-                            values: r.values.clone(),
-                            picks: r.picks.clone(),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let (n, active) = s.configs().map_or((1, 1), |c| (c.n, c.active));
-            // 読み込んだときのファイルの中身から（.zmx でなければ 1）
-            let zmx_cfgs = src.configurations()?;
-            let t = views::ConfigTable {
-                n,
-                active,
-                rows,
-                zmx_cfgs,
-                zmx_cfg: spec.cfg,
-            };
-            Ok((json!(t), Vec::new()))
-        }
-        // .zmx の多重構成を表にする edit の操作: 各構成を読み、構成で違うパラメータを行にする。
-        // 表にできない違い（硝材・無視・面の数・半径以外の値）は notes に
-        "config_diff" => {
-            let Current { spec, src, .. } = sess.current_full()?;
-            let v = config_diff(&spec, &src)?;
-            Ok((v, Vec::new()))
-        }
-        // 系ファイルに保存する（編集・set の後の系をそのまま）
-        "save_project" => save_project::save_project(sess, p),
-        // 面の操作をプロジェクトのブロックへ書き戻した結果（保存しない、GUI の組合せの面の表）
-        "write_back" => save_project::write_back(sess, p),
-        "save" => {
-            let (s, _) = sess.current()?;
-            let path = p["path"]
-                .as_str()
-                .ok_or_else(|| RpcErr::params("save needs path"))?;
-            lensbench_project::sysfile::save(
-                &sess.files.check_path(Path::new(path), true)?,
-                &s,
-                &[],
-            )
-            .map_err(RpcErr::app)?;
-            let hash = lensbench_project::sysfile::system_hash(&s).map_err(RpcErr::app)?;
-            let notes = lensbench_project::sysfile::save_notes(&s);
-            Ok((
-                json!({ "written": path, "system_hash": hash, "notes": notes }),
-                Vec::new(),
-            ))
-        }
-        // 今の系の面 from〜to だけを系ファイル（面の並び）に書き出す（GUI のレンズデータの「選んだ範囲を書き出す」）。
-        // 物体面・像面は残し、範囲の外の面は消す（外を参照するピックアップ・ソルブは外れる）。絞りが範囲の外なら from を絞りに
-        "save_range" => {
-            let (s, _) = sess.current()?;
-            let path = p["path"]
-                .as_str()
-                .ok_or_else(|| RpcErr::params("save_range needs path"))?;
-            let num = |k: &str| {
-                p[k].as_u64().map(|x| x as usize).ok_or_else(|| {
-                    RpcErr::params(format!("save_range needs {k} (a surface number)"))
-                })
-            };
-            let (from, to) = (num("from")?, num("to")?);
-            let s = range_system(&s, from, to).map_err(|e| RpcErr::app(e.to_string()))?;
-            lensbench_project::sysfile::save(
-                &sess.files.check_path(Path::new(path), true)?,
-                &s,
-                &[],
-            )
-            .map_err(RpcErr::app)?;
-            let notes = lensbench_project::sysfile::save_notes(&s);
-            Ok((
-                json!({ "written": path, "surfaces": s.surfaces.len(), "notes": notes }),
-                Vec::new(),
-            ))
-        }
-        "analyze" => analyze(sess, p).map(|v| (v, Vec::new())),
-        // カタログを探す一覧（GUI のカタログブラウザ）
-        "glasses" | "lenses" | "catalog_search" => {
-            browse_of(sess, method, p).map(|v| (v, Vec::new()))
-        }
-        "trace" => trace(sess, p, bins),
-        // 解析・検出器のプラグイン
-        "plugins" => Ok((crate::load::plugins_json(), Vec::new())),
-        // ユーザーカタログ: 読み込んだプロジェクトのブロック・範囲を項目に保存、一覧、名前・説明の変更と削除
-        "catalog_add" | "catalog_items" | "catalog_edit" => {
-            user_catalog(sess, method, p).map(|v| (v, Vec::new()))
-        }
-        // カタログの未完の品に厚さ・径を足し、補足のカタログ（ユーザーカタログ）に普通の品として保存
-        "catalog_fill" => catalog_fill(sess, p).map(|v| (v, Vec::new())),
-        // 品の詳しい形の STEP を 1 件取ってキャッシュに置き、簡易外形と比べる（CLI の cad-step）
-        "cad_step" => cad_step(sess, p).map(|v| (v, Vec::new())),
-        // analyze の解析の設定の項目（名前・型・既定・説明。GUI の設定欄）
-        "analysis_args" => {
-            let cmd = p["cmd"]
-                .as_str()
-                .ok_or_else(|| RpcErr::params("analysis_args needs cmd"))?;
-            let args = crate::params::analysis_args(cmd).ok_or_else(|| {
-                RpcErr::params(format!(
-                    "{cmd} is not an analyze analysis (see plugins for the list)"
-                ))
-            })?;
-            Ok((json!({ "cmd": cmd, "args": args }), Vec::new()))
-        }
-        "plugin" => plugin(sess, p, bins),
-        "layout" => layout(sess, p).map(|v| (v, Vec::new())),
-        // レイアウトをファイルに書き出す（GUI の書き出し。形式は拡張子で、CLI の layout -o と同じ）
-        "layout_export" => layout_export(sess, p).map(|v| (v, Vec::new())),
-        "configs" => configs(sess).map(|v| (v, Vec::new())),
-        // 減衰最小二乗の最適化（GUI の最適化パネル）
-        "optimize" => optimize(sess, p).map(|v| (v, Vec::new())),
-        // カタログレンズの差し替え探索（GUI）
-        "swap" => swap(sess, p).map(|v| (v, Vec::new())),
-        // モンテカルロ公差
-        "tolerance" => tolerance(sess, p).map(|v| (v, Vec::new())),
-        // ズーム軌跡（GUI のズームのパネル）
-        "zoom" => zoom(sess, p).map(|v| (v, Vec::new())),
         "" => Err(RpcErr {
             code: -32600,
             msg: "no method".into(),
@@ -1273,42 +996,17 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
 /// set の値: {"values": {"3.t": 10.0}} か {"values": [["3.t", 10.0], ...]}
 fn parse_changes(
     s: &System,
-    p: &Value,
+    values: &[(String, f64)],
 ) -> Result<Vec<(lensbench_core::param::Param, f64)>, RpcErr> {
-    let bad = || RpcErr::params("set needs values (\"3.t\": 10.0, or [[\"3.t\", 10.0]])");
-    let pairs: Vec<(&str, f64)> = match p.get("values") {
-        Some(Value::Object(m)) => m
-            .iter()
-            .map(|(k, v)| Ok((k.as_str(), v.as_f64().ok_or_else(bad)?)))
-            .collect::<Result<_, RpcErr>>()?,
-        Some(Value::Array(a)) => a
-            .iter()
-            .map(|x| {
-                let k = x.get(0).and_then(Value::as_str).ok_or_else(bad)?;
-                let v = x.get(1).and_then(Value::as_f64).ok_or_else(bad)?;
-                Ok((k, v))
-            })
-            .collect::<Result<_, RpcErr>>()?,
-        _ => return Err(bad()),
-    };
-    pairs
-        .into_iter()
-        .map(|(k, v)| Ok((s.param(k)?, v)))
-        .collect()
+    values.iter().map(|(k, v)| Ok((s.param(k)?, *v))).collect()
 }
 
 /// 解析の登録簿の解析（と膜の境界）を、読み込んだ系で実行する。最適化・公差・レイアウトの書き出しは専用のメソッド
-fn analyze(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
+fn analyze(sess: &Session, r: &AnalyzeReq) -> Result<Answer, RpcErr> {
     sess.current()?;
-    let m = p
-        .as_object()
-        .ok_or_else(|| RpcErr::params("params must be an object"))?;
-    let cmd = m
-        .get("cmd")
-        .and_then(Value::as_str)
-        .ok_or_else(|| RpcErr::params("cmd (the analysis name) is needed"))?;
+    let (cmd, m) = (r.cmd.as_str(), &r.args);
     if cmd == "coatings" {
-        return crate::analyze::coatings_loaded(sess, m);
+        return crate::analyze::coatings_loaded(sess, m).map(Answer::Json);
     }
     match crate::analyses().get(cmd).cloned() {
         Some(def) => crate::analyze::run(sess, def.as_ref(), m),
@@ -1435,26 +1133,4 @@ fn config_diff(spec: &LoadSpec, src: &Source) -> Result<Value, RpcErr> {
 /// プロジェクトファイル（系ファイルは含めない）
 fn is_project(f: &Path) -> bool {
     lensbench_project::open::FileKind::of(f) == lensbench_project::open::FileKind::Project
-}
-
-/// 配列を JSON か bin から読む
-fn floats(p: &Value, bins: &mut HashMap<String, Bin>, k: &str) -> Result<Option<Vec<f64>>, RpcErr> {
-    if let Some(b) = bins.remove(k) {
-        return match b.data {
-            Data::F64(v) => Ok(Some(v)),
-            _ => Err(RpcErr::params(format!("{k} must be <f8"))),
-        };
-    }
-    match p.get(k) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(a)) => a
-            .iter()
-            .map(|x| {
-                x.as_f64()
-                    .ok_or_else(|| RpcErr::params(format!("{k} must be a list of numbers")))
-            })
-            .collect::<Result<_, _>>()
-            .map(Some),
-        _ => Err(RpcErr::params(format!("{k} must be a list of numbers"))),
-    }
 }

@@ -24,7 +24,10 @@ pub use ext::Extensions;
 pub use load::{builtin_plugins, SysSpec};
 pub use registry::{analyses, builtin_analyses, register};
 pub use session::{
-    browse, call, call_arrays, global, note_panic, optimize_cancel, optimize_progress,
-    preview_layout, range_system, swap_cancel, swap_progress, tolerance_cancel, tolerance_progress,
-    user_catalog_edit, Arrays, Bin, CallError, Data, Files, Session,
+    browse, call, call_answer, call_arrays, catalog, global, note_panic, optimize_cancel,
+    optimize_progress, preview, preview_layout, range_system, request, swap_cancel, swap_progress,
+    tolerance_cancel, tolerance_progress, AnalyzeReq, Answer, Arrays, Bin, BrowseReq, CadStepReq,
+    CallError, CatalogAddReq, CatalogEditReq, CatalogFillReq, Data, Files, GetReq, LayoutExportReq,
+    LayoutReq, LoadHistory, LoadReq, PluginInput, PluginReq, PluginValue, Request, SearchReq,
+    Session, TraceReq,
 };

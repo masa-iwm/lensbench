@@ -3,7 +3,9 @@
 
 use egui::{Color32, RichText, Sense, Ui};
 use egui_plot::{Line, LineStyle, Plot};
-use serde_json::Value;
+use lensbench_analysis::defs::{GeoMtfOut, MtfOut, MtfRow, SpotOut};
+
+use crate::figures::Out;
 
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
@@ -70,12 +72,9 @@ pub(crate) struct SysInfo<'a> {
     pub wfno: Option<f64>,
 }
 
-fn spot_rms(v: &Value, field: usize) -> Option<f64> {
-    v["spot"]
-        .as_array()?
-        .iter()
-        .find(|s| s["field"].as_u64() == Some(field as u64))?["rms_centroid"]
-        .as_f64()
+fn spot_rms(v: &SpotOut, field: usize) -> Option<f64> {
+    let r = v.spot.iter().find(|s| s.field == field)?.rms_centroid;
+    r.is_finite().then_some(r)
 }
 
 fn delta_text(vis: &egui::Visuals, now: f64, prev: Option<f64>) -> Option<(String, Color32)> {
@@ -174,8 +173,8 @@ pub(crate) fn spot(
     ui: &mut Ui,
     rays: &[SpotRays],
     rays_gen: u64,
-    result: &Value,
-    prev: Option<&Value>,
+    result: Option<&SpotOut>,
+    prev: Option<&SpotOut>,
     sys: &SysInfo,
     st: &mut crate::figures::FigState,
 ) {
@@ -366,7 +365,7 @@ pub(crate) fn spot(
                     }
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(fname.as_str()).color(theme::weak_text(&vis)));
-                        if let Some(rms) = spot_rms(result, f) {
+                        if let Some(rms) = result.and_then(|r| spot_rms(r, f)) {
                             let um = rms * 1e3;
                             ui.label(
                                 RichText::new(format!("RMS {} µm", fmt_sig(um, 3))).monospace(),
@@ -404,57 +403,84 @@ pub(crate) fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
     }
 }
 
-/// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
+/// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線。描けなければ false
 pub(crate) fn mtf(
     ui: &mut Ui,
-    result: &Value,
-    prev: Option<&Value>,
+    out: Out<'_>,
+    prev: Option<Out<'_>>,
     id: u64,
     gen: u64,
     show_prev: &mut bool,
-) {
-    mtf_curves(ui, result, prev, id, gen, "mtf", show_prev);
+) -> bool {
+    let Some(now) = out.get::<MtfOut>(ui, ("mtf", id, "now"), gen) else {
+        return false;
+    };
+    let before = prev.and_then(|p| p.get::<MtfOut>(ui, ("mtf", id, "prev"), gen));
+    let before = before.as_ref().map(|b| &b.mtf[..]);
+    mtf_curves(ui, &now.mtf, &now.unit, before, id, gen, "mtf", show_prev);
+    true
 }
 
-/// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
-/// （曲線はそのときだけ JSON から作る）
-pub(crate) fn mtf_curves(
+/// 幾何 MTF の曲線（[`mtf`] と同じ描き方）。描けなければ false
+pub(crate) fn geo_mtf(
     ui: &mut Ui,
-    result: &Value,
-    prev: Option<&Value>,
+    out: Out<'_>,
+    prev: Option<Out<'_>>,
+    id: u64,
+    gen: u64,
+    show_prev: &mut bool,
+) -> bool {
+    let Some(now) = out.get::<GeoMtfOut>(ui, ("geo-mtf", id, "now"), gen) else {
+        return false;
+    };
+    let before = prev.and_then(|p| p.get::<GeoMtfOut>(ui, ("geo-mtf", id, "prev"), gen));
+    let before = before.as_ref().map(|b| &b.geometric_mtf[..]);
+    mtf_curves(
+        ui,
+        &now.geometric_mtf,
+        &now.unit,
+        before,
+        id,
+        gen,
+        "geometric_mtf",
+        show_prev,
+    );
+    true
+}
+
+/// MTF の曲線（key は図の名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
+/// （曲線はそのときだけ作る）
+#[allow(clippy::too_many_arguments)]
+fn mtf_curves(
+    ui: &mut Ui,
+    rows: &[MtfRow],
+    unit: &str,
+    prev: Option<&[MtfRow]>,
     id: u64,
     gen: u64,
     key: &str,
     show_prev: &mut bool,
 ) {
-    let Some(curves) = result[key].as_array() else {
-        ui.weak(tr("No MTF result"));
-        return;
-    };
-    let unit = result["unit"].as_str().unwrap_or("cycles/mm").to_string();
-    let lines = |v: &Value| -> Vec<(usize, &'static str, Vec<[f64; 2]>)> {
+    let unit = unit.to_string();
+    let lines = |rows: &[MtfRow]| -> Vec<(usize, &'static str, Vec<[f64; 2]>)> {
         let mut out = Vec::new();
-        for c in v[key].as_array().into_iter().flatten() {
-            let f = c["field"].as_u64().unwrap_or(0) as usize;
-            let fr: Vec<f64> = c["freqs"]
-                .as_array()
-                .map(|a| a.iter().map(|x| x.as_f64().unwrap_or(f64::NAN)).collect())
-                .unwrap_or_default();
-            for k in ["tangential", "sagittal"] {
-                if let Some(a) = c[k].as_array() {
-                    let pts: Vec<[f64; 2]> = fr
-                        .iter()
-                        .zip(a)
-                        .filter_map(|(x, y)| Some([*x, y.as_f64()?]))
-                        .collect();
-                    out.push((f, k, pts));
-                }
+        for c in rows {
+            for (k, a) in [("tangential", &c.tangential), ("sagittal", &c.sagittal)] {
+                // JSON に書けない値（NaN）は点にしない
+                let pts: Vec<[f64; 2]> = c
+                    .freqs
+                    .iter()
+                    .zip(a)
+                    .filter(|(_, y)| y.is_finite())
+                    .map(|(x, y)| [*x, *y])
+                    .collect();
+                out.push((c.field, k, pts));
             }
         }
         out
     };
     let both = crate::figures::memo(ui, ("mtf-lines", key, id), gen, || {
-        (lines(result), prev.map(lines).unwrap_or_default())
+        (lines(rows), prev.map(lines).unwrap_or_default())
     });
     let (now, prev_lines) = (&both.0, &both.1);
     // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない）
@@ -480,7 +506,6 @@ pub(crate) fn mtf_curves(
     } else {
         Vec::new()
     };
-    let _ = curves;
     let mut fields: Vec<usize> = now.iter().map(|x| x.0).collect();
     fields.dedup();
     let has_prev = prev.is_some();

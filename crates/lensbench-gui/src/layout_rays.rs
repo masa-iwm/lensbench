@@ -2,8 +2,10 @@
 //! --color・--width・--segments・--rings・--tube）。値が空・0 の項目は serve の既定（見る面の向きの扇など）。
 
 use egui::Ui;
+use lensbench_engine::layout::Pick;
+use lensbench_engine::{LayoutExportReq, LayoutReq};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::i18n::{n_, tr};
 
@@ -66,54 +68,39 @@ pub(crate) struct RaySet {
 }
 
 impl RaySet {
-    /// serve の layout（export なら layout_export）の params に足す。n_fields・n_waves は今の系の数
-    /// （範囲の外の番号は落とす。0 なら数がわからないので落とさない）
-    pub(crate) fn apply(&self, v: &mut Value, n_fields: usize, n_waves: usize, export: bool) {
-        let pick = |a: &[usize], n: usize| -> Vec<usize> {
-            a.iter()
+    /// serve の layout の要求に足す。n_fields・n_waves は今の系の数（範囲の外の番号は落とす。0 なら数が
+    /// わからないので落とさない）
+    pub(crate) fn apply(&self, r: &mut LayoutReq, n_fields: usize, n_waves: usize) {
+        let pick = |a: &[usize], n: usize| -> Option<Pick> {
+            let v: Vec<usize> = a
+                .iter()
                 .copied()
                 .filter(|&i| i >= 1 && (n == 0 || i <= n))
-                .collect()
+                .collect();
+            (!v.is_empty()).then_some(Pick::List(v))
         };
-        let f = pick(&self.fields, n_fields);
-        if !f.is_empty() {
-            v["fields"] = json!(f);
-        }
-        let w = pick(&self.waves, n_waves);
-        if !w.is_empty() {
-            v["waves"] = json!(w);
-        }
-        if !self.fan.is_empty() {
-            v["fan"] = json!(self.fan);
-        }
-        if self.rays > 0 {
-            v["rays"] = json!(self.rays);
-        }
-        if self.first > 0 {
-            v["first"] = json!(self.first);
-        }
-        if self.last > 0 && self.last >= self.first {
-            v["last"] = json!(self.last);
-        }
-        if !self.color.is_empty() {
-            v["color"] = json!(self.color);
-        }
-        if self.mech_detail {
-            v["mech_detail"] = json!(true);
-        }
-        if export {
-            for (k, x) in [
-                ("width", self.width),
-                ("segments", self.segments),
-                ("rings", self.rings),
-            ] {
-                if x > 0 {
-                    v[k] = json!(x);
-                }
-            }
-            if self.tube > 0.0 && self.tube.is_finite() {
-                v["tube"] = json!(self.tube);
-            }
+        let some = |s: &str| (!s.is_empty()).then(|| s.to_string());
+        let pos = |x: usize| (x > 0).then_some(x);
+        r.fields = pick(&self.fields, n_fields);
+        r.waves = pick(&self.waves, n_waves);
+        r.fan = some(&self.fan);
+        r.rays = pos(self.rays);
+        r.first = pos(self.first);
+        r.last = (self.last > 0 && self.last >= self.first).then_some(self.last);
+        r.color = some(&self.color);
+        r.mech_detail = self.mech_detail;
+    }
+
+    /// layout_export の要求: ファイル file に、layout と書き出しの細かさ
+    pub(crate) fn export_req(&self, layout: LayoutReq, file: String) -> LayoutExportReq {
+        let pos = |x: usize| (x > 0).then_some(x);
+        LayoutExportReq {
+            file,
+            layout,
+            width: pos(self.width),
+            segments: pos(self.segments),
+            rings: pos(self.rings),
+            tube: (self.tube > 0.0 && self.tube.is_finite()).then_some(self.tube),
         }
     }
 
@@ -265,9 +252,14 @@ mod tests {
 
     #[test]
     fn apply_default_adds_nothing() {
-        let mut v = json!({});
-        RaySet::default().apply(&mut v, 3, 2, true);
-        assert_eq!(v, json!({}));
+        let mut r = LayoutReq::default();
+        RaySet::default().apply(&mut r, 3, 2);
+        assert_eq!(r, LayoutReq::default());
+        let e = RaySet::default().export_req(LayoutReq::default(), "a.svg".into());
+        assert_eq!(
+            (e.width, e.segments, e.rings, e.tube),
+            (None, None, None, None)
+        );
     }
 
     #[test]
@@ -284,23 +276,32 @@ mod tests {
             tube: 0.05,
             ..Default::default()
         };
-        let mut v = json!({});
-        r.apply(&mut v, 3, 3, false);
+        let mut q = LayoutReq::default();
+        r.apply(&mut q, 3, 3);
         assert_eq!(
-            v,
-            json!({ "fields": [1, 3], "waves": [2], "fan": "grid", "rays": 9, "first": 2, "color": "wave" })
+            q,
+            LayoutReq {
+                fields: Some(Pick::List(vec![1, 3])),
+                waves: Some(Pick::List(vec![2])),
+                fan: Some("grid".into()),
+                rays: Some(9),
+                first: Some(2),
+                color: Some("wave".into()),
+                ..Default::default()
+            }
         );
-        let mut v = json!({});
-        r.apply(&mut v, 0, 0, true);
-        assert_eq!(v["fields"], json!([1, 3, 5]));
-        assert_eq!(v["width"], json!(800));
-        assert_eq!(v["tube"], json!(0.05));
-        assert!(v.get("segments").is_none());
+        let mut q = LayoutReq::default();
+        r.apply(&mut q, 0, 0);
+        assert_eq!(q.fields, Some(Pick::List(vec![1, 3, 5])));
+        let e = r.export_req(q, "a.png".into());
+        assert_eq!(e.width, Some(800));
+        assert_eq!(e.tube, Some(0.05));
+        assert_eq!(e.segments, None);
     }
 
     #[test]
     fn class_by_color() {
-        let r = json!({ "field": 2, "wave": 3, "cfg": 0 });
+        let r = serde_json::json!({ "field": 2, "wave": 3, "cfg": 0 });
         assert_eq!(ray_class(&r, "wave", false), 3);
         assert_eq!(ray_class(&r, "", true), 1);
         assert_eq!(ray_class(&r, "", false), 2);

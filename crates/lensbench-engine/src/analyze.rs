@@ -5,14 +5,14 @@ use std::path::Path;
 use lensbench_analysis::ParamTy;
 use serde_json::{json, Map, Value};
 
-use crate::session::{RpcErr, Session};
+use crate::session::{Answer, RpcErr, Session};
 
 /// serve の analyze: 解析の登録簿の解析を、読み込んだ系で実行する。`save` は結果を書き出すファイル、ほかの鍵は解析の設定
 pub(crate) fn run(
     sess: &Session,
     def: &dyn lensbench_analysis::DynAnalysis,
     m: &Map<String, Value>,
-) -> Result<Value, RpcErr> {
+) -> Result<Answer, RpcErr> {
     let sys = sess.current_system()?;
     let mut params = Map::new();
     let mut save = None;
@@ -52,6 +52,18 @@ pub(crate) fn run(
                 .to_string(),
         );
     }
+    // 書き出さないなら結果は型のまま（同じプロセスの呼び手は JSON を通さずに読む）
+    if save.is_none() {
+        let t = crate::session::with_source(sess, |src| {
+            let cx = lensbench_analysis::Cx {
+                system: &sys,
+                source: Some(src),
+            };
+            def.run_typed(&cx, &params)
+        })?
+        .map_err(analysis_err)?;
+        return Ok(Answer::Analysis(Box::new(t)));
+    }
     let (out, to_save) = crate::session::with_source(sess, |src| {
         let cx = lensbench_analysis::Cx {
             system: &sys,
@@ -65,7 +77,7 @@ pub(crate) fn run(
         crate::provenance::set(&sys);
         crate::load::save_value(p, v)?;
     }
-    Ok(out)
+    Ok(Answer::Json(out))
 }
 
 /// 解析の誤り。値の誤り（Invalid）は文だけ（CLI の解析の頃と同じ。系を読んだ所の「不正: 」も重ねない）

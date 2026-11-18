@@ -79,16 +79,26 @@ fn flat_path() -> PathBuf {
     lensbench_core::vfs::temp_dir().join("popup-doc.json")
 }
 
+/// 写しの要求（serde の形の method と params）を型の要求に戻す
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn wire_call(method: &str, params: &Value) -> Option<Call> {
+    serde_json::from_value(json!({ "method": method, "params": params })).ok()
+}
+
 impl PopupDoc {
     /// 平たい系ファイルの書き出しの返事（[`Tag::PopupDoc`]）。読めなければ持たない（系が変わったら頼み直す）
     pub(super) fn take(&mut self, d: Done) {
         let Some(gen) = self.asked else {
             return;
         };
-        let (_, params, r) = d.first();
+        let path = match &d.replies[0].call {
+            Call::Save { path } => Some(path),
+            _ => None,
+        };
+        let (_, _, r) = d.first();
         let b = r
             .ok()
-            .and_then(|_| params["path"].as_str())
+            .and(path)
             .and_then(|p| lensbench_core::vfs::read(p).ok());
         if let Some(b) = b {
             self.flat = Some((gen, std::sync::Arc::new(b)));
@@ -97,25 +107,29 @@ impl PopupDoc {
 
     /// 系を変える要求の返事（[`Core::take`]、誤りでないもの）: 読んだ文書とその後の変更を覚える
     pub(super) fn track(&mut self, d: &Done) {
-        let (_, params, _) = d.first();
-        match d.tag {
-            Tag::Load => {
+        let c = &d.replies[0].call;
+        // 写しは要求の serde の形の params（別の窓は [`wire_call`] で型の要求に戻す）
+        let params = || {
+            serde_json::to_value(c)
+                .map(|v| v["params"].clone())
+                .unwrap_or_default()
+        };
+        match c {
+            Call::Load(l) => {
                 // 読んだときの中身（組合せの作り直しは同じパスに書き直すので、読んだときに持つ）
-                let bytes = params["file"]
-                    .as_str()
-                    .and_then(|f| lensbench_core::vfs::read(f).ok());
+                let bytes = lensbench_core::vfs::read(&l.file).ok();
                 self.seq += 1;
                 let seq = self.seq;
                 self.base = bytes.map(|b| Base {
                     seq,
-                    load: params.clone(),
+                    load: params(),
                     bytes: std::sync::Arc::new(b),
                     ops: Vec::new(),
                 });
             }
-            Tag::Set => {
+            Call::Set { .. } => {
                 if let Some(b) = &mut self.base {
-                    b.ops.push(json!({ "set": params }));
+                    b.ops.push(json!({ "set": params() }));
                 }
             }
             _ => {}
@@ -215,11 +229,14 @@ impl Core {
             if self.popup_doc.asked != Some(gen) && !self.busy_core() {
                 self.popup_doc.asked = Some(gen);
                 let path = flat_path().display().to_string();
-                self.calc(Tag::PopupDoc, json!({ "path": path }));
+                self.call(Tag::PopupDoc, Call::Save { path: path.into() });
             }
             return;
         };
-        let how = json!({ "load": self.load_params(&flat_path()), "ops": [], "flat": true });
+        let load = serde_json::to_value(Call::Load(Box::new(self.load_req(&flat_path()))))
+            .map(|v| v["params"].clone())
+            .unwrap_or_default();
+        let how = json!({ "load": load, "ops": [], "flat": true });
         for id in flat {
             t.send_doc(id, &how, &bytes);
             self.popup_doc.sent.insert(id, Sent { gen, doc: None });
@@ -249,10 +266,10 @@ impl Core {
             }
             Accept::Reload => {}
         }
-        let load = how["load"].clone();
-        let Some(file) = load["file"].as_str().map(PathBuf::from) else {
+        let Some(Call::Load(l)) = wire_call("load", &how["load"]) else {
             return true;
         };
+        let file = l.file.clone();
         // 同じ中身なら書かない（ブラウザに残すファイルを書き直さない）
         if lensbench_core::vfs::read(&file).ok().as_deref() != Some(&bytes[..]) {
             if let Err(e) = lensbench_core::vfs::write(&file, bytes) {
@@ -263,7 +280,7 @@ impl Core {
         self.popup_doc.failed = false;
         self.popup_doc.since = self.worker.gen();
         self.drop_queued();
-        self.calc(Tag::Load, load);
+        self.call(Tag::Load, Call::Load(l));
         self.apply_popup_ops(how);
         true
     }
@@ -271,8 +288,8 @@ impl Core {
     /// 別の窓: 写しの変更を当てる
     fn apply_popup_ops(&mut self, how: &Value) {
         for op in how["ops"].as_array().into_iter().flatten() {
-            if let Some(p) = op.get("set") {
-                self.calc_refreshing(Tag::Set, p.clone());
+            if let Some(c) = op.get("set").and_then(|p| wire_call("set", p)) {
+                self.call_refreshing(Tag::Set, Some(c));
             }
         }
     }
@@ -400,6 +417,21 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copied_calls_come_back_typed() {
+        let set = Call::Set {
+            values: vec![("3.thic".into(), 2.5)],
+        };
+        let p = serde_json::to_value(&set).unwrap()["params"].clone();
+        assert_eq!(wire_call("set", &p), Some(set));
+        let load = Call::Load(Box::new(lensbench_engine::LoadReq {
+            file: "a.json".into(),
+            ..Default::default()
+        }));
+        let p = serde_json::to_value(&load).unwrap()["params"].clone();
+        assert_eq!(wire_call("load", &p), Some(load));
+    }
 
     fn base(seq: u64, ops: usize) -> Base {
         Base {

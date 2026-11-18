@@ -6,6 +6,10 @@
 
 use egui::{Color32, ColorImage, RichText, TextureHandle, TextureOptions, Ui};
 use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, Plot, PlotImage, PlotPoint};
+use lensbench_analysis::defs::{
+    MtfFieldOut, MtfFocusOut, PsfOut, RmsOut, WavefrontOut, WavefrontRow, ZernikeOut,
+};
+use lensbench_analysis::Typed;
 use serde_json::{json, Map, Value};
 
 use crate::i18n::{tr, trf};
@@ -94,28 +98,87 @@ pub(crate) fn memo<T: Send + Sync + 'static>(
     v
 }
 
+/// 解析の結果: JSON と、同じプロセスの計算からなら型のままの結果（[`Typed`]）
+#[derive(Clone, Copy)]
+pub(crate) struct Out<'a> {
+    pub v: &'a Value,
+    pub t: Option<&'a Typed>,
+}
+
+impl<'a> Out<'a> {
+    pub(crate) fn new(v: &'a Value, t: Option<&'a Typed>) -> Out<'a> {
+        Out { v, t }
+    }
+
+    /// 結果の型 T の値（型のままの結果があれば写さずに。Web 版は JSON から読む）。世代 gen ごとに 1 度だけ作る。
+    /// 読めなければ None（呼び手は表で見せる）
+    pub(crate) fn get<T: serde::de::DeserializeOwned + Send + Sync + 'static>(
+        &self,
+        ui: &Ui,
+        key: impl std::hash::Hash,
+        gen: u64,
+    ) -> Option<std::sync::Arc<T>> {
+        let (v, t) = (self.v, self.t);
+        let m = memo(ui, ("out", key), gen, || {
+            t.and_then(|t| t.get_arc::<T>()).or_else(|| {
+                serde_json::from_value::<T>(v.clone())
+                    .ok()
+                    .map(std::sync::Arc::new)
+            })
+        });
+        (*m).clone()
+    }
+}
+
 /// 図を描く。描けない結果なら false（呼び手が表で見せる）。gen は結果の世代（届くたびに変わる）
 pub(crate) fn show(
     ui: &mut Ui,
     id: u64,
     gen: u64,
     cmd: &str,
-    v: &Value,
-    prev: Option<&Value>,
+    out: Out<'_>,
+    prev: Option<Out<'_>>,
     st: &mut FigState,
 ) -> bool {
+    let v = out.v;
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some_and(|f| f(ui, id, v));
     }
+    // 前の結果は今の結果と同じ世代で読み直す（前の結果は今の結果が届いたときに決まる）
+    macro_rules! typed {
+        ($t:ty) => {{
+            let now = out.get::<$t>(ui, (id, cmd, "now"), gen);
+            let before = prev.and_then(|p| p.get::<$t>(ui, (id, cmd, "prev"), gen));
+            (now, before)
+        }};
+    }
     match cmd {
-        "wavefront" => wavefront(ui, id, gen, v, st),
-        "psf" => psf(ui, id, gen, v, st),
-        "zernike" => zernike(ui, id, v),
-        "mtf-field" => mtf_field(ui, id, v, prev),
-        "mtf-focus" => mtf_focus(ui, id, v, prev, st),
-        "rms" => rms(ui, id, v, prev, st),
+        "wavefront" => match typed!(WavefrontOut).0 {
+            Some(w) => wavefront(ui, id, gen, &w, st),
+            None => false,
+        },
+        "psf" => match typed!(PsfOut).0 {
+            Some(p) => psf(ui, id, gen, &p, st),
+            None => false,
+        },
+        "zernike" => match typed!(ZernikeOut).0 {
+            Some(z) => zernike(ui, id, &z),
+            None => false,
+        },
+        "mtf-field" => match typed!(MtfFieldOut) {
+            (Some(m), p) => mtf_field(ui, id, &m, p.as_deref()),
+            _ => false,
+        },
+        "mtf-focus" => match typed!(MtfFocusOut) {
+            (Some(m), p) => mtf_focus(ui, id, &m, p.as_deref(), st),
+            _ => false,
+        },
+        "rms" => match typed!(RmsOut) {
+            (Some(r), p) => rms(ui, id, &r, p.as_deref(), st),
+            _ => false,
+        },
         "geo-mtf" => {
-            crate::plots::mtf_curves(ui, v, prev, id, gen, "geometric_mtf", &mut st.mtf_prev);
+            crate::plots::geo_mtf(ui, out, prev, id, gen, &mut st.mtf_prev);
             true
         }
         "interference" => interference(ui, id, v),
@@ -431,31 +494,35 @@ impl Default for FigState {
 pub fn pick_field(ui: &mut Ui, id: u64, what: &str, items: &[Value]) -> usize {
     let key = ui.make_persistent_id(("fig-field", id, what));
     let mut k: usize = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, 0usize));
-    pick_in(ui, &mut k, items);
+    let fields: Vec<usize> = items
+        .iter()
+        .enumerate()
+        .map(|(i, it)| it["field"].as_u64().map_or(i + 1, |f| f as usize))
+        .collect();
+    pick_in(ui, &mut k, &fields);
     ui.ctx().data_mut(|d| d.insert_temp(key, k));
     k
 }
 
-/// 視野の選び（k を書き換える。範囲の外なら 0 に戻す）
-fn pick_in(ui: &mut Ui, k: &mut usize, items: &[Value]) {
+/// 視野の選び（k を書き換える。範囲の外なら 0 に戻す）。fields は項目ごとの視野の番号
+fn pick_in(ui: &mut Ui, k: &mut usize, fields: &[usize]) {
     let fname = crate::plots::field_namer(ui);
-    if *k >= items.len() {
+    if *k >= fields.len() {
         *k = 0;
     }
-    if items.len() > 1 {
+    if fields.len() > 1 {
         ui.horizontal_wrapped(|ui| {
-            for (i, it) in items.iter().enumerate() {
-                let f = it["field"].as_u64().unwrap_or(i as u64 + 1);
-                ui.selectable_value(k, i, fname(f as usize));
+            for (i, &f) in fields.iter().enumerate() {
+                ui.selectable_value(k, i, fname(f));
             }
         });
     }
 }
 
 /// 内蔵の図の視野の選び（[`FigState::pick`] に持つ）
-fn pick_state(ui: &mut Ui, st: &mut FigState, what: &str, items: &[Value]) -> usize {
+fn pick_state(ui: &mut Ui, st: &mut FigState, what: &str, fields: &[usize]) -> usize {
     let k = st.pick.entry(what.to_string()).or_insert(0);
-    pick_in(ui, k, items);
+    pick_in(ui, k, fields);
     *k
 }
 
@@ -468,21 +535,21 @@ pub fn weak(ui: &Ui, s: impl Into<String>) -> RichText {
 
 // ------------------------------------------------------------------------------------- 波面・干渉縞
 
-/// 波面の JSON（1 視野）から格子を作る（行 0 = +y）
-pub(crate) fn wavefront_grid(item: &Value) -> Option<Grid> {
-    let p = f64s(&item["p"]);
-    let rows = item["map"].as_array()?;
+/// 波面の結果（1 視野）から格子を作る（行 0 = +y）
+pub(crate) fn wavefront_grid(item: &WavefrontRow) -> Option<Grid> {
+    let p = item.p.as_deref()?;
+    let rows = item.map.as_deref()?;
     let n = p.len();
     if n < 2 || rows.len() != n {
         return None;
     }
     let mut v = Vec::with_capacity(n * n);
     for iy in (0..n).rev() {
-        let r = f64s(&rows[iy]);
+        let r = &rows[iy];
         if r.len() != n {
             return None;
         }
-        v.extend(r);
+        v.extend_from_slice(r);
     }
     let d = p[1] - p[0];
     Some(Grid {
@@ -541,14 +608,13 @@ pub(crate) fn interferogram(g: &Grid, f: &FringeCfg) -> Grid {
     out
 }
 
-fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
-    let Some(items) = v["wavefront"].as_array() else {
-        return false;
-    };
-    if items.is_empty() || items[0]["map"].is_null() {
+fn wavefront(ui: &mut Ui, id: u64, gen: u64, w: &WavefrontOut, st: &mut FigState) -> bool {
+    let items = &w.wavefront;
+    if items.is_empty() || items[0].map.is_none() {
         return false;
     }
-    let k = pick_state(ui, st, "wavefront", items);
+    let fields: Vec<usize> = items.iter().map(|it| it.field).collect();
+    let k = pick_state(ui, st, "wavefront", &fields);
     let it = &items[k];
     let Some(g) = &*memo(ui, ("wf-grid", id, k), gen, || wavefront_grid(it)) else {
         ui.weak(tr("Cannot read the wavefront grid"));
@@ -587,8 +653,8 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
             ui,
             format!(
                 "P-V {} · RMS {} {}",
-                fmt_sig(it["pv"].as_f64().unwrap_or(f64::NAN), 4),
-                fmt_sig(it["rms"].as_f64().unwrap_or(f64::NAN), 4),
+                fmt_sig(it.pv, 4),
+                fmt_sig(it.rms, 4),
                 tr("waves")
             ),
         ));
@@ -636,24 +702,20 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
 
 // ------------------------------------------------------------------------------------- PSF
 
-/// PSF の JSON（field・x・y・i の並び）から視野ごとの格子を作る。座標は µm
-pub(crate) fn psf_grids(v: &Value) -> Vec<(u64, Grid)> {
+/// PSF の結果（field・x・y・i の並び）から視野ごとの格子を作る。座標は µm
+pub(crate) fn psf_grids(v: &PsfOut) -> Vec<(u64, Grid)> {
     type Pts = Vec<(f64, f64, f64)>;
     let mut out: Vec<(u64, Pts)> = Vec::new();
-    for p in v["psf"].as_array().into_iter().flatten() {
-        let f = p["field"].as_u64().unwrap_or(1);
-        let q = (
-            p["x"].as_f64().unwrap_or(f64::NAN),
-            p["y"].as_f64().unwrap_or(f64::NAN),
-            p["i"].as_f64().unwrap_or(f64::NAN),
-        );
+    for p in &v.psf {
+        let f = p.field as u64;
+        let q = (p.x, p.y, p.i);
         match out.iter_mut().find(|(g, _)| *g == f) {
             Some((_, pts)) => pts.push(q),
             None => out.push((f, vec![q])),
         }
     }
     // 単位: lens（mm）なら µm に。アフォーカル（角度）はそのまま
-    let k = if lens_mm(v) { 1e3 } else { 1.0 };
+    let k = if lens_mm(&v.unit) { 1e3 } else { 1.0 };
     out.into_iter()
         .filter_map(|(f, pts)| {
             let uniq = |sel: fn(&(f64, f64, f64)) -> f64| {
@@ -745,13 +807,13 @@ pub(crate) fn crop_to_signal(g: &Grid, rel: f64) -> Grid {
     }
 }
 
-fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
+fn psf(ui: &mut Ui, id: u64, gen: u64, v: &PsfOut, st: &mut FigState) -> bool {
     let grids = memo(ui, ("psf-grids", id), gen, || psf_grids(v));
     if grids.is_empty() {
         return false;
     }
-    let items: Vec<Value> = grids.iter().map(|(f, _)| json!({ "field": f })).collect();
-    let k = pick_state(ui, st, "psf", &items);
+    let fields: Vec<usize> = grids.iter().map(|(f, _)| *f as usize).collect();
+    let k = pick_state(ui, st, "psf", &fields);
     let g = &*memo(ui, ("psf-crop", id, k), gen, || {
         crop_to_signal(&grids[k].1, 1e-2)
     });
@@ -765,10 +827,10 @@ fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
         ));
     });
     st.psf_log = log;
-    let unit = if lens_mm(v) {
+    let unit = if lens_mm(&v.unit) {
         "µm".to_string()
     } else {
-        v["unit"].as_str().unwrap_or("").to_string()
+        v.unit.clone()
     };
     let (xl, yl) = (format!("x [{unit}]"), format!("y [{unit}]"));
     let h = fig_height(ui, 8.0);
@@ -812,24 +874,21 @@ fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
 // ------------------------------------------------------------------------------------- Zernike
 
 /// Zernike 係数の棒（視野ごとに色、項の番号は 1 始まり）
-fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
+fn zernike(ui: &mut Ui, id: u64, v: &ZernikeOut) -> bool {
     let fname = crate::plots::field_namer(ui);
-    let Some(items) = v["zernike"].as_array() else {
-        return false;
-    };
+    let items = &v.zernike;
     let nf = items.len().max(1);
     let wbar = 0.8 / nf as f64;
-    let kind = v["kind"].as_str().unwrap_or("standard").to_string();
+    let kind = serde_json::to_value(v.kind)
+        .ok()
+        .and_then(|k| k.as_str().map(str::to_string))
+        .unwrap_or_else(|| "standard".into());
     let detail: Vec<String> = items
         .iter()
         .map(|it| {
             trf(
                 "Field {}: fit residual RMS {} · Strehl {}",
-                &[
-                    &it["field"].as_u64().unwrap_or(0),
-                    &fmt_sig(it["rms_fit"].as_f64().unwrap_or(f64::NAN), 3),
-                    &fmt_sig(it["strehl"].as_f64().unwrap_or(f64::NAN), 3),
-                ],
+                &[&it.field, &fmt_sig(it.rms_fit, 3), &fmt_sig(it.strehl, 3)],
             )
         })
         .collect();
@@ -839,9 +898,10 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
         .iter()
         .enumerate()
         .map(|(k, it)| {
-            let f = it["field"].as_u64().unwrap_or(k as u64 + 1);
+            let f = it.field as u64;
             let off = (k as f64 - (nf as f64 - 1.0) / 2.0) * wbar;
-            let bars: Vec<Bar> = f64s(&it["coef"])
+            let bars: Vec<Bar> = it
+                .coef
                 .iter()
                 .enumerate()
                 .map(|(j, &c)| {
@@ -871,18 +931,17 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
 // ------------------------------------------------------------------------------------- MTF の掃引・RMS
 
 /// フィールド MTF: 周波数ごとに色、子午は実線・球欠は破線
-fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
-    let Some(_) = v["field_mtf"].as_array() else {
-        return false;
-    };
-    let unit = v["unit"].as_str().unwrap_or("cycles/mm").to_string();
-    let series = |v: &Value| -> Vec<(f64, &'static str, Vec<[f64; 2]>)> {
+fn mtf_field(ui: &mut Ui, id: u64, v: &MtfFieldOut, prev: Option<&MtfFieldOut>) -> bool {
+    let unit = v.unit.clone();
+    let series = |v: &MtfFieldOut| -> Vec<(f64, &'static str, Vec<[f64; 2]>)> {
         let mut out: Vec<(f64, &'static str, Vec<[f64; 2]>)> = Vec::new();
-        for p in v["field_mtf"].as_array().into_iter().flatten() {
-            let fr = p["freq"].as_f64().unwrap_or(f64::NAN);
-            let x = p["h"].as_f64().unwrap_or(f64::NAN);
-            for k in ["tangential", "sagittal"] {
-                let Some(y) = p[k].as_f64() else { continue };
+        for p in &v.field_mtf {
+            let (fr, x) = (p.freq, p.h);
+            for (k, y) in [("tangential", p.tangential), ("sagittal", p.sagittal)] {
+                // JSON に書けない値（NaN）は点にしない
+                if !y.is_finite() {
+                    continue;
+                }
                 match out.iter_mut().find(|(f, kk, _)| *f == fr && *kk == k) {
                     Some((_, _, pts)) => pts.push([x, y]),
                     None => out.push((fr, k, vec![[x, y]])),
@@ -940,22 +999,24 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
 }
 
 /// スルーフォーカス MTF: 横軸は像面のずらし、（視野・周波数）ごとに色
-fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState) -> bool {
-    let Some(_) = v["through_focus"].as_array() else {
-        return false;
-    };
-    let unit = v["unit"].as_str().unwrap_or("cycles/mm").to_string();
+fn mtf_focus(
+    ui: &mut Ui,
+    id: u64,
+    v: &MtfFocusOut,
+    prev: Option<&MtfFocusOut>,
+    st: &mut FigState,
+) -> bool {
+    let unit = v.unit.clone();
     type S = Vec<((u64, f64), &'static str, Vec<[f64; 2]>)>;
-    let series = |v: &Value| -> S {
+    let series = |v: &MtfFocusOut| -> S {
         let mut out: S = Vec::new();
-        for p in v["through_focus"].as_array().into_iter().flatten() {
-            let key = (
-                p["field"].as_u64().unwrap_or(1),
-                p["freq"].as_f64().unwrap_or(f64::NAN),
-            );
-            let x = p["dz"].as_f64().unwrap_or(f64::NAN);
-            for k in ["tangential", "sagittal"] {
-                let Some(y) = p[k].as_f64() else { continue };
+        for p in &v.through_focus {
+            let key = (p.field as u64, p.freq);
+            let x = p.dz;
+            for (k, y) in [("tangential", p.tangential), ("sagittal", p.sagittal)] {
+                if !y.is_finite() {
+                    continue;
+                }
                 match out.iter_mut().find(|(q, kk, _)| *q == key && *kk == k) {
                     Some((_, _, pts)) => pts.push([x, y]),
                     None => out.push((key, k, vec![[x, y]])),
@@ -966,8 +1027,8 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut Fig
     };
     // 周波数は 1 つずつ見る（色は視野、子午は実線・球欠は破線）
     let mut freqs: Vec<f64> = Vec::new();
-    for p in v["through_focus"].as_array().into_iter().flatten() {
-        let f = p["freq"].as_f64().unwrap_or(f64::NAN);
+    for p in &v.through_focus {
+        let f = p.freq;
         if !freqs.contains(&f) {
             freqs.push(f);
         }
@@ -1029,12 +1090,15 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut Fig
 }
 
 /// RMS の掃引（視野・フォーカス・波長）。量はスポット [µm]・波面 [波]・Strehl から選ぶ
-fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState) -> bool {
+fn rms(ui: &mut Ui, id: u64, v: &RmsOut, prev: Option<&RmsOut>, st: &mut FigState) -> bool {
     let fname = crate::plots::field_namer(ui);
-    let Some(_) = v["rms"].as_array() else {
-        return false;
+    let vs_of = |v: &RmsOut| {
+        serde_json::to_value(v.vs)
+            .ok()
+            .and_then(|x| x.as_str().map(str::to_string))
+            .unwrap_or_else(|| "field".into())
     };
-    let vs = v["vs"].as_str().unwrap_or("field").to_string();
+    let vs = vs_of(v);
     let (xk, xl) = match vs.as_str() {
         "focus" => ("dz", tr("Image plane shift [lens units]").to_string()),
         "wavelength" => ("wavelength", tr("Wavelengths [µm]").to_string()),
@@ -1047,7 +1111,7 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState)
         ui.selectable_value(&mut q, 2, "Strehl");
     });
     st.rms_q = q;
-    let lens_um = lens_mm(v);
+    let lens_um = lens_mm(&v.unit);
     let (yk, yl, k) = match q {
         1 => ("wfe", tr("RMS wavefront [waves]").to_string(), 1.0),
         2 => ("strehl", "Strehl".to_string(), 1.0),
@@ -1061,12 +1125,24 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState)
             if lens_um { 1e3 } else { 1.0 },
         ),
     };
-    let series = |v: &Value| -> Vec<(u64, Vec<[f64; 2]>)> {
+    let series = |v: &RmsOut| -> Vec<(u64, Vec<[f64; 2]>)> {
         let mut out: Vec<(u64, Vec<[f64; 2]>)> = Vec::new();
-        for p in v["rms"].as_array().into_iter().flatten() {
-            let f = p["field"].as_u64().unwrap_or(0);
-            let x = p[xk].as_f64().unwrap_or(f64::NAN);
-            let Some(y) = p[yk].as_f64() else { continue };
+        for p in &v.rms {
+            let f = p.field.unwrap_or(0) as u64;
+            let x = match xk {
+                "dz" => p.dz,
+                "wavelength" => p.wavelength,
+                _ => p.h,
+            }
+            .unwrap_or(f64::NAN);
+            let y = match yk {
+                "wfe" => p.wfe,
+                "strehl" => p.strehl,
+                _ => p.spot,
+            };
+            if !y.is_finite() {
+                continue;
+            }
             match out.iter_mut().find(|(g, _)| *g == f) {
                 Some((_, pts)) => pts.push([x, y * k]),
                 None => out.push((f, vec![[x, y * k]])),
@@ -1076,7 +1152,7 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState)
     };
     let now = series(v);
     let before = prev
-        .filter(|p| p["vs"].as_str() == Some(vs.as_str()))
+        .filter(|p| vs_of(p) == vs)
         .map(series)
         .unwrap_or_default();
     let plot = Plot::new(("rms", id))
@@ -1321,137 +1397,10 @@ pub fn interference_view(
 }
 
 /// 位置が mm か（アフォーカルの角度でない。前の結果は mm を "lens" と書いた）
-fn lens_mm(v: &Value) -> bool {
-    matches!(v["unit"].as_str(), Some("mm" | "lens"))
+fn lens_mm(unit: &str) -> bool {
+    matches!(unit, "mm" | "lens")
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn params_and_freqs() {
-        let mut m = Map::new();
-        figure_params("wavefront", &mut m, None, true);
-        assert_eq!(m["map"], json!(true));
-        let mut m = Map::new();
-        figure_params("wavefront", &mut m, None, false);
-        assert!(m.is_empty());
-        figure_params("mtf-focus", &mut m, None, false);
-        assert_eq!(m["freqs"], json!([10.0, 20.0, 40.0]));
-        let mut m = Map::new();
-        m.insert("freqs".into(), json!([5]));
-        figure_params("mtf-field", &mut m, Some(300.0), true);
-        assert_eq!(m["freqs"], json!([5]));
-        assert_eq!(default_freqs(Some(325.4)), vec![33.0, 81.0, 160.0]);
-        assert_eq!(default_freqs(None), vec![10.0, 20.0, 40.0]);
-        assert!(has_figure("interference") && !has_figure("info"));
-        let mut m = Map::new();
-        figure_params("interference", &mut m, None, true);
-        assert_eq!(m["grid"], json!(true));
-    }
-
-    #[test]
-    fn wavefront_and_fringes() {
-        let item = json!({
-            "p": [-1.0, 0.0, 1.0],
-            "map": [[null, 0.0, null], [0.0, 0.25, 0.0], [null, 0.5, null]],
-        });
-        let g = wavefront_grid(&item).unwrap();
-        // 行 0 は +y（map の最後の行）
-        assert_eq!(g.v[1], 0.5);
-        assert!(g.v[0].is_nan());
-        assert_eq!(g.extent, [-1.5, 1.5, -1.5, 1.5]);
-        assert_eq!(g.at(0.0, 1.0), Some(0.5));
-        assert_eq!(g.range(), Some((0.0, 0.5)));
-        let ig = interferogram(&g, &FringeCfg::default());
-        // W = 0.25 波 → cos(π/2) = 0 → 0.5、W = 0.5 → 0
-        assert!((ig.v[4] - 0.5).abs() < 1e-12);
-        assert!(ig.v[1].abs() < 1e-12);
-        assert!(ig.v[0].is_nan());
-        let up = g.upsample(2);
-        assert_eq!((up.w, up.h), (6, 6));
-        assert!(up.v.iter().any(|x| x.is_finite()));
-    }
-
-    #[test]
-    fn pop_grid_rows_top_first() {
-        let v = json!({ "x": [-1.0, 0.0, 1.0], "y": [-0.5, 0.5],
-            "grid_irradiance": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] });
-        let g = pop_grid(&v).unwrap();
-        assert_eq!((g.w, g.h), (3, 2));
-        assert_eq!(g.v, vec![4.0, 5.0, 6.0, 1.0, 2.0, 3.0]);
-        assert_eq!(g.extent, [-1.5, 1.5, -1.0, 1.0]);
-        assert!(pop_grid(&json!({ "x": [0.0], "y": [0.0] })).is_none());
-    }
-
-    #[test]
-    fn psf_grid() {
-        let mut pts = Vec::new();
-        for (iy, y) in [-1e-3, 0.0, 1e-3].iter().enumerate() {
-            for (ix, x) in [-1e-3, 0.0, 1e-3].iter().enumerate() {
-                pts.push(json!({ "field": 1, "x": x, "y": y, "i": (iy * 3 + ix) as f64 }));
-            }
-        }
-        let g = psf_grids(&json!({ "unit": "lens", "psf": pts }));
-        assert_eq!(g.len(), 1);
-        let g = &g[0].1;
-        assert_eq!((g.w, g.h), (3, 3));
-        // 行 0 は +y（iy = 2）
-        assert_eq!(g.v[0], 6.0);
-        assert!((g.extent[1] - 1.5).abs() < 1e-9);
-    }
-
-    #[test]
-    fn crop() {
-        let mut v = vec![0.0; 100];
-        v[5 * 10 + 5] = 1.0;
-        let g = Grid {
-            w: 10,
-            h: 10,
-            v,
-            extent: [0.0, 10.0, 0.0, 10.0],
-        };
-        let c = crop_to_signal(&g, 1e-3);
-        assert_eq!((c.w, c.h), (9, 9));
-        // 値の位置は切り出しても同じ座標
-        assert_eq!(c.at(5.5, 4.5), Some(1.0));
-        assert_eq!(g.at(5.5, 4.5), Some(1.0));
-    }
-
-    #[test]
-    fn interference_grids() {
-        // 2×2、j = 0 が下（y の小さい側）
-        let v = json!({
-            "mode": "detector", "quantity": "intensity", "nx": 2, "ny": 2,
-            "top_left_pixel_center_mm": [-0.5, 0.5], "pixel_mm": 1.0,
-            "grid": [1.0, 2.0, 3.0, null],
-        });
-        let g = interference_grid(&v).unwrap();
-        assert_eq!(g.extent, [-1.0, 1.0, -1.0, 1.0]);
-        assert_eq!(g.at(-0.5, 0.5), Some(3.0));
-        assert_eq!(g.at(0.5, 0.5), None);
-        assert_eq!(g.at(0.5, -0.5), Some(2.0));
-        let p = json!({
-            "mode": "pupil", "nx": 2, "ny": 2, "pupil_min": -0.5, "pupil_step": 1.0,
-            "grid": [0.0, 0.0, 1.0, 1.0],
-        });
-        let g = interference_grid(&p).unwrap();
-        assert_eq!(g.v, vec![1.0, 1.0, 0.0, 0.0]);
-        assert_eq!(g.extent, [-1.0, 1.0, -1.0, 1.0]);
-        assert!(interference_grid(&json!({ "nx": 2, "ny": 2 })).is_none());
-    }
-
-    #[test]
-    fn colors() {
-        assert_eq!(cmap(Cmap::Gray, 1.0), Color32::from_gray(255));
-        assert_eq!(
-            cmap(Cmap::Viridis, 0.0),
-            Color32::from_rgb(0x44, 0x01, 0x54)
-        );
-        assert_eq!(
-            cmap(Cmap::CoolWarm, f64::NAN),
-            Color32::from_rgb(0x3B, 0x4C, 0xC0)
-        );
-    }
-}
+#[path = "figures_tests.rs"]
+mod tests;

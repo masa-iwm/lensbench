@@ -34,6 +34,8 @@ lensbench-design = { path = "../lensbench-design" }
 lensbench-core = { path = "../lensbench-core" }
 # 計算は serve と同じ API（lensbench_engine::Session）をプロセス内で呼ぶ
 lensbench-engine = { path = "../lensbench-engine" }
+# 組み込みの解析の結果の型（図が読む）
+lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-cad = { path = "../lensbench-cad" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 serde = { version = "1", features = ["derive"] }

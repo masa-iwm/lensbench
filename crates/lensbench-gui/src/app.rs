@@ -68,7 +68,10 @@ use crate::plots::{self, SpotRays, SysInfo};
 use crate::split;
 use crate::theme::{self, Look, Mode};
 use crate::tour::{Args, Step, Tour};
-use crate::worker::{CatOp, Done, Tag, Worker};
+use crate::worker::{
+    get_param, into_params, load_file, AnalyzeReq, Call, CatOp, Done, GetReq, LayoutReq, Tag,
+    TraceReq, Worker,
+};
 
 /// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける
 #[derive(Serialize, Deserialize)]
@@ -152,11 +155,12 @@ impl ViewPlane {
     ];
 
     /// serve の layout の plane
-    pub(crate) fn key(self) -> &'static str {
+    pub(crate) fn view(self) -> lensbench_engine::layout::View {
+        use lensbench_engine::layout::View;
         match self {
-            ViewPlane::Yz | ViewPlane::Unfold => "yz",
-            ViewPlane::Xz => "xz",
-            ViewPlane::D3 => "3d",
+            ViewPlane::Yz | ViewPlane::Unfold => View::YZ,
+            ViewPlane::Xz => View::XZ,
+            ViewPlane::D3 => View::D3,
         }
     }
     /// 図の縦の軸の名前
@@ -641,15 +645,20 @@ impl Core {
     fn refresh_catalog(&mut self) {
         self.folders.stale();
         // 系の解析の順番を待たない（下書きの worker で読む）
-        self.draft(
+        let paths = |v: &[String]| v.iter().map(std::path::PathBuf::from).collect::<Vec<_>>();
+        let glass_dirs = paths(&self.s.glass_dirs);
+        self.draft_call(
             Tag::Glasses,
-            json!({ "glass_dirs": dirs(&self.s.glass_dirs) }),
+            Call::Glasses(lensbench_engine::BrowseReq {
+                glass_dirs: glass_dirs.clone(),
+                lens_catalogs: Vec::new(),
+            }),
         );
-        self.draft(
+        self.draft_call(
             Tag::Lenses,
-            json!({
-                "lens_catalogs": dirs(&self.s.lens_dirs),
-                "glass_dirs": dirs(&self.s.glass_dirs),
+            Call::Lenses(lensbench_engine::BrowseReq {
+                glass_dirs,
+                lens_catalogs: paths(&self.s.lens_dirs),
             }),
         );
         self.browser.loaded = true;
@@ -658,12 +667,12 @@ impl Core {
     }
 
     /// serve の layout の params（重ねる構成・見る面と光線の設定）
-    fn layout_params(&self) -> Value {
-        let mut v = self.overlay.params_in(self.ses.view_plane);
+    fn layout_params(&self) -> LayoutReq {
+        let mut r = self.overlay.req_in(self.ses.view_plane);
         self.s
             .rays
-            .apply(&mut v, self.n_fields(), self.waves_um().len(), false);
-        v
+            .apply(&mut r, self.n_fields(), self.waves_um().len());
+        r
     }
 
     fn n_fields(&self) -> usize {
@@ -791,8 +800,11 @@ impl Core {
             return;
         }
         match Self::analysis_params(cfg, self.cutoff()) {
-            Ok(p) => {
-                self.calc(Tag::Analyze(id), p);
+            Ok(mut p) => {
+                let args = p.as_object_mut().map(std::mem::take).unwrap_or_default();
+                let mut r = AnalyzeReq::new(cfg.cmd.clone(), args);
+                r.args.remove("cmd");
+                self.call(Tag::Analyze(id), Call::Analyze(Box::new(r)));
                 // 下の行は操作の結果だけ。計算中は要求の数を横に出す
                 self.ana_sent(id);
             }
@@ -818,10 +830,16 @@ impl Core {
             let mut calls = Vec::new();
             for &f in &fields {
                 for &w in &waves {
-                    calls.push(json!({ "px": px, "py": py, "field": f, "wave": w }));
+                    calls.push(Call::Trace(Box::new(TraceReq {
+                        px: Some(px.clone()),
+                        py: Some(py.clone()),
+                        field: Some(f),
+                        wave: Some(w),
+                        ..Default::default()
+                    })));
                 }
             }
-            self.calc_each(Tag::Rays(id), calls);
+            self.call_each(Tag::Rays(id), calls);
         }
     }
 
@@ -831,9 +849,9 @@ impl Core {
             .ses
             .params
             .iter()
-            .map(|p| json!({ "param": p }))
+            .map(|p| Call::Get(GetReq::One(p.clone())))
             .collect();
-        self.calc_each(Tag::Gets, calls);
+        self.call_each(Tag::Gets, calls);
     }
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
@@ -876,9 +894,12 @@ impl Core {
                 self.loc.built = Some(project);
                 self.loc.combo_path = Some(path.clone());
                 // 図は下書きで先に。系の読み込みは、前の読み込みが終わってから最新のファイルを読む
-                self.draft(
+                self.draft_call(
                     Tag::Preview,
-                    json!({ "load": self.load_params(&path), "layout": self.layout_params() }),
+                    Call::Preview {
+                        load: Box::new(self.load_req(&path)),
+                        layout: Box::new(self.layout_params()),
+                    },
                 );
                 if self.busy_core() {
                     self.load_stale = true;
@@ -947,20 +968,17 @@ impl Core {
             )
             .set_file_name(format!("{base}.{ext}"));
         self.save_as(d, |c, p| {
-            let mut params = c.overlay.params_in(c.ses.view_plane);
+            let mut layout = c.overlay.req_in(c.ses.view_plane);
             c.s.rays
-                .apply(&mut params, c.n_fields(), c.waves_um().len(), true);
-            params["file"] = json!(p.display().to_string());
-            c.calc(Tag::LayoutExport, params);
+                .apply(&mut layout, c.n_fields(), c.waves_um().len());
+            let r = c.s.rays.export_req(layout, p.display().to_string());
+            c.call(Tag::LayoutExport, Call::LayoutExport(Box::new(r)));
         });
     }
 
     fn write_zmx(&mut self) {
         let d = crate::files::FileDialog::new().add_filter("Zemax", &["zmx"]);
-        self.save_as(d, |c, p| {
-            let path = p.display().to_string();
-            c.calc(Tag::Write, json!({ "path": path }));
-        });
+        self.save_as(d, |c, p| c.call(Tag::Write, Call::Write { path: p }));
     }
 
     /// 値の変更を送る（計算中なら終わってからまとめて）
@@ -977,8 +995,8 @@ impl Core {
         {
             return;
         }
-        let values = std::mem::take(&mut self.pending_set);
-        self.send_change(Tag::Set, json!({ "values": values }));
+        let values = std::mem::take(&mut self.pending_set).into_iter().collect();
+        self.call_refreshing(Tag::Set, Some(Call::Set { values }));
         self.last_set = Some(web_time::Instant::now());
     }
 
@@ -1009,13 +1027,11 @@ impl Core {
     fn request_layout(&mut self) {
         match &self.loc.combo_path {
             Some(path) => {
-                let load = self.load_params(path);
-                self.draft(
-                    Tag::Preview,
-                    json!({ "load": load, "layout": self.layout_params() }),
-                );
+                let load = Box::new(self.load_req(path));
+                let layout = Box::new(self.layout_params());
+                self.draft_call(Tag::Preview, Call::Preview { load, layout });
             }
-            _ => self.calc(Tag::Layout, self.layout_params()),
+            _ => self.call(Tag::Layout, Call::Layout(Box::new(self.layout_params()))),
         }
     }
 
@@ -1027,6 +1043,8 @@ impl Core {
             for r in self.results.values_mut() {
                 r.value = None;
                 r.prev = None;
+                r.typed = None;
+                r.prev_typed = None;
             }
         }
         // 別の系なら階層・選択も戻す（組合せの作り直しは同じ系）
@@ -1042,25 +1060,19 @@ impl Core {
         // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）。組合せの無い系（Web 版の
         // 解析のパネルの別の窓が受けた写し）だけここで
         if self.loc.combo_path.is_none() {
-            self.calc(Tag::Layout, self.layout_params());
+            self.call(Tag::Layout, Call::Layout(Box::new(self.layout_params())));
         }
-        self.calc(Tag::Configs, json!({}));
+        self.call(Tag::Configs, Call::Configs);
         self.rerun = Some(false);
     }
 
     /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない）。系を変える要求に
-    /// 付けて読み直す途中（[`Core::send_change`]）なら頼まない
+    /// 付けて読み直す途中（[`Core::call_refreshing`]）なら頼まない
     fn refresh(&mut self) {
         if self.bundled_refresh {
             return;
         }
         self.calc_refreshing(Tag::Refresh, Value::Null);
-    }
-
-    /// 系を変える要求（set・edit・undo/redo）に、面の表・多重構成の表・要約の読み直しを続けて付けて 1 つの要求で
-    /// 送る（返事を受けてから読み直しを頼む往復をなくす）。返事は [`Core::take`] が分ける
-    fn send_change(&mut self, tag: Tag, params: Value) {
-        self.calc_refreshing(tag, params);
     }
 
     /// 組合せのレイアウト図と要素の操作
@@ -1169,10 +1181,15 @@ impl Core {
         if img < 2 {
             return;
         }
-        self.calc(
-            Tag::Focus,
-            json!({ "px": [0.0], "py": [1e-3], "hx": 0.0, "hy": 0.0, "last": img - 1 }),
-        );
+        let r = TraceReq {
+            px: Some(vec![0.0]),
+            py: Some(vec![1e-3]),
+            hx: Some(0.0),
+            hy: Some(0.0),
+            last: Some(img - 1),
+            ..Default::default()
+        };
+        self.call(Tag::Focus, Call::Trace(Box::new(r)));
     }
 
     /// 細い光線が軸と交わる所までを、最後の空気にする
@@ -1269,9 +1286,16 @@ impl Core {
             return;
         }
         self.preview_req = Some(i);
-        self.draft(
+        let layout = LayoutReq {
+            rays: Some(5),
+            ..Default::default()
+        };
+        self.draft_call(
             Tag::LensPreview(i),
-            json!({ "load": self.load_params(&path), "layout": { "rays": 5 } }),
+            Call::Preview {
+                load: Box::new(self.load_req(&path)),
+                layout: Box::new(layout),
+            },
         );
     }
 
@@ -1445,9 +1469,9 @@ impl Core {
             .window(ctx, &self.doc.combo, &self.browser.lenses, ready);
         if let Some((op, p)) = req {
             if op == CatOp::Add {
-                self.calc(Tag::UserCatalog(op), p);
+                self.call(Tag::UserCatalog(op), p);
             } else {
-                self.draft(Tag::UserCatalog(op), p);
+                self.draft_call(Tag::UserCatalog(op), p);
             }
         }
     }
@@ -1470,7 +1494,7 @@ impl Core {
                 .cloned();
             match self.auto_fill.tick(ctx, sel.as_ref()) {
                 Some(crate::fill::AutoOut::Save(p)) => {
-                    self.draft(Tag::CatalogFill, p);
+                    self.draft_call(Tag::CatalogFill, Call::CatalogFill(Box::new(p)));
                 }
                 #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {
@@ -1484,7 +1508,7 @@ impl Core {
             return;
         }
         if let Some(p) = self.p.fill.window(ctx) {
-            self.draft(Tag::CatalogFill, p);
+            self.draft_call(Tag::CatalogFill, Call::CatalogFill(Box::new(p)));
         }
     }
 }
@@ -2289,50 +2313,45 @@ impl Overlay {
         self.items.iter().filter(|x| x.2).count() != was.len()
     }
 
-    /// [`Self::params`] に見る面を足したもの。ずらす量の縦は見る面の縦（xz 面なら x）
-    pub(crate) fn params_in(&self, plane: ViewPlane) -> Value {
-        let mut v = self.params();
-        if plane == ViewPlane::Xz {
-            if let Some(o) = v.get_mut("offset") {
-                *o = json!([self.offset[1], 0.0, self.offset[0]]);
-            }
+    /// [`Self::req`] に見る面を足したもの。ずらす量の縦は見る面の縦（xz 面なら x）
+    pub(crate) fn req_in(&self, plane: ViewPlane) -> LayoutReq {
+        let mut r = self.req();
+        if plane == ViewPlane::Xz && !r.offset.is_empty() {
+            r.offset = vec![self.offset[1], 0.0, self.offset[0]];
         }
-        if plane != ViewPlane::Yz && plane != ViewPlane::Unfold {
-            v["plane"] = json!(plane.key());
-        }
-        if plane == ViewPlane::Unfold {
-            v["unfold"] = json!(true);
-        }
-        v
+        r.plane = plane.view();
+        r.unfold = plane == ViewPlane::Unfold;
+        r
     }
 
-    /// serve の layout の params（何も選ばなければ今の構成だけ、見る面は yz。BS の経路の鍵は beam_paths）
-    pub(crate) fn params(&self) -> Value {
-        let mut m = Map::new();
-        for key in ["cfgs", "states", "paths"] {
-            let on: Vec<Value> = self
+    /// serve の layout の要求（何も選ばなければ今の構成だけ、見る面は yz）
+    pub(crate) fn req(&self) -> LayoutReq {
+        let on = |key: &str| -> Option<String> {
+            let v: Vec<String> = self
                 .items
                 .iter()
                 .filter(|x| x.0 == key && x.2)
                 .map(|x| {
                     if key == "cfgs" {
-                        json!(x.1.parse::<u64>().unwrap_or(1))
+                        x.1.parse::<u64>().unwrap_or(1).to_string()
                     } else {
-                        json!(x.1)
+                        x.1.clone()
                     }
                 })
                 .collect();
-            if !on.is_empty() {
-                m.insert(key.replace("paths", "beam_paths"), Value::Array(on));
-            }
+            (!v.is_empty()).then(|| v.join(","))
+        };
+        let mut r = LayoutReq {
+            cfgs: on("cfgs"),
+            states: on("states"),
+            beam_paths: on("paths"),
+            ..Default::default()
+        };
+        let any = r.cfgs.is_some() || r.states.is_some() || r.beam_paths.is_some();
+        if any && self.offset != [0.0; 2] {
+            r.offset = vec![0.0, self.offset[1], self.offset[0]];
         }
-        if !m.is_empty() && self.offset != [0.0; 2] {
-            m.insert(
-                "offset".into(),
-                json!([0.0, self.offset[1], self.offset[0]]),
-            );
-        }
-        Value::Object(m)
+        r
     }
 
     /// 選ぶ欄（選べる構成が無ければ出さない）。変えたら true。vert は図の縦の軸の名前
@@ -2374,18 +2393,22 @@ impl Overlay {
     }
 }
 
-/// 重ねる構成: configs の結果から欄を作り、選んだものだけ layout の params に。読み直しても選んだまま
+/// 重ねる構成: configs の結果から欄を作り、選んだものだけ layout の要求に。読み直しても選んだまま
 #[test]
 fn overlay_params() {
     let mut o = Overlay::default();
     o.update(&json!({ "cfgs": 1, "states": ["A"], "paths": ["TT", "RR"] }));
     assert_eq!(o.items.len(), 2);
-    assert_eq!(o.params(), json!({}));
+    assert_eq!(o.req(), LayoutReq::default());
     o.items[1].2 = true;
     o.offset = [30.0, 0.0];
     assert_eq!(
-        o.params(),
-        json!({ "beam_paths": ["RR"], "offset": [0.0, 0.0, 30.0] })
+        o.req(),
+        LayoutReq {
+            beam_paths: Some("RR".into()),
+            offset: vec![0.0, 0.0, 30.0],
+            ..Default::default()
+        }
     );
     o.update(&json!({ "cfgs": 1, "paths": ["RR", "TT", "TR"] }));
     assert_eq!(o.items.iter().filter(|x| x.2).count(), 1);
@@ -2394,20 +2417,27 @@ fn overlay_params() {
     o.items[0].2 = true;
     o.items[2].2 = true;
     o.offset = [0.0; 2];
-    assert_eq!(o.params(), json!({ "cfgs": [1, 3] }));
+    let cfgs = LayoutReq {
+        cfgs: Some("1,3".into()),
+        ..Default::default()
+    };
+    assert_eq!(o.req(), cfgs);
     // xz 面: plane を足し、ずらす量の縦は x
     o.offset = [10.0, 5.0];
+    use lensbench_engine::layout::View;
+    let r = o.req_in(ViewPlane::Xz);
     assert_eq!(
-        o.params_in(ViewPlane::Xz),
-        json!({ "cfgs": [1, 3], "offset": [5.0, 0.0, 10.0], "plane": "xz" })
+        (r.offset.as_slice(), r.plane),
+        (&[5.0, 0.0, 10.0][..], View::XZ)
     );
-    assert_eq!(o.params_in(ViewPlane::Yz), o.params());
+    assert_eq!(o.req_in(ViewPlane::Yz), o.req());
     // 展開: yz のまま unfold、3D は plane
+    let r = o.req_in(ViewPlane::Unfold);
     assert_eq!(
-        o.params_in(ViewPlane::Unfold),
-        json!({ "cfgs": [1, 3], "offset": [0.0, 5.0, 10.0], "unfold": true })
+        (r.offset.as_slice(), r.plane, r.unfold),
+        (&[0.0, 5.0, 10.0][..], View::YZ, true)
     );
-    assert_eq!(o.params_in(ViewPlane::D3)["plane"], "3d");
+    assert_eq!(o.req_in(ViewPlane::D3).plane, View::D3);
     // 設定に保存する名前
     assert_eq!(serde_json::to_value(ViewPlane::D3).unwrap(), json!("3d"));
     assert_eq!(

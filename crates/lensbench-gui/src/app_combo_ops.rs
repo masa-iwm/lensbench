@@ -128,7 +128,6 @@ impl Core {
                 }
                 continue;
             }
-            let raw = op;
             let name = op["op"].as_str().unwrap_or_default().to_string();
             let op = EditOp::deserialize(op).map_err(|e| format!("{name}: {e}"))?;
             match op {
@@ -163,17 +162,17 @@ impl Core {
                     }
                 }
                 // ソルブ・ピックアップ: serve で要素のブロックの面の操作にする（面の名前で要素と面を決める）
-                EditOp::AddSolve(_)
+                o @ (EditOp::AddSolve(_)
                 | EditOp::RemoveSolve { .. }
                 | EditOp::AddPickup(_)
-                | EditOp::RemovePickup { .. } => remote.push(raw.clone()),
+                | EditOp::RemovePickup { .. }) => remote.push(o),
                 _ => return Err(trf("{} is not available in a combination", &[&name])),
             }
         }
         if remote.is_empty() {
             return Ok(false);
         }
-        self.calc(Tag::WriteBack, json!({ "ops": remote }));
+        self.call(Tag::WriteBack, Call::WriteBack { ops: remote });
         Ok(true)
     }
 

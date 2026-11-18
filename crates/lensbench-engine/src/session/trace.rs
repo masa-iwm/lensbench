@@ -1,49 +1,103 @@
 //! プラグイン（plugin）と光線の追跡（trace）
 
 use super::*;
+use serde::{Deserialize, Serialize};
 
-/// 解析・検出器のプラグインを 1 回呼ぶ。params: name・config（数・文字列・数の並び）・inputs（JSON の
-/// 数の並び、入れ子で多次元。bin でもよい）。系の要るプラグインには読み込んだ系（set・edit の後）と膜を渡す。
-/// 結果は bin（<f8・<c16・|b1）、数 1 つの出力は values にも入れる
-pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
-    use lensbench_core::plugin::{self as pl, Array};
-    let name = p["name"]
-        .as_str()
-        .ok_or_else(|| RpcErr::params("plugin needs name"))?;
-    let mut config = pl::Config::new();
-    if let Some(m) = p.get("config").filter(|v| !v.is_null()) {
-        let m = m
-            .as_object()
-            .ok_or_else(|| RpcErr::params("config must be an object"))?;
-        for (k, v) in m {
-            let x = match v {
-                Value::Number(n) => pl::Value::Num(n.as_f64().unwrap_or(f64::NAN)),
-                Value::String(t) => pl::Value::Str(t.clone()),
-                Value::Bool(b) => pl::Value::Num(*b as u8 as f64),
-                Value::Array(a) => pl::Value::Nums(
-                    a.iter()
-                        .map(|x| x.as_f64())
-                        .collect::<Option<Vec<_>>>()
-                        .ok_or_else(|| {
-                            RpcErr::params(format!("config {k} must be a list of numbers"))
-                        })?,
-                ),
-                _ => return Err(RpcErr::params(format!("config {k} value {v}"))),
-            };
-            config.insert(k.clone(), x);
+/// プラグインの設定の値（数・文字列・数の並び。真偽は 0・1）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PluginValue {
+    Num(f64),
+    Str(String),
+    Nums(Vec<f64>),
+}
+
+/// プラグインの入力の配列（形と、平らな並び）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginInput {
+    pub name: String,
+    pub shape: Vec<usize>,
+    pub data: Vec<f64>,
+}
+
+/// `plugin` の params: プラグインの名前・設定・入力（JSON の数の並びは入れ子で多次元。bin の入力は別に足す）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PluginReq {
+    pub name: String,
+    pub config: Vec<(String, PluginValue)>,
+    pub inputs: Vec<PluginInput>,
+}
+
+impl PluginReq {
+    pub(crate) fn parse(p: &Value) -> Result<PluginReq, RpcErr> {
+        let name = p["name"]
+            .as_str()
+            .ok_or_else(|| RpcErr::params("plugin needs name"))?
+            .to_string();
+        let mut config = Vec::new();
+        if let Some(m) = p.get("config").filter(|v| !v.is_null()) {
+            let m = m
+                .as_object()
+                .ok_or_else(|| RpcErr::params("config must be an object"))?;
+            for (k, v) in m {
+                let x = match v {
+                    Value::Number(n) => PluginValue::Num(n.as_f64().unwrap_or(f64::NAN)),
+                    Value::String(t) => PluginValue::Str(t.clone()),
+                    Value::Bool(b) => PluginValue::Num(*b as u8 as f64),
+                    Value::Array(a) => PluginValue::Nums(
+                        a.iter()
+                            .map(|x| x.as_f64())
+                            .collect::<Option<Vec<_>>>()
+                            .ok_or_else(|| {
+                                RpcErr::params(format!("config {k} must be a list of numbers"))
+                            })?,
+                    ),
+                    _ => return Err(RpcErr::params(format!("config {k} value {v}"))),
+                };
+                config.push((k.clone(), x));
+            }
         }
+        let mut inputs = Vec::new();
+        if let Some(m) = p.get("inputs").filter(|v| !v.is_null()) {
+            let m = m
+                .as_object()
+                .ok_or_else(|| RpcErr::params("inputs must be an object"))?;
+            for (k, v) in m {
+                let (mut shape, mut data) = (Vec::new(), Vec::new());
+                nested(v, &mut shape, &mut data, 0)
+                    .map_err(|e| RpcErr::params(format!("inputs {k}: {e}")))?;
+                inputs.push(PluginInput {
+                    name: k.clone(),
+                    shape,
+                    data,
+                });
+            }
+        }
+        Ok(PluginReq {
+            name,
+            config,
+            inputs,
+        })
+    }
+}
+
+/// 解析・検出器のプラグインを 1 回呼ぶ。系の要るプラグインには読み込んだ系（set・edit の後）と膜を渡す。
+/// 結果は bin（<f8・<c16・|b1）、数 1 つの出力は values にも入れる
+pub(super) fn plugin(sess: &Session, r: &PluginReq, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
+    use lensbench_core::plugin::{self as pl, Array};
+    let name = r.name.as_str();
+    let mut config = pl::Config::new();
+    for (k, v) in &r.config {
+        let x = match v {
+            PluginValue::Num(x) => pl::Value::Num(*x),
+            PluginValue::Str(t) => pl::Value::Str(t.clone()),
+            PluginValue::Nums(a) => pl::Value::Nums(a.clone()),
+        };
+        config.insert(k.clone(), x);
     }
     let mut inputs = pl::Arrays::new();
-    if let Some(m) = p.get("inputs").filter(|v| !v.is_null()) {
-        let m = m
-            .as_object()
-            .ok_or_else(|| RpcErr::params("inputs must be an object"))?;
-        for (k, v) in m {
-            let (mut shape, mut out) = (Vec::new(), Vec::new());
-            nested(v, &mut shape, &mut out, 0)
-                .map_err(|e| RpcErr::params(format!("inputs {k}: {e}")))?;
-            inputs.insert(k.clone(), Array::f64(shape, out)?);
-        }
+    for x in &r.inputs {
+        inputs.insert(x.name.clone(), Array::f64(x.shape.clone(), x.data.clone())?);
     }
     for b in bins {
         let data = match b.data {
@@ -92,12 +146,65 @@ pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply,
     Ok((json!({ "name": name, "values": values }), list))
 }
 
+/// `trace` の params: 正規化瞳座標の並び px・py（bin でもよい）、波長 wave、視野 field（番号）か hx・hy、
+/// 追う最後の面 last、大域座標で返すか global
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TraceReq {
+    pub px: Option<Vec<f64>>,
+    pub py: Option<Vec<f64>>,
+    pub wave: Option<usize>,
+    pub field: Option<usize>,
+    pub hx: Option<f64>,
+    pub hy: Option<f64>,
+    pub last: Option<usize>,
+    pub global: bool,
+}
+
+impl TraceReq {
+    pub(crate) fn parse(p: &Value) -> Result<TraceReq, RpcErr> {
+        let list = |k: &str| -> Result<Option<Vec<f64>>, RpcErr> {
+            match p.get(k) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::Array(a)) => a
+                    .iter()
+                    .map(|x| {
+                        x.as_f64()
+                            .ok_or_else(|| RpcErr::params(format!("{k} must be a list of numbers")))
+                    })
+                    .collect::<Result<_, _>>()
+                    .map(Some),
+                _ => Err(RpcErr::params(format!("{k} must be a list of numbers"))),
+            }
+        };
+        Ok(TraceReq {
+            px: list("px")?,
+            py: list("py")?,
+            wave: opt_usize(p, "wave")?,
+            field: opt_usize(p, "field")?,
+            hx: opt_f64(p, "hx")?,
+            hy: opt_f64(p, "hy")?,
+            last: opt_usize(p, "last")?,
+            global: p.get("global").and_then(Value::as_bool).unwrap_or(false),
+        })
+    }
+}
+
 /// 正規化瞳座標 (px, py) の光線を追う。結果の配列は最後の面の局所座標（global なら大域）
-pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
+pub(super) fn trace(sess: &Session, r: &TraceReq, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     let (s, _) = sess.current()?;
     let mut bins: HashMap<String, Bin> = bins.into_iter().map(|b| (b.name.clone(), b)).collect();
-    let px = floats(p, &mut bins, "px")?.ok_or_else(|| RpcErr::params("trace needs px"))?;
-    let py = floats(p, &mut bins, "py")?.ok_or_else(|| RpcErr::params("trace needs py"))?;
+    // bin で来た並びは params より先
+    let mut floats = |k: &str, v: &Option<Vec<f64>>| -> Result<Option<Vec<f64>>, RpcErr> {
+        match bins.remove(k) {
+            Some(b) => match b.data {
+                Data::F64(v) => Ok(Some(v)),
+                _ => Err(RpcErr::params(format!("{k} must be <f8"))),
+            },
+            None => Ok(v.clone()),
+        }
+    };
+    let px = floats("px", &r.px)?.ok_or_else(|| RpcErr::params("trace needs px"))?;
+    let py = floats("py", &r.py)?.ok_or_else(|| RpcErr::params("trace needs py"))?;
     if px.len() != py.len() {
         return Err(RpcErr::params(format!(
             "px and py have different lengths ({} and {})",
@@ -105,12 +212,12 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
             py.len()
         )));
     }
-    let w = match opt_usize(p, "wave")? {
+    let w = match r.wave {
         None => s.primary,
         Some(i) => lensbench_core::waves::index(i, s.wavelengths.len())
             .map_err(|e| RpcErr::params(String::from(e)))?,
     };
-    let (hx, hy) = match opt_usize(p, "field")? {
+    let (hx, hy) = match r.field {
         Some(i) if i >= 1 && i <= s.fields.len() => s.hxhy(i - 1),
         Some(i) => {
             return Err(RpcErr::params(format!(
@@ -118,12 +225,9 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
                 s.fields.len()
             )))
         }
-        None => (
-            opt_f64(p, "hx")?.unwrap_or(0.0),
-            opt_f64(p, "hy")?.unwrap_or(0.0),
-        ),
+        None => (r.hx.unwrap_or(0.0), r.hy.unwrap_or(0.0)),
     };
-    let last = opt_usize(p, "last")?;
+    let last = r.last;
     if let Some(l) = last {
         if l == 0 || l > s.image() {
             return Err(RpcErr::params(format!(
@@ -132,7 +236,7 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
             )));
         }
     }
-    let global = p.get("global").and_then(Value::as_bool).unwrap_or(false);
+    let global = r.global;
     let launch = Launch::Pupil {
         spec: s.object_spec(hx, hy)?,
         signed: false,

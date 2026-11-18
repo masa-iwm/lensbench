@@ -6,13 +6,14 @@
 //! 品として並ぶ。
 
 use egui::{RichText, Ui};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::catalog::LensRow;
 use crate::combo::Combo;
 use crate::i18n::{tr, trf};
 use crate::theme;
-use crate::worker::CatOp;
+use crate::worker::{Call, CatOp};
+use lensbench_engine::{CatalogAddReq, CatalogEditReq};
 
 /// カタログの項目（一覧の 1 行）
 #[derive(Debug, Clone, PartialEq)]
@@ -48,7 +49,7 @@ pub(crate) struct CatSave {
 }
 
 /// ウィンドウから頼む操作と params
-pub(crate) type Req = (CatOp, Value);
+pub(crate) type Req = (CatOp, Call);
 
 impl CatSave {
     /// 要素 k を選んで開く
@@ -247,15 +248,23 @@ impl CatSave {
             {
                 req = Some((
                     CatOp::Add,
-                    json!({
-                        "catalog": cat, "name": self.name.trim(), "blocks": blocks,
-                        "description": self.description, "replace": self.replace,
-                        "vendor": self.vendor.trim(),
-                    }),
+                    Call::CatalogAdd(Box::new(CatalogAddReq {
+                        catalog: cat.clone(),
+                        name: self.name.trim().to_string(),
+                        blocks: blocks.into_iter().cloned().collect(),
+                        description: self.description.clone(),
+                        replace: self.replace,
+                        vendor: Some(self.vendor.trim().to_string()),
+                    })),
                 ));
             }
             if !cat.is_empty() && ui.button(tr("List items")).clicked() {
-                req = Some((CatOp::Items, json!({ "catalog": cat })));
+                req = Some((
+                    CatOp::Items,
+                    Call::CatalogItems {
+                        catalog: cat.clone(),
+                    },
+                ));
             }
         });
         if let Some((t, err)) = &self.note {
@@ -303,10 +312,16 @@ impl CatSave {
                             .on_hover_text(tr("Name"));
                             ui.add_sized(
                                 [170.0, 20.0],
-                                egui::TextEdit::singleline(&mut it.new_desc).hint_text(tr("Description")),
+                                egui::TextEdit::singleline(&mut it.new_desc)
+                                    .hint_text(tr("Description")),
                             );
-                            ui.label(RichText::new(trf("{} blocks", &[&it.blocks])).small().color(weak));
-                            let changed = it.new_name.trim() != it.name || it.new_desc != it.description;
+                            ui.label(
+                                RichText::new(trf("{} blocks", &[&it.blocks]))
+                                    .small()
+                                    .color(weak),
+                            );
+                            let changed =
+                                it.new_name.trim() != it.name || it.new_desc != it.description;
                             if ui
                                 .add_enabled(
                                     changed && !it.new_name.trim().is_empty(),
@@ -316,21 +331,38 @@ impl CatSave {
                             {
                                 req = Some((
                                     CatOp::Edit,
-                                    json!({ "catalog": cat, "name": it.name,
-                                            "rename": it.new_name.trim(), "description": it.new_desc }),
+                                    Call::CatalogEdit(Box::new(CatalogEditReq {
+                                        catalog: cat.clone(),
+                                        name: it.name.clone(),
+                                        rename: Some(it.new_name.trim().to_string()),
+                                        description: Some(it.new_desc.clone()),
+                                        ..Default::default()
+                                    })),
                                 ));
                             }
                             if self.confirm_delete.as_deref() == Some(it.name.as_str()) {
                                 if ui
-                                    .button(RichText::new(tr("Really delete")).color(ui.visuals().error_fg_color))
+                                    .button(
+                                        RichText::new(tr("Really delete"))
+                                            .color(ui.visuals().error_fg_color),
+                                    )
                                     .clicked()
                                 {
                                     req = Some((
                                         CatOp::Edit,
-                                        json!({ "catalog": cat, "name": it.name, "delete": true }),
+                                        Call::CatalogEdit(Box::new(CatalogEditReq {
+                                            catalog: cat.clone(),
+                                            name: it.name.clone(),
+                                            delete: true,
+                                            ..Default::default()
+                                        })),
                                     ));
                                 }
-                            } else if ui.button("🗑").on_hover_text(tr("Delete the item")).clicked() {
+                            } else if ui
+                                .button("🗑")
+                                .on_hover_text(tr("Delete the item"))
+                                .clicked()
+                            {
                                 self.confirm_delete = Some(it.name.clone());
                             }
                         });
@@ -352,8 +384,10 @@ mod tests {
     #[test]
     fn take_listing() {
         let mut c = CatSave::default();
-        c.take(&json!({ "catalog": "a.json", "vendor": "MY", "items": [
-            { "name": "L1", "description": "d", "blocks": 1 }] }));
+        c.take(
+            &serde_json::json!({ "catalog": "a.json", "vendor": "MY", "items": [
+            { "name": "L1", "description": "d", "blocks": 1 }] }),
+        );
         assert_eq!(c.listed, "a.json");
         assert_eq!(c.vendor, "MY");
         assert_eq!(c.items[0].new_name, "L1");

@@ -1193,7 +1193,7 @@ stop what must be optimize, tolerance or swap	stop の what は optimize・toler
 load needs file	load には file
 beam_path must be a string (the BS path, e.g. "TR")	beam_path は文字列（BS の経路、例 "TR"）
 the BS path has too few letters	BS の経路の文字が足りない
-{m} must be catalog_items, catalog_edit or catalog_fill	{m} は catalog_items・catalog_edit・catalog_fill
+{m} must be glasses, lenses, catalog_search, catalog_items, catalog_edit or catalog_fill	{m} は glasses・lenses・catalog_search・catalog_items・catalog_edit・catalog_fill
 {what} must be a list of strings	{what} は文字列の並び
 {k} must be an integer 0 or more	{k} は 0 以上の整数
 {k} must be a number	{k} は数

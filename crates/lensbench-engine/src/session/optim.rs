@@ -2,6 +2,7 @@
 
 use super::*;
 use lensbench_core::LockExt;
+use serde::{Deserialize, Serialize};
 
 // ------------------------------------------------------------------------------------------ 最適化
 
@@ -14,7 +15,7 @@ pub(super) struct PendingApply {
 }
 
 /// 最適化の結果を当てる（プールの外で。回している間に系が変わっていたら当てず、結果の applied・notes を直す）
-pub(super) fn apply_pending(sess: &Session, p: PendingApply, v: &mut Value) {
+pub(super) fn apply_pending(sess: &Session, p: PendingApply, a: &mut Answer) {
     let _w = sess.request.write_ok();
     if sess
         .current_system()
@@ -22,11 +23,20 @@ pub(super) fn apply_pending(sess: &Session, p: PendingApply, v: &mut Value) {
     {
         store_changed(sess, p.sys, p.spec, p.change);
     } else {
-        v["applied"] = json!(false);
-        if let Some(n) = v["notes"].as_array_mut() {
-            n.push(json!(
-                "the system changed during the optimization, so the result was not applied to it"
-            ));
+        const NOTE: &str =
+            "the system changed during the optimization, so the result was not applied to it";
+        match a {
+            Answer::Optimize(v) => {
+                v.applied = false;
+                v.notes.push(NOTE.into());
+            }
+            Answer::Json(v) => {
+                v["applied"] = json!(false);
+                if let Some(n) = v["notes"].as_array_mut() {
+                    n.push(json!(NOTE));
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -159,10 +169,11 @@ pub(super) fn config_system(
 /// 項・変数の構成の番号はこの並びの順）・apply（最適化した値を読み込んだ系に set する。読み込んだ系の構成に効く変数だけ）
 ///
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
-pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
+pub(super) fn optimize(
+    sess: &Session,
+    mut op: lensbench_design::dls_spec::OptimizeParams,
+) -> Result<views::OptimizeView, RpcErr> {
     use lensbench_optim as optim;
-    let mut op: lensbench_design::dls_spec::OptimizeParams = lensbench_design::dls_spec::read(p)
-        .map_err(|e| RpcErr::params(format!("optimize: {e}")))?;
     let Current {
         sys: cur,
         spec,
@@ -281,7 +292,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         terms,
         notes,
     };
-    serde_json::to_value(v).map_err(|e| RpcErr::app(e.to_string()))
+    Ok(v)
 }
 
 // ------------------------------------------------------------------------------------ 公差
@@ -312,7 +323,33 @@ pub fn tolerance_cancel() {
 /// モンテカルロ公差。params は `lensbench tolerance --spec` の JSON（`lensbench_design::tolerance`）に加えて
 /// configs（構成の番号か状態の名前の並び。optimize と同じ。省けば読み込んだ系だけ）。読み込んだ系（set・edit の後）を使う。
 /// 同じプロセスからは [`tolerance_progress`] で進み具合を読み、[`tolerance_cancel`] で止められる
-pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
+/// `tolerance` の params: 構成（状態の名前か構成の番号）の並びと、公差の設定（公差ファイルと同じ形の JSON）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TolReq {
+    pub configs: Vec<Value>,
+    pub spec: Value,
+}
+
+impl TolReq {
+    pub(crate) fn parse(p: &Value) -> Result<TolReq, RpcErr> {
+        let configs = p
+            .get("configs")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut spec = p.clone();
+        if let Some(o) = spec.as_object_mut() {
+            o.remove("configs");
+        }
+        lensbench_design::tolerance::read_spec(&spec).map_err(RpcErr::params)?;
+        Ok(TolReq { configs, spec })
+    }
+}
+
+pub(super) fn tolerance(
+    sess: &Session,
+    r: &TolReq,
+) -> Result<lensbench_design::tolerance::ToleranceReport, RpcErr> {
     let Current {
         sys: cur,
         spec,
@@ -321,17 +358,17 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         log,
     } = sess.current_full()?;
     let mut notes = Vec::new();
-    let systems = match p.get("configs").and_then(Value::as_array) {
-        Some(bs) if !bs.is_empty() => bs
+    let systems = if r.configs.is_empty() {
+        vec![(*cur).clone()]
+    } else {
+        r.configs
             .iter()
             .map(|b| config_system(b, &cur, &spec, &src, (&log, &faces), &mut notes))
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => vec![(*cur).clone()],
+            .collect::<Result<Vec<_>, _>>()?
     };
     let (vendors, reversed) = crate::load::tolerance_vendors_in(&src);
-    let mut v = p.clone();
+    let mut v = r.spec.clone();
     if let Some(o) = v.as_object_mut() {
-        o.remove("configs");
         if let Some(t) = o.get_mut("terms") {
             sess.files.check_term_paths(t)?;
         }
@@ -352,7 +389,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     })?;
     let mut out = lensbench_design::tolerance::report(&ms, &r, &oo);
     out.notes = Some(notes);
-    Ok(json!(out))
+    Ok(out)
 }
 
 // ------------------------------------------------------------------------------------ ズーム軌跡
@@ -364,9 +401,10 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 /// - steps（0）・merit（"spot"）・reference（"centroid"）・rings（3）・iters（50）・tol（1e-8）
 ///
 /// 読み込んだ後の値の変更（set・edit）は各状態の系にも当てる
-pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    let zp: lensbench_design::dls_spec::ZoomParams =
-        lensbench_design::dls_spec::read(p).map_err(|e| RpcErr::params(format!("zoom: {e}")))?;
+pub(super) fn zoom(
+    sess: &Session,
+    zp: &lensbench_design::dls_spec::ZoomParams,
+) -> Result<views::ZoomView, RpcErr> {
     let Current {
         sys: cur,
         spec,
@@ -394,11 +432,11 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .iter()
         .map(|b| b.as_str().map_or_else(|| b.to_string(), String::from))
         .collect();
-    let z = crate::zoom::zoom_systems(&systems, &names, &zp)
+    let z = crate::zoom::zoom_systems(&systems, &names, zp)
         .map_err(|e| RpcErr::params(e.to_string()))?;
-    let mut out = serde_json::to_value(z).map_err(|e| RpcErr::app(e.to_string()))?;
-    out["notes"] = json!(notes);
-    Ok(out)
+    let mut z = z;
+    z.notes = notes;
+    Ok(z)
 }
 
 // ------------------------------------------------------------------------------------ 差し替え探索
@@ -442,10 +480,44 @@ pub fn swap_cancel() {
 ///
 /// 読み込んだ系のガラス・レンズカタログのフォルダを使う。同じプロセスからは [`swap_progress`] で進み具合を読み、
 /// [`swap_cancel`] で止められる
-pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
+/// `swap` の params: 探索の設定（`--spec` の JSON と同じ形）、別のプロジェクト `project`（省けば読み込んだもの）、
+/// 返す組の数 `top`（50、0 は全部）、スレッド数、組の数だけ数える `count_only`
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SwapReq {
+    pub spec: Value,
+    pub project: Option<Value>,
+    pub top: Option<usize>,
+    pub threads: Option<usize>,
+    pub count_only: bool,
+}
+
+impl SwapReq {
+    pub(crate) fn parse(p: &Value) -> Result<SwapReq, RpcErr> {
+        // プロジェクトは処理するときに読む（要求のファイルを制限するときは、読む前に断る）
+        let project = p.get("project").filter(|v| !v.is_null()).cloned();
+        let mut spec = p.clone();
+        if let Some(o) = spec.as_object_mut() {
+            for k in ["project", "top", "threads", "count_only"] {
+                o.remove(k);
+            }
+        }
+        Ok(SwapReq {
+            project,
+            top: opt_usize(p, "top")?,
+            threads: opt_usize(p, "threads")?,
+            count_only: p["count_only"].as_bool() == Some(true),
+            spec,
+        })
+    }
+}
+
+pub(super) fn swap(
+    sess: &Session,
+    r: &SwapReq,
+) -> Result<lensbench_design::swap::SwapReply, RpcErr> {
     use lensbench_design::swap::{SwapReply, SwapSearch, SwapSpec};
     let super::Current { spec: ls, src, .. } = sess.current_full()?;
-    let proj = match p.get("project").filter(|v| !v.is_null()) {
+    let proj = match &r.project {
         // 中の zmx・カタログ・膜のパスを check_path で確かめられないので、要求のファイルを制限するときは断る
         Some(_) if !matches!(sess.files, Files::Any) => {
             return Err(RpcErr::app(
@@ -460,16 +532,13 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             .cloned()
             .ok_or_else(|| RpcErr::app("the loaded system is not a project"))?,
     };
-    let mut sp = p.clone();
+    let mut sp = r.spec.clone();
     if let Some(o) = sp.as_object_mut() {
-        for k in ["project", "top", "threads", "count_only"] {
-            o.remove(k);
-        }
         let multi = o
             .get("states")
             .and_then(Value::as_array)
             .is_some_and(|a| !a.is_empty());
-        if !multi && !o.contains_key("state") && p.get("project").is_none() {
+        if !multi && !o.contains_key("state") && r.project.is_none() {
             if let Some(s) = &ls.state {
                 o.insert("state".into(), json!(s));
             }
@@ -491,17 +560,17 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let s = SwapSearch::new(&proj, &env, &cat, spec)?;
     let n = s.count();
     let slots = s.slots();
-    if p["count_only"].as_bool() == Some(true) {
+    if r.count_only {
         let r = SwapReply {
             count: n,
             slots,
             ..Default::default()
         };
-        return Ok(json!(r));
+        return Ok(r);
     }
     let rows: Mutex<Vec<lensbench_design::swap::SwapResult>> = Mutex::new(Vec::new());
     let o = lensbench_runs::RunOpts {
-        threads: opt_usize(p, "threads")?,
+        threads: r.threads,
         header: "{}".into(),
         stage: lensbench_design::swap::SwapStage::Main.name(),
         ..Default::default()
@@ -538,11 +607,11 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     })?;
     let done = rows.len();
     let failed = rows.iter().filter(|x| x.error.is_some()).count();
-    let top = opt_usize(p, "top")?.unwrap_or(50);
+    let top = r.top.unwrap_or(50);
     if top > 0 {
         rows.truncate(top);
     }
-    Ok(json!(SwapReply {
+    Ok(SwapReply {
         count: n,
         screened: Some(screened),
         done: Some(done),
@@ -551,5 +620,5 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         seconds: Some(t0.elapsed().as_secs_f64()),
         slots,
         results: Some(rows),
-    }))
+    })
 }

@@ -1,6 +1,7 @@
 //! 計算の結果を受け取って状態に入れる（app.rs から分けた）
 
 use super::*;
+use crate::worker::Answer;
 
 impl Core {
     pub(super) fn take(&mut self, mut d: Done) {
@@ -11,8 +12,8 @@ impl Core {
         if d.tag == Tag::Refresh {
             let n = d.replies.len();
             if !d.skipped {
-                for (m, p) in Tag::refresh_calls().into_iter().skip(n) {
-                    self.calc(Tag::of_refresh(&m), p);
+                for c in Tag::refresh_calls().into_iter().skip(n) {
+                    self.call(Tag::of_refresh(c.method()), c);
                 }
             }
             return d.split().into_iter().for_each(|d| self.take(d));
@@ -23,7 +24,7 @@ impl Core {
             let asked: Vec<String> = d
                 .replies
                 .iter()
-                .filter_map(|r| r.params["param"].as_str().map(String::from))
+                .filter_map(|r| get_param(&r.call).map(String::from))
                 .collect();
             let stopped = d.error().is_some() && !d.skipped;
             let mut d = d;
@@ -32,13 +33,13 @@ impl Core {
             if stopped {
                 for p in self.ses.params.clone() {
                     if !asked.contains(&p) {
-                        self.calc(Tag::Get, json!({ "param": p }));
+                        self.call(Tag::Get, Call::Get(GetReq::One(p)));
                     }
                 }
             }
             return;
         }
-        // 系を変える要求に付けた読み直し（send_change）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
+        // 系を変える要求に付けた読み直し（call_refreshing）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
         // 断られたら読み直しは回っていない（途中の誤りで止まる）
         if matches!(d.tag, Tag::Set) && d.replies.len() > 1 {
             let (d, rest) = d.split_change();
@@ -76,8 +77,9 @@ impl Core {
                 &fmt_num((ms * 10.0).round() / 10.0),
             ],
         );
-        let (params, v) = d.take_first();
-        if let Some(text) = self.on_reply(&d, params, v, ms, text) {
+        let typed = d.take_typed();
+        let (call, v) = d.take_first();
+        if let Some(text) = self.on_reply(&d, call, (v, typed), ms, text) {
             self.set_done_status(&d.tag, text);
         }
     }
@@ -101,7 +103,7 @@ impl Core {
                 self.results.entry(*id).or_default().error = Some(e.to_string());
             }
             Tag::Get => {
-                if let Some(p) = d.replies[0].params["param"].as_str() {
+                if let Some(p) = get_param(&d.replies[0].call) {
                     self.sys.param_vals.remove(p);
                 }
             }
@@ -111,8 +113,8 @@ impl Core {
                 if missing_glass_of(e).is_none() {
                     self.revert_open();
                 }
-                if let Some(f) = d.replies[0].params["file"].as_str() {
-                    let f = f.to_string();
+                if let Some(f) = load_file(&d.replies[0].call) {
+                    let f = f.display().to_string();
                     self.s.recent.retain(|x| x != &f);
                     if let Some(name) = missing_glass_of(e) {
                         let m = self.missing_glass.get_or_insert_with(Default::default);
@@ -156,20 +158,22 @@ impl Core {
     fn on_reply(
         &mut self,
         d: &Done,
-        params: Value,
-        v: Value,
+        call: Call,
+        (v, typed): (Value, Option<Answer>),
         ms: f64,
         mut text: String,
     ) -> Option<String> {
+        let got = get_param(&call).map(str::to_string);
+        let params = into_params(call);
         match d.tag {
             Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom => {
-                return Some(self.job_done(&d.tag, v, ms, text));
+                return Some(self.job_done(&d.tag, (v, typed), ms, text));
             }
             Tag::Glasses | Tag::Lenses | Tag::UserCatalog(_) | Tag::CatalogFill => {
                 return Some(self.catalog_done(d, v, ms, text));
             }
             Tag::Load | Tag::Set | Tag::Surfaces => {
-                return self.system_done(d, v, text);
+                return self.system_done(d, (v, typed), text);
             }
             Tag::Info => self.sys.info = Some(v),
             Tag::Analyze(id) => {
@@ -177,14 +181,18 @@ impl Core {
                 let gen = self.rev;
                 let r = self.results.entry(id).or_default();
                 // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない
-                r.prev = if r.cmd == cmd && r.params == params {
-                    r.value.take()
+                (r.prev, r.prev_typed) = if r.cmd == cmd && r.params == params {
+                    (r.value.take(), r.typed.take())
                 } else {
-                    None
+                    (None, None)
                 };
                 r.params = params;
                 r.cmd = cmd;
                 r.value = Some(v);
+                r.typed = match typed {
+                    Some(Answer::Analysis(t)) => Some(*t),
+                    _ => None,
+                };
                 r.ms = ms;
                 r.error = None;
                 r.gen = gen;
@@ -195,8 +203,10 @@ impl Core {
                     .iter()
                     .filter_map(|r| {
                         let (_, a) = r.result.as_ref().ok()?;
-                        let f = r.params["field"].as_u64()? as usize;
-                        let w = r.params["wave"].as_u64()? as usize;
+                        let Call::Trace(t) = &r.call else {
+                            return None;
+                        };
+                        let (f, w) = (t.field?, t.wave?);
                         Some(plots::rays_from(f, w, a))
                     })
                     .collect();
@@ -207,7 +217,7 @@ impl Core {
                 return None;
             }
             Tag::Get => {
-                if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
+                if let (Some(p), Some(x)) = (got.as_deref(), v["value"].as_f64()) {
                     self.sys.param_vals.insert(p.to_string(), x);
                     if !self.ses.params.iter().any(|q| q == p) {
                         self.ses.params.push(p.to_string());
@@ -247,7 +257,7 @@ impl Core {
             Tag::SaveRange => {
                 text = trf(
                     "Exported to {}",
-                    &[&params["path"].as_str().unwrap_or_default()],
+                    &[&v["written"].as_str().unwrap_or_default()],
                 );
             }
             Tag::Layout => {
@@ -279,7 +289,12 @@ impl Core {
     }
 
     /// 系を開いた・変えた・読み直した返事（面の表・要約）。下の行に出す文を返す
-    fn system_done(&mut self, d: &Done, v: Value, mut text: String) -> Option<String> {
+    fn system_done(
+        &mut self,
+        d: &Done,
+        (v, typed): (Value, Option<Answer>),
+        mut text: String,
+    ) -> Option<String> {
         match d.tag {
             Tag::Load => {
                 self.docs.opening = false;
@@ -317,16 +332,22 @@ impl Core {
                 self.docs.edited();
                 // 値を変えたら面の表・要約と、開いている解析を計算し直す
                 self.refresh();
-                self.calc(Tag::Layout, self.layout_params());
+                self.call(Tag::Layout, Call::Layout(Box::new(self.layout_params())));
                 self.rerun = Some(true);
             }
             Tag::Surfaces => {
+                // 同じプロセスの計算は型のまま、Web 版は JSON を型に読む
+                let view = match typed {
+                    Some(Answer::Surfaces(t)) => Ok(*t),
+                    _ => {
+                        views::read::<views::SurfacesView>(&v).map_err(|e| format!("surface: {e}"))
+                    }
+                };
                 // 要約の面の数も今の系に（読み込み時のままにしない）
-                if let (Some(sum), Some(a)) = (self.sys.summary.as_mut(), v["surfaces"].as_array())
-                {
-                    sum["surfaces"] = json!(a.len());
+                if let (Some(sum), Ok(t)) = (self.sys.summary.as_mut(), &view) {
+                    sum["surfaces"] = json!(t.surfaces.len());
                 }
-                let (rows, units) = match lens_data::parse(&v) {
+                let (rows, units) = match view.map(lens_data::parse_view) {
                     Ok(x) => x,
                     Err(text) => {
                         self.fail(text);
@@ -470,7 +491,13 @@ impl Core {
     }
 
     /// 長い計算が終わった: 動いている印と誤りを下ろして結果を入れる。下の行に出す文を返す
-    fn job_done(&mut self, tag: &Tag, v: Value, ms: f64, mut text: String) -> String {
+    fn job_done(
+        &mut self,
+        tag: &Tag,
+        (v, typed): (Value, Option<Answer>),
+        ms: f64,
+        mut text: String,
+    ) -> String {
         if let Some((running, error)) = self.job(tag) {
             *running = false;
             *error = None;
@@ -482,15 +509,21 @@ impl Core {
                     "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                (self.p.opt.result, self.p.opt.error) = views::read::<views::OptimizeView>(&v)
-                    .map_or_else(
-                        |e| (None, Some(String::from(e))),
-                        |r| (Some(std::sync::Arc::new(r)), None),
-                    );
+                let r = match typed {
+                    Some(Answer::Optimize(r)) => Ok(*r),
+                    _ => views::read::<views::OptimizeView>(&v),
+                };
+                (self.p.opt.result, self.p.opt.error) = r.map_or_else(
+                    |e| (None, Some(String::from(e))),
+                    |r| (Some(std::sync::Arc::new(r)), None),
+                );
             }
             Tag::Swap => {
                 self.p.swap.inserted = None;
-                let r = views::read::<lensbench_design::swap::SwapReply>(&v);
+                let r = match typed {
+                    Some(Answer::Swap(r)) => Ok(*r),
+                    _ => views::read::<lensbench_design::swap::SwapReply>(&v),
+                };
                 if r.as_ref().is_ok_and(|r| r.results.is_some()) {
                     text = trf(
                         "Swap search done ({} ms)",
@@ -507,19 +540,26 @@ impl Core {
                     "Tolerance done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                (self.p.tol.result, self.p.tol.error) =
-                    match views::read::<lensbench_design::tolerance::ToleranceReport>(&v) {
-                        Ok(r) => (Some(std::sync::Arc::new(r)), None),
-                        Err(e) => (None, Some(format!("tolerance: {e}"))),
-                    };
+                let r = match typed {
+                    Some(Answer::Tolerance(r)) => Ok(*r),
+                    _ => views::read::<lensbench_design::tolerance::ToleranceReport>(&v),
+                };
+                (self.p.tol.result, self.p.tol.error) = match r {
+                    Ok(r) => (Some(std::sync::Arc::new(r)), None),
+                    Err(e) => (None, Some(format!("tolerance: {e}"))),
+                };
             }
             Tag::Zoom => {
                 text = trf(
                     "Zoom track done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                (self.p.zoom.result, self.p.zoom.error) = views::read::<views::ZoomView>(&v)
-                    .map_or_else(|e| (None, Some(String::from(e))), |r| (Some(r), None));
+                let r = match typed {
+                    Some(Answer::Zoom(r)) => Ok(*r),
+                    _ => views::read::<views::ZoomView>(&v),
+                };
+                (self.p.zoom.result, self.p.zoom.error) =
+                    r.map_or_else(|e| (None, Some(String::from(e))), |r| (Some(r), None));
             }
             _ => {}
         }

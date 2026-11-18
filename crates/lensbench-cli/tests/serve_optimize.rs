@@ -195,3 +195,45 @@ fn optimize_with_threads_and_parallel_reads_does_not_hang() {
         h.join().unwrap();
     }
 }
+
+/// 同じプロセスの呼び手には、結果の型が決まっている method を型のまま返す（JSON を通さない）。JSON に書けば
+/// serve の結果と同じ
+#[test]
+fn typed_answers_match_the_json_results() {
+    use lensbench_engine::Answer;
+    let sv = Session::new();
+    load(&sv, "tests/refs/A0/system.zmx", None);
+    let (a, _) = sv.call_answer("surface", &json!({}), None).unwrap();
+    let Answer::Surfaces(t) = &a else {
+        panic!("{a:?}");
+    };
+    assert!(!t.surfaces.is_empty());
+    assert_eq!(a.into_json().unwrap(), call(&sv, "surface", json!({})));
+    // 面を 1 つ指定したときは型のない JSON の答え
+    let (a, _) = sv
+        .call_answer("surface", &json!({ "surface": 1 }), None)
+        .unwrap();
+    assert!(a.as_json().is_some(), "{a:?}");
+    let p = json!({ "vars": ["8.t"], "merit": "spot" });
+    let (a, _) = sv.call_answer("optimize", &p, None).unwrap();
+    let Answer::Optimize(t) = &a else {
+        panic!("{a:?}");
+    };
+    assert_eq!(t.names, vec!["8.t".to_string()]);
+    assert_eq!(a.into_json().unwrap(), call(&sv, "optimize", p));
+    // 解析は結果の型のまま（書き出すときは JSON）
+    let p = json!({ "cmd": "spot", "field": 1 });
+    let (a, _) = sv.call_answer("analyze", &p, None).unwrap();
+    let Answer::Analysis(t) = &a else {
+        panic!("{a:?}");
+    };
+    assert_eq!(t.name(), "spot");
+    assert!(
+        t.get::<serde_json::Value>().is_none(),
+        "spot has its own result type"
+    );
+    assert_eq!(a.into_json().unwrap(), call(&sv, "analyze", p));
+    // 型の無い method は JSON
+    let (a, _) = sv.call_answer("ping", &json!({}), None).unwrap();
+    assert!(a.as_json().is_some_and(|v| v["version"].is_string()));
+}

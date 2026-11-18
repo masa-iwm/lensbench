@@ -13,6 +13,8 @@
   GUI の `--convert-combo`、`glass_dirs` の無い古い pickle は読まない。0.5 で開いて保存し直すと今の形になる。
 - **条件で定める視野の条件の JSON**: core のシステムの形（serve の `system_data` など）でも、システムファイルと同じ
   `{"cond": "position", "surface": 5}` の形にした。
+- **Rust API**: 解析の結果の型（`Analysis::Output`）は `Send + Sync + 'static` であること（同じプロセスの呼び手へ
+  結果を型のまま渡す `DynAnalysis::run_typed`・`Typed`）。`Answer::into_json` は `Result` を返す
 
 ### 結果が変わる所
 
@@ -43,6 +45,9 @@
 - **GUI の図の縮尺（スケールバー）**: レイアウト図（2D・3D）の左下に、1・2・5×10^n のきりのよい長さの棒と長さを出す
   （拡大縮小に合わせて選び直す）。スポット図は OpticStudio の Scale と同じく、枠の幅を指定でき（既定は自動のきりのよい長さ）、
   枠の下にその長さの縮尺を出す
+- **Rust API**: 計算の要求を型で渡す口（`lensbench_engine::Request`・`request`・`catalog`）。serve の method は
+  型の要求に読んでから処理する（JSON の形・誤りの文は前と同じ。誤りが 2 つ重なる要求では出る誤りが前と違う
+  ことがある: params の誤りを、システムを読んでいない誤りや `--allow-remote` の検査より先に返す）
 
 ### 速さ
 
