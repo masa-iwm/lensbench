@@ -243,8 +243,6 @@ impl App {
                 k.ask_flat();
             }
         }
-        // 解析以外の頼み（パレットなど）はこの窓では受けない
-        self.c.msgs.clear();
         let (closed, waiting) = match &self.calc {
             Some(k) => (k.closed, self.c.sys.summary.is_none()),
             None => return,
@@ -299,6 +297,9 @@ impl App {
         if c.ask.is_some() {
             c.ask_ui(ctx);
         }
+        // この窓で当てるのは解析の計算だけ
+        self.c.msgs.retain(|m| matches!(m, Msg::Analyze(_)));
+        self.dispatch_queued(ctx);
         let pane = self
             .dock
             .iter_all_tabs()

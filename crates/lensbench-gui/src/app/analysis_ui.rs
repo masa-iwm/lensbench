@@ -43,7 +43,7 @@ impl Core {
             ));
             ui.label(tr("To combine catalog lenses, go to the Catalog panel."));
             if ui.button(tr("Open… (Ctrl+O)")).clicked() {
-                self.pick_and_open();
+                self.msgs.push(Msg::Open);
             }
             if !self.s.recent.is_empty() {
                 ui.add_space(8.0);
@@ -54,7 +54,7 @@ impl Core {
                         .map(|x| x.to_string_lossy().into_owned())
                         .unwrap_or_else(|| f.clone());
                     if ui.link(name).on_hover_text(f).clicked() {
-                        self.open(Path::new(f));
+                        self.msgs.push(Msg::OpenFile(PathBuf::from(f)));
                     }
                 }
             }
@@ -165,8 +165,7 @@ impl Core {
                             let r =
                                 ui.add(egui::DragValue::new(&mut x).speed(step).max_decimals(8));
                             if r.changed() {
-                                self.sys.param_vals.insert(p.clone(), x);
-                                self.pending_set.insert(p.clone(), x);
+                                self.msgs.push(Msg::SetParam(p.clone(), x));
                             }
                         }
                         None => {
@@ -179,8 +178,7 @@ impl Core {
                 });
             }
             if let Some(i) = remove {
-                let p = self.ses.params.remove(i);
-                self.sys.param_vals.remove(&p);
+                self.msgs.push(Msg::RemoveParam(i));
             }
             ui.horizontal_wrapped(|ui| {
                 let sys = self.param_sys();
@@ -196,7 +194,7 @@ impl Core {
                     && !self.new_param.trim().is_empty()
                 {
                     let p = self.new_param.trim().to_string();
-                    self.calc(Tag::Get, json!({ "param": p }));
+                    self.msgs.push(Msg::AddParam(p));
                     self.new_param.clear();
                 }
             });
@@ -212,7 +210,7 @@ impl Core {
                 .on_hover_text(tr("Reload (discard changed values; Ctrl+Z to undo)"))
                 .clicked()
             {
-                self.reload();
+                self.msgs.push(Msg::Reload);
             }
         });
     }
@@ -618,7 +616,7 @@ impl Core {
                 && (matches!(&*cfg.cmd, "spot" | "wavefront" | "interference" | "pop")
                     || crate::ext::get(&cfg.cmd).is_some_and(|a| a.figure_params.is_some())))
         {
-            self.run(id, cfg);
+            self.msgs.push(Msg::Analyze(id));
         }
     }
 }

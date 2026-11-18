@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 
 /// ファイルを選ぶ窓の設定（ネイティブは rfd の FileDialog に渡す）
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct FileDialog {
     filters: Vec<(String, Vec<String>)>,
     file_name: Option<String>,
@@ -148,6 +148,28 @@ pub fn save(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -> Optio
     {
         let _ = id;
         start.then(|| dialog().save_file()).flatten()
+    }
+}
+
+/// ファイルの窓の種類
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DialogKind {
+    /// ファイルを開く（答えは同じ id の [`open`] が返す）
+    Open,
+    /// 保存先を選ぶ（答えは [`finished`] で受ける）
+    Save,
+}
+
+/// ファイルの窓を出し始める（答えは [`DialogKind`] の所で受ける）
+pub fn start(id: &str, kind: DialogKind, d: FileDialog) {
+    match kind {
+        DialogKind::Save => start_save(id, d),
+        DialogKind::Open => {
+            #[cfg(not(target_arch = "wasm32"))]
+            native::spawn(id, d, |d| d.rfd().pick_file());
+            #[cfg(target_arch = "wasm32")]
+            web::pick(id, d, false);
+        }
     }
 }
 

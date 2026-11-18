@@ -5,7 +5,7 @@ use super::*;
 impl Core {
     /// 最適化
     pub(super) fn optimize_ui(&mut self, ui: &mut Ui) {
-        use crate::optim_panel::{self as op, Action};
+        use crate::optim_panel as op;
         if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr(
@@ -27,17 +27,11 @@ impl Core {
             None
         };
         let acts = op::ui(ui, &mut self.p.opt, &cands, progress.as_deref());
-        let mut load = false;
         for a in acts {
-            match a {
-                Action::Load => load = true,
-                a => self.msgs.push(Msg::Opt(a)),
-            }
+            self.msgs.push(Msg::Opt(a));
         }
-        // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）
-        if let Some(path) = crate::files::open("opt-load", load, || {
-            crate::files::FileDialog::new().add_filter(tr("Optimization settings"), &["json"])
-        }) {
+        // 設定の読み込み（窓は操作が出す。選び終わった後のフレームで返るので毎フレーム見る）
+        if let Some(path) = crate::files::open("opt-load", false, crate::files::FileDialog::new) {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
@@ -81,7 +75,7 @@ impl Core {
     }
 
     pub(super) fn tolerance_ui(&mut self, ui: &mut Ui) {
-        use crate::tol_panel::{self as tp, Action};
+        use crate::tol_panel as tp;
         if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr(
@@ -104,17 +98,11 @@ impl Core {
             None
         };
         let acts = tp::ui(ui, &mut self.p.tol, &cands, progress);
-        let mut load = false;
         for a in acts {
-            match a {
-                Action::Load => load = true,
-                a => self.msgs.push(Msg::Tol(a)),
-            }
+            self.msgs.push(Msg::Tol(a));
         }
-        // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）
-        if let Some(path) = crate::files::open("tol-load", load, || {
-            crate::files::FileDialog::new().add_filter(tr("Tolerance settings"), &["json"])
-        }) {
+        // 設定の読み込み（窓は操作が出す。選び終わった後のフレームで返るので毎フレーム見る）
+        if let Some(path) = crate::files::open("tol-load", false, crate::files::FileDialog::new) {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
@@ -127,7 +115,7 @@ impl Core {
 
     /// 差し替え探索
     pub(super) fn swap_ui(&mut self, ui: &mut Ui) {
-        use crate::swap_panel::{self as sp, Action};
+        use crate::swap_panel as sp;
         if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr(
@@ -147,17 +135,11 @@ impl Core {
         };
         cands.sys = self.param_sys();
         let acts = sp::ui(ui, &mut self.p.swap, &cands, progress);
-        let mut load = false;
         for a in acts {
-            match a {
-                Action::Load => load = true,
-                a => self.msgs.push(Msg::Swap(a)),
-            }
+            self.msgs.push(Msg::Swap(a));
         }
-        // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）
-        if let Some(path) = crate::files::open("swap-load", load, || {
-            crate::files::FileDialog::new().add_filter(tr("Swap search settings"), &["json"])
-        }) {
+        // 設定の読み込み（窓は操作が出す。選び終わった後のフレームで返るので毎フレーム見る）
+        if let Some(path) = crate::files::open("swap-load", false, crate::files::FileDialog::new) {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))

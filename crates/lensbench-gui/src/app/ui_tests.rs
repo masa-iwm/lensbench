@@ -442,3 +442,58 @@ fn panel_messages_apply_without_a_frame() {
     ));
     h.state_mut().c.p.zoom.running = false;
 }
+
+/// ファイルの窓・解析の計算・見るパラメータも操作で当てる: 開く・名前を付けて保存は窓を出す作用を返し、解析の
+/// パネルの計算は解析の要求を返す
+#[test]
+fn dialogs_and_analyses_are_effects() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let app = h.state_mut();
+    let fx = app.update(Msg::Open);
+    assert!(
+        matches!(
+            fx.as_slice(),
+            [msg::Effect::Dialog { id, kind: crate::files::DialogKind::Open, .. }] if id == "open-system"
+        ),
+        "{fx:?}"
+    );
+    let fx = app.update(Msg::Save(true));
+    assert!(
+        matches!(
+            fx.as_slice(),
+            [msg::Effect::Dialog {
+                kind: crate::files::DialogKind::Save,
+                ..
+            }]
+        ),
+        "{fx:?}"
+    );
+    assert!(app.c.saving());
+    // 窓を出す前にやめた扱いにする（試験では窓を出さない）
+    app.c.saves = Default::default();
+    let id = app.update(Msg::Add(Kind::Analysis(AnaCfg::new("spot"))));
+    assert!(id.is_empty(), "{id:?}");
+    let (id, _) = app
+        .analyses()
+        .into_iter()
+        .find(|x| x.1.cmd == "spot")
+        .expect("spot panel");
+    let fx = app.update(Msg::Analyze(id));
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, msg::Effect::Calc { tag: Tag::Analyze(x), .. } if *x == id)),
+        "{fx:?}"
+    );
+    app.update(Msg::SetParam("1.t".into(), 2.5));
+    assert_eq!(app.c.pending_set.get("1.t"), Some(&2.5));
+    let ctx = h.ctx.clone();
+    h.state_mut().apply(&ctx, fx);
+    h.state_mut().c.pending_set.clear();
+    settle(&mut h);
+}

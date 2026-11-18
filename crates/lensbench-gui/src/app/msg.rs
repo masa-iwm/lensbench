@@ -54,6 +54,12 @@ pub(super) enum Msg {
     Catalog(catalog::Action),
     /// レンズデータの表の操作
     LensData(lens_data::Act),
+    /// 解析のパネルを今の設定で計算する
+    Analyze(u64),
+    /// 見るパラメータを足す・外す、値を変える（システムのパネル）
+    AddParam(String),
+    RemoveParam(usize),
+    SetParam(String, f64),
 }
 
 /// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
@@ -96,6 +102,12 @@ pub(super) enum Effect {
     Look,
     /// 言語を画面（字形）に当てる
     Lang,
+    /// ファイルの窓を出す（答えは同じ id で受ける）
+    Dialog {
+        id: String,
+        kind: crate::files::DialogKind,
+        dialog: crate::files::FileDialog,
+    },
 }
 
 /// まだ当てていない作用（[`Core`] の操作が足し、[`App::apply`] が当てる）
@@ -180,6 +192,15 @@ impl Core {
         });
     }
 
+    /// ファイルを開く窓を出す（答えは同じ id の [`crate::files::open`] が返す）
+    pub(super) fn dialog(&mut self, id: &str, d: crate::files::FileDialog) {
+        self.fx.push(Effect::Dialog {
+            id: id.to_string(),
+            kind: crate::files::DialogKind::Open,
+            dialog: d.or_directory(self.loc.dir()),
+        });
+    }
+
     /// 待っている解析を捨て、回している解析をやめる
     pub(super) fn drop_queued(&mut self) {
         self.fx.push(Effect::DropQueued);
@@ -248,6 +269,7 @@ impl App {
             match e {
                 Effect::Look => theme::apply(ctx, &self.c.s.look),
                 Effect::Lang => crate::fonts::follow_lang(ctx),
+                Effect::Dialog { id, kind, dialog } => crate::files::start(&id, kind, dialog),
                 Effect::Calc { .. } | Effect::DropQueued => {}
             }
         }
@@ -357,6 +379,22 @@ impl App {
             Msg::Combo(a) => self.c.on_combo(a),
             Msg::Catalog(a) => self.c.on_catalog(a),
             Msg::LensData(a) => self.c.on_ld(a),
+            Msg::Analyze(id) => {
+                if let Some((_, cfg)) = self.analyses().into_iter().find(|x| x.0 == id) {
+                    self.c.run(id, &cfg);
+                }
+            }
+            Msg::AddParam(p) => self.c.calc(Tag::Get, json!({ "param": p })),
+            Msg::RemoveParam(i) => {
+                if i < self.c.ses.params.len() {
+                    let p = self.c.ses.params.remove(i);
+                    self.c.sys.param_vals.remove(&p);
+                }
+            }
+            Msg::SetParam(p, x) => {
+                self.c.sys.param_vals.insert(p.clone(), x);
+                self.c.pending_set.insert(p, x);
+            }
         }
     }
 }

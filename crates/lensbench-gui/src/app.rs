@@ -631,17 +631,20 @@ impl Core {
 
     /// 系のファイルを選んで開く。start のフレームで選び始める（Web 版は選び終わった後のフレームで開くので、
     /// 毎フレーム start = false で呼ぶ）
-    fn pick_and_open_when(&mut self, start: bool) {
-        if let Some(p) = crate::files::open("open-system", start, || {
-            crate::files::FileDialog::new()
-                .add_filter(tr("Systems (.zmx, project .json)"), &["zmx", "json"])
-        }) {
+    /// 開くファイルを選び終わっていれば開く（毎フレーム）
+    fn poll_open(&mut self) {
+        if let Some(p) = crate::files::open("open-system", false, crate::files::FileDialog::new) {
             self.open_doc(&p);
         }
     }
 
+    /// 開くファイルを選ぶ窓を出す
     fn pick_and_open(&mut self) {
-        self.pick_and_open_when(true);
+        self.dialog(
+            "open-system",
+            crate::files::FileDialog::new()
+                .add_filter(tr("Systems (.zmx, project .json)"), &["zmx", "json"]),
+        );
     }
 
     fn refresh_catalog(&mut self) {

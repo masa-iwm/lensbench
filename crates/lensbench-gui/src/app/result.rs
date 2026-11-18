@@ -126,13 +126,13 @@ impl Core {
                         .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
                 }
                 Some(ResOut::Save(d, text)) => {
-                    if !self
+                    match self
                         .saves
                         .push(d.or_directory(self.loc.dir()), move |c, p| {
                             c.write_reported(&p, text)
-                        })
-                    {
-                        busy = true;
+                        }) {
+                        Some(e) => self.fx.push(e),
+                        None => busy = true,
                     }
                 }
                 None => {}

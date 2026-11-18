@@ -14,21 +14,24 @@ pub(super) struct Saves {
 }
 
 impl Saves {
-    /// 保存先を選び始め、選んだら `then` を呼ぶ（やめたら呼ばない）。Core のほかの欄を借りている所から
+    /// 保存先を選ぶ窓の作用を返し、選んだら `then` を呼ぶ（やめたら呼ばない）。Core のほかの欄を借りている所から
     pub(super) fn push(
         &mut self,
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
-    ) -> bool {
+    ) -> Option<msg::Effect> {
         // 保存の窓は 1 つずつ（窓を出している間も画面は動くので、Ctrl+S を続けて押しても 2 つ目は出さない）
         if !self.wait.is_empty() {
-            return false;
+            return None;
         }
         let id = format!("save-as-{}", self.next);
         self.next += 1;
-        crate::files::start_save(&id, d);
-        self.wait.push((id, Box::new(then)));
-        true
+        self.wait.push((id.clone(), Box::new(then)));
+        Some(msg::Effect::Dialog {
+            id,
+            kind: crate::files::DialogKind::Save,
+            dialog: d,
+        })
     }
 }
 
@@ -39,8 +42,9 @@ impl Core {
         d: crate::files::FileDialog,
         then: impl FnOnce(&mut Core, PathBuf) + 'static,
     ) {
-        if !self.saves.push(d.or_directory(self.loc.dir()), then) {
-            self.status = busy_status();
+        match self.saves.push(d.or_directory(self.loc.dir()), then) {
+            Some(e) => self.fx.push(e),
+            None => self.status = busy_status(),
         }
     }
 

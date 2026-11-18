@@ -45,8 +45,10 @@ impl Core {
                     .set_file_name("optimize.json");
                 self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
             }
-            // 読み込みのファイルの窓はパネルが毎フレーム見る
-            Action::Load => {}
+            Action::Load => self.dialog(
+                "opt-load",
+                crate::files::FileDialog::new().add_filter(tr("Optimization settings"), &["json"]),
+            ),
         }
     }
 
@@ -76,7 +78,10 @@ impl Core {
             Action::SaveCsv(txt) => {
                 self.save_text("CSV", "csv", "tolerance_compensators.csv", txt);
             }
-            Action::Load => {}
+            Action::Load => self.dialog(
+                "tol-load",
+                crate::files::FileDialog::new().add_filter(tr("Tolerance settings"), &["json"]),
+            ),
         }
     }
 
@@ -133,7 +138,10 @@ impl Core {
                     .set_file_name("swap.json");
                 self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
             }
-            Action::Load => {}
+            Action::Load => self.dialog(
+                "swap-load",
+                crate::files::FileDialog::new().add_filter(tr("Swap search settings"), &["json"]),
+            ),
         }
     }
 
