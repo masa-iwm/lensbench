@@ -27,8 +27,10 @@ pub use serde_json;
 
 /// 検出器・解析のプラグイン（名前つきの配列を受けて返す）
 pub mod plugin {
+    /// 中断を頼まれていれば `Error::Cancelled`（重い解析のループで呼ぶ）
+    pub use lensbench_core::par::check_cancel;
     pub use lensbench_core::plugin::{
-        Array, ArrayReader, Arrays, Config, ConfigReader, Context, Data, Instance, Kind,
+        Array, ArrayReader, Arrays, Config, ConfigReader, Context, Data, Instance, Kind, Linear,
         OutputSpec, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
     };
 }
@@ -56,6 +58,9 @@ pub mod trace {
 
 /// 利用者定義の面のモデル
 pub mod surface {
+    /// Zernike の多項式（Standard は Noll の順で OpticStudio と同じ正規化、Fringe の順は正規化なし）。
+    /// `ZernSag::new(fringe, 半径, 係数, 外挿)`・`term(j, x, y)`・`max_terms(fringe)`
+    pub use lensbench_core::freeform::ZernSag;
     pub use lensbench_core::usersurf::{check_flip, Flip, SurfaceInstance, SurfaceModel};
 }
 

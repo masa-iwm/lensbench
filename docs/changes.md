@@ -346,6 +346,7 @@
     （出力先の相対パスは呼んだ場所から）。雛形に `web` の入口。
   - GUI の設定のオブジェクトの欄 `ObjectArg::specs_from(arg)`: 項目を、解析の引数 arg で選んだプラグインの設定から作る
     （`chosen_plugin`・`specs_for`・`json_for`）。
+  - SDK の再輸出に `plugin::Linear`・`plugin::check_cancel`・`surface::ZernSag` を足した。
 - lensbench-core の feature `serde`・`schema` を消した。core の型は常に `serde::Serialize`・`Deserialize`・`schemars::JsonSchema` を実装する（依存の `features = ["serde", "schema"]` は消す）。lensbench-runs の `serde`・`schema` は残る。
 - `System::semi_affects_trace` を公開した。
 - 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
