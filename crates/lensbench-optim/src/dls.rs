@@ -835,7 +835,9 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             ray::check_path(i, s, *surf, *to, *q, *upper)?;
             (*field, Some(wave.unwrap_or(s.primary)))
         }
-        TermKind::Opd { field, wave, .. } => (*field, Some(wave.unwrap_or(s.primary))),
+        TermKind::Opd { field, wave, .. } | TermKind::FNum { field, wave, .. } => {
+            (*field, Some(wave.unwrap_or(s.primary)))
+        }
         TermKind::Zernike {
             field,
             wave,
@@ -1104,6 +1106,7 @@ fn eval_term(
         }
         TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Cardinal { .. } => card::term(s, k),
+        TermKind::FNum { .. } => ray::fnum_term(s, k),
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args
                 .iter()

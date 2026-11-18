@@ -32,7 +32,7 @@ pub struct ZmxMerit {
 /// 行を写すのに使う系の様子（[`ZmxSys::of`]）。既定は回転対称で、EFLA の単レンズを確かめない
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZmxSys {
-    /// 面の後の媒質が空気でないか（EFLA は面 Surf の後がガラスで Surf + 1 の後が空気の単レンズだけ読む。空なら確かめない）
+    /// 面の後の媒質が空気でないか（EFLA は面 Surf の前が空気・後がガラスで Surf + 1 の後が空気の単レンズだけ読む。空なら確かめない）
     pub glass: Vec<bool>,
     /// 回転対称か（でなければ X の向きの EFLX・CARD は読まない。lensbench の近軸追跡は Y-Z 面）
     pub symmetric: bool,
@@ -270,7 +270,7 @@ fn kind_of(
             }
             if op == "EFLA" && !sys.glass.is_empty() {
                 let g = |j: i64| sys.glass.get(j as usize).copied().unwrap_or(false);
-                if !(g(s1) && !g(s2)) {
+                if !(!g(s1 - 1) && g(s1) && !g(s2)) {
                     return Err(format!(
                         "surfaces {s1} and {s2} are not a single lens in air (OpticStudio gives 1e8)"
                     ));
@@ -544,6 +544,17 @@ fn kind_of(
         }
         // CENX・CENY: Int1 面、Int2 波長、Data1 視野の番号、Data2 偏光、Data3 標本（格子）。lensbench の重心は像面だけで、
         // 光線はスポットの項と同じガウス求積（格子の標本とは近似の仕方が違う）
+        // SFNO・TFNO: 視野 Int1・波長 Int2 の実光線の F ナンバー（OpticStudio 26.1 で実測）
+        "SFNO" | "TFNO" => {
+            m.insert("type".into(), json!("fnum"));
+            m.insert("field".into(), json!(field_no(int(INT1)?)?));
+            m.insert("wave".into(), wave(int(INT2)?)?);
+            m.insert(
+                "dir".into(),
+                json!(if op == "SFNO" { "sag" } else { "tan" }),
+            );
+            m.insert("target".into(), json!(target));
+        }
         "CENX" | "CENY" => {
             if int(INT1)? as usize != image {
                 return Err("only the centroid on the image surface is supported".into());
@@ -1072,6 +1083,18 @@ fn row_of(
                 "sag" => ("MTFS", p, bound(1.0)),
                 _ => ("MTFT,MTFS", p, Bound::Both(num("target").unwrap_or(1.0))),
             }
+        }
+        "fnum" => {
+            let op = match t.get("dir").and_then(Value::as_str) {
+                Some("sag") => "SFNO",
+                _ => "TFNO",
+            };
+            let w = if wave() == 0.0 { primary } else { wave() };
+            (
+                op,
+                [field_no()?, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                bound(0.0),
+            )
         }
         "centroid" => {
             let op = if t.get("q").and_then(Value::as_str) == Some("y") {

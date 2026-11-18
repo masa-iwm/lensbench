@@ -74,6 +74,7 @@ impl JacCache {
             | TermKind::Ray { field, wave, .. }
             | TermKind::RayPath { field, wave, .. }
             | TermKind::ParaxRay { field, wave, .. }
+            | TermKind::FNum { field, wave, .. }
             | TermKind::Opd { field, wave, .. } => (*field, *wave),
             _ => return true,
         };

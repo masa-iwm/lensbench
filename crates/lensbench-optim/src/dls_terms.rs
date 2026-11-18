@@ -300,6 +300,14 @@ pub enum TermKind {
         wave: Option<usize>,
         target: f64,
     },
+    /// 視野 field・波長 wave（None は主波長）の実光線の F ナンバー − target（tan は瞳の y の縁、sag は x の縁の光線。
+    /// OpticStudio の TFNO・SFNO）。微分は差分
+    FNum {
+        field: FieldSel,
+        wave: Option<usize>,
+        sag: bool,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -705,6 +713,7 @@ impl TermKind {
             | TermKind::Thickness { target, .. }
             | TermKind::Surface { target, .. }
             | TermKind::Cardinal { target, .. }
+            | TermKind::FNum { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -873,6 +882,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Thickness { .. }
         | TermKind::Surface { .. }
         | TermKind::Cardinal { .. }
+        | TermKind::FNum { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

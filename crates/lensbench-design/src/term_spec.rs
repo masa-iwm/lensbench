@@ -265,6 +265,19 @@ pub struct CardSpec {
     pub target: Option<f64>,
 }
 
+/// fnum の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct FNumSpec {
+    pub field: FieldRef,
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// 向き（tan は瞳の y の縁、sag は x の縁の光線。既定 tan、both は書けない）
+    pub dir: Option<DirName>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -356,6 +369,7 @@ pub enum TermSpec {
     Thickness(ThickSpec),
     Surface(SurfSpec),
     Cardinal(CardSpec),
+    Fnum(FNumSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

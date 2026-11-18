@@ -15,6 +15,7 @@
 //! | `opd` | field、wave、px・py、target [波] |
 //! | `surface` | surf、q（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）、x・y（sag・thick の点 [レンズ単位]、0）、target |
 //! | `cardinal` | q（efl・f_object・f_image・focal_*・principal_*・anti_principal_*・nodal_*・anti_nodal_*、* は object・image）、from・to（面の範囲、面 1 から像面の手前の面まで）、wave、target [レンズ単位] |
+//! | `fnum` | field、wave、dir（"tan"（既定）・"sag"）、target。実光線の F ナンバー 1/(n′(sin θ₊ + sin θ₋))（主光線と瞳の縁の 2 本の角度） |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -190,7 +191,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 15] = [
+    const TYPES: [&str; 16] = [
         "spot",
         "wavefront",
         "mtf",
@@ -203,6 +204,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "thickness",
         "surface",
         "cardinal",
+        "fnum",
         "zplm",
         "plugin",
         "calc",
@@ -236,6 +238,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Thickness { .. }
             | TermKind::Surface { .. }
             | TermKind::Cardinal { .. }
+            | TermKind::FNum { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -454,6 +457,18 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                     .ok_or("cardinal term has no target (or min and max)")?,
             }
         }
+        TermSpec::Fnum(t) => TermKind::FNum {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            sag: match t.dir {
+                None | Some(DirName::Tan) => false,
+                Some(DirName::Sag) => true,
+                Some(DirName::Both) => {
+                    return Err("dir of an fnum term is tan or sag".to_string().into())
+                }
+            },
+            target: t.target.ok_or("fnum term has no target (or min and max)")?,
+        },
         TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
@@ -645,6 +660,8 @@ mod tests {
             r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "q": "aoi", "target": 10}"#,
             r#"{"type": "cardinal", "q": "focal", "target": 0}"#,
             r#"{"type": "cardinal", "q": "efl"}"#,
+            r#"{"type": "fnum", "field": 1, "dir": "both", "target": 3}"#,
+            r#"{"type": "fnum", "field": 1}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

@@ -325,3 +325,43 @@ pub(super) fn parax_term(s: &System, k: &TermKind) -> Result<TermOut> {
     }
     Ok((vec![v - target], None))
 }
+
+/// 実光線の F ナンバー: 主光線と、瞳の縁 (0, ±1)（sag なら (±1, 0)）の 2 本の光線の像空間での角度 θ± から
+/// 1 / (n′ (sin θ₊ + sin θ₋))（OpticStudio 26.1 の TFNO・SFNO と 1e-14 で一致）
+pub(super) fn fnum_value(s: &System, field: FieldSel, w: usize, sag: bool) -> Result<f64> {
+    let e = [0.0, 1.0, -1.0];
+    let z = [0.0; 3];
+    let (pxs, pys) = if sag { (&e, &z) } else { (&z, &e) };
+    let t = s.try_trace(field, pxs, pys, Some(w), None, false)?;
+    for (i, x) in t.rays.iter().enumerate() {
+        if x.status.surf().is_some() {
+            let (px, py) = (pxs[i], pys[i]);
+            invalid!(
+                "the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})",
+                x.status.code()
+            );
+        }
+    }
+    let k0 = t.rays[0].lmn;
+    let sin = |k: V3| norm(cross(k, k0));
+    let v = 1.0 / (s.image_index(w).abs() * (sin(t.rays[1].lmn) + sin(t.rays[2].lmn)));
+    if !v.is_finite() {
+        invalid!("the F-number is not finite (wavelength {w})");
+    }
+    Ok(v)
+}
+
+/// F ナンバーの項
+pub(super) fn fnum_term(s: &System, k: &TermKind) -> Result<TermOut> {
+    let TermKind::FNum {
+        field,
+        wave,
+        sag,
+        target,
+    } = k
+    else {
+        unreachable!("not an F-number term");
+    };
+    let w = wave.unwrap_or(s.primary);
+    Ok((vec![fnum_value(s, *field, w, *sag)? - target], None))
+}

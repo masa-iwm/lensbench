@@ -2305,6 +2305,9 @@ surface {j} has no position (ignored, or the object at infinity)	面 {j} には�
 x and y go with sag and thick	x と y は sag と thick と使います
 surface term has no target (or min and max)	surface の項に target（か min・max）がありません
 cardinal term has no target (or min and max)	cardinal の項に target（か min・max）がありません
+fnum term has no target (or min and max)	fnum の項に target（か min・max）がありません
+dir of an fnum term is tan or sag	fnum の項の dir は tan か sag です
+the F-number is not finite (wavelength {w})	F ナンバーが有限ではありません（波長 {w}）
 cardinal quantity {s} ({})	基点の量 {s}（{}）
 {} of surfaces {from} to {to} is not finite	面 {from}〜{to} の {} が有限ではありません
 term {i}: cardinal points of surfaces {from} to {to} (1 to {last})	項 {i}: 面 {from}〜{to} の基点（1〜{last}）

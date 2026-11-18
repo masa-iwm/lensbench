@@ -359,6 +359,8 @@ fn terms_to_rows_and_back() {
         json!({"type": "surface", "surf": 3, "q": "index", "wave": 3, "target": 1.6, "weight": 1.0}),
         json!({"type": "cardinal", "q": "efl", "from": 1, "to": 3, "wave": null, "target": 40.0, "weight": 1.0}),
         json!({"type": "cardinal", "q": "principal_image", "from": 2, "to": 5, "wave": 3, "min": -10.0, "weight": 1.0}),
+        json!({"type": "fnum", "field": 2, "wave": 1, "dir": "sag", "target": 3.0, "weight": 1.0}),
+        json!({"type": "fnum", "field": 1, "wave": 3, "dir": "tan", "max": 4.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
         json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
@@ -447,4 +449,26 @@ fn zern_fit_follows_opticstudio() {
     assert_eq!(notes.len(), 2, "{notes:?}");
     assert!(notes[0].starts_with("term 2:"), "{notes:?}");
     assert!(notes[1].starts_with("term 4:"), "{notes:?}");
+}
+
+/// EFLA は空気中の単レンズ（面 Surf の前が空気、後がガラス、Surf + 1 の後が空気）だけ読む
+#[test]
+fn efla_single_lens_only() {
+    // 面 1・2 が単レンズ、面 3〜5 が 2 枚の接合
+    let sys = ZmxSys {
+        glass: vec![false, true, false, true, true, false, false, false],
+        symmetric: true,
+    };
+    let rows = [
+        "EFLA 1 0 0 0 0 0 0 1 0 0",
+        "EFLA 3 0 0 0 0 0 0 1 0 0",
+        "EFLA 4 0 0 0 0 0 0 1 0 0",
+        "EFLA 2 0 0 0 0 0 0 1 0 0",
+    ];
+    let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+    let z = terms_from_zmx(&mf, 1, 7, &sys);
+    assert_eq!(z.terms.len(), 1, "{:?}", z.notes);
+    assert_eq!(z.terms[0]["from"], 1);
+    assert_eq!(z.terms[0]["to"], 2);
+    assert_eq!(z.notes.len(), 3, "{:?}", z.notes);
 }

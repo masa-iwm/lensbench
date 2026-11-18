@@ -52,6 +52,7 @@
   境界）。.zmx の CTGT・CTLT・CTVA・TTHI・ETGT・ETLT・ETVA と範囲の境界 MNCT〜MNEG をこの項にし、書き出しも同じオペランドにする
 - **計算の項**: 最適化の項 `calc`（数・1 つの値の項の和・差・積・商・絶対値・√|a|・逆数・最大・最小・√Σa²・三角関数）。.zmx の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・
   RECI・CONS・MAXX・MINN・QSUM・SINE〜ATAN・OPVA・ABGT・ABLT をこの項にする
+- **F ナンバーの項**: 視野ごとの実光線の F ナンバー `fnum`（`dir` は tan・sag）。.zmx の TFNO・SFNO を読み書きする
 - **基点の項**: 面の範囲の焦点距離・焦点・主点・節点などを `cardinal` の項にした（`from`・`to`・`wave`）。.zmx の CARD・EFLX・EFLY・EFLA を読み、CARD・EFLY を書く
 - **面のパワーなど**: `surface` の項の `q` に `power`・`ynip`・`index`（`wave` も）を足した。.zmx の POWR・YNIP・INDX を読み書きする（ミラーの面の power・ミラーの後の ynip はまだ項の誤り）
 - **近軸量**: `paraxial` の項の `q` に `amag`（角倍率）・`linv`（ラグランジュ不変量）・`petc`・`petz`（ペッツバールの曲率・半径）を足した（`wave` も）。.zmx の AMAG・LINV・PETC・PETZ を読み書きする（ミラーのある系の petc・petz・絞りの前にミラーのある linv はまだ項の誤り）

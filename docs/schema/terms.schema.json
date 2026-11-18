@@ -1302,6 +1302,80 @@
         },
         {
           "additionalProperties": false,
+          "description": "fnum の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "dir": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DirName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "向き（tan は瞳の y の縁、sag は x の縁の光線。既定 tan、both は書けない）"
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "fnum",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "zplm の項",
           "properties": {
             "config": {
