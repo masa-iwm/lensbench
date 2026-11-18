@@ -730,7 +730,6 @@ angle field ({x}°, {y}°): a field of exactly 90°	角度の視野 ({x}°, {y}�
 user-defined surface (surface {j}) has no model (user)	ユーザー定義の面（面 {j}）にモデル（user）がありません
 user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})	空気以外の中・ミラーのユーザー定義の面（面 {j}: {nb} → {na}）
 paraxial lens in a medium other than air (surface {j}: {nb} → {na})	空気以外の中の理想レンズ（面 {j}: {nb} → {na}）
-the paraxial lens images the object to infinity (OPD)	理想レンズが物体を無限遠に結像します（OPD）
 field condition surface {j} (surfaces not ignored, 1 to {img_s})	視野の条件の面 {j}（無視しない面 1〜{img_s}）
 real image height field ({x}, {y}): no real chief ray reaches it (off by {e})	実像高の視野 ({x}, {y}): 届く実主光線がありません（{e} ずれます）
 field ({x}, {y}) with condition {c:?}: can't be solved (off by {e})	条件 {c:?} の視野 ({x}, {y}): 解けません（{e} ずれます）

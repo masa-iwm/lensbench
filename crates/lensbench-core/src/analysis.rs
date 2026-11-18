@@ -593,4 +593,60 @@ mod tests {
             assert!(hi - lo < 1e-9, "視野 {f}: {lo} {hi}");
         }
     }
+
+    /// 物体距離 d の前に理想レンズ（f = 100）を置き、後ろ 50 に像面を置いた系（afocal: アフォーカル像空間）
+    fn paraxial_collimator(d: f64, afocal: bool) -> crate::System {
+        let txt = format!(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 {}\n\
+             XFLN 0 0\nYFLN 0 2\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\n\
+             SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ {d}\n\
+             SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 50\n\
+             SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+            afocal as i32
+        );
+        let raw = crate::zmx::parse_text(&txt).unwrap();
+        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+    }
+
+    #[test]
+    fn a_paraxial_collimator_passes_the_check_and_uses_the_exit_pupil_sphere() {
+        // 物体が前側焦点（像が無限遠）の理想レンズも、系の検査で断らない（GUI の組合せ・プロジェクトの道も
+        // .zmx の読込と同じく開く）。OPD の基準は実レンズのコリメータと同じ RefSurface::of
+        let (px, py) = pupil_grid(9);
+        let s = paraxial_collimator(100.0, false);
+        s.validate().unwrap();
+        // 軸上: 出る光は平行光で、基準は射出瞳（理想レンズの面、像面から 50）を通り軸上の像点を中心とする球。
+        // 瞳の高さ h の光線の OPD は球と平面の差 −(R − √(R² − h²))/λ（実レンズのコリメータと同じ扱い）
+        let a = opd(&s, FieldSel::Index(0), &px, &py, None, true).unwrap();
+        let (r, wl) = (50.0_f64, s.wave(0).mm());
+        let mut n = 0;
+        for i in 0..px.len() {
+            if a.ok(i) {
+                let h2 = 25.0 * (px[i] * px[i] + py[i] * py[i]);
+                let want = -(r - (r * r - h2).sqrt()) / wl;
+                assert!(
+                    (a.opd[i] - want).abs() < 1e-6,
+                    "光線 {i}: {} {want}",
+                    a.opd[i]
+                );
+                n += 1;
+            }
+        }
+        assert!(n > px.len() / 2, "{n}");
+        let a = opd(&s, FieldSel::Index(1), &px, &py, None, true).unwrap();
+        assert!((0..px.len())
+            .filter(|&i| a.ok(i))
+            .all(|i| a.opd[i].is_finite()));
+        // アフォーカル像空間（基準は平面波）なら、理想レンズの出す平行光の OPD は 0
+        let af = paraxial_collimator(100.0, true);
+        af.validate().unwrap();
+        for f in 0..2 {
+            let a = opd(&af, FieldSel::Index(f), &px, &py, None, true).unwrap();
+            let e = (0..px.len())
+                .filter(|&i| a.ok(i))
+                .map(|i| a.opd[i].abs())
+                .fold(0.0, f64::max);
+            assert!(e < 1e-9, "視野 {f}: {e}");
+        }
+    }
 }

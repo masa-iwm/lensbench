@@ -745,3 +745,20 @@ fn zmx_project_keeps_glass_catalogs() {
     // e は glass_catalogs が .zmx と同じなので付け替えない
     assert_eq!(e.surfaces[1].mat.glass(), Some("N-SK16"));
 }
+
+/// 理想レンズが物体を無限遠に結像する .zmx（コリメータ）も組合せのプロジェクトで開き、同じ系になる
+#[test]
+fn zmx_project_opens_a_paraxial_collimator() {
+    zmx_project_roundtrip(
+        "collimator",
+        |_| {
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\
+             XFLN 0 0\nYFLN 0 2\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\n\
+             SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
+             SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 50\n\
+             SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+                .to_string()
+        },
+        |_, _| {},
+    );
+}

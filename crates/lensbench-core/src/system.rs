@@ -577,16 +577,14 @@ impl System {
                     notimpl!("user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})");
                 }
             }
-            if let (crate::action::Action::Paraxial { f, .. }, false) = (action, d.ignore) {
+            if let (crate::action::Action::Paraxial { .. }, false) = (action, d.ignore) {
                 let w = self.primary;
                 let (nb, na) = (self.index_before(j, w), self.n(j)[w]);
                 if nb != 1.0 || na != 1.0 {
                     notimpl!("paraxial lens in a medium other than air (surface {j}: {nb} → {na})");
                 }
-                let z = self.lens_conjugate(j);
-                if !crate::tol::infinite_dist(z) && 1.0 / f + 1.0 / z == 0.0 {
-                    notimpl!("the paraxial lens images the object to infinity (OPD)");
-                }
+                // 物体を無限遠に結像する（コリメータ）は断らない: 理想レンズの位相は出る光を平行光として求め
+                // （trace::paraxial）、OPD の基準は実レンズのコリメータと同じ RefSurface::of で決まる
             }
         }
         if self.surfaces[0].before.is_some() || self.surfaces[0].after != After::None {
