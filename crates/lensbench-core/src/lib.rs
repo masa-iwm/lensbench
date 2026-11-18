@@ -36,6 +36,7 @@ pub mod grid;
 pub mod grin;
 pub mod history;
 pub mod i18n;
+pub mod import;
 pub mod interp;
 mod interp2d;
 pub mod landing;

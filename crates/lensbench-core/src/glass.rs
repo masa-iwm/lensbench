@@ -509,7 +509,7 @@ pub fn load_catalogs_shared(
 
 /// [`load_catalogs_shared`] の見つからない・読めなかったカタログを、ガラスが無いときの誤りに添える文にする
 /// （空なら空。読めなかった理由が「カタログにない」の誤りに出るように）
-pub(crate) fn missing_note(missing: &[String]) -> String {
+pub fn missing_note(missing: &[String]) -> String {
     if missing.is_empty() {
         String::new()
     } else {

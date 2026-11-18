@@ -334,6 +334,10 @@
   系から 1 回求める（ループで繰り返す `set_param` が 7〜60 倍速い）。最後の系で光線が届く面の半直径は毎回求めたときと同じ。
   届かない面は求め直しで値を変えないので、途中の系で求めた値ではなく、後回しにする前の値が残る。
 ### Rust API
+- .zmx の読込を 2 段に分けた（足しただけで、今の口は変わらない）: `lensbench_core::zmx::document`（`Raw` から系の文書
+  `Prescription` と ZPL マクロのソルブの依頼 `import::MacroRequest` を作る）と `System::from_import`（ピックアップを解き、
+  マクロを今の系で試して付け、ソルブ・自動のクリア半径を求める。新しいモジュール `lensbench_core::import`）。外の読み手のために
+  `grin::GrinData`（`load`・`gradium`・`grad9`）・`glass::missing_note`・`pickup::kind_of_pick`・`form::asph_parm_base` を公開にした。
 - 外のクレートから足す口: 新しいクレート `lensbench-sdk`（約束の型の再輸出、入口 `cli::main`・`gui::main`・`py::module`、
   足し忘れの検査 `check`）と雛形 `examples/extension`（[ライブラリ（Rust）](rust.md) の「拡張の約束」）。
   - **壊す変更**: `lensbench_engine::Extensions::merge` は `Result` を返す（2 つの拡張が同じ名前のものを足すと誤り。

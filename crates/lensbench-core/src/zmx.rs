@@ -5,11 +5,12 @@
 
 use crate::error::{Error, Result};
 use crate::glass::{self, Glass};
+use crate::import::{MacroRequest, MacroTarget};
 use crate::param::Kind;
 use crate::pickup::{surf_parm, Pickup};
 use crate::solves::{Solve, SolveKind};
 use crate::surface::{After, Aperture, Form, SurfType, Surface, Tilt};
-use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, System};
+use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, Prescription, System};
 use crate::{invalid, notimpl};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -316,6 +317,18 @@ pub fn build(
     dirs: &[PathBuf],
     base: Option<&Path>,
 ) -> Result<System> {
+    let (rx, macros) = document(raw, opt, dirs, base)?;
+    System::from_import(rx, macros)
+}
+
+/// [`Raw`] から系の文書と、マクロのソルブの依頼を作る（ピックアップ・ソルブは書いたまま。解くのは
+/// [`System::from_import`]）。core の公開の口だけを使う
+pub fn document(
+    raw: &Raw,
+    opt: &LoadOptions,
+    dirs: &[PathBuf],
+    base: Option<&Path>,
+) -> Result<(Prescription, Vec<MacroRequest>)> {
     let cfg = opt.cfg.max(1) as i64;
     let mode = sys_str(raw, "MODE", 0).unwrap_or("SEQ");
     if mode != "SEQ" {
@@ -382,7 +395,7 @@ pub fn build(
     let aperture = values::aperture_kind(raw, &ops, &mut sf)?;
     let fields = values::fields(raw, &ops, &waves.ftyp)?;
     let set = values::settings(raw, dirs, base)?;
-    let mut s = System::new(
+    let s = System::new(
         sf,
         waves.wl,
         waves.wwt,
@@ -395,60 +408,42 @@ pub fn build(
         set.aiming,
         glasses.map,
     )?;
-    s.rx_mut().temperature = temp;
-    s.rx_mut().pressure = pres;
-    s.rx_mut().adjust_index = adjust;
-    // 温度・気圧で媒質の屈折率が変わる
-    s.changed()?;
-    s.rx_mut().glrs = set.glrs;
-    s.rx_mut().ropd = set.ropd;
-    s.rx_mut().apodization = system_lines::apodization(raw, opt.fixed_semi)?;
+    // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）
+    let configs = (ncfg > 1).then(|| config_table(raw, &s, ncfg as usize, cfg as usize));
+    let mut rx = s.into_prescription();
+    rx.temperature = temp;
+    rx.pressure = pres;
+    rx.adjust_index = adjust;
+    rx.glrs = set.glrs;
+    rx.ropd = set.ropd;
+    rx.apodization = system_lines::apodization(raw, opt.fixed_semi)?;
     // Afocal Image Space は FTYP の 7 番目（OpticStudio 26.1 で確認。保存すると HYPR も 1 になるが、読むときは FTYP だけが効く）
-    s.rx_mut().afocal = waves.ftyp.get(6) == Some(&1);
+    rx.afocal = waves.ftyp.get(6) == Some(&1);
     // UNIT の値の 6 番目（MM X W X CM の次）が Afocal Mode Units（UR・MR・RR・AS・AM・DG、OpticStudio 26.1 で確認）。無ければ mrad
     // （知らない記号はアフォーカルのときだけ誤り）
     if let Some(u) = sys_str(raw, "UNIT", 5) {
         match crate::system::AfocalUnit::from_code(u) {
-            Some(a) => s.rx_mut().afocal_unit = a,
-            None if s.afocal => invalid!("UNIT Afocal Mode Units {u}"),
+            Some(a) => rx.afocal_unit = a,
+            None if rx.afocal => invalid!("UNIT Afocal Mode Units {u}"),
             None => {}
         }
     }
-    s.rx_mut().coating_file = set.coating_file;
-    s.rx_mut().name = set.name;
-    s.rx_mut().import_notes = raw.notes.clone();
-    s.rx_mut()
-        .import_notes
-        .extend(raw.system_notes(opt.fixed_semi)?);
+    rx.coating_file = set.coating_file;
+    rx.name = set.name;
+    rx.import_notes = raw.notes.clone();
+    rx.import_notes.extend(raw.system_notes(opt.fixed_semi)?);
     if opt.glasses.is_none() {
-        let n = glass::builtin::note_for(&s, &glasses.cats, dirs); // 同梱のガラスの知らせ
-        s.rx_mut().import_notes.extend(n);
+        let n = glass::builtin::note_for(&rx, &glasses.cats, dirs); // 同梱のガラスの知らせ
+        rx.import_notes.extend(n);
     }
-    if ncfg > 1 {
-        match config_table(raw, &s, ncfg as usize, cfg as usize) {
-            Ok(c) => {
-                s.rx_mut().configs = Some(c);
-                s.changed()?;
-            }
-            Err(why) => s.rx_mut().import_notes.push(format!(
-                "only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)"
-            )),
-        }
+    match configs {
+        Some(Ok(c)) => rx.configs = Some(c),
+        Some(Err(why)) => rx.import_notes.push(format!(
+            "only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)"
+        )),
+        None => {}
     }
-    s.rx_mut().pickups = pickups;
-    if !s.pickups.is_empty() {
-        // OpticStudio は読込でピックアップを解き直す（保存された値が古くても元の面に合わせる）
-        s.resolve_pickups()?;
-        s.changed()?;
-    }
-    s.rx_mut().solves = macros::solves(raw);
-    macros::attach_macros(&mut s, raw, opt, base);
-    // OpticStudio は読込でソルブを解き直す（保存した DISZ が古くても同じ系になる）
-    crate::zpl_solve::resolve_on_load(&mut s);
-    s.solve_thickness()?;
-    // 自動の半直径を光線から求める（OpticStudio は読込で求め直す）
-    s.update_semi();
-    // 玉モードの玉（lens1, lens2, …）を玉・群のパラメータで使えるように
-    s.rx_mut().units = s.lens_units();
-    Ok(s)
+    rx.pickups = pickups;
+    rx.solves = macros::solves(raw);
+    Ok((rx, macros::requests(raw, opt, base)))
 }

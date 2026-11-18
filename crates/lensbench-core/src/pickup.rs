@@ -234,7 +234,7 @@ pub(crate) fn pick_kind(d: &Surface, kind: Kind) -> Option<Kind> {
 }
 
 /// ピックアップの量を、面 d のパラメータの種類に戻す（Param で表せなければ None）
-pub(crate) fn kind_of_pick(d: &Surface, what: Kind) -> Option<Kind> {
+pub fn kind_of_pick(d: &Surface, what: Kind) -> Option<Kind> {
     match what {
         // 半径はピックアップの元にだけなる（パラメータ r は曲率のピックアップを動かす）
         Kind::Radius => None,

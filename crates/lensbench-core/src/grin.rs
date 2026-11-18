@@ -761,7 +761,7 @@ fn cross(
 
 /// GRIN の材料のデータ（PROFILE.GRD・SGRIN.DAT・GRADIENT_9.DAT）
 #[derive(Debug, Clone, Default)]
-pub(crate) struct GrinData {
+pub struct GrinData {
     pub profiles: HashMap<String, GradiumProfile>,
     pub sgrin: HashMap<String, Sgrin>,
     pub grad9: HashMap<String, Grad9Mat>,
@@ -912,7 +912,7 @@ fn read(p: &Path) -> Result<String> {
 
 impl GrinData {
     /// ガラスの検索パスから読む（ないファイルは空）。grd は Gradium の分布のファイル名（既定 PROFILE.GRD）
-    pub(crate) fn load(dirs: &[PathBuf], grd: &str) -> Result<GrinData> {
+    pub fn load(dirs: &[PathBuf], grd: &str) -> Result<GrinData> {
         let mut g = GrinData::default();
         if let Some(p) = find_file(dirs, grd) {
             g.profiles = parse_grd(&read(&p)?, grd)?;
@@ -927,14 +927,7 @@ impl GrinData {
     }
 
     /// Gradium の媒質（分布の名前 name）
-    pub(crate) fn gradium(
-        &self,
-        name: &str,
-        dz: f64,
-        dec: [f64; 4],
-        cap: u8,
-        dt: f64,
-    ) -> Result<Grin> {
+    pub fn gradium(&self, name: &str, dz: f64, dec: [f64; 4], cap: u8, dt: f64) -> Result<Grin> {
         let prof = self
             .profiles
             .get(name)
@@ -964,7 +957,7 @@ impl GrinData {
     }
 
     /// Gradient 9 の媒質（材料 name）
-    pub(crate) fn grad9(&self, name: &str, tan: [f64; 2], dt: f64) -> Result<Grin> {
+    pub fn grad9(&self, name: &str, tan: [f64; 2], dt: f64) -> Result<Grin> {
         let mat = self.grad9.get(name).ok_or_else(|| {
             Error::Invalid(format!("no Gradient 9 material {name} (GRADIENT_9.DAT)"))
         })?;
