@@ -249,6 +249,14 @@ mod web {
     }
 
     #[cfg(feature = "gui")]
+    /// 試験用の口: ドックの最初の解析のパネルを別の窓に出す（出したら true）。起動確認が、別の窓が自分で計算し
+    /// ブラウザに残さないことを確かめる
+    #[wasm_bindgen]
+    pub fn test_detach_analysis() -> bool {
+        lensbench_gui::web_test_detach_analysis()
+    }
+
+    #[cfg(feature = "gui")]
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {

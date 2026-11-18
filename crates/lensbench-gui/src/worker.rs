@@ -286,6 +286,11 @@ pub(crate) struct Done {
 }
 
 impl Done {
+    /// 出したときの計算の世代（[`Worker::gen`]）
+    pub(crate) fn gen(&self) -> u64 {
+        self.gen
+    }
+
     /// 最初の呼び出しの method・params・結果（1 つだけの要求のとき）
     pub(crate) fn first(&self) -> (&str, &Value, Result<&Value, &CallErr>) {
         let r = &self.replies[0];
@@ -772,6 +777,12 @@ impl Worker {
             d.replies.clear();
         }
         Some(d)
+    }
+
+    /// 今の計算の世代（系を変える要求を出すたび・[`Worker::drop_queued`] で増える）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn gen(&self) -> u64 {
+        self.gen.load(Ordering::Relaxed)
     }
 
     /// 何か待っている（長い要求も）

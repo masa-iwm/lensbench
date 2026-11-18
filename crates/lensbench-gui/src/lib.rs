@@ -252,6 +252,21 @@ pub fn web_test_state() -> String {
     v.to_string()
 }
 
+/// Web 版の試験用の口: ドックの最初の解析のパネルを別の窓に出す（出したら true。scripts/web_smoke.mjs）
+#[cfg(target_arch = "wasm32")]
+pub fn web_test_detach_analysis() -> bool {
+    TEST_APP.with(|t| {
+        t.borrow()
+            .upgrade()
+            .and_then(|a| {
+                a.try_borrow_mut()
+                    .ok()
+                    .map(|mut a| a.test_detach_analysis())
+            })
+            .unwrap_or(false)
+    })
+}
+
 /// eframe に渡す画面。中身は [`web_bg`] とも分け合う（裏に回ったタブで別の窓の分を描く）
 #[cfg(target_arch = "wasm32")]
 struct Shell(std::rc::Rc<std::cell::RefCell<app::App>>);

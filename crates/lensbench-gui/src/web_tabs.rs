@@ -203,6 +203,8 @@ pub(crate) enum Ev {
     Pane(u64, Value),
     /// 別の窓の解析のパネルが、写した文書を読めなかった（平たい系ファイルで送り直す）
     Flat(u64),
+    /// 別の窓の解析のパネルに届いた写しが前のものと続かなかった（全部を送り直す）
+    Resend(u64),
 }
 
 struct Open {
@@ -329,6 +331,9 @@ impl Tabs {
                 }
                 if m["flat"].as_bool() == Some(true) {
                     out.push(Ev::Flat(id));
+                }
+                if m["resend"].as_bool() == Some(true) {
+                    out.push(Ev::Resend(id));
                 }
             }
         }
@@ -956,6 +961,13 @@ impl Calc {
     pub(crate) fn ask_flat(&self) {
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "from": self.id, "flat": true }));
+        }
+    }
+
+    /// 届いた写しが前のものと続かなかったと元のタブへ知らせる（全部を送り直してもらう）
+    pub(crate) fn ask_resend(&self) {
+        if let Some(c) = &self.chan {
+            c.post(&json!({ "sid": self.sid, "from": self.id, "resend": true }));
         }
     }
 

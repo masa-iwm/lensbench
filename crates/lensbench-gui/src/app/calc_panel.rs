@@ -5,7 +5,10 @@
 //! 写しは、元のタブが読んだ文書（ファイルの中身と load の引数）と、読んだ後の変更（set・undo・redo の引数）。
 //! 別の窓は同じに読んで同じ変更を当てるので、文書の読み方が要る解析（2 つの状態・構成・経路を重ねる interference
 //! など）も元のタブと同じに動く。読んだ文書が分からない（読む前の系へ戻した）ときと、別の窓が写しを読めなかった
-//! ときは、serve の save で書き出した平たい系ファイルを送る
+//! ときは、serve の save で書き出した平たい系ファイルを送る（膜のファイルは付かない）。
+//!
+//! 同じ文書を送り続けている窓には、前に送った後に増えた変更だけを送る（ドラッグで値を変え続けても、別の窓は
+//! 読み直さずに増えた分だけ当てる）。別の窓は届いた写しが前のものと続かなければ、全部を送り直してもらう。
 
 use super::*;
 
@@ -19,9 +22,15 @@ pub(super) struct PopupDoc {
     /// 書き出した平たい系ファイルの世代と中身
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     flat: Option<(u64, std::sync::Arc<Vec<u8>>)>,
-    /// 別の窓ごとに、送った系の世代
+    /// 別の窓ごとに、送った系
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-    sent: HashMap<u64, u64>,
+    sent: HashMap<u64, Sent>,
+    /// 読んだ文書の通し番号（読むたびに増やす）
+    seq: u64,
+    /// 別の窓: 当てた写し（文書の通し番号と当てた変更の数。平たい系ファイルなら None）
+    at: Option<(u64, usize)>,
+    /// 別の窓: 今の写しを読み始めたときの計算の世代。これ以前に出した要求（前の写し）の誤りは数えない
+    since: u64,
     /// 写した文書を読めなかった別の窓（平たい系ファイルで送る）
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     flat_only: std::collections::HashSet<u64>,
@@ -30,8 +39,30 @@ pub(super) struct PopupDoc {
     failed: bool,
 }
 
+/// 別の窓に送った系
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Sent {
+    /// 系の世代（[`Core::sys_gen`]）
+    gen: u64,
+    /// 文書の通し番号と送った変更の数（平たい系ファイルなら None）
+    doc: Option<(u64, usize)>,
+}
+
+/// 別の窓が届いた写しをどう当てるか
+#[derive(Debug, PartialEq)]
+enum Accept {
+    /// 読み直して全部の変更を当てる
+    Reload,
+    /// 読み直さず、届いた変更だけを当てる
+    Append,
+    /// 前の写しと続かない（全部を送り直してもらう）
+    Resend,
+}
+
 /// 読んだ文書と、その後の変更
 struct Base {
+    /// 文書の通し番号
+    seq: u64,
     /// load の引数（file はファイルのパス）
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     load: Value,
@@ -73,7 +104,10 @@ impl PopupDoc {
                 let bytes = params["file"]
                     .as_str()
                     .and_then(|f| lensbench_core::vfs::read(f).ok());
+                self.seq += 1;
+                let seq = self.seq;
                 self.base = bytes.map(|b| Base {
+                    seq,
                     load: params.clone(),
                     bytes: std::sync::Arc::new(b),
                     ops: Vec::new(),
@@ -88,9 +122,47 @@ impl PopupDoc {
         }
     }
 
-    /// 別の窓: 系を変える要求が通らなかった
-    pub(super) fn failed(&mut self) {
-        self.failed = true;
+    /// 別の窓: 系を変える要求が通らなかった（gen はその要求を出したときの計算の世代）。今の写しを読み始める前に
+    /// 出した要求（前の写しの途中の呼び出し）の誤りは数えない
+    pub(super) fn failed(&mut self, gen: u64) {
+        if gen > self.since {
+            self.failed = true;
+        }
+    }
+
+    /// 元のタブ: 窓 id に送る写し（読み方と変更の JSON、ファイルの中身を付けるか）。前に同じ文書を送っていれば、
+    /// その後に増えた変更だけ（`from` は前に送った変更の数）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn doc_for(&self, id: u64) -> Option<(Value, bool)> {
+        let b = self.base.as_ref()?;
+        Some(match self.sent.get(&id).and_then(|s| s.doc) {
+            Some((seq, n)) if seq == b.seq && n <= b.ops.len() => (
+                json!({ "seq": b.seq, "from": n, "ops": &b.ops[n..] }),
+                false,
+            ),
+            _ => (json!({ "load": b.load, "ops": b.ops, "seq": b.seq }), true),
+        })
+    }
+
+    /// 別の窓: 届いた写し how をどう当てるか決め、当てた写しを覚える
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn accept(&mut self, how: &Value) -> Accept {
+        let seq = how["seq"].as_u64();
+        let n = how["ops"].as_array().map_or(0, Vec::len);
+        let Some(from) = how["from"].as_u64() else {
+            self.at = seq.map(|s| (s, n));
+            return Accept::Reload;
+        };
+        match self.at {
+            Some((s, k)) if Some(s) == seq && k as u64 == from => {
+                self.at = Some((s, k + n));
+                Accept::Append
+            }
+            _ => {
+                self.at = None;
+                Accept::Resend
+            }
+        }
     }
 }
 
@@ -122,17 +194,18 @@ impl Core {
         let todo: Vec<u64> = ids
             .iter()
             .copied()
-            .filter(|id| pd.sent.get(id) != Some(&gen))
+            .filter(|id| pd.sent.get(id).map(|s| s.gen) != Some(gen))
             .collect();
         let (flat, doc): (Vec<u64>, Vec<u64>) = todo
             .into_iter()
             .partition(|id| pd.base.is_none() || pd.flat_only.contains(id));
-        if let Some(b) = &pd.base {
-            let how = json!({ "load": b.load, "ops": b.ops });
-            for id in doc {
-                t.send_doc(id, &how, &b.bytes);
-                pd.sent.insert(id, gen);
-            }
+        for id in doc {
+            let (Some((how, whole)), Some(b)) = (pd.doc_for(id), pd.base.as_ref()) else {
+                continue;
+            };
+            t.send_doc(id, &how, if whole { &b.bytes[..] } else { &[] });
+            let doc = Some((b.seq, b.ops.len()));
+            pd.sent.insert(id, Sent { gen, doc });
         }
         if flat.is_empty() {
             return;
@@ -149,7 +222,7 @@ impl Core {
         let how = json!({ "load": self.load_params(&flat_path()), "ops": [], "flat": true });
         for id in flat {
             t.send_doc(id, &how, &bytes);
-            self.popup_doc.sent.insert(id, gen);
+            self.popup_doc.sent.insert(id, Sent { gen, doc: None });
         }
     }
 
@@ -165,21 +238,38 @@ impl Core {
     }
 
     /// 別の窓: 元のタブの系の写しを読む（how は読み方と変更、bytes は読むファイルの中身）。前の系の待っている解析は
-    /// 要らない。段は積まない（元に戻すのは元のタブ）
-    fn open_popup_doc(&mut self, how: &Value, bytes: Vec<u8>) {
+    /// 要らない。段は積まない（元に戻すのは元のタブ）。前の写しと続かない増えた分だけの写しなら false
+    /// （全部を送り直してもらう）
+    fn open_popup_doc(&mut self, how: &Value, bytes: Vec<u8>) -> bool {
+        match self.popup_doc.accept(how) {
+            Accept::Resend => return false,
+            Accept::Append => {
+                self.apply_popup_ops(how);
+                return true;
+            }
+            Accept::Reload => {}
+        }
         let load = how["load"].clone();
         let Some(file) = load["file"].as_str().map(PathBuf::from) else {
-            return;
+            return true;
         };
         // 同じ中身なら書かない（ブラウザに残すファイルを書き直さない）
         if lensbench_core::vfs::read(&file).ok().as_deref() != Some(&bytes[..]) {
             if let Err(e) = lensbench_core::vfs::write(&file, bytes) {
-                return self.fail(format!("{}: {e}", file.display()));
+                self.fail(format!("{}: {e}", file.display()));
+                return true;
             }
         }
         self.popup_doc.failed = false;
+        self.popup_doc.since = self.worker.gen();
         self.drop_queued();
         self.calc(Tag::Load, load);
+        self.apply_popup_ops(how);
+        true
+    }
+
+    /// 別の窓: 写しの変更を当てる
+    fn apply_popup_ops(&mut self, how: &Value) {
         for op in how["ops"].as_array().into_iter().flatten() {
             if let Some(p) = op.get("set") {
                 self.calc_refreshing(Tag::Set, p.clone());
@@ -205,6 +295,7 @@ impl App {
             return;
         };
         let mut flat = None;
+        let mut resend = false;
         for e in k.events(ctx) {
             match e {
                 CalcEv::Pane(v) => {
@@ -215,13 +306,20 @@ impl App {
                     }
                 }
                 CalcEv::Doc(how, b) => {
-                    flat = Some(how["flat"].as_bool() == Some(true));
-                    self.c.open_popup_doc(&how, b);
+                    if how["from"].is_null() {
+                        flat = Some(how["flat"].as_bool() == Some(true));
+                    }
+                    resend |= !self.c.open_popup_doc(&how, b);
                 }
             }
         }
         if let Some(f) = flat {
             self.calc_flat = f;
+        }
+        if resend {
+            if let Some(k) = &self.calc {
+                k.ask_resend();
+            }
         }
         self.logic(ctx);
         // 写した文書を読めなかった（元のタブにしか無いファイルを指すなど）: 平たい系ファイルで送り直してもらう
@@ -257,7 +355,7 @@ impl App {
                 } else if self.calc_flat {
                     ui.label(
                         RichText::new(tr(
-                            "Showing a copy without the original file, so states, configurations and beam paths are not available",
+                            "Showing a copy without the original file, so states, configurations, beam paths and coating files are not available",
                         ))
                         .small()
                         .color(theme::warn(ui.visuals())),
@@ -296,5 +394,111 @@ impl App {
             k.set_title(&title);
             k.send_pane(v);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base(seq: u64, ops: usize) -> Base {
+        Base {
+            seq,
+            load: json!({ "file": "a.json" }),
+            bytes: std::sync::Arc::new(b"x".to_vec()),
+            ops: (0..ops).map(|i| json!({ "set": { "value": i } })).collect(),
+        }
+    }
+
+    /// 元のタブは、同じ文書を送った窓には増えた変更だけ、違う文書・初めての窓には全部を送る
+    #[test]
+    fn sends_only_new_ops_of_the_same_doc() {
+        let mut pd = PopupDoc {
+            base: Some(base(3, 5)),
+            ..Default::default()
+        };
+        let (how, whole) = pd.doc_for(1).unwrap();
+        assert!(whole);
+        assert_eq!(how["ops"].as_array().unwrap().len(), 5);
+        assert!(how["from"].is_null());
+        pd.sent.insert(
+            1,
+            Sent {
+                gen: 7,
+                doc: Some((3, 2)),
+            },
+        );
+        let (how, whole) = pd.doc_for(1).unwrap();
+        assert!(!whole);
+        assert_eq!(
+            (how["seq"].as_u64(), how["from"].as_u64()),
+            (Some(3), Some(2))
+        );
+        assert_eq!(
+            how["ops"],
+            json!([{ "set": { "value": 2 } }, { "set": { "value": 3 } }, { "set": { "value": 4 } }])
+        );
+        // 読み直した文書（通し番号が違う）・平たい系ファイルを送った窓には全部
+        pd.sent.insert(
+            1,
+            Sent {
+                gen: 7,
+                doc: Some((2, 2)),
+            },
+        );
+        assert!(pd.doc_for(1).unwrap().1);
+        pd.sent.insert(1, Sent { gen: 7, doc: None });
+        assert!(pd.doc_for(1).unwrap().1);
+        pd.base = None;
+        assert!(pd.doc_for(1).is_none());
+    }
+
+    /// 別の窓は、前の写しに続く増えた分だけを当て、続かなければ送り直してもらう
+    #[test]
+    fn popup_accepts_only_continuing_ops() {
+        let mut pd = PopupDoc::default();
+        // 増えた分だけが先に届いた（前の写しが無い）
+        let add = json!({ "seq": 3, "from": 0, "ops": [{}] });
+        assert_eq!(pd.accept(&add), Accept::Resend);
+        let full = json!({ "seq": 3, "load": {}, "ops": [{}, {}] });
+        assert_eq!(pd.accept(&full), Accept::Reload);
+        assert_eq!(pd.at, Some((3, 2)));
+        assert_eq!(
+            pd.accept(&json!({ "seq": 3, "from": 2, "ops": [{}] })),
+            Accept::Append
+        );
+        assert_eq!(pd.at, Some((3, 3)));
+        // 抜けがある・別の文書
+        assert_eq!(
+            pd.accept(&json!({ "seq": 3, "from": 5, "ops": [{}] })),
+            Accept::Resend
+        );
+        assert_eq!(pd.at, None);
+        pd.accept(&full);
+        assert_eq!(
+            pd.accept(&json!({ "seq": 4, "from": 2, "ops": [] })),
+            Accept::Resend
+        );
+        // 平たい系ファイル（通し番号なし）の後に増えた分は続かない
+        pd.accept(&json!({ "load": {}, "ops": [], "flat": true }));
+        assert_eq!(pd.at, None);
+        assert_eq!(
+            pd.accept(&json!({ "seq": 3, "from": 0, "ops": [] })),
+            Accept::Resend
+        );
+    }
+
+    /// 今の写しを読み始める前に出した要求（前の写し）の誤りでは、平たい系ファイルに落ちない
+    #[test]
+    fn errors_of_an_old_copy_are_not_counted() {
+        let mut pd = PopupDoc {
+            since: 10,
+            ..Default::default()
+        };
+        pd.failed(9);
+        pd.failed(10);
+        assert!(!pd.failed);
+        pd.failed(11);
+        assert!(pd.failed);
     }
 }

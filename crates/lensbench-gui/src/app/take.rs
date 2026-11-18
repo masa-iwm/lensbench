@@ -63,7 +63,7 @@ impl Core {
             if d.replies.first().is_some_and(|r| r.result.is_ok()) {
                 self.popup_doc.track(&d);
             } else {
-                self.popup_doc.failed();
+                self.popup_doc.failed(d.gen());
             }
         }
         if d.error().is_some() {

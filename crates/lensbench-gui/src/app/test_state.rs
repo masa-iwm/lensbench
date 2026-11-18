@@ -37,6 +37,29 @@ impl App {
             "status": c.status.text,
             "status_error": c.status.error,
             "analyses": analyses,
+            "calc_window": self.is_calc_window(),
         })
+    }
+
+    /// このタブは解析のパネルを出した別の窓か（Web 版）
+    fn is_calc_window(&self) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        return self.calc.is_some();
+        #[cfg(not(target_arch = "wasm32"))]
+        false
+    }
+
+    /// 試験用: ドックの最初の解析のパネルを別の窓に出す（出したら true）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn test_detach_analysis(&mut self) -> bool {
+        let id = self
+            .dock
+            .iter_all_tabs()
+            .find(|(_, p)| matches!(p.kind, Kind::Analysis(_)))
+            .map(|(_, p)| p.id);
+        if let Some(id) = id {
+            self.detach(id);
+        }
+        id.is_some()
     }
 }

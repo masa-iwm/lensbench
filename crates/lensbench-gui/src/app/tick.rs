@@ -189,6 +189,7 @@ impl App {
                     self.c.popup_restarted(id);
                 }
                 Ev::Flat(id) => self.c.popup_wants_flat(id),
+                Ev::Resend(id) => self.c.popup_restarted(id),
                 Ev::Pane(id, v) => {
                     let p = serde_json::from_value::<Pane>(v)
                         .ok()
