@@ -251,16 +251,33 @@ fn phasor(dw: f64) -> C64 {
 /// Σ w[i] exp(2πi (a[i] − b[i]))（a・b のどちらかが有限でない点は飛ばす）。位相因子は [`crate::trig::cis_scaled`] で
 /// まとめて求め（libm の sin_cos と相対 1e-13 程度の差）、和は i の順に取る
 fn phasor_sum(a: &[f64], b: &[f64], w: &[f64]) -> C64 {
-    let (mut ph, mut am) = (Vec::with_capacity(w.len()), Vec::with_capacity(w.len()));
-    for i in 0..w.len() {
-        if a[i].is_finite() && b[i].is_finite() {
-            ph.push(2.0 * std::f64::consts::PI * (a[i] - b[i]));
-            am.push(w[i]);
-        }
+    thread_local! {
+        // 作業の配列（位相・重み・位相因子）。呼ぶたびに確保と 0 埋めをしないよう、スレッドごとに使い回す
+        // （中身は毎回書き直すので、結果には関係しない）
+        static WORK: std::cell::RefCell<(Vec<f64>, Vec<f64>, Vec<C64>)> =
+            const { std::cell::RefCell::new((Vec::new(), Vec::new(), Vec::new())) };
     }
-    let mut z = vec![C64::new(0.0, 0.0); ph.len()];
-    crate::trig::cis_scaled(&ph, &am, &mut z);
-    z.iter().fold(C64::new(0.0, 0.0), |acc, &v| acc + v)
+    WORK.with(|work| {
+        let (ph, am, z) = &mut *work.borrow_mut();
+        let m = w.len();
+        if ph.len() < m {
+            ph.resize(m, 0.0);
+            am.resize(m, 0.0);
+            z.resize(m, C64::new(0.0, 0.0));
+        }
+        let (a, b) = (&a[..m], &b[..m]);
+        let mut n = 0;
+        for ((&ai, &bi), &wi) in a.iter().zip(b).zip(w) {
+            if ai.is_finite() && bi.is_finite() {
+                ph[n] = 2.0 * std::f64::consts::PI * (ai - bi);
+                am[n] = wi;
+                n += 1;
+            }
+        }
+        let (ph, am, z) = (&ph[..n], &am[..n], &mut z[..n]);
+        crate::trig::cis_scaled(ph, am, z);
+        z.iter().fold(C64::new(0.0, 0.0), |acc, &v| acc + v)
+    })
 }
 
 /// 補間できなかった点（直接追跡する）: (xa, ya, xb, yb, 重み, a, b)。a・b は補間できた値か NaN
