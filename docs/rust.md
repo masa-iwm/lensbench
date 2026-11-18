@@ -49,6 +49,10 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 - 雛形は `examples/extension`（プラグイン・解析と GUI の見せ方・Python の関数・試験）。写して始める。profile・
   `[patch]` は git 依存から伝わらないので雛形の Cargo.toml に写してある。Cargo.lock は公開のものを写すと、公開の CI で
   試した依存の版になる。
+- アロケータは入口の側で決める: SDK の入口（`cli::main`・`gui::main`・`py::module`）は `#[global_allocator]` を
+  置かない。公開の exe・wheel は mimalloc を使っていて、外で組む exe・wheel も同じ速さにするには、入口を作るクレートに
+  `#[global_allocator] static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;` を 1 つ置く（雛形の `src/lib.rs`。
+  wasm では置かない）。置かないと OS のアロケータで動き、値は同じで、光線追跡・カタログの読み込みが遅くなる。
 - Web 版: 雛形の `web`（wasm32 だけ）が `#[wasm_bindgen(start)]` で拡張を入れる（wasm-bindgen は
   `lensbench_sdk::web::wasm_bindgen`）。組み立ては同じタグの公開リポジトリで
   `CRATE=<パッケージ名> MANIFEST=<外の Cargo.toml> scripts/build_web.sh <出力先>`。画面用（feature `gui`）・

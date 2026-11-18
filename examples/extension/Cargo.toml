@@ -40,6 +40,8 @@ lensbench-sdk = { path = "../../crates/lensbench-sdk" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 lensbench-sdk = { path = "../../crates/lensbench-sdk", features = ["cli"] }
+# アロケータは入口を作る側（このクレート）で決める。SDK は決めない（公開の exe・wheel と同じ mimalloc。src/lib.rs）
+mimalloc = { version = "0.1", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 lensbench-sdk = { path = "../../crates/lensbench-sdk", features = ["web"] }

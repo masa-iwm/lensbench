@@ -15,6 +15,13 @@ use lensbench_sdk::trace::FieldSel;
 use lensbench_sdk::{Extensions, Result};
 use std::sync::Arc;
 
+// アロケータは入口を作るクレートが決める（SDK は決めない）。この static 1 つが、このクレートを使う exe 2 つ
+// （src/bin）と Python の拡張モジュールに効く。公開の exe・wheel と同じ mimalloc（大きな配列の確保を使い回す）。
+// 外すと OS のアロケータになり、値は同じで遅くなる。wasm では使わない
+#[cfg(not(target_arch = "wasm32"))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// 足すもの
 pub fn extensions() -> Extensions {
     let e = Extensions::named("example")
