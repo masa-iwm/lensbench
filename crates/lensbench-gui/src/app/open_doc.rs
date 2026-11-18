@@ -58,11 +58,9 @@ impl Core {
             self.build_combo(self.doc.combo.project());
             return;
         }
-        // 読めたが組合せで同じ系を書けないファイルは開かない（理由を出す）。読めないファイルは系として読んで、
-        // 誤り（ガラスが無いときの案内など）を出す
-        let why = v
-            .filter(|v| v["load_error"] != json!(true))
-            .and_then(|v| v["why"].as_str());
+        // 読めたが組合せで同じ系を書けないファイルと、多重構成のどれかの構成だけ読めないファイルは開かない（理由を
+        // 出す）。読めないファイルは系として読んで、誤り（硝材が無いときの案内など）を出す
+        let why = v.and_then(refusal);
         if let Some(why) = why {
             self.revert_open();
             self.fail(trf(
@@ -122,4 +120,31 @@ impl Core {
         }
         v
     }
+}
+
+/// doc_peek の答え v から、開かずに出す理由。組合せで同じ系を書けないとき（stage が combo）と、多重構成の
+/// どれかの構成だけ読めないとき（config。構成 1 は読めるので、系として開くと読めない構成を黙って落とす）。
+/// 系として読めないファイル（開く側が誤りを出す）と、組合せにできたファイルは None
+fn refusal(v: &Value) -> Option<&str> {
+    (v["stage"] == "combo" || v["config"].is_u64())
+        .then(|| v["why"].as_str())
+        .flatten()
+}
+
+#[cfg(test)]
+#[test]
+fn refusal_covers_unwritable_and_unreadable_configs() {
+    let why = |v: Value| refusal(&v).map(str::to_string);
+    assert_eq!(
+        why(json!({ "stage": "combo", "why": "w" })).as_deref(),
+        Some("w")
+    );
+    // 構成 2 だけ読めない多重構成: 構成 1 を系として開かない
+    assert_eq!(
+        why(json!({ "stage": "load", "config": 2, "why": "configuration 2 of 2: x" })).as_deref(),
+        Some("configuration 2 of 2: x")
+    );
+    // 系として読めない: 開く側が系として読んで誤りを出す
+    assert_eq!(why(json!({ "stage": "load", "why": "x" })), None);
+    assert_eq!(why(json!({ "combo": {} })), None);
 }

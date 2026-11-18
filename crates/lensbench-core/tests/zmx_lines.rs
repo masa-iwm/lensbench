@@ -358,6 +358,7 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
 /// 多重構成の PRAM（面の PARM の値を構成ごとに変える）と、光線追跡に効かない行（SCOL・TCED、MCOM・CWGT）
 #[test]
 fn pram_and_harmless_lines() {
+    // 多重構成の表の空の行（BLNK）は書き方に依らず読み飛ばす
     // 面 1 の後に座標ブレーク（面 2、PARM 2 = y 偏心）を置き、構成 2 で偏心を変える
     let base = |dec: f64, extra_mce: &str| {
         format!(
@@ -370,6 +371,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n{extra_mce}"
     let extra = "MNUM 2 1\n\
 PRAM   2   1 2.0E-01 0 2 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\n\
 PRAM   2   2 -3.0E-01 0 2 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\n\
+BLNK \nBLNK   0   1\nBLNK   0   2 0 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\n\
 MCOM   0   1 a 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\nMCOM   0   2 b 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\n\
 CWGT   0   1 1.0E+00 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\nCWGT   0   2 2.0E+00 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\n";
     let txt = base(5.0, extra);

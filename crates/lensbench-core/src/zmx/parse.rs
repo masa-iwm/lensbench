@@ -67,6 +67,10 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             continue;
         }
         if in_mce {
+            // 多重構成の表の空の行（BLNK）は光線追跡に効かない。番号・値の有無に依らず飛ばす
+            if key == "BLNK" {
+                continue;
+            }
             let Some(m) = mce_line(line) else {
                 invalid!("can't read the zmx multi-configuration line: {line}");
             };

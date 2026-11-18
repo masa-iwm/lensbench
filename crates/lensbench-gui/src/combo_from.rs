@@ -17,14 +17,49 @@ use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
 
+/// .zmx・システムファイルを組合せにできなかった理由。どの段で止まったかを持つ（1 回の読込で決める）
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum OpenErr {
+    /// 系として読めない。config は読めなかった構成（多重構成の 2 番目以降の構成だけ読めないとき）
+    Load { text: String, config: Option<usize> },
+    /// 読めるが、組合せで同じ系を書けない
+    Combo(String),
+}
+
+impl OpenErr {
+    /// 段の名前（下書きの Worker の答えの `stage`）
+    pub(crate) fn stage(&self) -> &'static str {
+        match self {
+            OpenErr::Load { .. } => "load",
+            OpenErr::Combo(_) => "combo",
+        }
+    }
+}
+
+impl std::fmt::Display for OpenErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenErr::Load { text, .. } | OpenErr::Combo(text) => f.write_str(text),
+        }
+    }
+}
+
+fn load_err(e: impl std::fmt::Display) -> OpenErr {
+    OpenErr::Load {
+        text: e.to_string(),
+        config: None,
+    }
+}
+
 /// 多重構成の .zmx の構成ごとの系。読めない構成があれば、その番号を付けた誤り
 fn load_each_config(
     f: &Path,
     lo: &lensbench_core::zmx::LoadOptions,
-) -> R<Vec<lensbench_core::System>> {
-    let txt = lensbench_core::glass::read_text(f).map_err(|e| format!("{}: {e}", f.display()))?;
+) -> Result<Vec<lensbench_core::System>, OpenErr> {
+    let txt = lensbench_core::glass::read_text(f)
+        .map_err(|e| load_err(format!("{}: {e}", f.display())))?;
     let n = lensbench_core::zmx::parse_text(&txt)
-        .map_err(|e| e.to_string())?
+        .map_err(load_err)?
         .configurations();
     (1..=n)
         .map(|k| {
@@ -32,9 +67,12 @@ fn load_each_config(
                 .map(|mut v| v.remove(0))
                 .map_err(|e| {
                     if n > 1 {
-                        format!("configuration {k} of {n}: {e}")
+                        OpenErr::Load {
+                            text: format!("configuration {k} of {n}: {e}"),
+                            config: Some(k),
+                        }
                     } else {
-                        e.to_string()
+                        load_err(e)
                     }
                 })
         })
@@ -44,12 +82,12 @@ fn load_each_config(
 impl Combo {
     /// .zmx・システムファイルを、まるごと取り込む要素 1 つの組合せにする（書ければ要素に分ける）。多重構成の .zmx は
     /// 構成ごとの状態「Config k」を持つ組合せにする（要素には分けない）。プロジェクトで書けない設定があり、作り直した系が
-    /// 元（多重構成なら構成ごと）と違えば誤り
+    /// 元（多重構成なら構成ごと）と違えば誤り。誤りは読めなかったか（[`OpenErr::Load`]）、組合せで書けないか
     pub(crate) fn from_zmx(
         f: &Path,
         glass_dirs: &[PathBuf],
         lens_catalogs: &[PathBuf],
-    ) -> R<Combo> {
+    ) -> Result<Combo, OpenErr> {
         // 組合せの系は一時のフォルダに書いて読むので、パスは作業フォルダから絶対にしておく
         let f = &absolute(f);
         let o = lensbench_project::open::OpenSpec {
@@ -59,7 +97,7 @@ impl Combo {
             ..Default::default()
         };
         let s = lensbench_project::open::open(f, &o)
-            .map_err(|e| e.to_string())?
+            .map_err(load_err)?
             .system;
         // 多重構成の .zmx は構成ごとの系（表で書けない構成も、ファイルの構成ごとに読む）
         let is_zmx = f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
@@ -73,18 +111,33 @@ impl Combo {
         } else {
             match s.configs().map(|c| c.n) {
                 Some(n) => (1..=n)
-                    .map(|k| s.config(k))
-                    .collect::<lensbench_core::Result<_>>()?,
+                    .map(|k| {
+                        s.config(k).map_err(|e| OpenErr::Load {
+                            text: format!("configuration {k} of {n}: {e}"),
+                            config: Some(k),
+                        })
+                    })
+                    .collect::<Result<_, _>>()?,
                 None => vec![s.clone()],
             }
         };
+        Combo::written(f, &s, &cfgs, glass_dirs).map_err(OpenErr::Combo)
+    }
+
+    /// 読めた系 s（多重構成なら構成ごとの系 cfgs）を組合せにする。組合せで同じ系を書けなければ誤り
+    fn written(
+        f: &Path,
+        s: &lensbench_core::System,
+        cfgs: &[lensbench_core::System],
+        glass_dirs: &[PathBuf],
+    ) -> R<Combo> {
         // ブロックのパスはファイルの名前だけ（プロジェクトの相対パスはフォルダ base から）
         let name = f.file_name().ok_or("no file name")?.to_string_lossy();
-        let p = lensbench_project::zmx_project(&cfgs, &name)?;
+        let p = lensbench_project::zmx_project(cfgs, &name)?;
         let base = f.parent().unwrap_or(Path::new(""));
         // 書ける .zmx は要素に分ける（変更は中身へ）。書けなければ .zmx をまるごと取り込む
         if cfgs.len() == 1 {
-            if let Some(c) = crate::combo_split::split(&s, &p, base, glass_dirs) {
+            if let Some(c) = crate::combo_split::split(s, &p, base, glass_dirs) {
                 return Ok(c);
             }
         }

@@ -39,9 +39,9 @@ pub(super) fn doc_peek(p: &Value) -> Result<Value, String> {
         match crate::combo::Combo::from_project(&v, base) {
             Ok(c) => out["combo"] = serde_json::to_value(c).map_err(|e| e.to_string())?,
             Err(e) => {
-                // 読めないプロジェクトは系として読んで誤りを出す
-                out["load_error"] =
-                    Value::from(lensbench_project::Project::from_json(&v.to_string()).is_err());
+                // 読めないプロジェクト（stage が load）は、開く側が系として読んで誤りを出す
+                let load = lensbench_project::Project::from_json(&v.to_string()).is_err();
+                out["stage"] = Value::from(if load { "load" } else { "combo" });
                 out["why"] = Value::from(e);
             }
         }
@@ -49,8 +49,9 @@ pub(super) fn doc_peek(p: &Value) -> Result<Value, String> {
     Ok(out)
 }
 
-/// .zmx・システムファイルを組合せにして out の combo に。できなければ理由 why と、読めなかったか load_error
-/// （読めないファイルは系として読んで、ガラスが無いときの案内などを出す）
+/// .zmx・システムファイルを組合せにして out の combo に。できなければ理由 why と止まった段 stage（load: 系として
+/// 読めない、combo: 読めるが組合せで書けない）、読めなかった構成 config。読込は 1 回だけ（読めないファイルは
+/// 開く側が系として読んで、硝材が無いときの案内などを出す）
 fn peek_file(
     f: &str,
     glass_dirs: &[std::path::PathBuf],
@@ -61,14 +62,14 @@ fn peek_file(
     match crate::combo::Combo::from_zmx(path, glass_dirs, lens_catalogs) {
         Ok(c) => out["combo"] = serde_json::to_value(c).map_err(|e| e.to_string())?,
         Err(e) => {
-            let o = lensbench_project::open::OpenSpec {
-                glass_dirs,
-                lens_catalogs,
-                cfg: 1,
-                ..Default::default()
-            };
-            out["load_error"] = Value::from(lensbench_project::open::open(path, &o).is_err());
-            out["why"] = Value::from(e);
+            out["stage"] = Value::from(e.stage());
+            out["why"] = Value::from(e.to_string());
+            if let crate::combo_from::OpenErr::Load {
+                config: Some(k), ..
+            } = e
+            {
+                out["config"] = Value::from(k);
+            }
         }
     }
     Ok(())
@@ -85,7 +86,7 @@ fn doc_peek_reads_gui_and_blocks() {
     // 読めないプロジェクト（wavelengths が無い）は、系として読んで誤りを出す
     assert_eq!(v["gui"], serde_json::json!({ "view": { "state": "x" } }));
     assert_eq!(v["blocks"], true);
-    assert_eq!(v["load_error"], true, "{v}");
+    assert_eq!(v["stage"], "load", "{v}");
     // ブロックのプロジェクト: 組合せで書ければ combo
     let ex = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects");
     let peek = |n: &str| {
@@ -104,6 +105,7 @@ fn doc_peek_reads_gui_and_blocks() {
     .unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
     assert!(v.get("combo").is_none());
+    assert_eq!(v["stage"], "combo", "{v}");
     // 読めない系ファイルは combo なし（理由 why）。系ファイルは .zmx と同じく組合せにする
     lensbench_core::vfs::write(&f, r#"{"surfaces": []}"#).unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
@@ -214,7 +216,7 @@ fn readable_files_open_as_combos() {
         };
         if v.get("combo").is_some() {
             opened += 1;
-        } else if v["load_error"] == serde_json::json!(true) {
+        } else if v["stage"] == "load" {
             unread += 1;
             if std::env::var_os("LB_PEEK_UNREAD").is_some() {
                 eprintln!("not readable: {}: {}", f.display(), v["why"]);
@@ -296,4 +298,40 @@ fn zmx_with_object_comment_and_pickup_opens_as_combo() {
     .unwrap();
     std::fs::remove_file(&f).ok();
     assert!(v.get("combo").is_some(), "{v}");
+}
+
+/// 構成 1 は読めて構成 2 だけ読めない多重構成の .zmx は、stage が load で読めない構成の番号 config を返す
+/// （開く側はこれで構成 1 だけを系として開かずに理由を出す）
+#[cfg(test)]
+#[test]
+fn zmx_with_unreadable_second_config_names_it() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = String::from_utf16(&u).unwrap();
+    // 面 1 の硝材を構成 2 だけ、どのカタログにも無い名前にする
+    let t = t.replacen(
+        "MNUM 1 1\r\n",
+        "MNUM 2 1\r\nGLSS   1   1 N-SK16 0 0 0 1 1 0 0.0 \"\" 0\r\nGLSS   1   2 NO-SUCH-GLASS 0 0 0 1 1 0 0.0 \"\" 0\r\n",
+        1,
+    );
+    let f = std::env::temp_dir().join(format!("lb-peek-cfg2-{}.zmx", std::process::id()));
+    std::fs::write(&f, &t).unwrap();
+    let v = doc_peek(&serde_json::json!({
+        "file": f.display().to_string(),
+        "glass_dirs": [root.join("tests/glass").display().to_string()],
+    }))
+    .unwrap();
+    std::fs::remove_file(&f).ok();
+    assert!(v.get("combo").is_none(), "{v}");
+    assert_eq!(
+        (&v["stage"], &v["config"]),
+        (&serde_json::json!("load"), &serde_json::json!(2)),
+        "{v}"
+    );
 }
