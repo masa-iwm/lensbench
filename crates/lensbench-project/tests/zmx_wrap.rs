@@ -343,6 +343,94 @@ fn zmx_project_solves_macros_after_the_global_reference() {
     assert_eq!(e.macro_parms.len(), 1);
 }
 
+/// A0 の面の行を書き換えた .zmx を組合せのプロジェクトにして展開し、元の系と同じか確かめる
+fn zmx_project_roundtrip(tag: &str, edit: impl Fn(String) -> String) -> serde_json::Value {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let gd = vec![root.join("tests/glass")];
+    let b = std::fs::read(root.join("tests/refs/A0/system.zmx")).unwrap();
+    let u: Vec<u16> = b[2..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    let t = edit(String::from_utf16(&u).unwrap());
+    let dir = std::env::temp_dir().join(format!("lb-zmx-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a.zmx");
+    let mut out = vec![0xff, 0xfe];
+    out.extend(t.encode_utf16().flat_map(u16::to_le_bytes));
+    std::fs::write(&f, out).unwrap();
+    let s = lensbench_core::zmx::load_with(
+        &f,
+        &lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: gd.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let p =
+        lensbench_project::zmx_project(std::slice::from_ref(&s), &f.display().to_string()).unwrap();
+    let env = lensbench_project::Env {
+        base: "/".into(),
+        glass_dirs: gd,
+        catalog: None,
+        step_files: None,
+    };
+    let e = lensbench_project::Project::from_json(&p.to_string())
+        .and_then(|q| {
+            lensbench_project::expand(&q, &env, &Default::default())
+                .map_err(lensbench_core::Error::from)
+        })
+        .unwrap()
+        .system;
+    std::fs::remove_dir_all(&dir).ok();
+    lensbench_project::same_system(&s, &e).unwrap();
+    p
+}
+
+/// 物体空間・像空間が空気でない .zmx（液浸・像側の硝材・硝材の中へ折り返す鏡）も組合せのプロジェクトで同じ系
+#[test]
+fn zmx_project_keeps_non_air_object_and_image_space() {
+    // 物体側の液浸（物体面の硝材はプロジェクトの object の medium へ）
+    let p = zmx_project_roundtrip("obj", |t| {
+        t.replacen(
+            "  DISZ INFINITY\r\n",
+            "  DISZ 10\r\n  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n",
+            1,
+        )
+    });
+    assert!(p["object"]["medium"].is_string(), "{p}");
+    // 像空間が硝材（像面の手前の面が硝材を持つ）
+    zmx_project_roundtrip("ima", |t| {
+        let at = t.find("SURF 8\r\n").unwrap();
+        let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
+        format!(
+            "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
+            &t[..k],
+            &t[k..]
+        )
+    });
+    // 最後の玉の後ろの硝材のブロックの中で鏡が折り返し、像空間は硝材のまま
+    zmx_project_roundtrip("fold", |t| {
+        let at = t.find("SURF 7\r\n").unwrap();
+        let k = at + t[at..].find("  MAZH").unwrap();
+        let t = format!(
+            "{}  GLAS N-SK16 0 0 1.5 40 0 0 0 0 0 0 \r\n{}",
+            &t[..k],
+            &t[k..]
+        );
+        let at = t.find("SURF 8\r\n").unwrap();
+        let k = at + t[at..].find("  DISZ 0\r\n").unwrap() + "  DISZ 0\r\n".len();
+        format!(
+            "{}  GLAS MIRROR 0 0 0 0 0 0 0 0 0 0 \r\n{}",
+            &t[..k],
+            &t[k..]
+        )
+    });
+}
+
 /// 物体面の形と開口・像面の半直径のピックアップ・無限の厚みを写すピックアップも、組合せのプロジェクトで同じ系
 #[test]
 fn zmx_project_keeps_object_row_and_edge_pickups() {

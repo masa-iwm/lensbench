@@ -1131,7 +1131,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     s.adjust_index,
                     s.coating_file.clone(),
                 ));
-                let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
+                // 物体空間・像空間が空気でない .zmx（液浸など）もまるごと取り込む（媒質は物体面・最後の要素が持ち越す）
+                let els = elements::split_any(&s);
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {
                     path: path.clone(),

@@ -95,7 +95,8 @@ pub(crate) fn carry_notes(rx: &mut lensbench_core::Prescription, zpicks: &[ZmxLi
     }
 }
 
-/// プロジェクトの `object` の行から物体面を作る（厚さは呼ぶ側が `object_distance` で入れる）
+/// プロジェクトの `object` の行から物体面を作る（厚さは呼ぶ側が `object_distance` で入れる）。`medium` は物体空間の
+/// 媒質（液浸など。省略は空気）
 pub(crate) fn object_surface(r: Option<&crate::sysfile_v2::Row>) -> Result<Surface, String> {
     let Some(r) = r else {
         return Ok(Surface::default());
@@ -103,14 +104,12 @@ pub(crate) fn object_surface(r: Option<&crate::sysfile_v2::Row>) -> Result<Surfa
     if r.stop
         || r.image
         || r.t != 0.0
-        || r.medium.is_some()
         || r.coordinate_break.is_some()
         || r.before.is_some()
         || r.after.is_some()
     {
         return Err(
-            "object: stop, image, t, medium, coordinate_break, before and after can't be written"
-                .into(),
+            "object: stop, image, t, coordinate_break, before and after can't be written".into(),
         );
     }
     let mut r = r.clone();

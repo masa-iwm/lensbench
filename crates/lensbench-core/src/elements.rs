@@ -144,10 +144,18 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
     if !air[0] {
         invalid!("a system whose object space is not air is not split into lenses");
     }
-    let ima = s.image();
-    if !air[ima - 1] {
+    if !air[s.image() - 1] {
         invalid!("a system whose image space is not air is not split into lenses");
     }
+    Ok(split_any(s))
+}
+
+/// [`split`] の、物体空間・像空間が空気でない系も分ける版（.zmx をまるごと取り込む zmx ブロック用）。物体空間の媒質は
+/// 要素の外（物体面）で、最初の要素はその媒質から入る。像空間が空気でなければ、最後の要素は像面の手前の面までで、
+/// その面の媒質（ガラスなど）と厚さを持ったまま像面へ出る
+pub fn split_any(s: &System) -> Vec<Element> {
+    let air = air_after(s);
+    let ima = s.image();
     let sf = &s.surfaces;
     let mut out = Vec::new();
     let mut j = 1;
@@ -156,7 +164,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
         let (kind, k) = if !air[j] {
             // 空気へ出る面まで
             let mut k = j;
-            while !air[k] {
+            while !air[k] && k + 1 < ima {
                 k += 1;
             }
             (Kind::Lens, k)
@@ -183,7 +191,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
         }
         j = k + 1;
     }
-    Ok(out)
+    out
 }
 
 /// 面を前後反転できるか（[`Surface::flip_z`] と [`Surface::mirror_x`] で形を y 軸のまわりに 180° 回せる種類: 理想レンズ・

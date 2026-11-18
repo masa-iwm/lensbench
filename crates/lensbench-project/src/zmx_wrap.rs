@@ -175,14 +175,14 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
             "adjust_index": s.adjust_index,
         });
     }
-    // 物体面の形・開口（平面で開口なしなら書かない。厚さは object_distance、コメントは zmx ブロックが持ち越す）
+    // 物体面の形・開口・物体空間の媒質（平面で開口なし・空気なら書かない。厚さは object_distance、コメントは zmx
+    // ブロックが持ち越す）
     if let Some(obj) = s.surfaces.first() {
         let mut r = crate::sysfile_v2::write::surface_row(obj, false)?;
         r.semi = None;
         r.stop = false;
         r.object = false;
         r.t = 0.0;
-        r.medium = None;
         r.comment.clear();
         if r != crate::sysfile_v2::Row::default() {
             p["object"] = serde_json::to_value(&r).map_err(|e| e.to_string())?;
