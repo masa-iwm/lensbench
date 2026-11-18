@@ -70,6 +70,8 @@ jobs:
           fetch-depth: 0
       - run: python3 scripts/check_public.py --history
       - run: python3 -m unittest discover -s tests/scripts
+      # 版が最後のリリースのタグより新しいこと（タグのコミットではタグと同じ。docs/versioning.md）
+      - run: python3 scripts/check_version.py
 
   test:
     needs: pr-tested

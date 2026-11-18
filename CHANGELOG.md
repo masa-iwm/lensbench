@@ -1,0 +1,58 @@
+# 変更の記録
+
+版ごとの、利用者に見える変更のまとめ（新しい順）。版の付け方は [版の付け方](docs/versioning.md)。
+互換が切れる変更の細かい書き方・移し方は [壊れる変更](docs/changes.md) にある。
+
+## 0.5.0（開発中）
+
+0.4.0 からの変更。ファイルの形式・CLI・Python・serve の書き方と、いくつかの解析の値が変わる（互換が切れる版）。
+
+### 互換が切れる所
+
+- **システムファイルを版 2 に**: `system` は内部の構造体でなく、利用者が書いた値（処方）だけを決めた形で書く
+  （面は `shape`・`action`・`medium` などの行、曲率は `c`、ソルブは `{"surf": 5, "type": "edge", …}`）。版 1 のファイルは読める。
+  求めた屈折率・自動のクリア半径の値・ガラスの式は書かないので、ファイルが小さくなる。システムの hash も変わる
+- **プロジェクトファイル**: 形式の印 `"format": "lensbench-project"` と版 `"format_version": 1` が付く。直下の `surface_edits`・
+  `surface_ops` をやめて各ブロックに書く。知らないキーはエラー（GUI だけの設定は `gui` 欄）
+- **名前をそろえた（旧名はエラー）**: 引数の名前を CLI・serve・Python で 1 つに。`fringe` → `interference`、物体空間 NA の量
+  `obna` → `obsn`、PSF・Huygens の格子の間隔 `delta` → `pixel`、`tolerance --save-worst` → `--out` など
+- **過去互換の受け口を消した**: lensbench の古い保存の読み分け・評価関数・公差・差し替え探索の古い書き方
+- **CLI の終了コード**: 1 失敗、2 使い方、3 ファイル、4 未対応の機能、130 中断に分けた（前は引数のエラーの 2 のほかは全部 1）。
+  エラーの文は英語が元で、日本語の表示では訳す。公差の結果の `label` も英語の名前に
+- **結果の形**: MTF の `cutoff` は `{"tangential", "sagittal"}`、スポット・PSF・RMS の `unit` は `"mm"`、ズーム軌跡は解けない点を
+  `stop: "failed"` で残す、serve の `load` などに `notes`
+- **Rust API**: core を分けた（`lensbench-runs`・`lensbench-formats`・`lensbench-catalog`・`lensbench-step` など）、`System` は
+  書き換えられない値、面の種類ごとの値は `Form` の枝、追跡の結果は列で受ける、外のクレートから足す口 `lensbench-sdk`
+
+### 結果が変わる所
+
+- 位相の約束を exp(−ikL) にそろえた: POP の場の位相の符号、光線の格子の Jones 行列が前の版の複素共役になる
+  （照度・強度は変わらない）
+- MTF の子午・球欠は既定で視野の向き。遮断周波数は計算した波長の値。Huygens MTF のナイキストを超える周波数は `null`
+- 瞳のアポダイゼーションを幾何の解析の光線の重み・RMS 波面の重みにも入れる（OpticStudio と照合）
+- 膜・偏光の振幅を入れた多色の PSF・MTF は、光量の透過率を波長の重みに掛ける
+- モンテカルロ公差・検出器の露光の乱数を変えた（同じ種でも試行の値が前と違う。分布は同じ）
+- 最適化の止まった理由 `small_step` と `no_progress` の分け方
+- 鏡の後ろの面（トロイダル・Zernike・Grid Sag・GRIN・利用者定義の面など）を物理的に正しく裏返す
+- 開口の判定の余裕を開口の大きさに対する比に（1e-9 倍）
+
+### 足したもの
+
+- lensbench が書く JSON の先頭に `$schema`（`https://masa-iwm.github.io/lensbench/schema/v0.5/…`）。ドキュメントとスキーマを版ごとに残す
+- GUI はファイルを必ず組合せで開く: .zmx（多重構成・条件で定める視野・像面の傾き・物体／像空間が空気でないものも）とシステムファイル
+- 玉の反転を Zernike・Grid Sag・Tilted・Irregular・Cylinder Fresnel・GRIN の玉にも
+- プロジェクトに像面 `image`、面の並び・自作の玉に版 2 の面の行 `row`、取り込むプロジェクトの状態と経路の選択
+- serve の `write_back`・`save_project`（面の表の編集をブロックへ書き戻す）
+- Python の `System.analyze(name, **settings)`、解析のサブコマンドの `--params-file`
+- スポットの結果に光線の本数と除いた理由
+- 外のクレートから解析・検出器などを登録する口（`lensbench-sdk`）
+- Web 版: 解析のパネルの別の窓は窓ごとに計算する
+- GUI の読み上げ（AccessKit）
+
+### 速さ
+
+- CLI の起動・`info`、Zernike の矢高、MTF の瞳の標本、形のパラメータの微分、検出器の露光を速くした
+
+## 0.4.0 以前
+
+[壊れる変更](docs/changes.md) と GitHub の Releases を参照。
