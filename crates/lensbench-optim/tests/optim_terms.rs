@@ -231,7 +231,8 @@ fn paraxial_zernike_coupling_values() {
         assert!(got == v || (got.is_nan() && v.is_nan()), "{q:?} {got} {v}");
     }
     let field = FieldSel::Index(s.fields.len() - 1);
-    let z = zernike(&s, field, None, ZernKind::Fringe, 9, 32, false).unwrap();
+    // 項は 37 項で当てはめた係数
+    let z = zernike(&s, field, None, ZernKind::Fringe, 37, 32, false).unwrap();
     let p = one(
         &s,
         TermKind::Zernike {
@@ -239,6 +240,7 @@ fn paraxial_zernike_coupling_values() {
             wave: None,
             kind: ZernKind::Fringe,
             term: 9,
+            fit: None,
             n: 32,
             target: 0.0,
         },
@@ -538,6 +540,7 @@ fn term_value_kinds() {
             wave: None,
             rings: 3,
             reference: RmsRef::Centroid,
+            quad: Default::default(),
         },
     );
     p.terms.push(Term {
@@ -575,6 +578,7 @@ fn stopped_rays_as_vignetted() {
         wave: None,
         rings: 6,
         reference: RmsRef::Centroid,
+        quad: Default::default(),
     };
     let mut p = one(&s, spot.clone());
     assert!(p.merit(&[]).is_err());

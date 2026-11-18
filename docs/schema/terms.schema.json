@@ -72,6 +72,21 @@
       ],
       "description": "数か数の並び"
     },
+    "QuadName": {
+      "description": "スポット・波面の瞳の求積の点の置き方",
+      "oneOf": [
+        {
+          "const": "lensbench",
+          "description": "腕 4 rings + 2 本（既定）",
+          "type": "string"
+        },
+        {
+          "const": "opticstudio",
+          "description": "OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）",
+          "type": "string"
+        }
+      ]
+    },
     "RefName": {
       "description": "RMS の基準",
       "oneOf": [
@@ -117,6 +132,17 @@
                 "number",
                 "null"
               ]
+            },
+            "quadrature": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/QuadName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "瞳の求積の点の置き方（既定 lensbench。.zmx から読んだ行は opticstudio）"
             },
             "reference": {
               "anyOf": [
@@ -191,6 +217,17 @@
                 "number",
                 "null"
               ]
+            },
+            "quadrature": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/QuadName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "瞳の求積の点の置き方（既定 lensbench。.zmx から読んだ行は opticstudio）"
             },
             "reference": {
               "anyOf": [
@@ -634,6 +671,15 @@
             },
             "field": {
               "$ref": "#/$defs/FieldRef"
+            },
+            "fit": {
+              "description": "当てはめる項の数（term 以上。既定は term と 37 の大きい方。OpticStudio の ZERN は Fringe が 37、Standard が term）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "kind": {
               "anyOf": [

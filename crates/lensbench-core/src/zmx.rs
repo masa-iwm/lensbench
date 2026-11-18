@@ -96,12 +96,15 @@ pub struct Raw {
     /// (オペランド, 番号, 構成, 値, 残り)
     pub mce: Vec<(String, i64, i64, String, Vec<String>)>,
     pub sysl: HashMap<String, Vec<Vec<String>>>,
+    /// 評価関数の行（面の後、TOL・MNUM の前の字下げしない行。[`merit::MeritRow`]）。系を作るときは使わない
+    pub merit: Vec<merit::MeritRow>,
     /// 読まずに飛ばした行など、読込の注意（[`System::import_notes`] に入る）
     pub notes: Vec<String>,
 }
 
 mod configs;
 mod macros;
+pub mod merit;
 mod parse;
 mod pickups;
 mod surfaces;

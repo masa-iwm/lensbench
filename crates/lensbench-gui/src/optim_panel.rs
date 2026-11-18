@@ -66,6 +66,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("wave", Int),
             ("rings", Int),
             ("reference", Choice(REFERENCE)),
+            ("quadrature", Choice(&["lensbench", "opticstudio"])),
         ],
         "mtf" => &[
             ("field", Field),
@@ -104,6 +105,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("wave", Int),
             ("term", Int),
             ("kind", Choice(&["fringe", "standard"])),
+            ("fit", Int),
             ("n", Int),
             ("target", Num),
         ],

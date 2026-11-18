@@ -27,6 +27,17 @@ pub enum RefName {
     Chief,
 }
 
+/// スポット・波面の瞳の求積の点の置き方
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum QuadName {
+    /// 腕 4 rings + 2 本（既定）
+    #[default]
+    Lensbench,
+    /// OpticStudio の RSCE・RSCH・RWCE・RWCH と同じ（腕 2 rings 本を 90° 回して置く）
+    Opticstudio,
+}
+
 /// MTF の向き
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "lowercase")]
@@ -87,6 +98,8 @@ pub struct RmsSpec {
     /// 瞳の環の数（既定 3）
     pub rings: Option<usize>,
     pub reference: Option<RefName>,
+    /// 瞳の求積の点の置き方（既定 lensbench。.zmx から読んだ行は opticstudio）
+    pub quadrature: Option<QuadName>,
 }
 
 /// mtf の項
@@ -164,6 +177,8 @@ pub struct ZernSpec {
     /// 項の番号（1 始まり）
     pub term: usize,
     pub kind: Option<ZernName>,
+    /// 当てはめる項の数（term 以上。既定は term と 37 の大きい方。OpticStudio の ZERN は Fringe が 37、Standard が term）
+    pub fit: Option<usize>,
     /// 格子（既定 64）
     pub n: Option<usize>,
     /// 目標 [波]

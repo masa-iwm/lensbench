@@ -19,7 +19,7 @@ pub use mtf::*;
 pub use mtf_frame::MtfAxes;
 use mtf_frame::MtfFrame;
 pub(crate) use spot::spot_of;
-pub use spot::{apodized, apodized_amplitude, spot, spot_arms, Spot};
+pub use spot::{apodized, apodized_amplitude, spot, spot_arms, spot_pupil, Spot};
 pub use zernike::*;
 
 /// n×n の格子のうち単位円内の点（[`PupilGrid::Linear`] の [`Rim::Padded`]）
@@ -65,6 +65,16 @@ pub fn gauss_legendre(n: usize) -> (Vec<f64>, Vec<f64>) {
 pub fn pupil_gauss(rings: usize, arms: Option<usize>) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let s = PupilGrid::Gauss { rings, arms }.samples();
     (s.px, s.py, s.wt)
+}
+
+/// OpticStudio 26.1 の RSCE・RSCH・RWCE・RWCH の瞳の求積 → px, py, 重み: [`pupil_gauss`] の腕を 2 rings 本にし、90° 回す
+/// （腕の角度 90° + (a + 0.5)·180°/rings）。Double Gauss 28 の Ring 2〜6・6 視野・各波長で OpticStudio と相対 1e-10 で一致
+/// する（Ring 1 の Hx = 0・Hy ≠ 0 の視野だけは、腕の数・向きを変えても OpticStudio の値にならない）
+pub fn pupil_gauss_os(rings: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let (px, py, w) = pupil_gauss(rings, Some(2 * rings));
+    // 角度 θ + 90°: (cos θ, sin θ) → (−sin θ, cos θ)
+    let rx = py.iter().map(|y| -y).collect();
+    (rx, px, w)
 }
 
 /// OPD [波] の結果（光線と一緒に）

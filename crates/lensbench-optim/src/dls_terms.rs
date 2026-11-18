@@ -10,15 +10,27 @@ pub enum MtfDir {
     Both,
 }
 
+/// スポット・波面の項の瞳のガウス求積の点の置き方（r² に Gauss-Legendre の rings 本の輪 × 等間隔の腕）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Quad {
+    /// 腕 4 rings + 2 本（[`lensbench_core::analysis::pupil_gauss`]。少ない rings でも角度の求積が収束に近い）
+    #[default]
+    Lensbench,
+    /// OpticStudio 26.1 の RSCE・RSCH・RWCE・RWCH と同じ: 腕 2 rings 本を 90° 回して置く
+    /// （[`lensbench_core::analysis::pupil_gauss_os`]。.zmx から読んだ行の項）
+    OpticStudio,
+}
+
 /// 項の種類
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
-    /// RMS スポット半径 [レンズ単位]。wave None なら重みのある全波長
+    /// RMS スポット半径 [レンズ単位]。wave None なら重みのある全波長。quad は瞳の求積の点の置き方
     Spot {
         field: FieldSel,
         wave: Option<usize>,
         rings: usize,
         reference: RmsRef,
+        quad: Quad,
     },
     /// RMS 波面収差 [波]。wave None なら重みのある全波長（波長ごとの分散を波長の重みで平均）
     Wavefront {
@@ -26,6 +38,7 @@ pub enum TermKind {
         wave: Option<usize>,
         rings: usize,
         reference: RmsRef,
+        quad: Quad,
     },
     /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_core::analysis::mtf`]）
     Mtf {
@@ -66,12 +79,14 @@ pub enum TermKind {
         py: f64,
         target: f64,
     },
-    /// Zernike 係数 [波] − target（[`lensbench_core::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり
+    /// Zernike 係数 [波] − target（[`lensbench_core::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり。
+    /// fit は当てはめる項の数（term 以上。None は term と 37 の大きい方）
     Zernike {
         field: FieldSel,
         wave: Option<usize>,
         kind: ZernKind,
         term: usize,
+        fit: Option<usize>,
         n: usize,
         target: f64,
     },
@@ -388,20 +403,28 @@ impl Problem {
     pub fn ray_counts(&self, x: &[f64]) -> Result<Vec<Option<RayCounts>>> {
         let sys = self.systems(x)?;
         map_maybe_par(&self.terms, |t| {
-            let (field, wave, rings) = match &t.kind {
+            let (field, wave, rings, quad) = match &t.kind {
                 TermKind::Spot {
-                    field, wave, rings, ..
+                    field,
+                    wave,
+                    rings,
+                    quad,
+                    ..
                 }
                 | TermKind::Wavefront {
+                    field,
+                    wave,
+                    rings,
+                    quad,
+                    ..
+                } => (*field, *wave, *rings, *quad),
+                TermKind::Centroid {
                     field, wave, rings, ..
-                }
-                | TermKind::Centroid {
-                    field, wave, rings, ..
-                } => (*field, *wave, *rings),
+                } => (*field, *wave, *rings, Quad::Lensbench),
                 _ => return Ok(None),
             };
             let s = &sys[t.config];
-            let pg = pupil_gauss_shared(rings);
+            let pg = crate::pupil::apodized_gauss(s, field, rings, quad, false)?.0;
             let mut c = RayCounts::default();
             for w in waves(s, wave) {
                 let tr = s.try_trace(field, &pg.0, &pg.1, Some(w), None, false)?;

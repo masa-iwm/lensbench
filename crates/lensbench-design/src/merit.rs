@@ -29,11 +29,11 @@ use lensbench_core::fiber::FiberOpts;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
-use lensbench_optim::{MtfDir, ParaxQ, RayQ, Side, Term, TermKind};
+use lensbench_optim::{MtfDir, ParaxQ, Quad, RayQ, Side, Term, TermKind};
 use serde_json::Value;
 
 use crate::term_spec::{
-    DirName, FieldRef, MacroRef, Nums, RefName, TermSpec, Xy, ZernName, ZplmSpec,
+    DirName, FieldRef, MacroRef, Nums, QuadName, RefName, TermSpec, Xy, ZernName, ZplmSpec,
 };
 
 /// 項の並び（配列か 1 つのオブジェクト）
@@ -67,6 +67,13 @@ fn reference(r: Option<RefName>) -> RmsRef {
     match r.unwrap_or_default() {
         RefName::Centroid => RmsRef::Centroid,
         RefName::Chief => RmsRef::Chief,
+    }
+}
+
+fn quad(q: Option<QuadName>) -> Quad {
+    match q.unwrap_or_default() {
+        QuadName::Lensbench => Quad::Lensbench,
+        QuadName::Opticstudio => Quad::OpticStudio,
     }
 }
 
@@ -174,12 +181,14 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             wave: wave(r.wave, s)?,
             rings: r.rings.unwrap_or(3),
             reference: reference(r.reference),
+            quad: quad(r.quadrature),
         },
         TermSpec::Wavefront(r) => TermKind::Wavefront {
             field: field(r.field, s)?,
             wave: wave(r.wave, s)?,
             rings: r.rings.unwrap_or(3),
             reference: reference(r.reference),
+            quad: quad(r.quadrature),
         },
         TermSpec::Mtf(t) => TermKind::Mtf {
             field: field(t.field, s)?,
@@ -230,6 +239,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 ZernName::Standard => ZernKind::Standard,
             },
             term: t.term,
+            fit: t.fit,
             n: t.n.unwrap_or(64),
             target: t.target.unwrap_or(0.0),
         },

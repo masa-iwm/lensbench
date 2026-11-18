@@ -164,6 +164,7 @@ term {i}: target {target} of {}	項 {i}: {} の目標 {target}
 term {i}: {} of the system is not finite	項 {i}: システムの {} が有限ではありません
 term {i}: surface {j} (1 to {})	項 {i}: 面 {j}（1〜{}）
 term {i}: Zernike term {term} (1 to {max})	項 {i}: Zernike の項 {term}（1〜{max}）
+term {i}: Zernike terms to fit {f} ({term} to {max})	項 {i}: Zernike のフィッティングの項の数 {f}（{term}〜{max}）
 term {i}: Zernike grid {n}	項 {i}: Zernike のグリッド {n}
 term {i}: fiber coupling is only for finite-object systems	項 {i}: ファイバ結合は有限物体のシステムだけ
 term {i}: user term {} has 0 residuals	項 {i}: ユーザーの項 {} の残差が 0 個
@@ -1569,6 +1570,41 @@ the global coordinate reference surface {j} was deleted, so it is now surface 1	
 .zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx のシステムの行 {k} {}（デフォルト {d} と違いますが、lensbench は読みません）
 .zmx system line {k} {} was skipped	.zmx のシステムの行 {k} {} を読まずに飛ばしました
 zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばしました（字下げのない古い .zmx）
+can't read the merit function line	メリットファンクションの行を読めません
+the .zmx is written from configuration 1; the multi-configuration table keeps the values read	.zmx は構成 1 から書きます。多重構成の表は読んだ値のままです
+zmx line {} ({}): field {} must be an integer ({v})	zmx の {} 行目（{}）: 欄 {} は整数にしてください（{v}）
+zmx line {} ({})	zmx の {} 行目（{}）
+.zmx merit function row {} ({}, line {}): {why}; skipped	.zmx のメリットファンクションの行 {}（{}、ファイルの {} 行目）: {why}。飛ばしました
+.zmx merit function row {row}: {e}; skipped	.zmx のメリットファンクションの行 {row}: {e}。飛ばしました
+this operand is not supported	このオペランドには対応していません
+wavelength {w} (lensbench's paraxial terms use the primary wavelength {primary})	波長 {w}（lensbench の近軸量の項は主波長 {primary} だけです）
+a target other than 0 ({target}) can't be written as a spot or wavefront term	0 でない目標（{target}）はスポット・波面の項で表せません
+only the FFT MTF modulation (Grid 0, Data Type 0) is supported	FFT MTF の変調（Grid 0、Data Type 0）だけに対応しています
+MTF frequencies in lens units other than mm are not checked	mm 以外のレンズ単位の MTF の周波数は確かめていません
+Zernike type {k} (only Fringe 0 and Standard 1)	Zernike の種類 {k}（Fringe 0・Standard 1 だけです）
+annular Zernike (Epsilon) and Vertex are not supported	輪帯の Zernike（Epsilon）と Vertex には対応していません
+Zernike term {term}	Zernike の項 {term}
+sampling {s} (1 to 6)	サンプリング {s}（1〜6）
+field {f}	視野 {f}
+only the centroid on the image surface is supported	重心は像面のものだけに対応しています
+polarization is not supported	偏光には対応していません
+configuration {c}	構成 {c}
+a negative weight (a Lagrange constraint in OpticStudio) is not supported	負のウェイト（OpticStudio のラグランジュの拘束）には対応していません
+no row {n} in the merit function	メリットファンクションに行 {n} がありません
+the referenced row {} ({}) is {e}	参照する行 {}（{}）: {e}
+the referenced row {} ({}) has no single value	参照する行 {}（{}）は 1 つの値の項ではありません
+macro number {n} (0 to 99)	マクロの番号 {n}（0〜99）
+the merit function was not written to the .zmx (moving lenses or groups renumbers the surfaces)	メリットファンクションは .zmx に書きませんでした（レンズ・群を動かすと面の番号が変わります）
+term {}: no configuration {c}; not written to the .zmx	項 {}: 構成 {c} がありません。.zmx には書きません
+term {}: {e}; not written to the .zmx	項 {}: {e}。.zmx には書きません
+OpticStudio's ZERN fits {os} terms, so its value differs from the term's	OpticStudio の ZERN は {os} 項でフィッティングするので、値が項と違います
+OpticStudio's pupil quadrature (2·Ring arms) differs from the term's, so its value differs	OpticStudio の瞳の求積（腕 2·Ring 本）が項と違うので、値が違います
+paraxial {q} has no OpticStudio operand	近軸量 {q} に当たる OpticStudio のオペランドはありません
+ray quantity {q}	光線の量 {q}
+no field	視野がありません
+OpticStudio needs a field number here (not a normalized field)	OpticStudio ではここに視野の番号が要ります（正規化視野は使えません）
+only a ZPL macro given by number can be written as ZPLM	番号で指定した ZPL マクロだけ ZPLM として書けます
+{t} terms have no OpticStudio operand	{t} の項に当たる OpticStudio のオペランドはありません
 only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)	多重構成は構成 {cfg}（全 {ncfg}）だけを読みました（{why} が多重構成の表で表せません）
 removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} のマクロのソルブ {name} を外して、保存された値で固定しました: 解き直せません（{e}）
 surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)	面 {k} の材料 {}（{}）: 波長 {l} µm が分散式の範囲 {lo}〜{hi} µm の外（式を延ばして計算）
@@ -1656,6 +1692,9 @@ Variables ("7.t", "lens2.tx", "G1.shift", etc.; a range is "7.t=0.5:3", one-side
 Default merit function: spot, wavefront or none (only the --term terms)	デフォルトのメリットファンクション: spot・wavefront・none（--term の項だけ）
 Terms to add (JSON, e.g. '{"type":"paraxial","q":"efl","target":50,"weight":10}'; see the optimization terms in the docs for kinds and keys). More than one allowed	追加する項（JSON、例 '{"type":"paraxial","q":"efl","target":50,"weight":10}'。種類とキーはdocs の最適化の項を参照）。複数可
 JSON file of terms to add (an array of terms)	追加する項の JSON ファイル（項の配列）
+Use the merit function saved in the .zmx (operators that can be written as terms; the others are skipped with a warning). The default merit function of --merit is not added, and every configuration the merit function uses is optimized together	.zmx に保存したメリットファンクションを使う（項で表せるオペランドだけ。ほかは警告を出して飛ばす）。--merit のデフォルトのメリットファンクションは足さず、メリットファンクションが使う構成をまとめて最適化する
+--zmx-merit needs a .zmx file	--zmx-merit には .zmx ファイルが必要です
+{}: no merit function terms to use	{}: 使えるメリットファンクションの項がありません
 Reference: centroid or chief (chief ray)	基準: centroid（重心）か chief（主光線）
 Number of rings of the Gaussian pupil quadrature	瞳のガウス求積のリング数
 Maximum number of iterations	反復の上限

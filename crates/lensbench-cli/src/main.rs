@@ -30,6 +30,7 @@ mod run;
 mod serve;
 mod serve_ipc;
 mod watch;
+mod zmx_merit;
 
 use lensbench_design::dls_spec::{Jac, Merit, OptimizeParams, Reference, VarSpec};
 use lensbench_engine::layout::{self, Draw, Pick, RaySel, View};
@@ -177,6 +178,9 @@ enum Cmd {
         /// JSON file of terms to add (an array of terms)
         #[arg(long = "terms")]
         terms_file: Option<PathBuf>,
+        /// Use the merit function saved in the .zmx (operators that can be written as terms; the others are skipped with a warning). The default merit function of --merit is not added, and every configuration the merit function uses is optimized together
+        #[arg(long = "zmx-merit")]
+        zmx_merit: bool,
         /// Reference: centroid or chief (chief ray)
         #[arg(long = "reference", default_value_t = OPT.reference)]
         reference: Reference,
@@ -921,6 +925,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             merit,
             terms,
             terms_file,
+            zmx_merit,
             reference,
             rings,
             iters,
@@ -931,6 +936,19 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             use lensbench_optim as optim;
             let s = load(&c)?;
             let mut specs: Vec<Value> = Vec::new();
+            let mut systems = vec![s.clone()];
+            let mut merit = merit;
+            let mut zmx_rows = Vec::new();
+            if zmx_merit {
+                let z = zmx_merit::terms(&c, &s)?;
+                specs.extend(z.terms);
+                if !z.systems.is_empty() {
+                    systems = z.systems;
+                }
+                zmx_rows = z.rows;
+                merit = Merit::None;
+            }
+            let n_zmx = specs.len();
             for t in &terms {
                 specs.push(
                     serde_json::from_str(t)
@@ -964,12 +982,13 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 stopped_as_vignetted: dls.stopped_as_vignetted,
                 ..OptimizeParams::default()
             };
-            let (p, n_default) = op.problem(vec![s.clone()]).map_err(e)?;
+            let (p, n_default) = op.problem(systems).map_err(e)?;
             p.check().map_err(e)?;
             let o = op.dls_opts();
             let r = progress::with(c.json, || optim::dls(&p, &o)).map_err(e)?;
             if let Some(path) = &out {
-                warn_notes(zmx_write::save(path, &r.systems[0]).map_err(e)?);
+                let rows = zmx_merit::rows_to_write(zmx_rows, &op.terms[n_zmx..], &r.systems);
+                warn_notes(zmx_write::save_with_merit(path, &r.systems[0], &rows).map_err(e)?);
             }
             let stop = r.stop.as_str();
             let vs: Vec<Value> = p

@@ -27,6 +27,27 @@
   既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・zernike・coupling）は `target` の代わりに
   片側の条件 `min`（値 ≥ min なら残差 0）・`max`（値 ≤ max なら残差 0）を書ける。キーの一覧は `lensbench_design::merit`、スキーマは [terms](schema/terms.schema.json)（種類ごとに使えるキーだけを受け、知らないキーはエラー）。結果の `terms` に足した項の前後の値。
 - 光線（z を除く）・OPD の項はスポット・波面と同じく解析的に微分し、近軸量・Zernike・結合効率は差分。
+- Zernike の項は `fit` 項で当てはめた係数（既定は `term` と 37 の大きい方。格子の上の最小二乗では当てはめる項の数で低い次の
+  係数が動くので、既定は項を多くとった値に寄せる）。OpticStudio 26.1 の ZERN は Fringe がいつも 37 項、Standard が隣り合う
+  ZERN の行（Term のほかが同じ）の一番大きい Term と 11 の大きい方で当てはめる。`--zmx-merit` で読んだ ZERN の行は `fit` を
+  それに合わせるので OpticStudio と同じ値になる（Double Gauss 28 の視野 2 の Standard Z11 は 11 項で 0.04221、37 項で 0.04100 波）。
+- .zmx のメリットファンクション: `--zmx-merit` で .zmx に保存したメリットファンクション（面の後の行）を項にして使う
+  （`--merit` のデフォルトのメリットファンクションは足さない。`--term`・`--terms` の項はその後に足す）。写すオペランドは
+  EFFL・ENPP・EPDI・EXPD・EXPP・ISFN・ISNA・PIMH・PMAG・WFNO・OBSN・TOTR（波長は主波長だけ）、RSCE・RSCH・RWCE・RWCH（目標 0 だけ）、
+  OPDC、ZERN（Fringe・Standard）、MTFT・MTFS（FFT の変調）、REAX〜REAC、CENX・CENY（像面）と、それらを参照する OPGT・OPLT
+  （`min`・`max`）。CONF n の後の行は構成 n の項で、使う構成をまとめて最適化する。重み 0 の行は飛ばし、写せない行・負の重み
+  （OpticStudio のラグランジュの拘束）は行の番号つきの警告にして残りで最適化する。長さの目標はレンズ単位から mm に直す。
+  RSCE・RSCH・RWCE・RWCH は `quadrature: "opticstudio"` の項にし、瞳の求積を OpticStudio 26.1 と同じにする（腕 2·Ring 本を
+  90° 回して置く。Double Gauss 28 の Ring 2〜6・6 視野・各波長で 1e-10 で一致。Ring 1 の Hx = 0・Hy ≠ 0 の RSCE だけは
+  OpticStudio の置き方が分からず数 % 違う。多色の RWCE は波長ごとの傾きの除き方が違い、Ring 2 以上で 1.4e-5、Ring 1 では大きく
+  違う）。lensbench の項の既定（`quadrature: "lensbench"`、腕 4·rings + 2 本）は少ない rings でも収束に近く、Ring が小さいと
+  OpticStudio の値と違う（DG28 の RSCH の Ring 2 で 14%）。MTF の標本は渡さず、
+  lensbench が収束する求積点の数を選ぶ。`--out` の .zmx には、読んだメリットファンクションの行（写せなかった行も含めそのまま）と、
+  `--term`・`--terms` の項を写した行を面の後に書く（OpticStudio で開くとメリットファンクションに入る）。項を写せないもの
+  （coupling・plugin・名前で指定した zplm・pwfn、正規化視野で書いた mtf・zernike・centroid）は警告にして書かない。`min`・`max`
+  は重み 0 の行とそれを参照する OPGT・OPLT の 2 行に、MTF の both は MTFT・MTFS の 2 行にする。読んだ .zmx のレンズ単位が mm
+  でなければ読んだ行は書かない。読めなかった行は番号を保つため BLNK にして元の文字をコメントに残す。構成が 2 つ以上のときは構成 1 の系を書き、多重構成の表は読んだ値のまま。Rust は `lensbench_core::zmx::merit`（行）、`lensbench_design::merit_zmx`（項と行の写し）、
+  `lensbench_formats::zmx_write::save_with_merit`。
 - Python で定義する項（UDOP 相当）: `System.optimize(vars, merit=None, terms=[{"type": "user", "fn": f}])`。`f(systems)` は
   System の list を受け取り、システムごとの残差を (システムの数, 残差の数) の配列で返す。差分のヤコビアンではずらしたシステムをまとめて
   1 回で渡す。`"jac": g`（`g(system, names)` が (残差の数, 変数の数) を返す）を与えると微分はそれを使う。

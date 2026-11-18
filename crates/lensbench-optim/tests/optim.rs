@@ -81,6 +81,7 @@ fn merit_matches_rms() {
                                 wave,
                                 rings: 4,
                                 reference,
+                                quad: Default::default(),
                             },
                             want.spot,
                         ),
@@ -90,6 +91,7 @@ fn merit_matches_rms() {
                                 wave,
                                 rings: 4,
                                 reference,
+                                quad: Default::default(),
                             },
                             want.wfe,
                         ),
@@ -198,6 +200,7 @@ fn analytic_jacobian_matches_fd() {
                         wave,
                         rings: 3,
                         reference,
+                        quad: Default::default(),
                     },
                 );
                 check_jac(
@@ -208,6 +211,7 @@ fn analytic_jacobian_matches_fd() {
                         wave,
                         rings: 3,
                         reference,
+                        quad: Default::default(),
                     },
                 );
             }
@@ -399,6 +403,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\nSURF 5\n  TYPE STANDARD\n  CURV 
                     wave: None,
                     rings: 3,
                     reference,
+                    quad: Default::default(),
                 },
             });
             // 評価関数は rms と同じ

@@ -5,6 +5,12 @@
 
 ## 次の版（v0.5.0 の後）
 
+### 最適化の項
+- `zernike` の項を 37 項以上で当てはめた係数にした（前は `term` 項までで当てはめていた）。格子の上の最小二乗では当てはめる項の
+  数で低い次の係数が動き、Double Gauss 28 の視野 2 で Fringe Z9 が 0.0944 → 0.0917 波（OpticStudio 26.1 の ZERN と 9 桁一致）、
+  Standard Z11 が 0.0422 → 0.0410 波（OpticStudio は 11 項で当てはめた 0.0422）。目標を前の値で決めていたら見直す。前と同じ値は
+  当てはめる項の数 `fit` に `term` と同じ数を書く。
+
 ### ユーザーカタログの項目の型
 - `lensbench_project::catalog::UserItem` の中身を、レンズ・機構部品・未完成で分けた `body: ItemBody`（`Optic { blocks, frame }`・`Mech(MechSpec)`・
   `Incomplete { missing }`）にした。前の `blocks`・`frame`・`mech`・`missing` の欄は同じ名前の読む口（`blocks()`・`frame()`・`mech()`・`missing()`）から引く。JSON の形は変わらない。

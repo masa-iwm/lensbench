@@ -14,12 +14,23 @@
 - **条件で定める視野の条件の JSON**: core のシステムの形（serve の `system_data` など）でも、システムファイルと同じ
   `{"cond": "position", "surface": 5}` の形にした。
 
+### 結果が変わる所
+
+- **Zernike の項の値が変わる**: 最適化の `zernike` の項を既定で 37 項以上で当てはめた係数にした（前は求める項までで当てはめて
+  いた）。当てはめる項の数は `fit` で変えられ、.zmx から読んだ ZERN の行は OpticStudio と同じ数にする
+
 ### 変えたもの
 
 - **Web 版の解析の別の窓**: 開いた後の編集は差分だけを送る（窓が写しを取り違えたら全体を送り直す）。前の写しの計算の誤りは数えない。
 
 ### 足したもの
 
+- **.zmx のメリットファンクション**: OpticStudio が .zmx に保存したメリットファンクション（面の後の行）を読み、項で表せる
+  オペランド（近軸量・RSCE などの RMS・OPDC・ZERN・MTFT/MTFS・REAX〜REAC・CENX/CENY・OPGT/OPLT・CONF）を最適化の項にする。
+  CLI は `optimize --zmx-merit`。写せない行は行の番号つきの警告にする。`optimize --out` の .zmx にもメリットファンクション
+  （読んだ行と `--term` の項）を書く
+- **スポット・波面の項の瞳の求積**: `spot`・`wavefront` の項に `quadrature`（`lensbench` が既定、`opticstudio` は OpticStudio の
+  RSCE などと同じ腕 2·Ring 本を 90° 回した置き方）を足した。.zmx から読んだ RSCE・RSCH・RWCE・RWCH は `opticstudio` にする
 - **利用者定義の形（面の種類 USERSHAPE）**: 外のクレートが `lensbench_sdk::shape::ShapeModel` を実装し
   `Extensions::shape_model` で足すと、二次曲面（`c`・`k`）にモデルの矢高を足した面を使える。屈折・反射・材料・膜・
   偏光・dOPL/dp・着地点の微分・玉の反転はほかの面と同じに効き、設定の数の項目はパラメータ `<面>.u_<項目>` で変数に

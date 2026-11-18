@@ -1,5 +1,5 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
-use crate::pupil::{apodized_gauss, pupil_gauss_shared};
+use crate::pupil::{apodized_gauss, quad_len};
 use lensbench_core::analysis::{mtf_only, ref_opl, to_ref, MtfMethod, ZernKind};
 use lensbench_core::error::{Error, Result};
 use lensbench_core::fiber::FiberOpts;
@@ -133,6 +133,9 @@ pub struct Problem {
     pub stopped_as_vignetted: bool,
 }
 
+/// Zernike の項を当てはめる項の数の下限（[`TermKind::Zernike`]）
+const ZERN_MIN_TERMS: usize = 37;
+
 /// 項の残差（重みを掛ける前）と、解析的に求めた列のヤコビアン（行優先 [行][params]）
 type TermOut = (Vec<f64>, Option<Vec<f64>>);
 
@@ -194,12 +197,14 @@ impl Problem {
                         wave: None,
                         rings,
                         reference,
+                        quad: Quad::Lensbench,
                     },
                     DefaultMerit::Wavefront => TermKind::Wavefront {
                         field,
                         wave: None,
                         rings,
                         reference,
+                        quad: Quad::Lensbench,
                     },
                 };
                 self.terms.push(Term {
@@ -309,12 +314,16 @@ impl Problem {
                     wave,
                     kind,
                     term,
+                    fit,
                     n,
                     ..
                 } => {
                     let max = if *kind == ZernKind::Fringe { 37 } else { 2016 };
                     if *term == 0 || *term > max {
                         invalid!("term {i}: Zernike term {term} (1 to {max})");
+                    }
+                    if let Some(f) = fit.filter(|f| *f < *term || *f > max) {
+                        invalid!("term {i}: Zernike terms to fit {f} ({term} to {max})");
                     }
                     if *n < 8 {
                         invalid!("term {i}: Zernike grid {n}");
@@ -804,12 +813,12 @@ fn waves(s: &System, w: Option<usize>) -> Vec<usize> {
 
 fn term_rows(s: &System, k: &TermKind) -> usize {
     match k {
-        TermKind::Spot { wave, rings, .. } => {
-            2 * waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
-        }
-        TermKind::Wavefront { wave, rings, .. } => {
-            waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
-        }
+        TermKind::Spot {
+            wave, rings, quad, ..
+        } => 2 * waves(s, *wave).len() * quad_len(*rings, *quad),
+        TermKind::Wavefront {
+            wave, rings, quad, ..
+        } => waves(s, *wave).len() * quad_len(*rings, *quad),
         TermKind::Mtf { dir, .. } => {
             if *dir == MtfDir::Both {
                 2
@@ -863,7 +872,8 @@ fn eval_term(
             wave,
             rings,
             reference,
-        } => spot_term(s, *field, *wave, *rings, *reference, ps, keep),
+            quad,
+        } => spot_term(s, *field, *wave, (*rings, *quad), *reference, ps, keep),
         TermKind::Centroid {
             field,
             wave,
@@ -876,7 +886,8 @@ fn eval_term(
             wave,
             rings,
             reference,
-        } => wfe_term(s, *field, *wave, *rings, *reference, ps, pc, keep),
+            quad,
+        } => wfe_term(s, *field, *wave, (*rings, *quad), *reference, ps, pc, keep),
         TermKind::Mtf {
             field,
             wave,
@@ -931,10 +942,16 @@ fn eval_term(
             wave,
             kind,
             term,
+            fit,
             n,
             target,
         } => {
-            let z = lensbench_core::analysis::zernike(s, *field, *wave, *kind, *term, *n, false)?;
+            // 格子の上の最小二乗では、当てはめる項の数で低い次の係数が動く（Double Gauss 28 の視野 2 で Standard Z11 が
+            // 11 項で 0.04221、37 項で 0.041004、231 項で 0.041002 波）。既定は項を多くとった値（直交射影）に寄せるため 37 項
+            // 以上で当てはめる。OpticStudio 26.1 の ZERN は Fringe がいつも 37 項、Standard が求める項まで（.zmx から読んだ項は
+            // fit をそれに合わせる）
+            let nterms = fit.unwrap_or((*term).max(ZERN_MIN_TERMS));
+            let z = lensbench_core::analysis::zernike(s, *field, *wave, *kind, nterms, *n, false)?;
             let v = z.coef[term - 1];
             if !v.is_finite() {
                 invalid!("can't compute the Zernike coefficients");
@@ -1089,12 +1106,12 @@ fn spot_term(
     s: &System,
     field: FieldSel,
     wave: Option<usize>,
-    rings: usize,
+    (rings, quad): (usize, Quad),
     reference: RmsRef,
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings, false)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, quad, false)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
@@ -1210,7 +1227,7 @@ fn centroid_term(
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings, false)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, Quad::Lensbench, false)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
@@ -1329,13 +1346,13 @@ fn wfe_term(
     s: &System,
     field: FieldSel,
     wave: Option<usize>,
-    rings: usize,
+    (rings, quad): (usize, Quad),
     reference: RmsRef,
     ps: Option<&[Param]>,
     pc: Option<&PupilCache>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings, true)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, quad, true)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);

@@ -39,8 +39,18 @@ pub fn spot_arms(
     rings: usize,
     arms: Option<usize>,
 ) -> Result<Spot> {
+    spot_pupil(s, field, w, &pupil_gauss(rings, arms))
+}
+
+/// [`spot`] を瞳の点 (px, py, 重み) で求める（[`super::pupil_gauss_os`] など）
+pub fn spot_pupil(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    pupil: &(Vec<f64>, Vec<f64>, Vec<f64>),
+) -> Result<Spot> {
     let w = w.one();
-    let (px, py, wts) = pupil_gauss(rings, arms);
+    let (px, py, wts) = pupil;
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
         Some(w) => vec![w],
@@ -48,7 +58,7 @@ pub fn spot_arms(
     let mut rs = Vec::with_capacity(ws.len());
     for &wi in &ws {
         let mut b = RayBuf::with_cols(Cols::XYZ | Cols::LMN);
-        s.try_trace_into(field, &px, &py, Some(wi), None, &mut b)?;
+        s.try_trace_into(field, px, py, Some(wi), None, &mut b)?;
         rs.push((wi, b));
     }
     let rc = s.try_trace(
@@ -60,7 +70,7 @@ pub fn spot_arms(
         false,
     )?;
     let rs: Vec<(usize, &RayBuf)> = rs.iter().map(|(wi, r)| (*wi, r)).collect();
-    let wts = apodized(s, field, &px, &py, &wts)?;
+    let wts = apodized(s, field, px, py, wts)?;
     Ok(spot_of(s, &rs, &wts, &rc))
 }
 

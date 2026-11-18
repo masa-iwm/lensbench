@@ -840,6 +840,49 @@ pub fn save(path: &Path, s: &System) -> Result<Vec<String>> {
     Ok(write_notes(s))
 }
 
+/// [`save`] で、メリットファンクションの行（[`lensbench_core::zmx::merit::MeritRow`]）も面の後に書く（OpticStudio と
+/// 同じ位置: 面の後、多重構成の表の前）。玉・群を動かした系は面の番号が変わるので、行は書かずに注意を返す
+pub fn save_with_merit(
+    path: &Path,
+    s: &System,
+    rows: &[lensbench_core::zmx::merit::MeritRow],
+) -> Result<Vec<String>> {
+    let name = coat_file_for(path);
+    let mut txt = write_as(s, &name)?;
+    let mut notes = write_notes(s);
+    if !rows.is_empty() {
+        if s.units.iter().any(|u| u.moved()) {
+            notes.push(
+                "the merit function was not written to the .zmx (moving lenses or groups renumbers the surfaces)"
+                    .into(),
+            );
+        } else {
+            txt = insert_merit(&txt, rows);
+        }
+    }
+    save_coating(path, &name, s)?;
+    save_utf16(path, &txt)?;
+    Ok(notes)
+}
+
+/// .zmx の本文（CRLF）の面の後・MNUM の前に行を入れる
+fn insert_merit(txt: &str, rows: &[lensbench_core::zmx::merit::MeritRow]) -> String {
+    let mut block = String::new();
+    for r in rows {
+        block.push_str(&r.text());
+        block.push_str("\r\n");
+    }
+    let at = if txt.starts_with("MNUM ") {
+        Some(0)
+    } else {
+        txt.find("\r\nMNUM ").map(|i| i + 2)
+    };
+    match at {
+        Some(i) => format!("{}{block}{}", &txt[..i], &txt[i..]),
+        None => format!("{txt}{block}"),
+    }
+}
+
 /// .zmx に書くと落ちる・変わるもの（以前は黙って落としていた）。空なら系の全部を書ける。欠けなく残すなら系ファイル（.json）
 pub fn write_notes(s: &System) -> Vec<String> {
     let mut out = Vec::new();
@@ -1206,4 +1249,31 @@ fn macro_name(s: &System, id: u16) -> &str {
 /// .zmx に書くガラスの名前: 名前@カタログ（[`lensbench_core::glass::qualified`]）は @ の前（カタログの中の名前）
 fn glass_name(m: &str) -> &str {
     lensbench_core::glass::base_name(m)
+}
+
+#[cfg(test)]
+mod merit_tests {
+    use super::insert_merit;
+    use lensbench_core::zmx::merit::MeritRow;
+
+    #[test]
+    fn merit_before_mnum() {
+        let rows = [
+            MeritRow::blank("a\nb"),
+            MeritRow::new("EFFL", [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 50.0, 0.5),
+        ];
+        let block = "BLNK a b\r\nEFFL 0 1 0 0 0 0 50 0.5 0 0\r\n";
+        let t = "SURF 0\r\n  DISZ 0\r\nMNUM 2 1\r\nTHIC 1 1 5 0 0 0 1 1 1 0 0 \"\" 0\r\n";
+        let got = insert_merit(t, &rows);
+        assert_eq!(
+            got,
+            format!(
+                "SURF 0\r\n  DISZ 0\r\n{block}MNUM 2 1\r\nTHIC 1 1 5 0 0 0 1 1 1 0 0 \"\" 0\r\n"
+            )
+        );
+        assert_eq!(
+            insert_merit("SURF 0\r\n", &rows),
+            format!("SURF 0\r\n{block}")
+        );
+    }
 }

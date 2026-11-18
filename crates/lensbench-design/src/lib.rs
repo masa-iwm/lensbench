@@ -13,6 +13,7 @@ pub mod coat_design;
 pub mod coat_fit;
 pub mod dls_spec;
 pub mod merit;
+pub mod merit_zmx;
 pub mod montecarlo;
 pub mod plugin_term;
 pub mod plugins;

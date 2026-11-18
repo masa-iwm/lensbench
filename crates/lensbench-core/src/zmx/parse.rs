@@ -38,10 +38,12 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
     let mut raw = Raw::default();
     let mut cur: Option<usize> = None;
     let mut in_mce = false;
+    // 面の後の字下げしない行は評価関数（OpticStudio は面の後に評価関数・公差（TOL）・多重構成（MNUM）の順で書く）
+    let mut in_merit = false;
     // 古い .zmx（Edmund の一部の品など）は面の行を字下げしない。字下げした行が 1 つも無いときは、
     // SURF の後の行を全て面の行として読み、知らない行は飛ばす（小文字の stop は絞り）
     let legacy = !txt.lines().any(|l| l.starts_with("  "));
-    for line in txt.lines() {
+    for (no, line) in txt.lines().enumerate() {
         let t: Vec<&str> = line.split_whitespace().collect();
         if t.is_empty() {
             continue;
@@ -62,8 +64,17 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
         }
         if key == "MNUM" {
             in_mce = true;
+            in_merit = false;
             cur = None;
             raw.sysl.entry(key.into()).or_default().push(rest());
+            continue;
+        }
+        if key == "TOL" {
+            in_merit = false;
+        }
+        if in_merit {
+            raw.merit
+                .push(merit::MeritRow::parse(raw.merit.len() + 1, no + 1, line));
             continue;
         }
         if in_mce {
@@ -78,6 +89,13 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             continue;
         }
         let Some(ci) = cur.filter(|_| legacy || line.starts_with("  ")) else {
+            if cur.is_some() && key != "TOL" {
+                in_merit = true;
+                cur = None;
+                raw.merit
+                    .push(merit::MeritRow::parse(raw.merit.len() + 1, no + 1, line));
+                continue;
+            }
             raw.sysl.entry(key.into()).or_default().push(rest());
             cur = None;
             continue;
