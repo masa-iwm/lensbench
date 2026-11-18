@@ -284,6 +284,30 @@ fn zernike_sag(base: Base<'_>, terms: Option<&ZernSag>, x: f64, y: f64) -> (f64,
     (z, zx, zy)
 }
 
+/// Grid Sag の矢高と (∂z/∂x, ∂z/∂y): 偶数次非球面 + Zernike（Standard、外挿する）の項 + 格子の補間。
+/// 格子の値のない点は NaN
+#[inline]
+fn grid_sag(
+    base: Base<'_>,
+    terms: Option<&ZernSag>,
+    grid: Option<&GridSag>,
+    x: f64,
+    y: f64,
+) -> (f64, f64, f64) {
+    let (mut z, mut zx, mut zy) = zernike_sag(base, terms, x, y);
+    if let Some(g) = grid {
+        match g.eval(x, y) {
+            Some((a, ax, ay)) => {
+                z += a;
+                zx += ax;
+                zy += ay;
+            }
+            None => return (f64::NAN, f64::NAN, f64::NAN),
+        }
+    }
+    (z, zx, zy)
+}
+
 /// 偶数次非球面の矢高と (∂z/∂x, ∂z/∂y)
 #[inline]
 fn even_xy(c: f64, k: f64, a: &[f64], x: f64, y: f64) -> (f64, f64, f64) {
@@ -483,27 +507,7 @@ impl Shape<'_> {
                 (z, zx, zy)
             }
             Shape::Zernike { base, terms } => zernike_sag(base, terms, x, y),
-            Shape::GridSag { base, terms, grid } => {
-                let (mut z, mut zx, mut zy) = even_xy(base.c, base.k, base.a, x, y);
-                // Grid Sag にも Zernike（Standard）の項がある（外挿する）
-                if let Some(zs) = terms {
-                    let (a, ax, ay) = zs.eval(x, y);
-                    z += a;
-                    zx += ax;
-                    zy += ay;
-                }
-                if let Some(g) = grid {
-                    match g.eval(x, y) {
-                        Some((a, ax, ay)) => {
-                            z += a;
-                            zx += ax;
-                            zy += ay;
-                        }
-                        None => return (f64::NAN, f64::NAN, f64::NAN),
-                    }
-                }
-                (z, zx, zy)
-            }
+            Shape::GridSag { base, terms, grid } => grid_sag(base, terms, grid, x, y),
         }
     }
 
@@ -666,14 +670,15 @@ impl Shape<'_> {
             Shape::Zernike { base, terms } => isect_with(base.c, base.k, pl, kl, sig, |x, y| {
                 zernike_sag(base, terms, x, y)
             }),
+            Shape::GridSag { base, terms, grid } => {
+                isect_with(base.c, base.k, pl, kl, sig, |x, y| {
+                    grid_sag(base, terms, grid, x, y)
+                })
+            }
             Shape::Conic { c, k }
             | Shape::ConicTilted { c, k, .. }
             | Shape::OddAsphere { c, k, .. }
             | Shape::EvenAsphere(Base { c, k, .. })
-            | Shape::GridSag {
-                base: Base { c, k, .. },
-                ..
-            }
             | Shape::Irregular(Irregular { c, k, .. }) => {
                 isect_with(c, k, pl, kl, sig, |x, y| self.sag(x, y))
             }

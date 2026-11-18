@@ -462,8 +462,10 @@ impl GridSag {
         if !(lim(fx, nx) && lim(fy, ny)) {
             return Some((0.0, 0.0, 0.0));
         }
-        let ix = (fx.floor().max(0.0) as usize).min(nx - 2);
-        let iy = (fy.floor().max(0.0) as usize).min(ny - 2);
+        // 左下の格子点。f ≥ −1e-12 なので、0 に向かう切り捨て（負は 0 に飽和）が floor して 0 以上にしたものと同じ
+        // （floor は SSE2 だけの組み立てでは libm の呼び出しになり、光線ごとの評価で重い）
+        let ix = (fx as usize).min(nx - 2);
+        let iy = (fy as usize).min(ny - 2);
         let (t, s) = (fx - ix as f64, fy - iy as f64);
         let at = |i: usize, j: usize| j * nx + i;
         let idx = [
