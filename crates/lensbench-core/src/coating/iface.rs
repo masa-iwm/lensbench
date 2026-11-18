@@ -870,7 +870,8 @@ fn partial_branch_band(
             .fold(0.0, f64::max)
     };
     // 波長ごとの分岐点の手前の点。見つかった分岐点か、上端に近すぎて mirror_branch が見ない分岐点（上端の点まで
-    // |r| = 1 が続き、その手前で |r| が 1 からはっきり離れている）。上端でも |r| が 1 から離れている（分岐点が範囲の上）は None、
+    // |r| = 1 が続き、その手前で |r| が 1 からはっきり離れている）か、上端のすぐ上の分岐点。上端でも |r| が 1 から離れている
+    // （分岐点が範囲のずっと上）は None、
     // 全部 |r| = 1 に近い（分岐点の無い鏡）はこの帯を作らない
     let mut lo: Option<f64> = None;
     for (rw, b) in r.iter().zip(brb) {
@@ -889,7 +890,13 @@ fn partial_branch_band(
                     if !lossy {
                         return None;
                     }
-                    None
+                    // 分岐点が上端のすぐ上（2 刻み以内）にあるか。分岐点の手前では 1 − |r| が sqrt(xb − β²) で 0 に向かうので、
+                    // 上端の 2 点の (1 − |r|)² を β² で直線に外挿して 0 になる所を分岐点とみる。上端の点のすぐ外の sqrt の曲がりで、
+                    // 最後の刻みの補間が 2e-3 ずれた
+                    let (h, d1, d2) = (b2[n - 1] - b2[n - 2], dev(rw, n - 1), dev(rw, n - 2));
+                    let slope = (d1 * d1 - d2 * d2) / h;
+                    (d1 < d2 && slope < 0.0 && -d1 * d1 / slope < 2.0 * h).then_some(n - 1)
+                    // 8 は分岐点として扱うのに要る両側 4 点に余裕を見たもの。それより長い全反射の続きは分岐点として見つかる
                 } else if kt >= 1 && n - kt < 8 && dev(rw, kt - 1) >= MIRROR_BRANCH_MIN_DEV {
                     Some(kt - 1)
                 } else {

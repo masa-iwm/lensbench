@@ -315,7 +315,8 @@ fn mirror_model_stops_where_the_branch_leaves_the_range() {
     // mirror_model_does_not_cross_the_branch と同じ鏡で、基板の屈折率が波長で大きく変わり、分岐点が測った β の上端（2.0）を
     // 横切る（短い波長では範囲の上、長い波長では中）。補間に使う波長の一部にだけ分岐点があるところでは、上端の近くを
     // notimpl にし、ほかの点は正しい値を返すこと。分岐点がどの波長でも上端の 4 点以内にある（mirror_branch が見ない）ときも同じ
-    for (a, c) in [(1.95, 0.018), (1.9960, 0.0012)] {
+    // 分岐点が上端のすぐ上（1 刻み未満）にある波長も同じ
+    for (a, c) in [(1.95, 0.018), (1.9960, 0.0012), (1.9990, 0.0003)] {
         branch_leaves_the_range(&|wl: f64| a + c / (wl * wl));
     }
 }
