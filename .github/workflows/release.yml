@@ -1,0 +1,67 @@
+name: Release
+
+# v* のタグで、Windows の GUI と CLI の exe を zip にして GitHub の Releases に置く。
+# タグは手で打たない。配る版を決めたとき、元のリポジトリの書き出しが同じ版の名前で打つ（版の名前は Cargo.toml の
+# workspace.package.version に v を付けたもの）。一度載せた zip は差し替えない（直すときは次の版を切る）。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # ツールチェーンは rust-toolchain.toml の版（Windows のリンカ rust-lld は .cargo/config.toml）
+      - run: rustup toolchain install && rustc --version
+      - name: 版（タグは Cargo.toml の版と同じ名前に限る）
+        shell: bash
+        run: |
+          cv=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$TAG" != "v$cv" ]; then
+            echo "::error::タグ $TAG が Cargo.toml の版 $cv と違う"
+            exit 1
+          fi
+          # 画面の版の欄・--version もタグの名前にする
+          echo "LENSBENCH_VERSION=$TAG" >> "$GITHUB_ENV"
+          echo "DIST=lensbench-win64-$TAG" >> "$GITHUB_ENV"
+      - run: cargo build --locked --release -p lensbench-gui -p lensbench-cli
+      - name: zip にまとめる
+        shell: bash
+        run: |
+          mkdir -p "dist/$DIST"
+          cp target/release/lensbench-gui.exe target/release/lensbench.exe README.md LICENSE-MIT LICENSE-APACHE "dist/$DIST/"
+          {
+            echo "version: $TAG"
+            echo "commit: $GITHUB_SHA"
+            echo "rustc: $(rustc --version)"
+            echo "Cargo.lock sha256: $(sha256sum Cargo.lock | cut -d' ' -f1)"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "dist/$DIST/BUILD_INFO.txt"
+          cd dist && 7z a -tzip "$DIST.zip" "$DIST" > /dev/null
+      - name: Releases に置く
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$DIST.zip"; then
+              echo "::error::$TAG のリリースにはもう $DIST.zip がある。タグを打ち直さず次の版を切る"
+              exit 1
+            fi
+            gh release upload "$TAG" "dist/$DIST.zip"
+          else
+            gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --generate-notes --verify-tag
+          fi
