@@ -6,9 +6,11 @@
 set -euo pipefail
 sha=$1 run=$2
 shift 2
+# has <run> <name>...: run の成果物にすべての name があるか（先頭の run は名前の並びに入れない）
 has() {
-  local names
-  names=$(gh api "repos/$REPO/actions/runs/$1/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name]')
+  local id=$1 names
+  shift
+  names=$(gh api "repos/$REPO/actions/runs/$id/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name]')
   for n in "$@"; do grep -q "\"$n\"" <<< "$names" || return 1; done
 }
 if [ -n "$run" ] && has "$run" "$@"; then echo "$run"; exit 0; fi
