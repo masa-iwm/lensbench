@@ -859,7 +859,7 @@ fn expand_body(
     .into_prescription();
     s.name = p.name.clone();
     // プロジェクトのマクロは系のマクロの先頭（ソルブの番号がそのまま。取り込んだ .zmx のマクロはその後ろに足す）
-    s.macros = p.macros.clone();
+    s.macros = crate::zmx_links::project_macros(&p.macros)?;
     // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる
     let b = glass::builtin::note_for(&s, &p.glass_catalogs, &dirs);
     s.import_notes.extend(b);

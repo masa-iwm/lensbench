@@ -1473,6 +1473,16 @@ fn a_macro_solve_uses_the_project_macros() {
     .system;
     assert_eq!(s.surfaces[s.image() - 2].k, -0.7);
     assert!((s.surfaces[s.image() - 1].c + 0.02).abs() < 1e-15);
+    // 同じ名前のマクロは 2 つ置けない
+    let dup = named.replace(r#"{"name": "K","#, r#"{"name": "mirr","#);
+    let err = expand(
+        &Project::from_json(&dup).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .err()
+    .unwrap();
+    assert!(err.to_string().contains("used twice"), "{err}");
     // 無い名前は誤り
     let bad = named.replace(r#""macro": "mirr""#, r#""macro": "NONE""#);
     let err = expand(

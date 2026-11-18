@@ -163,7 +163,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 膜ファイル: `"coating_file": "COATING.DAT"`（OpticStudio の膜ファイルの形。相対パスはプロジェクトのフォルダから、そこに無ければ .zmx の膜ファイルと同じく材料の検索フォルダから）。面の `coat` の名前を、
   `coatings` に無ければこのファイルで引く。取り込んだ .zmx の膜ファイルより優先（違えば注意）。GUI が .zmx を要素に分けると、
   その .zmx の膜ファイルをここに書く（材料の検索フォルダで見つけたものはそこからの相対パス）。
-- ZPL マクロのソルブ: `"macros": [{"name": "MIRR", "source": "…"}]`（.ZPL の中身をそのまま。マクロのファイルは読まない）と書き、
+- ZPL マクロのソルブ: `"macros": [{"name": "MIRR", "source": "…"}]`（.ZPL の中身をそのまま。マクロのファイルは読まない。同じ名前は 2 つ書けない）と書き、
   ブロックの `surface_ops` に `{"op": "add_solve", "surface": 1, "kind": "macro_curv", "macro": "MIRR"}`（厚さは `macro_thick`）で
   `macro` にマクロの名前（大文字・小文字は区別しない。0 始まりの番号でもよい、`param` に番号でも読む）を書く。円錐係数・半直径・
   面タイプのパラメータは `{"op": "add_macro_solve", "surface": 0, "macro": "K", "what": "k"}`（`what` は `k`・`semi`・`p1` …）。

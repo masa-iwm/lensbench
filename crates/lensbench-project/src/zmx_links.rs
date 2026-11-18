@@ -168,3 +168,15 @@ pub(crate) fn coating_file(
         rx.coating_file = Some(f);
     }
 }
+
+/// プロジェクトの `macros`。名前で指すので、同じ名前（大文字・小文字を区別しない）のマクロは 2 つ置かない
+pub(crate) fn project_macros(
+    v: &[lensbench_core::zpl_solve::Macro],
+) -> lensbench_core::Result<Vec<lensbench_core::zpl_solve::Macro>> {
+    for (i, m) in v.iter().enumerate() {
+        if v[..i].iter().any(|x| x.name.eq_ignore_ascii_case(&m.name)) {
+            return Err(format!("macros: the name {} is used twice", m.name).into());
+        }
+    }
+    Ok(v.to_vec())
+}
