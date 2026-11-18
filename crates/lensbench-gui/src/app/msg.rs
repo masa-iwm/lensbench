@@ -7,7 +7,7 @@
 use super::*;
 
 /// パレット・メニュー・キー・パネルから出す操作
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub(super) enum Msg {
     New,
     /// 元に戻す（true）・やり直す、段の数
@@ -45,6 +45,15 @@ pub(super) enum Msg {
     RunOpt,
     RunTol,
     FocusImage,
+    /// パネルの操作: 最適化・公差・差し替え探索・ズーム（軌跡を解く）・組合せの図・カタログ
+    Opt(crate::optim_panel::Action),
+    Tol(crate::tol_panel::Action),
+    Swap(crate::swap_panel::Action),
+    Zoom(Value),
+    Combo(combo::Act),
+    Catalog(catalog::Action),
+    /// レンズデータの表の操作
+    LensData(lens_data::Act),
 }
 
 /// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
@@ -250,6 +259,19 @@ impl App {
         self.apply(ctx, fx);
     }
 
+    /// パネルが出した操作を当てる（操作が出した操作も続けて）
+    pub(super) fn dispatch_queued(&mut self, ctx: &egui::Context) {
+        for _ in 0..8 {
+            let ms = std::mem::take(&mut self.c.msgs);
+            if ms.is_empty() {
+                return;
+            }
+            for m in ms {
+                self.dispatch(ctx, m);
+            }
+        }
+    }
+
     /// パネルなどがまだ直接足した作用を当てる（フレームの終わり）
     pub(super) fn flush_fx(&mut self, ctx: &egui::Context) {
         let fx = self.c.fx.take();
@@ -328,6 +350,13 @@ impl App {
                 self.c.start_tolerance();
             }
             Msg::FocusImage => self.c.request_focus(),
+            Msg::Opt(a) => self.c.on_opt(a),
+            Msg::Tol(a) => self.c.on_tol(a),
+            Msg::Swap(a) => self.c.on_swap(a),
+            Msg::Zoom(p) => self.c.on_zoom(p),
+            Msg::Combo(a) => self.c.on_combo(a),
+            Msg::Catalog(a) => self.c.on_catalog(a),
+            Msg::LensData(a) => self.c.on_ld(a),
         }
     }
 }

@@ -216,6 +216,7 @@ impl TermRow {
 }
 
 /// パネルの操作（app が serve に送る）
+#[derive(Clone, Debug)]
 pub enum Action {
     Run(Value),
     Stop,

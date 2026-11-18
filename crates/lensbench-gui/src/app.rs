@@ -17,6 +17,7 @@ use history::{ComboHist, DocHist};
 mod frame;
 mod menus;
 mod msg;
+mod panel_msgs;
 use msg::Msg;
 mod open_doc;
 mod panels;
@@ -1153,29 +1154,8 @@ impl Core {
             accent,
             &paths,
         );
-        match act {
-            Some(combo::Act::Catalog) => self.msgs.push(Msg::FocusKind(Kind::Catalog)),
-            Some(combo::Act::Build) => self.build_combo(self.doc.combo.project()),
-            Some(combo::Act::Focus) => self.request_focus(),
-            Some(combo::Act::SaveToCatalog(k)) => {
-                self.p.cat_save.open_for(k, &self.doc.combo);
-                let c = self.p.cat_save.catalog.trim().to_string();
-                if !c.is_empty() && self.p.cat_save.listed != c {
-                    self.draft(Tag::UserCatalog(CatOp::Items), json!({ "catalog": c }));
-                }
-            }
-            Some(combo::Act::Open(k)) => {
-                if let Some(id) = self.doc.combo.ids().get(k) {
-                    // 面の表がまだ前の系なら、木に無い名前は入れない（最上位で選ぶ）
-                    self.p.ld.scope.clear();
-                    self.p.ld.enter(&self.sys.ld_blocks, id);
-                    if self.p.ld.scope.is_empty() {
-                        self.p.ld.sel = Some(id.clone());
-                    }
-                }
-                self.msgs.push(Msg::FocusKind(Kind::LensData));
-            }
-            None => {}
+        if let Some(a) = act {
+            self.msgs.push(Msg::Combo(a));
         }
     }
 
@@ -1274,13 +1254,8 @@ impl Core {
             self.p.combo_view.select(k);
         }
         self.lens_preview();
-        match act {
-            Some(catalog::Action::Refresh) => self.refresh_catalog(),
-            Some(catalog::Action::Settings) => self.folders_open = true,
-            Some(catalog::Action::SysSettings) => self.msgs.push(Msg::FocusKind(Kind::SysSettings)),
-            Some(catalog::Action::New) => self.msgs.push(Msg::New),
-            Some(catalog::Action::Build(p)) => self.build_combo(p),
-            None => {}
+        if let Some(a) = act {
+            self.msgs.push(Msg::Catalog(a));
         }
     }
 

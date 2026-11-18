@@ -5,7 +5,7 @@ use super::*;
 impl Core {
     /// 面の表: 組合せ（要素の後の空気・面の上書き）を変えて作り直す
     pub(super) fn lens_data_ui(&mut self, ui: &mut Ui) {
-        use lens_data::{Act, Col};
+        use lens_data::Col;
         if self.sys.summary.is_none() || self.sys.ld_rows.is_empty() {
             ui.add_space(8.0);
             ui.label(tr(
@@ -76,114 +76,7 @@ impl Core {
         };
         let (acts, mut bottom) = lens_data::ui(ui, &mut self.p.ld, &ctx);
         for a in acts {
-            match a {
-                Act::Select(name) => {
-                    // 選ばないとき（面単位の選択など）は図の要素も外す。残すと次のフレームで表に戻る
-                    if self.p.ld.scope.is_empty() {
-                        match name.and_then(|n| ids.iter().position(|i| *i == n)) {
-                            Some(k) => self.p.combo_view.select(k),
-                            None => self.p.combo_view.set_sel(None),
-                        }
-                    }
-                }
-                Act::Lock(name, on) => match ids.iter().position(|i| *i == name) {
-                    Some(k) => {
-                        if let Some(p) = self.doc.combo.el_mut(k) {
-                            p.locked = on;
-                        }
-                    }
-                    None => self.fail(tr("In a combination, lock whole elements")),
-                },
-                Act::ExportRange([a, b]) => {
-                    let stem = self
-                        .loc
-                        .file
-                        .as_ref()
-                        .and_then(|f| f.file_stem())
-                        .map(|x| x.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "system".into());
-                    let d = crate::files::FileDialog::new()
-                        .add_filter(tr("System file"), &["json"])
-                        .set_file_name(format!("{stem}_{a}-{b}.json"));
-                    self.save_as(d, move |c, p| {
-                        c.calc(
-                            Tag::SaveRange,
-                            json!({ "path": p.display().to_string(), "from": a, "to": b }),
-                        );
-                    });
-                }
-                Act::Refused(why) => self.fail(why),
-                Act::Edit { j, col, value } => {
-                    let mut fields = Map::new();
-                    fields.insert(col.field().into(), value);
-                    self.surface_fields(&spans, j, fields);
-                }
-                Act::Fields { j, fields } => self.surface_fields(&spans, j, fields),
-                Act::Data { j, data } => self.surface_fields(&spans, j, data),
-                Act::Ops(ops) => match self.combo_ops(&spans, &ids, &ops) {
-                    // ソルブ・ピックアップは serve の返事で要素に当ててから組み直す
-                    Ok(true) => {}
-                    Ok(false) => {
-                        if !self.s.auto_build {
-                            self.build_combo(self.doc.combo.project());
-                        }
-                    }
-                    Err(e) => self.fail(e),
-                },
-                Act::DropOverride { j, col } => {
-                    if let Some((k, i)) = self.combo_face(&spans, j) {
-                        let names = ld_combo::override_fields(col);
-                        if self.doc.combo.el(k).is_some_and(|p| p.locked) {
-                            self.fail(tr("A locked element cannot be changed"));
-                            continue;
-                        }
-                        if let Some(p) = self.doc.combo.el_mut(k) {
-                            p.edits
-                                .retain(|e| !(e.surface == i && names.contains(&e.field.as_str())));
-                        }
-                        if !self.s.auto_build {
-                            self.build_combo(self.doc.combo.project());
-                        }
-                    }
-                }
-                Act::DropPick { after, pick } => {
-                    // 面 after を持つ要素の後（要素の外の面なら、その面より前の要素の後）
-                    let at = spans
-                        .iter()
-                        .rposition(|s| s.is_some_and(|s| s[0] <= after))
-                        .map_or(0, |k| k + 1);
-                    let k = combo::insert_pick(&mut self.doc.combo, at, *pick);
-                    self.p.combo_view.select(k);
-                }
-                Act::NeedGlasses => {
-                    if !self.browser.glasses_pending {
-                        self.refresh_catalog();
-                    }
-                }
-                Act::OptVar(name) => {
-                    if !self.p.opt.vars.iter().any(|v| v.name.trim() == name) {
-                        // 空の行があればそこに入れる
-                        match self
-                            .p
-                            .opt
-                            .vars
-                            .iter_mut()
-                            .find(|v| v.name.trim().is_empty())
-                        {
-                            Some(v) => v.name = name.clone(),
-                            None => self.p.opt.vars.push(crate::optim_panel::VarRow {
-                                name: name.clone(),
-                                ..Default::default()
-                            }),
-                        }
-                    }
-                    self.msgs.push(Msg::FocusKind(Kind::Optimize));
-                    self.info(trf("Added {} to the optimization variables", &[&name]));
-                }
-                Act::NeedData(j) => {
-                    self.calc(Tag::SurfData(j), json!({ "surface": j }));
-                }
-            }
+            self.msgs.push(Msg::LensData(a));
         }
         // ブロックの設定（組合せの要素の設定）
         let view = self.p.ld.block_view.clone();

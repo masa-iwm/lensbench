@@ -1638,6 +1638,7 @@ impl View {
 }
 
 /// 画面から GUI に頼むこと
+#[derive(Clone, Debug)]
 pub enum Act {
     /// カタログのパネルを出す
     Catalog,

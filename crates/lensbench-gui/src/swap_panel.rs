@@ -40,6 +40,7 @@ pub struct VarRow {
 }
 
 /// パネルの操作（app が serve に送る）
+#[derive(Clone, Debug)]
 pub enum Action {
     /// 組の数と候補だけ数える（spec）
     Count(Value),

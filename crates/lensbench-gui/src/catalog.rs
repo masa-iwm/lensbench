@@ -512,6 +512,7 @@ pub enum Tab {
 }
 
 /// ブラウザの操作で GUI に頼むこと
+#[derive(Clone, Debug)]
 pub enum Action {
     /// 一覧を読み直す
     Refresh,

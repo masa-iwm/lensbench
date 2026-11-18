@@ -410,3 +410,35 @@ fn ctrl_shift_tab_cycles_backwards() {
     h.run_steps(2);
     assert_eq!(focused(&mut h), a);
 }
+
+/// パネルの操作も画面なしで当てられる: 面の表から最適化の変数に足すと、変数の行が増え、最適化のパネルを出す
+/// 操作が続く（続く操作はパネルを描いた後に続けて当てる）
+#[test]
+fn panel_messages_apply_without_a_frame() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let app = h.state_mut();
+    let fx = app.update(Msg::LensData(lens_data::Act::OptVar("T3".into())));
+    assert!(fx.is_empty(), "{fx:?}");
+    assert!(app.c.p.opt.vars.iter().any(|v| v.name == "T3"));
+    assert!(app.pane_of(|k| matches!(k, Kind::Optimize)).is_none());
+    assert!(matches!(
+        app.c.msgs.as_slice(),
+        [Msg::FocusKind(Kind::Optimize)]
+    ));
+    h.run_steps(1);
+    assert!(h.state().pane_of(|k| matches!(k, Kind::Optimize)).is_some());
+    // ズームのパネル: 軌跡を解く要求を出す
+    let fx = h.state_mut().update(Msg::Zoom(json!({})));
+    assert!(h.state().c.p.zoom.running);
+    assert!(matches!(
+        fx.as_slice(),
+        [msg::Effect::Calc { tag: Tag::Zoom, .. }]
+    ));
+    h.state_mut().c.p.zoom.running = false;
+}

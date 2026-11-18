@@ -30,42 +30,8 @@ impl Core {
         let mut load = false;
         for a in acts {
             match a {
-                Action::Run(p) => {
-                    self.p.opt.running = true;
-                    self.p.opt.result = None;
-                    self.p.opt.gen = self.sys_gen;
-                    self.calc(Tag::Optimize, p);
-                }
-                Action::Stop => crate::worker::progress::stop("optimize"),
-                Action::Apply => {
-                    let Some(r) = self.p.opt.result.clone() else {
-                        continue;
-                    };
-                    // 最適化の間・後に系が変わっていれば、古い系の値なので当てない
-                    if self.p.opt.gen != self.sys_gen || self.busy_core() {
-                        self.p.opt.error = Some(
-                            tr("The system changed after the optimization started, so the result was not applied (optimize again)")
-                                .to_string(),
-                        );
-                        continue;
-                    }
-                    if self.apply_values(&op::result_values(&r, false)) {
-                        self.p.opt.undo = Some(op::result_values(&r, true));
-                    }
-                }
-                Action::Undo => {
-                    if let Some(u) = self.p.opt.undo.take() {
-                        self.apply_values(&u);
-                    }
-                }
-                Action::Save(v) => {
-                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
-                    let d = crate::files::FileDialog::new()
-                        .add_filter(tr("Optimization settings"), &["json"])
-                        .set_file_name("optimize.json");
-                    self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
-                }
                 Action::Load => load = true,
+                a => self.msgs.push(Msg::Opt(a)),
             }
         }
         // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）
@@ -102,9 +68,7 @@ impl Core {
         let cands = self.zoom_cands();
         let sys = self.param_sys();
         if let Some(p) = crate::zoom_panel::ui(ui, &mut self.p.zoom, &cands, &sys) {
-            self.p.zoom.running = true;
-            self.p.zoom.result = None;
-            self.calc(Tag::Zoom, p);
+            self.msgs.push(Msg::Zoom(p));
         }
     }
 
@@ -143,29 +107,8 @@ impl Core {
         let mut load = false;
         for a in acts {
             match a {
-                Action::Run(p) => {
-                    self.p.tol.running = true;
-                    self.p.tol.result = None;
-                    self.calc(Tag::Tolerance, p);
-                }
-                Action::Stop => crate::worker::progress::stop("tolerance"),
-                Action::Save(v) => {
-                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default() + "\n";
-                    self.save_text(tr("Tolerance settings"), "json", "tolerance.json", txt);
-                }
-                Action::SaveResult(v) => {
-                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default() + "\n";
-                    self.save_text(
-                        tr("Tolerance results"),
-                        "json",
-                        "tolerance_result.json",
-                        txt,
-                    );
-                }
-                Action::SaveCsv(txt) => {
-                    self.save_text("CSV", "csv", "tolerance_compensators.csv", txt);
-                }
                 Action::Load => load = true,
+                a => self.msgs.push(Msg::Tol(a)),
             }
         }
         // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）
@@ -192,7 +135,7 @@ impl Core {
             ));
             return;
         }
-        let (project, mut cands) = sp::combo_project(&self.doc.combo);
+        let (_, mut cands) = sp::combo_project(&self.doc.combo);
         // 同時に評価できる状態
         cands.states = self.doc.combo.states.clone();
         let progress = if self.p.swap.running {
@@ -206,57 +149,9 @@ impl Core {
         let acts = sp::ui(ui, &mut self.p.swap, &cands, progress);
         let mut load = false;
         for a in acts {
-            let count = matches!(a, Action::Count(_));
             match a {
-                Action::Run(_) | Action::Count(_) if self.p.swap.running => {}
-                Action::Run(mut v) | Action::Count(mut v) => {
-                    if count {
-                        v["count_only"] = json!(true);
-                    }
-                    v["project"] = project.clone();
-                    v["top"] = json!(self.p.swap.top);
-                    self.swap_ids = self.doc.combo.ids();
-                    self.p.swap.running = true;
-                    self.p.swap.result = None;
-                    self.calc(Tag::Swap, v);
-                }
-                Action::Stop => crate::worker::progress::stop("swap"),
-                Action::Insert(i) => {
-                    let res = self.p.swap.result.as_ref().and_then(|r| r.results.as_ref());
-                    let Some(row) = res.and_then(|r| r.get(i)).cloned() else {
-                        continue;
-                    };
-                    let before = self.doc.combo.clone();
-                    match sp::insert_row(&mut self.doc.combo, &self.swap_ids, &row) {
-                        Ok(()) => {
-                            if self.p.swap.undo.is_none() {
-                                self.p.swap.undo = Some(before);
-                            }
-                            self.p.swap.inserted = Some(i);
-                            if !self.s.auto_build {
-                                self.build_combo(self.doc.combo.project());
-                            }
-                        }
-                        Err(e) => self.fail(e),
-                    }
-                }
-                Action::Undo => {
-                    if let Some(c) = self.p.swap.undo.take() {
-                        self.doc.combo = c;
-                        self.p.swap.inserted = None;
-                        if !self.s.auto_build {
-                            self.build_combo(self.doc.combo.project());
-                        }
-                    }
-                }
-                Action::Save(v) => {
-                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
-                    let d = crate::files::FileDialog::new()
-                        .add_filter(tr("Swap search settings"), &["json"])
-                        .set_file_name("swap.json");
-                    self.save_as(d, move |c, p| c.write_reported(&p, txt + "\n"));
-                }
                 Action::Load => load = true,
+                a => self.msgs.push(Msg::Swap(a)),
             }
         }
         // 設定の読み込み（Web 版は選び終わった後のフレームで返るので毎フレーム見る）

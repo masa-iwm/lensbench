@@ -142,9 +142,7 @@ impl App {
                 self.dispatch(ctx, m);
             }
         }
-        for m in std::mem::take(&mut self.c.msgs) {
-            self.dispatch(ctx, m);
-        }
+        self.dispatch_queued(ctx);
         if self.c.folders_open {
             self.c.folders_window(ctx);
         }
