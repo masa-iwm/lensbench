@@ -19,7 +19,7 @@ pub use mtf::*;
 pub use mtf_frame::MtfAxes;
 use mtf_frame::MtfFrame;
 pub(crate) use spot::spot_of;
-pub use spot::{apodized, spot, spot_arms, Spot};
+pub use spot::{apodized, apodized_amplitude, spot, spot_arms, Spot};
 pub use zernike::*;
 
 /// n×n の格子のうち単位円内の点（[`PupilGrid::Linear`] の [`Rim::Padded`]）

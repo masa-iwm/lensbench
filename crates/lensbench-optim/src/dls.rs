@@ -1087,7 +1087,7 @@ fn spot_term(
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, false)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
@@ -1203,7 +1203,7 @@ fn centroid_term(
     ps: Option<&[Param]>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, false)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);
@@ -1329,7 +1329,7 @@ fn wfe_term(
     pc: Option<&PupilCache>,
     keep: bool,
 ) -> Result<TermOut> {
-    let (pg, wts) = apodized_gauss(s, field, rings)?;
+    let (pg, wts) = apodized_gauss(s, field, rings, true)?;
     let (px, py, wts) = (&pg.0, &pg.1, &wts);
     let n = px.len();
     let ws = waves(s, wave);

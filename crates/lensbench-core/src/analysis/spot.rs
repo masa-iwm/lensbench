@@ -64,13 +64,38 @@ pub fn spot_arms(
     Ok(spot_of(s, &rs, &wts, &rc))
 }
 
-/// 求積の重み wts に、系のアポダイゼーションの強度 A(px, py)² を掛ける（一様なら wts のまま）
+/// 求積の重み wts に、系のアポダイゼーションの強度 A(px, py)² を掛ける（一様なら wts のまま）。光線の着地点の
+/// 平均・広がり（スポット・重心・幾何 MTF）は光の量で重みを付ける
 pub fn apodized(
     s: &System,
     field: FieldSel,
     px: &[f64],
     py: &[f64],
     wts: &[f64],
+) -> Result<Vec<f64>> {
+    apodized_pow(s, field, px, py, wts, 2)
+}
+
+/// 求積の重み wts に、系のアポダイゼーションの振幅 A(px, py) を掛ける（一様なら wts のまま）。波面の RMS の重み:
+/// 収差の無い瞳で規格化したストレール比 |∫A e^{2πiW}|² / (∫A)² を W の 2 次まで展開すると 1 − (2π)² Var(W) で、
+/// その分散の重みは A（OpticStudio のガウス求積の RWCE・RWRE も A で、26.1 で 1e-5 で一致）
+pub fn apodized_amplitude(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    wts: &[f64],
+) -> Result<Vec<f64>> {
+    apodized_pow(s, field, px, py, wts, 1)
+}
+
+fn apodized_pow(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    wts: &[f64],
+    pow: i32,
 ) -> Result<Vec<f64>> {
     let a = crate::pupil::ApodMap::new(s, field)?;
     if a.is_uniform() {
@@ -79,7 +104,7 @@ pub fn apodized(
     Ok(wts
         .iter()
         .zip(px.iter().zip(py))
-        .map(|(&w, (&x, &y))| w * a.amp(x, y).powi(2))
+        .map(|(&w, (&x, &y))| w * a.amp(x, y).powi(pow))
         .collect())
 }
 

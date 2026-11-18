@@ -22,13 +22,20 @@ pub(crate) fn pupil_gauss_shared(rings: usize) -> Rc<PupilPts> {
     })
 }
 
-/// [`pupil_gauss_shared`] の点と、系のアポダイゼーションの強度 A² を掛けた重み（解析と同じ）
+/// [`pupil_gauss_shared`] の点と、系のアポダイゼーションの強度 A²（amplitude なら振幅 A。波面の項）を掛けた重み
+/// （解析と同じ: [`lensbench_core::analysis::apodized`]・[`lensbench_core::analysis::apodized_amplitude`]）
 pub(crate) fn apodized_gauss(
     s: &lensbench_core::System,
     field: lensbench_core::system::FieldSel,
     rings: usize,
+    amplitude: bool,
 ) -> lensbench_core::error::Result<(Rc<PupilPts>, Vec<f64>)> {
     let pg = pupil_gauss_shared(rings);
-    let w = lensbench_core::analysis::apodized(s, field, &pg.0, &pg.1, &pg.2)?;
+    let f = if amplitude {
+        lensbench_core::analysis::apodized_amplitude
+    } else {
+        lensbench_core::analysis::apodized
+    };
+    let w = f(s, field, &pg.0, &pg.1, &pg.2)?;
     Ok((pg, w))
 }

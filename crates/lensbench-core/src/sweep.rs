@@ -284,15 +284,13 @@ impl Rms {
 /// 返すのは波長ごとの分散（os の順）
 fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
     let nw = os.len();
-    // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは求積の重み × アポダイゼーションの強度 A²（OpticStudio の
-    // RWCE と同じ）で、波長の中で和 1）
+    // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは求積の重み × 瞳関数の振幅 A（[`analysis::apodized_amplitude`]
+    // と同じ理由）で、波長の中で和 1）
     let mut rows: Vec<Vec<(f64, f64, f64, f64)>> = Vec::with_capacity(nw);
     for &o in os {
         let c = &o.chief;
         let (px, py) = (&o.samples.px, &o.samples.py);
-        let wt: Vec<f64> = (0..o.len())
-            .map(|i| o.samples.wt[i] * o.amp[i] * o.amp[i])
-            .collect();
+        let wt: Vec<f64> = (0..o.len()).map(|i| o.samples.wt[i] * o.amp[i]).collect();
         if !c.traced(0) {
             invalid!("the chief ray doesn't reach the image");
         }

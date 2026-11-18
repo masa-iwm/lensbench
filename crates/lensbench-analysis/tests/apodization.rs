@@ -396,10 +396,12 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
     assert!(e1.is_some() && e1 == e2, "{e1:?} {e2:?}");
 }
 
-/// アポダイゼーションの強度は幾何の解析の光線の重みにも入る（OpticStudio の RSCE・CENY・RWCE・GMTT と同じ）。
+/// アポダイゼーションは幾何の解析の光線の重みにも入る: スポット・幾何 MTF は強度 A²、波面の RMS は振幅 A
+/// （OpticStudio のガウス求積の RSCE・GMTT は A²、RWCE は A）。
 /// 焦点から 1 mm ずらした理想レンズ（F/50）の光線の着地点は瞳の座標に比例するので、ガウスの瞳（係数 G = 8、縁で
 /// 強度 e^{−16}）のスポットは標準偏差 σ = c / (2√G) のガウス（c は瞳の縁の高さ）: RMS 半径 c / √(2G)、幾何 MTF は
-/// exp(−2π² σ² ν²)。波面 W = W_d ρ² の RMS は W_d / (2G)（一様なら W_d / √12）。c と W_d は一様の値から求める。
+/// exp(−2π² σ² ν²)。波面 W = W_d ρ² の重みは u = ρ² について e^{−G u}（[0, 1] で切った指数分布）なので、RMS は
+/// W_d √(1/G² − 1/(4 sinh²(G/2)))（一様なら W_d / √12）。c と W_d は一様の値から求める。
 /// 一様なら重みを入れる前とビット単位で同じ（Uniform と Gaussian(0) が同じ）
 #[test]
 fn apodization_weights_the_geometric_analyses() {
@@ -438,7 +440,7 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     );
     assert!((rg.spot / want - 1.0).abs() < 1e-3, "{} {want}", rg.spot);
     let wd = ru.wfe * 12f64.sqrt();
-    let want_w = wd / (2.0 * gg);
+    let want_w = wd * (1.0 / (gg * gg) - 1.0 / (4.0 * (gg / 2.0).sinh().powi(2))).sqrt();
     println!(
         "RMS wavefront: uniform {} gauss {} want {want_w}",
         ru.wfe, rg.wfe

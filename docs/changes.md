@@ -264,7 +264,9 @@
   違った。振幅なし・一色の結果は変わらない。重みは `lensbench_core::pupil::wave_weight`。
 - 瞳のアポダイゼーション（.zmx の GFAC）を、回折の解析に加えて幾何の解析の光線の重みにも入れる（ANA-33）: スポットの重心・
   RMS 半径（`spot`・`rms` とその掃引）、RMS 波面・ストレール比、幾何 MTF、最適化の RMS スポット・RMS 波面・重心の項。重みは
-  強度 A²（OpticStudio のガウス求積の RSCE・RWCE・CENY・GMTT・スポット図の RMS と同じ）。Zernike の当てはめには入れない
+  スポット・重心・幾何 MTF が強度 A²、RMS 波面・ストレール比が振幅 A（収差の無い瞳で規格化したストレール比を波面の 2 次まで
+  展開した分散の重み。OpticStudio 26.1 のガウス求積の RSCE・GMTT・RWCE と同じ重みで、Double Gauss 28 のガウスの瞳で RSCE は
+  9 桁、RWCE は 1e-5 で一致）。Zernike の当てはめには入れない
   （OpticStudio も同じ）。一様なら値は変わらない。一様でない GFAC を読んだときの注意（回折の解析にだけ入る）は出さない。
   Rust は `lensbench_core::analysis::apodized`（求積の重みに A² を掛ける）。
 - MTF の子午・球欠の向きを、既定で視野の向きにした（ANA-11）: 子午は視野の座標 (x, y)（角度の視野は (tan θx, tan θy)）の向き、
