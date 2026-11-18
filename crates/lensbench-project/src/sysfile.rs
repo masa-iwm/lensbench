@@ -220,6 +220,7 @@ pub fn to_string(s: &System, coatings: &[PathBuf]) -> lensbench_core::Result<Str
     let sv = system_value(s)?;
     let hash = hash_value(&sv);
     let mut o = Map::new();
+    o.insert("$schema".into(), Value::from(crate::schema::url("system")));
     o.insert("format".into(), Value::from(FORMAT));
     o.insert("format_version".into(), Value::from(FORMAT_VERSION));
     o.insert("lensbench".into(), Value::from(lensbench_core::VERSION));

@@ -1,4 +1,5 @@
 {
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
  "name": "P16 Twyman-Green: test lens in double pass, reference flat, both arms meet at port D",
  "glass_catalogs": ["SCHOTT"],
  "wavelengths": [{"um": 0.6328}],

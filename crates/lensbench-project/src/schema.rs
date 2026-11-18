@@ -17,8 +17,24 @@ use serde_json::{json, Map, Value};
 /// スキーマの名前（`docs/schema/<名前>.schema.json`）
 pub const NAMES: [&str; 4] = ["project", "system", "user-catalog", "edit-ops"];
 
-/// スキーマの `$id` の元（公開リポジトリの main の docs/schema）
-pub const BASE_URL: &str = "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/";
+/// スキーマの置き場（ドキュメントのサイト）。版ごとに `v<版>/<名前>.schema.json`（[`url`]）
+pub const BASE_URL: &str = "https://masa-iwm.github.io/lensbench/schema/";
+
+/// スキーマの版（lensbench の版の小数第 1 位まで、例 `0.5`）。同じ版の直し（0.5.1 など）と、
+/// 開発中・リリース候補（0.5.0-dev・0.5.0-rc.1）も同じ置き場（[`minor_of`]）
+pub fn version() -> &'static str {
+    minor_of(env!("CARGO_PKG_VERSION"))
+}
+
+/// 版の名前の小数第 1 位まで（`0.5.0-dev`・`0.5.0-rc.1`・`0.5.1` → `0.5`）。接尾辞（`-`・`+` から後）は落とす
+pub fn minor_of(v: &str) -> &str {
+    let v = v.split(['-', '+']).next().unwrap_or(v);
+    let mut dots = v.match_indices('.').map(|(i, _)| i);
+    match (dots.next(), dots.next()) {
+        (Some(_), Some(j)) => &v[..j],
+        _ => v,
+    }
+}
 
 /// 系ファイル（[`crate::sysfile`]）の形。スキーマを作るためだけの型（読み書きは sysfile が Value で行う）
 #[allow(dead_code)]
@@ -88,10 +104,7 @@ pub fn schema_with(name: &str, kinds: &[detectors::DetectorKind]) -> Option<Valu
 /// `$id`・`title`・どの JSON にも書ける `$schema` のキーを足す（他のクレートの設定のスキーマも同じ形にする）
 pub fn finish(v: &mut Value, name: &str, title: &str) {
     let o = v.as_object_mut().expect("スキーマはオブジェクト");
-    o.insert(
-        "$id".into(),
-        Value::from(format!("{BASE_URL}{name}.schema.json")),
-    );
+    o.insert("$id".into(), Value::from(url(name)));
     o.insert("title".into(), Value::from(title));
     if let Some(Value::Object(p)) = o.get_mut("properties") {
         p.insert(
@@ -216,6 +229,47 @@ fn allow_nonfinite(v: &mut Value) {
         }
         _ => {}
     }
+}
+
+/// 名前のスキーマの URL（スキーマの `$id`、書く JSON の `$schema`）。この lensbench の版の置き場
+/// （`…/schema/v0.5/project.schema.json`）。ドキュメントのサイトは、リリースした版の置き場を書き換えない
+/// （古いファイルも当時のスキーマで検査できる）。まだリリースしていない版の置き場には main のスキーマを置く
+pub fn url(name: &str) -> String {
+    format!("{BASE_URL}v{}/{name}.schema.json", version())
+}
+
+/// 整形した JSON のオブジェクトの文字列 txt の先頭に `"$schema": "<名前のスキーマの URL>"` を入れる（書く JSON に付け、
+/// エディタで開くだけで補完・検査が効くように）。先頭に `$schema` があれば置き換える。整形したオブジェクトでなければそのまま
+pub fn stamp_text(txt: &str, name: &str) -> String {
+    let Some(rest) = txt.strip_prefix("{\n") else {
+        return txt.to_string();
+    };
+    let rest = match rest.strip_prefix("  \"$schema\":") {
+        Some(r) => r.split_once('\n').map_or("", |(_, r)| r),
+        None => rest,
+    };
+    let comma = if rest.trim_start().starts_with('}') {
+        ""
+    } else {
+        ","
+    };
+    format!(
+        "{{\n  \"$schema\": {}{comma}\n{rest}",
+        Value::from(url(name))
+    )
+}
+
+/// JSON の値 v を整形した文字列にし、先頭に名前のスキーマの `$schema` を入れる（v の中の `$schema` は外す）
+pub fn pretty_with_schema(v: &Value, name: &str) -> String {
+    let txt = match v {
+        Value::Object(o) if o.contains_key("$schema") => {
+            let mut o = o.clone();
+            o.remove("$schema");
+            serde_json::to_string_pretty(&o)
+        }
+        _ => serde_json::to_string_pretty(v),
+    };
+    stamp_text(&txt.expect("JSON of plain data"), name)
 }
 
 /// JSON の値から `$schema` を除く（deny_unknown_fields の型を読む前に）

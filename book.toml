@@ -12,7 +12,7 @@ create-missing = false
 git-repository-url = "https://github.com/masa-iwm/lensbench"
 edit-url-template = "https://github.com/masa-iwm/lensbench/edit/main/{path}"
 site-url = "/lensbench/"
-additional-js = ["docs/theme/ja-search.js"]
+additional-js = ["docs/theme/ja-search.js", "docs/theme/versions.js"]
 
 [output.html.search]
 # 日本語は語の区切りがないので、短い語でも当たるようにする

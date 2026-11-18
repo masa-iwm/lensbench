@@ -1,4 +1,5 @@
 {
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
  "name": "P4 double pass through a tilted lens",
  "glass_catalogs": [
   "SCHOTT"

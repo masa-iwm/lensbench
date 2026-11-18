@@ -1001,12 +1001,13 @@ impl Project {
         check_detectors(&p.blocks)?;
         Ok(p)
     }
-    /// プロジェクトの JSON（形式の印と版をいつも付ける）
+    /// プロジェクトの JSON（形式の印と版、先頭に `$schema` をいつも付ける）
     pub fn to_json(&self) -> String {
         let mut p = self.clone();
         p.format = Some(PROJECT_FORMAT.into());
         p.format_version = Some(PROJECT_FORMAT_VERSION);
-        serde_json::to_string_pretty(&p).expect("JSON of plain data")
+        let txt = serde_json::to_string_pretty(&p).expect("JSON of plain data");
+        crate::schema::stamp_text(&txt, "project")
     }
 
     pub fn state_names(&self) -> Vec<&str> {

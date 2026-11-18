@@ -18,6 +18,38 @@ fn validator(name: &str) -> jsonschema::Validator {
     jsonschema::validator_for(&v).unwrap_or_else(|e| panic!("{name} のスキーマ: {e}"))
 }
 
+/// JSON の `$schema` の先のスキーマ（今の版の置き場の URL を docs/schema のファイルに読み替える）で x を確かめる。
+/// `$schema` は名前 name のスキーマの今の版の URL であること
+fn check_by_schema_key(name: &str, what: &str, x: &Value) {
+    let url = x["$schema"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{what}: $schema が無い"));
+    assert_eq!(url, schema::url(name), "{what}");
+    let file = url
+        .strip_prefix(schema::BASE_URL)
+        .and_then(|f| f.strip_prefix(&format!("v{}/", schema::version())))
+        .expect("今の版の置き場");
+    let txt = std::fs::read_to_string(root().join("docs/schema").join(file)).unwrap();
+    let s: Value = serde_json::from_str(&txt).unwrap();
+    assert_eq!(s["$id"], url, "{what}: {file} の $id");
+    check(&jsonschema::validator_for(&s).unwrap(), what, x);
+}
+
+/// 例題の `$schema` は名前 name のスキーマの置き場（版は問わない。版を上げても例題を書き直さなくてよい）
+fn check_example_schema_key(name: &str, what: &str, x: &Value) {
+    let url = x["$schema"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{what}: $schema が無い"));
+    let rest = url
+        .strip_prefix(schema::BASE_URL)
+        .unwrap_or_else(|| panic!("{what}: {url}"));
+    let (ver, file) = rest
+        .split_once('/')
+        .unwrap_or_else(|| panic!("{what}: {url}"));
+    assert!(ver.starts_with('v'), "{what}: {url}");
+    assert_eq!(file, format!("{name}.schema.json"), "{what}");
+}
+
 fn check(v: &jsonschema::Validator, what: &str, x: &Value) {
     let errs: Vec<String> = v
         .iter_errors(x)
@@ -68,6 +100,11 @@ fn example_projects_match_schema() {
                 let back: Value =
                     serde_json::from_str(&Project::from_json(&t).unwrap().to_json()).unwrap();
                 check(&v, &format!("{} (書き直し)", p.display()), &back);
+                // 書いたものには $schema が付き、その先のスキーマに合う。例題にも付けてある
+                check_by_schema_key("project", &format!("{} (書き直し)", p.display()), &back);
+                if dir == "examples/projects" {
+                    check_example_schema_key("project", &p.display().to_string(), &x);
+                }
                 n += 1;
             }
         }
@@ -116,6 +153,16 @@ fn user_catalog_matches_schema() {
     check(&v, "parts.json", &serde_json::from_str(&t).unwrap());
     let c = UserCatalog::from_json(&t).unwrap();
     check(&v, "書き直し", &serde_json::from_str(&c.to_json()).unwrap());
+    check_example_schema_key(
+        "user-catalog",
+        "parts.json",
+        &serde_json::from_str(&t).unwrap(),
+    );
+    check_by_schema_key(
+        "user-catalog",
+        "書き直し",
+        &serde_json::from_str(&c.to_json()).unwrap(),
+    );
 }
 
 #[test]
@@ -143,11 +190,11 @@ fn system_file_matches_schema() {
             continue;
         };
         let txt = sysfile::to_string(&sys, &[]).unwrap();
-        check(
-            &v,
-            &p.display().to_string(),
-            &serde_json::from_str(&txt).unwrap(),
-        );
+        let x: Value = serde_json::from_str(&txt).unwrap();
+        check(&v, &p.display().to_string(), &x);
+        check_by_schema_key("system", &p.display().to_string(), &x);
+        // $schema の付いた系ファイルを読める
+        sysfile::from_str_with(&txt, &glass).unwrap();
         n += 1;
     }
     assert!(n >= 5, "{n}");
@@ -267,5 +314,59 @@ fn edit_ops_schema_matches_reader() {
             e.message().unwrap_or_default().starts_with("operation 1"),
             "{e}"
         );
+    }
+}
+
+/// 書く JSON の先頭に $schema を入れる（前のものは置き換える。整形したオブジェクトでなければそのまま）
+#[test]
+fn stamp_text_puts_schema_first() {
+    let u = schema::url("project");
+    let one = schema::stamp_text("{\n  \"name\": \"x\"\n}", "project");
+    assert_eq!(
+        one,
+        format!("{{\n  \"$schema\": \"{u}\",\n  \"name\": \"x\"\n}}")
+    );
+    let v: Value = serde_json::from_str(&one).unwrap();
+    assert_eq!(v["name"], "x");
+    // 2 回付けても 1 つ
+    assert_eq!(schema::stamp_text(&one, "project"), one);
+    // $schema だけのもの・空のオブジェクト
+    let only = schema::stamp_text("{\n  \"$schema\": \"old\"\n}", "project");
+    assert_eq!(
+        serde_json::from_str::<Value>(&only).unwrap()["$schema"],
+        u.as_str()
+    );
+    assert_eq!(schema::stamp_text("{}", "project"), "{}");
+    assert_eq!(schema::stamp_text("[1]", "project"), "[1]");
+    // 値の中の $schema は外して先頭に
+    let v: Value = serde_json::from_str(r#"{"a": 1, "$schema": "old"}"#).unwrap();
+    let t = schema::pretty_with_schema(&v, "project");
+    assert!(
+        t.starts_with(&format!("{{\n  \"$schema\": \"{u}\",\n")),
+        "{t}"
+    );
+    assert_eq!(t.matches("$schema").count(), 1);
+}
+
+/// スキーマの版は lensbench の版の小数第 1 位まで。URL はその版の置き場
+#[test]
+fn schema_url_has_minor_version() {
+    let v = schema::version();
+    assert_eq!(v.matches('.').count(), 1, "{v}");
+    assert!(env!("CARGO_PKG_VERSION").starts_with(&format!("{v}.")));
+    assert_eq!(
+        schema::url("system"),
+        format!("{}v{v}/system.schema.json", schema::BASE_URL)
+    );
+    // 開発中・リリース候補・直しも同じ版の置き場
+    for (full, minor) in [
+        ("0.5.0", "0.5"),
+        ("0.5.0-dev", "0.5"),
+        ("0.5.0-rc.1", "0.5"),
+        ("0.5.12", "0.5"),
+        ("1.10.0+build.3", "1.10"),
+        ("0.6-dev", "0.6"),
+    ] {
+        assert_eq!(schema::minor_of(full), minor, "{full}");
     }
 }

@@ -2562,7 +2562,9 @@ fn sample_combos_are_up_to_date() {
     let update = std::env::var_os("LENSBENCH_UPDATE_SAMPLES").is_some();
     for (name, c) in sample_combos() {
         assert!(c.settings_problems().is_empty(), "{name}");
-        let want = serde_json::to_string_pretty(&doc_file::project_file(&c)).unwrap() + "\n";
+        let want =
+            lensbench_project::schema::pretty_with_schema(&doc_file::project_file(&c), "project")
+                + "\n";
         let p = dir.join(format!("{name}.json"));
         if update {
             std::fs::create_dir_all(&dir).unwrap();

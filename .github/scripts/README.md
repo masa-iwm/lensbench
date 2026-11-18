@@ -32,3 +32,9 @@ CI で apt の包みを入れる（`ci.yml` の gui-tour、`pages.yml`）。
 - 取りに行くときは、apt の再試行を少なめにし、update は 4 分、deb を落とす段は 5 分で打ち切る。2 回まで試し、2 回目はランナー既定のミラー（azure.archive.ubuntu.com）をやめて archive.ubuntu.com を直に使う。ステップ全体も `timeout-minutes: 20` で打ち切る。
 
 web ジョブの Playwright は `--with-deps` を使わない。Chromium の共有ライブラリはランナーの像に入っており、apt の障害で落ちないようにするため。
+
+## ci_artifact_run.sh
+
+コミットの CI の成果物（`site-book` など）を持つ成功した run を探す（`pages.yml`）。その run → そのコミットの push の run → 同じ木の PR の head の run の順。
+Pages の build は site-book と lensbench-web、snapshot はリリースのタグのコミットの site-book を探す（固めてリリースに `lensbench-docs-<タグ>.tar.gz` として添付し、
+`scripts/docs_versions.py` が `/vX.Y/` に置く）。成果物は 7 日で消えるので、それより後に添付の無いリリースは警告だけ出す。

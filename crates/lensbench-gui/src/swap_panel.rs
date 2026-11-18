@@ -236,6 +236,8 @@ impl SwapPanel {
         };
         for (k, v) in o {
             match k.as_str() {
+                // エディタの検査用（保存するときに付け直す）
+                "$schema" => {}
                 "slots" => {
                     for s in v.as_array().into_iter().flatten() {
                         let f = &s["filter"];
@@ -996,6 +998,16 @@ mod tests {
         assert_eq!(s["vars"], json!(["d1.t=0.5:20", "G2.shift"]));
         assert_eq!(s["slots"][0]["filter"]["efl"], json!([50.5, null]));
         assert_eq!(s["efl"], json!(100.0));
+        // 保存するファイル（先頭に $schema）を読み戻しても同じ。$schema は計算の設定に入れない
+        let saved = lensbench_project::schema::pretty_with_schema(&s, "swap");
+        let file: Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            file["$schema"],
+            lensbench_project::schema::url("swap").as_str()
+        );
+        let mut q = SwapPanel::default();
+        q.set_spec(&file).unwrap();
+        assert_eq!(q.spec().unwrap(), s);
         let mut q = SwapPanel::default();
         q.set_spec(&s).unwrap();
         assert_eq!(q.slots, p.slots);

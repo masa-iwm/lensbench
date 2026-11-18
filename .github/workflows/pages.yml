@@ -1,6 +1,9 @@
 # GitHub Pages に公開する。main の CI が通ったら（と手動）。初回だけ、リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
 #   /      ドキュメント（mdBook。scripts/build_docs.sh）。/api/rust/ に cargo doc
 #   /app/  Web 版（公開側のビルド: 同梱は公開用の見本だけ。docs/web.md）
+#   /vX.Y/ リリースしたときのドキュメント、/schema/vX.Y/ その版のスキーマ、/versions.json 版の一覧（scripts/docs_versions.py）。
+#          リリースのドキュメントはタグのコミットの site-book を、スキーマはタグの木の docs/schema を固めてリリースに添付し
+#          （snapshot ジョブ、一度だけ）、毎回そこから置く
 # 中身は CI が作って検査した成果物（docs ジョブの site-book、web ジョブの lensbench-web）をそのまま載せる
 # （同じものを作り直さない・検査したものと載せるものを同じにする）。main の CI が「PR と同じ木」で
 # 検査を飛ばしたときは、その PR の CI の成果物を使う。どちらも取れなければ（手動実行・成果物の期限切れ）ここで作る
@@ -21,8 +24,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # リリースのドキュメントとスキーマを固めて添付する（まだ添付の無いリリースだけ。添付は差し替えない）。
+  # リリースは Release のワークフロー（タグの push）が作り、終わったらこのワークフローを回す
+  snapshot:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      # リリースに添付する（このジョブは自分のスクリプトと gh だけを走らせる）
+      contents: write
+      actions: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts
+            scripts
+      # スキーマ（lensbench-schema-<タグ>.tar.gz）はタグの木の docs/schema から（CI の成果物に頼らない）。
+      # 使い方のページ（lensbench-docs-<タグ>.tar.gz）はタグのコミットの CI の site-book から。取れなければ警告し、次の回にまた試す
+      # （CI の run を Re-run して成果物を作り直してから、Actions → Pages → Run workflow）
+      - run: |
+          mkdir -p target/snap
+          for tag in $(gh release list -R "$REPO" --limit 100 --json tagName --jq '.[].tagName' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true); do
+            assets=$(gh release view "$tag" -R "$REPO" --json assets --jq '.assets[].name')
+            schema="lensbench-schema-$tag.tar.gz"
+            if ! grep -qxF "$schema" <<< "$assets"; then
+              gh api "repos/$REPO/tarball/$tag" > "target/$tag-src.tar.gz" || { echo "::warning::$tag の木を取れない"; continue; }
+              python3 scripts/docs_versions.py pack-schema "target/$tag-src.tar.gz" "target/snap/$schema"
+              gh release upload "$tag" -R "$REPO" "target/snap/$schema"
+            fi
+            asset="lensbench-docs-$tag.tar.gz"
+            if grep -qxF "$asset" <<< "$assets"; then continue; fi
+            sha=$(gh api "repos/$REPO/commits/$tag" --jq .sha)
+            run=$(.github/scripts/ci_artifact_run.sh "$sha" "" site-book)
+            if [ -z "$run" ]; then
+              echo "::warning::$tag（${sha:0:7}）の site-book が見つからない（CI が終わっていないか、取り消し・期限切れ）。使い方のページは添付しない（スキーマは添付済み）"
+              continue
+            fi
+            gh run download "$run" -R "$REPO" -n site-book -D "target/snap/$tag"
+            python3 scripts/docs_versions.py snapshot "target/snap/$tag" "target/snap/$asset"
+            gh release upload "$tag" -R "$REPO" "target/snap/$asset"
+          done
+
+  build:
+    needs: snapshot
+    # snapshot が落ちても（gh の一時的な失敗など）main のドキュメントは載せる
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
@@ -33,28 +85,24 @@ jobs:
     env:
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      # 成果物のある CI の run を探す: その run か、検査を飛ばしたならマージした PR の head の成功した run
+      # 成果物のある CI の run を探す: その run か、SHA の push の run か、検査を飛ばしたならマージした PR の head の成功した run
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          path: _src
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/scripts/
+            /scripts/
+            /Cargo.toml
+          sparse-checkout-cone-mode: false
       - id: src
-        if: github.event_name == 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN: ${{ github.event.workflow_run.id }}
         run: |
-          has() { gh api "repos/$REPO/actions/runs/$1/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name]' \
-            | grep -q '"site-book"' && gh api "repos/$REPO/actions/runs/$1/artifacts?per_page=100" \
-            --jq '[.artifacts[] | select(.expired | not) | .name]' | grep -q '"lensbench-web"'; }
-          run=""
-          if has "$RUN"; then run=$RUN
-          else
-            tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha)
-            for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha'); do
-              [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
-              for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq '.workflow_runs[].id'); do
-                if has "$r"; then run=$r; break 2; fi
-              done
-            done
-          fi
+          run=$(_src/.github/scripts/ci_artifact_run.sh "$SHA" "$RUN" site-book lensbench-web)
           echo "成果物の run: ${run:-なし（ここで作る）}"
           echo "run=$run" >> "$GITHUB_OUTPUT"
       - if: steps.src.outputs.run != ''
@@ -119,6 +167,21 @@ jobs:
         run: scripts/build_docs.sh target/site
       - if: steps.src.outputs.run == ''
         run: REQUIRE_WASM_OPT=1 scripts/build_web.sh target/site/app
+      # 版ごとの置き場: リリースの添付を /vX.Y/ に、スキーマを /schema/vX.Y/ に、版の一覧を /versions.json に
+      # （ここで作ったときは、根に取り出した木が _src を消しているので根のスクリプトを使う）
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SRC: ${{ steps.src.outputs.run != '' && '_src' || '.' }}
+        run: |
+          mkdir -p target/docs-snaps
+          for tag in $(gh release list -R "$REPO" --limit 100 --json tagName --jq '.[].tagName'); do
+            for k in docs schema; do
+              gh release download "$tag" -R "$REPO" -p "lensbench-$k-$tag.tar.gz" -D target/docs-snaps 2> /dev/null || true
+            done
+          done
+          dev=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$SRC/Cargo.toml" | head -n 1)
+          python3 "$SRC/scripts/docs_versions.py" assemble target/site --snapshots target/docs-snaps --dev "$dev"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
           path: target/site

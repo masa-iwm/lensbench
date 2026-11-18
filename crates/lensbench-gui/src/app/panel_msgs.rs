@@ -63,7 +63,7 @@ impl Core {
             }
             Action::Stop => crate::worker::progress::stop("tolerance"),
             Action::Save(v) => {
-                let txt = serde_json::to_string_pretty(&v).unwrap_or_default() + "\n";
+                let txt = lensbench_project::schema::pretty_with_schema(&v, "tolerance") + "\n";
                 self.save_text(tr("Tolerance settings"), "json", "tolerance.json", txt);
             }
             Action::SaveResult(v) => {
@@ -132,7 +132,7 @@ impl Core {
                 }
             }
             Action::Save(v) => {
-                let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
+                let txt = lensbench_project::schema::pretty_with_schema(&v, "swap");
                 let d = crate::files::FileDialog::new()
                     .add_filter(tr("Swap search settings"), &["json"])
                     .set_file_name("swap.json");

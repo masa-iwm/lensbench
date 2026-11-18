@@ -4195,7 +4195,7 @@
       "type": "object"
     },
     "ZernSag": {
-      "description": "Zernike の矢高の項\n\nserde では内部の `groups`・`mmax` を書き出さず、読み直したら `coef` から作り直す。\n項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする",
+      "description": "Zernike の矢高の項\n\nserde では内部の `groups` を書き出さず、読み直したら `coef` から作り直す。\n項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする",
       "properties": {
         "coef": {
           "description": "項 1, 2, … の係数 [mm]",
@@ -4368,7 +4368,7 @@
       "type": "object"
     }
   },
-  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/project.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "$schema": {

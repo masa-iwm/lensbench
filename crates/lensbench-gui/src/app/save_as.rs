@@ -80,7 +80,7 @@ impl Core {
             }
             let r = lensbench_core::vfs::write(
                 &path,
-                serde_json::to_string_pretty(&v).unwrap_or_default(),
+                lensbench_project::schema::pretty_with_schema(&v, "project"),
             );
             match r {
                 Ok(()) => {

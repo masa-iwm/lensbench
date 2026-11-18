@@ -457,7 +457,9 @@ impl TolPanel {
                         }
                     }
                 }
-                "compensators" | "merit" | "rings" | "terms" | "configs" | "reference" => {}
+                // $schema はエディタの検査用（保存するときに付け直す）
+                "compensators" | "merit" | "rings" | "terms" | "configs" | "reference"
+                | "$schema" => {}
                 _ => {
                     n.extra.insert(k.clone(), x.clone());
                 }
@@ -1252,6 +1254,16 @@ mod tests {
         assert_eq!(v["radial"], json!(true));
         let mut q = TolPanel::default();
         q.set_spec(&v).unwrap();
+        assert_eq!(q.spec().unwrap(), v);
+        // 保存するファイル（先頭に $schema）を読み戻しても同じ。$schema は計算の設定に入れない
+        let saved = lensbench_project::schema::pretty_with_schema(&v, "tolerance");
+        let file: Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            file["$schema"],
+            lensbench_project::schema::url("tolerance").as_str()
+        );
+        let mut q = TolPanel::default();
+        q.set_spec(&file).unwrap();
         assert_eq!(q.spec().unwrap(), v);
         // 円の中の正規分布
         let mut r = v.clone();

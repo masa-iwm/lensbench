@@ -1,6 +1,6 @@
 name: Release
 
-# v* のタグで、Windows の GUI と CLI の exe を zip にして GitHub の Releases に置く。
+# v* のタグで、Windows の GUI と CLI の exe を zip にして GitHub の Releases に置き、Pages を回してその版のドキュメントを /vX.Y/ に置く。
 # タグは手で打たない。配る版を決めたとき、元のリポジトリの書き出しが同じ版の名前で打つ（版の名前は Cargo.toml の
 # workspace.package.version に v を付けたもの）。一度載せた zip は差し替えない（直すときは次の版を切る）。
 on:
@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      # 終わったら Pages を回す（このリリースのドキュメントを /vX.Y/ に置く）
+      actions: write
     env:
       TAG: ${{ github.ref_name }}
     steps:
@@ -65,3 +67,10 @@ jobs:
           else
             gh release create "$TAG" "dist/$DIST.zip" --title "$TAG" --generate-notes --verify-tag
           fi
+      # ドキュメントを版の置き場（/vX.Y/・/schema/vX.Y/）に置く: Pages がタグのコミットの CI の site-book を固めて
+      # このリリースに添付し、そこから載せる（pages.yml）。まだ CI が終わっていなければ、次の main の Pages で添付する
+      - name: Pages を回す
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml -R "$GITHUB_REPOSITORY" --ref main

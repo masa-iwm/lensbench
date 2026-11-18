@@ -103,7 +103,7 @@ fn convert_file(f: &std::path::Path) -> Result<bool, String> {
     };
     let bak = std::path::PathBuf::from(format!("{}.bak", f.display()));
     lensbench_core::vfs::write(&bak, &txt).map_err(|e| format!("{}: {e}", bak.display()))?;
-    let out = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())? + "\n";
+    let out = lensbench_project::schema::pretty_with_schema(&new, "project") + "\n";
     lensbench_core::vfs::write(f, out).map_err(|e| e.to_string())?;
     Ok(true)
 }

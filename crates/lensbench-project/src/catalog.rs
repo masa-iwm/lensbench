@@ -406,8 +406,10 @@ impl UserCatalog {
         }
         Ok(())
     }
+    /// ユーザーカタログの JSON（先頭に `$schema` を付ける）
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("JSON of plain data")
+        let txt = serde_json::to_string_pretty(self).expect("JSON of plain data");
+        crate::schema::stamp_text(&txt, "user-catalog")
     }
     /// ファイルから読む。`.gz` は展開して読み、`x.json` が無くて `x.json.gz` があればそれを読む（[`read_text`]）
     pub fn load(path: &Path) -> lensbench_core::Result<UserCatalog> {
