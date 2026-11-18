@@ -1480,32 +1480,34 @@ fn wfe_term(
             drows.extend(d);
         }
     }
-    // 当てはめの基底（未知数: 波長ごとのピストン nw 個 + 傾き nt 個）
-    let basis = |row: &(usize, usize, f64, f64, f64, f64)| -> Vec<f64> {
-        let mut b = vec![0.0; nu];
+    // 当てはめの基底（未知数: 波長ごとのピストン nw 個 + 傾き nt 個）。光線ごとの nu 個を 1 本の配列に並べる
+    let mut bs = vec![0.0; rows.len() * nu];
+    for (row, b) in rows.iter().zip(bs.chunks_exact_mut(nu)) {
         b[row.0] = 1.0;
         if nt == 2 {
             b[nw] = row.3;
             b[nw + 1] = row.4;
         }
-        b
-    };
-    let bs: Vec<Vec<f64>> = rows.iter().map(basis).collect();
-    let mut g = vec![vec![0.0; nu]; nu];
+    }
+    let basis = |j: usize| -> &[f64] { &bs[j * nu..(j + 1) * nu] };
+    // 正規方程式（g は nu × nu を行ごとに並べる。足す順・積の順は光線ごと・a ごと・c ごとのまま）
+    let mut gf = vec![0.0; nu * nu];
     let mut v = vec![0.0; nu];
-    for (row, b) in rows.iter().zip(&bs) {
-        for a in 0..nu {
-            v[a] += row.5 * b[a] * row.2;
-            for c in 0..nu {
-                g[a][c] += row.5 * b[a] * b[c];
+    for (row, b) in rows.iter().zip(bs.chunks_exact(nu)) {
+        for ((va, ga), &ba) in v.iter_mut().zip(gf.chunks_exact_mut(nu)).zip(b) {
+            let qa = row.5 * ba;
+            *va += qa * row.2;
+            for (gc, &bc) in ga.iter_mut().zip(b) {
+                *gc += qa * bc;
             }
         }
     }
+    let g: Vec<Vec<f64>> = gf.chunks_exact(nu).map(<[f64]>::to_vec).collect();
     let cf = lensbench_core::linalg::solve_or_zero(g.clone(), v);
     let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
     let e: Vec<f64> = rows
         .iter()
-        .zip(&bs)
+        .zip(bs.chunks_exact(nu))
         .map(|(row, b)| row.2 - dot(b, &cf))
         .collect();
     let amp: Vec<f64> = rows
@@ -1530,7 +1532,7 @@ fn wfe_term(
             let mut rhs = vec![0.0; nu];
             for (j, row) in rows.iter().enumerate() {
                 for a in 0..nu {
-                    rhs[a] += row.5 * bs[j][a] * u[j];
+                    rhs[a] += row.5 * basis(j)[a] * u[j];
                 }
                 if nt == 2 {
                     rhs[nw] += row.5 * drows[j].1[q] * e[j];
@@ -1539,7 +1541,7 @@ fn wfe_term(
             }
             let dc = lensbench_core::linalg::solve_or_zero(g.clone(), rhs);
             for (j, row) in rows.iter().enumerate() {
-                jm[(row.0 * n + row.1) * np + q] = amp[j] * (u[j] - dot(&bs[j], &dc));
+                jm[(row.0 * n + row.1) * np + q] = amp[j] * (u[j] - dot(basis(j), &dc));
             }
         }
     }
