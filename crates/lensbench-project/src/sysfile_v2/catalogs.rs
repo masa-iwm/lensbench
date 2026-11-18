@@ -138,7 +138,11 @@ fn sources(s: &System) -> Vec<Source> {
                 .filter(|p| is_catalog(p, &cat))
                 .collect::<Vec<_>>();
             cands.extend(candidates(&cat, &dirs));
-            let same = |m: &Catalog| gs.iter().all(|(n, g)| m.get(n) == Some(*g));
+            // 名前@カタログ（同じ名前の別のガラスと分けた名前）はカタログの中の名前で比べる
+            let same = |m: &Catalog| {
+                gs.iter()
+                    .all(|(n, g)| m.get(glass::base_name(n)) == Some(*g))
+            };
             let found = cands
                 .into_iter()
                 .find_map(|p| {
@@ -248,9 +252,7 @@ pub(crate) fn load(
                     r.name
                 ));
             }
-            for (k, v) in g.iter() {
-                out.entry(k.clone()).or_insert_with(|| v.clone());
-            }
+            glass::merge_catalog(&mut out, &g, &r.name);
             continue;
         }
         let Some(p) = pick else {
@@ -275,9 +277,7 @@ pub(crate) fn load(
             ));
         }
         let g = glass::load_agf_shared(&p).map_err(lensbench_core::Error::io_at(p.display()))?;
-        for (k, v) in g.iter() {
-            out.entry(k.clone()).or_insert_with(|| v.clone());
-        }
+        glass::merge_catalog(&mut out, &g, &r.name);
     }
     Ok((out, notes))
 }

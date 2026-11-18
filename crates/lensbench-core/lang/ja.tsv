@@ -1107,6 +1107,7 @@ glass catalog {} differs from when the file was saved ({}); the values are compu
 glass catalog {} has no hash in the system file, so its values can't be checked; the values are computed from the current catalog ({})	硝材のカタログ {} はシステムファイルに hash が無いので値を確かめられません。値は今のカタログ（{}）で求めます
 glass catalog {} was not found in the folders; the built-in catalog is used (index only; no internal transmittance or thermal expansion). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	硝材のカタログ {} がフォルダに無いので、同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）を使います。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
 glass catalog {} differs from when the file was saved (built-in catalog); the values are computed from the built-in catalog	硝材のカタログ {} が保存したときと違います（同梱のカタログ）。値は同梱のカタログから求めます
+glass {}: {} uses catalog {}, not {} of glass_catalogs; named {} in this system	硝材 {}: {} はカタログ {} のもの（glass_catalogs の {} ではない）を使います。このシステムでは {} の名前です
 no file of glass catalog {} has the same values as the system's glasses ({}); the system file records no hash for it, so the values can't be checked when it is read	硝材のカタログ {} のファイルでシステムの硝材（{}）と値が同じものが見つかりません。システムファイルに hash を書けないので、読むときに値を確かめられません
 wavelengths: no wavelength	wavelengths: 波長がありません
 primary: {} ({nw} wavelengths)	primary: {}（波長 {nw}）

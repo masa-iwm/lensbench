@@ -34,6 +34,12 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### プロジェクトの面の上書き・操作
+- zmx ブロック（と、取り込んだ系ファイル・入れ子のプロジェクト）の面のガラスは、その .zmx の GCAT で引いたものを使う
+  （前は `glass_catalogs` を先に引いた）。`glass_catalogs` に同じ名前で値の違うガラスがあれば、取り込んだ方を「名前@カタログ」の
+  名前で持ち、読込の注意（`import_notes`）を出す。.zmx に書き出すときは元の名前で書く。システムファイル・プロジェクト・
+  ユーザーカタログのガラスの名前にも「名前@カタログ」を書け、そのカタログ（`catalogs`・`glass_catalogs` か、ガラスのフォルダ）の
+  その名前のガラスを引く（付け替えた名前のまま保存しても読み直せる）。複数のカタログに同じ名前で値の違うガラスがあると、
+  前のカタログのものを名前だけで、後のものを「名前@カタログ」で引ける
 - 鏡のブロック（Rust の `Block::Mirror`）に `row`（`Option<Box<sysfile_v2::Row>>`、radius・conic で書けない鏡の面の行）を足した
   （GAR-02）。欄を全部並べて `Block::Mirror` を作るか分けていたら `row` を足す。鏡の面を行にする `lensbench_project::mirror_row` を足した
 - Rust の `expand` の誤りを `ExpandError`（誤り `error` と、ブロックの中で起きたときの位置 `block: Option<BlockAt>`）にした

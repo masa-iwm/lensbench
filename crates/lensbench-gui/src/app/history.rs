@@ -263,7 +263,6 @@ impl Core {
     fn apply_snap(&mut self, n: NewSnap) -> (Option<Value>, Option<PathBuf>, bool) {
         self.doc.combo = n.combo;
         self.combo_hist = n.combo_hist;
-        self.combo_len_prev = self.doc.combo.picks.len();
         self.loc.built = n.built;
         self.loc.built_combo = n.built_combo;
         self.loc.combo_path = n.combo_path;

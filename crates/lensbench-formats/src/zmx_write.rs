@@ -602,7 +602,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         } else if let (Some(q), false) = (mat_pick, d.typ() == SurfType::CoordBrk) {
             // 材料のピックアップ（OpticStudio の書き方: GLAS 名前 2 元の面 …。名前は読込で使わない）
             let name = match d.mat.glass() {
-                Some(m) if s.glasses.contains_key(m) => m,
+                Some(m) if s.glasses.contains_key(m) => glass_name(m),
                 _ => "___BLANK",
             };
             w(
@@ -613,6 +613,8 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             match &d.mat {
                 Material::Air | Material::Mirror | Material::Inherit => {}
                 Material::Glass(m) if s.glasses.contains_key(m) || d.grin().is_some() => {
+                    // 名前を付け替えたガラス（取り込んだ .zmx の GCAT の、名前@カタログ）はカタログの名前で
+                    let m = glass_name(m);
                     w(&mut o, format!("  GLAS {m} 0 0 1.5 40 0 0 0 0 0 0"));
                 }
                 Material::Glass(m) => {
@@ -1194,4 +1196,9 @@ fn macro_name(s: &System, id: u16) -> &str {
         .get(id as usize)
         .map(|m| m.name.as_str())
         .unwrap_or("")
+}
+
+/// .zmx に書くガラスの名前: 名前@カタログ（[`lensbench_core::glass::qualified`]）は @ の前（カタログの中の名前）
+fn glass_name(m: &str) -> &str {
+    lensbench_core::glass::base_name(m)
 }

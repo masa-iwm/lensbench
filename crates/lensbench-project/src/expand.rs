@@ -664,6 +664,7 @@ fn expand_body(
         nodes: node_paths(&p.blocks),
         leaf: Vec::new(),
         failed: None,
+        notes: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -757,6 +758,21 @@ fn expand_body(
     name_faces(&mut map, &sf, &c.nodes);
     // 面の後の媒質が決まるか（屈折率は系を作るときに解く。GRIN の面の材料名は分布の名前でガラスではない）
     let envr = p.environment;
+    // 名前@カタログ のガラス（同じ名前の別のガラスと分けた名前）は、そのカタログから引く
+    let named: Vec<String> = sf
+        .iter()
+        .filter_map(|d| {
+            d.mat
+                .glass()
+                .filter(|g| g.contains('@'))
+                .map(str::to_string)
+        })
+        .filter(|g| !c.glasses.contains_key(g))
+        .collect();
+    if !named.is_empty() {
+        let t = std::sync::Arc::make_mut(&mut c.glasses);
+        glass::resolve_qualified(t, named.iter().map(String::as_str), &dirs);
+    }
     for (j, d) in sf.iter_mut().enumerate() {
         let known = (j > 0 && (d.is_mirror() || d.is_coord_break()))
             || is_air(&d.mat)
@@ -844,6 +860,7 @@ fn expand_body(
     // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる
     let b = glass::builtin::note_for(&s, &p.glass_catalogs, &dirs);
     s.import_notes.extend(b);
+    s.import_notes.extend(std::mem::take(&mut c.notes));
     s.temperature = envr.temperature_c;
     s.pressure = envr.pressure_atm;
     s.adjust_index = envr.adjust_index;

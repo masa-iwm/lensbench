@@ -379,6 +379,73 @@ pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Gla
     ((*g).clone(), missing)
 }
 
+/// カタログで名前を限ったガラスの名前（`名前@カタログ`）。同じ名前で値の違うガラスが前のカタログにあるとき、後の
+/// カタログのものをこの名前で引く（.zmx の GCAT と、プロジェクトの glass_catalogs が違うときなど）
+pub fn qualified(name: &str, catalog: &str) -> String {
+    format!("{name}@{catalog}")
+}
+
+/// [`qualified`] の名前のカタログの中の名前（`@` の前。限っていなければそのまま）
+pub fn base_name(name: &str) -> &str {
+    name.split_once('@').map_or(name, |x| x.0)
+}
+
+/// カタログ g（名前 cat）のガラスを表 out に足す: 無い名前はそのまま、前のカタログに同じ名前で値の違うガラスが
+/// あれば [`qualified`] の名前で（前のものは名前だけで引ける）
+pub fn merge_catalog(out: &mut HashMap<String, Glass>, g: &HashMap<String, Glass>, cat: &str) {
+    for (k, v) in g {
+        match out.get(k) {
+            None => {
+                out.insert(k.clone(), v.clone());
+            }
+            Some(h) if h != v => {
+                let c = if v.catalog.is_empty() {
+                    cat
+                } else {
+                    v.catalog.as_str()
+                };
+                out.entry(qualified(k, c)).or_insert_with(|| v.clone());
+            }
+            Some(_) => {}
+        }
+    }
+}
+
+/// 表に無い [`qualified`] の名前（`名前@カタログ`）を足す: 表の 名前 がそのカタログのガラスならそれを、無ければ
+/// カタログを dirs（無ければ同梱のもの）から読んで引く。引けなかった名前を返す
+pub fn resolve_qualified<'a>(
+    table: &mut HashMap<String, Glass>,
+    names: impl IntoIterator<Item = &'a str>,
+    dirs: &[PathBuf],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for n in names {
+        let Some((base, cat)) = n.split_once('@') else {
+            continue;
+        };
+        if table.contains_key(n) {
+            continue;
+        }
+        let g = match table
+            .get(base)
+            .filter(|g| g.catalog.eq_ignore_ascii_case(cat))
+        {
+            Some(g) => Some(g.clone()),
+            None => load_catalogs_shared(&[cat.to_string()], dirs)
+                .0
+                .get(base)
+                .cloned(),
+        };
+        match g {
+            Some(g) => {
+                table.insert(n.to_string(), g);
+            }
+            None => missing.push(n.to_string()),
+        }
+    }
+    missing
+}
+
 /// [`load_catalogs`] と同じだが、結果を共有して返す。同じカタログ名・フォルダの組は使い回す（見つかった AGF の
 /// 更新時刻と大きさが同じで、見つからないカタログがないとき）。差し替え探索などで系を組むたびに、フォルダを
 /// 探して数千種のガラスの表を作り直さないため
@@ -412,9 +479,7 @@ pub fn load_catalogs_shared(
             // フォルダのどこにも無ければ同梱のカタログ。後でフォルダに置かれたら読み直すよう使い回さない
             match builtin::catalog(name) {
                 Some(g) => {
-                    for (k, v) in g.iter() {
-                        out.entry(k.clone()).or_insert_with(|| v.clone());
-                    }
+                    merge_catalog(&mut out, &g, name);
                     complete = false;
                 }
                 None => missing.push(name.clone()),
@@ -423,9 +488,7 @@ pub fn load_catalogs_shared(
         };
         match (crate::vfs::stamp(&e), load_agf_shared(&e)) {
             (Ok(st), Ok(g)) => {
-                for (k, v) in g.iter() {
-                    out.entry(k.clone()).or_insert_with(|| v.clone());
-                }
+                merge_catalog(&mut out, &g, name);
                 files.push((e.clone(), st));
             }
             (Err(err), _) | (_, Err(err)) => {

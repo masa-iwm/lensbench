@@ -141,6 +141,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) leaf: Vec<usize>,
     /// 誤りが起きたいちばん内の木のブロック（[`ExpandError::block`]）
     pub(crate) failed: Option<NodePath>,
+    /// 展開の注意（取り込んだ系のガラスの名前の付け替えなど）。系の import_notes へ
+    pub(crate) notes: Vec<String>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -728,7 +730,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let stamp = self.cache.and_then(|_| lensbench_core::vfs::stamp(&p).ok());
         if let (Some(c), Some(st), false) = (self.cache, &stamp, picked) {
             if let Some(s) = c.file(&key, st) {
-                self.merge_glasses(&s);
+                let mut s = s;
+                self.merge_glasses(&mut s, path)?;
                 return Ok(s);
             }
         }
@@ -753,9 +756,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         format!("{path}: state and beam_path are for a project file").into(),
                     );
                 }
-                let s = sysfile::load_text_with(&p, &txt, &self.env.glass_dirs)?.0;
+                let mut s = sysfile::load_text_with(&p, &txt, &self.env.glass_dirs)?.0;
                 keep(self, &s);
-                self.merge_glasses(&s);
+                self.merge_glasses(&mut s, path)?;
                 return Ok(s);
             }
             let me = Loading { file, item: None };
@@ -763,7 +766,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             let mut within = self.loading.clone();
             within.push(me);
             // 入れ子のプロジェクトは中のファイルが変わりうるので系は覚えず、中の葉だけ覚える
-            let s = Project::from_json(&txt)
+            let mut s = Project::from_json(&txt)
                 .and_then(|q| {
                     let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
                     let o = ExpandOpts {
@@ -777,7 +780,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         .map_err(lensbench_core::Error::from)
                 })
                 .map_err(|e| e.at(p.display()))?;
-            self.merge_glasses(&s);
+            self.merge_glasses(&mut s, path)?;
             return Ok(s);
         }
         let opt = zmx::LoadOptions {
@@ -785,9 +788,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
             catalog_dirs: self.env.glass_dirs.clone(),
             ..Default::default()
         };
-        let s = zmx::load_with(&p, &opt).map_err(|e| format!("{}: {e}", p.display()))?;
+        let mut s = zmx::load_with(&p, &opt).map_err(|e| format!("{}: {e}", p.display()))?;
         keep(self, &s);
-        self.merge_glasses(&s);
+        self.merge_glasses(&mut s, path)?;
         Ok(s)
     }
 
@@ -873,8 +876,70 @@ impl<'a, 'b> Ctx<'a, 'b> {
         ))
     }
 
-    pub(crate) fn merge_glasses(&mut self, s: &System) {
+    /// 取り込んだ系 s のガラスを表に足す。表に同じ名前で値の違うガラスがあれば（プロジェクトの glass_catalogs と
+    /// .zmx の GCAT の別のカタログなど）、s の面は s のガラスのまま: 名前@カタログ の名前で足して面の媒質を
+    /// 付け替え、注意を覚える
+    pub(crate) fn merge_glasses(
+        &mut self,
+        s: &mut System,
+        from: &str,
+    ) -> lensbench_core::Result<()> {
+        let clash: Vec<String> = s
+            .glasses
+            .iter()
+            .filter(|(k, g)| self.glasses.get(*k).is_some_and(|h| h != *g))
+            .map(|(k, _)| k.clone())
+            .collect();
+        if clash.is_empty() {
+            self.add_glasses(&s.glasses);
+            return Ok(());
+        }
+        let mut own = (*s.glasses).clone();
+        let mut renamed = HashMap::new();
+        for k in clash {
+            let Some(g) = own.remove(&k) else { continue };
+            let cat = if g.catalog.is_empty() {
+                from
+            } else {
+                g.catalog.as_str()
+            };
+            let base = glass::qualified(&k, cat);
+            // 同じ値で足してあればその名前、違う値なら番号を付ける
+            let mut key = base.clone();
+            let mut n = 1;
+            while self.glasses.get(&key).is_some_and(|h| *h != g) || own.contains_key(&key) {
+                n += 1;
+                key = format!("{base}{n}");
+            }
+            let theirs = &self.glasses[&k];
+            self.notes.push(format!(
+                "glass {}: {} uses catalog {}, not {} of glass_catalogs; named {} in this system",
+                k,
+                from,
+                cat,
+                if theirs.catalog.is_empty() {
+                    "-"
+                } else {
+                    theirs.catalog.as_str()
+                },
+                key,
+            ));
+            own.insert(key.clone(), g);
+            renamed.insert(k, key);
+        }
+        let mut rx = s.clone().into_prescription();
+        for d in &mut rx.surfaces {
+            if let Material::Glass(m) = &mut d.mat {
+                if let Some(k) = renamed.get(m.as_str()) {
+                    *m = k.clone();
+                }
+            }
+        }
+        rx.glasses = std::sync::Arc::new(own);
+        // 名前を変えただけ（屈折率・半直径は同じ）
+        *s = rx.build_raw()?;
         self.add_glasses(&s.glasses);
+        Ok(())
     }
 
     /// 無い名前のガラスだけ足す（全部あれば写さない）
@@ -930,7 +995,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     None,
                 )
                 .map_err(|e| format!("{vendor} {part}: {e}"))?;
-                self.merge_glasses(&s);
+                self.add_glasses(&s.glasses);
                 // カタログの玉は径が決まっているので半直径は固定（fixed_semi）
                 let el = pick_lens(&s, 1).map_err(|e| format!("{vendor} {part}: {e}"))?;
                 if let Some(c) = self.cache {

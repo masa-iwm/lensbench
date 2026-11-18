@@ -29,7 +29,7 @@ impl Core {
         let ids = self.doc.combo.ids();
         // 図で選んだ要素を表でも選ぶ（最上位のとき）
         if self.p.ld.scope.is_empty() {
-            if let Some(k) = self.p.combo_view.sel {
+            if let Some(k) = self.p.combo_view.sel() {
                 self.p.ld.sel = ids.get(k).cloned();
             }
         }
@@ -45,8 +45,8 @@ impl Core {
         let live = self.doc.combo.span_ids();
         let spans = lens_data::elem_spans(&live, &self.sys.elem_blocks, lead, &self.sys.ld_rows);
         // 図で別の要素を選んだら、その要素の外の今の面は外す（図の目立たせと表を合わせる）
-        if self.p.combo_view.sel != self.combo_sel_prev {
-            if let (Some(k), Some((j, _))) = (self.p.combo_view.sel, self.p.ld.cur) {
+        if self.p.combo_view.take_moved() {
+            if let (Some(k), Some((j, _))) = (self.p.combo_view.sel(), self.p.ld.cur) {
                 let inside = spans
                     .get(k)
                     .copied()
@@ -57,7 +57,6 @@ impl Core {
                 }
             }
         }
-        self.combo_sel_prev = self.p.combo_view.sel;
         let rows = &self.sys.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {
             ld_combo::read_only(rows, &spans, picks, lead, j, col)
@@ -83,7 +82,7 @@ impl Core {
                     if self.p.ld.scope.is_empty() {
                         match name.and_then(|n| ids.iter().position(|i| *i == n)) {
                             Some(k) => self.p.combo_view.select(k),
-                            None => self.p.combo_view.sel = None,
+                            None => self.p.combo_view.set_sel(None),
                         }
                     }
                 }

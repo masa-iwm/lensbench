@@ -76,7 +76,11 @@ impl App {
                 self.c.undo(undo, 1);
             }
         }
-        // Ctrl+A・Ctrl+Shift+A: 多重構成の次・前の構成（入力欄にフォーカスがあるときは全選択に使う）
+    }
+
+    /// パネルを描いた後のキー: パネルが使わなかったものだけ。Ctrl+A・Ctrl+Shift+A は多重構成の次・前の構成
+    /// （入力欄にフォーカスがあるときは全選択、面の表を使っているときは表の全部の行の選択に、パネルが先に取る）
+    pub(super) fn handle_late_input(&mut self, ctx: &egui::Context) {
         if !ctx.wants_keyboard_input() {
             let (back, fwd) = ctx.input_mut(|i| {
                 (

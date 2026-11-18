@@ -285,12 +285,16 @@ pub fn from_str_with(
     let (sys, hash_back) = if ver >= 2 {
         let p: crate::sysfile_v2::Prescription =
             crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
-        let (g, notes) = crate::sysfile_v2::catalogs::load(
-            &p.catalogs,
-            &lensbench_core::glass::catalog_dirs(glass_dirs),
-        )
-        .map_err(|e| e.at("system file"))?;
+        let dirs = lensbench_core::glass::catalog_dirs(glass_dirs);
+        let (mut g, notes) = crate::sysfile_v2::catalogs::load(&p.catalogs, &dirs)
+            .map_err(|e| e.at("system file"))?;
         warn.extend(notes);
+        // 名前@カタログ のガラス（同じ名前の別のガラスと分けた名前）は、そのカタログから引く
+        let named = p.surfaces.iter().filter_map(|r| match &r.medium {
+            Some(crate::sysfile_v2::Medium::Glass(m)) if m.contains('@') => Some(m.as_str()),
+            _ => None,
+        });
+        lensbench_core::glass::resolve_qualified(&mut g, named, &dirs);
         let sys = crate::sysfile_v2::read::system(p, std::sync::Arc::new(g))
             .map_err(|e| format!("system file: {e}"))?;
         check(&sys)?;

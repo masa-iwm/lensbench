@@ -616,7 +616,8 @@ fn zmx_project_keeps_grin_material_not_in_catalogs() {
     lensbench_project::same_system(&s, &e).unwrap();
 }
 
-/// 同じ名前のガラスが既定のカタログ（SCHOTT）にもあるとき、組合せのプロジェクトは .zmx のカタログ（GCAT、.zmx の隣の AGF）から引く
+/// 同じ名前のガラスが既定のカタログ（SCHOTT）にもあるとき、組合せのプロジェクトは .zmx のカタログ（GCAT、.zmx の隣の AGF）を
+/// glass_catalogs に書く。書かなくても zmx ブロックの面は .zmx の GCAT のガラス
 #[test]
 fn zmx_project_keeps_glass_catalogs() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -671,7 +672,8 @@ fn zmx_project_keeps_glass_catalogs() {
         })
         .unwrap()
         .system;
-    // 既定のカタログ（SCHOTT）で引くと屈折率が違う
+    // glass_catalogs が既定（SCHOTT）でも、zmx ブロックの面は .zmx の GCAT（LBX）のガラス。SCHOTT の N-SK16 は
+    // 自作の玉などほかの面に使い、.zmx の方は N-SK16@LBX の名前で持って注意を出す
     let mut q = p.clone();
     q.as_object_mut().unwrap().remove("glass_catalogs");
     let d = lensbench_project::Project::from_json(&q.to_string())
@@ -681,8 +683,65 @@ fn zmx_project_keeps_glass_catalogs() {
         })
         .unwrap()
         .system;
+    // 付け替えた名前のまま書いても読み直せる: システムファイル（catalogs は SCHOTT・LBX）と、玉 1 枚の
+    // ユーザーカタログの項目（glass_catalogs は LBX だけ。N-SK16@LBX は LBX の N-SK16）
+    let dirs = vec![g.clone(), z.clone()];
+    let txt = lensbench_project::sysfile::to_string(&d, &[]).unwrap();
+    let back = lensbench_project::sysfile::from_str_with(&txt, &dirs)
+        .unwrap()
+        .0;
+    lensbench_project::same_system(&d, &back).unwrap();
+    assert_eq!(back.surfaces[1].mat.glass(), Some("N-SK16@LBX"));
+    let item = lensbench_project::lens_item(&d, 1, "").unwrap();
+    assert_eq!(item.glass_catalogs, ["LBX"]);
+    let mut v = serde_json::json!({
+        "wavelengths": [{"um": 0.5875618}], "primary": 1,
+        "aperture": {"type": "epd", "value": 5},
+        "fields": {"type": "angle", "points": [[0, 0]]},
+        "glass_catalogs": item.glass_catalogs,
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5}],
+    });
+    v["blocks"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::to_value(&item.blocks[0]).unwrap());
+    v["blocks"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"type": "air", "t": 40}));
+    let env2 = lensbench_project::Env {
+        base: "/".into(),
+        glass_dirs: dirs,
+        catalog: None,
+        step_files: None,
+    };
+    let l = lensbench_project::Project::from_json(&v.to_string())
+        .and_then(|q| {
+            lensbench_project::expand(&q, &env2, &Default::default())
+                .map_err(lensbench_core::Error::from)
+        })
+        .unwrap()
+        .system;
+    let j = (1..l.surfaces.len())
+        .find(|&j| l.surfaces[j].mat.glass() == Some("N-SK16@LBX"))
+        .unwrap();
+    assert_eq!(l.glasses["N-SK16@LBX"], d.glasses["N-SK16@LBX"]);
+    assert_eq!(l.surfaces[j].mat.glass(), Some("N-SK16@LBX"));
     std::fs::remove_dir_all(&dir).ok();
     lensbench_project::same_system(&s, &e).unwrap();
-    assert_ne!(s.n(1), d.n(1));
-    assert!(lensbench_project::same_system(&s, &d).is_err());
+    assert_eq!(s.n(1), d.n(1));
+    assert_eq!(d.surfaces[1].mat.glass(), Some("N-SK16@LBX"));
+    assert_ne!(d.glasses["N-SK16"], d.glasses["N-SK16@LBX"]);
+    assert!(
+        d.import_notes
+            .iter()
+            .any(|x| x.starts_with("glass N-SK16:") && x.contains("N-SK16@LBX")),
+        "{:?}",
+        d.import_notes
+    );
+    // .zmx に書き出すとカタログの中の名前
+    let z = lensbench_formats::zmx_write::write(&d).unwrap();
+    assert!(z.contains("  GLAS N-SK16 0 0") && !z.contains("N-SK16@"));
+    // e は glass_catalogs が .zmx と同じなので付け替えない
+    assert_eq!(e.surfaces[1].mat.glass(), Some("N-SK16"));
 }

@@ -1496,7 +1496,10 @@ pub fn paraxial_focus(y: f64, z: f64, m: f64, n: f64) -> Option<f64> {
 /// レイアウト図の画面の状態（選んだ要素・寸法）
 #[derive(Default)]
 pub struct View {
-    pub sel: Option<usize>,
+    /// 選んだ要素（[`View::sel`]・[`View::set_sel`]。変えると [`View::take_moved`] が知らせる）
+    sel: Option<usize>,
+    /// 選んだ要素を変えた（面の表が受け取るまで）
+    moved: bool,
     /// 足す状態の名前の欄
     pub new_state: String,
     /// 選んだ寸法（要素 k の後の空気。usize::MAX は絞りから最初の要素）
@@ -1603,9 +1606,25 @@ impl View {
         }
     }
 
+    /// 選んだ要素
+    pub fn sel(&self) -> Option<usize> {
+        self.sel
+    }
+
+    /// 選ぶ要素を変える（違えば [`View::take_moved`] で知らせる）
+    pub fn set_sel(&mut self, k: Option<usize>) {
+        self.moved |= self.sel != k;
+        self.sel = k;
+    }
+
+    /// 前に聞いてから選んだ要素を変えたか（聞くと消える）
+    pub fn take_moved(&mut self) -> bool {
+        std::mem::take(&mut self.moved)
+    }
+
     /// 要素 k を選ぶ
     pub fn select(&mut self, k: usize) {
-        self.sel = Some(k);
+        self.set_sel(Some(k));
         self.dim = None;
         self.edit = None;
     }
@@ -1613,7 +1632,7 @@ impl View {
     pub fn start_edit(&mut self, combo: &mut Combo, g: usize) {
         let v = gap_get(combo, g).unwrap_or(0.0);
         self.dim = Some(g);
-        self.sel = None;
+        self.set_sel(None);
         self.edit = Some((g, fmt_num((v * 1e4).round() / 1e4), false));
     }
 }
@@ -1704,7 +1723,7 @@ pub fn ui(
         // 経路を変えたら、選んでいた要素を新しい経路の中で探し直す（無ければ外す）
         let sel_id = view.sel.and_then(|k| combo.ids().get(k).cloned());
         if path_select(ui, combo, paths) {
-            view.sel = sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id));
+            view.set_sel(sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id)));
             view.dim = None;
         }
         ui.checkbox(auto, tr("Rebuild on every change"));
@@ -1739,7 +1758,7 @@ pub fn ui(
             .union(ui.allocate_response(ui.available_size(), Sense::hover()));
         if let Some(p) = r.dnd_release_payload::<DropPick>() {
             combo.picks.push(p.0.clone());
-            view.sel = Some(0);
+            view.set_sel(Some(0));
         } else if r.dnd_hover_payload::<DropPick>().is_some() {
             ui.painter().rect_stroke(
                 r.rect,
@@ -1997,7 +2016,7 @@ fn insert(combo: &mut Combo, view: &mut View, p: Pick) {
     let at = view.sel.map(|k| k + 1).unwrap_or(n).min(n);
     // 間に入れても空気は分けない（足した要素の後の空気は初めの値）
     let k = combo.insert_chain_with(at, p, false);
-    view.sel = Some(k);
+    view.set_sel(Some(k));
     view.dim = None;
 }
 
@@ -2031,15 +2050,15 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
         };
         match key {
             Key::OpenBracket if n > 0 => {
-                view.sel = Some(view.sel.map(|k| (k + n - 1) % n).unwrap_or(n - 1));
+                view.set_sel(Some(view.sel.map(|k| (k + n - 1) % n).unwrap_or(n - 1)));
                 view.dim = None;
             }
             Key::CloseBracket if n > 0 => {
-                view.sel = Some(view.sel.map(|k| (k + 1) % n).unwrap_or(0));
+                view.set_sel(Some(view.sel.map(|k| (k + 1) % n).unwrap_or(0)));
                 view.dim = None;
             }
             Key::Escape => {
-                view.sel = None;
+                view.set_sel(None);
                 view.dim = None;
             }
             Key::Enter | Key::F2 => {
@@ -2121,7 +2140,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     .filter(|&k| combo.el(k).is_some_and(|p| !p.fixed()))
                 {
                     combo.remove_chain(k);
-                    view.sel = None;
+                    view.set_sel(None);
                     view.dim = None;
                 }
             }
@@ -2362,7 +2381,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
                 ))
                 .clicked()
             {
-                view.sel = Some(k);
+                view.set_sel(Some(k));
                 view.dim = None;
             }
         }
@@ -2863,9 +2882,9 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     }
     if remove {
         combo.remove_chain(k);
-        view.sel = None;
+        view.set_sel(None);
     } else if let Some(d) = swap {
-        view.sel = combo.swap_chain(k, d).or(Some(k));
+        view.set_sel(combo.swap_chain(k, d).or(Some(k)));
     }
     open
 }

@@ -50,6 +50,11 @@ enum Cmd {
 }
 
 /// グラフを描く。body で線を描き、カーソルの値を出す曲線を series に足す。x_unit はカーソルの値の横軸の単位
+/// [`show`] がグラフの上に置く道具の行の高さ（グラフの高さをパネルの残りから決めるときに引く）
+pub fn bar_height(ui: &Ui) -> f32 {
+    ui.spacing().interact_size.y + ui.spacing().item_spacing.y
+}
+
 pub fn show(
     ui: &mut Ui,
     plot: Plot,

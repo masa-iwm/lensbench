@@ -310,3 +310,40 @@ fn file_not_writable_as_combo_is_refused() {
     assert!(h.state().c.loc.file.is_none(), "{st}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Ctrl+A: 面の表を使っているときは表の全部の行を選び、多重構成の構成は変えない。表を使っていなければ次の構成
+#[test]
+fn ctrl_a_selects_rows_in_the_table() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let state =
+        |h: &Harness<'static, App>| h.state().c.doc.combo.active_state().map(str::to_string);
+    assert!(
+        h.state().c.doc.combo.states.len() >= 2,
+        "{}",
+        h.state().test_state()
+    );
+    let s0 = state(&h);
+    // 表を使っていない: 次の構成
+    h.press_key_modifiers(Modifiers::COMMAND, Key::A);
+    settle(&mut h);
+    let s1 = state(&h);
+    assert_ne!(s1, s0, "{}", h.state().test_state());
+    // 表のセルを押した後: 全部の行を選び、構成はそのまま
+    h.get_by_label("Surface 1 Thickness").click();
+    h.run_steps(2);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::A);
+    settle(&mut h);
+    assert_eq!(state(&h), s1, "{}", h.state().test_state());
+    // 今のセルは最後の行へ（初めの行から最後の行までを選ぶ）
+    assert!(
+        h.state().c.p.ld.cur.is_some_and(|c| c.0 > 1),
+        "{}",
+        h.state().test_state()
+    );
+}

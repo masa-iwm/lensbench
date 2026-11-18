@@ -93,7 +93,7 @@ pub(super) fn figure(
         view.axes.clear();
         view.mids.clear();
         if let Some(k) = crate::view3d::show(ui, resp, sc, &d.configs, &owner, view.sel, accent) {
-            view.sel = k;
+            view.set_sel(k);
             view.dim = None;
         }
         return;
@@ -928,16 +928,16 @@ fn interact(
         } else if let Some(g) = h.dim {
             // 寸法線（数字の外）のクリックは選ぶだけ（スライダー・← →）
             view.dim = Some(g);
-            view.sel = None;
+            view.set_sel(None);
         } else {
-            view.sel = h.el;
+            view.set_sel(h.el);
             view.dim = None;
         }
     }
     let pan_drag = view.nav && panning(ui, resp);
     if resp.drag_started_by(egui::PointerButton::Primary) && !pan_drag {
         if let Some(k) = h.el {
-            view.sel = Some(k);
+            view.set_sel(Some(k));
             view.dim = None;
         }
         if let (Some(p), Some(combo)) = (resp.interact_pointer_pos(), combo.as_deref()) {

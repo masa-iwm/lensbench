@@ -400,12 +400,8 @@ struct Core {
     overlay: Overlay,
     /// レイアウトの光線・書き出しの設定の欄を次の描画で開く（通し確認）
     rays_open: bool,
-    /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
-    combo_sel_prev: Option<usize>,
     /// 次の [`Core::open_doc_unlisted`] は、開いている段（元のファイルを開いたとき）を使う（モデルガラスの写し）
     reopen_same: bool,
-    /// 前の画面の組合せの要素の数（空の組合せに足したかを見る。usize::MAX はまだ見ていない）
-    combo_len_prev: usize,
     font: Option<String>,
     next_id: u64,
     /// パネルの中から頼まれた操作
@@ -1214,7 +1210,6 @@ impl Core {
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
-        self.combo_len_prev = self.doc.combo.picks.len();
         if self.load_stale && !self.worker.busy_core() {
             self.load_stale = false;
             if let Some(p) = self.loc.combo_path.clone() {
@@ -1290,7 +1285,11 @@ impl Core {
             self.refresh_catalog();
         }
         // ダブルクリックで足す玉は、組合せで選んでいる要素の直後へ
-        self.doc.insert_after = self.p.combo_view.sel.filter(|&k| k < self.doc.combo.len());
+        self.doc.insert_after = self
+            .p
+            .combo_view
+            .sel()
+            .filter(|&k| k < self.doc.combo.len());
         self.browser.lens_hide.clone_from(&self.s.lens_hide);
         let act = self.browser.ui(
             ui,
@@ -1858,9 +1857,7 @@ impl App {
                 overlay: Overlay::default(),
                 rays_open: false,
                 folders: Default::default(),
-                combo_sel_prev: None,
                 reopen_same: false,
-                combo_len_prev: usize::MAX,
                 font,
                 next_id,
                 cmds: Vec::new(),
@@ -2394,6 +2391,7 @@ impl eframe::App for App {
         self.handle_input(ctx);
         self.sync_window_chrome(ctx);
         self.show_panels(ctx);
+        self.handle_late_input(ctx);
         self.show_dialogs(ctx);
         self.tour_frame(ctx);
     }

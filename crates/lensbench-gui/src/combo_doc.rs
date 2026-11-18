@@ -158,3 +158,30 @@ impl ComboDoc {
         self.added = Some(at);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// カタログの玉を最後に足すと、前の最後の玉の後（像面までだった空気）は 5 mm になり、像面は系ができたら近軸の
+    /// 焦点へ（refocus）。1 枚目の後の空気は焦点距離のまま残らない（2 枚目で像面が遠くに残らない）
+    #[test]
+    fn adding_at_the_end_refocuses() {
+        let row = |part: &str, efl: f64| LensRow {
+            vendor: "V".into(),
+            part: part.into(),
+            efl,
+            diameter: 25.4,
+            thickness: 3.0,
+            pieces: 1,
+            ..Default::default()
+        };
+        let mut d = ComboDoc::default();
+        d.add_row(&row("A", 45.0), &[]);
+        assert!(std::mem::take(&mut d.refocus));
+        d.add_row(&row("B", 100.0), &[]);
+        assert!(d.refocus);
+        assert_eq!(d.combo.picks.len(), 2);
+        assert_eq!(d.combo.picks[0].air, 5.0);
+    }
+}
