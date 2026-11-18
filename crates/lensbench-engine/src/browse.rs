@@ -95,23 +95,23 @@ pub fn glasses(dirs: &[PathBuf]) -> Value {
 type GlassCache =
     std::collections::HashMap<Vec<String>, std::collections::HashMap<String, glass::Glass>>;
 
-/// レンズカタログ 1 本の要約（焦点距離・径・厚さ・ガラス）。読めなければ error に理由
-fn lens_summary(
-    zmx_text: &str,
-    efl_cat: f64,
-    dirs: &[PathBuf],
-    cache: &mut GlassCache,
-) -> lensbench_core::Result<Value> {
-    let raw = zmx::parse_text(zmx_text)?;
-    let cats: Vec<String> = raw
-        .sysl
+/// .zmx の文が使うガラスカタログの並び（GCAT。無ければ SCHOTT）
+fn glass_cats(raw: &zmx::Raw) -> Vec<String> {
+    raw.sysl
         .get("GCAT")
         .and_then(|v| v.first())
         .cloned()
-        .unwrap_or_else(|| vec!["SCHOTT".into()]);
-    let all = cache
-        .entry(cats.clone())
-        .or_insert_with(|| glass::load_catalogs(&cats, &glass::catalog_dirs(dirs)).0);
+        .unwrap_or_else(|| vec!["SCHOTT".into()])
+}
+
+/// レンズカタログ 1 本の要約（焦点距離・径・厚さ・ガラス）。読めなければ error に理由。
+/// all は [`glass_cats`] のカタログのガラス（[`GlassCache`] の値）
+fn lens_summary(
+    raw: &zmx::Raw,
+    efl_cat: f64,
+    dirs: &[PathBuf],
+    all: &std::collections::HashMap<String, glass::Glass>,
+) -> lensbench_core::Result<Value> {
     // 使うガラスだけを渡す（全部を写すと、それも玉ごとに重い）
     let mut names: Vec<String> = raw.surfs.iter().filter_map(|q| q.glas.clone()).collect();
     names.extend(
@@ -136,7 +136,7 @@ fn lens_summary(
             sub.insert(k, g.clone());
         }
     }
-    let s = lensbench_project::catalog_system(&raw, dirs, Some(sub))?;
+    let s = lensbench_project::catalog_system(raw, dirs, Some(sub))?;
     system_summary(&s, efl_cat)
 }
 
@@ -375,20 +375,42 @@ fn cache_key(
 
 fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> lensbench_core::Result<Value> {
     let cat = LensCatalog::load_registered(paths)?;
+    // 玉ごとの要約は独立（1 本ごとに系を組むので重い）。並列に作り、行はカタログの順のまま。
+    // 1) 文を読む（並列） 2) 使うガラスカタログを玉の順に 1 度ずつ読む（逐次。読んだファイルの記録は
+    // このスレッドに残る） 3) 系を組んで要約する（並列。記録はスレッドごとなので玉ごとに取って戻す）
+    // 読んだ文を全部は持たないよう、まとまりごとに回す
     let mut cache = GlassCache::new();
-    let mut out: Vec<Value> = cat
-        .lenses()
-        .iter()
-        .map(|l| {
-            let mut v = json!({ "vendor": l.vendor, "part": l.part });
-            match lens_summary(&l.zmx, l.efl, glass_dirs, &mut cache) {
-                Ok(Value::Object(m)) => v.as_object_mut().expect("rows are JSON objects").extend(m),
-                Ok(_) => {}
-                Err(e) => v["error"] = json!(String::from(e)),
-            }
-            v
-        })
-        .collect();
+    let mut out: Vec<Value> = Vec::with_capacity(cat.lenses().len());
+    for part in cat.lenses().chunks(1024) {
+        let raws = lensbench_core::par::map(part, |l| zmx::parse_text(&l.zmx));
+        for raw in raws.iter().flatten() {
+            cache.entry(glass_cats(raw)).or_insert_with_key(|c| {
+                glass::load_catalogs(c, &glass::catalog_dirs(glass_dirs)).0
+            });
+        }
+        let jobs: Vec<_> = part.iter().zip(raws).collect();
+        let rows = lensbench_core::par::map(&jobs, |(l, raw)| {
+            vfs::recording(|| {
+                let mut v = json!({ "vendor": l.vendor, "part": l.part });
+                let sum = match raw {
+                    Ok(raw) => lens_summary(raw, l.efl, glass_dirs, &cache[&glass_cats(raw)]),
+                    Err(e) => Err(e.clone()),
+                };
+                match sum {
+                    Ok(Value::Object(m)) => {
+                        v.as_object_mut().expect("rows are JSON objects").extend(m)
+                    }
+                    Ok(_) => {}
+                    Err(e) => v["error"] = json!(String::from(e)),
+                }
+                v
+            })
+        });
+        for (row, read) in rows {
+            vfs::record(&read);
+            out.push(row);
+        }
+    }
     let mut cats = Vec::new();
     for f in json_catalogs(paths) {
         let (rows, cat) = user_items(&f, glass_dirs, &cat);
