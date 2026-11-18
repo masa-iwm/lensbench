@@ -2604,7 +2604,8 @@ impl PySystem {
 
     /// Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
     /// The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
-    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None))]
+    /// By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid (the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid; the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak); exact=True sums every sample exactly at every image point (several times slower).
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None, exact=false))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_psf<'py>(
         &self,
@@ -2615,6 +2616,7 @@ impl PySystem {
         image: usize,
         pixel: Option<f64>,
         threads: Option<usize>,
+        exact: bool,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
@@ -2623,6 +2625,7 @@ impl PySystem {
             pupil,
             image,
             pixel,
+            exact,
         };
         let p = py
             .detach(|| with_threads(threads, || huygens::huygens_psf(&s, f, w, o)))
@@ -2632,7 +2635,8 @@ impl PySystem {
 
     /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
     /// axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
-    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None, axes="field"))]
+    /// exact=True uses the exact sum of huygens_psf (several times slower).
+    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None, axes="field", exact=false))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
         &self,
@@ -2645,6 +2649,7 @@ impl PySystem {
         pixel: Option<f64>,
         threads: Option<usize>,
         axes: &str,
+        exact: bool,
     ) -> PyResult<Bound<'py, PyDict>> {
         let (s, ax) = (self.sys(), mtfs::axes(axes)?);
         let f = field_sel(&s, field)?;
@@ -2654,6 +2659,7 @@ impl PySystem {
             pupil,
             image,
             pixel,
+            exact,
         };
         let m = py
             .detach(|| {
@@ -2791,7 +2797,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 1);
+pub const API_VERSION: (u32, u32) = (2, 2);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

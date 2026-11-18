@@ -265,6 +265,8 @@ pub(super) struct PsfParams {
     pub image: usize,
     /// Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)
     pub pixel: Option<f64>,
+    /// Huygens PSF only: sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)
+    pub exact: bool,
     /// Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)
     pub plane: Plane,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
@@ -280,6 +282,7 @@ impl Default for PsfParams {
             pupil: None,
             image: 128,
             pixel: None,
+            exact: false,
             plane: Plane::Image,
             polarization: false,
         }
@@ -365,6 +368,9 @@ impl Analysis for Psf {
         let w = wave(s, p.wave)?;
         let (mut v, mut axes, mut warn, mut samp) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        if p.exact && !p.huygens {
+            lensbench_core::invalid!("setting exact is for the Huygens PSF (give huygens too)");
+        }
         for i in fields(s, p.field)? {
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
@@ -373,6 +379,7 @@ impl Analysis for Psf {
                     pupil: p.pupil,
                     image: p.image,
                     pixel: p.pixel,
+                    exact: p.exact,
                 };
                 huygens::huygens_psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
             } else {

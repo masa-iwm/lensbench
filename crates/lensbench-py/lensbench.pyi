@@ -663,14 +663,16 @@ class System:
     def hash(self) -> str:
         """The hash of the system ("sha256:…", the same as the system file). Stamp it on analysis results to check later that the system is the same"""
 
-    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, axes: str = "field") -> _MtfResult:
+    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, axes: str = "field", exact: bool = False) -> _MtfResult:
         """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
         axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
+        exact=True uses the exact sum of huygens_psf (several times slower).
         """
 
-    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _PsfResult:
+    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, exact: bool = False) -> _PsfResult:
         """Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
         The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
+        By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid (the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid; the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak); exact=True sums every sample exactly at every image point (several times slower).
         """
 
     def hxhy(self, i: int) -> tuple[float, float]:

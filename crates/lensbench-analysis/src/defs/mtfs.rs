@@ -479,6 +479,8 @@ pub(super) struct HuygensMtfParams {
     pub image: usize,
     /// Image grid spacing [mm] (1 / (2 × cutoff) if omitted)
     pub pixel: Option<f64>,
+    /// Sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)
+    pub exact: bool,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
     /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
@@ -496,6 +498,7 @@ impl Default for HuygensMtfParams {
             pupil: None,
             image: 128,
             pixel: None,
+            exact: false,
             polarization: false,
             axes: MtfDirs::Field,
         }
@@ -521,6 +524,7 @@ impl Analysis for HuygensMtf {
             pupil: p.pupil,
             image: p.image,
             pixel: p.pixel,
+            exact: p.exact,
         };
         let mut v = Vec::new();
         for i in fields(s, p.field)? {

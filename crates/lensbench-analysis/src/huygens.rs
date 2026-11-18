@@ -42,6 +42,11 @@ pub struct HuygensOpts {
     /// 像の格子の間隔 [レンズ単位]（像面の上で。None で像面の上の 1 / (2 × 遮断周波数)、x・y 別。FFT PSF の
     /// 既定の面（[`crate::psf::PsfPlane::Image`]）の既定の間隔と同じ）
     pub pixel: Option<f64>,
+    /// true で像の全部の点で各光源を厳密に足す（遅い）。false（既定）は像の格子を小さな区画に分け、区画の中では
+    /// 各光源の位相と振幅を像の点の番号の 2 次式で近似する（数倍速い）。区画の大きさは、2 次式と厳密な値の差が
+    /// 位相で 1e-6 rad・振幅で 1e-6 倍以下になるように選ぶ（確かめるのは格子の四隅と中央の区画だけで、全部の
+    /// 区画の保証ではない。強度の差は照合の系で収差のない中心の値の 2e-7 倍以下）。合う区画が無ければ厳密に計算する
+    pub exact: bool,
 }
 
 impl Default for HuygensOpts {
@@ -50,9 +55,155 @@ impl Default for HuygensOpts {
             pupil: None,
             image: 128,
             pixel: None,
+            exact: false,
         }
     }
 }
+
+/// 位相の展開（[`HuygensOpts::exact`] が false）で一度に進める光源の数
+const LANES: usize = 8;
+/// 展開の許容: 2 次式と厳密な値の差（位相 [rad]、振幅は相対）
+const EXPAND_TOL: f64 = 1e-6;
+/// 区画の一辺（像の点の数）の候補。大きい方から試す
+const EXPAND_BLOCKS: [usize; 4] = [32, 16, 8, 4];
+
+/// 区画の 7 点（中心、±x、±y、対角の 2 点。間隔 h 点）の値 f から、中心のまわりの 2 次式の係数
+/// [f0, gx, gy, hxx, hyy, hxy]（f ≈ f0 + gx u + gy v + hxx u²/2 + hxy u v + hyy v²/2、u・v は中心からの点の数）
+fn fit_quad(f: &[Vec<f64>; 7], h: f64, c: &mut [Vec<f64>; 6]) {
+    let n = f[0].len();
+    for v in c.iter_mut() {
+        v.clear();
+        v.resize(n, 0.0);
+    }
+    let (i2h, ih2) = (0.5 / h, 1.0 / (h * h));
+    for j in 0..n {
+        let (f0, xp, xm, yp, ym, pp, mm) = (
+            f[0][j], f[1][j], f[2][j], f[3][j], f[4][j], f[5][j], f[6][j],
+        );
+        c[0][j] = f0;
+        c[1][j] = (xp - xm) * i2h;
+        c[2][j] = (yp - ym) * i2h;
+        c[3][j] = (xp - 2.0 * f0 + xm) * ih2;
+        c[4][j] = (yp - 2.0 * f0 + ym) * ih2;
+        c[5][j] = (pp + mm - xp - xm - yp - ym + 2.0 * f0) * 0.5 * ih2;
+    }
+}
+
+/// [`fit_quad`] の係数を、区画の隅の点 (0, 0) からの前進差分 [値, x の差分, y の差分, hxx, hyy, hxy] に直し、
+/// 長さを LANES の倍数にそろえる（足した分は 0）
+fn to_forward(c: &mut [Vec<f64>; 6], h: f64) {
+    let n = c[0].len();
+    for j in 0..n {
+        let (f0, gx, gy, hxx, hyy, hxy) = (c[0][j], c[1][j], c[2][j], c[3][j], c[4][j], c[5][j]);
+        c[0][j] = f0 - (gx + gy) * h + (0.5 * hxx + hxy + 0.5 * hyy) * h * h;
+        c[1][j] = gx + 0.5 * hxx * (1.0 - 2.0 * h) - hxy * h;
+        c[2][j] = gy + 0.5 * hyy * (1.0 - 2.0 * h) - hxy * h;
+    }
+    let np = n.div_ceil(LANES) * LANES;
+    for v in c.iter_mut() {
+        v.resize(np, 0.0);
+    }
+}
+
+/// 区画の中の和: 各光源の exp(i 位相) を漸化式（z ← z r、r ← r e）で、振幅を前進差分で進め、像の点ごとに
+/// 光源の組の列ごとの和 acc（[j·bx + i][列]）に足す。e は位相の前進差分の exp、a は振幅の前進差分
+fn sweep(
+    e: &[Vec<C64>; 6],
+    a: &[Vec<f64>; 6],
+    bx: usize,
+    by: usize,
+    acc: &mut [[[f64; LANES]; 2]],
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::arch::is_x86_feature_detected!("avx2") {
+            // 安全: AVX2 があることを上で確かめた（演算は同じなので結果は同じビット）
+            return unsafe { sweep_avx2(e, a, bx, by, acc) };
+        }
+    }
+    sweep_impl(e, a, bx, by, acc)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn sweep_avx2(
+    e: &[Vec<C64>; 6],
+    a: &[Vec<f64>; 6],
+    bx: usize,
+    by: usize,
+    acc: &mut [[[f64; LANES]; 2]],
+) {
+    sweep_impl(e, a, bx, by, acc)
+}
+
+#[inline(always)]
+fn sweep_impl(
+    e: &[Vec<C64>; 6],
+    a: &[Vec<f64>; 6],
+    bx: usize,
+    by: usize,
+    acc: &mut [[[f64; LANES]; 2]],
+) {
+    type V = [f64; LANES];
+    #[inline(always)]
+    fn mul(ar: &mut V, ai: &mut V, br: &V, bi: &V) {
+        for l in 0..LANES {
+            let (r, i) = (ar[l] * br[l] - ai[l] * bi[l], ar[l] * bi[l] + ai[l] * br[l]);
+            ar[l] = r;
+            ai[l] = i;
+        }
+    }
+    let n = a[0].len();
+    let acc = &mut acc[..bx * by];
+    for c in (0..n).step_by(LANES) {
+        let re = |k: usize| -> V { std::array::from_fn(|l| e[k][c + l].re) };
+        let im = |k: usize| -> V { std::array::from_fn(|l| e[k][c + l].im) };
+        let am = |k: usize| -> V { std::array::from_fn(|l| a[k][c + l]) };
+        let (mut zr, mut zi, mut rxr, mut rxi, mut ryr, mut ryi) =
+            (re(0), im(0), re(1), im(1), re(2), im(2));
+        let (exxr, exxi, eyyr, eyyi, exyr, exyi) = (re(3), im(3), re(4), im(4), re(5), im(5));
+        let (mut a0, mut dax, mut day) = (am(0), am(1), am(2));
+        let (axx, ayy, axy) = (am(3), am(4), am(5));
+        for row in acc.chunks_exact_mut(bx) {
+            let (mut wr, mut wi, mut qr, mut qi, mut av, mut dv) = (zr, zi, rxr, rxi, a0, dax);
+            for u in row.iter_mut() {
+                let [ur, ui] = u;
+                for l in 0..LANES {
+                    ur[l] += av[l] * wr[l];
+                    ui[l] += av[l] * wi[l];
+                    av[l] += dv[l];
+                    dv[l] += axx[l];
+                }
+                mul(&mut wr, &mut wi, &qr, &qi);
+                mul(&mut qr, &mut qi, &exxr, &exxi);
+            }
+            mul(&mut zr, &mut zi, &ryr, &ryi);
+            mul(&mut ryr, &mut ryi, &eyyr, &eyyi);
+            mul(&mut rxr, &mut rxi, &exyr, &exyi);
+            for l in 0..LANES {
+                a0[l] += day[l];
+                day[l] += ayy[l];
+                dax[l] += axy[l];
+            }
+        }
+    }
+}
+
+/// 位相の展開の作業用の配列（スレッドごと）
+#[derive(Default)]
+struct ExpandBuf {
+    ph: [Vec<f64>; 7],
+    amp: [Vec<f64>; 7],
+    cph: [Vec<f64>; 6],
+    camp: [Vec<f64>; 6],
+    ones: Vec<f64>,
+    e: [Vec<C64>; 6],
+    acc: Vec<[[f64; LANES]; 2]>,
+    exact: (Vec<f64>, Vec<f64>, Vec<C64>),
+}
+
+/// 区画の 7 点の位置（区画の隅からの点の数、h の倍数）: 中心、+x、−x、+y、−y、(+, +)、(−, −)
+const NODES: [(i64, i64); 7] = [(1, 1), (2, 1), (0, 1), (1, 2), (1, 0), (2, 2), (0, 0)];
 
 /// 参照球の 2 次波の振幅と位相（成分ごとの配列）
 struct SphereTerms<'a> {
@@ -210,18 +361,21 @@ fn huygens_once(
     // 像面の上の格子の点（局所座標、z は像面の矢高）。矢高が求まらない点（像面の形の式の外）は z が NaN で、
     // 強度も NaN（平面として計算しない）
     let img = &s.surfaces[s.image()];
+    let on_image = |x: f64, y: f64| -> V3 {
+        let (px, py) = (cx + x, cy + y);
+        // 球の縁の外などでは矢高は端の値に丸めて有限のまま返り、傾きが NaN になる
+        let (z, zx, zy) = lensbench_core::freeform::sag_xy(img, px, py);
+        let on = z.is_finite() && zx.is_finite() && zy.is_finite();
+        [px, py, if on { z } else { f64::NAN }]
+    };
     let pts: Vec<V3> = ys
         .iter()
-        .flat_map(|&y| {
-            xs.iter().map(move |&x| {
-                let (px, py) = (cx + x, cy + y);
-                // 球の縁の外などでは矢高は端の値に丸めて有限のまま返り、傾きが NaN になる
-                let (z, zx, zy) = lensbench_core::freeform::sag_xy(img, px, py);
-                let on = z.is_finite() && zx.is_finite() && zy.is_finite();
-                [px, py, if on { z } else { f64::NAN }]
-            })
-        })
+        .flat_map(|&y| xs.iter().map(move |&x| on_image(x, y)))
         .collect();
+    // 格子の点の番号（格子の外でもよい）の像面の上の点。位相の展開の区画の 7 点に使う
+    let at = |ix: i64, iy: i64| -> V3 {
+        on_image((ix as f64 - half) * pixel.0, (iy as f64 - half) * pixel.1)
+    };
     let off_surface = pts.iter().filter(|p| !p[2].is_finite()).count();
 
     let np = match o.pupil {
@@ -327,10 +481,10 @@ fn huygens_once(
                 src.iter().map(|q| q.k[2]).collect(),
             ),
         };
-        let one = |p: &V3, (ph, amp, z): &mut (Vec<f64>, Vec<f64>, Vec<C64>)| -> f64 {
+        // 像の点 p への各光源の位相 ph と振幅 amp（厳密）
+        let terms = |p: &V3, ph: &mut Vec<f64>, amp: &mut Vec<f64>| {
             ph.resize(ns, 0.0);
             amp.resize(ns, 0.0);
-            z.resize(ns, C64::new(0.0, 0.0));
             match sphere {
                 Some((_, rr, sg)) => {
                     let t = SphereTerms {
@@ -353,6 +507,10 @@ fn huygens_once(
                     }
                 }
             }
+        };
+        let one = |p: &V3, (ph, amp, z): &mut (Vec<f64>, Vec<f64>, Vec<C64>)| -> f64 {
+            terms(p, ph, amp);
+            z.resize(ns, C64::new(0.0, 0.0));
             lensbench_core::trig::cis_scaled(ph, amp, z);
             z.iter().fold(C64::new(0.0, 0.0), |u, &v| u + v).norm_sqr()
         };
@@ -365,8 +523,128 @@ fn huygens_once(
                 one(p, b)
             }
         };
-        let iw: Vec<f64> = if pts.len() * src.len() >= 1 << 18 && !lensbench_core::par::sequential()
-        {
+        // 位相の展開: 区画の 7 点で厳密な位相・振幅を求めて 2 次式を作る。点が像面の形の外なら false
+        let fit = |x0: i64, y0: i64, blk: usize, b: &mut ExpandBuf| -> bool {
+            let h = (blk / 2) as i64;
+            for (k, &(nx, ny)) in NODES.iter().enumerate() {
+                let p = at(x0 + nx * h, y0 + ny * h);
+                if !p[2].is_finite() {
+                    return false;
+                }
+                terms(&p, &mut b.ph[k], &mut b.amp[k]);
+            }
+            fit_quad(&b.ph, h as f64, &mut b.cph);
+            fit_quad(&b.amp, h as f64, &mut b.camp);
+            true
+        };
+        // 区画の一辺: 格子の四隅と中央の区画で、7 点でない点の 2 次式と厳密な値の差が許容に入る一番大きい候補
+        let block = if !o.exact {
+            let mut b = ExpandBuf::default();
+            let (mut tp, mut ta) = (Vec::new(), Vec::new());
+            EXPAND_BLOCKS.iter().copied().find(|&blk| {
+                let (h, q) = ((blk / 2) as i64, (blk / 4) as i64);
+                let last = (ni.saturating_sub(blk)) as i64;
+                let mid = (ni as i64 - blk as i64).max(0) / 2;
+                let corners = [(0, 0), (last, 0), (0, last), (last, last), (mid, mid)];
+                corners.iter().all(|&(x0, y0)| {
+                    if !fit(x0, y0, blk, &mut b) {
+                        return false;
+                    }
+                    let checks = [
+                        (2 * h, 0),
+                        (0, 2 * h),
+                        (q, q),
+                        (3 * q, q),
+                        (q, 3 * q),
+                        (3 * q, 3 * q),
+                    ];
+                    checks.iter().all(|&(i, j)| {
+                        let p = at(x0 + i, y0 + j);
+                        if !p[2].is_finite() {
+                            return false;
+                        }
+                        terms(&p, &mut tp, &mut ta);
+                        let (u, v) = ((i - h) as f64, (j - h) as f64);
+                        let q2 = |c: &[Vec<f64>; 6], k: usize| {
+                            c[0][k]
+                                + c[1][k] * u
+                                + c[2][k] * v
+                                + 0.5 * c[3][k] * u * u
+                                + c[5][k] * u * v
+                                + 0.5 * c[4][k] * v * v
+                        };
+                        (0..ns).all(|k| {
+                            (q2(&b.cph, k) - tp[k]).abs() <= EXPAND_TOL
+                                && (q2(&b.camp, k) - ta[k]).abs() <= EXPAND_TOL * ta[k].abs()
+                        })
+                    })
+                })
+            })
+        } else {
+            None
+        };
+        // 1 つの区画（隅の点 (x0, y0)、一辺 blk、格子の端では小さい）の強度。行の順
+        let one_block = |&(x0, y0): &(usize, usize), blk: usize, b: &mut ExpandBuf| -> Vec<f64> {
+            let (bx, by) = (blk.min(ni - x0), blk.min(ni - y0));
+            let cell = |i: usize, j: usize| &pts[(y0 + j) * ni + x0 + i];
+            if lensbench_core::par::cancelled() {
+                return vec![f64::NAN; bx * by];
+            }
+            let all_on = (0..by).all(|j| (0..bx).all(|i| cell(i, j)[2].is_finite()));
+            if !all_on || !fit(x0 as i64, y0 as i64, blk, b) {
+                // 像面の形の外の点がある区画は 1 点ずつ厳密に
+                return (0..bx * by)
+                    .map(|k| one(cell(k % bx, k / bx), &mut b.exact))
+                    .collect();
+            }
+            let h = (blk / 2) as f64;
+            to_forward(&mut b.cph, h);
+            to_forward(&mut b.camp, h);
+            let n = b.cph[0].len();
+            b.ones.resize(n, 1.0);
+            for (e, c) in b.e.iter_mut().zip(&b.cph) {
+                e.resize(n, C64::new(0.0, 0.0));
+                lensbench_core::trig::cis_scaled(c, &b.ones, e);
+            }
+            b.acc.clear();
+            b.acc.resize(bx * by, [[0.0; LANES]; 2]);
+            sweep(&b.e, &b.camp, bx, by, &mut b.acc);
+            b.acc
+                .iter()
+                .map(|[r, i]| C64::new(r.iter().sum(), i.iter().sum()).norm_sqr())
+                .collect()
+        };
+        let iw: Vec<f64> = if let Some(blk) = block {
+            let origins: Vec<(usize, usize)> = (0..ni)
+                .step_by(blk)
+                .flat_map(|y0| (0..ni).step_by(blk).map(move |x0| (x0, y0)))
+                .collect();
+            let parts: Vec<Vec<f64>> =
+                if pts.len() * src.len() >= 1 << 18 && !lensbench_core::par::sequential() {
+                    use rayon::prelude::*;
+                    let cx = lensbench_core::par::current();
+                    origins
+                        .par_iter()
+                        .map_init(ExpandBuf::default, |b, og| {
+                            lensbench_core::par::with_ctx(&cx, || one_block(og, blk, b))
+                        })
+                        .collect()
+                } else {
+                    let mut b = ExpandBuf::default();
+                    origins
+                        .iter()
+                        .map(|og| one_block(og, blk, &mut b))
+                        .collect()
+                };
+            let mut iw = vec![0.0; pts.len()];
+            for (&(x0, y0), part) in origins.iter().zip(&parts) {
+                let bx = blk.min(ni - x0);
+                for (j, row) in part.chunks(bx).enumerate() {
+                    iw[(y0 + j) * ni + x0..][..bx].copy_from_slice(row);
+                }
+            }
+            iw
+        } else if pts.len() * src.len() >= 1 << 18 && !lensbench_core::par::sequential() {
             use rayon::prelude::*;
             let cx = lensbench_core::par::current();
             pts.par_iter()

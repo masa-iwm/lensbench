@@ -472,6 +472,7 @@ Solve field at analysis wavelength	視野を解析の波長で解く
 Huygens PSF	Huygens PSF
 Image grid	像のグリッドサイズ
 Image grid spacing	像のグリッドの間隔
+Exact sum (slow)	厳密な和（遅い）
 Grid plane	グリッドの面
 Apply diffraction limit	回折限界をかける
 Beam 1 (sample)	光束 1（試料）

@@ -63,6 +63,7 @@ fn huygens_central_obscuration() {
         pupil: Some(64),
         image: 128,
         pixel: None,
+        exact: false,
     };
     let r = huygens_mtf(&s, FieldSel::Index(0), Waves::All, o, &fr).unwrap();
     for (i, &f) in fr.iter().enumerate() {

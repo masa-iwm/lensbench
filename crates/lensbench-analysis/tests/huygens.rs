@@ -109,6 +109,7 @@ fn perfect_lens_gives_diffraction_limit() {
         pupil: Some(128),
         image: 256,
         pixel: None,
+        exact: false,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     assert!((h.tan[0] - 1.0).abs() < 1e-12 && (h.sag[0] - 1.0).abs() < 1e-12);
@@ -147,6 +148,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         pupil: Some(64),
         image: 128,
         pixel: Some(d),
+        exact: false,
     };
     let hp = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let c0 = 64;
@@ -176,6 +178,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         pupil: Some(128),
         image: 256,
         pixel: None,
+        exact: false,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     for (k, &q) in fs.iter().enumerate() {
@@ -193,6 +196,7 @@ fn rejects_bad_grids() {
         pupil: Some(2),
         image: 16,
         pixel: None,
+        exact: false,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
     // 像の格子が瞳の標本の周期を超える
@@ -200,6 +204,7 @@ fn rejects_bad_grids() {
         pupil: Some(16),
         image: 64,
         pixel: None,
+        exact: false,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
 }
@@ -213,6 +218,7 @@ fn huygens_mtf_above_nyquist_is_nan() {
         pupil: Some(64),
         image: 64,
         pixel: None,
+        exact: false,
     };
     let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let ny = 0.5 / p.pixel.0;
@@ -230,6 +236,7 @@ fn huygens_points_outside_the_image_surface_are_nan() {
         pupil: Some(64),
         image: 64,
         pixel: None,
+        exact: false,
     };
     let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     // 半径が格子の幅の 1/4 の球面の像面: 格子の外側の点は球の外
@@ -299,6 +306,7 @@ fn skew_fields_match_huygens() {
         pupil: Some(64),
         image: 64,
         pixel: None,
+        exact: false,
     };
     let f1 = FieldSel::Index(1);
     let mut worst = Vec::new();
@@ -379,4 +387,75 @@ fn huygens_mtf_follows_the_field_direction() {
             );
         }
     }
+}
+
+/// 既定の計算（位相・振幅を区画ごとに 2 次式で）は厳密な和（exact）と 1e-6 より近い。斜めの視野の多色、傾いた像面、
+/// 区画の倍数でない格子、粗い間隔（区画が小さくなる）で
+#[test]
+fn expand_is_close_to_the_exact_sum() {
+    let a0 = load("A0");
+    let tilted = tilt_image(&load("D0"), 25.0);
+    let last = FieldSel::Index(a0.fields.len() - 1);
+    let on = FieldSel::Index(0);
+    let cases: [(&System, FieldSel, Waves, usize, Option<f64>); 4] = [
+        (&a0, last, Waves::All, 64, None),
+        (&a0, on, Waves::One(a0.primary), 50, None),
+        (&tilted, on, Waves::One(tilted.primary), 64, None),
+        (&a0, on, Waves::One(a0.primary), 37, Some(0.004)),
+    ];
+    for (k, &(s, f, w, image, pixel)) in cases.iter().enumerate() {
+        let o = HuygensOpts {
+            pupil: Some(64),
+            image,
+            pixel,
+            exact: true,
+        };
+        let exact = huygens_psf(s, f, w, o).unwrap();
+        let fast = huygens_psf(s, f, w, HuygensOpts { exact: false, ..o }).unwrap();
+        let d = max_abs_diff(&exact.i, &fast.i);
+        assert!(d < 1e-6, "case {k}: {d}");
+        assert!(d > 0.0, "case {k}: the default took the exact path");
+        assert_eq!(exact.pixel, fast.pixel);
+        assert!((exact.enclosed - fast.enclosed).abs() < 1e-6);
+    }
+}
+
+/// 既定の計算でも、像面の形の外の点は NaN のまま、その区画のほかの点は厳密な値
+#[test]
+fn expand_keeps_nan_outside_the_image_surface() {
+    let mut s = load("D0");
+    let f = FieldSel::Index(0);
+    let o = HuygensOpts {
+        pupil: Some(64),
+        image: 64,
+        pixel: None,
+        exact: true,
+    };
+    let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    let r = 16.0 * p0.pixel.0;
+    let img = s.image();
+    s.edit_raw(|rx| {
+        rx.surfaces[img].c = 1.0 / r;
+        Ok(())
+    })
+    .unwrap();
+    let exact = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    let fast = huygens_psf(
+        &s,
+        f,
+        Waves::One(s.primary),
+        HuygensOpts { exact: false, ..o },
+    )
+    .unwrap();
+    let mut nan = 0;
+    for (a, b) in exact.i.data().iter().zip(fast.i.data()) {
+        assert_eq!(a.is_nan(), b.is_nan());
+        if a.is_nan() {
+            nan += 1;
+        } else {
+            assert!((a - b).abs() < 1e-6, "{a} {b}");
+        }
+    }
+    assert!(nan > 0 && nan < 64 * 64);
+    assert_eq!(exact.warnings, fast.warnings);
 }

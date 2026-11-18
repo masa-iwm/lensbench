@@ -215,6 +215,7 @@ fn undersampling_is_reported() {
         pupil: Some(pupil),
         image: 32,
         pixel: None,
+        exact: false,
     };
     let coarse = psf::psf(&s, f0, Waves::All, fixed(16)).unwrap();
     let hc = huygens_psf(&s, f0, Waves::All, hfixed(16)).unwrap();

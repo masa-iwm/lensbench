@@ -224,6 +224,9 @@ impl Analysis {
                 "Spacing of the image grid (automatic if omitted)",
             )
         };
+        let exact = || {
+            p("exact", Flag, b(false), "", "Sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)")
+        };
         match self {
             Analysis::Spot => vec![
                 wave(),
@@ -280,7 +283,7 @@ impl Analysis {
                     "Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)",
                 ),
             ],
-            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
+            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel(), exact()],
             Analysis::Rms => vec![
                 wave(),
                 p(
@@ -310,7 +313,7 @@ impl Analysis {
                     "Multiply by the diffraction limit",
                 ),
             ],
-            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel()],
+            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel(), exact()],
             Analysis::Pop => vec![
                 wave(),
                 p(
@@ -765,6 +768,7 @@ impl Plugin for Analysis {
                     pupil: r.opt_count("pupil")?,
                     image: r.count("image", d.count("image")?)?,
                     pixel,
+                    exact: r.flag("exact", d.flag("exact")?)?,
                 };
                 if *self == Analysis::HuygensPsf {
                     Prepared::HuygensPsf { wave, opts }

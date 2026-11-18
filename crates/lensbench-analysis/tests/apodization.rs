@@ -115,6 +115,7 @@ fn gaussian_pupil_psf_is_gaussian() {
         pupil: Some(128),
         image: 64,
         pixel: None,
+        exact: false,
     };
     let h = huygens_psf(&s, f0, Waves::All, ho).unwrap();
     let c = 32;
@@ -347,6 +348,7 @@ SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\nSURF 3\n  TYPE STANDA
         pupil: Some(32),
         image: 32,
         pixel: None,
+        exact: false,
     };
     let h = huygens_psf_with(&s, f, Waves::All, ho, Some(&PerWave(c.clone()))).unwrap();
     let h1 = huygens_psf_with(&t, f, Waves::All, ho, Some(&PerWave(vec![1.0; 3]))).unwrap();
@@ -388,6 +390,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
         pupil: Some(16),
         image: 16,
         pixel: None,
+        exact: false,
     };
     let e2 = huygens_psf(&s, f, Waves::All, ho)
         .err()

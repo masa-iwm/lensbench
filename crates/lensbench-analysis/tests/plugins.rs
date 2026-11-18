@@ -223,6 +223,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         pupil: Some(16),
         image: 16,
         pixel: None,
+        exact: false,
     };
     let o = run("huygens_psf", cfg.clone(), &s, 2.0);
     let r = lensbench_analysis::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho)
