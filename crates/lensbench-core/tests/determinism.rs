@@ -3,6 +3,7 @@
 
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{Aiming, FieldSel, PolIn};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
@@ -58,6 +59,13 @@ fn fingerprint(name: &str) -> String {
             analysis::mtf(&s, fs, Waves::All, Some(32), &[0.0, 10.0, 25.0, 50.0]).unwrap()
         );
     }
+    // PSF: 1 段目（瞳の行ごと）も 2 段目も並列になる大きさ
+    let o = PsfOpts {
+        pupil: Some(128),
+        ..Default::default()
+    };
+    let p = psf::psf(&s, FieldSel::Index(nf - 1), Waves::One(0), o).unwrap();
+    out += &format!("{:?}{:?}{:?}", p.i, p.center, p.pixel);
     let c = Coatings::for_system(&s).unwrap();
     let pols = [
         [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],

@@ -493,15 +493,22 @@ fn psf_once(
                     .collect()
             })
             .collect();
-        // 1 段目: 各瞳の行 iy について x 方向の変換 G[iy][mx]
-        let g: Vec<Vec<C64>> = p
-            .iter()
-            .map(|row| {
-                ex.iter()
-                    .map(|e| row.iter().zip(e).map(|(a, b)| a * b).sum())
-                    .collect()
-            })
-            .collect();
+        // 1 段目: 各瞳の行 iy について x 方向の変換 G[iy][mx]。行の両端の 0（瞳の外の区間）は和に入れない
+        // （0 の項は和を変えないので、全部を足したときと同じビット）。行は互いに独立なので、大きければ並列に
+        let stage1 = |row: &Vec<C64>| -> Vec<C64> {
+            let nz = |c: &C64| c.re != 0.0 || c.im != 0.0;
+            let lo = row.iter().position(nz).unwrap_or(row.len());
+            let hi = row.iter().rposition(nz).map_or(lo, |i| i + 1);
+            ex.iter()
+                .map(|e| row[lo..hi].iter().zip(&e[lo..hi]).map(|(a, b)| a * b).sum())
+                .collect()
+        };
+        let g: Vec<Vec<C64>> = if np * np * ni >= 1 << 20 && !crate::par::sequential() {
+            use rayon::prelude::*;
+            p.par_iter().map(scoped(stage1)).collect()
+        } else {
+            p.iter().map(stage1).collect()
+        };
         let one = |my: usize| -> Vec<f64> {
             (0..ni)
                 .map(|mx| {
