@@ -114,7 +114,7 @@ impl GuiExtensions for lensbench_engine::Extensions {
         self.with_ext(move |e| e.slot_mut::<GuiExt>().add_detector(d))
     }
     fn gui_translations(self, pairs: &'static [(&'static str, &'static str)]) -> Self {
-        self.with_ext(move |_| crate::i18n::add(pairs))
+        self.on_install(move || crate::i18n::add(pairs))
     }
 }
 

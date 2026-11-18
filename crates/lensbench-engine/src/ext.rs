@@ -35,6 +35,7 @@ pub struct Extensions {
     detectors: Vec<DetectorKind>,
     analyses: Vec<Arc<dyn DynAnalysis>>,
     hooks: Vec<Hook>,
+    on_install: Vec<Arc<dyn Fn() + Send + Sync>>,
     messages: Vec<&'static str>,
 }
 
@@ -96,9 +97,17 @@ impl Extensions {
     }
 
     /// 表に足す関数（GUI の見せ方・Python の関数など、このクレートが型を知らない欄を足す拡張トレイトが使う）。
-    /// install・ext のときに、ほかのものを足した後で足した順に呼ぶ
+    /// install・ext のときに、ほかのものを足した後で足した順に呼ぶ。install は今の表に重ねるので、同じ拡張を 2 回
+    /// install すると 2 回呼ばれる（同じものを 2 つ並べない関数にする）
     pub fn with_ext(mut self, f: impl Fn(&mut Ext) + Send + Sync + 'static) -> Self {
         self.hooks.push(Arc::new(f));
+        self
+    }
+
+    /// install のときだけ呼ぶ関数（プロセスに 1 つの表に足すもの。GUI の画面の文字の訳など）。ext・merge では呼ばない。
+    /// 何度 install しても困らない関数にする
+    pub fn on_install(mut self, f: impl Fn() + Send + Sync + 'static) -> Self {
+        self.on_install.push(Arc::new(f));
         self
     }
 
@@ -134,13 +143,10 @@ impl Extensions {
         if !other.replacing {
             let both: Vec<String> = self.names().intersection(&other.names()).cloned().collect();
             if !both.is_empty() {
-                let who = |e: &Extensions| e.name.unwrap_or("(unnamed)");
-                lensbench_core::invalid!(
-                    "extensions {} and {} both add {}",
-                    who(&self),
-                    who(&other),
-                    both.join(", ")
-                );
+                let a = self.name.unwrap_or("(unnamed)");
+                let b = other.name.unwrap_or("(unnamed)");
+                let names = both.join(", ");
+                lensbench_core::invalid!("extensions {a} and {b} both add {names}");
             }
         }
         self.plugins.extend(other.plugins);
@@ -149,6 +155,7 @@ impl Extensions {
         self.detectors.extend(other.detectors);
         self.analyses.extend(other.analyses);
         self.hooks.extend(other.hooks);
+        self.on_install.extend(other.on_install);
         self.messages.extend(other.messages);
         Ok(self)
     }
@@ -229,6 +236,9 @@ impl Extensions {
             Ok::<(), lensbench_core::Error>(())
         })?;
         add_messages(&self.messages);
+        for f in &self.on_install {
+            f();
+        }
         Ok(())
     }
 }

@@ -54,10 +54,21 @@ pub trait PyExtensions {
 
 impl PyExtensions for lensbench_engine::Extensions {
     fn py_module(self, f: ModuleFn) -> Self {
-        self.with_ext(move |e| e.slot_mut::<ModuleFns>().0.push(f))
+        // 同じ関数は 1 つだけ（同じ拡張を 2 回 install しても並べない）
+        self.with_ext(move |e| {
+            let v = &mut e.slot_mut::<ModuleFns>().0;
+            if !v.iter().any(|g| *g as usize == f as usize) {
+                v.push(f);
+            }
+        })
     }
     fn py_native_task(self, f: NativeTaskFrom) -> Self {
-        self.with_ext(move |e| e.slot_mut::<NativeTasks>().0.push(f))
+        self.with_ext(move |e| {
+            let v = &mut e.slot_mut::<NativeTasks>().0;
+            if !v.iter().any(|g| *g as usize == f as usize) {
+                v.push(f);
+            }
+        })
     }
 }
 
