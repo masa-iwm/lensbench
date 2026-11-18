@@ -19,3 +19,7 @@ __pycache__/
 /docs/reference/cli.md
 /docs/reference/python-api.md
 /docs/gen/
+
+# 雛形の Cargo.lock は CI が公開の Cargo.lock から写す
+/examples/extension/Cargo.lock
+/examples/extension/target

@@ -190,6 +190,23 @@ jobs:
       - run: python -m pip install -r tests/readback/requirements.txt
       - run: python -m pytest -q tests/readback
 
+  # 外のクレートから登録する口の雛形（examples/extension、ワークスペースの外）を外と同じく単独で組み、試す。
+  # SDK の約束を壊す変更をここで止める。依存の版は公開の Cargo.lock から写す（雛形の分だけ足す）
+  extension:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: examples/extension -> target
+      - run: cp Cargo.lock examples/extension/Cargo.lock
+      - run: cargo clippy --manifest-path examples/extension/Cargo.toml --all-features --all-targets -- -D warnings
+      - run: cargo test --manifest-path examples/extension/Cargo.toml --profile ci --features gui
+
   # Web 版: wasm でビルドし、配る形のフォルダを作って Chromium で起動を確かめる。フォルダは成果物
   # lensbench-web（GitHub Pages への公開は pages.yml）
   web:

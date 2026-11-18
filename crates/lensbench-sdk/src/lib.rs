@@ -18,6 +18,11 @@
 
 pub use lensbench_core::{Error, Result};
 pub use lensbench_engine::Extensions;
+// 解析の設定・結果の型に使う（derive は `#[serde(crate = "lensbench_sdk::serde")]`・
+// `#[schemars(crate = "lensbench_sdk::schemars")]` を付ける）
+pub use schemars;
+pub use serde;
+pub use serde_json;
 
 /// 検出器・解析のプラグイン（名前つきの配列を受けて返す）
 pub mod plugin {
@@ -43,9 +48,9 @@ pub mod system {
 pub mod trace {
     pub use lensbench_core::raygrid::RayGrid;
     pub use lensbench_core::system::{
-        Cols, FieldSel, Launch, ObjSpec, PolIn, PolTrace, RayBuf, RecSel, TraceOpts,
+        Cols, FieldSel, Launch, ObjSpec, PolIn, PolTrace, RayBuf, RecSel, Trace, TraceOpts,
     };
-    pub use lensbench_core::trace::RayCounts;
+    pub use lensbench_core::trace::{RayCounts, RayOut, RayStatus};
 }
 
 /// 利用者定義の面のモデル

@@ -323,6 +323,14 @@
   系から 1 回求める（ループで繰り返す `set_param` が 7〜60 倍速い）。最後の系で光線が届く面の半直径は毎回求めたときと同じ。
   届かない面は求め直しで値を変えないので、途中の系で求めた値ではなく、後回しにする前の値が残る。
 ### Rust API
+- 外のクレートから足す口: 新しいクレート `lensbench-sdk`（約束の型の再輸出、入口 `cli::main`・`gui::main`・`py::module`、
+  足し忘れの検査 `check`）と雛形 `examples/extension`（[ライブラリ（Rust）](rust.md) の「拡張の約束」）。
+  - **壊す変更**: `lensbench_engine::Extensions::merge` は `Result` を返す（2 つの拡張が同じ名前のものを足すと誤り。
+    置き換えは後の方に `replacing()`）。
+  - `Extensions` に `named`・`replacing`・`with_ext`（表に足す関数）・`on_install`・`messages`（誤りの文の訳）。
+  - GUI の `lensbench_gui::ext::GuiExtensions` と `lensbench_gui::main_with`、Python の `lensbench::ext::PyExtensions`
+    と `module_with`、CLI の `lensbench_cli::main_with`。
+  - `SurfaceModel::example_config`（既定は `params` の既定値。`check` が `check_flip` に渡す）。
 - `System::semi_affects_trace` を公開した。
 - 検出器の露光（`lensbench_runs::SensorNoise::expose`）の正規乱数を Ziggurat 法（`Rng::normal_fast`・`Rng::poisson_fast`）にした。
   分布は厳密に同じで手間はおよそ 1/6、同じ種でも雑音の値は前と違う。`Rng::normal`・`Rng::poisson` はそのまま

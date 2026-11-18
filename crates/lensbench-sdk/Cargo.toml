@@ -24,6 +24,10 @@ lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-engine = { path = "../lensbench-engine" }
+# 解析の設定・結果の型が使う（外は再輸出の lensbench_sdk::serde などを使い、版をそろえる）
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+schemars = "1"
 lensbench-cli = { path = "../lensbench-cli", optional = true }
 lensbench-gui = { path = "../lensbench-gui", optional = true }
 lensbench-py = { path = "../lensbench-py", optional = true, default-features = false }

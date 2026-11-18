@@ -25,6 +25,30 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 - プロジェクト（玉・群・カタログのレンズを組むシステム）は `lensbench_project::open`、CLI・serve と同じ解析の呼び出しは
   `lensbench_engine::Session`。
 
+## 拡張の約束: 外のクレートから足す
+
+別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面・カタログの形式を足し、自分の exe・wheel を組める
+（DLL は使わない。静的にリンクする）。依存するのは `lensbench-sdk` 1 つ。
+
+- 足すものは `lensbench_sdk::Extensions` 1 つにまとめる: `.plugins(..)`・`.analysis(..)`・`.detector(..)`・
+  `.surface_model(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
+  （`gui_analysis`・`gui_detector`・`gui_translations`）、Python の関数は `lensbench_sdk::py::PyExtensions`（`py_module`）。
+- 入口に渡す: CLI は `lensbench_sdk::cli::main(ext)`、GUI は `lensbench_sdk::gui::main(ext)`、Python の拡張モジュールは
+  `#[pymodule]` から `lensbench_sdk::py::module(m, ext)`。呼ぶ順の約束は無い。
+- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面のモデル・カタログの拡張子）は誤りになる
+  （置き換えるときは後の方に `.replacing()`）。`Extensions::named(..)` の名前は誤りの文にだけ使い、サブコマンドなど
+  利用者に見える名前には入らない。
+- 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面）。
+  試験で呼ぶ。
+- **約束の型** は `lensbench-sdk` が再輸出するものだけ（一覧は `crates/lensbench-sdk/API.txt`）。各クレートのほかの
+  `pub` は中の都合で変わる。0.x の間はマイナー版で約束を壊してよく、壊す変更は [変更点](changes.md) の Rust API に書く。
+- 外は git のタグ（`v0.5.0` から）か rev で参照する。egui・pyo3・serde・schemars は SDK の再輸出
+  （`lensbench_sdk::gui::egui`・`py::pyo3`・`serde`・`schemars`）を使い、自分の Cargo.toml に直接書かない
+  （版がずれると型が合わない）。derive には `#[serde(crate = "lensbench_sdk::serde")]` などを付ける。
+- 雛形は `examples/extension`（プラグイン・解析と GUI の見せ方・Python の関数・試験）。写して始める。profile・
+  `[patch]` は git 依存から伝わらないので雛形の Cargo.toml に写してある。Cargo.lock は公開のものを写すと、公開の CI で
+  試した依存の版になる。
+
 ## パラメータ変更・光路長の微分・光線の解き
 
 - `lensbench_core::plugin`: 検出器・解析のプラグインの約束。`Plugin`（名前・種類・`prepare(&Config)`）と

@@ -1,0 +1,50 @@
+# 外のクレートから lensbench に解析・プラグインを足す雛形。別のリポジトリでは、これを写して始める。
+# 公開のリポジトリの中では lensbench-sdk を path で参照し、公開 CI が組む（SDK を壊す変更を止める）。
+# 写したら下の lensbench-sdk を git のタグ（または rev）に替える:
+#   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.5.0", features = [...] }
+[package]
+name = "lensbench-extension-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# 公開のワークスペースには入れない（外のリポジトリと同じく単独で組む）
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "example-cli"
+path = "src/bin/cli.rs"
+
+[[bin]]
+name = "example-gui"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
+
+[features]
+default = []
+gui = ["lensbench-sdk/gui"]
+# Python の拡張モジュール（import 名は lensbench。公開の wheel と同じ環境に入れない）
+py = ["lensbench-sdk/py"]
+
+[dependencies]
+# egui・pyo3・serde・schemars は直接依存せず、SDK の再輸出を使う（版がずれると型が合わない）
+lensbench-sdk = { path = "../../crates/lensbench-sdk", features = ["cli"] }
+
+# 公開のリポジトリと同じ設定（git 依存からは伝わらないので写す）
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = false
+overflow-checks = true
+
+[patch.crates-io]
+winit = { path = "../../third_party/winit" }
+branches = { path = "../../third_party/branches" }
