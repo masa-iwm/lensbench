@@ -1494,7 +1494,7 @@ impl Core {
                 .cloned();
             match self.auto_fill.tick(ctx, sel.as_ref()) {
                 Some(crate::fill::AutoOut::Save(p)) => {
-                    self.draft_call(Tag::CatalogFill, Call::CatalogFill(Box::new(p)));
+                    self.draft_call(Tag::CatalogFill, Call::CatalogFill(p));
                 }
                 #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {

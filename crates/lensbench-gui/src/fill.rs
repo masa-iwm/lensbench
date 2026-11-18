@@ -337,7 +337,7 @@ pub(crate) type Handover = (LensRow, crate::webview::Child, Option<(String, Stri
 #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub(crate) enum AutoOut {
     /// 値が決まったので保存する（catalog_fill の要求）
-    Save(FillReq),
+    Save(Box<FillReq>),
     /// 決まらないので補う窓に出す
     #[cfg(all(windows, feature = "webview"))]
     Show(Box<Handover>),
@@ -469,7 +469,7 @@ impl AutoFill {
                             "page",
                         );
                         self.job = None;
-                        return p.map(AutoOut::Save);
+                        return p.map(|r| AutoOut::Save(Box::new(r)));
                     }
                     job.text = Some((url, text));
                 }
