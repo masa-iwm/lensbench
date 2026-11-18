@@ -248,6 +248,23 @@ pub struct SurfSpec {
     pub target: Option<f64>,
 }
 
+/// cardinal の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct CardSpec {
+    /// 量（efl・f_object・f_image・focal_object・focal_image・principal_object・principal_image・anti_principal_object・
+    /// anti_principal_image・nodal_object・nodal_image・anti_nodal_object・anti_nodal_image）。efl は空気換算の 1/パワー、
+    /// f_* は媒質の中の焦点距離、位置は物体空間の点が面 from の頂点から、像空間の点が面 to の頂点から [レンズ単位]
+    pub q: String,
+    /// 面の範囲（既定は面 1 から像面の手前の面まで）
+    pub from: Option<usize>,
+    pub to: Option<usize>,
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -338,6 +355,7 @@ pub enum TermSpec {
     Coupling(CouplingSpec),
     Thickness(ThickSpec),
     Surface(SurfSpec),
+    Cardinal(CardSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

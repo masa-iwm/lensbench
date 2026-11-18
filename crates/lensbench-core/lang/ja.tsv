@@ -1626,6 +1626,10 @@ Zernike type {k} (only Fringe 0 and Standard 1)	Zernike の種類 {k}（Fringe 0
 annular Zernike (Epsilon) and Vertex are not supported	輪帯の Zernike（Epsilon）と Vertex には対応していません
 Zernike term {term}	Zernike の項 {term}
 sampling {s} (1 to 6)	サンプリング {s}（1〜6）
+the X orientation of a system that is not rotationally symmetric (lensbench's paraxial trace is in the Y-Z plane)	回転対称でないシステムの X の向き（lensbench の近軸追跡は Y-Z 面）
+surfaces {s1} and {s2} are not a single lens in air (OpticStudio gives 1e8)	面 {s1}・{s2} は空気中の単レンズではありません（OpticStudio は 1e8）
+data {d} (0 to 11)	Data {d}（0〜11）
+orientation {o}	向き {o}
 field {f}	視野 {f}
 only the centroid on the image surface is supported	重心は像面のものだけに対応しています
 polarization is not supported	偏光には対応していません
@@ -1641,6 +1645,7 @@ term {}: {e}; not written to the .zmx	項 {}: {e}。.zmx には書きません
 OpticStudio's ZERN fits {os} terms, so its value differs from the term's	OpticStudio の ZERN は {os} 項でフィッティングするので、値が項と違います
 OpticStudio's pupil quadrature (2·Ring arms) differs from the term's, so its value differs	OpticStudio の瞳の求積（腕 2·Ring 本）が項と違うので、値が違います
 paraxial {q} has no OpticStudio operand	近軸量 {q} に当たる OpticStudio のオペランドはありません
+efl at a wavelength other than the primary has no OpticStudio operand	主波長でない波長の efl に当たる OpticStudio のオペランドはありません
 ray quantity {q}	光線の量 {q}
 {op} of OpticStudio is on the image surface only	OpticStudio の {op} は像面だけです
 the chief ray stopped (surface {})	主光線が止まりました（面 {}）
@@ -2293,6 +2298,10 @@ surface {j} has no position (ignored, or the object at infinity)	面 {j} には�
 {} of surface {j}: systems with mirrors are not supported yet	面 {j} の {}: ミラーのあるシステムにはまだ対応していません
 x and y go with sag and thick	x と y は sag と thick と使います
 surface term has no target (or min and max)	surface の項に target（か min・max）がありません
+cardinal term has no target (or min and max)	cardinal の項に target（か min・max）がありません
+cardinal quantity {s} ({})	基点の量 {s}（{}）
+{} of surfaces {from} to {to} is not finite	面 {from}〜{to} の {} が有限ではありません
+term {i}: cardinal points of surfaces {from} to {to} (1 to {last})	項 {i}: 面 {from}〜{to} の基点（1〜{last}）
 SSAG with Off-Axis, Remove or BFS	Off-Axis・Remove・BFS のある SSAG
 a macro solve sets k, semi or p1.. (not {})	マクロのソルブで解くのは k・semi・p1.. です（{} ではありません）
 macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）

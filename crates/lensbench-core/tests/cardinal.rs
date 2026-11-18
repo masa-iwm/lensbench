@@ -1,6 +1,6 @@
 //! 基点（report::cardinal）を厚肉レンズ・像空間がガラス・鏡の式と比べる
 
-use lensbench_core::report::cardinal;
+use lensbench_core::report::{cardinal, cardinal_span};
 use lensbench_core::system::System;
 use lensbench_formats::zmx;
 
@@ -51,6 +51,17 @@ SURF 2\n  TYPE STANDARD\n  CURV {}\n  DISZ {t_img}\nSURF 3\n  TYPE STANDARD\n  C
     close(c.nodal_object, c.principal_object, "N");
     close(c.anti_principal_image, p2 + 2.0 * f - t_img, "反主点′");
     close(c.anti_principal_object, p1 - 2.0 * f, "反主点");
+    // 面の範囲: 1〜2 は像空間の点を面 2 から測る。2 だけはガラスから空気への 1 面（物体空間の屈折率 n）
+    let c12 = cardinal_span(&s, 1, 2, 0);
+    close(c12.focal_image, f + p2, "F′（面 2 から）");
+    close(c12.principal_object, p1, "P（面 1 から）");
+    let c2 = cardinal_span(&s, 2, 2, 0);
+    let f2 = 1.0 / ((1.0 - n) / r2);
+    close(c2.efl, f2, "面 2 の efl");
+    close(c2.n_object, n, "面 2 の前の屈折率");
+    close(c2.f_object, -n * f2, "面 2 の f");
+    close(c2.principal_image, 0.0, "面 2 の P′ は頂点");
+    close(c2.nodal_object, r2, "面 2 の N は曲率中心");
 }
 
 /// 像空間がガラス（単一の屈折面 R、n → n′）: f′ = n′R/(n′−n)、f = −nR/(n′−n)、主点は頂点、節点は曲率中心

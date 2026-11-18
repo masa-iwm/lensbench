@@ -51,7 +51,7 @@ fn rows_to_terms() {
         "wfno 0 0 0 0 0 0 4 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     let want = vec![
         json!({"type": "paraxial", "q": "efl", "target": 100.0, "weight": 1.0}),
         json!({"type": "spot", "rings": 3, "wave": null, "field": [0.0, 0.7], "reference": "centroid", "quadrature": "opticstudio", "weight": 1.0}),
@@ -75,7 +75,7 @@ fn rows_to_terms() {
     assert_eq!(skipped, [4, 7, 10, 16, 18, 21], "{:?}", z.notes);
     // 長さの目標はレンズ単位から mm に、MTF はレンズ単位が mm のときだけ
     let mf = merit_function_text(&zmx("IN", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     assert_eq!(z.terms[0]["target"], json!(2540.0));
     // 長さの項の重みは単位の 2 乗で割る（OpticStudio と同じ釣り合い）
     assert_eq!(z.terms[0]["weight"], json!(1.0 / (25.4 * 25.4)));
@@ -114,7 +114,7 @@ fn wizard_rows_become_terms() {
         "BLNK Sequential merit function: PTV spot radius chief",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     let spot = |f: [f64; 2], axis: &str, w: f64| json!({"type": "spot", "field": f, "wave": null, "reference": "chief", "quadrature": "grid", "n": 2, "axis": axis, "weight": w});
     let want = vec![
         spot([0.0, 0.0], "x", 0.75),
@@ -149,7 +149,7 @@ fn more_calc_rows_become_terms() {
         "ABGT 2 0 0 0 0 0 1 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     assert!(z.notes.is_empty(), "{:?}", z.notes);
     let efl = json!({"type": "paraxial", "q": "efl", "target": 0.0});
     let k = std::f64::consts::PI / 180.0;
@@ -187,7 +187,7 @@ fn calc_rows_stop_growing() {
     }
     let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     assert!(
         !z.notes.is_empty() && z.notes.iter().all(|n| n.contains("too deeply")),
         "{:?}",
@@ -212,7 +212,7 @@ fn calc_rows_become_terms() {
         "OPGT 4 0 0 0 0 0 1 2 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     let efl = json!({"type": "paraxial", "q": "efl", "target": 100.0});
     let diff = json!({"type": "calc", "op": "diff", "args": [efl, 5.0], "target": 0.5});
     let mut want = vec![
@@ -275,7 +275,7 @@ fn terms_can_be_read() {
         "OPLT 1 0 0 0 0 0 60 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, s.primary + 1, s.image());
+    let z = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
     assert!(z.notes.is_empty(), "{:?}", z.notes);
     let t =
         crate::merit::terms_from_json(&Value::Array(z.terms), std::slice::from_ref(&s)).unwrap();
@@ -300,7 +300,7 @@ fn terms_can_be_read() {
         "OPDX 0 1 0 1 0.70710678118654757 0 0 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, s.primary + 1, s.image());
+    let z = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
     assert!(z.notes.is_empty(), "{:?}", z.notes);
     let t =
         crate::merit::terms_from_json(&Value::Array(z.terms), std::slice::from_ref(&s)).unwrap();
@@ -357,6 +357,8 @@ fn terms_to_rows_and_back() {
         json!({"type": "paraxial", "q": "petz", "target": -600.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 2, "q": "power", "wave": 1, "target": 0.01, "weight": 1.0}),
         json!({"type": "surface", "surf": 3, "q": "index", "wave": 3, "target": 1.6, "weight": 1.0}),
+        json!({"type": "cardinal", "q": "efl", "from": 1, "to": 3, "wave": null, "target": 40.0, "weight": 1.0}),
+        json!({"type": "cardinal", "q": "principal_image", "from": 2, "to": 5, "wave": 3, "min": -10.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
         json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
@@ -383,12 +385,13 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "surf": 3, "field": 1, "q": "trax"}),
         json!({"type": "ray", "surf": 1, "to": 3, "wave": 3, "field": 1, "q": "opth"}),
         json!({"type": "ray", "surf": 1, "to": 3, "field": 1, "q": "x"}),
+        json!({"type": "cardinal", "q": "efl", "wave": 1, "target": 40.0}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 7, "{notes:?}");
+    assert_eq!(notes.len(), 8, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {
@@ -398,7 +401,7 @@ fn terms_to_rows_and_back() {
     let z = zmx("MM", &txt.lines().collect::<Vec<_>>());
     let mf = merit_function_text(&z).unwrap();
     assert_eq!(mf.rows.len(), rows.len() + 1);
-    let back = terms_from_zmx(&mf, s.primary + 1, s.image());
+    let back = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
     assert!(back.notes.is_empty(), "{:?}", back.notes);
     // MTF の標本は渡さない
     let mut want = terms.clone();
@@ -417,7 +420,7 @@ fn zern_fit_follows_opticstudio() {
         "ZERN 4 2 2 3 0 0 0 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
-    let z = terms_from_zmx(&mf, 2, 9);
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
     let fit: Vec<_> = z.terms.iter().map(|t| t["fit"].as_u64().unwrap()).collect();
     assert_eq!(fit, [22, 22, 11, 37]);
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

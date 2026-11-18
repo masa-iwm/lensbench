@@ -7,16 +7,40 @@ use crate::shape::Shape;
 impl System {
     /// 面 1 の頂点面で高さ y1、物体空間の傾き u0 の近軸光線 → 各面の頂点面での高さ y と面の後の傾き u（展開した向き）
     pub fn ptrace(&self, y1: f64, u0: f64, w: usize, upto: Option<usize>) -> (Vec<f64>, Vec<f64>) {
+        self.ptrace_from(1, y1, u0, w, upto)
+    }
+
+    /// 面 `from`（1 以上）の頂点面で高さ y1、面の前の傾き u0 から始める近軸光線（[`System::ptrace`] と同じ形。
+    /// `from` より前の番号は NaN、物体面（番号 0）は `from` が 1 のときだけ値を持つ）。面の前の屈折率は
+    /// [`System::index_before`]、`from` より前の鏡の数の偶奇を引き継ぐ
+    pub fn ptrace_from(
+        &self,
+        from: usize,
+        y1: f64,
+        u0: f64,
+        w: usize,
+        upto: Option<usize>,
+    ) -> (Vec<f64>, Vec<f64>) {
         let sf = &self.surfaces;
+        let from = from.max(1);
         let upto = upto.unwrap_or(sf.len() - 1);
         let mut y = vec![f64::NAN; sf.len()];
         let mut u = vec![f64::NAN; sf.len()];
-        let mut n = self.n(0)[w];
-        let (mut uu, mut yy, mut sgn) = (u0, y1, 1.0);
+        let (mut uu, mut yy) = (u0, y1);
+        let (mut n, mut sgn) = if from == 1 {
+            y[0] = yy - uu * if sf[0].t.is_finite() { sf[0].t } else { 0.0 };
+            u[0] = uu;
+            (self.n(0)[w], 1.0)
+        } else {
+            let mirrors = sf[1..from]
+                .iter()
+                .filter(|d| !d.ignore && d.is_mirror())
+                .count();
+            let sgn = if mirrors % 2 == 1 { -1.0 } else { 1.0 };
+            (self.index_before(from, w), sgn)
+        };
         let mut gmed: Option<(&crate::grin::Grin, f64)> = None;
-        y[0] = yy - uu * if sf[0].t.is_finite() { sf[0].t } else { 0.0 };
-        u[0] = uu;
-        for j in 1..=upto {
+        for j in from..=upto {
             let d = &sf[j];
             if d.ignore {
                 // 無視する面は位置も厚さも持たない。直前の高さ・傾きを写して、全番号で「面 j の後」が定義されるようにする

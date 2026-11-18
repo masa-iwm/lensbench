@@ -141,19 +141,41 @@ pub struct Cardinal {
 
 pub fn cardinal(s: &System, w: usize) -> Cardinal {
     let img = s.image();
-    let sf = &s.surfaces;
     // 像面の手前の、無視しない最後の面
-    let last = (1..img).rev().find(|&j| !sf[j].ignore).unwrap_or(0);
-    let n0 = s.n(0)[w];
-    let n1 = s.image_index(w);
-    let (ya, ua) = s.ptrace(1.0, 0.0, w, Some(last));
-    let (_, ub) = s.ptrace(0.0, 1.0, w, Some(last));
-    // 換算した傾き (y, n·u) の行列: 面 1 の頂点 → 最後の面の頂点（面の後）
-    let (m11, m21) = (ya[last], n1 * ua[last]);
-    let m22 = n1 * ub[last] / n0;
+    let last = (1..img).rev().find(|&j| !s.surfaces[j].ignore).unwrap_or(0);
+    let mut c = cardinal_span(s, 1, last, w);
+    // 最後の面から像面までの局所 z の距離
+    let t_img = if last >= 1 { s.surfaces[last].t } else { 0.0 };
+    for v in [
+        &mut c.focal_image,
+        &mut c.principal_image,
+        &mut c.anti_principal_image,
+        &mut c.nodal_image,
+        &mut c.anti_nodal_image,
+    ] {
+        *v -= t_img;
+    }
+    c
+}
+
+/// 面 `from` から面 `to` までの近軸の系の基点（[`cardinal`] と同じ定義。OpticStudio の CARD の Surf1・Surf2）。
+/// 物体空間の点は面 `from` の頂点から、像空間の点は面 `to` の頂点から測る。物体空間の屈折率は面 `from` の前の媒質、
+/// 像空間の屈折率は面 `to` の後の媒質
+pub fn cardinal_span(s: &System, from: usize, to: usize, w: usize) -> Cardinal {
+    let sf = &s.surfaces;
+    let from = from.max(1);
+    let n0 = s.index_before(from, w);
+    let n1 = s.index_before(to + 1, w);
+    let (ya, ua) = s.ptrace_from(from, 1.0, 0.0, w, Some(to));
+    let (_, ub) = s.ptrace_from(from, 0.0, 1.0, w, Some(to));
+    // 換算した傾き (y, n·u) の行列: 面 from の頂点 → 面 to の頂点（面の後）
+    let (m11, m21) = (ya[to], n1 * ua[to]);
+    let m22 = n1 * ub[to] / n0;
     let phi = -m21;
     // 鏡の数の偶奇（展開した向き → 物理的な向き）
-    let sgn = sf[1..=last]
+    let sgn = sf
+        .get(from..=to)
+        .unwrap_or(&[])
         .iter()
         .filter(|d| !d.ignore && d.is_mirror())
         .fold(1.0, |a, _| -a);
@@ -180,22 +202,20 @@ pub fn cardinal(s: &System, w: usize) -> Cardinal {
         };
     }
     let efl = 1.0 / phi;
-    // 鏡の数が奇数なら像空間の屈折率を負とする（OpticStudio と同じ）。像空間の位置は最後の面の局所 z（物理的な向き）
+    // 鏡の数が奇数なら像空間の屈折率を負とする（OpticStudio と同じ）。像空間の位置は面 to の局所 z（物理的な向き）
     let n1s = sgn * n1;
     let (fo, fi) = (-n0 * efl, n1s * efl);
-    // 像空間（最後の面から、展開した向き）: 焦点 F′ は平行光の交わる点。物理的な向きに直して主点 P′ = F′ − f′
+    // 像空間（面 to から、展開した向き）: 焦点 F′ は平行光の交わる点。物理的な向きに直して主点 P′ = F′ − f′
     let bfl = sgn * m11 * n1 * efl;
     let fz = bfl;
     let pz = fz - fi;
-    // 物体空間（面 1 から）: 焦点 F は出ていく光が平行になる点、主点 P = F − f
+    // 物体空間（面 from から）: 焦点 F は出ていく光が平行になる点、主点 P = F − f
     let ffl = -m22 * n0 * efl;
     let fz0 = ffl;
     let pz0 = fz0 - fo;
     // 節点は主点から (n′ − n)/φ、反主点は焦点について主点の反対側、反節点は焦点について節点の反対側
     let dn = (n1s - n0) * efl;
     let (nz0, nz) = (pz0 + dn, pz + dn);
-    // 最後の面から像面までの局所 z の距離
-    let t_img = if last >= 1 { sf[last].t } else { 0.0 };
     Cardinal {
         n_object: n0,
         n_image: n1s,
@@ -207,11 +227,11 @@ pub fn cardinal(s: &System, w: usize) -> Cardinal {
         anti_principal_object: 2.0 * fz0 - pz0,
         nodal_object: nz0,
         anti_nodal_object: 2.0 * fz0 - nz0,
-        focal_image: fz - t_img,
-        principal_image: pz - t_img,
-        anti_principal_image: 2.0 * fz - pz - t_img,
-        nodal_image: nz - t_img,
-        anti_nodal_image: 2.0 * fz - nz - t_img,
+        focal_image: fz,
+        principal_image: pz,
+        anti_principal_image: 2.0 * fz - pz,
+        nodal_image: nz,
+        anti_nodal_image: 2.0 * fz - nz,
         bfl,
         ffl,
     }

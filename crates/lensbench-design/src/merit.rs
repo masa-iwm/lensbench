@@ -14,6 +14,7 @@
 //! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n、主波長の主光線からのずれ trax・tray・trar、光路長 opth）、target |
 //! | `opd` | field、wave、px・py、target [波] |
 //! | `surface` | surf、q（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz）、x・y（sag・thick の点 [レンズ単位]、0）、target |
+//! | `cardinal` | q（efl・f_object・f_image・focal_*・principal_*・anti_principal_*・nodal_*・anti_nodal_*、* は object・image）、from・to（面の範囲、面 1 から像面の手前の面まで）、wave、target [レンズ単位] |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -31,7 +32,7 @@ use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, SurfQ, Term,
+    CalcArg, CalcOp, CardQ, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, Side, SpotAxis, SurfQ, Term,
     TermKind,
 };
 use serde_json::Value;
@@ -189,7 +190,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 14] = [
+    const TYPES: [&str; 15] = [
         "spot",
         "wavefront",
         "mtf",
@@ -201,6 +202,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "coupling",
         "thickness",
         "surface",
+        "cardinal",
         "zplm",
         "plugin",
         "calc",
@@ -233,6 +235,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Coupling { .. }
             | TermKind::Thickness { .. }
             | TermKind::Surface { .. }
+            | TermKind::Cardinal { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -436,6 +439,21 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                     .ok_or("surface term has no target (or min and max)")?,
             }
         }
+        TermSpec::Cardinal(t) => {
+            let last = (1..s.image())
+                .rev()
+                .find(|&j| !s.surfaces[j].ignore)
+                .unwrap_or(1);
+            TermKind::Cardinal {
+                from: t.from.unwrap_or(1),
+                to: t.to.unwrap_or(last),
+                q: CardQ::parse(&t.q)?,
+                wave: wave(t.wave, s)?,
+                target: t
+                    .target
+                    .ok_or("cardinal term has no target (or min and max)")?,
+            }
+        }
         TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
@@ -625,6 +643,8 @@ mod tests {
             r#"{"type": "ray", "field": 1, "to": 3, "q": "opth"}"#,
             r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "paraxial": true, "q": "y"}"#,
             r#"{"type": "ray", "field": 1, "surf": 1, "to": 3, "q": "aoi", "target": 10}"#,
+            r#"{"type": "cardinal", "q": "focal", "target": 0}"#,
+            r#"{"type": "cardinal", "q": "efl"}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

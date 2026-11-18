@@ -1221,6 +1221,87 @@
         },
         {
           "additionalProperties": false,
+          "description": "cardinal の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "from": {
+              "description": "面の範囲（既定は面 1 から像面の手前の面まで）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "q": {
+              "description": "量（efl・f_object・f_image・focal_object・focal_image・principal_object・principal_image・anti_principal_object・\nanti_principal_image・nodal_object・nodal_image・anti_nodal_object・anti_nodal_image）。efl は空気換算の 1/パワー、\nf_* は媒質の中の焦点距離、位置は物体空間の点が面 from の頂点から、像空間の点が面 to の頂点から [レンズ単位]",
+              "type": "string"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "to": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "cardinal",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "zplm の項",
           "properties": {
             "config": {

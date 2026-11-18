@@ -25,7 +25,12 @@ pub(crate) fn terms(c: &Common, s: &System, out: bool) -> Result<ZmxMerit, AppEr
         return Err(AppError::usage("--zmx-merit needs a .zmx file"));
     }
     let mf = lensbench_formats::zmx::merit::merit_function(&c.file)?;
-    let z = lensbench_design::merit_zmx::terms_from_zmx(&mf, s.primary + 1, s.image());
+    let z = lensbench_design::merit_zmx::terms_from_zmx(
+        &mf,
+        s.primary + 1,
+        s.image(),
+        &lensbench_design::merit_zmx::ZmxSys::of(s),
+    );
     warn_notes(z.notes);
     // 書き出す .zmx は mm なので、ほかの単位の行は長さの目標が合わない
     let rows = if mf.lens_unit_mm == 1.0 {

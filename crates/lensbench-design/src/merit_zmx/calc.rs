@@ -24,6 +24,7 @@ pub(super) struct Rows<'a> {
     pub(super) unit: f64,
     pub(super) primary: usize,
     pub(super) image: usize,
+    pub(super) sys: &'a super::ZmxSys,
     /// 今の行に入れ子にした行の数
     pub(super) nodes: std::cell::Cell<usize>,
 }
@@ -38,7 +39,7 @@ impl Rows<'_> {
     fn kind_at(&self, k: usize, depth: usize) -> Result<Map<String, Value>, String> {
         let r = &self.rows[k];
         if !OPS.contains(&r.op.as_str()) {
-            let mut m = kind_of(r, self.unit, self.primary, self.image)?;
+            let mut m = kind_of(r, self.unit, self.primary, self.image, self.sys)?;
             if r.op == "ZERN" && m.get("kind").and_then(Value::as_str) == Some("standard") {
                 m.insert("fit".into(), json!(zern_standard_fit(self.rows, k)));
             }

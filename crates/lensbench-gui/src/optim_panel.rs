@@ -63,6 +63,21 @@ const SURF_Q: &[&str] = &[
     "ynip",
     "index",
 ];
+const CARD_Q: &[&str] = &[
+    "efl",
+    "f_object",
+    "f_image",
+    "focal_object",
+    "focal_image",
+    "principal_object",
+    "principal_image",
+    "anti_principal_object",
+    "anti_principal_image",
+    "nodal_object",
+    "nodal_image",
+    "anti_nodal_object",
+    "anti_nodal_image",
+];
 const REFERENCE: &[&str] = &["centroid", "chief"];
 /// スポット・波面の瞳の求積（arms は opticstudio、n は grid と使う）
 const QUADRATURE: &[&str] = &["lensbench", "opticstudio", "grid"];
@@ -83,6 +98,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "plugin",
     "calc",
     "surface",
+    "cardinal",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -189,6 +205,13 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("wave", Int),
             ("target", Num),
         ],
+        "cardinal" => &[
+            ("q", Choice(CARD_Q)),
+            ("from", Int),
+            ("to", Int),
+            ("wave", Int),
+            ("target", Num),
+        ],
         "plugin" => &[
             ("name", Text),
             ("field", Field),
@@ -225,6 +248,7 @@ fn type_hint(ty: &str) -> &'static str {
         "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
         "calc" => tr("op of args (numbers or terms with a single value, e.g. {\"type\": \"paraxial\", \"q\": \"efl\", \"target\": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)"),
         "surface" => tr("Curvature, conic, sag, thickness at a point, diameter or global vertex position of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, DMVA and GLCX; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick"),
+        "cardinal" => tr("Focal length or cardinal point of surfaces from to to − target (like CARD, EFLX and EFLY; empty from and to = surface 1 to the last surface before the image). Object-side points are measured from surface from, image-side points from surface to"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
         "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
@@ -241,6 +265,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "centroid" => vec![("field", "1"), ("q", "x"), ("target", "0")],
         "thickness" => vec![("surf", "1"), ("target", "")],
         "surface" => vec![("surf", "1"), ("q", "curv"), ("target", "")],
+        "cardinal" => vec![("q", "efl"), ("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],

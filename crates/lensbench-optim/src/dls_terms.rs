@@ -291,6 +291,15 @@ pub enum TermKind {
         wave: Option<usize>,
         target: f64,
     },
+    /// 面 from から to（1 始まり、to は像面の手前まで）の近軸の系の基点・焦点距離 − target（[`CardQ`]、波長 wave、
+    /// None は主波長）。微分は差分
+    Cardinal {
+        from: usize,
+        to: usize,
+        q: CardQ,
+        wave: Option<usize>,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -695,6 +704,7 @@ impl TermKind {
             | TermKind::Coupling { target, .. }
             | TermKind::Thickness { target, .. }
             | TermKind::Surface { target, .. }
+            | TermKind::Cardinal { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -862,6 +872,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Coupling { .. }
         | TermKind::Thickness { .. }
         | TermKind::Surface { .. }
+        | TermKind::Cardinal { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

@@ -544,6 +544,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Wavefront { .. } => "wavefront",
         K::Mtf { .. } => "mtf",
         K::Paraxial { .. } => "paraxial",
+        K::Cardinal { .. } => "cardinal",
         K::Centroid { .. } => "centroid",
         K::Ray { .. } => "ray",
         K::RayPath { .. } => "ray",

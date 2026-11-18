@@ -29,6 +29,37 @@ pub struct ZmxMerit {
     pub configs: usize,
 }
 
+/// 行を写すのに使う系の様子（[`ZmxSys::of`]）。既定は回転対称で、EFLA の単レンズを確かめない
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZmxSys {
+    /// 面の後の媒質が空気でないか（EFLA は面 Surf の後がガラスで Surf + 1 の後が空気の単レンズだけ読む。空なら確かめない）
+    pub glass: Vec<bool>,
+    /// 回転対称か（でなければ X の向きの EFLX・CARD は読まない。lensbench の近軸追跡は Y-Z 面）
+    pub symmetric: bool,
+}
+
+impl Default for ZmxSys {
+    fn default() -> Self {
+        ZmxSys {
+            glass: Vec::new(),
+            symmetric: true,
+        }
+    }
+}
+
+impl ZmxSys {
+    pub fn of(s: &lensbench_core::System) -> ZmxSys {
+        ZmxSys {
+            glass: s
+                .surfaces
+                .iter()
+                .map(|f| f.mat.is_medium() && !f.mat.is_air())
+                .collect(),
+            symmetric: s.symmetric(),
+        }
+    }
+}
+
 /// 行の欄の位置（`名前 Int1 Int2 Data1 Data2 Data3 Data4 目標 重み Data5 Data6`、0 始まりで名前の後から）。
 /// OpticStudio 26.1 で実測: 列の Param1〜Param6 の後に目標・重み、Param7・Param8 はその後ろ（ZERN の Vertex で確かめた）
 const INT1: usize = 0;
@@ -133,6 +164,7 @@ struct Ctx<'a> {
     unit: f64,
     primary: usize,
     image: usize,
+    sys: &'a ZmxSys,
     rows: &'a [MeritRow],
     notes: Vec<String>,
 }
@@ -152,6 +184,7 @@ fn kind_of(
     unit: f64,
     primary: usize,
     image: usize,
+    sys: &ZmxSys,
 ) -> Result<Map<String, Value>, String> {
     let num = |i: usize| r.num(i).map_err(|e| e.to_string());
     let int = |i: usize| r.int(i).map_err(|e| e.to_string());
@@ -208,6 +241,60 @@ fn kind_of(
         return Ok(m);
     }
     match op {
+        // EFLX・EFLY: 面 Surf1 から Surf2 までの焦点距離（主波長）。CARD: 同じ範囲の基点（Wave は Data1、Orientation は
+        // Data2、Data は Data3）。EFLA: 面 Surf と Surf + 1 の単レンズの焦点距離（波長 Int2）。OpticStudio 26.1 で実測
+        "EFLX" | "EFLY" | "CARD" | "EFLA" => {
+            let (s1, s2) = if op == "EFLA" {
+                let j = int(INT1)?;
+                (j, j + 1)
+            } else {
+                (int(INT1)?, int(INT2)?)
+            };
+            if s1 < 1 || s2 < s1 || s2 as usize >= image {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            let x = match op {
+                "EFLX" => true,
+                "CARD" => match int(data(2))? {
+                    0 => false,
+                    1 => true,
+                    o => return Err(format!("orientation {o}")),
+                },
+                _ => false,
+            };
+            if x && !sys.symmetric {
+                return Err(
+                    "the X orientation of a system that is not rotationally symmetric (lensbench's paraxial trace is in the Y-Z plane)"
+                        .into(),
+                );
+            }
+            if op == "EFLA" && !sys.glass.is_empty() {
+                let g = |j: i64| sys.glass.get(j as usize).copied().unwrap_or(false);
+                if !(g(s1) && !g(s2)) {
+                    return Err(format!(
+                        "surfaces {s1} and {s2} are not a single lens in air (OpticStudio gives 1e8)"
+                    ));
+                }
+            }
+            let (q, w) = match op {
+                "CARD" => {
+                    let d = int(data(3))?;
+                    let q = usize::try_from(d)
+                        .ok()
+                        .and_then(lensbench_optim::CardQ::from_card_data)
+                        .ok_or(format!("data {d} (0 to 11)"))?;
+                    (q.name(), int(data(1))?)
+                }
+                "EFLA" => ("efl", int(INT2)?),
+                _ => ("efl", 0),
+            };
+            m.insert("type".into(), json!("cardinal"));
+            m.insert("q".into(), json!(q));
+            m.insert("from".into(), json!(s1));
+            m.insert("to".into(), json!(s2));
+            m.insert("wave".into(), wave(w)?);
+            m.insert("target".into(), json!(target * unit));
+        }
         // PLEN: 面 Int1 から Int2 までの光路長（主波長）。MXRE・MNRE・MXRI・MNRI: その面ごとの射出角・入射角 [度] の上限・下限
         "PLEN" | "MXRE" | "MNRE" | "MXRI" | "MNRI" => {
             let (s1, s2) = (int(INT1)?, int(INT2)?);
@@ -489,12 +576,13 @@ fn kind_of(
     Ok(m)
 }
 
-/// .zmx の評価関数を項の JSON に写す。primary は系の主波長の番号（1 始まり）、image は像面の番号
-pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMerit {
+/// .zmx の評価関数を項の JSON に写す。primary は系の主波長の番号（1 始まり）、image は像面の番号、sys は系の様子
+pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &ZmxSys) -> ZmxMerit {
     let mut cx = Ctx {
         unit: mf.lens_unit_mm,
         primary,
         image,
+        sys,
         rows: &mf.rows,
         notes: Vec::new(),
     };
@@ -580,6 +668,7 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize) -> ZmxMe
             unit: cx.unit,
             primary: cx.primary,
             image: cx.image,
+            sys: cx.sys,
             nodes: Default::default(),
         };
         let (src_i, src) = (src, &cx.rows[src]);
@@ -646,7 +735,7 @@ fn is_length(op: &str) -> bool {
             "CENX", "CENY", "RSCE", "RSCH", "CTGT", "CTLT", "CTVA", "TTHI", "TRAC", "TRAD", "TRAE",
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
-            "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP",
+            "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
         ]
         .contains(&op)
 }
@@ -1103,6 +1192,34 @@ fn row_of(
                 Bound::Side("OPGT", b) if !gt.is_empty() => (gt, p, Bound::Target(b)),
                 Bound::Side(_, b) if !lt.is_empty() => (lt, p, Bound::Target(b)),
                 b => (va, p, b),
+            }
+        }
+        "cardinal" => {
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let q = lensbench_optim::CardQ::parse(q).map_err(|e| e.to_string())?;
+            let last = (1..s.image())
+                .rev()
+                .find(|&j| !s.surfaces[j].ignore)
+                .unwrap_or(1);
+            let from = num("from").unwrap_or(1.0);
+            let to = num("to").unwrap_or(last as f64);
+            let w = if wave() == 0.0 { primary } else { wave() };
+            match q.card_data() {
+                // EFLY は主波長だけ
+                None if w == primary => {
+                    ("EFLY", [from, to, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+                }
+                None => {
+                    return Err(
+                        "efl at a wavelength other than the primary has no OpticStudio operand"
+                            .into(),
+                    )
+                }
+                Some(d) => (
+                    "CARD",
+                    [from, to, w, 0.0, d as f64, 0.0, 0.0, 0.0],
+                    bound(0.0),
+                ),
             }
         }
         "zplm" => match t.get("macro").and_then(Value::as_u64) {

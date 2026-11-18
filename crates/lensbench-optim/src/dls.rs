@@ -66,6 +66,10 @@ use spot::{centroid_term, spot_term};
 #[path = "dls_ray.rs"]
 mod ray;
 
+#[path = "dls_card.rs"]
+mod card;
+pub use card::CardQ;
+
 #[path = "dls_surf.rs"]
 mod surf;
 use surf::reads_semi;
@@ -869,6 +873,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             return Ok(());
         }
         TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
+        TermKind::Cardinal { .. } => return card::check(i, k, s),
         TermKind::Calc { op, args, .. } => {
             let (lo, hi) = op.arity();
             let n = args.len();
@@ -1098,6 +1103,7 @@ fn eval_term(
             Ok((vec![v - target], None))
         }
         TermKind::Surface { .. } => surf::term(s, k),
+        TermKind::Cardinal { .. } => card::term(s, k),
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args
                 .iter()
