@@ -129,6 +129,8 @@
 - **面の TCE と多重構成の値の項**: .zmx の面の TCED（レンズデータの TCE の列）を面の `tce` として読み書きし、`surface` の `q` に
   `surf_tce` を足した。新しい種類 `param`（系のパラメータの、項の構成での値）を足した。.zmx の TCVA・TCGT・TCLT を読み書きし、
   MCOV・MCOG・MCOL を読む
+- **構成をまたぐ項**: 新しい種類 `spread`（1 つの値の項の、すべての構成での最大 − 最小）を足した。.zmx の ZTHI を厚みの項の
+  `spread` の `max` として読み書きする
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

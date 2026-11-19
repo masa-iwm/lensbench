@@ -618,6 +618,30 @@ fn row_of(
                 }
             }
         }
+        // 厚みの和の広がりの max は ZTHI
+        "spread" => {
+            let inner = t.get("term").ok_or("no term")?;
+            let thick = inner.get("type").and_then(Value::as_str) == Some("thickness")
+                && inner.get("edge").and_then(Value::as_bool) != Some(true)
+                && inner.get("each").is_none();
+            match (thick, bound(0.0)) {
+                (true, Bound::Side("OPLT", b)) => {
+                    let s1 = inner.get("surf").and_then(Value::as_f64).unwrap_or(1.0);
+                    let s2 = inner.get("to").and_then(Value::as_f64).unwrap_or(s1);
+                    (
+                        "ZTHI",
+                        [s1, s2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        Bound::Target(b),
+                    )
+                }
+                _ => {
+                    return Err(
+                        "only the max of the spread of a thickness term can be written (ZTHI)"
+                            .into(),
+                    )
+                }
+            }
+        }
         "surface" if t.get("to").is_some() => {
             let q = t.get("q").and_then(Value::as_str).unwrap_or("");
             let s1 = num("surf").unwrap_or(1.0);

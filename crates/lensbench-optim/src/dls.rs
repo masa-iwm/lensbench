@@ -84,6 +84,8 @@ mod vol;
 use surf::reads_semi;
 pub use surf::SurfQ;
 
+#[path = "dls_cross.rs"]
+mod cross;
 #[path = "dls_trace.rs"]
 mod trace;
 use trace::{launch_of, trace_ok, trace_pupil_cols, trace_pupil_rec};
@@ -362,18 +364,20 @@ impl Problem {
         self.terms.iter().map(|t| t.weight).sum()
     }
 
+    /// 項 t の残差（重みを掛ける前）。構成をまたぐ項（[`TermKind::Spread`]）はすべての構成の系 sys で
+    fn eval_plain(&self, sys: &[System], t: &Term) -> Result<Vec<f64>> {
+        if let Some(r) = cross::value(sys, &t.kind, self.stopped_as_vignetted) {
+            return r;
+        }
+        let keep = self.stopped_as_vignetted;
+        Ok(eval_term(&sys[t.config], &t.kind, None, None, keep)?.0)
+    }
+
     /// 残差（重みの平方根を掛けたもの、項の順に並べる）
     pub fn residuals(&self, x: &[f64]) -> Result<Vec<f64>> {
         let sys = self.systems(x)?;
         let parts = map_maybe_par(&self.terms, |t| {
-            let mut r = eval_term(
-                &sys[t.config],
-                &t.kind,
-                None,
-                None,
-                self.stopped_as_vignetted,
-            )?
-            .0;
+            let mut r = self.eval_plain(&sys, t)?;
             t.clamp(&mut r, None);
             let a = t.weight.sqrt();
             r.iter_mut().for_each(|v| *v *= a);
@@ -404,14 +408,7 @@ impl Problem {
     pub fn term_values(&self, x: &[f64]) -> Result<Vec<TermValue>> {
         let sys = self.systems(x)?;
         map_maybe_par(&self.terms, |t| {
-            let r = eval_term(
-                &sys[t.config],
-                &t.kind,
-                None,
-                None,
-                self.stopped_as_vignetted,
-            )?
-            .0;
+            let r = self.eval_plain(&sys, t)?;
             Ok(term_value(&t.kind, &r))
         })
     }
@@ -420,14 +417,7 @@ impl Problem {
     pub fn merit_and_terms(&self, x: &[f64]) -> Result<(f64, Vec<TermValue>)> {
         let sys = self.systems(x)?;
         let parts = map_maybe_par(&self.terms, |t| {
-            let r0 = eval_term(
-                &sys[t.config],
-                &t.kind,
-                None,
-                None,
-                self.stopped_as_vignetted,
-            )?
-            .0;
+            let r0 = self.eval_plain(&sys, t)?;
             let v = term_value(&t.kind, &r0);
             let mut r = r0;
             t.clamp(&mut r, None);
@@ -444,14 +434,7 @@ impl Problem {
     pub fn term_values_contrib(&self, x: &[f64]) -> Result<(Vec<TermValue>, Vec<f64>)> {
         let sys = self.systems(x)?;
         let parts = map_maybe_par(&self.terms, |t| {
-            let r0 = eval_term(
-                &sys[t.config],
-                &t.kind,
-                None,
-                None,
-                self.stopped_as_vignetted,
-            )?
-            .0;
+            let r0 = self.eval_plain(&sys, t)?;
             let v = term_value(&t.kind, &r0);
             let mut r = r0;
             t.clamp(&mut r, None);
@@ -501,6 +484,15 @@ impl Problem {
             let act: Vec<usize> = (0..nv)
                 .filter(|&q| self.vars[q].applies(t.config))
                 .collect();
+            if let Some(r) = cross::value(&sys, &t.kind, self.stopped_as_vignetted) {
+                let r = r?;
+                let fd = (0..nv).filter(|&q| cross::moves(self, q)).collect();
+                return Ok(Part {
+                    j: vec![0.0; r.len() * nv],
+                    r,
+                    fd,
+                });
+            }
             if let TermKind::User(u) = &t.kind {
                 let r = u.eval_checked(&[s])?.remove(0);
                 let m = r.len();
@@ -605,7 +597,9 @@ impl Problem {
                 // (構成, 刻みの種類) ごとの +h と -h の系（前進差分では -h はなし）
                 let mut cache: Vec<[Option<FdSystems>; 2]> = vec![[None, None]; self.configs.len()];
                 for (ti, t) in self.terms.iter().enumerate() {
-                    if !parts[ti].fd.contains(&q) || matches!(t.kind, TermKind::User(_)) {
+                    if !parts[ti].fd.contains(&q)
+                        || matches!(t.kind, TermKind::User(_) | TermKind::Spread { .. })
+                    {
                         continue;
                     }
                     let noisy = noisy_fd(&sys[t.config], &t.kind, self.vars[q].param.kind);
@@ -671,6 +665,16 @@ impl Problem {
             for (ti, d) in &cols[k] {
                 for (i, v) in d.iter().enumerate() {
                     parts[*ti].j[i * nv + q] = *v;
+                }
+            }
+        }
+        // 構成をまたぐ項の差分: 変数ごとにすべての構成の ±h の系で
+        for (ti, t) in self.terms.iter().enumerate() {
+            if matches!(t.kind, TermKind::Spread { .. }) {
+                for (q, d) in cross::columns(self, x, &steps, t, &parts[ti].fd)? {
+                    d.iter()
+                        .enumerate()
+                        .for_each(|(i, v)| parts[ti].j[i * nv + q] = *v);
                 }
             }
         }
@@ -888,6 +892,10 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             return image::check(i, k, s)
         }
         TermKind::Param { param, .. } => return surf::check_param(i, *param, s),
+        TermKind::Spread { term, .. } if term.target().is_none() => {
+            invalid!("term {i}: the term of a spread term must have a single value")
+        }
+        TermKind::Spread { term, .. } => return check_kind(i, term, Side::Eq, s),
         TermKind::Coupling { wave, .. } => {
             if s.infinite() {
                 invalid!("term {i}: fiber coupling is only for finite-object systems");
@@ -1113,6 +1121,9 @@ fn eval_term(
             Ok((vec![x - target], None))
         }
         TermKind::User(u) => Ok((u.eval_checked(&[s])?.remove(0), None)),
+        TermKind::Spread { .. } => {
+            invalid!("a spread term is evaluated over all the configurations")
+        }
     }
 }
 

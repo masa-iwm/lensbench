@@ -205,7 +205,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 27] = [
+    const TYPES: [&str; 28] = [
         "spot",
         "wavefront",
         "mtf",
@@ -232,6 +232,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "zplm",
         "plugin",
         "calc",
+        "spread",
         "comment",
     ];
     if !TYPES.contains(&ty.as_str()) {
@@ -270,6 +271,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Energy { .. }
             | TermKind::Strehl { .. }
             | TermKind::Param { .. }
+            | TermKind::Spread { .. }
             | TermKind::Illum { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
@@ -724,6 +726,18 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             target: t.target.ok_or("semi term has no min or max")?,
         },
         TermSpec::Calc(c) => calc_kind(c, s)?,
+        TermSpec::Spread(t) => {
+            let inner = kind_of(*t.term, s)?;
+            if inner.target().is_none() || matches!(inner, TermKind::Spread { .. }) {
+                return Err("the term of a spread term must be a term with a single value".into());
+            }
+            TermKind::Spread {
+                term: Box::new(inner),
+                target: t
+                    .target
+                    .ok_or("spread term has no target (or min and max)")?,
+            }
+        }
         TermSpec::Comment(_) => {
             return Err("a comment is not a term (it is skipped in a list of terms)".into())
         }

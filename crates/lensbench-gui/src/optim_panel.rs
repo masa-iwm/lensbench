@@ -116,6 +116,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "zplm",
     "plugin",
     "calc",
+    "spread",
     "surface",
     "cardinal",
     "fnum",
@@ -263,6 +264,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("args", JsonList),
             ("target", Num),
         ],
+        "spread" => &[("term", Json), ("target", Num), ("min", Num), ("max", Num)],
         "surface" => &[
             ("surf", Int),
             ("q", Choice(SURF_Q)),
@@ -361,6 +363,7 @@ fn type_hint(ty: &str) -> &'static str {
         "coupling" => tr("Fiber coupling efficiency − target (default target 1, finite object)"),
         "thickness" => tr("Center thickness of surface surf (the sum up to surface to) − target (like CTVA and TTHI; min or max for CTGT and CTLT). edge: edge thickness (ETVA). each: compare each surface with min or max (MNCT, MNCA, MNEG etc.)"),
         "calc" => tr("op of args (numbers or terms with a single value, e.g. {\"type\": \"paraxial\", \"q\": \"efl\", \"target\": 0}, 5) − target (like SUMM, DIFF, PROD, DIVI, ABSO, SQRT and RECI)"),
+        "spread" => tr("Largest − smallest value of term (a term with a single value, e.g. {\"type\": \"thickness\", \"surf\": 1, \"to\": 5}) over all the configurations − target (with max like ZTHI)"),
         "surface" => tr("Curvature, conic, sag, thickness at a point, total thickness, diameter, global vertex position or direction, glass data or parameter of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, TTVA, DMVA, GLCX, GLCA, GCOS and PMVA; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick and the direction for total. With to: compare each surface with min or max and sum the excess (MNSD, MNIN etc.)"),
         "volume" => tr("Volume [cm³] of the elements from surface surf to to, air spaces included, or with mass the mass [g] of the glass elements − target (like VOLU and TMAS). clear: outer radius from the clear semi-diameters instead of the lens edges. cylinder: the smallest cylinder around the surfaces surf to to + 1 instead (like CVOL)"),
         "seidel" => tr("Seidel aberration coefficient [waves] of surface surf (0 = sum) − target: spha W040, coma W131, asti W222, fcur W220, dist W311 (like SPHA, COMA, ASTI, FCUR and DIST)"),
@@ -401,6 +404,10 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "volume" => vec![("surf", "1"), ("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
+        "spread" => vec![
+            ("term", "{\"type\": \"thickness\", \"surf\": 1}"),
+            ("max", "0"),
+        ],
         _ => vec![],
     }
 }

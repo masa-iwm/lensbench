@@ -317,6 +317,38 @@ fn bounds_and_configs() {
     assert_eq!(r.systems[1].get_param(pf).unwrap(), r.x[1]);
 }
 
+/// 構成をまたぐ項（構成ごとの厚みの差）: 構成 2 だけの変数で、構成 1 の厚みに揃える
+#[test]
+fn spread_term() {
+    let s = load("A0");
+    let p6 = s.param("6.t").unwrap();
+    let t0 = s.get_param(p6).unwrap();
+    let b = s.with_params(&[(p6, t0 + 0.5)]).unwrap();
+    let mut p = Problem::new(vec![s.clone(), b]);
+    p.vars.push(Var::new(p6).in_configs(vec![1]));
+    p.terms.push(Term {
+        side: Default::default(),
+        config: 0,
+        weight: 1.0,
+        kind: TermKind::Spread {
+            term: Box::new(TermKind::Thickness {
+                surf: 6,
+                to: 6,
+                target: 0.0,
+                edge: None,
+                each: None,
+            }),
+            target: 0.0,
+        },
+    });
+    p.check().unwrap();
+    let v = p.term_values(&[t0 + 0.5]).unwrap()[0].value();
+    assert!((v - 0.5).abs() < 1e-12, "{v}");
+    let r = dls(&p, &DlsOpts::default()).unwrap();
+    assert!((r.x[0] - t0).abs() < 1e-6, "{} {t0} {:?}", r.x[0], r.stop);
+    assert_eq!(r.systems[0].get_param(p6).unwrap(), t0);
+}
+
 /// MTF の項（差分のヤコビアン）で最適化できる
 #[test]
 fn mtf_term() {

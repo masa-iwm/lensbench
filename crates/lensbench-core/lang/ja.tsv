@@ -2453,3 +2453,5 @@ the illumination of an afocal image space is not supported	アフォーカルの
 the illumination with polarization is not supported	偏光ありの照度には対応していません
 the square wave MTF needs a positive frequency ({freq})	矩形波の MTF には正の周波数が要ります（{freq}）
 the multi-configuration operand {o} of row {k}	多重構成の行 {k} の演算子 {o}
+the term of a spread term must be a term with a single value	spread の項の term は 1 つの値の項にしてください
+a spread term is evaluated over all the configurations	spread の項はすべての構成で求めます

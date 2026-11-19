@@ -362,6 +362,7 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
         TermKind::Volume { .. } => true,
         TermKind::Param { param, .. } => param.kind == lensbench_core::param::Kind::Semi,
         TermKind::SurfEach { q, .. } => *q == SurfQ::Semi,
+        TermKind::Spread { term, .. } => reads_semi(term),
         TermKind::Calc { args, .. } => args.iter().any(|a| match a {
             CalcArg::Term(k) => reads_semi(k),
             _ => false,

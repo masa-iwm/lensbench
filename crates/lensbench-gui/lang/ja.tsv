@@ -1616,6 +1616,7 @@ Enter a value for {}	{} の値を入れてください
 Rename {}	{} の名前を変える
 The element is locked	要素はロックされています
 {} is not one of {}	{} は {} のどれでもありません
+Largest − smallest value of term (a term with a single value, e.g. {"type": "thickness", "surf": 1, "to": 5}) over all the configurations − target (with max like ZTHI)	term（1 つの値の項。例 {"type": "thickness", "surf": 1, "to": 5}）のすべての構成での値の最大 − 最小 − 目標（max で ZTHI 相当）
 Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。ドラッグ・Shift+クリック・Shift+矢印で範囲を選び、行の番号・列の見出し・# で行全体・列全体・表全体を選ぶ。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓ で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
 Select all (Ctrl+A)	すべて選択（Ctrl+A）
 Comment row (like BLNK in OpticStudio); not part of the merit function	コメントの行（OpticStudio の BLNK）。メリットファンクションには入りません

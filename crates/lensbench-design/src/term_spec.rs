@@ -572,8 +572,19 @@ pub enum TermSpec {
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),
+    Spread(SpreadSpec),
     /// コメントの行（OpticStudio の BLNK）。評価関数に入らず、項の並びを読むときに飛ばす
     Comment(CommentSpec),
+}
+
+/// spread の項: 1 つの値の項 term の、すべての構成での値の最大 − 最小 − target（OpticStudio の ZTHI は厚みの項の
+/// spread の max）。term には weight・config・min・max を書かず、target は省いてよい
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SpreadSpec {
+    pub term: Box<TermSpec>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
 }
 
 /// コメントの行

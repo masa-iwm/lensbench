@@ -473,6 +473,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "volume", "surf": 1, "to": 4, "target": 30.0, "weight": 1.0}),
         json!({"type": "volume", "surf": 3, "mass": true, "clear": true, "max": 60.0, "weight": 1.0}),
         json!({"type": "volume", "surf": 1, "to": 2, "cylinder": true, "target": 30.0, "weight": 1.0}),
+        json!({"type": "spread", "term": {"type": "thickness", "surf": 1, "to": 5}, "max": 0.5, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0, "weight": 1.0}),
         json!({"type": "ray", "surf": 4, "wave": 2, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "trar", "target": 0.0, "weight": 1.0}),
         json!({"type": "ray", "wave": 1, "field": [0.0, 0.7], "px": 0.3, "py": 0.5, "q": "anay", "target": 0.0, "weight": 1.0}),
@@ -508,12 +509,13 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "surf": 3, "field": 1, "q": "anax"}),
         json!({"type": "distortion", "field": [0.0, 0.5], "peak": true, "target": 0.0}),
         json!({"type": "energy", "method": "fft", "center": "middle", "field": 1, "size_at": 0.8, "target": 0.0}),
+        json!({"type": "spread", "term": {"type": "thickness", "surf": 1, "to": 5}, "target": 0.0}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 13, "{notes:?}");
+    assert_eq!(notes.len(), 14, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {

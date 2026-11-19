@@ -50,6 +50,8 @@ pub struct ZmxSys {
     pub angle_field: bool,
     /// 多重構成の表の行（MCOV などの Op# の順、[`MeritFunction::mce`]）。[`terms_from_zmx`] が評価関数から入れる
     pub mce: Vec<(String, i64, i64)>,
+    /// 構成の数（ZTHI は構成をまたぐ項で、すべての構成を使う）
+    pub configs: usize,
 }
 
 impl Default for ZmxSys {
@@ -61,6 +63,7 @@ impl Default for ZmxSys {
             waves: 0,
             angle_field: true,
             mce: Vec::new(),
+            configs: 1,
         }
     }
 }
@@ -82,6 +85,7 @@ impl ZmxSys {
             waves: s.wavelengths.len(),
             angle_field: matches!(s.field_type, lensbench_core::system::FieldType::Angle),
             mce: Vec::new(),
+            configs: s.configs().map_or(1, |c| c.n),
         }
     }
 }
@@ -792,6 +796,22 @@ fn kind_of(
             };
             m.insert(key.into(), json!(target * scale));
         }
+        // ZTHI: Int1 から Int2 の面（像面は除く）の厚みの和の、すべての構成での最大 − 最小 ≤ 目標。lensbench は厚みの項の
+        // spread の項の max（OpticStudio 26.1 で実測: 1 つの構成なら 0、Int2 の像面は飛ばす）
+        "ZTHI" => {
+            let s1 = int(INT1)?;
+            let s2 = int(INT2)?.min(image as i64 - 1);
+            if s1 < 1 || s2 < s1 {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            let mut t = json!({"type": "thickness", "surf": s1});
+            if s2 != s1 {
+                t["to"] = json!(s2);
+            }
+            m.insert("type".into(), json!("spread"));
+            m.insert("term".into(), t);
+            m.insert("max".into(), json!(target * unit));
+        }
         "RELI" | "EFNO" => {
             if int(data(2))? != 0 {
                 return Err("the illumination with polarization is not supported".into());
@@ -1207,8 +1227,10 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
             weight
         };
         m.insert("weight".into(), json!(weight));
-        // MCOV などは行の構成でなく Cfg# の構成
-        if let Some(c) = m.get("config").and_then(Value::as_u64) {
+        // MCOV などは行の構成でなく Cfg# の構成、ZTHI はすべての構成
+        if m.get("type").and_then(Value::as_str) == Some("spread") {
+            configs = configs.max(cx.sys.configs);
+        } else if let Some(c) = m.get("config").and_then(Value::as_u64) {
             configs = configs.max(c as usize);
         } else if config != 1 {
             m.insert("config".into(), json!(config));
@@ -1314,7 +1336,7 @@ fn is_length(op: &str) -> bool {
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
             "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
-            "LONA", "AXCL", "LACL", "MNSD", "MXSD", "TTGT", "TTLT", "TTVA",
+            "LONA", "AXCL", "LACL", "MNSD", "MXSD", "TTGT", "TTLT", "TTVA", "ZTHI",
         ]
         .contains(&op)
 }

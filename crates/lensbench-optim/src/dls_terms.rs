@@ -325,6 +325,9 @@ pub enum TermKind {
         q: EnergyQ,
         target: f64,
     },
+    /// 1 つの値の項 term の、問題のすべての構成での値の最大 − 最小 − target（term の目標は使わない。OpticStudio の ZTHI は
+    /// 厚みの項の広がりの max）。微分は差分（変数ごとにすべての構成の系をずらす）
+    Spread { term: Box<TermKind>, target: f64 },
     /// 系のパラメータ（[`System::get_param`]、面の厚み・曲率・多重構成の値など）の値 − target。項の構成の系で求めるので、
     /// 多重構成の値は構成ごとの項になる（OpticStudio の MCOV・MCOG・MCOL）。微分は差分
     Param {
@@ -947,6 +950,7 @@ impl TermKind {
             | TermKind::Energy { target, .. }
             | TermKind::Strehl { target, .. }
             | TermKind::Param { target, .. }
+            | TermKind::Spread { target, .. }
             | TermKind::Illum { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
@@ -1126,6 +1130,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Energy { .. }
         | TermKind::Strehl { .. }
         | TermKind::Param { .. }
+        | TermKind::Spread { .. }
         | TermKind::Illum { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
