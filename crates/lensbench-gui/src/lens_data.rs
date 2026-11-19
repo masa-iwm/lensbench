@@ -669,7 +669,7 @@ struct Editing {
 }
 
 /// 入力できるドロップダウンの候補（値、説明）。種類は面タイプ、硝材はガラスカタログ（と鏡）。filter なら text で絞る
-/// （前方一致を先に、次に部分一致）
+/// （完全一致を先に、次に前方一致、部分一致）
 fn list_choices(
     col: Col,
     glasses: &[GlassChoice],
@@ -711,16 +711,19 @@ fn list_choices(
                 return all.collect();
             }
             let q = text.trim().to_uppercase();
-            let (mut head, mut rest) = (Vec::new(), Vec::new());
+            let (mut exact, mut head, mut rest) = (Vec::new(), Vec::new(), Vec::new());
             for (n, d) in all {
-                match crate::widgets::match_rank(&n.to_uppercase(), &d.to_uppercase(), &q) {
+                let u = n.to_uppercase();
+                match crate::widgets::match_rank(&u, &d.to_uppercase(), &q) {
+                    Some(true) if u == q => exact.push((n, d)),
                     Some(true) => head.push((n, d)),
                     Some(false) => rest.push((n, d)),
                     None => {}
                 }
             }
-            head.extend(rest);
-            head
+            exact.extend(head);
+            exact.extend(rest);
+            exact
         }
         _ => Vec::new(),
     }

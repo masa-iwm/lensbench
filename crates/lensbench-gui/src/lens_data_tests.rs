@@ -512,20 +512,32 @@ fn drive_with(
     locked: &BTreeSet<String>,
     frames: Vec<Vec<egui::Event>>,
 ) -> Vec<Act> {
+    let frames = frames.into_iter().map(|e| (e, &[][..])).collect();
+    drive_glasses(st, rows, blocks, locked, frames)
+}
+
+/// [`drive_with`]。フレームごとにガラスカタログ（空なら読み込み中）を渡す
+fn drive_glasses(
+    st: &mut LensData,
+    rows: &[Row],
+    blocks: &[Block],
+    locked: &BTreeSet<String>,
+    frames: Vec<(Vec<egui::Event>, &[GlassChoice])>,
+) -> Vec<Act> {
     let ctx = egui::Context::default();
     let ro = |_: usize, _: Col| None;
-    let c = Ctx {
-        rows,
-        blocks,
-        locked,
-        read_only: &ro,
-        overridden: &|_, _| false,
-        note: None,
-        glasses: &[],
-        glasses_loaded: true,
-    };
     let mut acts = Vec::new();
-    for events in frames {
+    for (events, glasses) in frames {
+        let c = Ctx {
+            rows,
+            blocks,
+            locked,
+            read_only: &ro,
+            overridden: &|_, _| false,
+            note: None,
+            glasses,
+            glasses_loaded: true,
+        };
         // 修飾キーは押しているキーのもの（表は i.modifiers を見る）
         let modifiers = events
             .iter()
@@ -935,4 +947,49 @@ fn ui_enter_on_a_folded_block_opens_it_and_ctrl_enter_folds_it_again() {
     );
     assert!(st.scope.is_empty(), "Backspace で外へ");
     assert_eq!(st.sel.as_deref(), Some("L1"), "出たブロックを選ぶ");
+}
+
+fn glass(n: &str) -> GlassChoice {
+    GlassChoice {
+        name: n.into(),
+        desc: String::new(),
+    }
+}
+
+#[test]
+fn material_choices_put_an_exact_match_first() {
+    let g = [glass("F2HT"), glass("MGF2"), glass("F2"), glass("SF2")];
+    let names = |text: &str| -> Vec<String> {
+        list_choices(Col::Material, &g, &[], text, true)
+            .into_iter()
+            .map(|x| x.0)
+            .collect()
+    };
+    assert_eq!(names("f2"), ["F2", "F2HT", "MGF2", "SF2"]);
+    assert_eq!(names("F2H"), ["F2HT"]);
+}
+
+#[test]
+fn ui_material_list_selects_the_current_glass_after_the_catalog_arrives() {
+    // 開いたときはカタログがまだ無い（使っている硝材と鏡だけ）。届いた後も今の値（F2）を選ぶ
+    let mut rows = sample_rows();
+    rows[1].material = "N-SK16".into();
+    rows[2].material = "F2".into();
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::Material)),
+        ..Default::default()
+    };
+    let g = [glass("MGF2"), glass("QUARTZ"), glass("F2"), glass("N-SK16")];
+    let mut frames: Vec<(Vec<egui::Event>, &[GlassChoice])> =
+        vec![(vec![key(egui::Key::F2)], &[]), (Vec::new(), &[])];
+    frames.extend((0..3).map(|_| (Vec::new(), &g[..])));
+    let acts = drive_glasses(&mut st, &rows, &[], &BTreeSet::new(), frames);
+    assert!(
+        acts.iter().any(|a| matches!(a, Act::NeedGlasses)),
+        "{acts:?}"
+    );
+    let e = st.edit.as_ref().expect("書き換え中");
+    let m = e.choices.as_ref().unwrap().4.clone();
+    assert_eq!(m[e.pick].0, "F2", "{m:?}");
 }

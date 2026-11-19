@@ -246,6 +246,11 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
                 c.rows.len(),
                 std::sync::Arc::new(m),
             ));
+            // 候補が変わった（開いた後にガラスカタログが届いたなど）: 打っても選んでもいなければ、今の値を選び直す
+            // （前の候補での位置のままだと、同じ位置の別の硝材が選ばれる）
+            if !e.filtered && !e.moved {
+                e.scroll = true;
+            }
         }
         let m = e.choices.as_ref().map(|x| x.4.clone()).unwrap_or_default();
         if !e.filtered && !e.moved && e.scroll {
