@@ -465,3 +465,105 @@ fn unname_solids(v: &mut Value) {
         }
     }
 }
+
+/// 状態ごとの面の値（多重構成の表の面の行）: 状態の set の surface_edits（基本の上書き＋状態の上書き）を
+/// 状態の上書きに読み、書き戻すと同じ形。展開した系では状態ごとに面の値が変わり、基本の上書きも残る
+#[test]
+fn state_surface_edits_round_trip() {
+    use lensbench_project::{expand, Env, ExpandOpts, Project};
+    let v = json!({ "wavelengths": [{ "um": 0.5876 }], "aperture": { "type": "epd", "value": 6 },
+        "blocks": [{ "type": "stop", "semi": 3 }, { "type": "air", "t": 5 },
+          { "type": "lens", "id": "L", "source": { "surfaces": [{ "radius": 60, "t": 4, "glass": "N-BK7", "semi": 8 }, { "radius": -60, "semi": 8 }] },
+            "surface_edits": [{ "surface": 1, "fields": { "k": -0.5 } }] },
+          { "type": "air", "t": 30 }],
+        "states": [
+          { "name": "A", "set": { "L": { "surface_edits": [
+              { "surface": 1, "fields": { "k": -0.5 } },
+              { "surface": 0, "fields": { "r": 50.0 } },
+              { "surface": 0, "fields": { "material": "F2" } }] } } },
+          { "name": "B" }] });
+    let c = Combo::from_project(&v, &root()).unwrap();
+    let p = &c.picks[0];
+    assert_eq!(p.state_edit("A", 0, "r"), Some(&json!(50.0)));
+    assert_eq!(p.state_edit("A", 0, "material"), Some(&json!("F2")));
+    assert_eq!(p.state_edit("A", 1, "k"), None);
+    assert!(!p.state_edits.contains_key("B"));
+    let back = c.project();
+    assert_eq!(
+        back["states"][0]["set"]["L"]["surface_edits"]
+            .as_array()
+            .map(Vec::len),
+        Some(3),
+        "{back}"
+    );
+    let c2 = Combo::from_project(&back, &root()).unwrap();
+    assert_eq!(c2.picks[0].state_edits, c.picks[0].state_edits);
+    // 展開した系
+    let pj = Project::from_json(&back.to_string()).unwrap();
+    let env = Env {
+        step_files: None,
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let sys = |st: Option<&str>| {
+        let q = match st {
+            Some(n) => pj.with_state(n).unwrap(),
+            None => pj.clone(),
+        };
+        expand(&q, &env, &ExpandOpts::default()).unwrap().system
+    };
+    let (base, a, b) = (sys(None), sys(Some("A")), sys(Some("B")));
+    let j = (1..base.image())
+        .find(|&j| base.surfaces[j].c > 0.0)
+        .unwrap();
+    assert!((base.surfaces[j].c - 1.0 / 60.0).abs() < 1e-12);
+    assert!((a.surfaces[j].c - 1.0 / 50.0).abs() < 1e-12);
+    assert!((b.surfaces[j].c - 1.0 / 60.0).abs() < 1e-12);
+    for s in [&base, &a, &b] {
+        assert_eq!(s.surfaces[j + 1].k, -0.5);
+    }
+    assert!(format!("{:?}", a.surfaces[j].mat).contains("F2"));
+    assert!(format!("{:?}", base.surfaces[j].mat).contains("N-BK7"));
+}
+
+/// 状態ごとの絞りの面（多重構成の STPS）: 状態の set の surface_ops に set_stop を足して書き、読み戻すと同じ。
+/// 展開した系では状態ごとに絞りの面が変わる
+#[test]
+fn state_stop_round_trip() {
+    use lensbench_project::{expand, Env, ExpandOpts, Project};
+    let v = json!({ "wavelengths": [{ "um": 0.5876 }], "aperture": { "type": "float" },
+        "blocks": [{ "type": "stop", "semi": 3 }, { "type": "air", "t": 5 },
+          { "type": "lens", "id": "L", "source": { "surfaces": [{ "radius": 60, "t": 4, "glass": "F2", "semi": 8 }, { "radius": -60, "semi": 8 }] } },
+          { "type": "air", "t": 30 }],
+        "states": [{ "name": "A" }, { "name": "B" }] });
+    let mut c = Combo::from_project(&v, &root()).unwrap();
+    assert_eq!(c.stop_in(Some("A")), c.base_stop());
+    let at = Some((c.all()[0].clone(), 1));
+    c.set_state_stop("A", at.clone());
+    assert_eq!(c.stop_in(Some("A")), at);
+    assert_eq!(c.stop_in(Some("B")), c.base_stop());
+    let back = c.project();
+    assert_eq!(
+        back["states"][0]["set"]["L"]["surface_ops"],
+        json!([{ "op": "set_stop", "surface": 1 }]),
+        "{back}"
+    );
+    let c2 = Combo::from_project(&back, &root()).unwrap();
+    assert_eq!(c2.stop_in(Some("A")), c.stop_in(Some("A")));
+    let pj = Project::from_json(&back.to_string()).unwrap();
+    let env = Env {
+        step_files: None,
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let stop = |n: &str| {
+        let s = expand(&pj.with_state(n).unwrap(), &env, &ExpandOpts::default())
+            .unwrap()
+            .system;
+        (1..s.image()).find(|&j| s.surfaces[j].stop).unwrap()
+    };
+    assert_eq!(stop("B"), 1);
+    assert_eq!(stop("A"), 3);
+}

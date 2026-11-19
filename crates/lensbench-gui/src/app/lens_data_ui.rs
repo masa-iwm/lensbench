@@ -157,9 +157,40 @@ impl Core {
 
     /// 状態の表（変えた値は組合せの変更として組み直す）
     pub(super) fn config_ui(&mut self, ui: &mut Ui) {
+        let faces = self.face_index();
+        let rows = &self.sys.ld_rows;
+        let now = |f: &crate::state_table::Face| -> Option<Value> {
+            let j = *faces.get(&(f.loc.clone(), f.surf))?;
+            ld_combo::face_value(rows.get(j)?, &f.field)
+        };
+        // 絞りにできる面: 今の系の要素の面（経路の順、面の順）
+        let mut stops: Vec<(crate::combo_tree::Loc, usize)> = faces.keys().cloned().collect();
+        stops.sort_by_key(|k| faces[k]);
         edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
-            crate::state_table::ui(ui, c, &mut self.p.states)
+            crate::state_table::ui(ui, c, &mut self.p.states, &now, &stops)
         });
+    }
+
+    /// 組合せの要素の面（場所・要素の面の番号）→ 今の系の面の番号（今の経路の要素だけ）
+    pub(super) fn face_index(&self) -> HashMap<(crate::combo_tree::Loc, usize), usize> {
+        let mut out = HashMap::new();
+        let rows = &self.sys.ld_rows;
+        if rows.is_empty() {
+            return out;
+        }
+        let lead = self.doc.combo.lead_stop();
+        let live = self.doc.combo.span_ids();
+        let spans = lens_data::elem_spans(&live, &self.sys.elem_blocks, lead, rows);
+        for (step, span) in self.doc.combo.chain().iter().zip(spans) {
+            let Some([a, b]) = span else { continue };
+            for (i, j) in (a..=b)
+                .filter(|&j| rows.get(j).is_some_and(|r| !r.is_cb()))
+                .enumerate()
+            {
+                out.insert((step.loc.clone(), i), j);
+            }
+        }
+        out
     }
 
     /// 組合せの系の面 j の値を、組合せの要素に当てて作り直す

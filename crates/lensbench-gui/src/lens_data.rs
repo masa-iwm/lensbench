@@ -623,6 +623,8 @@ pub(crate) enum Act {
     NeedGlasses,
     /// 最適化の変数に足す（名前は serve の set と同じ 4.t など）
     OptVar(String),
+    /// 面 j の列 col の値を多重構成の表（状態の表）の行にする
+    ConfigRow { j: usize, col: Col },
     /// 面 j の列 col の面の上書きを外す（組合せの系、要素の元の値に戻す）
     DropOverride { j: usize, col: Col },
     /// カタログの行を表へ落とした: 面 `after` の後に差し込む
@@ -866,6 +868,22 @@ fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
         },
         _ => Some(Act::Edit { j, col, value: v }),
     }
+}
+
+/// 面の表の列 col の値の、多重構成の表の面の行の値の名前（面の上書きの名前と、並びの何番目か）。行にできない列は None
+pub(crate) fn mc_field(r: &Row, col: Col) -> Option<(&'static str, Option<usize>)> {
+    Some(match col {
+        Col::R => ("r", None),
+        Col::T => ("t", None),
+        Col::Conic => ("k", None),
+        Col::Semi => ("semi", None),
+        Col::Material => ("material", None),
+        Col::Coating => ("coating", None),
+        Col::Par(i) if r.typ == "EVENASPH" && (1..=8).contains(&i) => {
+            ("asph", Some(i as usize - 1))
+        }
+        _ => return None,
+    })
 }
 
 /// 面 j の列 col の多重構成の行の名前（serve の add_config_row の param）。行にできない列は None

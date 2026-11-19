@@ -630,6 +630,24 @@ struct Cx<'a> {
     groups: &'a [GroupDef],
 }
 
+/// 面の上書き・操作を持てるブロック（BS などは持てない）
+pub(crate) fn block_has_faces(b: &Value) -> bool {
+    matches!(
+        b["type"].as_str(),
+        Some("lens" | "stop" | "mirror" | "surfaces" | "zmx" | "user" | "group")
+    )
+}
+
+/// 面の上書きをブロックの surface_edits の JSON に
+pub(crate) fn edits_json(edits: &[crate::combo::SurfEdit]) -> Value {
+    Value::Array(
+        edits
+            .iter()
+            .map(|e| json!({ "surface": e.surface, "fields": { e.field.clone(): e.value } }))
+            .collect(),
+    )
+}
+
 /// 並び list のブロックを out へ。続く同じ群の要素は群のブロックにまとめる（群の最後の要素の後の空気は群の外）。
 /// 同じ名前の群は最初の続きだけ（離れた要素・分岐のある BS・分岐の中の往路を戻る鏡は群にしない）
 fn go(
@@ -647,19 +665,9 @@ fn go(
         let id = (cx.id_of)(&loc);
         let mut b = p.block(&id);
         // 面の上書き・操作（面はこの要素の面）。持てないブロック（BS など）には書かない
-        let has_faces = matches!(
-            b["type"].as_str(),
-            Some("lens" | "stop" | "mirror" | "surfaces" | "zmx" | "user" | "group")
-        );
+        let has_faces = block_has_faces(&b);
         if has_faces && !p.edits.is_empty() {
-            b["surface_edits"] = Value::Array(
-                p.edits
-                    .iter()
-                    .map(
-                        |e| json!({ "surface": e.surface, "fields": { e.field.clone(): e.value } }),
-                    )
-                    .collect(),
-            );
+            b["surface_edits"] = edits_json(&p.edits);
         }
         if has_faces && !p.ops.is_empty() {
             b["surface_ops"] = serde_json::to_value(&p.ops).unwrap_or_default();

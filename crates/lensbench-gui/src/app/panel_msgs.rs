@@ -258,6 +258,39 @@ impl Core {
                 }
                 Err(e) => self.fail(e),
             },
+            Act::ConfigRow { j, col } => {
+                let field = self
+                    .sys
+                    .ld_rows
+                    .get(j)
+                    .and_then(|r| lens_data::mc_field(r, col));
+                let (Some((k, i)), Some((field, idx))) = (self.combo_face(&spans, j), field) else {
+                    self.fail(tr(
+                        "Only surfaces of combination elements can be multi-configuration rows",
+                    ));
+                    return;
+                };
+                let Some(loc) = self.doc.combo.chain().get(k).map(|s| s.loc.clone()) else {
+                    return;
+                };
+                let faces = self.face_index();
+                let rows = self.sys.ld_rows.clone();
+                let now = |f: &crate::state_table::Face| -> Option<Value> {
+                    let j = *faces.get(&(f.loc.clone(), f.surf))?;
+                    ld_combo::face_value(rows.get(j)?, &f.field)
+                };
+                let it = crate::state_table::Item::Face(crate::state_table::Face {
+                    loc,
+                    surf: i,
+                    field: field.to_string(),
+                    idx,
+                });
+                crate::state_table::add_row(&mut self.doc.combo, &mut self.p.states, it, &now);
+                self.msgs.push(Msg::FocusKind(Kind::MultiConfig));
+                if !self.s.auto_build {
+                    self.build_combo(self.doc.combo.project());
+                }
+            }
             Act::DropOverride { j, col } => {
                 if let Some((k, i)) = self.combo_face(&spans, j) {
                     let names = ld_combo::override_fields(col);

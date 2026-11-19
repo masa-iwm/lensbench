@@ -45,7 +45,8 @@ impl Combo {
             return Err(tr("This surface has a stop, solve or pickup; remove them first").into());
         }
         // OFF にできる面の並びは、外すと状態ごとの並びが変わるので外さない
-        if !p.on || !p.state_on.is_empty() {
+        if !p.on || !p.state_on.is_empty() || !p.state_edits.is_empty() || !p.state_stop.is_empty()
+        {
             return Err(tr(
                 "This surface list is turned off in some states, so it cannot be removed",
             )
@@ -175,6 +176,8 @@ impl Combo {
             || !p.state_on.is_empty()
             || !p.state_air.is_empty()
             || !p.state_place.is_empty()
+            || !p.state_edits.is_empty()
+            || !p.state_stop.is_empty()
             || !p.group.is_empty()
             || !p.on
             || p.mirror().back;
@@ -222,6 +225,7 @@ impl Combo {
                     let mut q = p.clone();
                     q.edits.clear();
                     q.ops.clear();
+                    q.state_edits.clear();
                     q
                 } else {
                     Pick::new(part.0)

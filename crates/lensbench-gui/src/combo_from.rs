@@ -13,6 +13,7 @@ use crate::combo::{
     SURF_MORE,
 };
 use crate::sysset::{Aiming, ApertureKind, FieldPt, FieldSolve, SolveCond, WavePt};
+use lensbench_project::edit_ops::SurfaceOp;
 use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
@@ -973,6 +974,57 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                     "config" if q.kind == ElemKind::ZmxRange => {
                         let k = x.as_u64().filter(|&k| k >= 1).ok_or("state config")?;
                         q.zmx_mut().state_config.insert(n.clone(), k as usize);
+                    }
+                    "surface_ops" => {
+                        // 状態の絞りの面: 基本の操作から set_stop を除いたものに、set_stop が 1 つ足されたもの
+                        let ops: Vec<SurfaceOp> =
+                            serde_json::from_value(x.clone()).map_err(|e| e.to_string())?;
+                        let rest: Vec<&SurfaceOp> =
+                            ops.iter().filter(|o| o.stop_index().is_none()).collect();
+                        let base: Vec<&SurfaceOp> =
+                            q.ops.iter().filter(|o| o.stop_index().is_none()).collect();
+                        if rest != base {
+                            return Err(format!("state {n} {id} surface_ops"));
+                        }
+                        let stops: Vec<usize> =
+                            ops.iter().filter_map(SurfaceOp::stop_index).collect();
+                        match stops[..] {
+                            [] => {}
+                            [i] => {
+                                q.state_stop.insert(n.clone(), i);
+                            }
+                            _ => return Err(format!("state {n} {id} two stops")),
+                        }
+                    }
+                    "surface_edits" => {
+                        // 状態の面の上書き: 基本の上書きと同じものを除いた分を状態の値に
+                        for e in x.as_array().ok_or("state surface_edits")? {
+                            let surface =
+                                e["surface"].as_u64().ok_or("state surface_edits")? as usize;
+                            for (field, v) in e["fields"].as_object().into_iter().flatten() {
+                                if q.base_edit(surface, field) != Some(v) {
+                                    q.set_state_edit(&n, surface, field, v.clone());
+                                }
+                            }
+                        }
+                        // 基本の上書きのうち状態で書いていないものは、状態で外したもの（組合せでは書けない）
+                        let all = x.as_array().into_iter().flatten();
+                        let named: Vec<(usize, String)> = all
+                            .flat_map(|e| {
+                                let j = e["surface"].as_u64().unwrap_or(u64::MAX) as usize;
+                                e["fields"]
+                                    .as_object()
+                                    .into_iter()
+                                    .flatten()
+                                    .map(move |(k, _)| (j, k.clone()))
+                            })
+                            .collect();
+                        if q.edits
+                            .iter()
+                            .any(|b| !named.contains(&(b.surface, b.field.clone())))
+                        {
+                            return Err(format!("state {n} {id} drops surface edits"));
+                        }
                     }
                     "decenter" | "tilt" => {
                         let (dc, tl) = (q.decenter, q.tilt);

@@ -1501,14 +1501,11 @@ Layout figure (3D)	レイアウト図（3D）
 Spot diagram, {}	スポットダイアグラム（{}）
 Glass map ({} glasses)	硝材マップ（{} 種）
 Show values not changed in any state	どの状態でも変えていない値も出す
-Click a column header to make it the current state. Right-click a cell to use the base value	列の見出しを押すとその状態を今の状態にします。セルを右クリックで基本の値に戻せます
 changed	変更あり
 Use base value	基本の値に戻す
 shift	移動
 Show the base values (no state)	基本の値を出す（状態なし）
 Make {} the current state	{} を今の状態にする
-Make {} the current state (it also changes system settings such as aperture and fields)	{} を今の状態にする（開口・視野などのシステムの設定も変わります）
-No states yet. Add one in the Layout panel (states are the configurations of a combination: element ON/OFF, spacing, decenter and tilt, group shift, .zmx configuration).	状態はまだありません。レイアウトのパネルで足してください（状態は組合せの構成です: 要素の ON/OFF・間隔・偏心とチルト・群の移動・.zmx の構成）。
 {} can't be opened (it can't be written as a combination: {})	{} は開けません（組合せで書けません: {}）
 {} can't be split into elements, so it opens as one element that reads the .zmx (a saved project needs the .zmx)	{} は要素に分割できないので、.zmx を読む要素 1 つで開きます（保存したプロジェクトはこの .zmx を使います）
 Inserting surfaces and pasting is not available in a combination	面を挿入して貼り付ける操作は組合せではまだできません
@@ -1534,3 +1531,41 @@ Distance from the image surface to where an axial ray crosses the axis − targe
 Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)	最大の視野の近軸主光線の像面での高さの wave2 − wave − 目標（LACL 相当）
 Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)	面 surf〜to のクリア半径を面ごとに min か max と比べ、はみ出しを足す（MNSD・MXSD 相当）
 Aperture maximum radius	開口の最大の半径
++ Configuration	+ 構成
++ Row	+ 行
+Add a configuration (state) copied from {}	{} を写した構成（状態）を足す
+Add a configuration (state) with the base values	基本の値の構成（状態）を足す
+Add a multi-configuration row	多重構成の行にする
+Adds this value as a row of the Multi-configuration table, so each configuration (state) can have its own value	この値を多重構成の表の行にし、構成（状態）ごとに値を変えられるようにします
+Click a column header to make it the current configuration; right-click it to copy, rename or delete. Right-click a cell to use the base value, a row name to delete the row	列の見出しをクリックで今の構成に、右クリックで写す・名前を変える・消す。セルの右クリックで基本の値に戻し、行の名前の右クリックで行を消します
+Copy to a new configuration	写して新しい構成にする
+Delete row	行を消す
+Every configuration uses the base value	どの構成も基本の値にします
+Field {} x	視野 {} x
+Field {} y	視野 {} y
+No elements	要素がありません
+Object distance	物体距離
+Only surfaces of combination elements can be multi-configuration rows	多重構成の行にできるのは組合せの要素の面だけです
+Other system settings	そのほかのシステムの設定
+Rename	名前を変える
+Surface value of an element	要素の面の値
+Surfaces are counted within the element from 1, without coordinate breaks. Every configuration starts with its current value	面は要素の中で 1 から、座標ブレークを除いて数えます。どの構成も今の値から始まります
+System value	システムの値
+The base value is read from the built system; select Base once to read it	基本の値は組み立てたシステムから読みます。読むには一度「基本」を選んでください
+Wavelength {} [µm]	波長 {} [µm]
+Wavelength {} weight	波長 {} のウェイト
+asphere {}	非球面 {}
+conic	コーニック
+ignore	無視
+semi-diameter	クリア半径
+{} surface {} {}	{} 面 {} {}
+No configurations yet. Add one with + Configuration, or add a row (states are the configurations of a combination: system values, element ON/OFF, spacing, decenter and tilt, group shift, surface values, .zmx configuration).	構成はまだありません。「+ 構成」で足すか、行を足してください（状態が組合せの構成です: システムの値、要素の ON/OFF、間隔、偏心とチルト、群の移動、面の値、.zmx の構成）。
+The state name is empty	状態の名前が空です
+There is already a state named {}	{} という名前の状態がすでにあります
+No state {}	状態 {} はありません
+coating	コーティング
+material	材料
+radius	曲率半径
+thickness	厚み
+Object space telecentric	物体側テレセントリック
+{} surface {}	{} 面 {}

@@ -118,6 +118,65 @@ impl Pick {
         });
     }
 
+    /// 状態 n の面 surface の値 field の上書き（多重構成の表の面の行）
+    pub(crate) fn state_edit(&self, n: &str, surface: usize, field: &str) -> Option<&Value> {
+        self.state_edits
+            .get(n)?
+            .iter()
+            .find(|e| e.surface == surface && e.field == field)
+            .map(|e| &e.value)
+    }
+
+    /// 基本の面 surface の値 field の上書き
+    pub(crate) fn base_edit(&self, surface: usize, field: &str) -> Option<&Value> {
+        self.edits
+            .iter()
+            .find(|e| e.surface == surface && e.field == field)
+            .map(|e| &e.value)
+    }
+
+    /// 状態 n の面 surface の値 field を value にする（同じ面・同じ値の上書きは置き換える）
+    pub(crate) fn set_state_edit(&mut self, n: &str, surface: usize, field: &str, value: Value) {
+        let v = self.state_edits.entry(n.to_string()).or_default();
+        v.retain(|e| !(e.surface == surface && e.field == field));
+        v.push(SurfEdit {
+            surface,
+            field: field.into(),
+            value,
+        });
+        // 面の数え方の印（並びが変わったら外す、[`Pick::drop_stale_edits`]）
+        if self.edits_for.is_empty() {
+            self.edits_for = self.surf_sig();
+        }
+    }
+
+    /// 状態 n の面 surface の値 field の上書きをやめる（基本の値に戻す）
+    pub(crate) fn clear_state_edit(&mut self, n: &str, surface: usize, field: &str) {
+        if let Some(v) = self.state_edits.get_mut(n) {
+            v.retain(|e| !(e.surface == surface && e.field == field));
+            if v.is_empty() {
+                self.state_edits.remove(n);
+            }
+        }
+    }
+
+    /// 状態 n で使う面の上書き: 基本の上書きに状態の上書きを重ねたもの（状態の上書きが無ければ None）。
+    /// プロジェクトの状態の set の surface_edits（ブロックの surface_edits を丸ごと置き換える）
+    pub(crate) fn edits_in(&self, n: &str) -> Option<Vec<SurfEdit>> {
+        let own = self.state_edits.get(n).filter(|v| !v.is_empty())?;
+        let mut out: Vec<SurfEdit> = self
+            .edits
+            .iter()
+            .filter(|e| {
+                !own.iter()
+                    .any(|o| o.surface == e.surface && o.field == e.field)
+            })
+            .cloned()
+            .collect();
+        out.extend(own.iter().cloned());
+        Some(out)
+    }
+
     /// 要素の面 rel（座標ブレークを除いた番号、系の並びの向き）の値 key を変える。中身に書けなければ面の上書き
     pub(crate) fn write_face(&mut self, rel: usize, key: &str, value: Value) {
         if self.write_source(rel, key, &value) {
@@ -381,9 +440,23 @@ impl Pick {
 
     /// この要素の面（座標ブレークを除く番号）を map で付け替える。None になった面の上書き・操作は外す
     pub(crate) fn shift_faces(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
-        self.edits.retain_mut(|e| match map(e.surface) {
-            Some(i) => {
-                e.surface = i;
+        let remap = |v: &mut Vec<SurfEdit>| {
+            v.retain_mut(|e| match map(e.surface) {
+                Some(i) => {
+                    e.surface = i;
+                    true
+                }
+                None => false,
+            })
+        };
+        remap(&mut self.edits);
+        for v in self.state_edits.values_mut() {
+            remap(v);
+        }
+        self.state_edits.retain(|_, v| !v.is_empty());
+        self.state_stop.retain(|_, i| match map(*i) {
+            Some(j) => {
+                *i = j;
                 true
             }
             None => false,

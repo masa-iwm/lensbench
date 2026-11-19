@@ -82,6 +82,24 @@ pub(super) fn solved_reason(row: &lens_data::Row, key: &str) -> Option<String> {
     ))
 }
 
+/// 面の表の行 r の面の値 field（面の上書きの JSON の形。平面の曲率半径は inf）。多重構成の表の面の行の基本の値
+pub(crate) fn face_value(r: &lens_data::Row, field: &str) -> Option<Value> {
+    Some(match field {
+        "r" if r.r == 0.0 || !r.r.is_finite() => json!({ "$f": "inf" }),
+        "r" => json!(r.r),
+        "t" if r.t.is_finite() => json!(r.t),
+        "t" => json!({ "$f": if r.t > 0.0 { "inf" } else { "-inf" } }),
+        "k" => json!(r.k),
+        "semi" => json!(r.semi),
+        "ignore" => json!(r.ignore),
+        "material" => json!(r.material),
+        "coating" => json!(r.coating),
+        "comment" => json!(r.comment),
+        "asph" => json!(r.asph),
+        _ => return None,
+    })
+}
+
 /// 組合せの系の面 j の要素と、要素の面の番号（座標ブレークを除く）
 pub(super) fn face_of(
     rows: &[lens_data::Row],

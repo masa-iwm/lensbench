@@ -247,6 +247,18 @@ pub(super) fn cell_menu(
         }
         ui.separator();
     }
+    if !r.is_cb() && mc_field(r, col).is_some() {
+        if ui
+            .button(tr("Add a multi-configuration row"))
+            .on_hover_text(tr(
+                "Adds this value as a row of the Multi-configuration table, so each configuration (state) can have its own value",
+            ))
+            .clicked()
+        {
+            acts.push(Act::ConfigRow { j, col });
+        }
+        ui.separator();
+    }
     if !ops.is_empty() {
         acts.push(Act::Ops(ops));
     }

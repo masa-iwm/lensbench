@@ -28,6 +28,7 @@ mod kind_data;
 mod mech;
 mod mirror;
 mod raw;
+mod states;
 mod sys_extra;
 mod write_face;
 mod zgroup;
@@ -354,6 +355,12 @@ pub(crate) struct Pick {
     pub state_air: BTreeMap<String, f64>,
     /// 状態ごとの偏心・傾き（無ければ decenter・tilt。置き方を持つ要素と鏡）
     pub state_place: BTreeMap<String, StatePlace>,
+    /// 状態ごとの面の値の上書き（状態の名前 → 上書き。同じ面・同じ値の基本の上書き edits より優先。多重構成の表の面の行）
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub state_edits: BTreeMap<String, Vec<SurfEdit>>,
+    /// 状態ごとの絞りの面（状態の名前 → この要素の面の番号。どの状態も絞りは 1 つの要素だけ。多重構成の STPS）
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub state_stop: BTreeMap<String, usize>,
     /// BS: 口 B・C・D の先の並びを持つ（並びの最後に置く）
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
@@ -410,6 +417,8 @@ impl Default for Pick {
             state_on: BTreeMap::new(),
             state_air: BTreeMap::new(),
             state_place: BTreeMap::new(),
+            state_edits: BTreeMap::new(),
+            state_stop: BTreeMap::new(),
             group: String::new(),
             edits_for: String::new(),
             id: String::new(),
@@ -442,7 +451,11 @@ impl Pick {
     /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
     /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
     pub(crate) fn drop_stale_edits(&mut self) -> usize {
-        if self.edits.is_empty() && self.ops.is_empty() {
+        if self.edits.is_empty()
+            && self.ops.is_empty()
+            && self.state_edits.is_empty()
+            && self.state_stop.is_empty()
+        {
             self.edits_for.clear();
             return 0;
         }
@@ -454,9 +467,14 @@ impl Pick {
         if self.edits_for == sig {
             return 0;
         }
-        let n = self.edits.len() + self.ops.len();
+        let n = self.edits.len()
+            + self.ops.len()
+            + self.state_edits.values().map(Vec::len).sum::<usize>()
+            + self.state_stop.len();
         self.edits.clear();
         self.ops.clear();
+        self.state_edits.clear();
+        self.state_stop.clear();
         self.edits_for.clear();
         n
     }
@@ -855,24 +873,6 @@ impl Pick {
         }
     }
 
-    /// 状態 n で変えた値があるか
-    pub(crate) fn has_state_values(&self, n: &str) -> bool {
-        self.state_on.contains_key(n)
-            || self.state_air.contains_key(n)
-            || self.state_place.contains_key(n)
-            || self.zmx().state_config.contains_key(n)
-    }
-
-    /// 状態 n で変えた値をやめる
-    pub(crate) fn clear_state(&mut self, n: &str) {
-        self.state_on.remove(n);
-        self.state_air.remove(n);
-        self.state_place.remove(n);
-        if let Some(KindData::Zmx(z)) = self.data.as_deref_mut() {
-            z.state_config.remove(n);
-        }
-    }
-
     /// .zmx の取り込みの、状態 st でのマルチコンフィグの番号
     pub(crate) fn config_in(&self, st: Option<&str>) -> usize {
         st.and_then(|n| self.zmx().state_config.get(n).copied())
@@ -1135,6 +1135,8 @@ impl Combo {
             .collect();
         for (loc, id) in self.ids_all() {
             let Some(p) = self.get(&loc) else { continue };
+            let faces = (self.has_state_stop() || !p.state_edits.is_empty())
+                && crate::combo_tree::block_has_faces(&p.block(&id));
             for (n, set) in states.iter_mut() {
                 if let Some(&on) = p.state_on.get(n).filter(|_| p.kind.has_on()) {
                     set.insert(id.clone(), json!({ "on": on }));
@@ -1150,6 +1152,9 @@ impl Combo {
                 }
                 if let (Some(&t), Some(a)) = (p.state_air.get(n), p.air_name(&id)) {
                     set.insert(a, json!({ "t": t }));
+                }
+                if faces {
+                    self.state_faces(p, n, &id, set);
                 }
                 if let Some(pl) = p.state_place.get(n).filter(|_| p.has_state_place()) {
                     let e = set.entry(id.clone()).or_insert_with(|| json!({}));
@@ -2424,19 +2429,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
             .on_hover_text(trf("Delete state {}", &[&n]))
             .clicked()
         {
-            combo.states.retain(|s| *s != n);
-            for l in combo.all() {
-                if let Some(p) = combo.get_mut(&l) {
-                    p.clear_state(&n);
-                }
-            }
-            combo.state_sys.remove(&n);
-            combo.state_path.remove(&n);
-            combo.state_more.remove(&n);
-            for g in &mut combo.groups {
-                g.state_shift.remove(&n);
-            }
-            combo.state = None;
+            combo.remove_state(&n);
         }
     }
     // OFF の要素は図に出ないので、ここから選ぶ（ON に戻すなど）
