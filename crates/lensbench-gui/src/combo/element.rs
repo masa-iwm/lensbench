@@ -111,6 +111,7 @@ pub(super) fn element_settings(
     });
     // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気は「位置も」で止める。ON/OFF はいつも変えられる
     let locked = p.locked;
+    let mut remap = None;
     ui.add_enabled_ui(!locked, |ui| {
         ui.horizontal_wrapped(|ui| {
             kind_fields(ui, p, st, k, weak, &coats);
@@ -119,7 +120,7 @@ pub(super) fn element_settings(
             }
         });
         if p.kind == ElemKind::Surfaces {
-            surf_table(ui, p, k, weak);
+            remap = surf_table(ui, p, k, weak);
         }
     });
     ui.add_enabled_ui(!p.fixed(), |ui| {
@@ -157,6 +158,20 @@ pub(super) fn element_settings(
     });
     // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
     ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, k, weak));
+    // 面の並びの行を変えたら、ほかの要素の操作が指すこの要素の面・座標ブレークの番号も合わせる
+    if let Some(m) = remap {
+        let id = combo
+            .ids_all()
+            .into_iter()
+            .find(|(l, _)| *l == step.loc)
+            .map(|(_, id)| id);
+        if let Some(id) = id {
+            combo.shift_row_refs(&id, &m);
+        }
+    }
+    let Some(p) = combo.get_mut(&step.loc) else {
+        return;
+    };
     if p.kind == ElemKind::Splitter {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
     }

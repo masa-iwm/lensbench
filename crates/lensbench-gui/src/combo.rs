@@ -3133,8 +3133,17 @@ pub(crate) fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
 
 /// 面の並びの面の並びと種類。半径・コーニック・厚さ・ガラス・半直径はレンズデータの表で編集し、
 /// ここでは面の種類・足す・消すと、偏光子・波長板・Jones・座標ブレークの値（表の列に無いもの）だけを出す
-fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
+/// 面の並びの行の表。行を足す・消す・種類（座標ブレークとほかの面）を変えたら、この要素の上書き・操作の番号を
+/// 付け替えて、その付け替えを返す（ほかの要素からの参照は呼ぶ側が [`Combo::shift_row_refs`] で）
+fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<write_face::RowRemap> {
     let n = p.surfs.len();
+    let is_cb = |p: &Pick| -> Vec<bool> {
+        p.surfs
+            .iter()
+            .map(|r| r.kind == SurfKind::Coordbrk)
+            .collect()
+    };
+    let before = is_cb(p);
     let (mut del, mut add) = (None, None);
     let drag = |ui: &mut Ui, v: &mut f64, speed: f64| {
         ui.add(egui::DragValue::new(v).speed(speed).max_decimals(6));
@@ -3316,6 +3325,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
     if let Some(i) = del {
         p.surfs.remove(i);
     }
+    p.rows_changed(&before, add, del)
 }
 
 /// 半径の JSON（自動なら "auto"）

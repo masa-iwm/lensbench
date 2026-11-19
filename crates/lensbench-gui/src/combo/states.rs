@@ -44,9 +44,18 @@ pub(crate) struct McComment {
     pub values: BTreeMap<String, String>,
 }
 
-/// 面の値の行の名前の面の番号
+/// 面の値の行の名前の面の番号（座標ブレークの行は None）
 fn key_surf(k: &str) -> Option<usize> {
-    k.strip_prefix("face:")?.split(':').next()?.parse().ok()
+    key_surf_of(k, false)
+}
+
+/// 面の値の行の名前の、cb なら座標ブレークの行の座標ブレークの番号、でなければ面の行の面の番号
+fn key_surf_of(k: &str, cb: bool) -> Option<usize> {
+    let (i, field) = k.strip_prefix("face:")?.split_once(':')?;
+    if field.starts_with(crate::combo_tree::CB_FIELD) != cb {
+        return None;
+    }
+    i.parse().ok()
 }
 
 /// 面の値の行の名前の面の番号を i に
@@ -65,8 +74,13 @@ impl McPick {
 
     /// 先・元の面の値の行の面の番号を map で付け替える（無くなった面があれば false）
     fn map_face_surf(&mut self, map: &dyn Fn(usize) -> Option<usize>) -> bool {
+        self.map_key_surf(map, false)
+    }
+
+    /// 面の行（cb なら座標ブレークの行）の番号を map で付け替える。None になれば false（ピックアップを外す）
+    fn map_key_surf(&mut self, map: &dyn Fn(usize) -> Option<usize>, cb: bool) -> bool {
         for k in [&mut self.key, &mut self.row] {
-            if let Some(i) = key_surf(k) {
+            if let Some(i) = key_surf_of(k, cb) {
                 match map(i) {
                     Some(j) => *k = key_with_surf(k, j),
                     None => return false,
@@ -144,6 +158,11 @@ impl Pick {
     /// 面の番号を map で付け替える（ピックアップの面の行）
     pub(crate) fn shift_face_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
         self.mc_picks.retain_mut(|m| m.map_face_surf(map));
+    }
+
+    /// 座標ブレークの行のピックアップの座標ブレークの番号を map で付け替える
+    pub(crate) fn shift_cb_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
+        self.mc_picks.retain_mut(|m| m.map_key_surf(map, true));
     }
 
     /// 状態 n で変えた値があるか

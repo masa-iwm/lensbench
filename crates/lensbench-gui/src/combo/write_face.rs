@@ -480,6 +480,110 @@ impl Pick {
     }
 }
 
+/// 面の並びの行を付け替えた（足す・消す・種類を変える）ときの、面（座標ブレークを除く番号）と座標ブレーク
+/// （座標ブレークだけの番号）の付け替え。添字は前の番号、値は後の番号（無くなれば None）
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RowRemap {
+    pub face: Vec<Option<usize>>,
+    pub cb: Vec<Option<usize>>,
+}
+
+impl RowRemap {
+    /// old・new は前と後の行ごとの座標ブレークか、row は前の行 → 後の行。種類が変わった行は無くなる
+    pub(crate) fn of(old: &[bool], new: &[bool], row: &dyn Fn(usize) -> Option<usize>) -> RowRemap {
+        let index =
+            |kinds: &[bool], r: usize| kinds[..r].iter().filter(|&&c| c == kinds[r]).count();
+        let mut out = RowRemap {
+            face: Vec::new(),
+            cb: Vec::new(),
+        };
+        for (r, &c) in old.iter().enumerate() {
+            let to = row(r)
+                .filter(|&n| new.get(n) == Some(&c))
+                .map(|n| index(new, n));
+            if c {
+                out.cb.push(to);
+            } else {
+                out.face.push(to);
+            }
+        }
+        out
+    }
+
+    /// 番号が変わらない
+    pub(crate) fn is_identity(&self) -> bool {
+        let same = |v: &[Option<usize>]| v.iter().enumerate().all(|(i, x)| *x == Some(i));
+        same(&self.face) && same(&self.cb)
+    }
+
+    pub(crate) fn face_of(&self, i: usize) -> Option<usize> {
+        self.face.get(i).copied().flatten()
+    }
+
+    pub(crate) fn cb_of(&self, i: usize) -> Option<usize> {
+        self.cb.get(i).copied().flatten()
+    }
+}
+
+impl Pick {
+    /// 面の並びの行ごとの座標ブレークか
+    pub(crate) fn cb_rows(&self) -> Vec<bool> {
+        self.surfs
+            .iter()
+            .map(|r| r.kind == SurfKind::Coordbrk)
+            .collect()
+    }
+
+    /// 面の並びの行を足した（add）・消した（del）・種類を変えた後に、前の行の種類 before から番号を付け替える。
+    /// 変わったらその付け替え
+    pub(crate) fn rows_changed(
+        &mut self,
+        before: &[bool],
+        add: Option<usize>,
+        del: Option<usize>,
+    ) -> Option<RowRemap> {
+        let row = |r: usize| -> Option<usize> {
+            match (add, del) {
+                (Some(i), _) => Some(r + usize::from(r >= i)),
+                (_, Some(i)) => (r != i).then(|| r - usize::from(r > i)),
+                _ => Some(r),
+            }
+        };
+        let m = RowRemap::of(before, &self.cb_rows(), &row);
+        if m.is_identity() {
+            return None;
+        }
+        self.shift_rows(&m);
+        Some(m)
+    }
+
+    /// この要素の面・座標ブレークの番号を m で付け替える（上書き・ピックアップ・絞り・自分の面の操作）。
+    /// ほかの要素からの参照は [`Combo::shift_block_refs`]・[`Combo::shift_block_cb_refs`]
+    pub(crate) fn shift_rows(&mut self, m: &RowRemap) {
+        self.shift_faces(&|i| m.face_of(i));
+        let remap = |v: &mut Vec<SurfEdit>| {
+            v.retain_mut(|e| {
+                if !e.field.starts_with(crate::combo_tree::CB_FIELD) {
+                    return true;
+                }
+                match m.cb_of(e.surface) {
+                    Some(i) => {
+                        e.surface = i;
+                        true
+                    }
+                    None => false,
+                }
+            })
+        };
+        remap(&mut self.edits);
+        for v in self.state_edits.values_mut() {
+            remap(v);
+        }
+        self.state_edits.retain(|_, v| !v.is_empty());
+        self.shift_cb_picks(&|i| m.cb_of(i));
+    }
+}
+
 /// 操作の面を f で書き換える。f が false を返した面があれば false（その操作は外す）
 fn map_refs(o: &mut SurfaceOp, f: &dyn Fn(&mut BlockRef) -> bool) -> bool {
     match o {
@@ -510,6 +614,35 @@ impl Combo {
             _ => true,
         };
         walk(&mut self.picks, &f);
+    }
+
+    /// 要素 id の座標ブレークを map で付け替えたとき、操作の座標ブレークの参照（coordbrk のブロックの面、自分のも）
+    /// も合わせる
+    pub(crate) fn shift_block_cb_refs(&mut self, id: &str, map: &dyn Fn(usize) -> Option<usize>) {
+        fn walk(ps: &mut [Pick], f: &dyn Fn(&mut BlockRef) -> bool) {
+            for p in ps {
+                p.ops.retain_mut(|o| map_refs(o, f));
+                for b in p.ports.iter_mut() {
+                    walk(&mut b.picks, f);
+                }
+            }
+        }
+        let f = |r: &mut BlockRef| match r {
+            BlockRef::Block(b) if b.block == id && b.coordbrk => {
+                map(b.surface).map(|j| b.surface = j).is_some()
+            }
+            _ => true,
+        };
+        walk(&mut self.picks, &f);
+    }
+
+    /// 要素 id の行を m で付け替えたとき、ほかの要素からの面・座標ブレークの参照を合わせる
+    pub(crate) fn shift_row_refs(&mut self, id: &str, m: &RowRemap) {
+        if id.is_empty() || m.is_identity() {
+            return;
+        }
+        self.shift_block_refs(id, &|i| m.face_of(i));
+        self.shift_block_cb_refs(id, &|i| m.cb_of(i));
     }
 }
 
@@ -931,5 +1064,76 @@ mod tests {
         p.write_face(0, "r", json!(25.0));
         assert_eq!(p.surfs[1].radius, 25.0);
         assert!(p.edits.is_empty());
+    }
+
+    /// 面の並びの行を足す・消す・種類を変えると、面と座標ブレークの番号が付け替わる（上書き・状態の上書き・
+    /// 多重構成のピックアップ・操作の参照）。種類が変わった行の上書きは外す
+    #[test]
+    fn surface_rows_remap_faces_and_coordinate_breaks() {
+        // 行: 面 0・座標ブレーク 0・面 1・座標ブレーク 1。行 1 の前に面を足す
+        let old = [false, true, false, true];
+        let new = [false, false, true, false, true];
+        let m = RowRemap::of(&old, &new, &|r| Some(r + usize::from(r >= 1)));
+        assert_eq!(m.face, [Some(0), Some(2)]);
+        assert_eq!(m.cb, [Some(0), Some(1)]);
+        // 行 1（座標ブレーク 0）を消す
+        let m = RowRemap::of(&old, &[false, false, true], &|r| {
+            (r != 1).then(|| r - usize::from(r > 1))
+        });
+        assert_eq!(m.face, [Some(0), Some(1)]);
+        assert_eq!(m.cb, [None, Some(0)]);
+        // 行 2（面 1）を座標ブレークに
+        let m = RowRemap::of(&old, &[false, true, true, true], &Some);
+        assert_eq!(m.face, [Some(0), None]);
+        assert_eq!(m.cb, [Some(0), Some(2)]);
+        assert!(!m.is_identity());
+        assert!(RowRemap::of(&old, &old, &Some).is_identity());
+
+        let mut p = Pick::new(ElemKind::Surfaces);
+        p.id = "S".into();
+        let cbf = |k: &str| format!("{}{k}", crate::combo_tree::CB_FIELD);
+        p.edits = vec![
+            SurfEdit {
+                surface: 1,
+                field: "t".into(),
+                value: json!(3.0),
+            },
+            SurfEdit {
+                surface: 1,
+                field: cbf("ignore"),
+                value: json!(true),
+            },
+        ];
+        p.set_state_edit("A", 0, &cbf("ignore"), json!(true));
+        p.set_state_edit("A", 1, "t", json!(4.0));
+        p.mc_picks = vec![McPick {
+            key: format!("face:1:{}", cbf("ignore")),
+            to: "A".into(),
+            from: "B".into(),
+            row: String::new(),
+            scale: 1.0,
+            offset: 0.0,
+        }];
+        let op: SurfaceOp = serde_json::from_value(json!({ "op": "add_pickup",
+            "dst": { "block": "S", "surface": 1, "coordbrk": true },
+            "src": { "block": "S", "surface": 0, "coordbrk": true }, "what": "p1" }))
+        .unwrap();
+        p.ops = vec![op];
+        let mut c = Combo::default();
+        c.picks.push(p);
+        // 行 1（座標ブレーク 0）を消す: 座標ブレーク 1 → 0、座標ブレーク 0 の上書き・ピックアップの元は外れる
+        let m = RowRemap::of(&old, &[false, false, true], &|r| {
+            (r != 1).then(|| r - usize::from(r > 1))
+        });
+        c.picks[0].shift_rows(&m);
+        c.shift_row_refs("S", &m);
+        let p = &c.picks[0];
+        assert_eq!(p.base_edit(1, "t"), Some(&json!(3.0)));
+        assert_eq!(p.base_edit(0, &cbf("ignore")), Some(&json!(true)));
+        assert_eq!(p.state_edit("A", 0, &cbf("ignore")), None);
+        assert_eq!(p.state_edit("A", 1, "t"), Some(&json!(4.0)));
+        assert_eq!(p.mc_picks[0].key, format!("face:0:{}", cbf("ignore")));
+        // 元の座標ブレークが無くなったピックアップの操作は外す
+        assert!(p.ops.is_empty());
     }
 }
