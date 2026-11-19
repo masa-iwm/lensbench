@@ -783,6 +783,17 @@ fn kind_of(
                 "XFIE" => (format!("fx{j}"), 1.0),
                 "YFIE" => (format!("fy{j}"), 1.0),
                 "FLWT" => (format!("fwt{j}"), 1.0),
+                "SATP" => ("atype".to_string(), 1.0),
+                "STPS" => ("stop".to_string(), 1.0),
+                "IGNR" => (format!("{j}.ignore"), 1.0),
+                "APMX" => (format!("{j}.apmax"), unit),
+                "TEMP" => ("temp".to_string(), 1.0),
+                "PRES" => ("pres".to_string(), 1.0),
+                "AFOC" => ("afocal".to_string(), 1.0),
+                "APDT" => ("apodtype".to_string(), 1.0),
+                "APDF" => ("apod".to_string(), 1.0),
+                "RAAM" => ("aiming".to_string(), 1.0),
+                "OPDR" => ("ropd".to_string(), 1.0),
                 o => return Err(format!("the multi-configuration operand {o} of row {k}")),
             };
             m.insert("type".into(), json!("param"));

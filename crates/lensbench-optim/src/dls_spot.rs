@@ -9,6 +9,40 @@ use lensbench_core::invalid;
 use lensbench_core::param::Param;
 use lensbench_core::system::{Cols, FieldSel, RayBuf, System};
 
+/// 像の点を求める光線の列（アフォーカル像空間は向きから角度）
+fn img_cols(s: &System) -> Cols {
+    if s.afocal {
+        Cols::XYZ | Cols::LMN
+    } else {
+        Cols::XYZ
+    }
+}
+
+/// 光線 i の像の点（[`System::image_point`]: アフォーカル像空間は角度）
+fn img_pt(s: &System, b: &RayBuf, i: usize) -> [f64; 2] {
+    if s.afocal {
+        let (x, y) = s.image_point(b.xyz[i], b.lmn[i]);
+        [x, y]
+    } else {
+        [b.xyz[i][0], b.xyz[i][1]]
+    }
+}
+
+/// 像の点の微分。g は land_grad の 1 つのパラメータの (dx, dy, dl, dm)、lmn は光線の向き
+fn img_d(s: &System, lmn: [f64; 3], g: &[f64]) -> [f64; 2] {
+    if !s.afocal {
+        return [g[0], g[1]];
+    }
+    let u = s.afocal_unit.radians();
+    let [l, m, n] = lmn;
+    let dn = -(l * g[2] + m * g[3]) / n;
+    // d atan(l / n) = (n dl − l dn) / (l² + n²)
+    [
+        (n * g[2] - l * dn) / (l * l + n * n) / u,
+        (n * g[3] - m * dn) / (m * m + n * n) / u,
+    ]
+}
+
 pub(super) fn spot_term(
     s: &System,
     field: FieldSel,
@@ -36,11 +70,11 @@ pub(super) fn spot_term(
         if let Some(ps) = ps {
             let t = trace_pupil(s, field, px, py, w, rec, keep)?;
             grads.push(s.land_grad(&t, w, ps, None)?);
-            let mut b = RayBuf::with_cols(Cols::XYZ);
+            let mut b = RayBuf::with_cols(img_cols(s));
             b.fill_from(&t);
             traces.push(b);
         } else {
-            traces.push(trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?);
+            traces.push(trace_pupil_cols(s, field, px, py, w, keep, img_cols(s))?);
         }
     }
     // 重み（spot() と同じ: 単色は波長の重みによらない）
@@ -57,7 +91,18 @@ pub(super) fn spot_term(
     if !(sw > 0.0) {
         invalid!("no valid rays (all vignetted)");
     }
-    let xy = |k: usize, i: usize| (traces[k].xyz[i][0], traces[k].xyz[i][1]);
+    let xy = |k: usize, i: usize| {
+        let [x, y] = img_pt(s, &traces[k], i);
+        (x, y)
+    };
+    // 光線 i・パラメータ q の像の点の微分
+    let dxy = |k: usize, i: usize, q: usize| {
+        img_d(
+            s,
+            traces[k].lmn.get(i).copied().unwrap_or([0.0; 3]),
+            &grads[k][(i * np + q) * 4..],
+        )
+    };
     // 基準とその微分
     let (cx, cy, dc): (f64, f64, Vec<[f64; 2]>) = match reference {
         RmsRef::Centroid => {
@@ -73,7 +118,7 @@ pub(super) fn spot_term(
                     cx += a * x;
                     cy += a * y;
                     for (q, d) in dc.iter_mut().enumerate() {
-                        let g = &grads[k][(i * np + q) * 4..];
+                        let g = dxy(k, i, q);
                         d[0] += a * g[0];
                         d[1] += a * g[1];
                     }
@@ -92,13 +137,15 @@ pub(super) fn spot_term(
                 invalid!("the chief ray doesn't reach the image");
             }
             let mut dc = vec![[0.0; 2]; np];
+            let c = &t.rays[0];
             if let Some(ps) = ps {
                 let g = s.land_grad(&t, wc, ps, None)?;
                 for (q, d) in dc.iter_mut().enumerate() {
-                    *d = [g[q * 4], g[q * 4 + 1]];
+                    *d = img_d(s, c.lmn, &g[q * 4..]);
                 }
             }
-            (t.rays[0].xyz[0], t.rays[0].xyz[1], dc)
+            let (x, y) = s.image_point(c.xyz, c.lmn);
+            (x, y, dc)
         }
     };
     let m = 2 * ws.len() * n;
@@ -117,7 +164,7 @@ pub(super) fn spot_term(
             r[row + 1] = fy * a * (y - cy);
             if let Some(j) = j.as_mut() {
                 for q in 0..np {
-                    let g = &grads[k][(i * np + q) * 4..];
+                    let g = dxy(k, i, q);
                     j[row * np + q] = fx * a * (g[0] - dc[q][0]);
                     j[(row + 1) * np + q] = fy * a * (g[1] - dc[q][1]);
                 }
@@ -152,12 +199,12 @@ pub(super) fn centroid_term(
             Some(ps) => {
                 let tr = trace_pupil(s, field, px, py, w, true, keep)?;
                 let g = s.land_grad(&tr, w, ps, None)?;
-                let mut b = RayBuf::with_cols(Cols::XYZ);
+                let mut b = RayBuf::with_cols(img_cols(s));
                 b.fill_from(&tr);
                 (b, Some(g))
             }
             None => (
-                trace_pupil_cols(s, field, px, py, w, keep, Cols::XYZ)?,
+                trace_pupil_cols(s, field, px, py, w, keep, img_cols(s))?,
                 None,
             ),
         };
@@ -168,10 +215,11 @@ pub(super) fn centroid_term(
             }
             let a = wts[i] * kw;
             sw += a;
-            sc += a * t.xyz[i][c];
+            sc += a * img_pt(s, &t, i)[c];
             if let Some(g) = &g {
+                let lmn = t.lmn.get(i).copied().unwrap_or([0.0; 3]);
                 for (q, d) in dc.iter_mut().enumerate() {
-                    *d += a * g[(i * np + q) * 4 + c];
+                    *d += a * img_d(s, lmn, &g[(i * np + q) * 4..])[c];
                 }
             }
         }

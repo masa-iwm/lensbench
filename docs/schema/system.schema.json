@@ -1626,7 +1626,9 @@
             "Dy",
             "Ty",
             "Tz",
-            "ObjY"
+            "ObjY",
+            "Pres",
+            "Apod"
           ],
           "type": "string"
         },
@@ -1757,6 +1759,31 @@
         {
           "const": "FieldType",
           "description": "視野の種類（OpticStudio の番号 0〜3: 角度・物体高・近軸像高・実像高）。多重構成の行（.zmx の FLTP）。\n最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Temp",
+          "description": "系の温度 [°C]・気圧 [atm]（変えると全媒質の屈折率を作り直す）。多重構成の行（.zmx の TEMP・PRES）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Afocal",
+          "description": "アフォーカルの像空間か（1 でアフォーカル）。多重構成の行（.zmx の AFOC）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "ApodType",
+          "description": "アポダイゼーションの種類（OpticStudio の番号 0〜2: 一様・ガウス・cos³）と、ガウスの係数。多重構成の行\n（.zmx の APDT・APDF）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Aiming",
+          "description": "光線エイミング（0〜2: なし・近軸・実光線）。多重構成の行（.zmx の RAAM）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Ropd",
+          "description": "OPD の基準（OpticStudio の番号 0〜3、.zmx の ROPD と同じ）。多重構成の行（.zmx の OPDR）。最適化の変数には使えない",
           "type": "string"
         },
         {

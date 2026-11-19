@@ -1235,12 +1235,9 @@ fn to_ref_d(
         return dopl + dni * a / b + ni * (da / b - a * db / (b * b));
     }
     if RefSurface::plane_for(s) {
-        // opl − ni a / b
-        let a = dot(dd, kc);
-        let b = dot(k, kc);
-        let da = dot(ddd, kc) + dot(dd, dkc);
-        let db = dot(dk, kc) + dot(k, dkc);
-        return dopl - dni * a / b - ni * (da / b - a * db / (b * b));
+        // opl − ni (q − pc)·k
+        let b = dot(dd, k);
+        return dopl - dni * b - ni * (dot(ddd, k) + dot(dd, dk));
     }
     let sc = (expp - pc[2]) / kc[2];
     let dsc = (dexpp - dpc[2]) / kc[2] - sc * dkc[2] / kc[2];

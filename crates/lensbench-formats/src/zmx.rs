@@ -25,7 +25,8 @@ const HARMLESS: &[&str] = &[
 ];
 const MCE_HANDLED: &[&str] = &[
     "THIC", "IGNR", "APMX", "SDIA", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN", "WAVE", "GLSS",
-    "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP",
+    "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC",
+    "APDT", "APDF", "RAAM", "OPDR",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
     "MCOM", "CWGT",
 ];

@@ -274,6 +274,26 @@ pub enum Aiming {
     Real,
 }
 
+impl Aiming {
+    /// OpticStudio の番号（0 なし・1 近軸・2 実光線）
+    pub fn os_code(self) -> i64 {
+        match self {
+            Aiming::Off => 0,
+            Aiming::Paraxial => 1,
+            Aiming::Real => 2,
+        }
+    }
+
+    /// 番号 n から（1 近軸・2 実光線、それ以外はなし）
+    pub fn from_os_code(n: i64) -> Aiming {
+        match n {
+            1 => Aiming::Paraxial,
+            2 => Aiming::Real,
+            _ => Aiming::Off,
+        }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]

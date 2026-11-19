@@ -489,6 +489,53 @@ fn configs_material_rows() {
     assert_eq!(n(&t), "1.5,60");
 }
 
+/// 温度・気圧・アフォーカル・アポダイゼーション・光線エイミング・OPD の基準も多重構成の行にできる
+#[test]
+fn configs_environment_and_settings() {
+    use lensbench_core::pupil::Apodization;
+    use lensbench_core::system::Aiming;
+    let mut s = empty();
+    s.set_config_count(3).unwrap();
+    let sys = Param::system;
+    for (k, v) in [
+        (Kind::Temp, [20.0, 40.0, -10.0]),
+        (Kind::Pres, [1.0, 0.5, 2.0]),
+        (Kind::Afocal, [0.0, 1.0, 0.0]),
+        (Kind::ApodType, [0.0, 1.0, 2.0]),
+        (Kind::Apod, [0.0, 1.5, 0.0]),
+        (Kind::Aiming, [0.0, 1.0, 2.0]),
+        (Kind::Ropd, [2.0, 1.0, 2.0]),
+    ] {
+        s.set_config_row(sys(k), v.to_vec()).unwrap();
+        assert_eq!(Kind::parse(&k.name()).unwrap(), k);
+        assert!(k.is_system_value());
+    }
+    let c2 = s.config(2).unwrap();
+    assert_eq!((c2.temperature, c2.pressure), (40.0, 0.5));
+    assert!(c2.afocal);
+    assert_eq!(c2.apodization, Apodization::Gaussian(1.5));
+    assert_eq!(c2.aiming, Aiming::Paraxial);
+    assert_eq!(c2.ropd, 1);
+    let c3 = s.config(3).unwrap();
+    assert_eq!(c3.apodization, Apodization::CosineCubed);
+    assert_eq!(c3.aiming, Aiming::Real);
+    assert_eq!(c3.get_param(sys(Kind::Temp)).unwrap(), -10.0);
+    // 番号の外・整数でない値・負の気圧
+    for (k, v) in [
+        (Kind::Pres, -1.0),
+        (Kind::Afocal, 0.5),
+        (Kind::ApodType, 3.0),
+        (Kind::Apod, -1.0),
+        (Kind::Aiming, 1.5),
+        (Kind::Ropd, 4.0),
+    ] {
+        assert!(
+            s.set_config_row(sys(k), vec![0.0, v, 0.0]).is_err(),
+            "{k:?}"
+        );
+    }
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

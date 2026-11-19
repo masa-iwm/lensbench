@@ -3,7 +3,7 @@
 use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
-/// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、系の値の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -172,6 +172,13 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "SATP" => Kind::ApertureType,
         "STPS" => Kind::Stop,
         "FLTP" => Kind::FieldType,
+        "TEMP" => Kind::Temp,
+        "PRES" => Kind::Pres,
+        "AFOC" => Kind::Afocal,
+        "APDT" => Kind::ApodType,
+        "APDF" => Kind::Apod,
+        "RAAM" => Kind::Aiming,
+        "OPDR" => Kind::Ropd,
         _ => return None,
     })
 }

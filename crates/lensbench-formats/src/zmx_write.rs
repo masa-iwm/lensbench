@@ -805,6 +805,13 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::ApertureType => return Some(("SATP", 0, None, id)),
         Kind::Stop => return Some(("STPS", 0, None, id)),
         Kind::FieldType => return Some(("FLTP", 0, None, id)),
+        Kind::Temp => return Some(("TEMP", 0, None, id)),
+        Kind::Pres => return Some(("PRES", 0, None, id)),
+        Kind::Afocal => return Some(("AFOC", 0, None, id)),
+        Kind::ApodType => return Some(("APDT", 0, None, id)),
+        Kind::Apod => return Some(("APDF", 0, None, id)),
+        Kind::Aiming => return Some(("RAAM", 0, None, id)),
+        Kind::Ropd => return Some(("OPDR", 0, None, id)),
         _ => {}
     }
     let d = s.surfaces.get(p.surface()?)?;

@@ -330,8 +330,10 @@ fn huygens_once(
             radius,
             sign,
         } => Some((center, radius, sign)),
-        RefSurface::Plane { .. } => None,
+        RefSurface::Plane { .. } | RefSurface::Far { .. } => None,
     };
+    // 半径が無限大の参照球なら、光源は主光線の像点から光線へ下ろした垂線の足（OPD の to_ref と同じ）
+    let far = matches!(RefSurface::of(s, pc, kc), RefSurface::Far { .. });
 
     // 既定の間隔と、像の格子が瞳の標本の周期を超えないかの確かめには像面の上の傾き（FFT PSF の既定の面、回折 MTF と
     // 同じ）を、全光量の重み（FFT PSF と同じ Parseval の全強度）には主光線に垂直な面の傾きを使う
@@ -442,7 +444,11 @@ fn huygens_once(
                     }
                 }
                 None => {
-                    let t = -dot(sub(q, pc), kc) / dot(k, kc);
+                    let t = if far {
+                        -dot(sub(q, pc), k)
+                    } else {
+                        -dot(sub(q, pc), kc) / dot(k, kc)
+                    };
                     Src {
                         q: add(q, scale(k, t)),
                         k,

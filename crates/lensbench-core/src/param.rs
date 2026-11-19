@@ -27,9 +27,10 @@
 
 use crate::error::Result;
 use crate::pickup::pick_kind;
+use crate::pupil::Apodization;
 use crate::solves::solve_kind_info;
 use crate::surface::{After, Aperture, Tilt};
-use crate::system::{ApertureKind, Keep, System};
+use crate::system::{Aiming, ApertureKind, Keep, System};
 use crate::units::UnitKind;
 use crate::{invalid, notimpl};
 
@@ -88,6 +89,19 @@ pub enum Kind {
     /// 視野の種類（OpticStudio の番号 0〜3: 角度・物体高・近軸像高・実像高）。多重構成の行（.zmx の FLTP）。
     /// 最適化の変数には使えない
     FieldType,
+    /// 系の温度 [°C]・気圧 [atm]（変えると全媒質の屈折率を作り直す）。多重構成の行（.zmx の TEMP・PRES）。最適化の変数には使えない
+    Temp,
+    Pres,
+    /// アフォーカルの像空間か（1 でアフォーカル）。多重構成の行（.zmx の AFOC）。最適化の変数には使えない
+    Afocal,
+    /// アポダイゼーションの種類（OpticStudio の番号 0〜2: 一様・ガウス・cos³）と、ガウスの係数。多重構成の行
+    /// （.zmx の APDT・APDF）。最適化の変数には使えない
+    ApodType,
+    Apod,
+    /// 光線エイミング（0〜2: なし・近軸・実光線）。多重構成の行（.zmx の RAAM）。最適化の変数には使えない
+    Aiming,
+    /// OPD の基準（OpticStudio の番号 0〜3、.zmx の ROPD と同じ）。多重構成の行（.zmx の OPDR）。最適化の変数には使えない
+    Ropd,
     /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
     /// 最適化の変数には使えない
     FieldX(u8),
@@ -155,6 +169,13 @@ impl Kind {
             "atype" => Kind::ApertureType,
             "stop" => Kind::Stop,
             "ftype" => Kind::FieldType,
+            "temp" => Kind::Temp,
+            "pres" => Kind::Pres,
+            "afocal" => Kind::Afocal,
+            "apodtype" => Kind::ApodType,
+            "apod" => Kind::Apod,
+            "aiming" => Kind::Aiming,
+            "ropd" => Kind::Ropd,
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -223,6 +244,13 @@ impl Kind {
             Kind::ApertureType => "atype".into(),
             Kind::Stop => "stop".into(),
             Kind::FieldType => "ftype".into(),
+            Kind::Temp => "temp".into(),
+            Kind::Pres => "pres".into(),
+            Kind::Afocal => "afocal".into(),
+            Kind::ApodType => "apodtype".into(),
+            Kind::Apod => "apod".into(),
+            Kind::Aiming => "aiming".into(),
+            Kind::Ropd => "ropd".into(),
             Kind::FieldX(i) => format!("fx{}", *i as usize + 1),
             Kind::FieldY(i) => format!("fy{}", *i as usize + 1),
             Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
@@ -311,6 +339,13 @@ impl Kind {
                 | Kind::ApertureType
                 | Kind::Stop
                 | Kind::FieldType
+                | Kind::Temp
+                | Kind::Pres
+                | Kind::Afocal
+                | Kind::ApodType
+                | Kind::Apod
+                | Kind::Aiming
+                | Kind::Ropd
                 | Kind::FieldX(_)
                 | Kind::FieldY(_)
                 | Kind::FieldW(_)
@@ -602,6 +637,13 @@ impl System {
                 Some(n) => return Ok(n as f64),
                 None => invalid!("a solved field type has no field type number"),
             },
+            Kind::Temp => return Ok(self.temperature),
+            Kind::Pres => return Ok(self.pressure),
+            Kind::Afocal => return Ok(self.afocal as u8 as f64),
+            Kind::ApodType => return Ok(self.apodization.os_code() as f64),
+            Kind::Apod => return Ok(self.apodization.factor()),
+            Kind::Aiming => return Ok(self.aiming.os_code() as f64),
+            Kind::Ropd => return Ok(self.ropd as f64),
             Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
             Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
             Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
@@ -939,6 +981,19 @@ impl System {
                 {
                     invalid!("field type {v} (0 to 3)");
                 }
+                Kind::Pres if v < 0.0 => invalid!("pressure {v} atm"),
+                Kind::Temp if v < -273.15 => invalid!("temperature {v} °C"),
+                Kind::Afocal if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
+                Kind::ApodType if v.fract() != 0.0 || !(0.0..=2.0).contains(&v) => {
+                    invalid!("apodization type {v} (0 to 2)");
+                }
+                Kind::Apod if v < 0.0 => invalid!("apodization factor {v}"),
+                Kind::Aiming if v.fract() != 0.0 || !(0.0..=2.0).contains(&v) => {
+                    invalid!("ray aiming {v} (0 to 2)");
+                }
+                Kind::Ropd if v.fract() != 0.0 || !(0.0..=3.0).contains(&v) => {
+                    invalid!("OPD reference {v} (0 to 3)");
+                }
                 Kind::Stop
                     if v.fract() != 0.0 || v < 1.0 || v > self.surfaces.len() as f64 - 2.0 =>
                 {
@@ -1009,6 +1064,30 @@ impl System {
                         d.stop = j == v as usize;
                     }
                 }
+                Kind::Temp => {
+                    rx.temperature = v;
+                    index = true;
+                }
+                Kind::Pres => {
+                    rx.pressure = v;
+                    index = true;
+                }
+                Kind::Afocal => rx.afocal = v != 0.0,
+                // 種類を変えてから係数（同じ変更の中の順によらない）
+                Kind::ApodType => {
+                    let g = changes
+                        .iter()
+                        .find(|(q, _)| q.kind == Kind::Apod)
+                        .map_or(rx.apodization.factor(), |c| c.1);
+                    rx.apodization = Apodization::from_os_code(v as i64, g);
+                }
+                Kind::Apod => {
+                    if let Apodization::Gaussian(g) = &mut rx.apodization {
+                        *g = v;
+                    }
+                }
+                Kind::Aiming => rx.aiming = Aiming::from_os_code(v as i64),
+                Kind::Ropd => rx.ropd = v as i64,
                 Kind::FieldX(i) => rx.fields[i as usize].x = v,
                 Kind::FieldY(i) => rx.fields[i as usize].y = v,
                 Kind::FieldW(i) => rx.fields[i as usize].w = v,

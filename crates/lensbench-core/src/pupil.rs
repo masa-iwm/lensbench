@@ -200,8 +200,12 @@ impl PupilGrid {
 pub enum RefSurface {
     /// 射出瞳の参照球: 中心（参照の主光線の像点）、半径、σ（球が像点の前なら +1、後ろなら −1）
     Sphere { center: V3, radius: f64, sign: f64 },
-    /// 主光線に垂直な平面（ROPD「無限遠」・射出瞳が無限遠、アフォーカル像空間）: 平面の上の点と法線（主光線の向き）
+    /// 主光線に垂直な平面（アフォーカル像空間）: 平面の上の点と法線（主光線の向き）
     Plane { point: V3, normal: V3 },
+    /// 半径が無限大の参照球（ROPD「無限遠」・射出瞳が無限遠）: 中心（参照の主光線の像点）。参照球の半径を無限大にした
+    /// 極限で、光線ごとに中心から光線へ下ろした垂線の足までの光路（像点との差の光線の向きの成分を引く。OpticStudio 26.1 の
+    /// Reference OPD「Infinity」と一致）
+    Far { center: V3 },
 }
 
 /// 射出瞳の位置 expp（像面から）が有限で、参照球を置ける近さか（|expp| ≤ [`crate::tol::EXPP_FAR`]）
@@ -230,7 +234,7 @@ pub fn check_opd_reference(s: &System) -> Result<()> {
 }
 
 impl RefSurface {
-    /// アフォーカルでない系で、基準が主光線に垂直な平面か（ROPD が無限遠、または射出瞳が遠い・無限遠）
+    /// アフォーカルでない系で、基準が半径が無限大の参照球か（ROPD が無限遠、または射出瞳が遠い・無限遠）
     pub fn plane_for(s: &System) -> bool {
         !s.afocal && (s.ropd == 1 || !exit_pupil_near(s.exit_pupil()))
     }
@@ -245,10 +249,7 @@ impl RefSurface {
             };
         }
         if RefSurface::plane_for(s) {
-            return RefSurface::Plane {
-                point: pc,
-                normal: kc,
-            };
+            return RefSurface::Far { center: pc };
         }
         let sc = (expp - pc[2]) / kc[2];
         RefSurface::Sphere {
@@ -267,6 +268,7 @@ impl RefSurface {
             RefSurface::Plane { point, normal } => {
                 opl + ni * dot(sub(point, q), normal) / dot(k, normal)
             }
+            RefSurface::Far { center } => opl - ni * dot(sub(q, center), k),
             RefSurface::Sphere {
                 center,
                 radius,
@@ -539,6 +541,32 @@ impl Apodization {
             "2" | "COSINE" | "COSINE_CUBED" => Apodization::CosineCubed,
             _ => crate::notimpl!("zmx apodization type {t} (0, 1 or 2)"),
         })
+    }
+
+    /// OpticStudio の種類の番号（0 一様・1 ガウス・2 Cosine Cubed）
+    pub fn os_code(&self) -> i64 {
+        match self {
+            Apodization::Uniform => 0,
+            Apodization::Gaussian(_) => 1,
+            Apodization::CosineCubed => 2,
+        }
+    }
+
+    /// ガウスの係数 G（ガウスでなければ 0）
+    pub fn factor(&self) -> f64 {
+        match *self {
+            Apodization::Gaussian(g) => g,
+            _ => 0.0,
+        }
+    }
+
+    /// 種類の番号 n（0〜2、それ以外は一様）と、ガウスの係数 g から
+    pub fn from_os_code(n: i64, g: f64) -> Apodization {
+        match n {
+            1 => Apodization::Gaussian(g),
+            2 => Apodization::CosineCubed,
+            _ => Apodization::Uniform,
+        }
     }
 
     pub fn is_uniform(&self) -> bool {
