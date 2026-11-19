@@ -187,6 +187,8 @@ pub struct CatalogRow {
     pub category: String,
     /// 機構部品の保持径 [mm]
     pub hold: Option<f64>,
+    /// 挟むホルダーの入る径の上限 [mm]（`holds.max_diameter`。0 は径の決まった部品）
+    pub hold_max: f64,
     /// 仕様: `specs` の中と、行の同じ名前の欄（efl・diameter・thickness など一覧の値。`specs` が先）
     pub specs: std::collections::BTreeMap<String, SpecValue>,
     /// 検索の文字列（メーカー・型番・説明・タグ・ガラス・仕様の文字列を改行でつないで小文字に）
@@ -230,6 +232,7 @@ impl CatalogRow {
             vendor: VendorKey::new(row["vendor"].as_str().unwrap_or("")),
             category: row_category(row).to_string(),
             hold: row["mech"]["holds"]["diameter"].as_f64(),
+            hold_max: row["mech"]["holds"]["max_diameter"].as_f64().unwrap_or(0.0),
             specs,
             text: text.to_lowercase(),
         }
@@ -377,17 +380,28 @@ pub fn fits(hold: f64, d: f64) -> bool {
     hold >= d - 1e-6 && hold - d <= FIT_TOL + 1e-9
 }
 
+/// 保持径 `hold`（挟むホルダーは入る径の上限 `max` が `hold` より大きい）の機構部品に、径 `d` の素子が入るか。
+/// 挟むホルダーは `hold`〜`max` の径なら入る
+pub fn fits_range(hold: f64, max: f64, d: f64) -> bool {
+    if max > hold {
+        d >= hold - 1e-6 && d <= max + 1e-6
+    } else {
+        fits(hold, d)
+    }
+}
+
 /// 一覧の行（機構部品）の保持径に、径 `d` の素子が入るか
 pub fn fits_row(row: &Value, d: f64) -> bool {
-    row["mech"]["holds"]["diameter"]
+    let h = &row["mech"]["holds"];
+    h["diameter"]
         .as_f64()
-        .is_some_and(|h| fits(h, d))
+        .is_some_and(|x| fits_range(x, h["max_diameter"].as_f64().unwrap_or(0.0), d))
 }
 
 impl CatalogQuery {
     pub fn matches(&self, row: &CatalogRow) -> bool {
         if let Some(d) = self.fits {
-            if !row.hold.is_some_and(|h| fits(h, d)) {
+            if !row.hold.is_some_and(|h| fits_range(h, row.hold_max, d)) {
                 return false;
             }
         }

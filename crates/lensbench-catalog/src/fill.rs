@@ -312,6 +312,7 @@ pub fn page_frame(
         holds: Some(lensbench_project::HoldSpec {
             diameter: glass.filter(|g| *g >= ca && *g <= od).unwrap_or(ca),
             seat_z: seat,
+            max_diameter: 0.0,
         }),
         ..Default::default()
     })
@@ -830,6 +831,7 @@ mod tests {
             holds: Some(lensbench_project::HoldSpec {
                 diameter: bore,
                 seat_z: 0.5,
+                max_diameter: 0.0,
             }),
             ..Default::default()
         }

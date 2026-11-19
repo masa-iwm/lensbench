@@ -2051,6 +2051,12 @@
       "description": "保持する素子",
       "properties": {
         "diameter": {
+          "description": "保持する素子の径 [mm]（`max_diameter` があれば入る径の下限）",
+          "format": "double",
+          "type": "number"
+        },
+        "max_diameter": {
+          "description": "入る径の上限 [mm]。上下から挟むホルダー（バー型・ジョー型）のように径を選ばない部品は `diameter`〜これの\n素子を挟む（素子の縁にだけ当たり、穴で切らない）。0 は径の決まった部品",
           "format": "double",
           "type": "number"
         },

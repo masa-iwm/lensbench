@@ -395,10 +395,26 @@ pub struct ThreadEnd {
 /// 保持する素子
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct HoldSpec {
+    /// 保持する素子の径 [mm]（`max_diameter` があれば入る径の下限）
     pub diameter: f64,
     /// 素子の前面を当てる座の z [mm]
     #[serde(default)]
     pub seat_z: f64,
+    /// 入る径の上限 [mm]。上下から挟むホルダー（バー型・ジョー型）のように径を選ばない部品は `diameter`〜これの
+    /// 素子を挟む（素子の縁にだけ当たり、穴で切らない）。0 は径の決まった部品
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub max_diameter: f64,
+}
+
+impl HoldSpec {
+    /// 径を選ばず挟む部品か（[`HoldSpec::max_diameter`]）
+    pub fn is_range(&self) -> bool {
+        self.max_diameter > self.diameter
+    }
+    /// 径 `d` の素子を挟めるか（挟む部品だけ。径の決まった部品は false）
+    pub fn clamps(&self, d: f64) -> bool {
+        self.is_range() && d >= self.diameter - 1e-6 && d <= self.max_diameter + 1e-6
+    }
 }
 
 pub(crate) fn is_zero_f64(v: &f64) -> bool {
@@ -426,8 +442,8 @@ impl MechSpec {
         MechSpec {
             bores,
             holds: self.holds.map(|h| HoldSpec {
-                diameter: h.diameter,
                 seat_z: len - h.seat_z - t,
+                ..h
             }),
             front_thread: self.back_thread.clone(),
             back_thread: self.front_thread.clone(),
@@ -450,6 +466,17 @@ impl MechSpec {
         }
         if !(self.length >= 0.0 && self.outer_diameter >= 0.0) {
             return Err("negative mechanism length or outer diameter".into());
+        }
+        if let Some(h) = &self.holds {
+            if h.max_diameter != 0.0
+                && !(h.max_diameter >= h.diameter && h.max_diameter.is_finite())
+            {
+                return Err(format!(
+                    "mechanism holds: max_diameter {} is smaller than diameter {}",
+                    h.max_diameter, h.diameter
+                )
+                .into());
+            }
         }
         Ok(())
     }
@@ -478,7 +505,11 @@ impl MechSpec {
                 .collect(),
             length: self.length,
             outer_radius: self.outer_diameter / 2.0,
-            hold_radius: self.holds.map_or(0.0, |h| h.diameter / 2.0),
+            // 挟む部品は素子の径に合わせて挟むので、保持径が太すぎる確認はしない
+            hold_radius: self
+                .holds
+                .filter(|h| !h.is_range())
+                .map_or(0.0, |h| h.diameter / 2.0),
             rod_spacing: self.rod_spacing,
             square: self.outline == MechOutline::Square,
             step: String::new(),

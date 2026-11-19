@@ -199,7 +199,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
-  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`・`front_thread`・`back_thread`・`outline`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
+  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z", "max_diameter"}`（`max_diameter` は上下から挟むホルダー（バー型・ジョー型）のように径を選ばない部品の入る径の上限で、`diameter`〜`max_diameter` の素子が入る。保持径が太すぎる確認はしない）・`front_thread`・`back_thread`・`outline`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
   `{"name", "catalog", "item", "at": {"block": id, "surface": i}, "offset": [dx, dy, dz], "tilt": [tx, ty]}`（`catalog`・`item` の
   代わりに `mech` をその場で書いても、`at` にシステムの面の番号 `{"surface": n}` だけでもよい）で、ブロックの面の局所座標に置く。
   光学系の位置は変えず、光線の追跡にも効かない。`lensbench mech-check` は瞳の格子の光線を面 1 から追い、面と面の間の直線が

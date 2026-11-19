@@ -87,7 +87,7 @@ pub(crate) fn filter_lenses(
                     FitMode::OpticsFor => {
                         r.kind != RowKind::Mech
                             && r.diameter.is_finite()
-                            && fits_hold(f.d, r.diameter)
+                            && fits_hold(f.d, f.max, r.diameter)
                     }
                 })
                 && specs.iter().all(|f| f.matches(&r.spec_row))

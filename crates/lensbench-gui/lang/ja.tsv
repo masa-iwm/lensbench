@@ -1345,6 +1345,9 @@ Open {}	{} を開く
 Optics that fit {} (holding diameter {} mm)	{}（保持径 {} mm）に入る光学素子
 Mechanics that hold {} (diameter {} mm)	{}（径 {} mm）が入る機構部品
 , holding diameter {} mm	、保持径 {} mm
+, clamps optics of diameter {}–{} mm	、径 {}〜{} mm の光学素子を挟む
+Optics that {} clamps (diameter {}–{} mm)	{} が挟む光学素子（径 {}〜{} mm）
+Show only lenses, mirrors etc. whose diameter is {}–{} mm (the range this holder clamps)	径が {}〜{} mm（このホルダーが挟める範囲）のレンズ・ミラーなどだけを一覧に出します
 Tubes, mounts and cage plates that this item's diameter fits. Picking one adds it to the combination's mechanics (if this item is in the combination, it holds it and seats it)	この製品の径が入るチューブ・マウント・ケージプレート。選択すると組合せの機構部品に追加します（組合せにこの製品があれば、それを保持して座に合わせます）
 Remove this filter	この絞り込みを解除します
 No catalog mechanics has a holding diameter this item fits	カタログの機構部品に、この径が入る保持径のものがありません

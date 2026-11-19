@@ -781,8 +781,11 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         for i in 0..px.len() {
             let r = &t.rays[i];
             let mut pts = Vec::new();
+            // 点ごとに、座標ブレーク（光線の通らない座標の置き換え）の点か
+            let mut cbs = Vec::new();
             if first == 0 && t.p0[i].iter().all(|v| v.is_finite()) {
                 pts.push(t.p0[i]);
+                cbs.push(false);
             }
             for rs in &t.rec {
                 let (j, e) = (&rs.surf, rs.entry(i));
@@ -798,8 +801,10 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                 let cb = s.surfaces[*j].is_coord_break();
                 if *j >= first.max(1) && !(opt.unfold && cb) {
                     pts.push(maps[*j].0.point(e.p));
+                    cbs.push(cb);
                 }
             }
+            drop_virtual_points(&mut pts, &cbs);
             if keep {
                 rays.push(RayPath {
                     field: fi,
@@ -1262,8 +1267,86 @@ pub fn face_section_xz(f: &Face, n: usize) -> Vec<V3> {
         .collect()
 }
 
+/// 光線の線から、座標ブレークの点のうち、前後の点を結ぶ直線の上で前の点より後ろに戻る点（光線の延長の上の交点）を除く。
+/// 平板の BS の口の座標は軸上で板の厚さの所にあり、傾いた板の縁の側では光線が実際に通った裏面より手前になるため。
+/// 光の通る面（負の厚さで戻るダミー面も含む）の点は除かない
+fn drop_virtual_points(pts: &mut Vec<V3>, cbs: &[bool]) {
+    if pts.len() < 3 || cbs.len() != pts.len() {
+        return;
+    }
+    let mut keep = vec![true; pts.len()];
+    let mut prev = 0;
+    for k in 1..pts.len() - 1 {
+        let (a, b, c) = (pts[prev], pts[k], pts[k + 1]);
+        let ab = sub(b, a);
+        let ac = sub(c, a);
+        let lac = dot(ac, ac).sqrt();
+        if !cbs[k] || lac == 0.0 {
+            prev = k;
+            continue;
+        }
+        // b から直線 ac までの距離
+        let t = dot(ab, ac) / (lac * lac);
+        let off = sub(ab, scale(ac, t));
+        let on_line = dot(off, off).sqrt() <= 1e-9 * (1.0 + lac);
+        // 前の点より後ろ（t < 0）だけ。先の点より先（t > 1）は虚の物体から始まる線などで、描く
+        if on_line && t < -1e-12 {
+            keep[k] = false;
+        } else {
+            prev = k;
+        }
+    }
+    let mut k = 0;
+    pts.retain(|_| {
+        k += 1;
+        keep[k - 1]
+    });
+}
+
 #[cfg(test)]
 mod tests {
+    use super::drop_virtual_points;
+
+    /// 座標ブレークの点で、直線の上を前の点より後ろへ戻る点だけを除く
+    #[test]
+    fn drop_virtual_points_only_backward_coord_breaks() {
+        // 板の裏面を出た点（z 15.9）の後の口の座標ブレーク（z 12.0）は除く
+        let mut p = vec![
+            [0.0, 3.8, 0.0],
+            [0.0, 3.8, 14.8],
+            [0.0, 3.5, 15.9],
+            [0.0, 3.5, 12.0],
+            [0.0, 3.5, 32.0],
+        ];
+        drop_virtual_points(&mut p, &[false, false, false, true, false]);
+        assert_eq!(p.len(), 4);
+        assert_eq!(p[2], [0.0, 3.5, 15.9]);
+        assert_eq!(p[3], [0.0, 3.5, 32.0]);
+        // 同じ点でも光の通る面（負の厚さで戻るダミー面）なら残す
+        let mut q = vec![[0.0, 3.5, 15.9], [0.0, 3.5, 12.0], [0.0, 3.5, 32.0]];
+        drop_virtual_points(&mut q, &[false, false, false]);
+        assert_eq!(q.len(), 3);
+        // 間にある座標ブレーク・直線から外れた座標ブレーク・先の点より先の座標ブレークは残す
+        for (b, n) in [
+            ([0.0, 3.5, 20.0], 3),
+            ([0.0, 5.0, 12.0], 3),
+            ([0.0, 3.5, 40.0], 3),
+        ] {
+            let mut r = vec![[0.0, 3.5, 15.9], b, [0.0, 3.5, 32.0]];
+            drop_virtual_points(&mut r, &[false, true, false]);
+            assert_eq!(r.len(), n, "{b:?}");
+        }
+        // 鏡で真後ろへ返る線の座標ブレークは、返った先が後ろなので t > 1 の側になり残る
+        let mut m = vec![
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 10.0],
+            [0.0, 0.0, 10.0],
+            [0.0, 0.0, 2.0],
+        ];
+        drop_virtual_points(&mut m, &[false, false, true, false]);
+        assert_eq!(m.len(), 4);
+    }
+
     use super::*;
 
     /// 鏡映: 鏡の面の点は動かず、法線の向きは裏返り、距離は変わらない。2 回の鏡映は回転（行列式 +1）

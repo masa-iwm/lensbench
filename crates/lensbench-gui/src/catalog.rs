@@ -369,15 +369,25 @@ pub(crate) enum FitMode {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FitFilter {
     pub mode: FitMode,
-    /// 素子の径（MechFor）か、機構部品の保持径（OpticsFor）[mm]
+    /// 素子の径（MechFor）か、機構部品の保持径（OpticsFor。挟むホルダーは入る径の下限）[mm]
     pub d: f64,
+    /// OpticsFor の挟むホルダーの入る径の上限 [mm]（0 は径の決まった部品）
+    pub max: f64,
     /// 元の品の型番（表示用）
     pub label: String,
 }
 
-/// 保持径 `hold` の機構部品に、径 `d` の素子が入るか（[`lensbench_catalog::spec::fits_row`] と同じ幅）
-fn fits_hold(hold: f64, d: f64) -> bool {
-    lensbench_catalog::spec::fits(hold, d)
+/// 保持径 `hold`（挟むホルダーは上限 `max`）の機構部品に、径 `d` の素子が入るか（[`lensbench_catalog::spec::fits_row`] と同じ幅）
+fn fits_hold(hold: f64, max: f64, d: f64) -> bool {
+    lensbench_catalog::spec::fits_range(hold, max, d)
+}
+
+/// 挟むホルダー（径を選ばず上下から挟む）の入る径の上限。径の決まった部品は 0
+fn hold_max(r: &LensRow) -> f64 {
+    r.raw["mech"]["holds"]["max_diameter"]
+        .as_f64()
+        .filter(|m| hold_diameter(r).is_some_and(|h| *m > h))
+        .unwrap_or(0.0)
 }
 
 /// 機構部品の保持径
@@ -442,7 +452,15 @@ fn row_detail(r: &LensRow) -> String {
             )
         };
         if let Some(h) = hold_diameter(r) {
-            t.push_str(&trf(", holding diameter {} mm", &[&fmt_num(h)]));
+            let max = hold_max(r);
+            if max > 0.0 {
+                t.push_str(&trf(
+                    ", clamps optics of diameter {}–{} mm",
+                    &[&fmt_num(h), &fmt_num(max)],
+                ));
+            } else {
+                t.push_str(&trf(", holding diameter {} mm", &[&fmt_num(h)]));
+            }
         }
         return t;
     }
@@ -760,7 +778,15 @@ pub(crate) fn preview_project(r: &LensRow) -> serde_json::Value {
     }
     // 傾けた素子（45° の鏡など）は光軸方向にも広がるので、絞りを素子の手前の端より前に置き、
     // 像面も素子の端より外に置く（絞りが素子に重なり、光線が絞りより前で折れて見えるのを避ける）
-    let tilt = p.tilt[0].abs().max(p.tilt[1].abs()).min(89.0).to_radians();
+    // 平板・理想面の BS は分ける面が傾いている（既定 45°）。表の面がブロックの始まりにあり、径の分だけ前後へ広がる
+    let a = if p.kind == crate::combo::ElemKind::Splitter
+        && p.bs().form != crate::combo::BsForm::Cube
+    {
+        p.split_angle()
+    } else {
+        [p.tilt[0], p.tilt[1]]
+    };
+    let tilt = a[0].abs().max(a[1].abs()).min(89.0).to_radians();
     let half = if p.semi.is_finite() {
         p.semi.max(0.0)
     } else {
@@ -1058,13 +1084,14 @@ impl Browser {
         {
             let rows = &self.lenses;
             let fit = if r.kind == RowKind::Mech {
+                let max = hold_max(r);
                 match hold_diameter(r) {
                     Some(h) => (0..rows.len())
                         .filter(|&i| {
                             let l = &rows[i];
                             l.kind != RowKind::Mech
                                 && l.diameter.is_finite()
-                                && fits_hold(h, l.diameter)
+                                && fits_hold(h, max, l.diameter)
                         })
                         .collect(),
                     None => Vec::new(),
@@ -1291,6 +1318,7 @@ impl Browser {
             if let Some(f) = &q.fit {
                 let text = match f.mode {
                     FitMode::MechFor => trf("Mechanics that hold {} (diameter {} mm)", &[&f.label, &fmt_num(f.d)]),
+                    FitMode::OpticsFor if f.max > f.d => trf("Optics that {} clamps (diameter {}–{} mm)", &[&f.label, &fmt_num(f.d), &fmt_num(f.max)]),
                     FitMode::OpticsFor => trf("Optics that fit {} (holding diameter {} mm)", &[&f.label, &fmt_num(f.d)]),
                 };
                 if ui
@@ -1409,12 +1437,20 @@ impl Browser {
         let cols = shown_cols(&self.lens_hide);
         // 長い項目は折り返さず列の幅で切る（全体はマウスを載せると出る）。列が収まらなければ横にスクロール
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+        // 横のスクロールバーが最後の行に重ならないよう、表の高さからバーの分を引き、表の下に同じだけ空ける
+        // （レンズデータの表・汎用の表と同じ）
+        let gap = {
+            let s = ui.spacing().scroll;
+            s.bar_width + s.bar_inner_margin + s.bar_outer_margin + 2.0
+        };
+        let table_h = (ui.available_height() - 22.0 - gap).max(20.0);
         egui::ScrollArea::horizontal()
             .id_salt("lens_table_h")
             .show(ui, |ui| {
                 let mut tb = TableBuilder::new(ui)
                     .striped(true)
                     .resizable(true)
+                    .max_scroll_height(table_h)
                     // 低いパネルでもパネルの中に収める（既定の最低 200 だとはみ出し、最後の行までスクロールできない）
                     .min_scrolled_height(0.0)
                     .sense(Sense::click_and_drag());
@@ -1457,6 +1493,7 @@ impl Browser {
                         }
                     });
                 });
+                crate::widgets::scroll_gap(ui);
             });
         if let Some(i) = clicked {
             self.lens_sel = Some(i);
@@ -1503,18 +1540,26 @@ impl Browser {
             let n = self.lens_fit(self.lens_sel.unwrap_or(usize::MAX), r).len();
             if ui
                 .add_enabled(n > 0, egui::Button::new(trf("Filter fitting optics ({})", &[&n])))
-                .on_hover_text(trf(
-                    "Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)",
-                    &[
-                        &fmt_num(h),
-                        &fmt_num(lensbench_catalog::spec::FIT_TOL),
-                    ],
-                ))
+                .on_hover_text(if hold_max(r) > 0.0 {
+                    trf(
+                        "Show only lenses, mirrors etc. whose diameter is {}–{} mm (the range this holder clamps)",
+                        &[&fmt_num(h), &fmt_num(hold_max(r))],
+                    )
+                } else {
+                    trf(
+                        "Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)",
+                        &[
+                            &fmt_num(h),
+                            &fmt_num(lensbench_catalog::spec::FIT_TOL),
+                        ],
+                    )
+                })
                 .clicked()
             {
                 self.lens_q.fit = Some(FitFilter {
                     mode: FitMode::OpticsFor,
                     d: h,
+                    max: hold_max(r),
                     label: r.part.clone(),
                 });
                 self.lens_q.category = None;
@@ -1567,6 +1612,7 @@ impl Browser {
             self.lens_q.fit = Some(FitFilter {
                 mode: FitMode::MechFor,
                 d: r.diameter,
+                max: 0.0,
                 label: r.part.clone(),
             });
             self.lens_q.category = None;
@@ -2335,12 +2381,14 @@ mod tests {
         q.fit = Some(FitFilter {
             mode: FitMode::MechFor,
             d: 25.4,
+            max: 0.0,
             label: "L25".into(),
         });
         assert_eq!(f(&q), vec![2]);
         q.fit = Some(FitFilter {
             mode: FitMode::OpticsFor,
             d: 12.7,
+            max: 0.0,
             label: "SM05L05".into(),
         });
         assert_eq!(f(&q), vec![1]);

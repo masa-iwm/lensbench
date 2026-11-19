@@ -532,6 +532,7 @@ fn glass_mount(cx: &Ctx, sols: &[Sol], rings: &[&Sol], glass: &[&Sol], merged: u
         holds: Some(lensbench_project::HoldSpec {
             diameter: cx.sc(hold_d),
             seat_z: cx.sc(g0 - all0),
+            max_diameter: 0.0,
         }),
         ..Default::default()
     };
@@ -661,6 +662,7 @@ fn mech_part(cx: &Ctx, geos: &[Geo], sols: &[Sol], rings: &[&Sol]) -> Option<Mea
         holds: Some(lensbench_project::HoldSpec {
             diameter: hold_d,
             seat_z: seat,
+            max_diameter: 0.0,
         }),
         front_thread,
         back_thread,
