@@ -730,7 +730,9 @@ THIC 2 1 4 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 2 2 5 0 0 0 1 1 1 0 0 \"\" 0\n\
 CRVT 5 1 0.015 0 0 0 1 1 1 0 0 \"\" 0\nCRVT 5 2 0.02 0 0 0 1 1 1 0 0 \"\" 0\n\
 GLSS 5 1 N-BK7 0 0 0 1 1 0 0.0 \"\" 0\nGLSS 5 2 F2 0 0 0 1 1 0 0.0 \"\" 0\n\
 WAVE 1 1 0.5876 0 0 0 1 1 1 0 0 \"\" 0\nWAVE 1 2 0.6563 0 0 0 1 1 1 0 0 \"\" 0\n\
-STPS 0 1 1 0 0 0 1 1 1 0 0 \"\" 0\nSTPS 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n",
+STPS 0 1 1 0 0 0 1 1 1 0 0 \"\" 0\nSTPS 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n\
+MCOM 0 1 \"wide\" 0 0 0 1 1 0 0.0 \"\" 0\nMCOM 0 2 \"tele  end\" 0 0 0 1 1 0 0.0 \"\" 0\n\
+LTTL 0 1 \"m=-1.1000 D=7.9\" 0 0 0 1 1 0 0.0 \"\" 0\nLTTL 0 2 Tele 0 0 0 1 1 0 0.0 \"\" 0\n",
         )
         .unwrap();
         let glass = vec![root().join("tests/glass")];
@@ -744,8 +746,9 @@ STPS 0 1 1 0 0 0 1 1 1 0 0 \"\" 0\nSTPS 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n",
             "{:?}",
             c.picks.iter().map(|p| &p.kind).collect::<Vec<_>>()
         );
-        assert_eq!(c.states, ["Config 1", "Config 2"]);
-        let n = "Config 2";
+        // LTTL は構成（状態）の名前
+        assert_eq!(c.states, ["m=-1.1000 D=7.9", "Tele"]);
+        let n = "Tele";
         // 玉 1 の後の空気・玉 1 の厚さ・玉 2 の曲率と材料は状態の値。絞りは面 S2 へ移る
         let (l1, l2, s2) = (&c.picks[1], &c.picks[3], &c.picks[2]);
         assert_eq!(
@@ -758,7 +761,11 @@ STPS 0 1 1 0 0 0 1 1 1 0 0 \"\" 0\nSTPS 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n",
         assert_eq!(l2.state_edit(n, 0, "material"), Some(&json!("F2")));
         assert_eq!(s2.state_stop.get(n), Some(&0));
         assert!(c.state_sys.contains_key(n));
-        assert!(!c.state_sys.contains_key("Config 1"));
+        assert!(!c.state_sys.contains_key("m=-1.1000 D=7.9"));
+        // MCOM はコメント行（構成ごとの文。空白を含む文も）
+        assert_eq!(c.mc_comments.len(), 1);
+        assert_eq!(c.mc_comments[0].values["m=-1.1000 D=7.9"], "wide");
+        assert_eq!(c.mc_comments[0].values["Tele"], "tele  end");
     }
 
     /// 鏡の後の面（裏返して書く面）を構成で変える多重構成の .zmx も要素に分かれ、鏡の後の間隔・面の値が状態の値になる

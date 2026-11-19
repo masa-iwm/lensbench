@@ -3,7 +3,7 @@
 //! 呼ぶ側は今までどおり系として開く。.zmx は zmx ブロック 1 つのプロジェクトにして、作り直した系が元の系と
 //! 同じときだけ組合せにする（文書モデルの 2 段目）
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -49,6 +49,74 @@ fn load_err(e: impl std::fmt::Display) -> OpenErr {
     OpenErr::Load {
         text: e.to_string(),
         config: None,
+    }
+}
+
+/// 多重構成の .zmx の文の行（op は MCOM・LTTL）を、行ごとの 構成の番号 → 文 に（構成の番号が戻れば次の行）。
+/// 文は引用符の対の中（空白もそのまま）、引用符が無ければ最初の語。行は「op 0 構成 文 数の欄…」
+fn zmx_text_rows(txt: &str, op: &str, n: usize) -> Vec<BTreeMap<usize, String>> {
+    let mut out: Vec<BTreeMap<usize, String>> = Vec::new();
+    let mut last = usize::MAX;
+    for line in txt.lines() {
+        let Some(r) = line.trim_start().strip_prefix(op) else {
+            continue;
+        };
+        if !r.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let mut r = r.trim_start();
+        let mut num = || -> Option<i64> {
+            let e = r.find(char::is_whitespace).unwrap_or(r.len());
+            let v = r[..e].parse().ok();
+            r = r[e..].trim_start();
+            v
+        };
+        let (Some(_), Some(cfg)) = (num(), num()) else {
+            continue;
+        };
+        if cfg < 1 || cfg as usize > n {
+            continue;
+        }
+        let k = cfg as usize;
+        if out.is_empty() || k <= last {
+            out.push(BTreeMap::new());
+        }
+        last = k;
+        let text = match r.strip_prefix('"') {
+            Some(q) => q.split('"').next().unwrap_or(""),
+            None => r.split_whitespace().next().unwrap_or(""),
+        };
+        let text = text.trim();
+        if let Some(m) = out.last_mut().filter(|_| !text.is_empty()) {
+            m.insert(k, text.to_string());
+        }
+    }
+    out
+}
+
+/// 多重構成の .zmx の文の行を組合せに: コメントの行（MCOM）は構成ごとの文のコメント行に、題名（LTTL）は構成（状態）の
+/// 名前に（空・重なる題名は「Config k」のまま）。読めなければ何もしない
+fn zmx_text_rows_into(c: &mut Combo, f: &Path, n: usize) {
+    let Ok(txt) = lensbench_core::glass::read_text(f) else {
+        return;
+    };
+    c.mc_comments = zmx_text_rows(&txt, "MCOM", n)
+        .into_iter()
+        .map(|m| crate::combo::McComment {
+            base: String::new(),
+            values: m
+                .into_iter()
+                .map(|(k, v)| (format!("Config {k}"), v))
+                .collect(),
+        })
+        .collect();
+    if let Some(titles) = zmx_text_rows(&txt, "LTTL", n).into_iter().next() {
+        for (k, title) in titles {
+            let from = format!("Config {k}");
+            if c.states.contains(&from) {
+                let _ = c.rename_state(&from, &title);
+            }
+        }
     }
 }
 
@@ -122,7 +190,11 @@ impl Combo {
                 None => vec![s.clone()],
             }
         };
-        Combo::written(f, &s, &cfgs, glass_dirs).map_err(OpenErr::Combo)
+        let mut c = Combo::written(f, &s, &cfgs, glass_dirs).map_err(OpenErr::Combo)?;
+        if is_zmx && cfgs.len() > 1 {
+            zmx_text_rows_into(&mut c, f, cfgs.len());
+        }
+        Ok(c)
     }
 
     /// 読めた系 s（多重構成なら構成ごとの系 cfgs）を組合せにする。組合せで同じ系を書けなければ誤り

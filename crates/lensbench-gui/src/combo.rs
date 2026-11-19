@@ -42,7 +42,7 @@ use figure::{cube_of_prism, inside};
 pub(crate) use kind_data::KindData;
 pub(crate) use mech::MechPick;
 pub(crate) use mirror::MirrorData;
-pub(crate) use states::McPick;
+pub(crate) use states::{McComment, McPick};
 pub(crate) use sys_extra::SysExtra;
 pub(crate) use zgroup::{ZGroup, ZmxSrc};
 
@@ -931,6 +931,9 @@ pub(crate) struct Combo {
     /// 多重構成のピックアップ（要素の行でないもの。要素の行は [`Pick::mc_picks`]）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mc_picks: Vec<McPick>,
+    /// 多重構成の表のコメント行（OpticStudio の MCOM。プロジェクトの `gui.view.mc_comments` に保存）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mc_comments: Vec<McComment>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
@@ -992,6 +995,7 @@ impl Default for Combo {
             state_path: BTreeMap::new(),
             state_more: BTreeMap::new(),
             mc_picks: Vec::new(),
+            mc_comments: Vec::new(),
             coatings: BTreeMap::new(),
             coating_file: None,
             macros: Vec::new(),

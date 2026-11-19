@@ -35,6 +35,15 @@ pub(crate) struct McPick {
     pub offset: f64,
 }
 
+/// 多重構成の表のコメント行（OpticStudio の MCOM）: 基本と状態ごとの文
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct McComment {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub values: BTreeMap<String, String>,
+}
+
 /// 面の値の行の名前の面の番号
 fn key_surf(k: &str) -> Option<usize> {
     k.strip_prefix("face:")?.split(':').next()?.parse().ok()
@@ -197,6 +206,9 @@ impl Combo {
         f(&mut self.state_sys);
         f(&mut self.state_path);
         f(&mut self.state_more);
+        for m in &mut self.mc_comments {
+            f(&mut m.values);
+        }
     }
 
     /// 状態 name を足す（名前が空・同じ名前があれば何もしない）。from があればその状態の値を写す

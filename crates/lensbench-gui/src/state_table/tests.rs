@@ -588,3 +588,46 @@ fn looped_pickups_are_not_applied() {
     assert_eq!(c.picks[0].air_in(Some("A")), a);
     assert_eq!(a, 4.0);
 }
+
+/// コメント行（MCOM）: 構成ごとに文を持ち、基本と同じ文は状態の値にしない。構成の名前を変える・写す・消すと付いていき、
+/// 行を消すと後ろのコメント行のピックアップの番号を詰める
+#[test]
+fn comment_rows() {
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    c.mc_comments.push(Default::default());
+    c.mc_comments.push(Default::default());
+    let now = |_: &Face| None;
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    let (a, b) = (Item::Comment(0), Item::Comment(1));
+    assert!(items(&c, false, &[]).contains(&a) && items(&c, false, &[]).contains(&b));
+    b.set(&mut c, None, Val::Text("note".into()), &cx);
+    b.set(&mut c, Some("A"), Val::Text("wide".into()), &cx);
+    b.set(&mut c, Some("B"), Val::Text("note".into()), &cx);
+    assert_eq!(b.get(&c, Some("A"), &cx), Some(Val::Text("wide".into())));
+    assert_eq!(b.get(&c, Some("B"), &cx), Some(Val::Text("note".into())));
+    assert!(b.own(&c, "A") && !b.own(&c, "B"));
+    c.rename_state("A", "W").unwrap();
+    assert_eq!(c.mc_comments[1].values["W"], "wide");
+    c.add_state("W2", Some("W"));
+    assert_eq!(c.mc_comments[1].values["W2"], "wide");
+    c.remove_state("W2");
+    assert!(!c.mc_comments[1].values.contains_key("W2"));
+    // コメント行は別の行の元にならない
+    assert_eq!(picks::row_key(&a, &Item::Stop), None);
+    // 行を消すと詰まる（ピックアップも）
+    picks::set_pick(&mut c, &b, "B", &picks::Src::conf("W"), 1.0, 0.0);
+    let mut view = View::default();
+    remove_row(&mut c, &mut view, &a);
+    assert_eq!(c.mc_comments.len(), 1);
+    assert_eq!(c.mc_comments[0].values["W"], "wide");
+    assert!(picks::pick_of(&c, &Item::Comment(0), "B").is_some());
+    let (loc, key) = picks::key_of(&Item::Comment(0));
+    assert_eq!(picks::item_of(loc.as_ref(), &key), Some(Item::Comment(0)));
+}

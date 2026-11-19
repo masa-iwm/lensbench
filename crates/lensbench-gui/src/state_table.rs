@@ -100,6 +100,8 @@ pub(crate) enum Item {
     ZShift(Loc, usize),
     /// BS の経路
     Path,
+    /// コメント行（[`Combo::mc_comments`] の番号。OpticStudio の MCOM）
+    Comment(usize),
 }
 
 const PLACE: [&str; 5] = ["dx", "dy", "tx", "ty", "tz"];
@@ -472,6 +474,7 @@ impl Item {
                 tr("shift")
             ),
             Item::Path => tr("BS path").to_string(),
+            Item::Comment(_) => tr("Comment").to_string(),
         }
     }
 
@@ -502,6 +505,13 @@ impl Item {
                 st.and_then(|n| c.state_path.get(n).cloned())
                     .unwrap_or_else(|| c.path.clone()),
             ),
+            Item::Comment(k) => {
+                let m = c.mc_comments.get(*k)?;
+                Val::Text(
+                    st.and_then(|n| m.values.get(n).cloned())
+                        .unwrap_or_else(|| m.base.clone()),
+                )
+            }
         })
     }
 
@@ -543,6 +553,10 @@ impl Item {
                 .and_then(|p| p.zmx().zgroups.get(*g))
                 .is_some_and(|g| g.state_shift.contains_key(n)),
             Item::Path => c.state_path.contains_key(n),
+            Item::Comment(k) => c
+                .mc_comments
+                .get(*k)
+                .is_some_and(|m| m.values.contains_key(n)),
         }
     }
 
@@ -640,6 +654,20 @@ impl Item {
                 }
                 None => c.path = t,
             },
+            (Item::Comment(k), Val::Text(t)) => {
+                if let Some(m) = c.mc_comments.get_mut(*k) {
+                    match key {
+                        // 基本と同じ文は状態の値にしない
+                        Some(n) if t == m.base => {
+                            m.values.remove(&n);
+                        }
+                        Some(n) => {
+                            m.values.insert(n, t);
+                        }
+                        None => m.base = t,
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -698,6 +726,11 @@ impl Item {
             }
             Item::Path => {
                 c.state_path.remove(n);
+            }
+            Item::Comment(k) => {
+                if let Some(m) = c.mc_comments.get_mut(*k) {
+                    m.values.remove(n);
+                }
             }
         }
     }
@@ -812,6 +845,7 @@ fn items(c: &Combo, all: bool, pinned: &[Item]) -> Vec<Item> {
     if !c.state_path.is_empty() || (all && !c.path.is_empty()) || pin(&Item::Path) {
         out.push(Item::Path);
     }
+    out.extend((0..c.mc_comments.len()).map(Item::Comment));
     out
 }
 
@@ -852,9 +886,17 @@ pub(crate) fn add_row(c: &mut Combo, view: &mut View, it: Item, now: FaceNow) {
     }
 }
 
-/// 行を消す: どの状態の値も基本の値に戻す
+/// 行を消す: どの状態の値も基本の値に戻す（コメント行は行ごと消す）
 fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
     picks::remove_row_picks(c, it);
+    if let Item::Comment(k) = it {
+        if *k < c.mc_comments.len() {
+            c.mc_comments.remove(*k);
+            picks::shift_comment_picks(c, *k);
+            view.order.clear();
+        }
+        return;
+    }
     for n in c.states.clone() {
         it.clear(c, &n);
     }
@@ -865,6 +907,7 @@ fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
 /// 面ごとの値）、群の移動をグループの下の欄で選ぶ
 fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bool {
     let add: std::cell::RefCell<Option<Item>> = Default::default();
+    let comment = std::cell::Cell::new(false);
     let shown = items(c, false, &view.pinned);
     ui.menu_button(tr("+ Row"), |ui| {
         // まだ表に無い行の欄（押すとその行を足す）
@@ -889,6 +932,10 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
             });
         }
         pick(ui, Item::Stop, tr("Stop surface").into());
+        if ui.button(tr("Comment row")).clicked() {
+            comment.set(true);
+            ui.close_menu();
+        }
         ui.separator();
         let locs: Vec<Loc> = c
             .all()
@@ -941,6 +988,14 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
             }
         }
     });
+    if comment.get() {
+        if c.states.is_empty() {
+            c.add_state("Config 1", None);
+            c.add_state("Config 2", Some("Config 1"));
+        }
+        c.mc_comments.push(Default::default());
+        return true;
+    }
     match add.into_inner() {
         Some(it) => {
             add_row(c, view, it, now);

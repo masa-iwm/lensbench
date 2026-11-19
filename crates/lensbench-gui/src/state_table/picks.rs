@@ -60,6 +60,7 @@ pub(super) fn key_of(it: &Item) -> (Option<Loc>, String) {
         Item::Config(l) => (Some(l.clone()), "config".into()),
         Item::Place(l, k) => (Some(l.clone()), format!("place:{k}")),
         Item::ZShift(l, g) => (Some(l.clone()), format!("zshift:{g}")),
+        Item::Comment(k) => (None, format!("comment:{k}")),
     }
 }
 
@@ -72,6 +73,7 @@ pub(super) fn item_of(loc: Option<&Loc>, key: &str) -> Option<Item> {
         (None, "stop") => Item::Stop,
         (None, "path") => Item::Path,
         (None, "shift") => Item::Shift(num(rest)?),
+        (None, "comment") => Item::Comment(num(rest)?),
         (Some(l), "face") => {
             let mut it = rest.split(':');
             let surf = num(it.next()?)?;
@@ -154,6 +156,10 @@ pub(super) fn row_key(it: &Item, r: &Item) -> Option<String> {
     if it == r {
         return Some(String::new());
     }
+    // コメント行は別の行と行き来しない
+    if matches!(it, Item::Comment(_)) || matches!(r, Item::Comment(_)) {
+        return None;
+    }
     let ((a, _), (b, k)) = (key_of(it), key_of(r));
     (b.is_none() || a == b).then_some(k)
 }
@@ -208,6 +214,20 @@ pub(super) fn remove_row_picks(c: &mut Combo, it: &Item) {
     let (loc, key) = key_of(it);
     if let Some(v) = list_mut(c, &loc) {
         v.retain(|m| m.key != key);
+    }
+}
+
+/// コメント行 k を消したとき、後ろのコメント行のピックアップの番号を詰める
+pub(super) fn shift_comment_picks(c: &mut Combo, k: usize) {
+    for m in &mut c.mc_picks {
+        if let Some(j) = m
+            .key
+            .strip_prefix("comment:")
+            .and_then(|j| j.parse::<usize>().ok())
+            .filter(|&j| j > k)
+        {
+            m.key = format!("comment:{}", j - 1);
+        }
     }
 }
 
