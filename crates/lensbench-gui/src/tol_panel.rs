@@ -1201,6 +1201,13 @@ impl Sheet for LensSheet<'_> {
         }
         Ok(())
     }
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        Some(Cell::list(
+            "",
+            if full { self.units.clone() } else { Vec::new() },
+            true,
+        ))
+    }
     fn insert(&mut self, at: usize) -> bool {
         self.lenses.insert(
             at,
@@ -1333,6 +1340,13 @@ impl Sheet for TolSheet<'_> {
             _ => t.relative = v == "true",
         }
         Ok(())
+    }
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        Some(Cell::list(
+            "",
+            if full { self.names.clone() } else { Vec::new() },
+            true,
+        ))
     }
     fn insert(&mut self, at: usize) -> bool {
         self.tols.insert(at, TolRow::default());

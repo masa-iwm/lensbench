@@ -7,6 +7,8 @@
 //! （補った部分は選んだ状態で、続けて打てば置き換わり、Backspace で消せば打った文字のまま）。
 //! 数のセルは Alt+ドラッグか、セルの右端のつまみのドラッグで値を増減する（Shift で細かく）。Alt+↑↓ は 1 ずつ
 //! （Shift で 10、Ctrl で 0.1）。書き換え中の ←→ は文字のカーソル、↑↓ は確定して上下のセルへ。
+//! 行の番号・列の見出しをドラッグして行・列を動かす（列は動かせる表だけ）。最後の行の下の空の行の左端に値を書くか
+//! 候補から選ぶと、その行を足す（OpticStudio のエディタと同じ。足せる表だけ）。
 //!
 //! 表の中身は [`Sheet`] で渡す（セルの文字と種類を返し、書き換えを受ける）。選択・書き換え中の文字は [`SheetState`]
 
@@ -151,6 +153,31 @@ pub(crate) trait Sheet {
     fn header_ui(&self, _resp: &egui::Response, _col: usize) {}
     /// セルの右クリックの欄の頭に表の側の項目を足す
     fn cell_menu(&self, _ui: &mut Ui, _row: usize, _col: usize) {}
+    /// 列を見出しのドラッグで動かせるか
+    fn can_move_col(&self, _col: usize) -> bool {
+        false
+    }
+    /// 列 from を列 to の位置へ動かす（動かしたか）
+    fn move_col(&mut self, _from: usize, _to: usize) -> bool {
+        false
+    }
+    /// 最後の行の下の空の行の左端のセル（ここに書くと行を足す）。None なら空の行を出さない。
+    /// full が false のときは描くだけ（候補は要らない）
+    fn new_row(&self, _full: bool) -> Option<Cell> {
+        None
+    }
+    /// 空の行の左端に text を書いて行を足す（既定は最後に空の行を足して左端の列に書く。書けなければ足した行を消す）
+    fn add_row(&mut self, text: &str) -> Result<(), String> {
+        let at = self.rows();
+        if !self.insert(at) {
+            return Err(String::new());
+        }
+        let r = self.set(at, 0, text);
+        if r.is_err() {
+            self.remove(at..=at);
+        }
+        r
+    }
 }
 
 /// 書き換え中のセル
@@ -184,6 +211,20 @@ struct Drag {
     dx: f32,
 }
 
+/// 見出しのドラッグで動かしている行・列
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Grab {
+    /// 行 lo..=hi を、掴んだ行 at が行 to に来るように動かす
+    Rows {
+        lo: usize,
+        hi: usize,
+        at: usize,
+        to: usize,
+    },
+    /// 列 at を列 to へ
+    Col { at: usize, to: usize },
+}
+
 /// 表の選択と書き換え中の文字（パネルが持つ）
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SheetState {
@@ -197,6 +238,7 @@ pub(crate) struct SheetState {
     drag: Option<Drag>,
     /// ドラッグで範囲を選んでいる途中
     drag_sel: bool,
+    grab: Option<Grab>,
     /// 表の下に出す一言（変えられない理由・貼り付けの誤り）
     note: Option<String>,
 }
@@ -282,8 +324,13 @@ struct Out {
     /// そのまま書く値（チェックボックス・ドラッグ・空にする）
     set: Vec<(usize, usize, String)>,
     insert: Option<usize>,
-    /// 行の範囲を上（-1）・下（+1）へ 1 行動かす
+    /// 行の範囲を上（負）・下（正）へ動かす
     shift: Option<(RangeInclusive<usize>, i32)>,
+    /// 列を動かす（元, 先）
+    move_col: Option<(usize, usize)>,
+    /// 行・列を落とす所の線（横線の y と左端、縦線の x と上端）
+    drop_h: Option<(f32, f32)>,
+    drop_v: Option<(f32, f32)>,
     /// 写しを下に挿入する行の範囲
     duplicate: Option<RangeInclusive<usize>>,
     remove: Option<RangeInclusive<usize>>,
@@ -309,32 +356,65 @@ const ARROW_W: f32 = 14.0;
 pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn Sheet) -> bool {
     let id = egui::Id::new(id);
     let (n, m) = (sh.rows(), sh.cols());
+    // 最後の行の下の空の行（行 n。左端の列だけ）
+    let ghost = sh.new_row(false);
+    let nv = n + usize::from(ghost.is_some());
     // 行が減ったら選択を中へ
-    if n == 0 || m == 0 {
+    if nv == 0 || m == 0 {
         st.cur = None;
         st.anchor = None;
         st.edit = None;
     } else if let Some((r, c)) = st.cur {
-        st.cur = Some((r.min(n - 1), c.min(m - 1)));
-        st.anchor = st.anchor.map(|(a, b)| (a.min(n - 1), b.min(m - 1)));
+        let r = r.min(nv - 1);
+        st.cur = Some((r, if r >= n { 0 } else { c.min(m - 1) }));
+        st.anchor = st
+            .anchor
+            .filter(|_| r < n)
+            .map(|(a, b)| (a.min(n - 1), b.min(m - 1)));
     }
-    if st.edit.as_ref().is_some_and(|e| e.row >= n || e.col >= m) {
+    if st
+        .edit
+        .as_ref()
+        .is_some_and(|e| e.col >= m || e.row > n || (e.row == n && (ghost.is_none() || e.col > 0)))
+    {
         st.edit = None;
     }
+    let mut out = Out::default();
     if !ui.input(|i| i.pointer.primary_down()) {
         st.drag = None;
         st.drag_sel = false;
+        // 見出しのドラッグを放した: 行・列を動かす
+        match st.grab.take() {
+            Some(Grab::Rows { lo, hi, at, to }) if to != at && hi < n => {
+                let d = (to as i64 - at as i64).clamp(-(lo as i64), (n - 1 - hi) as i64);
+                if d != 0 {
+                    out.shift = Some((lo..=hi, d as i32));
+                }
+            }
+            Some(Grab::Col { at, to }) if at != to && to < m => out.move_col = Some((at, to)),
+            _ => {}
+        }
     }
-    let mut out = Out::default();
+    if st.grab.is_some() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
     // フォーカスは描く前に見る（Tab を押すと egui が描いている間に表の中のボタンへフォーカスを移す）
     let free = ui.memory(|mm| mm.focused().is_none());
-    let inner = ui.scope(|ui| table(ui, id, st, sh, &mut out));
+    let inner = ui.scope(|ui| table(ui, id, st, sh, ghost.as_ref(), &mut out));
     // セルの painter はセルで切られるので、層の painter で描く
     let lp = ui.ctx().layer_painter(ui.layer_id());
     for (pos, g, clip, color) in out.spill.drain(..) {
         lp.with_clip_rect(clip).galley(pos, g, color);
     }
     let rect = inner.response.rect;
+    let line = egui::Stroke::new(2.0_f32, ui.visuals().selection.stroke.color);
+    let lp = lp.with_clip_rect(out.view.unwrap_or(rect));
+    if let Some((y, x0)) = out.drop_h {
+        lp.hline(x0..=rect.right(), y, line);
+    }
+    if let Some((x, y0)) = out.drop_v {
+        lp.vline(x, y0..=rect.bottom(), line);
+    }
     if out.clicked {
         st.active = true;
         st.note = None;
@@ -362,9 +442,17 @@ pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn
     changed
 }
 
-fn table(ui: &mut Ui, id: egui::Id, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) {
+fn table(
+    ui: &mut Ui,
+    id: egui::Id,
+    st: &mut SheetState,
+    sh: &dyn Sheet,
+    ghost: Option<&Cell>,
+    out: &mut Out,
+) {
     let (n, m) = (sh.rows(), sh.cols());
-    let cur_row = st.cur.map(|x| x.0);
+    let nv = n + usize::from(ghost.is_some());
+    let cur_row = st.cur.map(|x| x.0).filter(|&r| r < n);
     // 全部の列を選んだ行（行の番号を目立たせる）
     let full_rows = st
         .sel()
@@ -409,8 +497,11 @@ fn table(ui: &mut Ui, id: egui::Id, st: &mut SheetState, sh: &dyn Sheet, out: &m
                     h.col(|ui| {
                         // クリックは見出しのセル全体で受ける（文字の上だけでなく）
                         let t = sh.header(c, cur_row);
-                        let r =
-                            ui.interact(ui.max_rect(), ui.id().with("sheet_head"), Sense::click());
+                        let r = ui.interact(
+                            ui.max_rect(),
+                            ui.id().with("sheet_head"),
+                            Sense::click_and_drag(),
+                        );
                         ui.add(
                             egui::Label::new(RichText::new(t).small().strong().color(weak))
                                 .truncate(),
@@ -430,18 +521,59 @@ fn table(ui: &mut Ui, id: egui::Id, st: &mut SheetState, sh: &dyn Sheet, out: &m
                             st.select_cols(c0, c, n);
                         }
                         sh.header_ui(&r, c);
+                        // 見出しのドラッグで列を動かす
+                        if r.drag_started() && sh.can_move_col(c) {
+                            out.clicked = true;
+                            st.grab = Some(Grab::Col { at: c, to: c });
+                        }
+                        col_target(ui, st, sh, out, c);
                     });
                 }
                 h.col(|_| {});
             })
             .body(|body| {
-                body.rows(ROW_H, n, |mut row| {
+                body.rows(ROW_H, nv, |mut row| {
                     let r = row.index();
+                    if r >= n {
+                        // 最後の空の行（左端に書くと行を足す）
+                        row.col(|ui| {
+                            ui.label(RichText::new("+").monospace().color(weak));
+                            row_target(ui, st, out, r, n);
+                        });
+                        if let Some(cell) = ghost {
+                            row.col(|ui| ghost_ui(ui, st, sh, cell, out, n, weak, accent));
+                        }
+                        for _ in 1..=m {
+                            row.col(|_| {});
+                        }
+                        return;
+                    }
                     row.set_selected(full_rows.as_ref().is_some_and(|s| s.contains(&r)));
                     row.col(|ui| {
-                        let resp =
-                            ui.interact(ui.max_rect(), ui.id().with("sheet_num"), Sense::click());
+                        let resp = ui.interact(
+                            ui.max_rect(),
+                            ui.id().with("sheet_num"),
+                            Sense::click_and_drag(),
+                        );
                         ui.label(RichText::new(format!("{}", r + 1)).monospace().color(weak));
+                        // 行の番号のドラッグで行（選んだ行の範囲）を動かす
+                        if resp.drag_started() {
+                            out.clicked = true;
+                            let (lo, hi) = match full_rows.as_ref().filter(|s| s.contains(&r)) {
+                                Some(s) => (*s.start(), *s.end()),
+                                None => {
+                                    st.select_rows(None, r, m);
+                                    (r, r)
+                                }
+                            };
+                            st.grab = Some(Grab::Rows {
+                                lo,
+                                hi,
+                                at: r,
+                                to: r,
+                            });
+                        }
+                        row_target(ui, st, out, r, n);
                         // 行の番号で行全体を選ぶ（Shift で前に選んだ行から。範囲の中の右クリックは範囲を残す）
                         let keep = resp.secondary_clicked()
                             && full_rows.as_ref().is_some_and(|s| s.contains(&r));
@@ -772,155 +904,6 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
     }
 }
 
-/// 書き換え中のセル（入力欄。候補のある欄は下に一覧）
-fn edit_ui(ui: &mut Ui, st: &mut SheetState, cell: &Cell, out: &mut Out) {
-    let Some(e) = st.edit.as_mut() else { return };
-    let (r, c) = (e.row, e.col);
-    let first = !e.started;
-    let (resp, keys) = super::cell::input(
-        ui,
-        &mut e.text,
-        &mut e.started,
-        e.select_all,
-        cell.numeric(),
-        e.error.as_deref(),
-    );
-    if resp.changed() {
-        e.error = None;
-    }
-    let Kind::List { items, free } = &cell.kind else {
-        if keys.esc {
-            out.cancel = true;
-        } else if let Some(mv) = keys.nav(true) {
-            out.commit = Some((r, c, e.text.clone()));
-            out.after = Some(mv);
-        } else if keys.enter || resp.lost_focus() {
-            out.commit = Some((r, c, e.text.clone()));
-        }
-        if out.commit.is_some() && out.after.is_some() {
-            resp.surrender_focus();
-        }
-        return;
-    };
-    if resp.changed() {
-        e.filtered = true;
-        e.moved = false;
-        e.pick = 0;
-        e.query = None;
-    }
-    // 打った文字が増えたら（打ち始めも）続く候補で補う
-    let n_chars = e.text.chars().count();
-    if (resp.changed() && n_chars > e.prev_n) || (first && e.filtered) {
-        if let Some(full) = completion(items, &e.text) {
-            let k = e.text.chars().count();
-            e.query = Some(std::mem::replace(&mut e.text, full));
-            if let Some(mut s) = egui::TextEdit::load_state(ui.ctx(), resp.id) {
-                s.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                    egui::text::CCursor::new(k),
-                    egui::text::CCursor::new(e.text.chars().count()),
-                )));
-                s.store(ui.ctx(), resp.id);
-            }
-        }
-    }
-    // 補った後は打った文字の数（補った部分を消しても補い直さず、次の 1 文字で補う）
-    e.prev_n = e.query.as_deref().unwrap_or(&e.text).chars().count();
-    let shown: Vec<(String, String)> = if e.filtered {
-        filter_items(items, e.query.as_deref().unwrap_or(&e.text))
-    } else {
-        items.clone()
-    };
-    let mut scroll = None;
-    if !e.filtered && !e.moved && !e.listed {
-        e.pick = shown
-            .iter()
-            .position(|x| x.0.eq_ignore_ascii_case(e.text.trim()))
-            .unwrap_or(0);
-        scroll = Some(e.pick);
-    }
-    if e.pick >= shown.len() {
-        e.pick = 0;
-    }
-    if keys.up && e.pick > 0 {
-        e.pick -= 1;
-        e.moved = true;
-        scroll = Some(e.pick);
-    }
-    if keys.down && e.pick + 1 < shown.len() {
-        e.pick += 1;
-        e.moved = true;
-        scroll = Some(e.pick);
-    }
-    let res = super::choices::Choices {
-        scroll_to: scroll,
-        min_width: 160.0,
-        ..super::choices::Choices::new(&shown, e.pick)
-    }
-    .show(ui, resp.id.with("choices"), resp.rect);
-    let picked = shown.get(e.pick).map(|x| x.0.clone());
-    // 決める文字: ↑↓ で選んだか、打って絞った候補がある（候補に無い文字を書ける欄では打った文字が候補と同じとき）か、打った文字
-    let choose = |e: &Edit| -> String {
-        let exact = shown
-            .iter()
-            .find(|x| x.0.eq_ignore_ascii_case(e.text.trim()))
-            .map(|x| x.0.clone());
-        if e.moved {
-            picked.clone().unwrap_or_else(|| e.text.clone())
-        } else if let Some(x) = exact {
-            x
-        } else if e.filtered && !*free {
-            picked.clone().unwrap_or_else(|| e.text.clone())
-        } else {
-            e.text.clone()
-        }
-    };
-    if keys.esc {
-        out.cancel = true;
-    } else if let Some(k) = res.clicked {
-        out.commit = Some((r, c, shown[k].0.clone()));
-    } else if keys.tab {
-        out.commit = Some((r, c, choose(e)));
-        out.after = keys.nav(false);
-        resp.surrender_focus();
-    } else if keys.enter || (resp.lost_focus() && !res.hovered && !e.list_hover) {
-        out.commit = Some((r, c, choose(e)));
-    }
-    e.list_hover = res.hovered;
-    e.listed = true;
-}
-
-/// 打った文字 q に続く候補（大小を問わない前方一致で q より長い最初の候補）。q と同じ名前の候補があれば補わない
-fn completion(items: &[(String, String)], q: &str) -> Option<String> {
-    let ql = q.to_lowercase();
-    if ql.trim().is_empty() || items.iter().any(|x| x.0.to_lowercase() == ql) {
-        return None;
-    }
-    items
-        .iter()
-        .map(|x| &x.0)
-        .find(|x| x.chars().count() > q.chars().count() && x.to_lowercase().starts_with(&ql))
-        .cloned()
-}
-
-/// 打った文字で絞った候補（前方一致を先に）
-fn filter_items(items: &[(String, String)], q: &str) -> Vec<(String, String)> {
-    let q = q.trim().to_lowercase();
-    if q.is_empty() {
-        return items.to_vec();
-    }
-    let mut head = Vec::new();
-    let mut rest = Vec::new();
-    for it in items {
-        match super::match_rank(&it.0.to_lowercase(), &it.1.to_lowercase(), &q) {
-            Some(true) => head.push(it.clone()),
-            Some(false) => rest.push(it.clone()),
-            None => {}
-        }
-    }
-    head.extend(rest);
-    head
-}
-
 /// ドラッグした距離 dx [点] での値。1 点で今の値の桁の 1/100（0 は 0.01）、整数は 10 点で 1
 pub(crate) fn drag_value(start: f64, dx: f32, int: bool) -> f64 {
     if int {
@@ -1012,7 +995,17 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
         return ev.tab;
     }
     if ev.insert {
-        out.insert = Some(st.cur.map_or(n, |x| x.0));
+        out.insert = Some(st.cur.map_or(n, |x| x.0.min(n)));
+        return ev.tab;
+    }
+    let ghost = sh.new_row(false).is_some();
+    if let Some((r, _)) = st.cur.filter(|x| x.0 >= n) {
+        // 最後の空の行: ↑ で表へ、打つ・Enter・F2 で書き始める（書いた値の行を足す）
+        if ev.up && n > 0 {
+            st.cur = Some((n - 1, 0));
+        } else if ev.enter || ev.f2 || ev.typed.is_some() || ev.space {
+            out.start = Some((r, 0, ev.typed));
+        }
         return ev.tab;
     }
     if n == 0 || m == 0 {
@@ -1023,6 +1016,12 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
         if ev.up || ev.down || ev.left || ev.right || ev.tab {
             st.cur = Some((0, 0));
         }
+        return ev.tab;
+    }
+    // 最後の行から ↓ で空の行へ
+    if ev.down && !ev.shift && !ev.alt && !ev.command && r + 1 == n && ghost {
+        st.anchor = None;
+        st.cur = Some((n, 0));
         return ev.tab;
     }
     if ev.all {
@@ -1151,7 +1150,7 @@ fn step(r: usize, c: usize, d: i32, n: usize, m: usize) -> (usize, usize) {
 
 /// 表の文字（タブ区切り）。範囲を選んでいればその範囲、でなければ今のセル
 fn copy_text(st: &SheetState, sh: &dyn Sheet) -> Option<String> {
-    let (r, c) = st.cur?;
+    let (r, c) = st.cur.filter(|x| x.0 < sh.rows())?;
     if !st.multi() {
         return Some(sh.cell(r, c).text);
     }
@@ -1243,9 +1242,18 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
         st.active = true;
     }
     if let Some((r, c, t)) = out.commit {
-        match sh.set(r, c, &t) {
+        // 最後の空の行に書いたら行を足す（空ならやめる）
+        let new = r >= sh.rows();
+        let res = if !new {
+            sh.set(r, c, &t)
+        } else if t.trim().is_empty() {
+            Ok(())
+        } else {
+            sh.add_row(&t)
+        };
+        match res {
             Ok(()) => {
-                changed = true;
+                changed |= !new || !t.trim().is_empty();
                 st.edit = None;
                 st.active = true;
                 st.note = None;
@@ -1288,7 +1296,14 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
         st.note = Some(e);
     }
     if let Some((r, c, typed)) = out.start {
-        let cell = sh.cell(r, c);
+        let cell = if r < sh.rows() {
+            sh.cell(r, c)
+        } else {
+            match sh.new_row(false) {
+                Some(cell) => cell,
+                None => Cell::empty().ro(Some(String::new())),
+            }
+        };
         match cell.ro {
             Some(why) => {
                 if !why.is_empty() {
@@ -1311,19 +1326,39 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
         }
     }
     if let Some((rows, d)) = out.shift {
-        let (lo, hi) = (*rows.start(), *rows.end());
-        let ok = if d < 0 {
-            lo > 0 && (lo..=hi).all(|i| sh.swap(i - 1))
-        } else {
-            hi + 1 < sh.rows() && (lo..=hi).rev().all(|i| sh.swap(i))
-        };
-        if ok {
+        // 1 行ずつ入れ替えて d 行動かす（端で止める）
+        let (mut lo, mut hi) = (*rows.start(), *rows.end());
+        let mut moved = 0i64;
+        for _ in 0..d.unsigned_abs() {
+            let ok = if d < 0 {
+                lo > 0 && (lo..=hi).all(|i| sh.swap(i - 1))
+            } else {
+                hi + 1 < sh.rows() && (lo..=hi).rev().all(|i| sh.swap(i))
+            };
+            if !ok {
+                break;
+            }
+            moved += i64::from(d.signum());
+            (lo, hi) = (
+                (lo as i64 + i64::from(d.signum())) as usize,
+                (hi as i64 + i64::from(d.signum())) as usize,
+            );
+        }
+        if moved != 0 {
             changed = true;
-            let mv = |x: usize| (x as i64 + d as i64) as usize;
+            let mv = |x: usize| (x as i64 + moved) as usize;
             st.cur = st.cur.map(|(r, c)| (mv(r), c));
             st.anchor = st.anchor.map(|(r, c)| (mv(r), c));
             st.edit = None;
             st.active = true;
+        }
+    }
+    if let Some((from, to)) = out.move_col {
+        if sh.move_col(from, to) {
+            changed = true;
+            st.edit = None;
+            st.active = true;
+            st.select_cols(None, to, sh.rows());
         }
     }
     if let Some(rows) = out.duplicate {
@@ -1368,6 +1403,12 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
     }
     changed
 }
+
+#[path = "sheet_edit.rs"]
+mod edit;
+use edit::{col_target, edit_ui, ghost_ui, row_target};
+#[cfg(test)]
+use edit::{completion, filter_items};
 
 #[cfg(test)]
 #[path = "sheet_tests.rs"]

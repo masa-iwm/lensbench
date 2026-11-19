@@ -1643,3 +1643,11 @@ Coordinate break {}	座標ブレーク {}
 Comment row	コメント行
 Distance from point (x, y, z in the surface's local coordinates) to surface surf along the z axis turned by tilt (about x, y and z [deg]) − target (like TSAG). flat: the surface is flat outside the clear semi-diameter when the lens edge is larger (Mode 0)	点（面のローカル座標の x, y, z）から、z 軸を tilt（x・y・z 軸まわり [deg]）だけ回した向きに面 surf まで測った距離 − 目標（TSAG 相当）。flat: レンズの縁がクリア半径より大きい面を、クリア半径の外で平らにする（Mode 0）
 Best-fit sphere of surface surf with the least material to remove, fitted from radius rmin to rmax (0 = clear semi-diameter) − target: q curv, radius, vertex, depth (largest), volume, slope (largest slope difference), depth_rms, slope_rms (like BFSD)	削る体積が最小になる面 surf の最適球（半径 rmin から rmax まで、0 はクリア半径）の量 − 目標: q は curv・radius・vertex・depth（最大）・volume・slope（チルトの差の最大）・depth_rms・slope_rms（BFSD 相当）
+New row	新しい行
+Add a row	行を足す
+Type or pick a value here to add a row	ここに値を打つか選ぶと行を足す
+No row {}	{} という行はない
+Drag a row number / heading	行の番号・見出しのドラッグ
+Move the rows / the column (configuration columns of the multi-configuration table)	行を動かす・列を動かす（多重構成の表の構成の列）
+Empty last row	最後の空の行
+Type or pick a value in its first cell to add a row	左端のセルに値を打つか選ぶと行を足す

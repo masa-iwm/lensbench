@@ -28,6 +28,8 @@ pub(super) enum Act {
     Remove(RangeInclusive<usize>),
     /// 行 a と a+1 を入れ替える
     Swap(usize),
+    /// 行を足す（None はコメントの行）
+    Add(Option<Item>),
 }
 
 pub(super) struct McSheet<'a> {
@@ -64,6 +66,70 @@ impl McSheet<'_> {
         for f in self.stops {
             let x = Some(f.clone());
             v.push((stop_label(self.c, &x), x));
+        }
+        v
+    }
+    /// 最後の空の行に書いて足せる行（表示の名前, 行。None はコメントの行）。表にある行は除く。
+    /// 「+ 行」の欄と同じ（面は今の系から読めた面）
+    pub(super) fn addable(&self) -> Vec<(String, Option<Item>)> {
+        let c = &*self.c;
+        let mut v = vec![(tr("Comment row").to_string(), None)];
+        let mut push = |it: Item| {
+            if !self.rows.contains(&Row::It(it.clone())) {
+                v.push((it.label(c), Some(it)));
+            }
+        };
+        for q in SysQ::all(c) {
+            push(Item::Sys(q));
+        }
+        push(Item::Stop);
+        for l in c.all() {
+            let Some(p) = c.get(&l) else { continue };
+            if matches!(p.kind, ElemKind::Splitter | ElemKind::Aperture) {
+                continue;
+            }
+            if p.kind.has_on() {
+                push(Item::On(l.clone()));
+            }
+            push(Item::Air(l.clone()));
+            if p.kind == ElemKind::ZmxRange {
+                push(Item::Config(l.clone()));
+            }
+            if p.has_state_place() {
+                let ks: &[usize] = if p.kind == ElemKind::Mirror {
+                    &[2, 3]
+                } else {
+                    &[0, 1, 2, 3, 4]
+                };
+                for &k in ks {
+                    push(Item::Place(l.clone(), k));
+                }
+            }
+            if p.locked {
+                continue;
+            }
+            let face = |surf: usize, field: &str, idx: Option<usize>| Face {
+                loc: l.clone(),
+                surf,
+                field: field.to_string(),
+                idx,
+            };
+            let now = self.now;
+            for i in (0..999).take_while(|&i| now(&face(i, "r", None)).is_some()) {
+                for (f, list) in FACE_FIELDS {
+                    push(Item::Face(face(i, f, list.then_some(0))));
+                }
+            }
+            let cb = format!("{CB_FIELD}cb");
+            for i in (0..999).take_while(|&i| now(&face(i, &cb, None)).is_some()) {
+                push(Item::Face(face(i, &format!("{CB_FIELD}ignore"), None)));
+                for k in 0..PLACE.len() {
+                    push(Item::Face(face(i, &cb, Some(k))));
+                }
+            }
+        }
+        for g in 0..c.groups.len() {
+            push(Item::Shift(g));
         }
         v
     }
@@ -252,6 +318,40 @@ impl Sheet for McSheet<'_> {
     fn swap(&mut self, a: usize) -> bool {
         self.act(Act::Swap(a));
         true
+    }
+    fn can_move_col(&self, col: usize) -> bool {
+        matches!(self.col(col), Some(Some(_)))
+    }
+    fn move_col(&mut self, from: usize, to: usize) -> bool {
+        match (self.col(from), self.col(to)) {
+            (Some(Some(n)), Some(Some(_))) => {
+                let d = to as isize - from as isize;
+                self.act(Act::Head(HeadAct::Move(n.clone(), d)));
+                true
+            }
+            _ => false,
+        }
+    }
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        let items = if full {
+            self.addable()
+                .into_iter()
+                .map(|(l, _)| (l, String::new()))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Some(Cell::list("", items, false))
+    }
+    fn add_row(&mut self, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        match self.addable().into_iter().find(|(l, _)| l == t) {
+            Some((_, it)) => {
+                self.act(Act::Add(it));
+                Ok(())
+            }
+            None => Err(trf("No row {}", &[&t])),
+        }
     }
     fn header_ui(&self, resp: &egui::Response, col: usize) {
         let Some(st) = self.col(col) else { return };

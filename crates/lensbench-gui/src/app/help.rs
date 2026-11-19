@@ -67,6 +67,8 @@ impl Core {
                             ("Insert", tr("Insert a row")),
                             ("Ctrl+D", tr("Duplicate the selected rows below them")),
                             ("Ctrl+Shift+↑ ↓", tr("Move the selected rows up / down")),
+                            (tr("Drag a row number / heading"), tr("Move the rows / the column (configuration columns of the multi-configuration table)")),
+                            (tr("Empty last row"), tr("Type or pick a value in its first cell to add a row")),
                             ("Ctrl+Delete", tr("Delete the selected rows")),
                             ("Delete", tr("Clear the selected cells")),
                             ("Ctrl+C / Ctrl+V", tr("Copy / paste as tab-separated text (a single value pasted on a range fills it)")),

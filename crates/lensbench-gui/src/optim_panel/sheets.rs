@@ -72,6 +72,14 @@ impl Sheet for VarSheet<'_> {
         }
         Ok(())
     }
+    /// 最後の空の行（左端に書くと行を足す）
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        Some(Cell::list(
+            "",
+            if full { self.names.clone() } else { Vec::new() },
+            true,
+        ))
+    }
     fn insert(&mut self, at: usize) -> bool {
         self.vars.insert(at, VarRow::default());
         true
@@ -108,8 +116,10 @@ enum Col {
     Type,
     /// P1..Pn（0 始まり）
     Par(usize),
-    /// 畳んだ P の列の要約
+    /// 畳んだ P の列の要約（target を除く）
     Summary,
+    /// 畳んだときの target（畳まずに出す）
+    Target,
     Weight,
     Config,
     Value,
@@ -118,10 +128,11 @@ enum Col {
 
 impl TermSheet<'_> {
     fn col(&self, col: usize) -> Col {
-        let np = if self.fold { 1 } else { self.npar };
+        let np = if self.fold { 2 } else { self.npar };
         match col {
             0 => Col::Type,
-            c if c <= np && self.fold => Col::Summary,
+            1 if self.fold => Col::Summary,
+            2 if self.fold => Col::Target,
             c if c <= np => Col::Par(c - 1),
             c => [Col::Weight, Col::Config, Col::Value, Col::Contrib][(c - np - 1).min(3)],
         }
@@ -131,13 +142,14 @@ impl TermSheet<'_> {
     }
 }
 
-/// 行の P の値の要約（「field 1 · wave 2」。コメントの行は文）
+/// 行の P の値の要約（「field 1 · wave 2」。target は別の列なので除く。コメントの行は文）
 pub(super) fn summary(t: &TermRow) -> String {
     if t.ty == "comment" {
         return t.get("text").to_string();
     }
     keys(&t.ty)
         .iter()
+        .filter(|(k, _)| *k != "target")
         .filter_map(|(k, _)| {
             let v = t.get(k).trim();
             (!v.is_empty()).then(|| format!("{k} {v}"))
@@ -173,7 +185,7 @@ impl Sheet for TermSheet<'_> {
         self.terms.len()
     }
     fn cols(&self) -> usize {
-        (if self.fold { 1 } else { self.npar }) + if self.vals.is_some() { 5 } else { 3 }
+        (if self.fold { 2 } else { self.npar }) + if self.vals.is_some() { 5 } else { 3 }
     }
     fn header(&self, col: usize, cur: Option<usize>) -> String {
         match self.col(col) {
@@ -183,6 +195,7 @@ impl Sheet for TermSheet<'_> {
             Col::Value => tr("Value").into(),
             Col::Contrib => tr("% Contrib").into(),
             Col::Summary => tr("Parameters").into(),
+            Col::Target => "target".into(),
             Col::Par(i) => match cur.and_then(|r| self.key(r, i)) {
                 Some((k, _)) => k.into(),
                 None => format!("P{}", i + 1),
@@ -224,6 +237,10 @@ impl Sheet for TermSheet<'_> {
                 ))
             }
             _ if comment && col > 1 => Cell::empty(),
+            Col::Target => match keys(&t.ty).iter().find(|(k, _)| *k == "target") {
+                Some(_) => Cell::num(t.get("target").to_string()).tip("target"),
+                None => Cell::empty(),
+            },
             Col::Weight => Cell::num(t.weight.clone()).hint("1"),
             c @ (Col::Value | Col::Contrib) => {
                 let v = self.vals.and_then(|v| v.get(row).copied().flatten());
@@ -275,7 +292,17 @@ impl Sheet for TermSheet<'_> {
             }
             Col::Summary if t.ty == "comment" => t.set("text", text),
             Col::Summary | Col::Value | Col::Contrib => return Err(String::new()),
-            Col::Weight | Col::Config if t.ty == "comment" => return Err(String::new()),
+            Col::Weight | Col::Config | Col::Target if t.ty == "comment" => {
+                return Err(String::new())
+            }
+            Col::Target => {
+                let Some((k, kind)) = keys(&t.ty).iter().copied().find(|(k, _)| *k == "target")
+                else {
+                    return Err(String::new());
+                };
+                check_key(k, kind, v)?;
+                t.set(k, v);
+            }
             Col::Weight => {
                 crate::widgets::parse_num(v, tr("Weight"))?;
                 t.weight = v.into();
@@ -300,6 +327,18 @@ impl Sheet for TermSheet<'_> {
             }
         }
         Ok(())
+    }
+    /// 最後の空の行（左端に書くと行を足す）
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        Some(Cell::list(
+            "",
+            TERM_TYPES
+                .iter()
+                .filter(|_| full)
+                .map(|x| (x.to_string(), type_hint(x).to_string()))
+                .collect(),
+            false,
+        ))
     }
     fn insert(&mut self, at: usize) -> bool {
         let ty = if self.new_ty.is_empty() {
@@ -337,7 +376,30 @@ mod tests {
         assert_eq!(back[0].get("text"), "x");
         let mut q = TermRow::new("paraxial");
         q.set("target", "50");
-        assert_eq!(summary(&q), "q efl · target 50");
+        // target は要約に入れず、畳んでも列で出す
+        assert_eq!(summary(&q), "q efl");
+        {
+            use crate::widgets::sheet::Sheet;
+            let mut terms = vec![q.clone()];
+            let mut sh = TermSheet {
+                terms: &mut terms,
+                new_ty: "",
+                npar: par_cols(),
+                vals: None,
+                fold: true,
+            };
+            assert_eq!(sh.cols(), 5);
+            assert_eq!(sh.header(2, None), "target");
+            assert_eq!(sh.cell(0, 2).text, "50");
+            sh.set(0, 2, "60").unwrap();
+            assert!(sh.set(0, 2, "x").is_err());
+            assert_eq!(sh.terms[0].get("target"), "60");
+            // 最後の空の行にタイプを書くとその項を足す
+            sh.add_row("ray").unwrap();
+            assert!(sh.add_row("nope").is_err());
+            assert_eq!(sh.terms.len(), 2);
+            assert_eq!(sh.terms[1].ty, "ray");
+        }
         let mut p = OptPanel::new();
         p.terms = vec![c, q];
         p.run_terms = p.terms.clone();

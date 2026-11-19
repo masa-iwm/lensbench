@@ -402,6 +402,46 @@ fn sheet_cells_and_set() {
     assert!(sh.c.state_sys["A"].aperture == ApertureKind::FNum);
 }
 
+/// 構成の列だけを見出しのドラッグで動かせ、最後の空の行に書いた名前の行を足す（表にある行・知らない名前は足さない）
+#[test]
+fn sheet_move_cols_and_add_rows() {
+    use crate::widgets::sheet::Sheet;
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    let none = |_: &Face| None;
+    let cache = HashMap::new();
+    let tele = Item::Sys(SysQ::Telecentric);
+    let mut sh = sheet_view::McSheet {
+        c: &mut c,
+        rows: vec![sheet_view::Row::It(tele.clone())],
+        cols: vec![None, Some("A".into()), Some("B".into())],
+        now: &none,
+        cache: &cache,
+        stops: &[],
+        acts: Default::default(),
+    };
+    assert!(!sh.can_move_col(0) && !sh.can_move_col(1));
+    assert!(sh.can_move_col(2) && sh.can_move_col(3));
+    assert!(!sh.move_col(1, 2));
+    assert!(sh.move_col(3, 2));
+    assert!(matches!(
+        &sh.acts.borrow()[0],
+        sheet_view::Act::Head(HeadAct::Move(n, -1)) if n == "B"
+    ));
+    let items = sh.addable();
+    assert!(items.iter().all(|(_, it)| it.as_ref() != Some(&tele)));
+    let stop = Item::Stop.label(sh.c);
+    sh.add_row(&stop).unwrap();
+    assert!(sh.add_row(&tele.label(sh.c)).is_err());
+    assert!(sh.add_row("nope").is_err());
+    sh.add_row(tr("Comment row")).unwrap();
+    let acts = sh.acts.borrow();
+    assert!(matches!(&acts[1], sheet_view::Act::Add(Some(Item::Stop))));
+    assert!(matches!(&acts[2], sheet_view::Act::Add(None)));
+}
+
 /// 表を描いて、セルを選んで Alt+↑ で 1 増やす（表の部品のキーが状態の値に届く）
 #[test]
 fn sheet_keys_reach_state_values() {

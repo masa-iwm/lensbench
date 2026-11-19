@@ -3,9 +3,9 @@
 use super::*;
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect};
 
-/// 2 列（文字・数）の表
+/// 2 列（文字・数）の表。.1 なら最後の空の行を出し、列を見出しのドラッグで動かせる
 #[derive(Default)]
-struct Rows(Vec<[String; 2]>);
+struct Rows(Vec<[String; 2]>, bool);
 
 impl Sheet for Rows {
     fn rows(&self) -> usize {
@@ -43,6 +43,18 @@ impl Sheet for Rows {
         self.0.swap(a, a + 1);
         true
     }
+    fn new_row(&self, _full: bool) -> Option<Cell> {
+        self.1.then(|| Cell::text(""))
+    }
+    fn can_move_col(&self, _col: usize) -> bool {
+        self.1
+    }
+    fn move_col(&mut self, from: usize, to: usize) -> bool {
+        for r in &mut self.0 {
+            r.swap(from, to);
+        }
+        from != to
+    }
 }
 
 struct Bench {
@@ -63,6 +75,7 @@ impl Bench {
                 (0..n)
                     .map(|i| [format!("v{i}"), format!("{}", i as f64 + 0.5)])
                     .collect(),
+                false,
             ),
             changed: false,
         }
@@ -550,4 +563,79 @@ fn column_selection_row_ops_use_current_row() {
     b.key_mods(Key::Delete, Modifiers::COMMAND);
     assert_eq!(b.rows.0.len(), 2);
     assert_eq!(b.rows.0[0][0], "v1");
+}
+
+/// 押して q まで動かして放す
+fn drag(b: &mut Bench, p: Pos2, q: Pos2) {
+    b.frame(vec![Event::PointerMoved(p)]);
+    b.frame(vec![Event::PointerButton {
+        pos: p,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    }]);
+    for k in 1..=6 {
+        let t = k as f32 / 6.0;
+        b.frame(vec![Event::PointerMoved(p + (q - p) * t)]);
+    }
+    b.frame(vec![Event::PointerButton {
+        pos: q,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    b.frame(vec![]);
+}
+
+/// 最後の行から ↓ で空の行へ、打って Enter でその値の行を足す（空のままの Enter は足さない）
+#[test]
+fn ghost_row_adds() {
+    let mut b = Bench::new(2);
+    b.rows.1 = true;
+    b.frame(vec![]);
+    b.click(b.cell_pos(1, "Name"));
+    b.key(Key::ArrowDown);
+    assert_eq!(b.st.cur(), Some((2, 0)));
+    b.key(Key::ArrowRight);
+    assert_eq!(b.st.cur(), Some((2, 0)));
+    b.key(Key::Enter);
+    assert!(b.st.editing());
+    b.key(Key::Enter);
+    assert!(!b.st.editing());
+    assert_eq!(b.rows.0.len(), 2);
+    b.text("w");
+    b.key(Key::Enter);
+    assert_eq!(b.rows.0.len(), 3);
+    assert_eq!(b.rows.0[2][0], "w");
+    assert!(b.changed);
+    // 空の行はクリックでも選べ、↑ で表へ
+    let mut b = Bench::new(1);
+    b.rows.1 = true;
+    b.frame(vec![]);
+    b.click(b.cell_pos(1, "Name"));
+    assert_eq!(b.st.cur(), Some((1, 0)));
+    b.key(Key::ArrowUp);
+    assert_eq!(b.st.cur(), Some((0, 0)));
+}
+
+/// 行の番号のドラッグで行を動かし、列の見出しのドラッグで列を動かす
+#[test]
+fn drag_headers_move() {
+    let mut b = Bench::new(3);
+    b.rows.1 = true;
+    b.frame(vec![]);
+    let num = |r: usize| Pos2::new(8.0 + 13.0, 8.0 + ROW_H * (r as f32 + 1.5));
+    drag(&mut b, num(0), num(2));
+    let names: Vec<&str> = b.rows.0.iter().map(|r| r[0].as_str()).collect();
+    assert_eq!(names, ["v1", "v2", "v0"]);
+    assert_eq!(b.st.cur(), Some((2, 0)));
+    // 上へ
+    drag(&mut b, num(2), num(1));
+    let names: Vec<&str> = b.rows.0.iter().map(|r| r[0].as_str()).collect();
+    assert_eq!(names, ["v1", "v0", "v2"]);
+    let head = |c: &str| Pos2::new(b.cell_pos(0, c).x, 8.0 + ROW_H * 0.5);
+    let (h0, h1) = (head("Name"), head("Value"));
+    drag(&mut b, h0, h1);
+    assert_eq!(b.rows.0[0][1], "v1");
+    assert_eq!(b.st.selection(), Some((0..=2, 1..=1)));
 }

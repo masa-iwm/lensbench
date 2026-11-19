@@ -335,6 +335,14 @@ impl Sheet for VarSheet<'_> {
         }
         Ok(())
     }
+    /// 最後の空の行（左端に書くと行を足す）
+    fn new_row(&self, full: bool) -> Option<Cell> {
+        Some(Cell::list(
+            "",
+            if full { self.names.clone() } else { Vec::new() },
+            true,
+        ))
+    }
     fn insert(&mut self, at: usize) -> bool {
         self.vars.insert(at, VarRow::default());
         true

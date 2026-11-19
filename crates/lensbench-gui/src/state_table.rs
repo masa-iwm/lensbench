@@ -1012,11 +1012,7 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
         }
     });
     if comment.get() {
-        if c.states.is_empty() {
-            c.add_state("Config 1", None);
-            c.add_state("Config 2", Some("Config 1"));
-        }
-        c.mc_comments.push(Default::default());
+        add_comment(c);
         return true;
     }
     match add.into_inner() {
@@ -1026,6 +1022,15 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
         }
         None => false,
     }
+}
+
+/// コメントの行を足す（状態が無ければ構成を 2 つ足す）
+fn add_comment(c: &mut Combo) {
+    if c.states.is_empty() {
+        c.add_state("Config 1", None);
+        c.add_state("Config 2", Some("Config 1"));
+    }
+    c.mc_comments.push(Default::default());
 }
 
 /// 要素 l の面ごとの値の欄（面は今の系から読めた面。読めなければ番号を打つ）。選んだ面の値を add へ
@@ -1228,6 +1233,14 @@ pub(crate) fn ui(
                 for i in r.filter(|&i| i < rows.len()) {
                     remove_row(c, view, &rows[i]);
                 }
+                changed = true;
+            }
+            sheet_view::Act::Add(Some(it)) => {
+                add_row(c, view, it, now);
+                changed = true;
+            }
+            sheet_view::Act::Add(None) => {
+                add_comment(c);
                 changed = true;
             }
             sheet_view::Act::Swap(a) => {
