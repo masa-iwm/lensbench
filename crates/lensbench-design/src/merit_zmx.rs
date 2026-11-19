@@ -16,6 +16,9 @@ use serde_json::{json, Map, Value};
 mod calc;
 mod shape;
 mod wizard;
+mod write;
+
+pub use write::rows_from_terms;
 
 /// .zmx から写した評価関数
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -40,6 +43,8 @@ pub struct ZmxSys {
     /// 主波長が多重構成で変わるか（変われば EFFL・PIMH などの波長は主波長と同じ番号でも番号のまま読む。
     /// OpticStudio は Wave 0 を置いたときの主波長の番号にして保存する）
     pub primary_varies: bool,
+    /// 波長の数（SPCH の Maxw 0 は最後の波長。0 なら分からない）
+    pub waves: usize,
 }
 
 impl Default for ZmxSys {
@@ -48,6 +53,7 @@ impl Default for ZmxSys {
             glass: Vec::new(),
             symmetric: true,
             primary_varies: false,
+            waves: 0,
         }
     }
 }
@@ -66,6 +72,7 @@ impl ZmxSys {
                     .iter()
                     .any(|r| r.param.kind == lensbench_core::param::Kind::Primary)
             }),
+            waves: s.wavelengths.len(),
         }
     }
 }
@@ -117,6 +124,8 @@ const RAY: &[(&str, &str, bool)] = &[
     ("TRAX", "trax", true),
     ("TRAY", "tray", true),
     ("TRAR", "trar", true),
+    // 面 Surf の TRAR（書き出しは像面なら TRAR）
+    ("TRAI", "trar", true),
     ("OPTH", "opth", true),
     ("RAGX", "gx", true),
     ("RAGY", "gy", true),
@@ -135,7 +144,22 @@ const RAY: &[(&str, &str, bool)] = &[
     ("RAED", "aoe", false),
     ("RAIN", "cosi", false),
     ("RAEN", "cose", false),
+    ("ANAX", "anax", false),
+    ("ANAY", "anay", false),
+    ("ANAR", "anar", false),
+    ("DXDX", "dxdx", true),
+    ("DXDY", "dxdy", true),
+    ("DYDX", "dydx", true),
+    ("DYDY", "dydy", true),
 ];
+
+/// 像面だけの光線の演算子（Int1 は使わない）
+fn image_only(op: &str) -> bool {
+    op != "TRAI"
+        && ["TRA", "ANA", "DXD", "DYD"]
+            .iter()
+            .any(|p| op.starts_with(p))
+}
 
 /// 近軸光線の演算子と ray の項の量、長さか（Surf・Wave・Hx・Hy・Px・Py は RAY と同じ欄）
 const PAR: &[(&str, &str, bool)] = &[
@@ -238,9 +262,15 @@ fn kind_of(
         if par.is_some() {
             m.insert("paraxial".into(), json!(true));
         }
-        // TRAX・TRAY・TRAR は像面（Int1 は使わない）
-        if !op.starts_with("TRA") {
-            m.insert("surf".into(), json!(int(INT1)?));
+        // TRAX・TRAY・TRAR・ANA*・DXDX〜DYDY は像面（Int1 は使わない）
+        if !image_only(op) {
+            let j = int(INT1)?;
+            if op == "TRAI" && j < 1 {
+                return Err(format!(
+                    "surface {j} (TRAI of surface 0 is not the image surface)"
+                ));
+            }
+            m.insert("surf".into(), json!(j));
         }
         m.insert("wave".into(), wave(int(INT2)?)?);
         m.insert("field".into(), norm_field()?);
@@ -507,6 +537,64 @@ fn kind_of(
                 }),
             );
             m.insert("quadrature".into(), json!("opticstudio"));
+        }
+        // RSRE・RSRH・RWRE・RWRH: 瞳の 4 分の 1 ごとに Samp × Samp の格子（1 辺 2·Samp の格子の項。OpticStudio 26.1 で実測）
+        "RSRE" | "RSRH" | "RWRE" | "RWRH" => {
+            if target != 0.0 {
+                return Err(format!(
+                    "a target other than 0 ({target}) can't be written as a spot or wavefront term"
+                ));
+            }
+            let n = int(INT1)?;
+            if n < 1 {
+                return Err(format!("sampling {n} (1 or more)"));
+            }
+            m.insert(
+                "type".into(),
+                json!(if op.starts_with("RS") {
+                    "spot"
+                } else {
+                    "wavefront"
+                }),
+            );
+            m.insert("wave".into(), wave(int(INT2)?)?);
+            m.insert("field".into(), norm_field()?);
+            m.insert(
+                "reference".into(),
+                json!(if op.ends_with('E') {
+                    "centroid"
+                } else {
+                    "chief"
+                }),
+            );
+            m.insert("quadrature".into(), json!("grid"));
+            m.insert("n".into(), json!(2 * n));
+        }
+        // SPCH: 帯 Zone の実光線の軸上色収差 − 近軸の軸上色収差（Minw から Maxw、0 は最初・最後の波長）。2 つの
+        // longitudinal の項の差の calc にする（OpticStudio 26.1 で実測）
+        "SPCH" => {
+            let z = num(data(1))?;
+            if !(0.0..=1.0).contains(&z) {
+                return Err(format!("zone {z} (0 to 1)"));
+            }
+            let w1 = match int(INT1)? {
+                0 => 1,
+                w => w,
+            };
+            let w2 = match int(INT2)? {
+                0 if sys.waves == 0 => return Err("Maxw 0 needs the number of wavelengths".into()),
+                0 => sys.waves as i64,
+                w => w,
+            };
+            let lona = |zone: f64| -> Result<Value, String> {
+                Ok(
+                    json!({"type": "longitudinal", "wave": wave(w1)?, "wave2": wave(w2)?, "zone": zone, "target": 0.0}),
+                )
+            };
+            m.insert("type".into(), json!("calc"));
+            m.insert("op".into(), json!("diff"));
+            m.insert("args".into(), json!([lona(z)?, lona(0.0)?]));
+            m.insert("target".into(), json!(target * unit));
         }
         "OPDC" => {
             m.insert("type".into(), json!("opd"));
@@ -859,71 +947,6 @@ fn is_length(op: &str) -> bool {
         .contains(&op)
 }
 
-/// 項の JSON（[`crate::merit`] の表）を .zmx のメリットファンクションの行にする（[`terms_from_zmx`] の逆）。
-/// systems は構成の系（視野の番号を正規化視野に直す・主波長・像面に使う）。OpticStudio のオペランドで表せない項
-/// （coupling・plugin・名前のマクロの zplm・視野を正規化視野で書いた MTF・Zernike・重心・lensbench だけの量 pwfn）は
-/// 注意にして飛ばす。min・max の項は重み 0 の行と、それを参照する OPGT・OPLT の 2 行にする。構成が変わるところに CONF。
-/// before は前に置く行（.zmx から読んだメリットファンクションなど）で、行の番号と構成はその続きにする
-pub fn rows_from_terms(
-    terms: &[Value],
-    systems: &[lensbench_core::System],
-    before: &[MeritRow],
-) -> (Vec<MeritRow>, Vec<String>) {
-    let mut rows: Vec<MeritRow> = Vec::new();
-    let mut notes = Vec::new();
-    let mut config = before
-        .iter()
-        .rev()
-        .find(|r| r.op == "CONF")
-        .and_then(|r| r.int(INT1).ok())
-        .map_or(1, |c| c.max(1) as u64);
-    for (i, t) in terms.iter().enumerate() {
-        let c = t.get("config").and_then(Value::as_u64).unwrap_or(1);
-        let Some(s) = (c >= 1).then(|| systems.get(c as usize - 1)).flatten() else {
-            notes.push(format!(
-                "term {}: no configuration {c}; not written to the .zmx",
-                i + 1
-            ));
-            continue;
-        };
-        let out = match row_of(t, s) {
-            Ok(r) => r,
-            Err(e) => {
-                notes.push(format!("term {}: {e}; not written to the .zmx", i + 1));
-                continue;
-            }
-        };
-        if let Some(e) = os_value_differs(t) {
-            notes.push(format!("term {}: {e}", i + 1));
-        }
-        if c != config {
-            rows.push(MeritRow::new(
-                "CONF",
-                [c as f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                0.0,
-                0.0,
-            ));
-            config = c;
-        }
-        let weight = t.get("weight").and_then(Value::as_f64).unwrap_or(1.0);
-        match out {
-            (op, p, Bound::Target(target)) => rows.push(MeritRow::new(op, p, target, weight)),
-            (op, p, Bound::Side(side, b)) => {
-                rows.push(MeritRow::new(op, p, b, 0.0));
-                let n = (before.len() + rows.len()) as f64;
-                let z = [n, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-                rows.push(MeritRow::new(side, z, b, weight));
-            }
-            (op, p, Bound::Both(target)) => {
-                for o in op.split(',') {
-                    rows.push(MeritRow::new(o, p, target, weight));
-                }
-            }
-        }
-    }
-    (rows, notes)
-}
-
 /// OpticStudio 26.1 の ZERN（Standard）が当てはめる項の数: 隣り合う ZERN の行（Term・目標・重みのほかが同じ）の一番大きい
 /// Term と 11 の大きい方（マニュアルの記述を Double Gauss 28 で実測。Term 4 の 1 行は 11 項、隣に Term 37 の行があれば 37 項）
 fn zern_standard_fit(rows: &[MeritRow], k: usize) -> usize {
@@ -949,527 +972,6 @@ fn zern_standard_fit(rows: &[MeritRow], k: usize) -> usize {
         .max()
         .unwrap_or(0)
         .max(11)
-}
-
-/// 書いた行の OpticStudio の値が項の値と違うとき、その理由: Zernike の当てはめる項の数が OpticStudio の ZERN（Fringe は 37、
-/// 1 行だけの Standard は求める項と 11 の大きい方）と違う、スポット・波面の瞳の求積が OpticStudio と違う
-fn os_value_differs(t: &Value) -> Option<String> {
-    let str_of = |k: &str| t.get(k).and_then(Value::as_str);
-    match str_of("type")? {
-        "zernike" => {
-            let term = t.get("term").and_then(Value::as_u64)?;
-            let fit = t
-                .get("fit")
-                .and_then(Value::as_u64)
-                .unwrap_or(term.max(37));
-            let os = if str_of("kind") == Some("standard") {
-                term.max(11)
-            } else {
-                37
-            };
-            (fit != os).then(|| {
-                format!("OpticStudio's ZERN fits {os} terms, so its value differs from the term's")
-            })
-        }
-        "spot" | "wavefront" => (str_of("quadrature") != Some("opticstudio")).then(|| {
-            "OpticStudio's pupil quadrature (2·Ring arms) differs from the term's, so its value differs"
-                .to_string()
-        }),
-        _ => None,
-    }
-}
-
-/// 項の目標
-enum Bound {
-    Target(f64),
-    /// OPGT・OPLT と境界
-    Side(&'static str, f64),
-    /// 2 行（MTF の both: 演算子はカンマ区切り）
-    Both(f64),
-}
-
-/// 1 つの項の行（演算子, P1〜P8, 目標）
-fn row_of(
-    t: &Value,
-    s: &lensbench_core::System,
-) -> Result<(&'static str, [f64; 8], Bound), String> {
-    let ty = t
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let num = |k: &str| t.get(k).and_then(Value::as_f64);
-    let bound = |default: f64| -> Bound {
-        if let Some(b) = num("min") {
-            Bound::Side("OPGT", b)
-        } else if let Some(b) = num("max") {
-            Bound::Side("OPLT", b)
-        } else {
-            Bound::Target(num("target").unwrap_or(default))
-        }
-    };
-    // 波長: null は 0（多色）。主波長の意味の null は呼ぶ側で直す
-    let wave = || -> f64 { t.get("wave").and_then(Value::as_u64).unwrap_or(0) as f64 };
-    let primary = (s.primary + 1) as f64;
-    let field = || -> Result<(f64, f64), String> {
-        match t.get("field") {
-            Some(Value::Array(a)) if a.len() == 2 => {
-                Ok((a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0)))
-            }
-            Some(v) => match v.as_u64() {
-                Some(i) if i >= 1 && (i as usize) <= s.fields.len() => Ok(s.hxhy(i as usize - 1)),
-                _ => Err(format!("field {v}")),
-            },
-            None => Err("no field".into()),
-        }
-    };
-    let field_no = || -> Result<f64, String> {
-        match t.get("field").and_then(Value::as_u64) {
-            Some(i) if i >= 1 => Ok(i as f64),
-            _ => Err("OpticStudio needs a field number here (not a normalized field)".into()),
-        }
-    };
-    let samp = |n: Option<f64>| -> f64 {
-        // 32 × 32 が 1、2 倍ごとに 1 つ増す（ほかの数はそれを超えない最大の標本）
-        let n = n.unwrap_or(64.0).max(32.0);
-        ((n / 32.0).log2().floor() + 1.0).min(6.0)
-    };
-    Ok(match ty.as_str() {
-        "paraxial" => {
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let q = lensbench_optim::ParaxQ::parse(q)
-                .map_err(|e| e.to_string())?
-                .name();
-            let Some((op, _, _)) = PARAXIAL.iter().find(|(_, n, _)| *n == q) else {
-                return Err(format!("paraxial {q} has no OpticStudio operand"));
-            };
-            // 波長のない近軸量は主波長（Wave 0 も OpticStudio 26.1 では主波長だが、番号で書く方が確か）
-            let w = match t.get("wave").and_then(Value::as_u64) {
-                Some(w) => w as f64,
-                None => primary,
-            };
-            let p = [0.0, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-            (op, p, bound(0.0))
-        }
-        "spot" | "wavefront" => {
-            let chief = t.get("reference").and_then(Value::as_str) == Some("chief");
-            let op = match (ty.as_str(), chief) {
-                ("spot", false) => "RSCE",
-                ("spot", true) => "RSCH",
-                (_, false) => "RWCE",
-                (_, true) => "RWCH",
-            };
-            let (hx, hy) = field()?;
-            let rings = num("rings").unwrap_or(3.0);
-            (
-                op,
-                [rings, wave(), hx, hy, 0.0, 0.0, 0.0, 0.0],
-                Bound::Target(0.0),
-            )
-        }
-        "opd" => {
-            let (hx, hy) = field()?;
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let p = [
-                0.0,
-                w,
-                hx,
-                hy,
-                num("px").unwrap_or(0.0),
-                num("py").unwrap_or(0.0),
-                0.0,
-                0.0,
-            ];
-            ("OPDC", p, bound(0.0))
-        }
-        // 面の間の光路長（PLEN、主波長だけ）と、面ごとの入射角・射出角の境界（MXRI・MNRI・MXRE・MNRE）
-        "ray" if t.get("to").is_some() => {
-            let (hx, hy) = field()?;
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let mut p = [
-                num("surf").unwrap_or(0.0),
-                num("to").unwrap_or(0.0),
-                hx,
-                hy,
-                num("px").unwrap_or(0.0),
-                num("py").unwrap_or(0.0),
-                0.0,
-                0.0,
-            ];
-            match (q, bound(0.0)) {
-                ("opth", b) if w == primary => ("PLEN", p, b),
-                ("opth", _) => {
-                    return Err("PLEN of OpticStudio is for the primary wavelength".into())
-                }
-                ("aoi" | "aoe", Bound::Side(side, b)) => {
-                    p[6] = w;
-                    let op = match (side == "OPGT", q == "aoe") {
-                        (true, true) => "MNRE",
-                        (true, false) => "MNRI",
-                        (false, true) => "MXRE",
-                        (false, false) => "MXRI",
-                    };
-                    (op, p, Bound::Target(b))
-                }
-                _ => {
-                    return Err(format!(
-                        "a ray term with to and {q} has no OpticStudio operand"
-                    ))
-                }
-            }
-        }
-        "ray" => {
-            let q = t
-                .get("q")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let table = if t.get("paraxial") == Some(&Value::Bool(true)) {
-                PAR
-            } else {
-                RAY
-            };
-            let Some((op, _, _)) = table
-                .iter()
-                .find(|(o, n, _)| *n == q || o.eq_ignore_ascii_case(&q))
-            else {
-                return Err(format!("ray quantity {q}"));
-            };
-            let (hx, hy) = field()?;
-            let mut surf = num("surf").unwrap_or(s.image() as f64);
-            if op.starts_with("TRA") {
-                if surf != s.image() as f64 {
-                    return Err(format!("{op} of OpticStudio is on the image surface only"));
-                }
-                surf = 0.0;
-            }
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let p = [
-                surf,
-                w,
-                hx,
-                hy,
-                num("px").unwrap_or(0.0),
-                num("py").unwrap_or(0.0),
-                0.0,
-                0.0,
-            ];
-            (op, p, bound(0.0))
-        }
-        "zernike" => {
-            let kind = match t.get("kind").and_then(Value::as_str).unwrap_or("fringe") {
-                "standard" => 1.0,
-                _ => 0.0,
-            };
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let p = [
-                num("term").unwrap_or(1.0),
-                w,
-                samp(num("n")),
-                field_no()?,
-                kind,
-                0.0,
-                0.0,
-                0.0,
-            ];
-            ("ZERN", p, bound(0.0))
-        }
-        "mtf" => {
-            let p = [
-                samp(num("n")),
-                wave(),
-                field_no()?,
-                num("freq").unwrap_or(0.0),
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ];
-            match t.get("dir").and_then(Value::as_str).unwrap_or("both") {
-                "tan" => ("MTFT", p, bound(1.0)),
-                "sag" => ("MTFS", p, bound(1.0)),
-                _ => ("MTFT,MTFS", p, Bound::Both(num("target").unwrap_or(1.0))),
-            }
-        }
-        "seidel" => {
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let q = lensbench_optim::SeidelQ::parse(q).map_err(|e| e.to_string())?;
-            let j = num("surf").unwrap_or(0.0);
-            if q == lensbench_optim::SeidelQ::Dist && j == 0.0 {
-                return Err("the sum of the Seidel distortion has no OpticStudio operand (DIST of surface 0 is the real distortion)".into());
-            }
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let op = match q.name() {
-                "spha" => "SPHA",
-                "coma" => "COMA",
-                "asti" => "ASTI",
-                "fcur" => "FCUR",
-                _ => "DIST",
-            };
-            (op, [j, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
-        }
-        "distortion" => {
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let abs = t.get("absolute").and_then(Value::as_bool) == Some(true);
-            let p = [0.0, w, if abs { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0];
-            ("DIST", p, bound(0.0))
-        }
-        "longitudinal" => {
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let z = num("zone").unwrap_or(0.0);
-            match t.get("wave2").and_then(Value::as_f64) {
-                Some(w2) => ("AXCL", [w, w2, z, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0)),
-                None => ("LONA", [w, 0.0, z, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0)),
-            }
-        }
-        "lateral_color" => {
-            let w = if wave() == 0.0 { primary } else { wave() };
-            let w2 = num("wave2").unwrap_or(primary);
-            ("LACL", [w, w2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
-        }
-        "semi" => {
-            let s1 = num("surf").unwrap_or(1.0);
-            let s2 = num("to").unwrap_or(s1);
-            let p = [s1, s2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-            match bound(0.0) {
-                Bound::Side("OPGT", b) => ("MNSD", p, Bound::Target(b)),
-                Bound::Side(_, b) => ("MXSD", p, Bound::Target(b)),
-                _ => return Err("a semi term needs min or max".into()),
-            }
-        }
-        "fnum" => {
-            let op = match t.get("dir").and_then(Value::as_str) {
-                Some("sag") => "SFNO",
-                _ => "TFNO",
-            };
-            let w = if wave() == 0.0 { primary } else { wave() };
-            (
-                op,
-                [field_no()?, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                bound(0.0),
-            )
-        }
-        "centroid" => {
-            let op = if t.get("q").and_then(Value::as_str) == Some("y") {
-                "CENY"
-            } else {
-                "CENX"
-            };
-            let p = [
-                s.image() as f64,
-                wave(),
-                field_no()?,
-                0.0,
-                5.0,
-                0.0,
-                0.0,
-                0.0,
-            ];
-            (op, p, bound(0.0))
-        }
-        "thickness" => {
-            let s1 = num("surf").unwrap_or(0.0);
-            let s2 = num("to").unwrap_or(s1);
-            let mut p = [s1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-            let edge = t.get("edge") == Some(&Value::Bool(true));
-            let zone = num("zone").unwrap_or(1.0);
-            if let Some(e) = t.get("each").and_then(Value::as_str) {
-                // 面ごとの境界: MN・MX ＋ C（中心）・E（縁）＋ T（すべて）・A（空気）・G（ガラス）。Zone 0 は半直径
-                p[1] = s2;
-                if edge {
-                    p[2] = if zone == 1.0 { 0.0 } else { zone };
-                }
-                let lower = match bound(0.0) {
-                    Bound::Side(s, b) => (s == "OPGT", b),
-                    _ => return Err("a thickness term with each needs min or max".into()),
-                };
-                let op = match (lower.0, edge, e) {
-                    (true, false, "air") => "MNCA",
-                    (true, false, "glass") => "MNCG",
-                    (true, false, _) => "MNCT",
-                    (false, false, "air") => "MXCA",
-                    (false, false, "glass") => "MXCG",
-                    (false, false, _) => "MXCT",
-                    (true, true, "air") => "MNEA",
-                    (true, true, "glass") => "MNEG",
-                    (true, true, _) => "MNET",
-                    (false, true, "air") => "MXEA",
-                    (false, true, "glass") => "MXEG",
-                    (false, true, _) => "MXET",
-                };
-                (op, p, Bound::Target(lower.1))
-            } else if edge {
-                if s2 != s1 || zone != 1.0 {
-                    return Err("only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)".into());
-                }
-                match bound(0.0) {
-                    Bound::Side("OPGT", b) => ("ETGT", p, Bound::Target(b)),
-                    Bound::Side(_, b) => ("ETLT", p, Bound::Target(b)),
-                    b => ("ETVA", p, b),
-                }
-            } else if s2 != s1 {
-                p[1] = s2;
-                ("TTHI", p, bound(0.0))
-            } else {
-                // 1 面の min・max は CTGT・CTLT の 1 行で書ける
-                match bound(0.0) {
-                    Bound::Side("OPGT", b) => ("CTGT", p, Bound::Target(b)),
-                    Bound::Side(_, b) => ("CTLT", p, Bound::Target(b)),
-                    b => ("CTVA", p, b),
-                }
-            }
-        }
-        "surface" if t.get("to").is_some() => {
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let s1 = num("surf").unwrap_or(1.0);
-            let s2 = num("to").unwrap_or(s1);
-            let p = [s1, s2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-            let (mn, mx) = match q {
-                "semi" => ("MNSD", "MXSD"),
-                "nd" => ("MNIN", "MXIN"),
-                "vd" => ("MNAB", "MXAB"),
-                "dpgf" => ("MNPD", "MXPD"),
-                _ => return Err(format!("surface quantity {q} with to")),
-            };
-            match bound(0.0) {
-                Bound::Side("OPGT", b) => (mn, p, Bound::Target(b)),
-                Bound::Side(_, b) => (mx, p, Bound::Target(b)),
-                _ => return Err("a surface term with to needs min or max".into()),
-            }
-        }
-        "surface" => {
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let mut p = [
-                num("surf").unwrap_or(0.0),
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-            ];
-            let (x, y) = (num("x").unwrap_or(0.0), num("y").unwrap_or(0.0));
-            // GT・LT のある量は 1 行、ほかは VA の行（min・max は OPGT・OPLT）
-            let (va, gt, lt) = match q {
-                "curv" => ("CVVA", "CVGT", "CVLT"),
-                "conic" => ("COVA", "COGT", "COLT"),
-                "diam" | "mech_diam" => {
-                    p[3] = if q == "diam" { 1.0 } else { 0.0 };
-                    ("DMVA", "DMGT", "DMLT")
-                }
-                "sagx" => ("SAGX", "", ""),
-                "sagy" => ("SAGY", "", ""),
-                "sag" => {
-                    (p[1], p[2], p[3]) = (0.0, x, y);
-                    ("SSAG", "", "")
-                }
-                "thick" => {
-                    (p[2], p[3]) = (x, y);
-                    ("STHI", "", "")
-                }
-                "total" => {
-                    // Code 0〜3 = +y・+x・−y・−x の向き
-                    p[1] = match (x, y) {
-                        (0.0, y) if y >= 0.0 => 0.0,
-                        (x, 0.0) if x > 0.0 => 1.0,
-                        (0.0, _) => 2.0,
-                        (_, 0.0) => 3.0,
-                        _ => return Err(
-                            "only the total thickness along +y, +x, −y or −x can be written (TTVA)"
-                                .into(),
-                        ),
-                    };
-                    ("TTVA", "TTGT", "TTLT")
-                }
-                "param" => {
-                    p[1] = num("param").unwrap_or(0.0);
-                    ("PMVA", "PMGT", "PMLT")
-                }
-                "gx" => ("GLCX", "", ""),
-                "gy" => ("GLCY", "", ""),
-                "gz" => ("GLCZ", "", ""),
-                "ga" => ("GLCA", "", ""),
-                "gb" => ("GLCB", "", ""),
-                "gc" => ("GLCC", "", ""),
-                "cost" => ("GCOS", "", ""),
-                "tce" => ("GTCE", "", ""),
-                "power" | "ynip" | "index" => {
-                    p[1] = if wave() == 0.0 { primary } else { wave() };
-                    let op = match q {
-                        "power" => "POWR",
-                        "ynip" => "YNIP",
-                        _ => "INDX",
-                    };
-                    (op, "", "")
-                }
-                _ => return Err(format!("surface quantity {q}")),
-            };
-            match bound(0.0) {
-                Bound::Side("OPGT", b) if !gt.is_empty() => (gt, p, Bound::Target(b)),
-                Bound::Side(_, b) if !lt.is_empty() => (lt, p, Bound::Target(b)),
-                b => (va, p, b),
-            }
-        }
-        "volume" => {
-            let s1 = num("surf").unwrap_or(1.0);
-            let s2 = num("to").unwrap_or(s1);
-            let clear = t.get("clear") == Some(&Value::Bool(true));
-            let op = if t.get("mass") == Some(&Value::Bool(true)) {
-                "TMAS"
-            } else {
-                "VOLU"
-            };
-            let p = [s1, s2, 0.0, f64::from(clear), 0.0, 0.0, 0.0, 0.0];
-            (op, p, bound(0.0))
-        }
-        "cardinal" => {
-            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
-            let q = lensbench_optim::CardQ::parse(q).map_err(|e| e.to_string())?;
-            let last = (1..s.image())
-                .rev()
-                .find(|&j| !s.surfaces[j].ignore)
-                .unwrap_or(1);
-            let from = num("from").unwrap_or(1.0);
-            let to = num("to").unwrap_or(last as f64);
-            let w = if wave() == 0.0 { primary } else { wave() };
-            match q.card_data() {
-                // EFLY は主波長だけ
-                None if w == primary => {
-                    ("EFLY", [from, to, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
-                }
-                None => {
-                    return Err(
-                        "efl at a wavelength other than the primary has no OpticStudio operand"
-                            .into(),
-                    )
-                }
-                Some(d) => (
-                    "CARD",
-                    [from, to, w, 0.0, d as f64, 0.0, 0.0, 0.0],
-                    bound(0.0),
-                ),
-            }
-        }
-        "zplm" => match t.get("macro").and_then(Value::as_u64) {
-            Some(m) if m <= 99 && t.get("file").is_none() => {
-                let p = [
-                    m as f64,
-                    num("data").unwrap_or(0.0),
-                    num("hx").unwrap_or(0.0),
-                    num("hy").unwrap_or(0.0),
-                    num("px").unwrap_or(0.0),
-                    num("py").unwrap_or(0.0),
-                    0.0,
-                    0.0,
-                ];
-                ("ZPLM", p, bound(0.0))
-            }
-            _ => return Err("only a ZPL macro given by number can be written as ZPLM".into()),
-        },
-        t => return Err(format!("{t} terms have no OpticStudio operand")),
-    })
 }
 
 #[cfg(test)]

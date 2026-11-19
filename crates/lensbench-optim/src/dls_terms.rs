@@ -392,6 +392,15 @@ pub enum RayQ {
     TraX,
     TraY,
     TraR,
+    /// 像面での方向余弦の、主波長の主光線との差 l − l_c・m − m_c と √((l − l_c)² + (m − m_c)²)（OpticStudio の ANAX・ANAY・ANAR）
+    AnaX,
+    AnaY,
+    AnaR,
+    /// 面での x・y の、正規化瞳座標 px・py での微分（中心差分。OpticStudio の DXDX・DXDY・DYDX・DYDY）
+    DxDx,
+    DxDy,
+    DyDx,
+    DyDy,
     /// 光路長 [レンズ単位]（OpticStudio の OPTH）。無限遠物体では、同じ波長の主光線が面 1 を通る点を通り光線に垂直な
     /// 面から測る（OpticStudio 26.1 の実測どおり）。有限物体では物点から
     Opth,
@@ -434,12 +443,30 @@ impl RayQ {
                 | RayQ::TraX
                 | RayQ::TraY
                 | RayQ::TraR
+                | RayQ::AnaX
+                | RayQ::AnaY
+                | RayQ::AnaR
+                | RayQ::DxDx
+                | RayQ::DxDy
+                | RayQ::DyDx
+                | RayQ::DyDy
                 | RayQ::Opth
         )
     }
     /// 微分を差分で求める量
     pub fn by_diff(&self) -> bool {
-        matches!(self, RayQ::Z | RayQ::Opth) || self.recorded()
+        matches!(
+            self,
+            RayQ::Z
+                | RayQ::Opth
+                | RayQ::AnaX
+                | RayQ::AnaY
+                | RayQ::AnaR
+                | RayQ::DxDx
+                | RayQ::DxDy
+                | RayQ::DyDx
+                | RayQ::DyDy
+        ) || self.recorded()
     }
     pub fn parse(s: &str) -> Result<RayQ> {
         Ok(match s.trim().to_ascii_lowercase().as_str() {
@@ -452,6 +479,13 @@ impl RayQ {
             "trax" => RayQ::TraX,
             "tray" => RayQ::TraY,
             "trar" => RayQ::TraR,
+            "anax" => RayQ::AnaX,
+            "anay" => RayQ::AnaY,
+            "anar" => RayQ::AnaR,
+            "dxdx" => RayQ::DxDx,
+            "dxdy" => RayQ::DxDy,
+            "dydx" => RayQ::DyDx,
+            "dydy" => RayQ::DyDy,
             "opth" => RayQ::Opth,
             "gx" => RayQ::Gx,
             "gy" => RayQ::Gy,
@@ -471,7 +505,7 @@ impl RayQ {
             "cosi" => RayQ::CosI,
             "cose" => RayQ::CosE,
             _ => invalid!(
-                "ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)"
+                "ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)"
             ),
         })
     }
@@ -486,6 +520,13 @@ impl RayQ {
             RayQ::TraX => "trax",
             RayQ::TraY => "tray",
             RayQ::TraR => "trar",
+            RayQ::AnaX => "anax",
+            RayQ::AnaY => "anay",
+            RayQ::AnaR => "anar",
+            RayQ::DxDx => "dxdx",
+            RayQ::DxDy => "dxdy",
+            RayQ::DyDx => "dydx",
+            RayQ::DyDy => "dydy",
             RayQ::Opth => "opth",
             RayQ::Gx => "gx",
             RayQ::Gy => "gy",

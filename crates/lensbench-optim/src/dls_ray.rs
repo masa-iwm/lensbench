@@ -72,6 +72,9 @@ pub(super) fn ray_term(
 ) -> Result<TermOut> {
     let w = wave.unwrap_or(s.primary);
     let j = surf.unwrap_or(s.image());
+    if matches!(q, RayQ::DxDx | RayQ::DxDy | RayQ::DyDx | RayQ::DyDy) {
+        return Ok((vec![pupil_slope(s, field, w, px, py, j, q)? - target], None));
+    }
     let rec = ps.is_some() || q.recorded();
     let t = s.try_trace(field, &[px], &[py], Some(w), Some(j), rec)?;
     let x = &t.rays[0];
@@ -81,8 +84,11 @@ pub(super) fn ray_term(
             x.status.code()
         );
     }
-    // TRAX・TRAY・TRAR は主波長の主光線との差
-    let tra = matches!(q, RayQ::TraX | RayQ::TraY | RayQ::TraR);
+    // TRAX・TRAY・TRAR・ANAX・ANAY・ANAR は主波長の主光線との差
+    let tra = matches!(
+        q,
+        RayQ::TraX | RayQ::TraY | RayQ::TraR | RayQ::AnaX | RayQ::AnaY | RayQ::AnaR
+    );
     let tc = if tra {
         let tc = s.try_trace(
             field,
@@ -117,6 +123,15 @@ pub(super) fn ray_term(
         RayQ::TraX => dx,
         RayQ::TraY => dy,
         RayQ::TraR => r,
+        RayQ::AnaX | RayQ::AnaY | RayQ::AnaR => {
+            let c = &tc.as_ref().expect("the chief ray is traced").rays[0];
+            let (dl, dm) = (x.lmn[0] - c.lmn[0], x.lmn[1] - c.lmn[1]);
+            match q {
+                RayQ::AnaX => dl,
+                RayQ::AnaY => dm,
+                _ => dl.hypot(dm),
+            }
+        }
         RayQ::Opth if s.infinite() => {
             // 平行な光線は光線に垂直な同じ面から出るので、主光線の面 1 までの光路長を引けば OpticStudio の基準になる
             let c = s.try_trace(field, &[0.0], &[0.0], Some(w), Some(1), false)?;
@@ -166,6 +181,42 @@ pub(super) fn ray_term(
         None => None,
     };
     Ok((vec![v - target], jac))
+}
+
+/// 面 j での x・y の、正規化瞳座標での微分（中心差分。DXDX・DXDY・DYDX・DYDY）
+fn pupil_slope(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    px: f64,
+    py: f64,
+    j: usize,
+    q: RayQ,
+) -> Result<f64> {
+    // OpticStudio 26.1 と同じ刻み（中心差分、刻み 1e-3 で値が 1e-11 まで合う）
+    const H: f64 = 1e-3;
+    let (ax, by_x) = match q {
+        RayQ::DxDx => (0, true),
+        RayQ::DxDy => (0, false),
+        RayQ::DyDx => (1, true),
+        _ => (1, false),
+    };
+    let (dx, dy) = if by_x { (H, 0.0) } else { (0.0, H) };
+    let t = s.try_trace(
+        field,
+        &[px - dx, px + dx],
+        &[py - dy, py + dy],
+        Some(w),
+        Some(j),
+        false,
+    )?;
+    if let Some(r) = t.rays.iter().find(|r| r.status.surf().is_some()) {
+        invalid!(
+            "the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})",
+            r.status.code()
+        );
+    }
+    Ok((t.rays[1].xyz[ax] - t.rays[0].xyz[ax]) / (2.0 * H))
 }
 
 pub(super) fn check_path(

@@ -98,6 +98,9 @@
 - **包む厚み・面のパラメータ・体積と質量の項**: `surface` の `q` に `total`（クリア半径の矢高で包む厚み、`x`・`y` で向き）と
   `param`（面タイプのパラメータ）、新しい種類 `volume`（面の間の要素の体積 [cm³]、`mass: true` で硝材の質量 [g]）。.zmx の
   TTVA・TTGT・TTLT・PMVA・PMGT・PMLT・VOLU・TMAS を読み書きする
+- **角の収差・瞳の微分・矩形の RMS**: `ray` の `q` に `anax`・`anay`・`anar`（方向余弦の主光線との差）と `dxdx`・`dxdy`・
+  `dydx`・`dydy`（交点の瞳座標での微分）を足した。.zmx の ANAX〜ANAR・DXDX〜DYDY・TRAI を読み書きし、RSRE・RSRH・RWRE・RWRH を
+  格子の `spot`・`wavefront` の項として、SPCH を縦の色収差の差の `calc` の項として読む（RSRE などは書きもする）
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

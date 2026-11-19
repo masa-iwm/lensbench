@@ -44,8 +44,9 @@ const PARAXIAL_Q: &[&str] = &[
     "isna", "amag", "linv", "petc", "petz",
 ];
 const RAY_Q: &[&str] = &[
-    "x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "opth", "gx", "gy", "gz", "gl", "gm",
-    "gn", "r", "ang", "tanx", "tany", "nl", "nm", "nn", "aoi", "aoe", "cosi", "cose",
+    "x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "anax", "anay", "anar", "dxdx", "dxdy",
+    "dydx", "dydy", "opth", "gx", "gy", "gz", "gl", "gm", "gn", "r", "ang", "tanx", "tany", "nl",
+    "nm", "nn", "aoi", "aoe", "cosi", "cose",
 ];
 const SURF_Q: &[&str] = &[
     "curv",

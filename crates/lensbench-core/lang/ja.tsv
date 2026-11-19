@@ -141,7 +141,7 @@ set {i}: line break in the result	組 {i}: 結果に改行
 set {i}: {e}	組 {i}: {e}
 
 # optim
-ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・opth・gx・gy・gz・gl・gm・gn・r・ang・tanx・tany・nl・nm・nn・aoi・aoe・cosi・cose）
+ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・anax・anay・anar・dxdx・dxdy・dydx・dydy・opth・gx・gy・gz・gl・gm・gn・r・ang・tanx・tany・nl・nm・nn・aoi・aoe・cosi・cose）
 paraxial {s} ({})	近軸量 {s}（{}）
 user term {}: {} results for {} systems	ユーザーの項 {}: システム {} 個に結果 {} 個
 user term {}: {} residuals (expected {})	ユーザーの項 {}: 残差 {} 個（{} 個のはず）
@@ -1631,6 +1631,9 @@ Zernike type {k} (only Fringe 0 and Standard 1)	Zernike の種類 {k}（Fringe 0
 annular Zernike (Epsilon) and Vertex are not supported	輪帯の Zernike（Epsilon）と Vertex には対応していません
 Zernike term {term}	Zernike の項 {term}
 sampling {s} (1 to 6)	サンプリング {s}（1〜6）
+sampling {n} (1 or more)	サンプリング {n}（1 以上）
+surface {j} (TRAI of surface 0 is not the image surface)	面 {j}（面 0 の TRAI は像面になりません）
+Maxw 0 needs the number of wavelengths	Maxw 0 には波長の数が要ります
 the X orientation of a system that is not rotationally symmetric (lensbench's paraxial trace is in the Y-Z plane)	回転対称でないシステムの X の向き（lensbench の近軸追跡は Y-Z 面）
 surfaces {s1} and {s2} are not a single lens in air (OpticStudio gives 1e8)	面 {s1}・{s2} は空気中の単レンズではありません（OpticStudio は 1e8）
 data {d} (0 to 11)	Data {d}（0〜11）

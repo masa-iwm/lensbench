@@ -302,17 +302,23 @@ fn terms_can_be_read() {
         "REAX 9 0 0 1 0 1 0 1 0 0",
         "CENX 9 0 1 0 5 0 0 1 0 0",
         "OPLT 1 0 0 0 0 0 60 1 0 0",
+        "TRAI 4 0 0 1 0 1 0 1 0 0",
+        "ANAR 0 2 0 0.7 0.3 0.5 0 1 0 0",
+        "DYDY 0 0 0 1 0 0 0 1 0 0",
+        "RSRE 3 0 0 0.5 0 0 0 1 0 0",
+        "SPCH 0 0 0.7 0 0 0 0 1 0 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
     let z = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
     assert!(z.notes.is_empty(), "{:?}", z.notes);
+    assert_eq!(z.terms[11]["type"], "calc");
     let t =
         crate::merit::terms_from_json(&Value::Array(z.terms), std::slice::from_ref(&s)).unwrap();
     let mut p = lensbench_optim::Problem::single(s.clone());
     p.terms = t;
     p.check().unwrap();
     let v = p.term_values(&[]).unwrap();
-    assert_eq!(v.len(), 7);
+    assert_eq!(v.len(), 12);
     assert_eq!(v[0].value(), s.paraxial().efl);
     // Wizard の行をまとめた項（格子・腕・x と y）
     let rows = [
@@ -426,6 +432,11 @@ fn terms_to_rows_and_back() {
         json!({"type": "volume", "surf": 1, "to": 4, "target": 30.0, "weight": 1.0}),
         json!({"type": "volume", "surf": 3, "mass": true, "clear": true, "max": 60.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0, "weight": 1.0}),
+        json!({"type": "ray", "surf": 4, "wave": 2, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "trar", "target": 0.0, "weight": 1.0}),
+        json!({"type": "ray", "wave": 1, "field": [0.0, 0.7], "px": 0.3, "py": 0.5, "q": "anay", "target": 0.0, "weight": 1.0}),
+        json!({"type": "ray", "wave": 3, "field": [0.0, 1.0], "px": 0.0, "py": 0.5, "q": "dxdy", "target": 0.0, "weight": 1.0}),
+        json!({"type": "spot", "wave": null, "field": [0.0, 0.5], "reference": "centroid", "quadrature": "grid", "n": 6, "weight": 1.0}),
+        json!({"type": "wavefront", "wave": 2, "field": [0.0, 1.0], "reference": "chief", "quadrature": "grid", "n": 4, "weight": 1.0}),
         json!({"type": "centroid", "wave": null, "field": 1, "q": "x", "target": 0.0, "weight": 1.0, "config": 2}),
     ];
     let bad = [
@@ -438,12 +449,14 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "surf": 1, "to": 3, "field": 1, "q": "x"}),
         json!({"type": "cardinal", "q": "efl", "wave": 1, "target": 40.0}),
         json!({"type": "seidel", "q": "dist", "target": 0.0}),
+        json!({"type": "ray", "surf": 0, "field": 1, "q": "trar"}),
+        json!({"type": "ray", "surf": 3, "field": 1, "q": "anax"}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 9, "{notes:?}");
+    assert_eq!(notes.len(), 11, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {
