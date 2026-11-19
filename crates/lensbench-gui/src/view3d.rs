@@ -212,8 +212,9 @@ pub(crate) fn show(
     }
     let base = (inner.width() / 2.0 / ex).min(inner.height() / 2.0 / ey);
     // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom）。左ドラッグは回す（Shift+左は移動）
+    // 右上の＋・－・囲んで拡大（Ctrl＋左ドラッグでも）は図の中心で拡大する
     let pz = crate::widgets::pan_zoom(ui, resp, false);
-    if resp.dragged() {
+    if resp.dragged() && !crate::widgets::box_zooming(ui, resp) {
         let d = resp.drag_delta();
         if pan_mode || pz.pan != egui::Vec2::ZERO {
             cam.pan += d / (base * cam.zoom * sc.radius);
@@ -221,6 +222,9 @@ pub(crate) fn show(
             cam.yaw += d.x * 0.01;
             cam.pitch = (cam.pitch + d.y * 0.01).clamp(-1.55, 1.55);
         }
+    } else if pz.pan != egui::Vec2::ZERO {
+        // 囲んで拡大: 囲んだ所の中心を図の中心へ
+        cam.pan += pz.pan / (base * cam.zoom * sc.radius);
     }
     if pz.at.is_some() {
         cam.zoom = (cam.zoom * pz.zoom).clamp(0.05, 200.0);
@@ -422,6 +426,8 @@ pub(crate) fn show(
         egui::FontId::proportional(10.5),
         weak,
     );
+
+    crate::widgets::paint_zoom_tools(ui, resp);
 
     // 要素を指す: 手前から、点を含む三角形
     let pointer = resp.hover_pos();

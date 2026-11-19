@@ -8,6 +8,8 @@ use egui::{Event, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 struct Bench {
     ctx: egui::Context,
     t: f64,
+    /// 押している修飾キー（RawInput に入れる）
+    mods: Modifiers,
 }
 
 impl Bench {
@@ -15,6 +17,7 @@ impl Bench {
         Bench {
             ctx: egui::Context::default(),
             t: 0.0,
+            mods: Modifiers::NONE,
         }
     }
 
@@ -24,6 +27,7 @@ impl Bench {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(600.0, 400.0))),
             time: Some(self.t),
             events,
+            modifiers: self.mods,
             ..Default::default()
         };
         let _ = self.ctx.run(raw, |ctx| {
@@ -214,4 +218,164 @@ fn pan_zoom_reads_input() {
     // Home は図の上にあるとき全体表示
     b.frame(vec![key(Key::Home)], &body);
     assert!(pz.get().unwrap().reset);
+}
+
+/// 左ドラッグ（押す・4 回動かす・離す）。各フレームの pan_zoom の結果を返す
+fn left_drag(
+    b: &mut Bench,
+    from: Pos2,
+    to: Pos2,
+    pz: &Cell<Option<super::PanZoom>>,
+    body: &impl Fn(&mut Ui),
+) -> Vec<super::PanZoom> {
+    let mods = b.mods;
+    let mut out = Vec::new();
+    b.t += 1.0;
+    b.frame(vec![Event::PointerMoved(from)], body);
+    b.frame(
+        vec![Event::PointerButton {
+            pos: from,
+            button: PointerButton::Primary,
+            pressed: true,
+            modifiers: mods,
+        }],
+        body,
+    );
+    for k in 1..=4 {
+        let p = from + (to - from) * (k as f32 / 4.0);
+        b.frame(vec![Event::PointerMoved(p)], body);
+        out.push(pz.get().unwrap());
+    }
+    b.frame(
+        vec![Event::PointerButton {
+            pos: to,
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: mods,
+        }],
+        body,
+    );
+    out.push(pz.get().unwrap());
+    out
+}
+
+/// 囲んで拡大: Ctrl＋左ドラッグ・「囲んで拡大」の後の左ドラッグは、囲んだ所を図いっぱいに広げる（途中は移動しない）。
+/// 右上の＋・－は図の中心で 1 段ずつ、「全体」は全体表示
+#[test]
+fn pan_zoom_box_and_buttons() {
+    let mut b = Bench::new();
+    let pz = Cell::new(None);
+    let rect = Cell::new(Rect::NOTHING);
+    let boxing = Cell::new(false);
+    let body = |ui: &mut Ui| {
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(300.0, 300.0), Sense::click_and_drag());
+        rect.set(r);
+        // 左ドラッグで移動する図でも、囲む間は移動しない
+        pz.set(Some(super::pan_zoom(ui, &resp, true)));
+        boxing.set(super::box_zooming(ui, &resp));
+        super::paint_zoom_tools(ui, &resp);
+    };
+    b.frame(Vec::new(), &body);
+    let r = rect.get();
+    let c = r.center();
+    let check_box = |frames: &[super::PanZoom], from: Pos2, to: Pos2| {
+        for f in &frames[..frames.len() - 1] {
+            assert_eq!(f.pan, Vec2::ZERO, "囲む間は移動しない");
+            assert_eq!(f.zoom, 1.0);
+        }
+        let last = frames.last().unwrap();
+        let bx = Rect::from_two_pos(from, to);
+        let want = (r.width() / bx.width()).min(r.height() / bx.height());
+        assert!((last.zoom - want).abs() < 1e-4, "{last:?}");
+        assert_eq!(last.at, Some(c));
+        assert!((last.pan - (c - bx.center())).length() < 1e-3, "{last:?}");
+    };
+    // Ctrl＋左ドラッグ
+    let (from, to) = (
+        r.min + Vec2::new(40.0, 100.0),
+        r.min + Vec2::new(100.0, 140.0),
+    );
+    b.mods = Modifiers::COMMAND;
+    let frames = left_drag(&mut b, from, to, &pz, &body);
+    b.mods = Modifiers::NONE;
+    check_box(&frames, from, to);
+    assert!(!boxing.get());
+    // 修飾キーなしの左ドラッグは移動（この図は left_pans）
+    let frames = left_drag(&mut b, from, to, &pz, &body);
+    assert!(frames.iter().map(|f| f.pan.x).sum::<f32>() > 0.0);
+    assert!(frames.iter().all(|f| f.zoom == 1.0));
+    // 右上の道具: ＋・－・囲んで拡大・全体（右上から 8 px 内側に、幅 22・22・22・44、間 2）
+    let y = r.top() + 8.0 + 11.0;
+    let x0 = r.right() - 8.0 - (22.0 * 3.0 + 44.0 + 6.0);
+    let at = |i: usize| Pos2::new(x0 + 24.0 * i as f32 + 11.0, y);
+    let clicked = |b: &mut Bench, p: Pos2| {
+        let mut got = Vec::new();
+        b.click(p, PointerButton::Primary, |ui| {
+            body(ui);
+            got.push(pz.get().unwrap());
+        });
+        got
+    };
+    let z = clicked(&mut b, at(0));
+    assert!(
+        z.iter()
+            .any(|z| z.zoom == super::ZOOM_STEP && z.at == Some(c)),
+        "{z:?}"
+    );
+    let z = clicked(&mut b, at(1));
+    assert!(
+        z.iter()
+            .any(|z| (z.zoom - 1.0 / super::ZOOM_STEP).abs() < 1e-6 && z.at == Some(c)),
+        "{z:?}"
+    );
+    let z = clicked(&mut b, Pos2::new(x0 + 72.0 + 22.0, y));
+    assert!(z.iter().any(|z| z.reset), "{z:?}");
+    // 「囲んで拡大」を押すと、次の左ドラッグ 1 回だけ囲む
+    let _ = clicked(&mut b, at(2));
+    let frames = left_drag(&mut b, from, to, &pz, &body);
+    check_box(&frames, from, to);
+    let frames = left_drag(&mut b, from, to, &pz, &body);
+    assert!(
+        frames.iter().map(|f| f.pan.x).sum::<f32>() > 0.0,
+        "1 回で戻る"
+    );
+    // 小さすぎる枠（クリックに近い）は拡大しない
+    b.mods = Modifiers::COMMAND;
+    let frames = left_drag(&mut b, from, from + Vec2::new(10.0, 2.0), &pz, &body);
+    b.mods = Modifiers::NONE;
+    assert!(frames.iter().all(|f| f.zoom == 1.0 && f.pan == Vec2::ZERO));
+    // 囲む途中の Esc はやめる。ボタンを離すまでの残りのドラッグも移動にしない
+    b.mods = Modifiers::COMMAND;
+    b.t += 1.0;
+    b.frame(vec![Event::PointerMoved(from)], &body);
+    let press = |pressed| Event::PointerButton {
+        pos: from,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::COMMAND,
+    };
+    b.frame(vec![press(true)], &body);
+    b.frame(
+        vec![Event::PointerMoved(from + Vec2::new(30.0, 20.0))],
+        &body,
+    );
+    assert!(boxing.get());
+    b.mods = Modifiers::NONE;
+    b.frame(vec![key(Key::Escape)], &body);
+    let mut rest = Vec::new();
+    for k in 2..=4 {
+        b.frame(
+            vec![Event::PointerMoved(from + Vec2::new(30.0 * k as f32, 20.0))],
+            &body,
+        );
+        rest.push(pz.get().unwrap());
+    }
+    b.frame(vec![press(false)], &body);
+    rest.push(pz.get().unwrap());
+    assert!(
+        rest.iter()
+            .all(|f| f.zoom == 1.0 && f.pan == Vec2::ZERO && f.area.is_none()),
+        "{rest:?}"
+    );
+    assert!(!boxing.get());
 }

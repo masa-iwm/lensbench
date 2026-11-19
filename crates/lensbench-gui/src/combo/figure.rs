@@ -17,50 +17,19 @@ fn panning(ui: &Ui, resp: &egui::Response) -> bool {
 }
 
 /// 2D の図の拡大縮小・移動・全体表示。操作はほかの図と同じ [`crate::widgets::pan_zoom`]:
-/// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、Home キー・
-/// 何も無い所のダブルクリック（[`interact`]）・「全体」で全体表示。fit_center は全体表示のときの図の中心（画面）
-fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
+/// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、右上の
+/// ＋・－・囲んで拡大（Ctrl＋左ドラッグでも）、Home キー・何も無い所のダブルクリック（[`interact`]）・「全体」で
+/// 全体表示。fit_center は全体表示のときの図の中心（画面）
+fn navigate(ui: &mut Ui, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
     let pz = crate::widgets::pan_zoom(ui, resp, false);
     view.pan += pz.pan;
     if let Some(c) = pz.at {
         view.zoom_about(fit_center, c, pz.zoom);
     }
-    // ダブルクリックは要素・寸法線の上では別の役なので、全体表示は Home だけここで（何も無い所は interact）
-    if resp.hovered() && ui.input(|i| i.key_pressed(Key::Home)) {
+    // ダブルクリックは要素・寸法線の上では別の役なので、ここでは Home と「全体」だけ（何も無い所は interact）
+    if pz.reset && !resp.double_clicked() {
         view.zoom_log = 0.0;
         view.pan = Vec2::ZERO;
-    }
-    // 拡大・移動しているときは右上に「全体」（置き場は取らない: ui.put は下の欄の位置をずらす）
-    if view.zoom_log != 0.0 || view.pan != Vec2::ZERO {
-        let b = Rect::from_min_size(
-            rect.right_top() + egui::vec2(-64.0, 8.0),
-            egui::vec2(56.0, 22.0),
-        );
-        let r = ui
-            .interact(b, resp.id.with("fit"), Sense::click())
-            .on_hover_text(crate::i18n::tr(
-                "Fit all (also Home, or double-click an empty spot)",
-            ));
-        let w = ui.style().interact(&r);
-        let p = ui.painter_at(rect);
-        p.rect(
-            b,
-            4.0,
-            w.weak_bg_fill,
-            w.bg_stroke,
-            egui::StrokeKind::Inside,
-        );
-        p.text(
-            b.center(),
-            Align2::CENTER_CENTER,
-            crate::i18n::tr("Fit"),
-            FontId::proportional(12.0),
-            w.text_color(),
-        );
-        if r.clicked() {
-            view.zoom_log = 0.0;
-            view.pan = Vec2::ZERO;
-        }
     }
 }
 
@@ -125,6 +94,9 @@ pub(super) fn figure(
             (rect.width() / 5.0).clamp(40.0, 160.0),
             weak,
         );
+    }
+    if view.nav {
+        crate::widgets::paint_zoom_tools(ui, resp);
     }
     // 組合せを変える操作（寸法の書き換え・ドラッグで動かす）は組合せの図だけ
     interact(ui, resp, combo.as_deref_mut(), view, &h, xf.s);
@@ -195,7 +167,7 @@ fn xform(
     let h = (hi[1] - lo[1]).max(1e-6);
     let fit = (inner.width() as f64 / w).min(inner.height() as f64 / h);
     if view.nav {
-        navigate(ui, rect, inner.center(), resp, view);
+        navigate(ui, inner.center(), resp, view);
     }
     let xf = Xform {
         center: inner.center() + view.pan,
@@ -975,7 +947,8 @@ fn interact(
             view.dim = None;
         }
     }
-    let pan_drag = view.nav && panning(ui, resp);
+    // 移動・囲んで拡大のドラッグは要素を選ぶ・動かす役をしない
+    let pan_drag = view.nav && (panning(ui, resp) || crate::widgets::box_zooming(ui, resp));
     if resp.drag_started_by(egui::PointerButton::Primary) && !pan_drag {
         if let Some(k) = h.el {
             view.set_sel(Some(k));

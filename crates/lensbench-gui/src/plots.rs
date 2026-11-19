@@ -397,6 +397,7 @@ pub(crate) fn spot(
                             painter.circle_filled(p, 1.3, col);
                         }
                     }
+                    crate::widgets::paint_zoom_tools(ui, &resp);
                     // 枠の下に縮尺（OpticStudio と同じく倍率 1 では枠の幅、拡大したら見えている幅までのきりのよい長さ）
                     let (br, bp) = ui.allocate_painter(egui::vec2(cell, BAR_H), Sense::hover());
                     let at = br.rect.left_bottom() + egui::vec2(4.0, -1.0);
