@@ -54,6 +54,21 @@ pub(crate) fn length_text(mm: f64) -> String {
     format!("{} {unit}", crate::plots::fmt_sig(v, 3))
 }
 
+/// 縮尺の文字の字体
+fn font() -> FontId {
+    FontId::proportional(11.0)
+}
+
+/// 縮尺（文字と棒を合わせた箱）の高さ。文字を組んだ高さから求める（日本語の字体では µ などで行が高くなる）
+pub(crate) fn height(ctx: &egui::Context) -> f32 {
+    let th = ctx.fonts(|f| {
+        f.layout_no_wrap("200 µm nm".into(), font(), Color32::WHITE)
+            .size()
+            .y
+    });
+    th + 2.0 + 5.0
+}
+
 /// 縮尺を描く。px_per_mm は図の 1 mm の画面の長さ、max_px は棒の長さの上限、anchor は棒と文字を合わせた箱の
 /// 角（align の向き。棒は寄せる側にそろえ、文字は棒の上の真ん中）。長さが決まらなければ描かない
 pub(crate) fn draw(
@@ -83,8 +98,7 @@ pub(crate) fn draw_len(
     if w.is_nan() || w < 4.0 {
         return;
     }
-    let font = FontId::proportional(11.0);
-    let galley = painter.layout_no_wrap(length_text(mm), font, color);
+    let galley = painter.layout_no_wrap(length_text(mm), font(), color);
     let th = galley.size().y + 2.0;
     // 棒と文字を合わせた箱を anchor に置く
     let size = egui::vec2(w.max(galley.size().x), th + 5.0);

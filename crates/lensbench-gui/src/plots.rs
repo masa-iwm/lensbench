@@ -168,9 +168,8 @@ fn spot_scale(rays: &[SpotRays], primary: usize) -> (Vec<usize>, Vec<(f64, f64)>
     (fields, centers, rmax)
 }
 
-/// スポット図の枠どうしの間と、枠の下の縮尺の高さ
+/// スポット図の枠どうしの間
 const SPOT_GAP: f32 = 8.0;
-const BAR_H: f32 = 18.0;
 
 /// スポット図の列の数と枠の一辺。幅 w・高さ h に n 個の枠が入る中で枠がいちばん大きくなる列の数を選ぶ。
 /// 枠の下には縮尺など（below）と名前の行（高さ line）。名前の行は幅 label_w で、枠より広ければ 2 行に折り返す。
@@ -304,7 +303,9 @@ pub(crate) fn spot(
     // 枠の大きさは残りの幅と高さの両方に合わせ、全視野の枠・縮尺・名前が見えるようにする
     // （枠の上のホイールは拡大なので、はみ出すと下の視野へスクロールしにくい）
     let sp = ui.spacing().clone();
-    let below = BAR_H + 2.0 * sp.item_spacing.y;
+    // 枠の下の縮尺の高さは字体から（決め打ちだと日本語の字体で文字の上が切れた）
+    let bar_h = crate::widgets::scale_bar::height(ui.ctx()) + 1.0;
+    let below = bar_h + 2.0 * sp.item_spacing.y;
     let line = sp
         .interact_size
         .y
@@ -399,7 +400,7 @@ pub(crate) fn spot(
                     }
                     crate::widgets::paint_zoom_tools(ui, &resp);
                     // 枠の下に縮尺（OpticStudio と同じく倍率 1 では枠の幅、拡大したら見えている幅までのきりのよい長さ）
-                    let (br, bp) = ui.allocate_painter(egui::vec2(cell, BAR_H), Sense::hover());
+                    let (br, bp) = ui.allocate_painter(egui::vec2(cell, bar_h), Sense::hover());
                     let at = br.rect.left_bottom() + egui::vec2(4.0, -1.0);
                     let al = egui::Align2::LEFT_BOTTOM;
                     let weak = theme::weak_text(&vis);
