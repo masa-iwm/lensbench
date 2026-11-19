@@ -285,8 +285,6 @@ Surface	面
 Surface 1	面 1
 Surface 2	面 2
 Position at a surface	面での位置
-+ Add wavelength	＋ 波長を追加
-+ Add field	＋ 視野を追加
 Object-space telecentricity needs an object space NA or object cone angle aperture	物体側テレセントリックの開口は物体空間 NA か物体の円錐角
 {} · {} {} points · {} wavelengths · {}	{} · {} {} 点 · 波長 {} · {}
 Stop diameter	絞りの径
@@ -987,7 +985,6 @@ Table (per angle and wavelength)	表（角度・波長ごと）
 Transmission	透過
 Width from 10 % to 90 % transmission. Automatic is 1 % of the edge wavelength, or 10 % of the FWHM for band filters	透過が 10 % から 90 % までの幅。自動はエッジ波長の 1 %、帯域フィルタは半値全幅の 10 %
 ＋ Add coating	＋ コーティングを追加
-＋ Row	＋ 行
 Center thickness	中心厚
 Wedge	ウェッジ
 Index	屈折率

@@ -437,6 +437,10 @@ fn sheet_move_cols_and_add_rows() {
     assert!(sh.add_row(&tele.label(sh.c)).is_err());
     assert!(sh.add_row("nope").is_err());
     sh.add_row(tr("Comment row")).unwrap();
+    let mut labels: Vec<&String> = items.iter().map(|(l, _)| l).collect();
+    labels.sort();
+    labels.dedup();
+    assert_eq!(labels.len(), items.len());
     let acts = sh.acts.borrow();
     assert!(matches!(&acts[1], sheet_view::Act::Add(Some(Item::Stop))));
     assert!(matches!(&acts[2], sheet_view::Act::Add(None)));

@@ -131,6 +131,15 @@ impl McSheet<'_> {
         for g in 0..c.groups.len() {
             push(Item::Shift(g));
         }
+        // 同じ名前の要素があると名前が重なるので、2 つ目からは (2)・(3)… を付けて見分ける
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (l, _) in &mut v {
+            let k = seen.entry(l.clone()).or_default();
+            *k += 1;
+            if *k > 1 {
+                *l = format!("{l} ({k})");
+            }
+        }
         v
     }
 }
