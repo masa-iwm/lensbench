@@ -1,6 +1,6 @@
 //! ザイデル収差係数（seidel::seidel）を平行平板・二次曲面の式と比べる
 
-use lensbench_core::seidel::seidel;
+use lensbench_core::seidel::{longitudinal, seidel};
 use lensbench_core::system::System;
 use lensbench_formats::zmx;
 
@@ -82,4 +82,18 @@ fn concentric_surface() {
         assert!(x.abs() < 1e-15, "S_{} = {x}", i + 1);
     }
     assert!(v[4].is_finite() && v[3] != 0.0, "{v:?}");
+}
+
+/// 実光線の縦収差は像面の頂点から測る: 像面を曲げても（光線は同じ直線なので）同じ値
+#[test]
+fn longitudinal_curved_image() {
+    let body = |ci: f64| {
+        format!(
+            "SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\nSURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 5\n  GLAS ___BLANK 1 0 1.5 0 0 0 0 0 0\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 95\nSURF 3\n  TYPE STANDARD\n  CURV {ci}\n  DISZ 0\n"
+        )
+    };
+    let flat = longitudinal(&sys(&body(0.0)), 0, 1.0).unwrap();
+    let curved = longitudinal(&sys(&body(-0.02)), 0, 1.0).unwrap();
+    close(curved, flat, "LONA");
+    assert!(flat.abs() > 1e-3, "{flat}");
 }

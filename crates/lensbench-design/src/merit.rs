@@ -20,6 +20,7 @@
 //! | `distortion` | wave、absolute（true で実像高 − 近軸像高 [レンズ単位]、false で %）、target。最大の視野の主光線 |
 //! | `longitudinal` | wave、wave2（差をとる波長）、zone（0〜1、0 は近軸）、target [レンズ単位]。軸上の光線が光軸を横切る点の像面からの距離 |
 //! | `lateral_color` | wave、wave2、target [レンズ単位]。最大の視野の近軸主光線の像面での高さの差（wave2 − wave） |
+//! | `semi` | surf、to（surf）、min か max。面ごとに半直径と比べ、はみ出しを足す（MNSD・MXSD） |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -195,7 +196,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 20] = [
+    const TYPES: [&str; 21] = [
         "spot",
         "wavefront",
         "mtf",
@@ -213,6 +214,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "distortion",
         "longitudinal",
         "lateral_color",
+        "semi",
         "zplm",
         "plugin",
         "calc",
@@ -251,6 +253,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Distortion { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
+            | TermKind::SemiEach { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -260,6 +263,12 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             return Err("a thickness term with each needs min or max".into());
         }
         e.upper = side == Side::Max;
+    }
+    if let TermKind::SemiEach { upper, .. } = &mut kind {
+        if side == Side::Eq {
+            return Err("a semi term needs min or max".into());
+        }
+        *upper = side == Side::Max;
     }
     // 面ごとの入射角・射出角は min・max の向きで比べる
     if let TermKind::RayPath {
@@ -511,6 +520,12 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 .target
                 .ok_or("lateral_color term has no target (or min and max)")?,
         },
+        TermSpec::Semi(t) => TermKind::SemiEach {
+            surf: t.surf,
+            to: t.to.unwrap_or(t.surf),
+            upper: false,
+            target: t.target.ok_or("semi term has no min or max")?,
+        },
         TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
@@ -708,6 +723,7 @@ mod tests {
             r#"{"type": "distortion"}"#,
             r#"{"type": "longitudinal", "zone": 0.5}"#,
             r#"{"type": "lateral_color", "target": 0}"#,
+            r#"{"type": "semi", "surf": 1, "target": 5}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

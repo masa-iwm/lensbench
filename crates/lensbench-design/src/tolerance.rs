@@ -550,6 +550,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Distortion { .. } => "distortion",
         K::Longitudinal { .. } => "longitudinal",
         K::LateralColor { .. } => "lateral_color",
+        K::SemiEach { .. } => "semi",
         K::Centroid { .. } => "centroid",
         K::Ray { .. } => "ray",
         K::RayPath { .. } => "ray",

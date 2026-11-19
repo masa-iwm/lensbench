@@ -104,6 +104,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "distortion",
     "longitudinal",
     "lateral_color",
+    "semi",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -224,6 +225,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("target", Num),
         ],
         "lateral_color" => &[("wave", Int), ("wave2", Int), ("target", Num)],
+        "semi" => &[("surf", Int), ("to", Int), ("target", Num)],
         "fnum" => &[
             ("field", Field),
             ("wave", Int),
@@ -277,6 +279,7 @@ fn type_hint(ty: &str) -> &'static str {
         "distortion" => tr("Real-ray distortion of the chief ray of the largest field − target: percent of the paraxial image height, or real − paraxial height with absolute (like DIST of surface 0)"),
         "longitudinal" => tr("Distance from the image surface to where an axial ray crosses the axis − target (zone 0 = paraxial marginal ray; like LONA). With wave2: the distance at wave2 − at wave (axial color, AXCL)"),
         "lateral_color" => tr("Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)"),
+        "semi" => tr("Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)"),
         "fnum" => tr("Real-ray F-number 1/(n′(sin θ₊ + sin θ₋)) from the chief ray and the two rays at the pupil edge (y for tan, x for sag) − target (like TFNO and SFNO)"),
         "cardinal" => tr("Focal length or cardinal point of surfaces from to to − target (like CARD, EFLX and EFLY; empty from and to = surface 1 to the last surface before the image). Object-side points are measured from surface from, image-side points from surface to"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
@@ -301,6 +304,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "distortion" => vec![("target", "")],
         "longitudinal" => vec![("zone", "0"), ("target", "")],
         "lateral_color" => vec![("wave", "1"), ("wave2", "3"), ("target", "")],
+        "semi" => vec![("surf", "1"), ("target", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],

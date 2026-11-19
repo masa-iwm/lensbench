@@ -1656,6 +1656,71 @@
         },
         {
           "additionalProperties": false,
+          "description": "semi の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "surf": {
+              "description": "面の範囲（to の既定は surf）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "description": "目標（min か max が要る。面ごとに半直径と比べてはみ出しを足す）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "to": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "semi",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "surf"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "zplm の項",
           "properties": {
             "config": {

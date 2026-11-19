@@ -2313,6 +2313,10 @@ seidel term has no target (or min and max)	seidel の項に target（か min・m
 distortion term has no target (or min and max)	distortion の項に target（か min・max）がありません
 longitudinal term has no target (or min and max)	longitudinal の項に target（か min・max）がありません
 lateral_color term has no target (or min and max)	lateral_color の項に target（か min・max）がありません
+semi term has no min or max	semi の項に min か max がありません
+a semi term needs min or max	semi の項には min か max が要ります
+term {i}: semi-diameters of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} のクリア半径（1〜{}）
+the semi-diameters of surfaces {surf} to {to} are not finite	面 {surf}〜{to} のクリア半径が有限ではありません
 term {i}: zone {zone} (0 to 1)	項 {i}: 帯 {zone}（0〜1）
 the ray of zone {zone} stopped (surface {j})	帯 {zone} の光線が止まりました（面 {j}）
 the longitudinal aberration of zone {zone} is not finite	帯 {zone} の縦収差が有限ではありません

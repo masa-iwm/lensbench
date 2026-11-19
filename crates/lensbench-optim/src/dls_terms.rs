@@ -339,6 +339,14 @@ pub enum TermKind {
         wave2: usize,
         target: f64,
     },
+    /// 面 surf から to までの半直径を面ごとに target と比べ、はみ出しを足した値 − target（upper なら上限、でなければ下限。
+    /// 値は target ± Σ はみ出し。OpticStudio の MXSD・MNSD）。微分は差分
+    SemiEach {
+        surf: usize,
+        to: usize,
+        upper: bool,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -749,6 +757,7 @@ impl TermKind {
             | TermKind::Distortion { target, .. }
             | TermKind::Longitudinal { target, .. }
             | TermKind::LateralColor { target, .. }
+            | TermKind::SemiEach { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -922,6 +931,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Distortion { .. }
         | TermKind::Longitudinal { .. }
         | TermKind::LateralColor { .. }
+        | TermKind::SemiEach { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

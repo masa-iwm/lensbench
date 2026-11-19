@@ -329,6 +329,17 @@ pub struct LatColorSpec {
     pub target: Option<f64>,
 }
 
+/// semi の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SemiSpec {
+    /// 面の範囲（to の既定は surf）
+    pub surf: usize,
+    pub to: Option<usize>,
+    /// 目標（min か max が要る。面ごとに半直径と比べてはみ出しを足す）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -426,6 +437,7 @@ pub enum TermSpec {
     Longitudinal(LongSpec),
     #[serde(rename = "lateral_color")]
     LateralColor(LatColorSpec),
+    Semi(SemiSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

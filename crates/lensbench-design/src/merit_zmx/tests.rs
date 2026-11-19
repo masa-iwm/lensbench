@@ -368,6 +368,8 @@ fn terms_to_rows_and_back() {
         json!({"type": "longitudinal", "wave": 1, "zone": 0.7, "target": 0.1, "weight": 1.0}),
         json!({"type": "longitudinal", "wave": 1, "wave2": 3, "zone": 0.0, "max": 0.05, "weight": 1.0}),
         json!({"type": "lateral_color", "wave": 1, "wave2": 3, "target": 0.0, "weight": 1.0}),
+        json!({"type": "semi", "surf": 1, "to": 4, "min": 3.0, "weight": 1.0}),
+        json!({"type": "semi", "surf": 2, "to": 2, "max": 20.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 3, "min": 1.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
         json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),

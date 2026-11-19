@@ -213,10 +213,51 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
             matches!(q, SurfQ::Diam | SurfQ::MechDiam | SurfQ::SagX | SurfQ::SagY)
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
+        TermKind::SemiEach { .. } => true,
         TermKind::Calc { args, .. } => args.iter().any(|a| match a {
             CalcArg::Term(k) => reads_semi(k),
             _ => false,
         }),
         _ => false,
     }
+}
+
+pub(super) fn semi_check(i: usize, k: &TermKind, s: &System) -> Result<()> {
+    let TermKind::SemiEach { surf, to, .. } = k else {
+        unreachable!("not a semi-diameter term");
+    };
+    if *surf == 0 || surf > to || *to >= s.image() {
+        invalid!(
+            "term {i}: semi-diameters of surfaces {surf} to {to} (1 to {})",
+            s.image() - 1
+        );
+    }
+    Ok(())
+}
+
+pub(super) fn semi_term(s: &System, k: &TermKind) -> Result<TermOut> {
+    let TermKind::SemiEach {
+        surf,
+        to,
+        upper,
+        target,
+    } = k
+    else {
+        unreachable!("not a semi-diameter term");
+    };
+    let excess: f64 = (*surf..=*to)
+        .filter(|&i| !s.surfaces[i].ignore)
+        .map(|i| {
+            let d = s.surfaces[i].semi - target;
+            if *upper {
+                d.max(0.0)
+            } else {
+                d.min(0.0)
+            }
+        })
+        .sum();
+    if !excess.is_finite() {
+        invalid!("the semi-diameters of surfaces {surf} to {to} are not finite");
+    }
+    Ok((vec![excess], None))
 }

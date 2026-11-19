@@ -614,6 +614,21 @@ fn kind_of(
             m.insert("wave2".into(), json!(w2));
             m.insert("target".into(), json!(target * unit));
         }
+        // MNSD・MXSD: 面 Int1〜Int2 の半直径を目標と比べてはみ出しを足す（OpticStudio 26.1 で実測、値は目標 ± Σ はみ出し）
+        "MNSD" | "MXSD" => {
+            let s1 = int(INT1)?;
+            let s2 = int(INT2)?.min(image as i64 - 1);
+            if s1 < 1 || s2 < s1 {
+                return Err(format!("surfaces {s1} to {s2}"));
+            }
+            m.insert("type".into(), json!("semi"));
+            m.insert("surf".into(), json!(s1));
+            m.insert("to".into(), json!(s2));
+            m.insert(
+                if op == "MNSD" { "min" } else { "max" }.into(),
+                json!(target * unit),
+            );
+        }
         // SFNO・TFNO: 視野 Int1・波長 Int2 の実光線の F ナンバー（OpticStudio 26.1 で実測）
         "SFNO" | "TFNO" => {
             m.insert("type".into(), json!("fnum"));
@@ -818,7 +833,7 @@ fn is_length(op: &str) -> bool {
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
             "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
-            "LONA", "AXCL", "LACL",
+            "LONA", "AXCL", "LACL", "MNSD", "MXSD",
         ]
         .contains(&op)
 }
@@ -1191,6 +1206,16 @@ fn row_of(
             let w = if wave() == 0.0 { primary } else { wave() };
             let w2 = num("wave2").unwrap_or(primary);
             ("LACL", [w, w2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+        }
+        "semi" => {
+            let s1 = num("surf").unwrap_or(1.0);
+            let s2 = num("to").unwrap_or(s1);
+            let p = [s1, s2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            match bound(0.0) {
+                Bound::Side("OPGT", b) => ("MNSD", p, Bound::Target(b)),
+                Bound::Side(_, b) => ("MXSD", p, Bound::Target(b)),
+                _ => return Err("a semi term needs min or max".into()),
+            }
         }
         "fnum" => {
             let op = match t.get("dir").and_then(Value::as_str) {

@@ -189,7 +189,8 @@ pub fn longitudinal(s: &System, w: usize, zone: f64) -> Result<f64> {
         if let Some(j) = r.status.surf() {
             invalid!("the ray of zone {zone} stopped (surface {j})");
         }
-        -r.xyz[1] * r.lmn[2] / r.lmn[1]
+        // 像面の局所座標で、交点から軸と交わる点まで（曲面の像面では交点の z = 矢高を足し、頂点から測る）
+        r.xyz[2] - r.xyz[1] * r.lmn[2] / r.lmn[1]
     };
     if !v.is_finite() {
         invalid!("the longitudinal aberration of zone {zone} is not finite");

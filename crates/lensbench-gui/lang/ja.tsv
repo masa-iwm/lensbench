@@ -1528,3 +1528,4 @@ Saved {} recorded operations to {}	記録した操作 {} 件を {} に保存し�
 Replaying {} recorded operations	記録した操作 {} 件を流し直しています
 Distance from the image surface to where an axial ray crosses the axis − target (zone 0 = paraxial marginal ray; like LONA). With wave2: the distance at wave2 − at wave (axial color, AXCL)	軸上の光線が光軸を横切る点の像面からの距離 − 目標（zone 0 は近軸周辺光線。LONA 相当）。wave2 があれば wave2 の距離 − wave の距離（軸上色収差、AXCL）
 Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)	最大の視野の近軸主光線の像面での高さの wave2 − wave − 目標（LACL 相当）
+Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)	面 surf〜to のクリア半径を面ごとに min か max と比べ、はみ出しを足す（MNSD・MXSD 相当）
