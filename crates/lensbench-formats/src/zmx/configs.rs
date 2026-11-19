@@ -61,6 +61,7 @@ pub(super) fn config_table(
             ("CONN", Some(_)) => Some(Kind::Conic),
             ("SDIA", Some(_)) => Some(Kind::Semi),
             ("IGNR", Some(_)) => Some(Kind::Ignore),
+            ("APMX", Some(_)) => Some(Kind::ApMax),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
             ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
                 lensbench_core::pickup::kind_of_pick(

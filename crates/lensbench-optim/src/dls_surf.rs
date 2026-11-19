@@ -134,7 +134,13 @@ pub(super) fn surface_value(
             while b < s.image() && (glass(s, b) || ign(b)) {
                 b += 1;
             }
-            let semi = (a..=b).filter(|&i| !ign(i)).map(|i| s.surfaces[i].semi);
+            // 円形の開口の面は開口の最大の半径を縁にする（OpticStudio 26.1 の多重構成の APMX で、半直径より大きくても
+            // 小さくても開口の半径を使った）
+            let edge = |i: usize| match s.surfaces[i].ap {
+                lensbench_core::surface::Aperture::Circular { max, .. } => max,
+                _ => s.surfaces[i].semi,
+            };
+            let semi = (a..=b).filter(|&i| !ign(i)).map(edge);
             2.0 * semi.fold(0.0, f64::max)
         }
         SurfQ::Gx | SurfQ::Gy | SurfQ::Gz => {

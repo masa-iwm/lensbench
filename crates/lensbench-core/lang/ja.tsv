@@ -2374,3 +2374,4 @@ stop surface {v} (1 to {last})	絞りの面 {v}（1〜{last}）
 configuration {c}: FLTP switches between angles and heights but field {} has no {op} row (lens unit {unit})	構成 {c}: FLTP が角度と高さで入れ替わりますが、視野 {} に {op} の行がありません（レンズ単位 {unit}）
 field type {v} (0 to 3)	視野の種類 {v}（0〜3）
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません
+{}: surface has no circular aperture or obscuration	{}: 面に円形の開口も遮蔽もありません

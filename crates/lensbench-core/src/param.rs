@@ -28,7 +28,7 @@
 use crate::error::Result;
 use crate::pickup::pick_kind;
 use crate::solves::solve_kind_info;
-use crate::surface::{After, Tilt};
+use crate::surface::{After, Aperture, Tilt};
 use crate::system::{ApertureKind, Keep, System};
 use crate::units::UnitKind;
 use crate::{invalid, notimpl};
@@ -100,6 +100,8 @@ pub enum Kind {
     Semi,
     /// 面を無視するか（1 で無視、0 で使う）。多重構成の行（.zmx の IGNR）。最適化の変数には使えない
     Ignore,
+    /// 円形の開口・遮蔽の最大の半径。多重構成の行（.zmx の APMX）。最適化の変数には使えない
+    ApMax,
     /// 面タイプのパラメータ（.zmx の PARM の番号、1 から）。ピックアップ・マクロのソルブの量（パラメータは
     /// [`Kind::Asph`] などの意味のある名前で）
     Parm(u8),
@@ -143,6 +145,7 @@ impl Kind {
             "objy" => Kind::ObjY,
             "semi" => Kind::Semi,
             "ignore" => Kind::Ignore,
+            "apmax" => Kind::ApMax,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -222,6 +225,7 @@ impl Kind {
             Kind::Unit(u) => u.name().into(),
             Kind::Semi => "semi".into(),
             Kind::Ignore => "ignore".into(),
+            Kind::ApMax => "apmax".into(),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -256,9 +260,9 @@ impl Kind {
         )
     }
 
-    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視）。最適化の変数・微分には使えない
+    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視・開口の最大の半径）。最適化の変数・微分には使えない
     pub fn is_table_only(&self) -> bool {
-        matches!(self, Kind::Semi | Kind::Ignore)
+        matches!(self, Kind::Semi | Kind::Ignore | Kind::ApMax)
     }
 
     /// 傾き偏心の値の位置（dx dy tx ty tz）
@@ -647,6 +651,13 @@ impl System {
             Kind::Thick => d.t,
             Kind::Semi => d.semi,
             Kind::Ignore => f64::from(u8::from(d.ignore)),
+            Kind::ApMax => match d.ap {
+                Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } => max,
+                _ => invalid!(
+                    "{}: surface has no circular aperture or obscuration",
+                    p.name()
+                ),
+            },
             Kind::Dn => d.dn,
             Kind::Disp => d.disp,
             k => {
@@ -894,6 +905,18 @@ impl System {
                 }
                 Kind::Semi if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::Ignore if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
+                Kind::ApMax if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::ApMax
+                    if !matches!(
+                        self.surfaces[p.index()].ap,
+                        Aperture::Circular { .. } | Aperture::Obsc { .. }
+                    ) =>
+                {
+                    invalid!(
+                        "{}: surface has no circular aperture or obscuration",
+                        p.name()
+                    )
+                }
                 Kind::Ignore if p.index() == 0 || p.index() + 1 >= self.surfaces.len() => {
                     invalid!(
                         "{}: the object and image surfaces can't be ignored",
@@ -1020,11 +1043,16 @@ impl System {
                     d.semi = v;
                     d.semi_auto = false;
                     // 浮動開口は面の半直径でける
-                    if let crate::surface::Aperture::Floating { semi } = &mut d.ap {
+                    if let Aperture::Floating { semi } = &mut d.ap {
                         *semi = v;
                     }
                 }
                 Kind::Ignore => d.ignore = v != 0.0,
+                Kind::ApMax => {
+                    if let Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } = &mut d.ap {
+                        *max = v;
+                    }
+                }
                 Kind::Dn => {
                     d.dn = v;
                     index = true;

@@ -482,6 +482,30 @@ fn configs_aperture_type_and_stop() {
         (4.0, false)
     );
     assert!(c2.surfaces[2].ignore && !c2.config(1).unwrap().surfaces[2].ignore);
+    // 開口の最大の半径は円形の開口・遮蔽の面だけ
+    assert!(s
+        .set_config_row(Param::new(2, Kind::ApMax), vec![3.0, 4.0])
+        .is_err());
+    s.set_aperture(
+        2,
+        lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 3.0,
+            dx: 0.0,
+            dy: 0.0,
+        },
+    )
+    .unwrap();
+    s.set_config_row(Param::new(2, Kind::ApMax), vec![3.0, 2.5])
+        .unwrap();
+    let c2 = s.config(2).unwrap();
+    assert!(matches!(
+        c2.surfaces[2].ap,
+        lensbench_core::surface::Aperture::Circular { max, .. } if max == 2.5
+    ));
+    assert!(s
+        .set_config_row(Param::new(2, Kind::ApMax), vec![3.0, -1.0])
+        .is_err());
     // 半直径・面の無視は最適化の変数にできない（表の行だけ）
     assert!(Kind::Semi.is_table_only() && Kind::Ignore.is_table_only());
     for p in ["atype", "stop", "ftype"] {

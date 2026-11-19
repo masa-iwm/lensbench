@@ -326,8 +326,8 @@ fn params_carry_their_target() {
     for n in ["2.p1", "2.before0", "2.coating"] {
         assert!(s.param(n).is_err(), "{n}");
     }
-    // 半直径・面の無視は多重構成の表の行だけ（最適化の変数・微分には使えない）
-    for n in ["2.semi", "2.ignore"] {
+    // 半直径・面の無視・開口の最大の半径は多重構成の表の行だけ（最適化の変数・微分には使えない）
+    for n in ["2.semi", "2.ignore", "2.apmax"] {
         assert!(s.param(n).unwrap().kind.is_table_only(), "{n}");
     }
 }

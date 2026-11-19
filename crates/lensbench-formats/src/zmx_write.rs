@@ -798,6 +798,7 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::Thick => ("THIC", p.index(), None, id),
         Kind::Semi => ("SDIA", p.index(), None, id),
         Kind::Ignore => ("IGNR", p.index(), None, id),
+        Kind::ApMax => ("APMX", p.index(), None, id),
         Kind::Curv => ("CRVT", p.index(), None, id),
         Kind::Radius => ("CRVT", p.index(), None, |r| {
             if r == 0.0 {

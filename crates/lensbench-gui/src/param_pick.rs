@@ -64,6 +64,7 @@ pub(crate) fn param_desc(name: &str) -> String {
         "disp" => tr("dispersion change").into(),
         "semi" => tr("Semi-diameter").into(),
         "ignore" => tr("Ignore this surface").into(),
+        "apmax" => tr("Aperture maximum radius").into(),
         "shift" => tr("Shift").into(),
         a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => {
             trf("r^{} coefficient", &[&&a[1..]])
