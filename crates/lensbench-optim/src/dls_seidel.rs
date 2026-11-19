@@ -1,8 +1,10 @@
-//! ザイデル収差係数の項（[`TermKind::Seidel`]）、最大の視野の実光線の歪曲の項（[`TermKind::Distortion`]）、
+//! ザイデル収差係数の項（[`TermKind::Seidel`]）、実光線の歪曲の項（[`TermKind::Distortion`]）、
 //! 縦収差・軸上色収差の項（[`TermKind::Longitudinal`]）と倍率色収差の項（[`TermKind::LateralColor`]）
 
 use super::*;
-use lensbench_core::seidel::{chief_height, longitudinal, real_distortion, seidel};
+use lensbench_core::seidel::{
+    chief_height, distortion_at, distortion_max, ftheta_distortion, longitudinal, seidel,
+};
 
 /// ザイデル収差係数（波面収差の係数 [波]、[`lensbench_core::seidel::Seidel::waves`]）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,8 +109,37 @@ fn value(s: &System, k: &TermKind) -> Result<f64> {
             let w = wave.unwrap_or(s.primary);
             Ok(seidel(s, w)?.waves(*surf)[q.index()])
         }
-        TermKind::Distortion { wave, absolute, .. } => {
-            let (d, pct) = real_distortion(s, wave.unwrap_or(s.primary))?;
+        TermKind::Distortion {
+            wave,
+            absolute,
+            field,
+            reference,
+            mode,
+            ..
+        } => {
+            let w = wave.unwrap_or(s.primary);
+            let norm = |f: &Option<FieldSel>, d: (f64, f64)| -> Result<(f64, f64)> {
+                match f {
+                    Some(f) => s.field_sel_norm(*f, w),
+                    None => Ok(d),
+                }
+            };
+            let h = norm(field, (0.0, 1.0))?;
+            let (d, pct) = match mode {
+                DistMode::At => {
+                    // 軸上の視野の基準は近軸主光線の倍率（数値の微分より正確）
+                    let r = match reference {
+                        Some(r) => Some(norm(&Some(*r), (0.0, 0.0))?).filter(|&h| h != (0.0, 0.0)),
+                        None => None,
+                    };
+                    distortion_at(s, w, h, r)?
+                }
+                DistMode::Max => {
+                    let m = distortion_max(s, w, h, *absolute)?;
+                    (m, m)
+                }
+                DistMode::FTheta => ftheta_distortion(s, w)?,
+            };
             Ok(if *absolute { d } else { pct })
         }
         TermKind::Longitudinal {

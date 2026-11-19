@@ -151,12 +151,14 @@ const RAY: &[(&str, &str, bool)] = &[
     ("DXDY", "dxdy", true),
     ("DYDX", "dydx", true),
     ("DYDY", "dydy", true),
+    ("FCGS", "fcgs", true),
+    ("FCGT", "fcgt", true),
 ];
 
 /// 像面だけの光線の演算子（Int1 は使わない）
 fn image_only(op: &str) -> bool {
     op != "TRAI"
-        && ["TRA", "ANA", "DXD", "DYD"]
+        && ["TRA", "ANA", "DXD", "DYD", "FCG"]
             .iter()
             .any(|p| op.starts_with(p))
 }
@@ -192,6 +194,25 @@ fn field_no(f: i64) -> Result<usize, String> {
     }
     Ok(f as usize)
 }
+
+/// 読めるが値が OpticStudio と違うと分かっている行の注意（OpticStudio 26.1 の実測）
+fn read_differs(r: &MeritRow) -> Option<&'static str> {
+    let num = |i: usize| r.num(i).unwrap_or(0.0);
+    match r.op.as_str() {
+        "RSRH" if num(data(1)) != 0.0 && num(data(2)) != 0.0 => Some(
+            "the value of OpticStudio for a field with both Hx and Hy not 0 could not be reproduced; the term may differ",
+        ),
+        "ANAX" | "ANAY" if num(INT2) == 0.0 => {
+            Some("Wave 0 is read as the primary wavelength (OpticStudio returns 0)")
+        }
+        "FCGT" if num(data(2)) != 0.0 => Some(FCG_DIFF),
+        "FCGS" if num(data(1)) != 0.0 => Some(FCG_DIFF),
+        _ => None,
+    }
+}
+
+const FCG_DIFF: &str =
+    "lensbench uses a central difference; OpticStudio's one-sided difference differs by about 1e-4";
 
 /// 行を写す途中の状態
 struct Ctx<'a> {
@@ -262,7 +283,7 @@ fn kind_of(
         if par.is_some() {
             m.insert("paraxial".into(), json!(true));
         }
-        // TRAX・TRAY・TRAR・ANA*・DXDX〜DYDY は像面（Int1 は使わない）
+        // TRAX・TRAY・TRAR・ANA*・DXDX〜DYDY・FCGS・FCGT は像面（Int1 は使わない）
         if !image_only(op) {
             let j = int(INT1)?;
             if op == "TRAI" && j < 1 {
@@ -683,6 +704,43 @@ fn kind_of(
                 m.insert("target".into(), json!(target));
             }
         }
+        // DIMX: 視野 Int1（0 は最大の視野）までの歪曲の絶対値の最大、波長 Int2、Data1 の Absolute。DISC: 波長 Int2・
+        // Absolute Data1 の校正した f-θ 歪曲。DISG: 基準の視野 Int1（0 は軸上）、波長 Int2（負なら長さ）、Hx・Hy の
+        // 主光線の一般の歪曲（Px・Py は値を変えない）。OpticStudio 26.1 で実測
+        "DIMX" | "DISC" | "DISG" => {
+            m.insert("type".into(), json!("distortion"));
+            let w = int(INT2)?;
+            let abs = if op == "DISG" {
+                w < 0
+            } else {
+                num(data(1))? != 0.0
+            };
+            m.insert("wave".into(), wave(w.abs())?);
+            m.insert("absolute".into(), json!(abs));
+            match op {
+                "DIMX" => {
+                    let f = int(INT1)?;
+                    if f != 0 {
+                        m.insert("field".into(), json!(field_no(f)?));
+                    }
+                    m.insert("peak".into(), json!(true));
+                }
+                "DISC" => {
+                    m.insert("ftheta".into(), json!(true));
+                }
+                _ => {
+                    m.insert("field".into(), norm_field()?);
+                    let f = int(INT1)?;
+                    if f != 0 {
+                        m.insert("reference".into(), json!(field_no(f)?));
+                    }
+                }
+            }
+            m.insert(
+                "target".into(),
+                json!(if abs { target * unit } else { target }),
+            );
+        }
         // LONA: 波長 Int1・帯 Data1。AXCL: 波長 Int1・Int2・帯 Data1（Int2 の距離 − Int1 の距離）。LACL: 波長 Int1・Int2
         // （Int2 の主光線の高さ − Int1）。OpticStudio 26.1 で実測
         "LONA" | "AXCL" => {
@@ -889,6 +947,12 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
                 continue;
             }
         };
+        if let Some(why) = read_differs(src) {
+            cx.notes.push(format!(
+                ".zmx merit function row {} ({}, line {}): {why}",
+                src.row, src.op, src.line
+            ));
+        }
         // DIST は Absolute のときだけ長さ
         let len = is_length(&src.op) || m.get("absolute") == Some(&json!(true));
         if let Some(side) = side {

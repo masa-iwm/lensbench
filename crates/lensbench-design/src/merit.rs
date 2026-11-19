@@ -38,8 +38,8 @@ use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, CardQ, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, SeidelQ, Side, SpotAxis,
-    SurfQ, Term, TermKind,
+    CalcArg, CalcOp, CardQ, DistMode, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, SeidelQ, Side,
+    SpotAxis, SurfQ, Term, TermKind,
 };
 use serde_json::Value;
 
@@ -543,6 +543,19 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
         TermSpec::Distortion(t) => TermKind::Distortion {
             wave: wave(t.wave, s)?,
             absolute: t.absolute.unwrap_or(false),
+            field: t.field.map(|f| field(f, s)).transpose()?,
+            reference: t.reference.map(|f| field(f, s)).transpose()?,
+            mode: match (t.peak.unwrap_or(false), t.ftheta.unwrap_or(false)) {
+                (false, false) => DistMode::At,
+                (true, false) if t.reference.is_none() => DistMode::Max,
+                (false, true) if t.field.is_none() && t.reference.is_none() => DistMode::FTheta,
+                (true, false) => {
+                    return Err("a peak distortion term is against the axis (no reference)".into())
+                }
+                _ => {
+                    return Err("an f-theta distortion term has no field, reference or peak".into())
+                }
+            },
             target: t
                 .target
                 .ok_or("distortion term has no target (or min and max)")?,

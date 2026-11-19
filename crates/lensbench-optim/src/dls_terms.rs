@@ -323,11 +323,16 @@ pub enum TermKind {
         wave: Option<usize>,
         target: f64,
     },
-    /// 最大の視野の主光線の歪曲 − target（absolute なら実像高 − 近軸像高 [レンズ単位]、でなければ近軸像高に対する %。
-    /// OpticStudio の DIST の Surf 0 と Absolute）。微分は差分
+    /// 主光線の実光線の歪曲 − target（absolute なら長さ [レンズ単位]、でなければ予測の像高に対する %）。微分は差分。
+    /// [`DistMode::At`] は視野 field（None は正規化視野 (0, 1)）の、基準の視野 reference（None は軸上、近軸主光線の倍率）
+    /// からの一般の歪曲（[`lensbench_core::seidel::distortion_at`]。OpticStudio の DIST の Surf 0 と Absolute、DISG）。
+    /// [`DistMode::Max`] は軸上から field までの絶対値の最大（DIMX）、[`DistMode::FTheta`] は校正した f-θ 歪曲（DISC）
     Distortion {
         wave: Option<usize>,
         absolute: bool,
+        field: Option<FieldSel>,
+        reference: Option<FieldSel>,
+        mode: DistMode,
         target: f64,
     },
     /// 軸上の光線（zone 0 は近軸周辺光線、ほかは正規化瞳座標 (0, zone) の実光線）が光軸を横切る点の、像面からの距離
@@ -378,6 +383,18 @@ pub enum TermKind {
     User(UserTermRef),
 }
 
+/// 歪曲の項の種類（[`TermKind::Distortion`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DistMode {
+    /// 視野 1 つの歪曲
+    #[default]
+    At,
+    /// 軸上から視野までの絶対値の最大
+    Max,
+    /// 校正した f-θ 歪曲（y の向きの視野の全体）
+    FTheta,
+}
+
 /// 光線の量（[`TermKind::Ray`]）。面の局所座標
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RayQ {
@@ -401,6 +418,10 @@ pub enum RayQ {
     DxDy,
     DyDx,
     DyDy,
+    /// 主光線の近くの光線の焦点の、面からの z の距離 [レンズ単位]。正規化瞳座標を y（fcgt）・x（fcgs）の向きに ±0.001
+    /// ずらした 2 本の光線が最も近づく点（OpticStudio の FCGT・FCGS。px・py は使わない）
+    FcgT,
+    FcgS,
     /// 光路長 [レンズ単位]（OpticStudio の OPTH）。無限遠物体では、同じ波長の主光線が面 1 を通る点を通り光線に垂直な
     /// 面から測る（OpticStudio 26.1 の実測どおり）。有限物体では物点から
     Opth,
@@ -450,6 +471,8 @@ impl RayQ {
                 | RayQ::DxDy
                 | RayQ::DyDx
                 | RayQ::DyDy
+                | RayQ::FcgT
+                | RayQ::FcgS
                 | RayQ::Opth
         )
     }
@@ -466,6 +489,8 @@ impl RayQ {
                 | RayQ::DxDy
                 | RayQ::DyDx
                 | RayQ::DyDy
+                | RayQ::FcgT
+                | RayQ::FcgS
         ) || self.recorded()
     }
     pub fn parse(s: &str) -> Result<RayQ> {
@@ -486,6 +511,8 @@ impl RayQ {
             "dxdy" => RayQ::DxDy,
             "dydx" => RayQ::DyDx,
             "dydy" => RayQ::DyDy,
+            "fcgt" => RayQ::FcgT,
+            "fcgs" => RayQ::FcgS,
             "opth" => RayQ::Opth,
             "gx" => RayQ::Gx,
             "gy" => RayQ::Gy,
@@ -505,7 +532,7 @@ impl RayQ {
             "cosi" => RayQ::CosI,
             "cose" => RayQ::CosE,
             _ => invalid!(
-                "ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)"
+                "ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, fcgt, fcgs, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)"
             ),
         })
     }
@@ -527,6 +554,8 @@ impl RayQ {
             RayQ::DxDy => "dxdy",
             RayQ::DyDx => "dydx",
             RayQ::DyDy => "dydy",
+            RayQ::FcgT => "fcgt",
+            RayQ::FcgS => "fcgs",
             RayQ::Opth => "opth",
             RayQ::Gx => "gx",
             RayQ::Gy => "gy",

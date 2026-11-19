@@ -45,8 +45,8 @@ const PARAXIAL_Q: &[&str] = &[
 ];
 const RAY_Q: &[&str] = &[
     "x", "y", "z", "l", "m", "n", "trax", "tray", "trar", "anax", "anay", "anar", "dxdx", "dxdy",
-    "dydx", "dydy", "opth", "gx", "gy", "gz", "gl", "gm", "gn", "r", "ang", "tanx", "tany", "nl",
-    "nm", "nn", "aoi", "aoe", "cosi", "cose",
+    "dydx", "dydy", "fcgt", "fcgs", "opth", "gx", "gy", "gz", "gl", "gm", "gn", "r", "ang", "tanx",
+    "tany", "nl", "nm", "nn", "aoi", "aoe", "cosi", "cose",
 ];
 const SURF_Q: &[&str] = &[
     "curv",
@@ -245,7 +245,15 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("wave", Int),
             ("target", Num),
         ],
-        "distortion" => &[("wave", Int), ("absolute", Bool), ("target", Num)],
+        "distortion" => &[
+            ("field", Field),
+            ("reference", Field),
+            ("wave", Int),
+            ("absolute", Bool),
+            ("peak", Bool),
+            ("ftheta", Bool),
+            ("target", Num),
+        ],
         "longitudinal" => &[
             ("wave", Int),
             ("wave2", Int),
@@ -305,7 +313,7 @@ fn type_hint(ty: &str) -> &'static str {
         "surface" => tr("Curvature, conic, sag, thickness at a point, total thickness, diameter, global vertex position or direction, glass data or parameter of surface surf − target (like CVVA, COVA, SSAG, SAGX, STHI, TTVA, DMVA, GLCX, GLCA, GCOS and PMVA; min or max for CVGT, DMLT etc.). x and y are the point for sag and thick and the direction for total. With to: compare each surface with min or max and sum the excess (MNSD, MNIN etc.)"),
         "volume" => tr("Volume [cm³] of the elements from surface surf to to, air spaces included, or with mass the mass [g] of the glass elements − target (like VOLU and TMAS). clear: outer radius from the clear semi-diameters instead of the lens edges"),
         "seidel" => tr("Seidel aberration coefficient [waves] of surface surf (0 = sum) − target: spha W040, coma W131, asti W222, fcur W220, dist W311 (like SPHA, COMA, ASTI, FCUR and DIST)"),
-        "distortion" => tr("Real-ray distortion of the chief ray of the largest field − target: percent of the paraxial image height, or real − paraxial height with absolute (like DIST of surface 0)"),
+        "distortion" => tr("Real-ray distortion of the chief ray − target: percent of the predicted image height, or real − predicted with absolute. The prediction is linear from the reference field (the axis by default, like DIST of surface 0 and DISG); peak is the largest absolute value from the axis to the field (DIMX), ftheta the calibrated f-theta distortion (DISC)"),
         "longitudinal" => tr("Distance from the image surface to where an axial ray crosses the axis − target (zone 0 = paraxial marginal ray; like LONA). With wave2: the distance at wave2 − at wave (axial color, AXCL)"),
         "lateral_color" => tr("Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)"),
         "semi" => tr("Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)"),

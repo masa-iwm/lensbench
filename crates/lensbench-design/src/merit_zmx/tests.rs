@@ -400,6 +400,12 @@ fn terms_to_rows_and_back() {
         json!({"type": "seidel", "q": "dist", "surf": 3, "wave": 1, "max": 2.0, "weight": 1.0}),
         json!({"type": "distortion", "wave": 2, "absolute": false, "target": -1.0, "weight": 1.0}),
         json!({"type": "distortion", "wave": 2, "absolute": true, "target": -0.2, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 1, "absolute": false, "field": 2, "peak": true, "max": 1.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "absolute": true, "peak": true, "target": 0.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 3, "absolute": true, "ftheta": true, "max": 0.1, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "absolute": false, "field": [0.5, 0.5], "reference": 2, "target": 0.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 1, "absolute": true, "field": [0.0, 0.7], "target": 0.0, "weight": 1.0}),
+        json!({"type": "ray", "wave": 2, "field": [0.0, 0.7], "px": 0.0, "py": 0.0, "q": "fcgs", "target": 0.0, "weight": 1.0}),
         json!({"type": "longitudinal", "wave": 1, "zone": 0.7, "target": 0.1, "weight": 1.0}),
         json!({"type": "longitudinal", "wave": 1, "wave2": 3, "zone": 0.0, "max": 0.05, "weight": 1.0}),
         json!({"type": "lateral_color", "wave": 1, "wave2": 3, "target": 0.0, "weight": 1.0}),
@@ -451,12 +457,13 @@ fn terms_to_rows_and_back() {
         json!({"type": "seidel", "q": "dist", "target": 0.0}),
         json!({"type": "ray", "surf": 0, "field": 1, "q": "trar"}),
         json!({"type": "ray", "surf": 3, "field": 1, "q": "anax"}),
+        json!({"type": "distortion", "field": [0.0, 0.5], "peak": true, "target": 0.0}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 11, "{notes:?}");
+    assert_eq!(notes.len(), 12, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {
@@ -535,4 +542,23 @@ fn efla_single_lens_only() {
     assert_eq!(z.terms[0]["from"], 1);
     assert_eq!(z.terms[0]["to"], 2);
     assert_eq!(z.notes.len(), 3, "{:?}", z.notes);
+}
+
+/// 値が OpticStudio と違うと分かっている行は、読んで注意を出す
+#[test]
+fn known_differences_are_noted() {
+    let rows = [
+        "RSRH 3 2 0.6 0.6 0 0 0 1 0 0",
+        "RSRH 3 2 0 0.6 0 0 0 1 0 0",
+        "ANAX 0 0 0 1 0 1 0 1 0 0",
+        "FCGT 0 2 0.6 0.6 0 0 0 1 0 0",
+        "FCGS 0 2 0 1 0 0 0 1 0 0",
+    ];
+    let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
+    assert_eq!(z.terms.len(), 5);
+    assert_eq!(z.notes.len(), 3, "{:?}", z.notes);
+    assert!(z.notes[0].contains("row 1 (RSRH"), "{:?}", z.notes);
+    assert!(z.notes[1].contains("primary wavelength"), "{:?}", z.notes);
+    assert!(z.notes[2].contains("FCGT"), "{:?}", z.notes);
 }

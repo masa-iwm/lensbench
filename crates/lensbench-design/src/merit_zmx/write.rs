@@ -348,11 +348,43 @@ fn row_of(
             };
             (op, [j, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
         }
+        // 既定（最大の視野・軸上の基準）は DIST、peak は DIMX、ftheta は DISC、視野か基準があれば DISG（Wave が負で長さ）
         "distortion" => {
             let w = if wave() == 0.0 { primary } else { wave() };
             let abs = t.get("absolute").and_then(Value::as_bool) == Some(true);
-            let p = [0.0, w, if abs { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0];
-            ("DIST", p, bound(0.0))
+            let a = if abs { 1.0 } else { 0.0 };
+            let flag = |k: &str| t.get(k).and_then(Value::as_bool) == Some(true);
+            let reference = match t.get("reference") {
+                None => 0.0,
+                Some(v) => match v.as_u64() {
+                    Some(i) if i >= 1 && (i as usize) <= s.fields.len() => i as f64,
+                    _ => return Err("OpticStudio needs a field number for the reference".into()),
+                },
+            };
+            if flag("ftheta") {
+                ("DISC", [0.0, w, a, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+            } else if flag("peak") {
+                let f = if t.get("field").is_some() {
+                    field_no()?
+                } else {
+                    0.0
+                };
+                ("DIMX", [f, w, a, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+            } else if t.get("field").is_some() || reference != 0.0 {
+                let (hx, hy) = if t.get("field").is_some() {
+                    field()?
+                } else {
+                    (0.0, 1.0)
+                };
+                let w = if abs { -w } else { w };
+                (
+                    "DISG",
+                    [reference, w, hx, hy, 0.0, 0.0, 0.0, 0.0],
+                    bound(0.0),
+                )
+            } else {
+                ("DIST", [0.0, w, a, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
+            }
         }
         "longitudinal" => {
             let w = if wave() == 0.0 { primary } else { wave() };

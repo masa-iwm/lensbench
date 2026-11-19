@@ -141,7 +141,7 @@ set {i}: line break in the result	組 {i}: 結果に改行
 set {i}: {e}	組 {i}: {e}
 
 # optim
-ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・anax・anay・anar・dxdx・dxdy・dydx・dydy・opth・gx・gy・gz・gl・gm・gn・r・ang・tanx・tany・nl・nm・nn・aoi・aoe・cosi・cose）
+ray quantity {s} (x, y, z, l, m, n, trax, tray, trar, anax, anay, anar, dxdx, dxdy, dydx, dydy, fcgt, fcgs, opth, gx, gy, gz, gl, gm, gn, r, ang, tanx, tany, nl, nm, nn, aoi, aoe, cosi, cose)	光線の量 {s}（x・y・z・l・m・n・trax・tray・trar・anax・anay・anar・dxdx・dxdy・dydx・dydy・fcgt・fcgs・opth・gx・gy・gz・gl・gm・gn・r・ang・tanx・tany・nl・nm・nn・aoi・aoe・cosi・cose）
 paraxial {s} ({})	近軸量 {s}（{}）
 user term {}: {} results for {} systems	ユーザーの項 {}: システム {} 個に結果 {} 個
 user term {}: {} residuals (expected {})	ユーザーの項 {}: 残差 {} 個（{} 個のはず）
@@ -1593,6 +1593,10 @@ the merit function rows read from the .zmx are not written to --out (its lens un
 zmx line {} ({}): field {} must be an integer ({v})	zmx の {} 行目（{}）: 欄 {} は整数にしてください（{v}）
 zmx line {} ({})	zmx の {} 行目（{}）
 .zmx merit function row {} ({}, line {}): {why}; skipped	.zmx のメリットファンクションの行 {}（{}、ファイルの {} 行目）: {why}。飛ばしました
+.zmx merit function row {} ({}, line {}): {why}	.zmx のメリットファンクションの行 {}（{}、ファイルの {} 行目）: {why}
+the value of OpticStudio for a field with both Hx and Hy not 0 could not be reproduced; the term may differ	Hx・Hy がどちらも 0 でない視野の OpticStudio の値は再現できませんでした。項の値は違うことがあります
+Wave 0 is read as the primary wavelength (OpticStudio returns 0)	Wave 0 は主波長として読みます（OpticStudio は 0 を返します）
+lensbench uses a central difference; OpticStudio's one-sided difference differs by about 1e-4	lensbench は中心差分を使います。OpticStudio の片側の差分とは 1e-4 ほど違います
 .zmx merit function row {row}: {e}; skipped	.zmx のメリットファンクションの行 {row}: {e}。飛ばしました
 ".zmx merit function row {}: {e}; its rows are read one by one	.zmx のメリットファンクションの行 {}: {e}。その後の行は 1 行ずつ読みます
 the Wizard's "{what}" is not supported (only RMS)	Wizard の「{what}」には対応していません（RMS だけです）
@@ -2347,8 +2351,17 @@ Seidel coefficients of systems with mirrors are not supported yet (surface {j})	
 Seidel coefficients need standard or even asphere surfaces (surface {j})	ザイデル収差係数には標準面か偶数次非球面が必要です（面 {j}）
 Seidel coefficients need refracting or reflecting surfaces (surface {j})	ザイデル収差係数には屈折か反射の面が必要です（面 {j}）
 Seidel coefficients of surface {j} are not finite	面 {j} のザイデル収差係数が有限ではありません
-the chief ray of the largest field stopped (surface {j})	最大の視野の主光線が止まりました（面 {j}）
 the distortion is not finite	歪曲が有限ではありません
+a peak distortion term is against the axis (no reference)	peak の歪曲の項は軸上が基準です（reference は書けません）
+an f-theta distortion term has no field, reference or peak	f-θ の歪曲の項には field・reference・peak を書けません
+the ray near the chief ray stopped (wavelength {w}, surface {})	主光線の近くの光線が止まりました（波長 {w}、面 {}）
+the field curvature is not finite (wavelength {w})	像面湾曲が有限ではありません（波長 {w}）
+the distortion of field ({hx}, {hy}) needs field angles below 90 degrees	視野 ({hx}, {hy}) の歪曲には 90 度より小さい視野の角が要ります
+the chief ray of field ({}, {}) stopped (surface {j})	視野 ({}, {}) の主光線が止まりました（面 {j}）
+the distortion against the axis needs a rotationally symmetric system	軸上を基準にした歪曲には回転対称なシステムが要ります
+the distortion needs a field other than the axis	歪曲には軸上でない視野が要ります
+the f-theta distortion needs angle fields	f-θ の歪曲には角度の視野が要ります
+the f-theta distortion is not finite	f-θ の歪曲が有限ではありません
 the sum of the Seidel distortion has no OpticStudio operand (DIST of surface 0 is the real distortion)	ザイデルの歪曲の和に当たる OpticStudio のオペランドはありません（面 0 の DIST は実光線の歪曲）
 dir of an fnum term is tan or sag	fnum の項の dir は tan か sag です
 the F-number is not finite (wavelength {w})	F ナンバーが有限ではありません（波長 {w}）
@@ -2377,7 +2390,6 @@ paraxial ray quantity {} (x, y, z, l, m, n, r, nl, nm, nn, tanx, tany)	近軸光
 to does not go with paraxial	to は paraxial と使えません
 term {i}: wave goes with power, ynip and index, not {}	項 {i}: wave は power・ynip・index と使います（{} には使えません）
 term {i}: surface {surf} ({first} to {last})	項 {i}: 面 {surf}（{first}〜{last}）
-the distortion needs a rotationally symmetric system	歪曲は回転対称のシステムだけで求めます
 Seidel coefficients need a rotationally symmetric system	ザイデル収差係数は回転対称のシステムだけで求めます
 {} of {} (outside -1 to 1) in a calc term	calc の項の {} の引数 {} が -1〜1 の外です
 surface {k} has no position (ignored)	面 {k} は位置がありません（無視の面）

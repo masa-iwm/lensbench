@@ -101,6 +101,9 @@
 - **角の収差・瞳の微分・矩形の RMS**: `ray` の `q` に `anax`・`anay`・`anar`（方向余弦の主光線との差）と `dxdx`・`dxdy`・
   `dydx`・`dydy`（交点の瞳座標での微分）を足した。.zmx の ANAX〜ANAR・DXDX〜DYDY・TRAI を読み書きし、RSRE・RSRH・RWRE・RWRH を
   格子の `spot`・`wavefront` の項として、SPCH を縦の色収差の差の `calc` の項として読む（RSRE などは書きもする）
+- **一般の歪曲・像面湾曲**: `distortion` に `field`・`reference`（基準の視野からの線形の予測との差）・`peak`（軸上から
+  視野までの最大）・`ftheta`（校正した f-θ 歪曲）を、`ray` の `q` に `fcgt`・`fcgs`（像面湾曲）を足した。.zmx の DISG・DIMX・
+  DISC・FCGT・FCGS を読み書きする
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

@@ -320,8 +320,18 @@ pub struct SeidelSpec {
 pub struct DistortionSpec {
     /// 波長の番号。null・省略は主波長
     pub wave: Option<usize>,
-    /// true で実像高 − 近軸像高 [レンズ単位]、false・省略で近軸像高に対する %
+    /// true で実像高 − 予測の像高 [レンズ単位]、false・省略で予測の像高に対する %
     pub absolute: Option<bool>,
+    /// 視野（省略は正規化視野 [0, 1]）。peak では軸上からこの視野までの線の上の最大
+    pub field: Option<FieldRef>,
+    /// 基準の視野（省略は軸上で、予測は近軸主光線の倍率）。ほかの視野では、その視野の主光線の点と、そこでの像の点の
+    /// 角の tan（物体高の視野では高さ）による微分から線形に予測する（OpticStudio の DISG）
+    pub reference: Option<FieldRef>,
+    /// true で軸上から field までの絶対値の最大（OpticStudio の DIMX）
+    pub peak: Option<bool>,
+    /// true で校正した f-θ 歪曲: y の向きの視野で、主光線の高さに原点を通る y = cθ を当てたずれの絶対値の最大
+    /// （角度の視野だけ。OpticStudio の DISC）
+    pub ftheta: Option<bool>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }

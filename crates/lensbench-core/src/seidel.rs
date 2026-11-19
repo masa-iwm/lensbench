@@ -1,4 +1,4 @@
-//! ザイデル収差係数（3 次の収差、面ごと）と、最大の視野の実光線の歪曲
+//! ザイデル収差係数（3 次の収差、面ごと）と、実光線の歪曲・縦収差
 
 use crate::error::Result;
 use crate::invalid;
@@ -143,37 +143,6 @@ pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
     })
 }
 
-/// 最大の視野（正規化視野 (0, 1)）の主光線の像面での高さと近軸像高の差 [レンズ単位] と、近軸像高に対する % （波長 w）。
-/// OpticStudio の DIST の Surf 0（%）と Absolute（差）
-pub fn real_distortion(s: &System, w: usize) -> Result<(f64, f64)> {
-    if !s.symmetric() {
-        invalid!("the distortion needs a rotationally symmetric system");
-    }
-    let img = s.image();
-    let p = s.paraxial();
-    let k = chief_scale(s);
-    let (yc, _) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
-    let ybar = yc[img];
-    let t = s.try_trace(
-        FieldSel::Norm(0.0, 1.0),
-        &[0.0],
-        &[0.0],
-        Some(w),
-        None,
-        false,
-    )?;
-    let r = &t.rays[0];
-    if let Some(j) = r.status.surf() {
-        invalid!("the chief ray of the largest field stopped (surface {j})");
-    }
-    let d = r.xyz[1] - ybar;
-    let pct = 100.0 * d / ybar;
-    if !d.is_finite() || !pct.is_finite() {
-        invalid!("the distortion is not finite");
-    }
-    Ok((d, pct))
-}
-
 /// 軸上の光線が光軸を横切る点の、像面の頂点からの距離 [レンズ単位]（波長 w）。zone 0 は近軸周辺光線（主波長の入射瞳の縁を
 /// 通す）、zone > 0 は正規化瞳座標 (0, zone) の実光線。OpticStudio の LONA（26.1 で実測）
 pub fn longitudinal(s: &System, w: usize, zone: f64) -> Result<f64> {
@@ -210,4 +179,160 @@ pub fn chief_height(s: &System, w: usize) -> f64 {
     let p = s.paraxial();
     let k = chief_scale(s);
     s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None).0[s.image()]
+}
+
+/// 視野 (hx, hy) の、歪曲の線形の予測に使う座標 t（角度の視野は各向きの角の tan、ほかは正規化視野 × 正規化の値）
+fn field_t(s: &System, hx: f64, hy: f64) -> Result<[f64; 2]> {
+    let (nx, ny) = s.field_norm_values();
+    if s.field_type == FieldType::Angle {
+        let (ax, ay) = ((hx * nx).to_radians(), (hy * ny).to_radians());
+        if ax.abs() >= std::f64::consts::FRAC_PI_2 || ay.abs() >= std::f64::consts::FRAC_PI_2 {
+            invalid!("the distortion of field ({hx}, {hy}) needs field angles below 90 degrees");
+        }
+        return Ok([ax.tan(), ay.tan()]);
+    }
+    Ok([hx * nx, hy * ny])
+}
+
+/// [`field_t`] の逆
+fn field_of_t(s: &System, t: [f64; 2]) -> (f64, f64) {
+    let (nx, ny) = s.field_norm_values();
+    if s.field_type == FieldType::Angle {
+        return (t[0].atan().to_degrees() / nx, t[1].atan().to_degrees() / ny);
+    }
+    (t[0] / nx, t[1] / ny)
+}
+
+/// 視野 (hx, hy) の主光線の像面での (x, y)（波長 w）
+fn chief_xy(s: &System, h: (f64, f64), w: usize) -> Result<[f64; 2]> {
+    let t = s.try_trace(
+        FieldSel::Norm(h.0, h.1),
+        &[0.0],
+        &[0.0],
+        Some(w),
+        None,
+        false,
+    )?;
+    let r = &t.rays[0];
+    if let Some(j) = r.status.surf() {
+        invalid!(
+            "the chief ray of field ({}, {}) stopped (surface {j})",
+            h.0,
+            h.1
+        );
+    }
+    Ok([r.xyz[0], r.xyz[1]])
+}
+
+/// 一般の歪曲（OpticStudio の DISG）: 視野 h の主光線の像面の点 p と、基準の視野 r の点 p_r からの線形の予測
+/// p_r + J (t − t_r) の差 d を、|d|（符号は d と予測の変位 J (t − t_r) の内積の符号）と、|J (t − t_r)| に対する % で返す。
+/// t は [`field_t`]、J は基準の視野での ∂(x, y)/∂t（グリッド歪曲の A・B・C・D）。基準が None なら軸上で、J は近軸主光線から
+/// （回転対称な系だけ）。OpticStudio 26.1 で実測（Double Gauss 28 の軸上・視野 2 の基準、斜めの視野で 1e-10）
+pub fn distortion_at(
+    s: &System,
+    w: usize,
+    h: (f64, f64),
+    reference: Option<(f64, f64)>,
+) -> Result<(f64, f64)> {
+    let t = field_t(s, h.0, h.1)?;
+    let (pr, tr, j) = match reference {
+        None => {
+            if !s.symmetric() {
+                invalid!("the distortion against the axis needs a rotationally symmetric system");
+            }
+            // 近軸主光線の像面の高さは t に比例する（最大の半径の視野の t で割る）
+            let img = s.image();
+            let p = s.paraxial();
+            let k = chief_scale(s);
+            let (yc, _) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
+            // t の大きさで最大の半径の視野（角度の視野は k が tan、ほかは視野の座標の最大の半径）
+            let tm = if s.field_type == FieldType::Angle {
+                k
+            } else {
+                s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max)
+            };
+            let m = yc[img] / tm;
+            ([0.0, 0.0], [0.0, 0.0], [[m, 0.0], [0.0, m]])
+        }
+        Some(r) => {
+            let tr = field_t(s, r.0, r.1)?;
+            let pr = chief_xy(s, r, w)?;
+            let tm = field_t(s, 1.0, 0.0)?[0]
+                .abs()
+                .max(field_t(s, 0.0, 1.0)?[1].abs());
+            if tm == 0.0 {
+                invalid!("the distortion needs a field other than the axis");
+            }
+            let d = 1e-5 * tm;
+            let mut j = [[0.0; 2]; 2];
+            for k in 0..2 {
+                let (mut a, mut b) = (tr, tr);
+                a[k] -= d;
+                b[k] += d;
+                let (pa, pb) = (
+                    chief_xy(s, field_of_t(s, a), w)?,
+                    chief_xy(s, field_of_t(s, b), w)?,
+                );
+                for i in 0..2 {
+                    j[i][k] = (pb[i] - pa[i]) / (2.0 * d);
+                }
+            }
+            (pr, tr, j)
+        }
+    };
+    let p = chief_xy(s, h, w)?;
+    let dt = [t[0] - tr[0], t[1] - tr[1]];
+    let del = [
+        j[0][0] * dt[0] + j[0][1] * dt[1],
+        j[1][0] * dt[0] + j[1][1] * dt[1],
+    ];
+    let d = [p[0] - pr[0] - del[0], p[1] - pr[1] - del[1]];
+    let n = del[0].hypot(del[1]);
+    let v = d[0].hypot(d[1]).copysign(d[0] * del[0] + d[1] * del[1]);
+    let pct = if n > 0.0 { 100.0 * v / n } else { 0.0 };
+    if !v.is_finite() || !pct.is_finite() {
+        invalid!("the distortion is not finite");
+    }
+    Ok((v, pct))
+}
+
+/// 軸上から視野 h までの線の上（100 等分の点）の、軸上を基準にした [`distortion_at`] の絶対値の最大（absolute なら長さ、
+/// でなければ %）。OpticStudio の DIMX
+pub fn distortion_max(s: &System, w: usize, h: (f64, f64), absolute: bool) -> Result<f64> {
+    let mut m: f64 = 0.0;
+    for k in 1..=100 {
+        let f = k as f64 / 100.0;
+        let (v, pct) = distortion_at(s, w, (h.0 * f, h.1 * f), None)?;
+        m = m.max(if absolute { v.abs() } else { pct.abs() });
+    }
+    Ok(m)
+}
+
+/// 校正した f-θ 歪曲（OpticStudio の DISC）: y の向きの視野を 100 等分した角 θ の主光線の高さ y に、原点を通る直線 y = cθ を
+/// 最小二乗で当て、ずれ |y − cθ| の最大と、|y − cθ| / |cθ| の最大 [%] を返す（角度の視野だけ。OpticStudio 26.1 で実測、
+/// Double Gauss 28 で 1e-13）
+pub fn ftheta_distortion(s: &System, w: usize) -> Result<(f64, f64)> {
+    if s.field_type != FieldType::Angle {
+        invalid!("the f-theta distortion needs angle fields");
+    }
+    let (_, ny) = s.field_norm_values();
+    let mut pts = Vec::with_capacity(101);
+    for k in 0..=100 {
+        let h = k as f64 / 100.0;
+        pts.push(((h * ny).to_radians(), chief_xy(s, (0.0, h), w)?[1]));
+    }
+    let c =
+        pts.iter().map(|(a, y)| a * y).sum::<f64>() / pts.iter().map(|(a, _)| a * a).sum::<f64>();
+    let (mut da, mut dp): (f64, f64) = (0.0, 0.0);
+    for &(a, y) in &pts {
+        let d = (y - c * a).abs();
+        da = da.max(d);
+        if a != 0.0 {
+            dp = dp.max(100.0 * d / (c * a).abs());
+        }
+    }
+    if !da.is_finite() || !dp.is_finite() {
+        invalid!("the f-theta distortion is not finite");
+    }
+    Ok((da, dp))
 }
