@@ -48,6 +48,8 @@ pub struct ZmxSys {
     pub waves: usize,
     /// 視野が角度か（グリッド歪曲の係数 ABCD・DISA は角の tan での微分で長さ。高さの視野では長さの比で単位がない）
     pub angle_field: bool,
+    /// 多重構成の表の行（MCOV などの Op# の順、[`MeritFunction::mce`]）。[`terms_from_zmx`] が評価関数から入れる
+    pub mce: Vec<(String, i64, i64)>,
 }
 
 impl Default for ZmxSys {
@@ -58,6 +60,7 @@ impl Default for ZmxSys {
             primary_varies: false,
             waves: 0,
             angle_field: true,
+            mce: Vec::new(),
         }
     }
 }
@@ -78,6 +81,7 @@ impl ZmxSys {
             }),
             waves: s.wavelengths.len(),
             angle_field: matches!(s.field_type, lensbench_core::system::FieldType::Angle),
+            mce: Vec::new(),
         }
     }
 }
@@ -466,7 +470,7 @@ fn kind_of(
         // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
         "CVGT" | "CVLT" | "CVVA" | "COGT" | "COLT" | "COVA" | "DMGT" | "DMLT" | "DMVA" | "SAGX"
         | "SAGY" | "SSAG" | "STHI" | "GLCX" | "GLCY" | "GLCZ" | "GLCA" | "GLCB" | "GLCC"
-        | "GCOS" | "GTCE" => {
+        | "GCOS" | "GTCE" | "TCVA" | "TCGT" | "TCLT" => {
             let j = int(INT1)?;
             let last = if op == "STHI" { image - 1 } else { image };
             if j < 0 || j as usize > last {
@@ -496,7 +500,9 @@ fn kind_of(
                 "GLCC" => ("gc", None),
                 // 面の後のガラスの相対価格・熱膨張係数（カタログの OD・ED の行、空気は 0。OpticStudio 26.1 で実測）
                 "GCOS" => ("cost", None),
-                _ => ("tce", None),
+                "GTCE" => ("tce", None),
+                // 面の TCE（レンズデータの列。硝材の面でも面の値で、OpticStudio 26.1 の実測で硝材の面は 0）
+                _ => ("surf_tce", None),
             };
             m.insert("type".into(), json!("surface"));
             m.insert("surf".into(), json!(j));
@@ -510,7 +516,10 @@ fn kind_of(
                 "LT" => "max",
                 _ => "target",
             };
-            let len = !matches!(q, "curv" | "conic" | "ga" | "gb" | "gc" | "cost" | "tce");
+            let len = !matches!(
+                q,
+                "curv" | "conic" | "ga" | "gb" | "gc" | "cost" | "tce" | "surf_tce"
+            );
             // 曲率は 1/レンズ単位
             let t = match q {
                 "curv" => target / unit,
@@ -746,6 +755,43 @@ fn kind_of(
         }
         // RELI・EFNO: Int1 標本、Int2 波長（0 は波長 1。OpticStudio 26.1 で実測）、Data1 視野の番号、Data2 偏光（0 だけ）。
         // 標本は読まず lensbench の既定（瞳の縁 128 点）
+        // MCOV・MCOG・MCOL: Int1 の多重構成の行（Op#）の、構成 Int2（Cfg#）の値。lensbench は構成 Cfg# の系のパラメータの
+        // param の項（MCOG・MCOL は min・max）
+        "MCOV" | "MCOG" | "MCOL" => {
+            let k = int(INT1)?;
+            let c = int(INT2)?;
+            let Some((mop, j, parm)) = (k >= 1).then(|| sys.mce.get(k as usize - 1)).flatten()
+            else {
+                return Err(format!("multi-configuration row {k}"));
+            };
+            if c < 1 {
+                return Err(format!("configuration {c}"));
+            }
+            let (name, scale) = match mop.as_str() {
+                "THIC" => (format!("{j}.t"), unit),
+                "SDIA" => (format!("{j}.semi"), unit),
+                "CRVT" => (format!("{j}.c"), 1.0 / unit),
+                "CONN" => (format!("{j}.k"), 1.0),
+                "PRAM" => (format!("{j}.p{parm}"), 1.0),
+                "WAVE" => (format!("wave{j}"), 1.0),
+                "WLWT" => (format!("wwt{j}"), 1.0),
+                "PRWV" => ("primary".to_string(), 1.0),
+                "APER" => ("aper".to_string(), 1.0),
+                "XFIE" => (format!("fx{j}"), 1.0),
+                "YFIE" => (format!("fy{j}"), 1.0),
+                "FLWT" => (format!("fwt{j}"), 1.0),
+                o => return Err(format!("the multi-configuration operand {o} of row {k}")),
+            };
+            m.insert("type".into(), json!("param"));
+            m.insert("name".into(), json!(name));
+            m.insert("config".into(), json!(c));
+            let key = match op {
+                "MCOG" => "min",
+                "MCOL" => "max",
+                _ => "target",
+            };
+            m.insert(key.into(), json!(target * scale));
+        }
         "RELI" | "EFNO" => {
             if int(data(2))? != 0 {
                 return Err("the illumination with polarization is not supported".into());
@@ -995,6 +1041,10 @@ fn kind_of(
 
 /// .zmx の評価関数を項の JSON に写す。primary は系の主波長の番号（1 始まり）、image は像面の番号、sys は系の様子
 pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &ZmxSys) -> ZmxMerit {
+    let sys = &ZmxSys {
+        mce: mf.mce.clone(),
+        ..sys.clone()
+    };
     let mut cx = Ctx {
         unit: mf.lens_unit_mm,
         primary,
@@ -1157,7 +1207,10 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
             weight
         };
         m.insert("weight".into(), json!(weight));
-        if config != 1 {
+        // MCOV などは行の構成でなく Cfg# の構成
+        if let Some(c) = m.get("config").and_then(Value::as_u64) {
+            configs = configs.max(c as usize);
+        } else if config != 1 {
             m.insert("config".into(), json!(config));
         }
         let mut v = Value::Object(m);

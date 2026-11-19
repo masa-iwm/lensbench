@@ -391,6 +391,17 @@ pub struct EnergySpec {
     pub target: Option<f64>,
 }
 
+/// param の項（系のパラメータの値）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ParamSpec {
+    /// パラメータの名前（変数と同じ書き方: "6.t"・"3.c"・"wave1"・"aper" など）。項の構成の系の値で、多重構成の値は
+    /// `config` で選ぶ
+    pub name: String,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// strehl の項（ストレール比）
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -553,6 +564,7 @@ pub enum TermSpec {
     Energy(EnergySpec),
     Strehl(StrehlSpec),
     Illum(IllumSpec),
+    Param(ParamSpec),
     Longitudinal(LongSpec),
     #[serde(rename = "lateral_color")]
     LateralColor(LatColorSpec),

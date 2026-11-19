@@ -205,7 +205,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 26] = [
+    const TYPES: [&str; 27] = [
         "spot",
         "wavefront",
         "mtf",
@@ -224,6 +224,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "distortion",
         "energy",
         "strehl",
+        "param",
         "illum",
         "longitudinal",
         "lateral_color",
@@ -268,6 +269,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Distortion { .. }
             | TermKind::Energy { .. }
             | TermKind::Strehl { .. }
+            | TermKind::Param { .. }
             | TermKind::Illum { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
@@ -630,6 +632,12 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                     .ok_or("energy term has no target (or min and max)")?,
             }
         }
+        TermSpec::Param(t) => TermKind::Param {
+            param: s.param(&t.name)?,
+            target: t
+                .target
+                .ok_or("param term has no target (or min and max)")?,
+        },
         TermSpec::Strehl(t) => TermKind::Strehl {
             field: field(t.field, s)?,
             wave: wave(t.wave, s)?,

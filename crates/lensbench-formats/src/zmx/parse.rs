@@ -38,6 +38,8 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
     let mut raw = Raw::default();
     let mut cur: Option<usize> = None;
     let mut in_mce = false;
+    // 多重構成の表の前の文の構成（構成の番号が増えなければ次の行）
+    let mut last_cfg = i64::MAX;
     // 面の後の字下げしない行は評価関数（OpticStudio は面の後に評価関数・公差（TOL）・多重構成（MNUM）の順で書く）
     let mut in_merit = false;
     // 古い .zmx（Edmund の一部の品など）は面の行を字下げしない。字下げした行が 1 つも無いときは、
@@ -78,13 +80,27 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             continue;
         }
         if in_mce {
-            // 多重構成の表の空の行（BLNK）は光線追跡に効かない。番号・値の有無に依らず飛ばす
+            // 多重構成の表の空の行（BLNK）は光線追跡に効かない。番号・値の有無に依らず飛ばし、行の番号だけ数える
             if key == "BLNK" {
+                let cfg = mce_line(line).map_or(i64::MAX, |m| m.2);
+                if cfg == i64::MAX || cfg <= last_cfg {
+                    raw.mce_rows.push((key.to_string(), 0, 0));
+                }
+                last_cfg = cfg;
                 continue;
             }
             let Some(m) = mce_line(line) else {
                 invalid!("can't read the zmx multi-configuration line: {line}");
             };
+            if m.2 <= last_cfg {
+                let parm = if m.0 == "PRAM" {
+                    m.4.get(1).and_then(|x| x.parse::<i64>().ok()).unwrap_or(-1)
+                } else {
+                    0
+                };
+                raw.mce_rows.push((m.0.clone(), m.1, parm));
+            }
+            last_cfg = m.2;
             raw.mce.push(m);
             continue;
         }
@@ -271,6 +287,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 s.pmacros.push((n as u8, macro_name(s.n, line)?));
             }
             "DISZ" => s.disz = Some(num(1)?),
+            "TCED" => s.tced = Some(num(1)?),
             // DIAM 半直径 ソルブ …（ソルブ 0 は自動、1 は固定）。ソルブ 2 はピックアップ: DIAM 値 2 元の面 列 倍率
             // （オフセットなし、OpticStudio 2026 R1.01 で実測）
             "DIAM" => {

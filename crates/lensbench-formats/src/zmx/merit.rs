@@ -132,6 +132,8 @@ pub struct MeritFunction {
     pub rows: Vec<MeritRow>,
     /// レンズ単位の長さ [mm]（UNIT。長さの演算子の目標を mm に直すのに使う）
     pub lens_unit_mm: f64,
+    /// 多重構成の表の行（MCOV などの Op# の順、BLNK も 1 行）: 演算子・番号（面など）・PRAM のパラメータの番号（ほかは 0）
+    pub mce: Vec<(String, i64, i64)>,
 }
 
 /// .zmx の評価関数（ファイルを読む）
@@ -153,6 +155,7 @@ pub fn merit_function_text(txt: &str) -> Result<MeritFunction> {
     Ok(MeritFunction {
         rows: raw.merit,
         lens_unit_mm,
+        mce: raw.mce_rows,
     })
 }
 

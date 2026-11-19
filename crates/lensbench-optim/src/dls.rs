@@ -887,6 +887,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
         TermKind::Energy { .. } | TermKind::Strehl { .. } | TermKind::Illum { .. } => {
             return image::check(i, k, s)
         }
+        TermKind::Param { param, .. } => return surf::check_param(i, *param, s),
         TermKind::Coupling { wave, .. } => {
             if s.infinite() {
                 invalid!("term {i}: fiber coupling is only for finite-object systems");
@@ -1090,6 +1091,7 @@ fn eval_term(
         | TermKind::Longitudinal { .. }
         | TermKind::LateralColor { .. } => seidel::term(s, k),
         TermKind::FNum { .. } => ray::fnum_term(s, k),
+        TermKind::Param { param, target } => Ok((vec![s.get_param(*param)? - target], None)),
         TermKind::Energy { .. } | TermKind::Strehl { .. } | TermKind::Illum { .. } => {
             Ok((vec![image::term(s, k)?], None))
         }

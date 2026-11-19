@@ -355,7 +355,7 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
     }
 }
 
-/// 多重構成の PRAM（面の PARM の値を構成ごとに変える）と、光線追跡に効かない行（SCOL・TCED、MCOM・CWGT）
+/// 多重構成の PRAM（面の PARM の値を構成ごとに変える）と、光線追跡に効かない行（SCOL・TCED、MCOM・CWGT。TCED は面の熱膨張係数として読む）
 #[test]
 fn pram_and_harmless_lines() {
     // 多重構成の表の空の行（BLNK）は書き方に依らず読み飛ばす
@@ -391,6 +391,8 @@ CWGT   0   1 1.0E+00 0 0 0 1 1 1.0E+00 0.0E+00 0 \"\" 0\nCWGT   0   2 2.0E+00 0 
         let r = build(&base(dec, ""));
         same_rays(&s, &r, &PX, &PY, 1e-12);
         assert_eq!(s.surfaces[2].typ(), SurfType::CoordBrk);
+        // TCED は面の熱膨張係数として持つ（光線には効かない）
+        assert_eq!(s.surfaces[1].tce, 8.25);
     }
 }
 

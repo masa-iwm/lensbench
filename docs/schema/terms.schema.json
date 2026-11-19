@@ -1997,6 +1997,61 @@
         },
         {
           "additionalProperties": false,
+          "description": "param の項（系のパラメータの値）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "パラメータの名前（変数と同じ書き方: \"6.t\"・\"3.c\"・\"wave1\"・\"aper\" など）。項の構成の系の値で、多重構成の値は\n`config` で選ぶ",
+              "type": "string"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "param",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "longitudinal の項",
           "properties": {
             "config": {

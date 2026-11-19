@@ -84,6 +84,7 @@ impl Ctx<'_> {
             },
             coat: s.coat.clone().unwrap_or_default(),
             stop: k == self.stop,
+            tce: s.tced.unwrap_or(0.0),
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
             semi_auto: !self.opt.fixed_semi

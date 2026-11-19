@@ -126,6 +126,9 @@
   MTFA・MSWT・MSWS・MSWA・GMTT・GMTS・GMTA・MTHT・MTHS・MTHA・GENC・GENF・DENC・DENF・STRH・RELI・EFNO を読み書きする
 - **波長・円柱の体積の項と、評価関数の流れの行**: `paraxial` の `q` に `wlen`（波長）を、`volume` に `cylinder`（面を包む円柱の体積）を
   足した。.zmx の WLEN・CVOL を読み書きし、ENDX・GOTO（後の行・飛ばす行を項にしない）と FDMO・FDRE（視野を変える）を読む
+- **面の TCE と多重構成の値の項**: .zmx の面の TCED（レンズデータの TCE の列）を面の `tce` として読み書きし、`surface` の `q` に
+  `surf_tce` を足した。新しい種類 `param`（系のパラメータの、項の構成での値）を足した。.zmx の TCVA・TCGT・TCLT を読み書きし、
+  MCOV・MCOG・MCOL を読む
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

@@ -463,6 +463,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "surface", "surf": 4, "q": "gc", "target": 1.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 1, "q": "cost", "target": 2.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 3, "q": "tce", "target": 7.0, "weight": 1.0}),
+        json!({"type": "surface", "surf": 2, "q": "surf_tce", "max": 20.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 1, "to": 5, "q": "nd", "min": 1.5, "weight": 1.0}),
         json!({"type": "surface", "surf": 1, "to": 5, "q": "vd", "max": 60.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 2, "to": 4, "q": "dpgf", "min": -0.01, "weight": 1.0}),

@@ -693,6 +693,7 @@ fn row_of(
                 "gc" => ("GLCC", "", ""),
                 "cost" => ("GCOS", "", ""),
                 "tce" => ("GTCE", "", ""),
+                "surf_tce" => ("TCVA", "TCGT", "TCLT"),
                 "power" | "ynip" | "index" => {
                     p[1] = if wave() == 0.0 { primary } else { wave() };
                     let op = match q {

@@ -46,12 +46,15 @@ pub enum SurfQ {
     /// 点 (x, y) の向き（(0, 0) は +y）の、包む厚み: 中心の厚み + max(0, 次の面の矢高) − min(0, 面の矢高)。矢高は
     /// それぞれのクリア半径の点（面はクリア半径の外で平らなので、玉の半径で測っても同じ。OpticStudio の TTVA・TTGT・TTLT）
     Total,
+    /// 面の熱膨張係数 [10⁻⁶/K]（レンズデータの TCE の列、.zmx の TCED。硝材の面でも面の値で、設定しなければ 0。
+    /// OpticStudio の TCVA・TCGT・TCLT）
+    SurfTce,
     /// 面タイプのパラメータ n（.zmx の PARM の番号。値を持たない番号は 0。OpticStudio の PMVA・PMGT・PMLT）
     Parm(u8),
 }
 
 impl SurfQ {
-    pub const ALL: [SurfQ; 25] = [
+    pub const ALL: [SurfQ; 26] = [
         SurfQ::Curv,
         SurfQ::Conic,
         SurfQ::Sag,
@@ -76,6 +79,7 @@ impl SurfQ {
         SurfQ::Cost,
         SurfQ::Tce,
         SurfQ::Total,
+        SurfQ::SurfTce,
         SurfQ::Parm(0),
     ];
     pub fn name(self) -> &'static str {
@@ -104,6 +108,7 @@ impl SurfQ {
             SurfQ::Cost => "cost",
             SurfQ::Tce => "tce",
             SurfQ::Total => "total",
+            SurfQ::SurfTce => "surf_tce",
             SurfQ::Parm(_) => "param",
         }
     }
@@ -133,6 +138,7 @@ impl SurfQ {
                 | SurfQ::Dpgf
                 | SurfQ::Cost
                 | SurfQ::Tce
+                | SurfQ::SurfTce
                 | SurfQ::Parm(_)
         )
     }
@@ -227,6 +233,7 @@ pub(super) fn surface_value(
         }
         SurfQ::Index => s.n(j)[w],
         SurfQ::Semi => f.semi,
+        SurfQ::SurfTce => f.tce,
         SurfQ::Ga | SurfQ::Gb | SurfQ::Gc => {
             let Some(fr) = s.frames().surf[j] else {
                 invalid!("surface {j} has no position (ignored, or the object at infinity)");
@@ -328,6 +335,15 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
     Ok((vec![surface_value(s, *surf, *q, *x, *y, w)? - target], None))
 }
 
+/// param の項（[`TermKind::Param`]）: 値が数で、有限なパラメータか
+pub(super) fn check_param(i: usize, p: lensbench_core::param::Param, s: &System) -> Result<()> {
+    let v = s.get_param(p)?;
+    if !v.is_finite() {
+        invalid!("term {i}: parameter {} is not finite", p.name());
+    }
+    Ok(())
+}
+
 /// 半直径を読む項（自動の半直径は変数とともに動く）
 pub(super) fn reads_semi(k: &TermKind) -> bool {
     match k {
@@ -344,6 +360,7 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
         TermKind::Volume { .. } => true,
+        TermKind::Param { param, .. } => param.kind == lensbench_core::param::Kind::Semi,
         TermKind::SurfEach { q, .. } => *q == SurfQ::Semi,
         TermKind::Calc { args, .. } => args.iter().any(|a| match a {
             CalcArg::Term(k) => reads_semi(k),

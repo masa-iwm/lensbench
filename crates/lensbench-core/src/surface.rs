@@ -189,6 +189,14 @@ pub struct Surface {
     /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。形は標準面のまま
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bire: Option<Bire>,
+    /// 面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列、.zmx の TCED。空気の面の機構の膨張に使う値で、
+    /// 光線追跡には効かない。硝材の面の TCE はカタログの値）
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tce: f64,
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
 }
 
 /// 偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、
@@ -419,6 +427,7 @@ impl Default for Surface {
             reflect: None,
             retarder: None,
             bire: None,
+            tce: 0.0,
         }
     }
 }

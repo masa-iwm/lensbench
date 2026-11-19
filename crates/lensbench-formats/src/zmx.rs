@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 const HARMLESS: &[&str] = &[
     "HIDE", "MIRR", "SLAB", "POPS", "SSID", "FIMP", "MEMA", "VPAR", "VDSZ", "VCRV", "VCON", "OEMA",
     "BLNK", "NAME", // 縁の描き方（光線追跡に効かない）
-    "EDGE", // 面の色（表示用）・面ごとの熱膨張係数（熱の解析だけに使う）
-    "SCOL", "TCED",
+    "EDGE", // 面の色（表示用）
+    "SCOL",
 ];
 const MCE_HANDLED: &[&str] = &[
     "THIC", "IGNR", "APMX", "SDIA", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN", "WAVE", "GLSS",
@@ -45,6 +45,8 @@ pub struct RawSurf {
     pub curv_pickup: Option<(usize, f64, Option<Kind>)>,
     pub coni: Option<f64>,
     pub disz: Option<f64>,
+    /// 面の熱膨張係数（TCED の 1 番目の値）
+    pub tced: Option<f64>,
     pub diam: Option<f64>,
     /// DIAM の 2 番目の欄（0 自動、1 固定、2 ピックアップ、4 マクロ）
     pub diam_mode: Option<u8>,
@@ -97,6 +99,8 @@ pub struct Raw {
     pub surfs: Vec<RawSurf>,
     /// (オペランド, 番号, 構成, 値, 残り)
     pub mce: Vec<(String, i64, i64, String, Vec<String>)>,
+    /// 多重構成の表の行（MCOV などの Op# の順、BLNK も 1 行）: 演算子・番号・PRAM のパラメータの番号（ほかは 0）
+    pub mce_rows: Vec<(String, i64, i64)>,
     pub sysl: HashMap<String, Vec<Vec<String>>>,
     /// 評価関数の行（面の後、TOL・MNUM の前の字下げしない行。[`merit::MeritRow`]）。系を作るときは使わない
     pub merit: Vec<merit::MeritRow>,

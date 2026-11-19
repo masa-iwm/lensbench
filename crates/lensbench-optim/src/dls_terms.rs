@@ -325,6 +325,12 @@ pub enum TermKind {
         q: EnergyQ,
         target: f64,
     },
+    /// 系のパラメータ（[`System::get_param`]、面の厚み・曲率・多重構成の値など）の値 − target。項の構成の系で求めるので、
+    /// 多重構成の値は構成ごとの項になる（OpticStudio の MCOV・MCOG・MCOL）。微分は差分
+    Param {
+        param: lensbench_core::param::Param,
+        target: f64,
+    },
     /// ストレール比 − target（[`lensbench_analysis::energy::strehl`]、wave None なら重みのある全波長、n は瞳の格子で None は
     /// 自動。OpticStudio の STRH）
     Strehl {
@@ -940,6 +946,7 @@ impl TermKind {
             | TermKind::Volume { target, .. }
             | TermKind::Energy { target, .. }
             | TermKind::Strehl { target, .. }
+            | TermKind::Param { target, .. }
             | TermKind::Illum { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
@@ -1118,6 +1125,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Volume { .. }
         | TermKind::Energy { .. }
         | TermKind::Strehl { .. }
+        | TermKind::Param { .. }
         | TermKind::Illum { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),

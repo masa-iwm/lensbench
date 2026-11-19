@@ -574,6 +574,9 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 _ => {}
             }
         }
+        if d.tce != 0.0 {
+            w(&mut o, format!("  TCED {} 0 0", f(d.tce)));
+        }
         w(&mut o, format!("  DISZ {}", f(d.t)));
         // 厚さのソルブ（OpticStudio 2026 R1.01 の書き方）
         for q in s.solves.iter().filter(|q| q.surf == k && !q.kind.is_curv()) {

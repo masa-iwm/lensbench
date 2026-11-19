@@ -2452,3 +2452,4 @@ the energy reaches only {:.4} of the total, not {frac}	エネルギーは全体�
 the illumination of an afocal image space is not supported	アフォーカルの像空間の照度には対応していません
 the illumination with polarization is not supported	偏光ありの照度には対応していません
 the square wave MTF needs a positive frequency ({freq})	矩形波の MTF には正の周波数が要ります（{freq}）
+the multi-configuration operand {o} of row {k}	多重構成の行 {k} の演算子 {o}
