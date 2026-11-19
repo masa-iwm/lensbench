@@ -914,7 +914,7 @@ block {id} surface {k}: {e}	ブロック {id} の面 {k}: {e}
 surface type {:?} can't be written	面の型 {:?} は書けません
 a mirror surface can't be written	ミラーの面は書けません
 tilts and decenters before or after a surface (before, after) can't be written	面の前後のチルト・偏心（before・after）は書けません
-ignore, dn and disp can't be written	ignore・dn・disp は書けません
+dn and disp can't be written	dn・disp は書けません
 cx is only for a toroidal surface	cx はトロイダル面だけのものです
 the glass after the exit of a birefringent plate goes to the entrance of the next plate of the same material with thickness 0	複屈折材の板の出口の後の硝材は、厚み 0 で同じ材料の次の板の入口へ
 two birefringent plate entrances in a row (an exit is needed)	複屈折材の板の入口が続きます（出口が必要です）
@@ -1011,7 +1011,7 @@ no glass after a {what} surface	{what} の面の後に硝材は書けません
 a coordinate break surface can't have tilt	座標ブレークの面に tilt は書けません
 tilt is not a number	tilt が数ではありません
 coordinate break order {} (0 or 1)	座標ブレークの順序 {}（0 か 1）
-a coordinate break surface can't have an aperture	座標ブレークの面に開口は書けません
+a coordinate break surface can't have a floating aperture	座標ブレークの面には浮動の開口を付けられません
 more than 1024 paths	経路が 1024 より多いです
 path {q}: {e}	経路 {q}: {e}
 a BS (splitter) needs an id	BS（splitter）には id が必要です

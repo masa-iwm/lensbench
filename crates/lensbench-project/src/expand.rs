@@ -136,6 +136,7 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         semi_auto: q.semi.is_auto(),
         coat: q.coat.clone(),
         comment: q.comment.clone(),
+        ignore: q.ignore,
         ..Default::default()
     };
     s.ap = surf_ap(q.aperture, q.semi.value());
@@ -230,8 +231,8 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         if q.order > 1 {
             return Err(format!("coordinate break order {} (0 or 1)", q.order).into());
         }
-        if q.aperture.is_some() {
-            return Err("a coordinate break surface can't have an aperture".into());
+        if matches!(q.aperture, Some(SurfAperture::Floating)) {
+            return Err("a coordinate break surface can't have a floating aperture".into());
         }
         s.form = Form::CoordBrk {
             cb: d,

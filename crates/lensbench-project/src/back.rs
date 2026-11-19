@@ -419,12 +419,33 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if f.is_mirror() {
         return Err("a mirror surface can't be written".into());
     }
-    if f.ignore || f.dn != 0.0 || f.disp != 0.0 {
-        return Err("ignore, dn and disp can't be written".into());
+    if f.dn != 0.0 || f.disp != 0.0 {
+        return Err("dn and disp can't be written".into());
     }
     if f.cx() != 0.0 && shape != SurfShape::Toroidal {
         return Err("cx is only for a toroidal surface".into());
     }
+    let aperture = match f.ap {
+        Aperture::None => None,
+        Aperture::Circular { min, max, dx, dy } => {
+            Some(SurfAperture::Circular { min, max, dx, dy })
+        }
+        Aperture::Rect { hx, hy, dx, dy } => Some(SurfAperture::Rect { hx, hy, dx, dy }),
+        Aperture::Ellipse { hx, hy, dx, dy } => Some(SurfAperture::Ellipse { hx, hy, dx, dy }),
+        Aperture::Obsc { min, max, dx, dy } => Some(SurfAperture::Obscuration { min, max, dx, dy }),
+        Aperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        } => Some(SurfAperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        }),
+        Aperture::Floating { .. } => Some(SurfAperture::Floating),
+    };
     if f.typ() == SurfType::CoordBrk {
         if f.before.is_some() || f.after != After::None {
             return Err(
@@ -432,8 +453,8 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
                     .into(),
             );
         }
-        if f.ap != Aperture::None {
-            return Err("a coordinate break surface can't have an aperture".into());
+        if matches!(aperture, Some(SurfAperture::Floating)) {
+            return Err("a coordinate break surface can't have a floating aperture".into());
         }
         return Ok(SurfSpec {
             t: f.t,
@@ -442,6 +463,8 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
             comment: f.comment.clone(),
             coordbrk: Some(f.cb()),
             order: f.cb_order(),
+            aperture,
+            ignore: f.ignore,
             ..Default::default()
         });
     }
@@ -470,27 +493,6 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
             Material::Index(nd) => Some(format!("{nd}")),
             m => Some(m.name()),
         }
-    };
-    let aperture = match f.ap {
-        Aperture::None => None,
-        Aperture::Circular { min, max, dx, dy } => {
-            Some(SurfAperture::Circular { min, max, dx, dy })
-        }
-        Aperture::Rect { hx, hy, dx, dy } => Some(SurfAperture::Rect { hx, hy, dx, dy }),
-        Aperture::Ellipse { hx, hy, dx, dy } => Some(SurfAperture::Ellipse { hx, hy, dx, dy }),
-        Aperture::Obsc { min, max, dx, dy } => Some(SurfAperture::Obscuration { min, max, dx, dy }),
-        Aperture::Spider {
-            width,
-            arms,
-            dx,
-            dy,
-        } => Some(SurfAperture::Spider {
-            width,
-            arms,
-            dx,
-            dy,
-        }),
-        Aperture::Floating { .. } => Some(SurfAperture::Floating),
     };
     // 偏光子・波長板の面はその書き方で戻す
     let (mut polarizer, mut waveplate) = (None, None);
@@ -560,6 +562,7 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
         polarizer,
         waveplate,
         aperture,
+        ignore: f.ignore,
         birefringent: f.bire.as_ref().map(|b| match b {
             lensbench_core::surface::Bire::In { mode, axis, .. } => BireSpec::In {
                 mode: *mode,

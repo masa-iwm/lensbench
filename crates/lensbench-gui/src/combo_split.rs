@@ -487,6 +487,7 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combo::SurfKind;
     use lensbench_project::edit_ops::{BlockRef, SurfaceOp};
 
     fn root() -> PathBuf {
@@ -758,5 +759,111 @@ STPS 0 1 1 0 0 0 1 1 1 0 0 \"\" 0\nSTPS 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n",
         assert_eq!(s2.state_stop.get(n), Some(&0));
         assert!(c.state_sys.contains_key(n));
         assert!(!c.state_sys.contains_key("Config 1"));
+    }
+
+    /// 鏡の後の面（裏返して書く面）を構成で変える多重構成の .zmx も要素に分かれ、鏡の後の間隔・面の値が状態の値になる
+    /// （系の面の値は鏡の後で符号が逆）。状態 k は構成 k の系と同じ（split_configs の中で確かめる）
+    #[test]
+    fn a_multi_config_zmx_after_a_mirror_splits() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_mce_m_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("fold.zmx");
+        std::fs::write(
+            &f,
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 5 0 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 30\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV -0.005\n  DISZ -20\n  GLAS MIRROR 0 0 0 0 0 0 0 0 0\n  DIAM 10 0 0 0 1 \"\"\n\
+SURF 4\n  TYPE STANDARD\n  CURV -0.02\n  DISZ -4\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 5\n  TYPE STANDARD\n  CURV 0.01\n  DISZ -30\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n\
+MNUM 2 1\n\
+THIC 3 1 -20 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 3 2 -15 0 0 0 1 1 1 0 0 \"\" 0\n\
+CRVT 4 1 -0.02 0 0 0 1 1 1 0 0 \"\" 0\nCRVT 4 2 -0.025 0 0 0 1 1 1 0 0 \"\" 0\n\
+THIC 5 1 -30 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 5 2 -35 0 0 0 1 1 1 0 0 \"\" 0\n",
+        )
+        .unwrap();
+        let glass = vec![root().join("tests/glass")];
+        let r = Combo::from_zmx(&f, &glass, &[]);
+        std::fs::remove_dir_all(&tmp).ok();
+        let c = r.unwrap();
+        let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+        assert!(
+            !kinds
+                .iter()
+                .any(|k| matches!(k, ElemKind::ZmxRange | ElemKind::Raw)),
+            "{kinds:?}"
+        );
+        let n = "Config 2";
+        let m = c
+            .picks
+            .iter()
+            .position(|p| p.kind == ElemKind::Mirror)
+            .unwrap();
+        // 鏡の後の空気は光の進む向きで正、鏡の後の玉の面の値は系の値（符号は系のまま）
+        assert_eq!(c.picks[m].state_air.get(n), Some(&15.0));
+        let l = &c.picks[m + 1];
+        assert_eq!(l.kind, ElemKind::Lens);
+        assert_eq!(l.state_air.get(n), Some(&35.0));
+        assert_eq!(l.state_edit(n, 0, "r"), Some(&json!(-40.0)));
+    }
+
+    /// 開口のある座標ブレーク（玉の中も）は面の行で書いて要素に分ける
+    #[test]
+    fn a_coordinate_break_with_an_aperture_splits() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_cbap_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("cb.zmx");
+        std::fs::write(
+            &f,
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 5 0 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 3\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 3\n  TYPE COORDBRK\n  PARM 1 0\n  PARM 2 0.1\n  PARM 3 0\n  PARM 4 0\n  PARM 5 0\n  PARM 6 0\n  DISZ 2\n  SQAP 3 3 0 0\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 5\n  TYPE COORDBRK\n  PARM 1 0\n  PARM 2 0\n  PARM 3 0\n  PARM 4 0\n  PARM 5 0\n  PARM 6 0\n  DISZ 30\n  CLAP 0 4 0\n\
+SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        )
+        .unwrap();
+        let glass = vec![root().join("tests/glass")];
+        let r = Combo::from_zmx(&f, &glass, &[]);
+        std::fs::remove_dir_all(&tmp).ok();
+        let mut c = r.unwrap();
+        let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+        assert!(
+            !kinds
+                .iter()
+                .any(|k| matches!(k, ElemKind::ZmxRange | ElemKind::Raw)),
+            "{kinds:?}"
+        );
+        // 玉の中の座標ブレークは座標ブレークの行（開口を持つ）で、面に数えない。その後の面を変えると系のその面が変わる
+        let l = c
+            .picks
+            .iter()
+            .position(|p| p.kind == ElemKind::Lens)
+            .unwrap();
+        let rows: Vec<SurfKind> = c.picks[l].surfs.iter().map(|r| r.kind).collect();
+        assert_eq!(
+            rows,
+            [SurfKind::Standard, SurfKind::Coordbrk, SurfKind::Standard],
+            "{rows:?}"
+        );
+        assert!(c.picks[l].surfs[1].more.contains_key("aperture"));
+        c.picks[l].write_face(1, "r", json!(-80.0));
+        let q = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+        let s = lensbench_project::expand(
+            &q,
+            &lensbench_project::Env::in_dir(&root(), &glass, None),
+            &Default::default(),
+        )
+        .unwrap()
+        .system;
+        assert_eq!(s.surfaces[4].c, -1.0 / 80.0);
+        assert_eq!(s.surfaces[2].c, 0.02);
+        assert!(s.surfaces[3].ap != lensbench_core::surface::Aperture::None);
     }
 }

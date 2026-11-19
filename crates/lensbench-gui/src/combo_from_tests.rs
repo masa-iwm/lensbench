@@ -408,6 +408,8 @@ fn multi_config_zmx_opens_with_states() {
         seen.push((name, import));
     }
     assert!(seen.len() >= 3, "{seen:?}");
+    // p6 は構成 1 で要素に分かれ、面の無視が状態の値になる
+    assert!(seen.contains(&("p6", false)), "{seen:?}");
     let _ = std::fs::remove_dir_all(&lb);
 }
 

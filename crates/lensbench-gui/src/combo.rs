@@ -153,6 +153,7 @@ pub(crate) const SURF_MORE: &[&str] = &[
     "coat",
     "comment",
     "aperture",
+    "ignore",
     "tilt",
     "birefringent",
     "row",
@@ -257,6 +258,12 @@ impl SurfRow {
                 }
                 if self.order != 0 {
                     v["order"] = json!(self.order);
+                }
+                // 座標ブレークに書ける欄の無い値（開口・無視・膜・コメント）
+                for k in ["aperture", "ignore", "coat", "comment"] {
+                    if let Some(x) = self.more.get(k) {
+                        v[k] = x.clone();
+                    }
                 }
                 v
             }

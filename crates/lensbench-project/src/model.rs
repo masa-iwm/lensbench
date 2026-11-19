@@ -159,6 +159,9 @@ pub struct SurfSpec {
     /// 開口（省略なら開口なし）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aperture: Option<SurfAperture>,
+    /// 面を無視する（OpticStudio の Ignore This Surface。座標ブレークにも書ける）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignore: bool,
     /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。入口の `glass` が常光の材料（異常光は 名前-E）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub birefringent: Option<BireSpec>,
@@ -171,7 +174,7 @@ pub struct SurfSpec {
     /// トロイダル面の x 方向の曲率半径 [mm]（省略・0 なら円柱面）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius_x: Option<f64>,
-    /// ほかの欄で書けない面（Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズ・GRIN の媒質・無視する面・
+    /// ほかの欄で書けない面（Zernike・Grid Sag・Irregular・Tilted・Binary 2・理想レンズ・GRIN の媒質・
     /// dn・disp など）を、システムファイル（版 2）の面の行で書く。書くときはほかの欄を書かない。絞りの印（stop）は
     /// 書けない（ブロックの set_stop で）。玉の最後の面の厚さ・媒質は使わない
     #[serde(default, skip_serializing_if = "Option::is_none")]
