@@ -82,7 +82,7 @@ fn load_each_config(
 
 impl Combo {
     /// .zmx・システムファイルを、まるごと取り込む要素 1 つの組合せにする（書ければ要素に分ける）。多重構成の .zmx は
-    /// 構成ごとの状態「Config k」を持つ組合せにする（要素には分けない）。プロジェクトで書けない設定があり、作り直した系が
+    /// 構成ごとの状態「Config k」を持つ組合せにする（書ければ構成 1 で要素に分け、構成ごとの違いを状態の値に）。プロジェクトで書けない設定があり、作り直した系が
     /// 元（多重構成なら構成ごと）と違えば誤り。誤りは読めなかったか（[`OpenErr::Load`]）、組合せで書けないか
     pub(crate) fn from_zmx(
         f: &Path,
@@ -137,10 +137,14 @@ impl Combo {
         let p = lensbench_project::zmx_project(cfgs, &name)?;
         let base = f.parent().unwrap_or(Path::new(""));
         // 書ける .zmx は要素に分ける（変更は中身へ）。書けなければ .zmx をまるごと取り込む
-        if cfgs.len() == 1 {
-            if let Some(c) = crate::combo_split::split(s, &p, base, glass_dirs) {
-                return Ok(c);
-            }
+        // 多重構成は構成 1 で分け、構成ごとの違いを状態の値に（書けなければ構成の番号を状態で変える取り込み）
+        let c = if cfgs.len() == 1 {
+            crate::combo_split::split(s, &p, base, glass_dirs)
+        } else {
+            crate::combo_split::split_configs(cfgs, &p, base, glass_dirs)
+        };
+        if let Some(c) = c {
+            return Ok(c);
         }
         let q = lensbench_project::Project::from_json(&p.to_string())?;
         let env = lensbench_project::Env::in_dir(base, glass_dirs, None);
@@ -1193,6 +1197,19 @@ fn canon(v: &Value) -> R<Value> {
     }
     if let Some(bs) = v.get_mut("blocks") {
         one_by_one(bs);
+    }
+    // 状態の面の上書きも（状態の set のブロックの項目）
+    for st in v["states"].as_array_mut().into_iter().flatten() {
+        for x in st["set"]
+            .as_object_mut()
+            .into_iter()
+            .flatten()
+            .map(|(_, x)| x)
+        {
+            let mut one = Value::Array(vec![x.take()]);
+            one_by_one(&mut one);
+            *x = one[0].take();
+        }
     }
     norm(&mut v);
     // 状態の系の値で基本と同じものは書かないのと同じ

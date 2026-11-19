@@ -357,8 +357,8 @@ fn blocks_are_the_saved_form() {
     assert_eq!(n, 21);
 }
 
-/// 多重構成の .zmx は、構成ごとの状態「Config k」を持つ組合せになる（.zmx の取り込み 1 つ、状態ごとの構成の番号）。
-/// 組合せから書いたプロジェクトの状態 k は、構成 k の系と同じ
+/// 多重構成の .zmx は、構成ごとの状態「Config k」を持つ組合せになる（書ければ構成 1 で要素に分け、構成の違いを状態の
+/// 値に。書けなければ .zmx の取り込み 1 つで、状態ごとに構成の番号）。組合せから書いたプロジェクトの状態 k は、構成 k の系と同じ
 #[test]
 fn multi_config_zmx_opens_with_states() {
     // tests/bs_configs の .zmx はガラスのカタログ LBSCH（試験の SCHOTT.AGF と同じもの）を使う
@@ -366,21 +366,34 @@ fn multi_config_zmx_opens_with_states() {
     std::fs::create_dir_all(&lb).unwrap();
     std::fs::copy(root().join("tests/glass/SCHOTT.AGF"), lb.join("LBSCH.AGF")).unwrap();
     let gd = vec![root().join("tests/glass"), lb.clone()];
-    let mut n_files = 0;
-    for name in ["mich", "p6", "tg"] {
+    let mut seen = Vec::new();
+    for name in [
+        "mich",
+        "p6",
+        "tg",
+        "p7",
+        "p16",
+        "cube",
+        "plate",
+        "plate_back",
+    ] {
         let f = root().join(format!("tests/bs_configs/{name}.zmx"));
-        let c = Combo::from_zmx(&f, &gd, &[]).unwrap_or_else(|e| panic!("{name}: {e}"));
         let lo = lensbench_formats::zmx::LoadOptions {
             cfg: 1,
             catalog_dirs: gd.clone(),
             ..Default::default()
         };
         let all = lensbench_formats::zmx::load_configs(&f, &lo, &[]).unwrap();
-        assert!(all.len() >= 3, "{name}");
-        assert_eq!(c.picks.len(), 1, "{name}");
-        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");
+        if all.len() < 2 {
+            continue;
+        }
+        let c = Combo::from_zmx(&f, &gd, &[]).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(c.states.len(), all.len(), "{name}");
-        assert_eq!(c.picks[0].config_in(Some("Config 2")), 2, "{name}");
+        let import = c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange);
+        if import {
+            assert_eq!(c.picks.len(), 1, "{name}");
+            assert_eq!(c.picks[0].config_in(Some("Config 2")), 2, "{name}");
+        }
         let q = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
         let env = lensbench_project::Env::in_dir(f.parent().unwrap(), &gd, None);
         for (k, sk) in all.iter().enumerate() {
@@ -391,9 +404,10 @@ fn multi_config_zmx_opens_with_states() {
                     .system;
             lensbench_project::same_system(sk, &t).unwrap_or_else(|e| panic!("{name} {n}: {e}"));
         }
-        n_files += 1;
+        eprintln!("{name}: {}", if import { "import" } else { "split" });
+        seen.push((name, import));
     }
-    assert_eq!(n_files, 3);
+    assert!(seen.len() >= 3, "{seen:?}");
     let _ = std::fs::remove_dir_all(&lb);
 }
 
