@@ -614,6 +614,25 @@ impl Combo {
             _ => true,
         };
         walk(&mut self.picks, &f);
+        self.shift_glrs(id, false, map);
+    }
+
+    /// 大域座標の基準の面（`glrs` の {"block": id, "surface": i}、cb なら座標ブレーク）を map で付け替える。
+    /// 面が無くなれば基準を既定（面 1）に戻す
+    fn shift_glrs(&mut self, id: &str, cb: bool, map: &dyn Fn(usize) -> Option<usize>) {
+        let Some(g) = self.extra.glrs.as_mut() else {
+            return;
+        };
+        if g["block"] != id || (g["coordbrk"] == true) != cb {
+            return;
+        }
+        let Some(i) = g["surface"].as_u64() else {
+            return;
+        };
+        match map(i as usize) {
+            Some(j) => g["surface"] = json!(j),
+            None => self.extra.glrs = None,
+        }
     }
 
     /// 要素 id の座標ブレークを map で付け替えたとき、操作の座標ブレークの参照（coordbrk のブロックの面、自分のも）
@@ -634,6 +653,7 @@ impl Combo {
             _ => true,
         };
         walk(&mut self.picks, &f);
+        self.shift_glrs(id, true, map);
     }
 
     /// 要素 id の行を m で付け替えたとき、ほかの要素からの面・座標ブレークの参照を合わせる
@@ -1135,5 +1155,29 @@ mod tests {
         assert_eq!(p.mc_picks[0].key, format!("face:0:{}", cbf("ignore")));
         // 元の座標ブレークが無くなったピックアップの操作は外す
         assert!(p.ops.is_empty());
+    }
+
+    /// 要素の面を付け替えると、大域座標の基準の面（glrs）も付いていく。消した面なら既定に戻す
+    #[test]
+    fn glrs_follows_face_shifts() {
+        let mut c = Combo::default();
+        c.extra.glrs = Some(json!({ "block": "S", "surface": 1 }));
+        c.shift_block_refs("T", &|x| Some(x + 1));
+        assert_eq!(c.extra.glrs, Some(json!({ "block": "S", "surface": 1 })));
+        c.shift_block_refs("S", &|x| Some(if x >= 1 { x + 1 } else { x }));
+        assert_eq!(c.extra.glrs, Some(json!({ "block": "S", "surface": 2 })));
+        // 座標ブレークの付け替えは面の基準を動かさない
+        c.shift_block_cb_refs("S", &|_| None);
+        assert_eq!(c.extra.glrs, Some(json!({ "block": "S", "surface": 2 })));
+        c.extra.glrs = Some(json!({ "block": "S", "surface": 0, "coordbrk": true }));
+        c.shift_block_cb_refs("S", &|x| Some(x + 1));
+        assert_eq!(
+            c.extra.glrs,
+            Some(json!({ "block": "S", "surface": 1, "coordbrk": true }))
+        );
+        c.shift_block_refs("S", &|_| None);
+        assert!(c.extra.glrs.is_some());
+        c.shift_block_cb_refs("S", &|_| None);
+        assert_eq!(c.extra.glrs, None);
     }
 }
