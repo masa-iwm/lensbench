@@ -592,7 +592,10 @@ OPD of one ray [waves] − target (like OPDC)	1 本の光線の OPD [波] − �
 x or y of the beam centroid on the image − target (same rays as the spot term; e.g. a compensator that centres the returned spot with a mirror tilt)	像面の光束の重心の x か y − 目標（スポットの項と同じ光線。ミラーのチルトで像点を合わせる補償など）
 Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC; TRAX, OPTH, RAGX, RAID etc. by q)	1 本の実光線の面のローカル座標での位置・方向余弦 − 目標（REAX〜REAC 相当。q で TRAX・OPTH・RAGX・RAID なども）
 7.t, lens2.tx, …	7.t・lens2.tx など
-MTF − target (default target 1)	MTF − 目標（デフォルトの目標 1）
+MTF − target (default target 1). kind: diffraction, square (square-wave response, like MSW*), geometric (like GMT*; diff_limit scales by the diffraction limit) or huygens (like MTH*). dir avg: mean of tan and sag (like MTFA)	MTF − 目標（デフォルトの目標 1）。kind: diffraction（回折）・square（矩形波の応答、MSW* 相当）・geometric（GMT* 相当、diff_limit で回折限界をかける）・huygens（MTH* 相当）。dir avg: タンジェンシャルとサジタルの平均（MTFA 相当）
+Enclosed energy − target: with size_at the size [lens units] that holds that fraction of the light (like GENC and DENC), with fraction_at the fraction inside that size (like GENF and DENF). method: geometric rays, fft or huygens PSF; airy multiplies the geometric circle by the Airy disk	包囲エネルギー − 目標: size_at ならその割合の光が入る大きさ [レンズ単位]（GENC・DENC 相当）、fraction_at ならその大きさに入る光の割合（GENF・DENF 相当）。method: geometric（光線）・fft・huygens（PSF）。airy は幾何の円にエアリー像の割合をかける
+Strehl ratio from the FFT PSF − target (like STRH)	FFT の PSF によるストレール比 − 目標（STRH 相当）
+Relative illumination to the axis (relative, like RELI) or effective F-number (fno, like EFNO) from the solid angle of the light reaching the image point − target	像点に届く光の立体角による、軸上に対する相対照度（relative、RELI 相当）または実効 F ナンバー（fno、EFNO 相当） − 目標
 RMS spot radius (field, wavelength; empty wavelength = polychromatic)	RMS スポット半径（視野・波長、空の波長は多色）
 RMS wavefront	RMS 波面
 RMS wavefront error [waves]	RMS 波面収差 [波]

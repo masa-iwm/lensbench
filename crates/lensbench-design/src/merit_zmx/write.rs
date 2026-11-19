@@ -49,6 +49,12 @@ pub fn rows_from_terms(
             config = c;
         }
         let weight = t.get("weight").and_then(Value::as_f64).unwrap_or(1.0);
+        // 値が µm の行は、mm の項と同じ釣り合いになるよう重みを 1e-6 倍（読むときの逆）
+        let weight = if ["GENC", "DENC"].contains(&out.0) {
+            weight * 1e-6
+        } else {
+            weight
+        };
         match out {
             (op, p, Bound::Target(target)) => rows.push(MeritRow::new(op, p, target, weight)),
             (op, p, Bound::Side(side, b)) => {
@@ -314,22 +320,105 @@ fn row_of(
             ];
             ("ZERN", p, bound(0.0))
         }
+        // 求め方で MTF*・MSW*・GMT*・MTH*、向きで末尾の T・S・A
         "mtf" => {
+            let kind = t
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("diffraction");
+            let geo = kind == "geometric";
+            let pre = match kind {
+                "square" => "MSW",
+                "geometric" => "GMT",
+                "huygens" => "MTH",
+                _ => "MTF",
+            };
+            // GMT* の Data3（!Scl）は 1 で回折限界の MTF をかけない
+            let no_scale = geo && t.get("diff_limit").and_then(Value::as_bool) == Some(false);
             let p = [
                 samp(num("n")),
                 wave(),
                 field_no()?,
                 num("freq").unwrap_or(0.0),
-                0.0,
+                if no_scale { 1.0 } else { 0.0 },
                 0.0,
                 0.0,
                 0.0,
             ];
+            // [子午, 球欠, 平均, 両方]
+            let ops: [&'static str; 4] = match pre {
+                "MSW" => ["MSWT", "MSWS", "MSWA", "MSWT,MSWS"],
+                "GMT" => ["GMTT", "GMTS", "GMTA", "GMTT,GMTS"],
+                "MTH" => ["MTHT", "MTHS", "MTHA", "MTHT,MTHS"],
+                _ => ["MTFT", "MTFS", "MTFA", "MTFT,MTFS"],
+            };
             match t.get("dir").and_then(Value::as_str).unwrap_or("both") {
-                "tan" => ("MTFT", p, bound(1.0)),
-                "sag" => ("MTFS", p, bound(1.0)),
-                _ => ("MTFT,MTFS", p, Bound::Both(num("target").unwrap_or(1.0))),
+                "tan" => (ops[0], p, bound(1.0)),
+                "sag" => (ops[1], p, bound(1.0)),
+                "avg" => (ops[2], p, bound(1.0)),
+                _ => (ops[3], p, Bound::Both(num("target").unwrap_or(1.0))),
             }
+        }
+        // 幾何は GENC・GENF、fft は DENC・DENF（Refp 0〜2）、huygens は DENC・DENF（Refp 3〜5）。大きさは µm
+        "energy" => {
+            let str_of = |k: &str| t.get(k).and_then(Value::as_str);
+            let method = str_of("method").unwrap_or("geometric");
+            let shape = match str_of("shape").unwrap_or("circle") {
+                "x" => 2.0,
+                "y" => 3.0,
+                "square" => 4.0,
+                _ => 1.0,
+            };
+            let center = match str_of("center").unwrap_or("chief") {
+                "centroid" => 1.0,
+                "vertex" => 2.0,
+                "middle" if method == "geometric" => 3.0,
+                "middle" => {
+                    return Err("OpticStudio's DENC and DENF have no middle of the spot".into())
+                }
+                _ => 0.0,
+            };
+            let airy = t.get("airy").and_then(Value::as_bool) == Some(true);
+            let (size, v) = match (num("size_at"), num("fraction_at")) {
+                (Some(f), None) => (true, f),
+                (None, Some(r)) => (false, r * 1e3),
+                _ => return Err("an energy term needs one of size_at and fraction_at".into()),
+            };
+            let (op, refp, d5) = match (method, size) {
+                ("geometric", true) => ("GENC", center, if airy { 0.0 } else { 1.0 }),
+                ("geometric", false) => ("GENF", center, if airy { 0.0 } else { 1.0 }),
+                ("huygens", true) => ("DENC", center + 3.0, 0.0),
+                ("huygens", false) => ("DENF", center + 3.0, 0.0),
+                (_, true) => ("DENC", center, 0.0),
+                (_, false) => ("DENF", center, 0.0),
+            };
+            let p = [samp(num("n")), wave(), field_no()?, v, shape, refp, d5, 0.0];
+            let b = match bound(0.0) {
+                Bound::Target(x) if size => Bound::Target(x * 1e3),
+                Bound::Side(sd, x) if size => Bound::Side(sd, x * 1e3),
+                b => b,
+            };
+            (op, p, b)
+        }
+        // 標本は OpticStudio の値が lensbench に近づく高め（STRH は Samp 5 = 瞳 512、RELI・EFNO は上限の 100）
+        "strehl" => (
+            "STRH",
+            [5.0, wave(), field_no()?, 0.0, 0.0, 0.0, 0.0, 0.0],
+            bound(1.0),
+        ),
+        // 波長は番号で（OpticStudio の Wave 0 は波長 1）
+        "illum" => {
+            let op = match t.get("q").and_then(Value::as_str) {
+                Some("relative") => "RELI",
+                Some("fno") => "EFNO",
+                q => return Err(format!("illum q {q:?}")),
+            };
+            let w = if wave() == 0.0 { primary } else { wave() };
+            (
+                op,
+                [100.0, w, field_no()?, 0.0, 0.0, 0.0, 0.0, 0.0],
+                bound(0.0),
+            )
         }
         "seidel" => {
             let q = t.get("q").and_then(Value::as_str).unwrap_or("");

@@ -63,6 +63,23 @@ pub enum DirName {
     /// 両方（既定）
     #[default]
     Both,
+    /// 子午と球欠の平均（mtf だけ、残差は 1 つ）
+    Avg,
+}
+
+/// MTF の求め方
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MtfKindName {
+    /// 回折 MTF（既定）
+    #[default]
+    Diffraction,
+    /// 矩形波の縞の応答（回折 MTF の奇数倍の周波数の級数）
+    Square,
+    /// 幾何 MTF
+    Geometric,
+    /// 像面の上の Huygens PSF の MTF
+    Huygens,
 }
 
 /// 重心の向き
@@ -133,6 +150,10 @@ pub struct MtfSpec {
     /// 周波数 [cycles/mm]
     pub freq: f64,
     pub dir: Option<DirName>,
+    /// 求め方（既定 diffraction）
+    pub kind: Option<MtfKindName>,
+    /// 幾何 MTF に回折限界の MTF をかけるか（kind が geometric のときだけ。既定 true）
+    pub diff_limit: Option<bool>,
     /// 目標（既定 1）
     pub target: Option<f64>,
 }
@@ -342,6 +363,59 @@ pub struct DistortionSpec {
     pub target: Option<f64>,
 }
 
+/// energy の項（包囲エネルギー）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct EnergySpec {
+    pub field: FieldRef,
+    /// 波長の番号。null・省略は重みのある全波長
+    pub wave: Option<usize>,
+    /// 光量の分布: geometric（既定、瞳の格子の光線）・fft（FFT の回折 PSF）・huygens（Huygens PSF）
+    pub method: Option<String>,
+    /// geometric の円で、円の割合にエアリー像の円の割合をかけるか（既定 false）
+    pub airy: Option<bool>,
+    /// 形: circle（既定、半径）・x・y（帯の半幅）・square（正方形の半幅）
+    pub shape: Option<String>,
+    /// 中心: chief（既定、主波長の主光線）・centroid（光量の重心）・vertex（像面の原点）・middle（点の広がりの中心）
+    pub center: Option<String>,
+    /// 値にする大きさの光量の割合（0〜1）。fraction_at と片方だけ
+    pub size_at: Option<f64>,
+    /// 値にする割合の形の大きさ [レンズ単位]。size_at と片方だけ
+    pub fraction_at: Option<f64>,
+    /// 瞳の格子（geometric は既定 256、fft・huygens は自動）
+    pub n: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// strehl の項（ストレール比）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct StrehlSpec {
+    pub field: FieldRef,
+    /// 波長の番号。null・省略は重みのある全波長
+    pub wave: Option<usize>,
+    /// 瞳の格子（省略は自動）
+    pub n: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// illum の項（像点の照度）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct IllumSpec {
+    pub field: FieldRef,
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// 量: relative（軸上の像点に対する相対照度）・fno（実効 F ナンバー）
+    pub q: String,
+    /// 瞳の縁の点の数（既定 128）
+    pub n: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// longitudinal の項
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -473,6 +547,9 @@ pub enum TermSpec {
     Fnum(FNumSpec),
     Seidel(SeidelSpec),
     Distortion(DistortionSpec),
+    Energy(EnergySpec),
+    Strehl(StrehlSpec),
+    Illum(IllumSpec),
     Longitudinal(LongSpec),
     #[serde(rename = "lateral_color")]
     LateralColor(LatColorSpec),

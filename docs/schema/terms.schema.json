@@ -68,6 +68,11 @@
           "const": "both",
           "description": "両方（既定）",
           "type": "string"
+        },
+        {
+          "const": "avg",
+          "description": "子午と球欠の平均（mtf だけ、残差は 1 つ）",
+          "type": "string"
         }
       ]
     },
@@ -126,6 +131,31 @@
         }
       ],
       "description": "zplm のマクロ: 番号 nn（ZPLnn.ZPL）か名前"
+    },
+    "MtfKindName": {
+      "description": "MTF の求め方",
+      "oneOf": [
+        {
+          "const": "diffraction",
+          "description": "回折 MTF（既定）",
+          "type": "string"
+        },
+        {
+          "const": "square",
+          "description": "矩形波の縞の応答（回折 MTF の奇数倍の周波数の級数）",
+          "type": "string"
+        },
+        {
+          "const": "geometric",
+          "description": "幾何 MTF",
+          "type": "string"
+        },
+        {
+          "const": "huygens",
+          "description": "像面の上の Huygens PSF の MTF",
+          "type": "string"
+        }
+      ]
     },
     "Nums": {
       "anyOf": [
@@ -420,6 +450,13 @@
                 "null"
               ]
             },
+            "diff_limit": {
+              "description": "幾何 MTF に回折限界の MTF をかけるか（kind が geometric のときだけ。既定 true）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "dir": {
               "anyOf": [
                 {
@@ -437,6 +474,17 @@
               "description": "周波数 [cycles/mm]",
               "format": "double",
               "type": "number"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MtfKindName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "求め方（既定 diffraction）"
             },
             "max": {
               "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
@@ -1672,6 +1720,271 @@
           },
           "required": [
             "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "energy の項（包囲エネルギー）",
+          "properties": {
+            "airy": {
+              "description": "geometric の円で、円の割合にエアリー像の円の割合をかけるか（既定 false）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "center": {
+              "description": "中心: chief（既定、主波長の主光線）・centroid（光量の重心）・vertex（像面の原点）・middle（点の広がりの中心）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "fraction_at": {
+              "description": "値にする割合の形の大きさ [レンズ単位]。size_at と片方だけ",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "method": {
+              "description": "光量の分布: geometric（既定、瞳の格子の光線）・fft（FFT の回折 PSF）・huygens（Huygens PSF）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "瞳の格子（geometric は既定 256、fft・huygens は自動）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "shape": {
+              "description": "形: circle（既定、半径）・x・y（帯の半幅）・square（正方形の半幅）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "size_at": {
+              "description": "値にする大きさの光量の割合（0〜1）。fraction_at と片方だけ",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "energy",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は重みのある全波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "strehl の項（ストレール比）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "瞳の格子（省略は自動）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "strehl",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は重みのある全波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "illum の項（像点の照度）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "瞳の縁の点の数（既定 128）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "q": {
+              "description": "量: relative（軸上の像点に対する相対照度）・fno（実効 F ナンバー）",
+              "type": "string"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "illum",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field",
+            "q"
           ],
           "type": "object"
         },

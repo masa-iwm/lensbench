@@ -39,14 +39,14 @@ use lensbench_core::seidel::DistComp;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, CardQ, DistMode, Each, Medium, MtfDir, ParaxQ, Quad, RayQ, SeidelQ, Side,
-    SpotAxis, SurfQ, Term, TermKind,
+    CalcArg, CalcOp, CardQ, DistMode, Each, EnergyMethod, EnergyQ, Medium, MtfDir, MtfKind, ParaxQ,
+    Quad, RayQ, SeidelQ, Side, SpotAxis, SurfQ, Term, TermKind,
 };
 use serde_json::Value;
 
 use crate::term_spec::{
-    AxisName, CalcArgSpec, CalcName, DirName, EachName, FieldRef, MacroRef, Nums, QuadName,
-    RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
+    AxisName, CalcArgSpec, CalcName, DirName, EachName, FieldRef, MacroRef, MtfKindName, Nums,
+    QuadName, RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
 };
 
 /// 項の並び（配列か 1 つのオブジェクト）
@@ -197,7 +197,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 22] = [
+    const TYPES: [&str; 25] = [
         "spot",
         "wavefront",
         "mtf",
@@ -214,6 +214,9 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "fnum",
         "seidel",
         "distortion",
+        "energy",
+        "strehl",
+        "illum",
         "longitudinal",
         "lateral_color",
         "semi",
@@ -237,7 +240,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     let single = matches!(
         kind,
         TermKind::Mtf {
-            dir: MtfDir::Tan | MtfDir::Sag,
+            dir: MtfDir::Tan | MtfDir::Sag | MtfDir::Avg,
             ..
         } | TermKind::Paraxial { .. }
             | TermKind::Ray { .. }
@@ -254,6 +257,9 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::FNum { .. }
             | TermKind::Seidel { .. }
             | TermKind::Distortion { .. }
+            | TermKind::Energy { .. }
+            | TermKind::Strehl { .. }
+            | TermKind::Illum { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
             | TermKind::SurfEach { .. }
@@ -338,6 +344,20 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 DirName::Tan => MtfDir::Tan,
                 DirName::Sag => MtfDir::Sag,
                 DirName::Both => MtfDir::Both,
+                DirName::Avg => MtfDir::Avg,
+            },
+            kind: match (t.kind.unwrap_or_default(), t.diff_limit) {
+                (MtfKindName::Geometric, d) => MtfKind::Geometric {
+                    diff_limit: d.unwrap_or(true),
+                },
+                (_, Some(_)) => {
+                    return Err("diff_limit of an mtf term goes with kind geometric"
+                        .to_string()
+                        .into())
+                }
+                (MtfKindName::Diffraction, None) => MtfKind::Diffraction,
+                (MtfKindName::Square, None) => MtfKind::SquareWave,
+                (MtfKindName::Huygens, None) => MtfKind::Huygens,
             },
             target: t.target.unwrap_or(1.0),
         },
@@ -527,7 +547,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             sag: match t.dir {
                 None | Some(DirName::Tan) => false,
                 Some(DirName::Sag) => true,
-                Some(DirName::Both) => {
+                Some(DirName::Both | DirName::Avg) => {
                     return Err("dir of an fnum term is tan or sag".to_string().into())
                 }
             },
@@ -540,6 +560,86 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             target: t
                 .target
                 .ok_or("seidel term has no target (or min and max)")?,
+        },
+        TermSpec::Energy(t) => {
+            use lensbench_analysis::energy::{EnergyCenter, EnergyShape};
+            let airy = t.airy.unwrap_or(false);
+            let method = match t.method.as_deref().unwrap_or("geometric") {
+                "geometric" => EnergyMethod::Geometric { airy },
+                m @ ("fft" | "huygens") => {
+                    if airy {
+                        return Err("airy of an energy term goes with method geometric"
+                            .to_string()
+                            .into());
+                    }
+                    if m == "fft" {
+                        EnergyMethod::Fft
+                    } else {
+                        EnergyMethod::Huygens
+                    }
+                }
+                m => return Err(format!("energy method {m} (geometric, fft or huygens)").into()),
+            };
+            let shape = match t.shape.as_deref().unwrap_or("circle") {
+                "circle" => EnergyShape::Circle,
+                "x" => EnergyShape::X,
+                "y" => EnergyShape::Y,
+                "square" => EnergyShape::Square,
+                v => return Err(format!("energy shape {v} (circle, x, y or square)").into()),
+            };
+            let center = match t.center.as_deref().unwrap_or("chief") {
+                "chief" => EnergyCenter::Chief,
+                "centroid" => EnergyCenter::Centroid,
+                "vertex" => EnergyCenter::Vertex,
+                "middle" => EnergyCenter::Middle,
+                v => {
+                    return Err(
+                        format!("energy center {v} (chief, centroid, vertex or middle)").into(),
+                    )
+                }
+            };
+            let q = match (t.size_at, t.fraction_at) {
+                (Some(f), None) => EnergyQ::Size(f),
+                (None, Some(r)) => EnergyQ::Fraction(r),
+                _ => {
+                    return Err("an energy term needs one of size_at and fraction_at"
+                        .to_string()
+                        .into())
+                }
+            };
+            TermKind::Energy {
+                field: field(t.field, s)?,
+                wave: wave(t.wave, s)?,
+                n: t.n,
+                method,
+                shape,
+                center,
+                q,
+                target: t
+                    .target
+                    .ok_or("energy term has no target (or min and max)")?,
+            }
+        }
+        TermSpec::Strehl(t) => TermKind::Strehl {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            n: t.n,
+            target: t
+                .target
+                .ok_or("strehl term has no target (or min and max)")?,
+        },
+        TermSpec::Illum(t) => TermKind::Illum {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            n: t.n,
+            relative: match t.q.as_str() {
+                "relative" => true,
+                "fno" => false,
+                q => return Err(format!("illum q {q} (relative or fno)").into()),
+            },
+            target: t
+                .target
+                .ok_or("illum term has no target (or min and max)")?,
         },
         TermSpec::Distortion(t) => TermKind::Distortion {
             wave: wave(t.wave, s)?,

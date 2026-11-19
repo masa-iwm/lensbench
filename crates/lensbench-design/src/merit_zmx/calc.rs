@@ -153,6 +153,20 @@ impl Rows<'_> {
                 a.row, a.op
             ));
         }
+        // 項の値の単位が OpticStudio の行と違う行は、行の単位に直してから計算する（GENC・DENC は µm、項は mm）
+        if let Some(f) = os_scale(&a.op) {
+            return Ok(
+                json!({"type": "calc", "op": "prod", "args": [Value::Object(m), f], "target": 0.0}),
+            );
+        }
         Ok(Value::Object(m))
+    }
+}
+
+/// 行の値 = 項の値 × この倍率（レンズ単位 mm）。None は同じ
+fn os_scale(op: &str) -> Option<f64> {
+    match op {
+        "GENC" | "DENC" => Some(1e3),
+        _ => None,
     }
 }

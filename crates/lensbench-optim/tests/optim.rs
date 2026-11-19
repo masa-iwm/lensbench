@@ -335,6 +335,7 @@ fn mtf_term() {
             n: Some(64),
             freq: 10.0,
             dir: MtfDir::Both,
+            kind: Default::default(),
             target: 1.0,
         },
     });

@@ -204,6 +204,22 @@ fn more_calc_rows_become_terms() {
     assert_eq!(z.terms, want);
 }
 
+/// 計算の行が値の単位の違う行（GENC は µm、項は mm）を参照するときは、行の単位に直してから計算する
+#[test]
+fn calc_rows_use_the_row_units() {
+    let rows = ["GENC 3 0 1 0.8 1 0 0 0 0 0", "OPVA 1 0 0 0 0 0 9.5 1 0 0"];
+    let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
+    assert!(z.notes.is_empty(), "{:?}", z.notes);
+    assert_eq!(z.terms.len(), 1);
+    let t = &z.terms[0];
+    assert_eq!(t["target"], json!(9.5));
+    let a = &t["args"][0];
+    assert_eq!(a["op"], json!("prod"));
+    assert_eq!(a["args"][0]["type"], json!("energy"));
+    assert_eq!(a["args"][1], json!(1e3));
+}
+
 #[test]
 fn calc_rows_stop_growing() {
     // 前の 2 行を足す行を重ねると、入れ子の行の数は倍々に増える。上限を超えた行は注意にする
@@ -448,6 +464,19 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "wave": 3, "field": [0.0, 1.0], "px": 0.0, "py": 0.5, "q": "dxdy", "target": 0.0, "weight": 1.0}),
         json!({"type": "spot", "wave": null, "field": [0.0, 0.5], "reference": "centroid", "quadrature": "grid", "n": 6, "weight": 1.0}),
         json!({"type": "wavefront", "wave": 2, "field": [0.0, 1.0], "reference": "chief", "quadrature": "grid", "n": 4, "weight": 1.0}),
+        json!({"type": "mtf", "wave": null, "field": 2, "freq": 30.0, "dir": "avg", "target": 0.5, "weight": 1.0}),
+        json!({"type": "mtf", "wave": null, "field": 2, "freq": 20.0, "dir": "avg", "min": 0.4, "weight": 1.0}),
+        json!({"type": "mtf", "kind": "square", "wave": 2, "field": 1, "freq": 20.0, "dir": "tan", "target": 0.8, "weight": 1.0}),
+        json!({"type": "mtf", "kind": "geometric", "diff_limit": false, "wave": null, "field": 3, "freq": 30.0, "dir": "sag", "target": 0.5, "weight": 1.0}),
+        json!({"type": "mtf", "kind": "geometric", "diff_limit": true, "wave": 1, "field": 3, "freq": 30.0, "dir": "avg", "target": 0.5, "weight": 1.0}),
+        json!({"type": "mtf", "kind": "huygens", "wave": 2, "field": 1, "freq": 30.0, "dir": "avg", "target": 0.5, "weight": 1.0}),
+        json!({"type": "energy", "method": "geometric", "airy": true, "shape": "circle", "center": "chief", "wave": null, "field": 2, "size_at": 0.8, "target": 0.01, "weight": 1.0}),
+        json!({"type": "energy", "method": "geometric", "shape": "x", "center": "middle", "wave": 2, "field": 1, "fraction_at": 0.005, "min": 0.5, "weight": 1.0}),
+        json!({"type": "energy", "method": "fft", "shape": "square", "center": "centroid", "wave": null, "field": 3, "size_at": 0.5, "max": 0.02, "weight": 1.0}),
+        json!({"type": "energy", "method": "huygens", "shape": "circle", "center": "vertex", "wave": 1, "field": 1, "fraction_at": 0.01, "target": 0.9, "weight": 1.0}),
+        json!({"type": "strehl", "wave": null, "field": 2, "min": 0.5, "weight": 1.0}),
+        json!({"type": "illum", "q": "relative", "wave": 2, "field": 3, "min": 0.8, "weight": 1.0}),
+        json!({"type": "illum", "q": "fno", "wave": 1, "field": 1, "target": 3.0, "weight": 1.0}),
         json!({"type": "centroid", "wave": null, "field": 1, "q": "x", "target": 0.0, "weight": 1.0, "config": 2}),
     ];
     let bad = [
@@ -463,12 +492,13 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "surf": 0, "field": 1, "q": "trar"}),
         json!({"type": "ray", "surf": 3, "field": 1, "q": "anax"}),
         json!({"type": "distortion", "field": [0.0, 0.5], "peak": true, "target": 0.0}),
+        json!({"type": "energy", "method": "fft", "center": "middle", "field": 1, "size_at": 0.8, "target": 0.0}),
     ];
     let all: Vec<Value> = terms.iter().chain(&bad).cloned().collect();
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 12, "{notes:?}");
+    assert_eq!(notes.len(), 13, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {

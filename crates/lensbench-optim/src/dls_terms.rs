@@ -9,6 +9,25 @@ pub enum MtfDir {
     Sag,
     /// 子午・球欠の 2 つの残差
     Both,
+    /// 子午と球欠の平均（1 つの残差。OpticStudio の MTFA・MSWA・GMTA・MTHA）
+    Avg,
+}
+
+/// MTF の求め方
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MtfKind {
+    /// 回折 MTF（瞳の自己相関、[`lensbench_analysis::analysis::mtf`]）
+    #[default]
+    Diffraction,
+    /// 矩形波の縞の応答。回折 MTF の奇数倍の周波数の級数 (4/π) Σ (−1)^k M((2k+1)ν)/(2k+1)（Coltman）を遮断周波数まで
+    /// （OpticStudio の MSWT・MSWS・MSWA）
+    SquareWave,
+    /// 幾何 MTF（[`lensbench_analysis::psf::geometric_mtf`]、n は瞳の求積の点の数の目安で既定 32）。diff_limit なら
+    /// 回折限界の MTF をかける（OpticStudio の GMTT・GMTS・GMTA）
+    Geometric { diff_limit: bool },
+    /// 像面の上の Huygens PSF の MTF（[`lensbench_analysis::huygens::huygens_mtf`]、n は瞳の格子、像の格子と間隔は既定。
+    /// OpticStudio の MTHT・MTHS・MTHA）
+    Huygens,
 }
 
 /// スポット・波面の項の瞳のガウス求積の点の置き方（r² に Gauss-Legendre の rings 本の輪 × 等間隔の腕）
@@ -172,6 +191,27 @@ pub enum SpotAxis {
     Y,
 }
 
+/// 包囲エネルギーの光量の分布の求め方（[`TermKind::Energy`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnergyMethod {
+    /// 幾何: 瞳の n × n の格子（既定 256）の光線の像面の点。airy なら円の割合に波長ごとのエアリー像の円の割合をかける
+    /// （[`lensbench_analysis::energy::AiryEnergy`]。円の形だけ、OpticStudio の GENC・GENF の No Diff Lim 0）
+    Geometric { airy: bool },
+    /// 像面の上の FFT の回折 PSF（n は瞳の格子、[`lensbench_analysis::psf::psf`]）
+    Fft,
+    /// 像面の上の Huygens PSF（n は瞳の格子、[`lensbench_analysis::huygens::huygens_psf`]）
+    Huygens,
+}
+
+/// 包囲エネルギーの項で求める量
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EnergyQ {
+    /// 光量の割合（0〜1）を含む形の大きさ（半径・半幅）[mm]
+    Size(f64),
+    /// 大きさ [mm] の形の中の光量の割合
+    Fraction(f64),
+}
+
 /// 項の種類
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
@@ -192,13 +232,14 @@ pub enum TermKind {
         reference: RmsRef,
         quad: Quad,
     },
-    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_analysis::analysis::mtf`]）
+    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、kind は求め方 [`MtfKind`]）
     Mtf {
         field: FieldSel,
         wave: Option<usize>,
         n: Option<usize>,
         freq: f64,
         dir: MtfDir,
+        kind: MtfKind,
         target: f64,
     },
     /// 近軸量 − target（[`System::paraxial`]）。ズーム軌跡の焦点距離・倍率の条件。wave（0 始まり）は efl・pimh だけに
@@ -270,6 +311,35 @@ pub enum TermKind {
         term: usize,
         fit: Option<usize>,
         n: usize,
+        target: f64,
+    },
+    /// 包囲エネルギー（[`lensbench_analysis::energy`]）の量 q − target。形 shape・中心 center、光量の分布は method、
+    /// wave None なら重みのある全波長（OpticStudio の GENC・GENF・DENC・DENF）
+    Energy {
+        field: FieldSel,
+        wave: Option<usize>,
+        n: Option<usize>,
+        method: EnergyMethod,
+        shape: lensbench_analysis::energy::EnergyShape,
+        center: lensbench_analysis::energy::EnergyCenter,
+        q: EnergyQ,
+        target: f64,
+    },
+    /// ストレール比 − target（[`lensbench_analysis::energy::strehl`]、wave None なら重みのある全波長、n は瞳の格子で None は
+    /// 自動。OpticStudio の STRH）
+    Strehl {
+        field: FieldSel,
+        wave: Option<usize>,
+        n: Option<usize>,
+        target: f64,
+    },
+    /// 視野 field の像点の照度の量 − target（[`lensbench_analysis::illum`]、波長 wave、None は主波長、n は瞳の縁の点の数）。
+    /// relative なら軸上の像点に対する相対照度、でなければ実効 F ナンバー（OpticStudio の RELI・EFNO）
+    Illum {
+        field: FieldSel,
+        wave: Option<usize>,
+        n: Option<usize>,
+        relative: bool,
         target: f64,
     },
     /// 単一モードファイバへの結合効率（偏光なし）− target（[`lensbench_analysis::fiber::fiber_coupling`]、有限物体の系）
@@ -855,6 +925,9 @@ impl TermKind {
             | TermKind::LateralColor { target, .. }
             | TermKind::SurfEach { target, .. }
             | TermKind::Volume { target, .. }
+            | TermKind::Energy { target, .. }
+            | TermKind::Strehl { target, .. }
+            | TermKind::Illum { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -1030,6 +1103,9 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::LateralColor { .. }
         | TermKind::SurfEach { .. }
         | TermKind::Volume { .. }
+        | TermKind::Energy { .. }
+        | TermKind::Strehl { .. }
+        | TermKind::Illum { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

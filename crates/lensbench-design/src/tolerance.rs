@@ -548,6 +548,9 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::FNum { .. } => "fnum",
         K::Seidel { .. } => "seidel",
         K::Distortion { .. } => "distortion",
+        K::Energy { .. } => "energy",
+        K::Strehl { .. } => "strehl",
+        K::Illum { .. } => "illum",
         K::Longitudinal { .. } => "longitudinal",
         K::LateralColor { .. } => "lateral_color",
         K::SurfEach {

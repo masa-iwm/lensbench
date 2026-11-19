@@ -14,9 +14,11 @@
 
 pub mod analysis;
 pub mod defs;
+pub mod energy;
 pub mod fiber;
 pub mod ghost;
 pub mod huygens;
+pub mod illum;
 pub mod interference;
 mod nan;
 pub mod plugins;

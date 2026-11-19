@@ -66,6 +66,9 @@ use spot::{centroid_term, spot_term};
 #[path = "dls_ray.rs"]
 mod ray;
 
+#[path = "dls_image.rs"]
+mod image;
+
 #[path = "dls_card.rs"]
 mod card;
 pub use card::CardQ;
@@ -881,6 +884,9 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             }
             (*field, Some(wave.unwrap_or(s.primary)))
         }
+        TermKind::Energy { .. } | TermKind::Strehl { .. } | TermKind::Illum { .. } => {
+            return image::check(i, k, s)
+        }
         TermKind::Coupling { wave, .. } => {
             if s.infinite() {
                 invalid!("term {i}: fiber coupling is only for finite-object systems");
@@ -1015,26 +1021,12 @@ fn eval_term(
             n,
             freq,
             dir,
+            kind,
             target,
-        } => {
-            let only = match dir {
-                // 片方の向きだけの項はその向きだけ求める（値は両方求めたときと同じ）
-                MtfDir::Tan => Some(1),
-                MtfDir::Sag => Some(0),
-                MtfDir::Both => None,
-            };
-            let (w, m0) = (Waves::all_or(*wave), MtfMethod::default());
-            let m = mtf_only(s, *field, w, *n, &[*freq], m0, only)?;
-            let r = match dir {
-                MtfDir::Tan => vec![m.tan[0] - target],
-                MtfDir::Sag => vec![m.sag[0] - target],
-                MtfDir::Both => vec![m.tan[0] - target, m.sag[0] - target],
-            };
-            if r.iter().any(|v| !v.is_finite()) {
-                invalid!("can't compute the MTF");
-            }
-            Ok((r, None))
-        }
+        } => Ok((
+            image::mtf_term(s, *field, *wave, *n, *freq, *dir, *kind, *target)?,
+            None,
+        )),
         TermKind::Paraxial { q, wave, target } => {
             let v = q.value_at(s, *wave);
             if !v.is_finite() {
@@ -1098,6 +1090,9 @@ fn eval_term(
         | TermKind::Longitudinal { .. }
         | TermKind::LateralColor { .. } => seidel::term(s, k),
         TermKind::FNum { .. } => ray::fnum_term(s, k),
+        TermKind::Energy { .. } | TermKind::Strehl { .. } | TermKind::Illum { .. } => {
+            Ok((vec![image::term(s, k)?], None))
+        }
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args
                 .iter()

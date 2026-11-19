@@ -1629,7 +1629,6 @@ this operand is not supported	このオペランドには対応していませ�
 wavelength {w} (lensbench reads the wavelength only for EFFL, PIMH, AMAG, LINV, PETZ and PETC)	波長 {w}（lensbench が波長を読むのは EFFL・PIMH・AMAG・LINV・PETZ・PETC だけです）
 term {i}: wave goes with efl, pimh, amag, linv, petc and petz, not {}	項 {i}: wave は efl・pimh・amag・linv・petc・petz の項と使います（{} には使えません）
 a target other than 0 ({target}) can't be written as a spot or wavefront term	0 でない目標（{target}）はスポット・波面の項で表せません
-only the FFT MTF modulation (Grid 0, Data Type 0) is supported	FFT MTF の変調（Grid 0、Data Type 0）だけに対応しています
 MTF frequencies in lens units other than mm are not checked	mm 以外のレンズ単位の MTF の周波数は確かめていません
 Zernike type {k} (only Fringe 0 and Standard 1)	Zernike の種類 {k}（Fringe 0・Standard 1 だけです）
 annular Zernike (Epsilon) and Vertex are not supported	輪帯の Zernike（Epsilon）と Vertex には対応していません
@@ -2423,3 +2422,32 @@ a surface term with to needs min or max	to のある surface の項には min �
 term {i}: {} has no range (to)	項 {i}: {} には範囲（to）がありません
 surface {j}: glass {name} is not in the catalogs	面 {j}: 硝材 {name} がカタログにありません
 surface quantity {q} with to	to のある面の量 {q}
+Grid {}	Grid {}
+OpticStudio's DENC and DENF have no middle of the spot	OpticStudio の DENC・DENF には点の広がりの中心がありません
+Refp {refp}	Refp {refp}
+Type {k} (1 to 4)	Type {k}（1〜4）
+airy of an energy term goes with method geometric	energy の項の airy は method geometric と使います
+an energy term needs one of size_at and fraction_at	energy の項には size_at か fraction_at のどちらかが要ります
+can't compute the term	項を計算できません
+diff_limit of an mtf term goes with kind geometric	mtf の項の diff_limit は kind geometric と使います
+encircled energy needs a PSF on the image surface	包囲エネルギーには像面の PSF が要ります
+energy center {v} (chief, centroid, vertex or middle)	エネルギーの中心 {v}（chief・centroid・vertex・middle）
+energy method {m} (geometric, fft or huygens)	エネルギーの計算方法 {m}（geometric・fft・huygens）
+energy shape {v} (circle, x, y or square)	エネルギーの形 {v}（circle・x・y・square）
+fraction {frac} (between 0 and 1)	割合 {frac}（0 と 1 の間）
+geometric encircled energy needs a pupil grid of 4 or more ({n})	幾何の包囲エネルギーには 4 以上の瞳のグリッドが要ります（{n}）
+illum q {q:?}	illum の q {q:?}
+illum q {q} (relative or fno)	illum の q {q}（relative・fno）
+no ray of the field reaches the image	視野の光線が像に届きません
+only the Huygens MTF without polarization, of the current configuration, with the default image delta is supported	偏光なし・今の構成・デフォルトの像の間隔の Huygens MTF だけに対応しています
+only the MTF modulation (Grid 0 or 1, Data Type 0) is supported	MTF の変調（Grid 0・1、Data Type 0）だけに対応しています
+only the Strehl ratio without polarization, of the current configuration, is supported	偏光なし・今の構成のストレール比だけに対応しています
+the PSF has no finite peak	PSF に有限のピークがありません
+the PSF has no light	PSF に光がありません
+the PSF intensity is undefined at some image grid points	像のグリッドの一部の点で PSF の強度が定まりません
+the diffraction cutoff of the field is not finite	視野の回折の遮断周波数が有限ではありません
+the energy doesn't reach {frac}	エネルギーが {frac} に届きません
+the energy reaches only {:.4} of the total, not {frac}	エネルギーは全体の {:.4} までで、{frac} に届きません
+the illumination of an afocal image space is not supported	アフォーカルの像空間の照度には対応していません
+the illumination with polarization is not supported	偏光ありの照度には対応していません
+the square wave MTF needs a positive frequency ({freq})	矩形波の MTF には正の周波数が要ります（{freq}）

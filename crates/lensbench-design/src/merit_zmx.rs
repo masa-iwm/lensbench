@@ -45,6 +45,8 @@ pub struct ZmxSys {
     pub primary_varies: bool,
     /// 波長の数（SPCH の Maxw 0 は最後の波長。0 なら分からない）
     pub waves: usize,
+    /// 視野が角度か（グリッド歪曲の係数 ABCD・DISA は角の tan での微分で長さ。高さの視野では長さの比で単位がない）
+    pub angle_field: bool,
 }
 
 impl Default for ZmxSys {
@@ -54,6 +56,7 @@ impl Default for ZmxSys {
             symmetric: true,
             primary_varies: false,
             waves: 0,
+            angle_field: true,
         }
     }
 }
@@ -73,6 +76,7 @@ impl ZmxSys {
                     .any(|r| r.param.kind == lensbench_core::param::Kind::Primary)
             }),
             waves: s.wavelengths.len(),
+            angle_field: matches!(s.field_type, lensbench_core::system::FieldType::Angle),
         }
     }
 }
@@ -207,6 +211,9 @@ fn read_differs(r: &MeritRow) -> Option<&'static str> {
         }
         "FCGT" if num(data(2)) != 0.0 => Some(FCG_DIFF),
         "FCGS" if num(data(1)) != 0.0 => Some(FCG_DIFF),
+        "GENC" | "GENF" if num(data(4)) == 2.0 => Some(
+            "the value of OpticStudio about the vertex could not be reproduced (about 0.6% larger in the check); the term may differ",
+        ),
         _ => None,
     }
 }
@@ -625,26 +632,126 @@ fn kind_of(
             m.insert("py".into(), json!(num(data(4))?));
             m.insert("target".into(), json!(target));
         }
-        // MTFT・MTFS: Int1 標本（1 が 32 × 32、1 つ増すごとに 2 倍）、Int2 波長、Data1 視野の番号、Data2 周波数
-        // [cycles/mm]、Data3 Grid（0 は FFT）、Data4 Data Type（0 は変調）
-        "MTFT" | "MTFS" => {
-            if int(data(3))? != 0 || int(data(4))? != 0 {
-                return Err(
-                    "only the FFT MTF modulation (Grid 0, Data Type 0) is supported".into(),
-                );
-            }
+        // MTF*・MSW*・GMT*・MTH*（末尾の T・S・A が子午・球欠・平均）: Int1 標本（1 が 32 × 32、1 つ増すごとに 2 倍）、
+        // Int2 波長、Data1 視野の番号、Data2 周波数 [cycles/mm]。MTF* の Data3 Grid と GMT* の Data4 Grid は求め方の違い
+        // （0 は疎な積分、1 は MTF の解析の格子）で、lensbench は同じ値（収束した値）を返す。MTF* の Data4 Data Type は 0
+        // （変調）だけ。GMT* の Data3（!Scl）は 0 で回折限界の MTF をかける。MTH* の Data3 偏光・Data4 全構成は 0、Data5 像の
+        // 間隔は 0（既定）だけ
+        "MTFT" | "MTFS" | "MTFA" | "MSWT" | "MSWS" | "MSWA" | "GMTT" | "GMTS" | "GMTA" | "MTHT"
+        | "MTHS" | "MTHA" => {
+            let kind = match &op[..3] {
+                "MTF" => {
+                    if !matches!(int(data(3))?, 0 | 1) || int(data(4))? != 0 {
+                        return Err(
+                            "only the MTF modulation (Grid 0 or 1, Data Type 0) is supported"
+                                .into(),
+                        );
+                    }
+                    "diffraction"
+                }
+                "MSW" => "square",
+                "GMT" => {
+                    if !matches!(int(data(4))?, 0 | 1) {
+                        return Err(format!("Grid {}", int(data(4))?));
+                    }
+                    m.insert("diff_limit".into(), json!(int(data(3))? == 0));
+                    "geometric"
+                }
+                _ => {
+                    if int(data(3))? != 0 || int(data(4))? != 0 || num(data(5))? != 0.0 {
+                        return Err("only the Huygens MTF without polarization, of the current configuration, with the default image delta is supported".into());
+                    }
+                    "huygens"
+                }
+            };
             m.insert("type".into(), json!("mtf"));
+            if kind != "diffraction" {
+                m.insert("kind".into(), json!(kind));
+            }
             sampling(int(INT1)?)?;
             m.insert("wave".into(), wave(int(INT2)?)?);
-            m.insert("field".into(), json!(field_no(int(data(1))?)?));
+            let f = int(data(1))?;
+            if f == 0 {
+                return Err("field 0 (the diffraction limit) is not supported".into());
+            }
+            m.insert("field".into(), json!(field_no(f)?));
             if unit != 1.0 {
                 return Err("MTF frequencies in lens units other than mm are not checked".into());
             }
             m.insert("freq".into(), json!(num(data(2))?));
+            let dir = match op.as_bytes()[3] {
+                b'T' => "tan",
+                b'S' => "sag",
+                _ => "avg",
+            };
+            m.insert("dir".into(), json!(dir));
+            m.insert("target".into(), json!(target));
+        }
+        // GENC・GENF（幾何）・DENC・DENF（回折）: Int1 標本、Int2 波長（0 は多色）、Data1 視野の番号、Data2 割合（*NC）か
+        // 大きさ [µm]（*NF）、Data3 形（1 円・2 x・3 y・4 正方形）、Data4 中心（GEN*: 0 主光線・1 重心・2 原点・3 広がりの中心、
+        // DEN*: 0〜2 が FFT の主光線・重心・原点、3〜5 が Huygens の同じ順）。GEN* の Data5（No Diff Lim）が 0 なら円でエアリー像の
+        // 割合をかける（OpticStudio 26.1 は円のほかの形ではかけない）。DEN* の Data5・Data6（像の標本・間隔）と標本は読まず、
+        // lensbench の既定（収束した値）にする。大きさは µm（OpticStudio の値と同じ）を mm にする
+        "GENC" | "GENF" | "DENC" | "DENF" => {
+            let shape = match int(data(3))? {
+                1 => "circle",
+                2 => "x",
+                3 => "y",
+                4 => "square",
+                k => return Err(format!("Type {k} (1 to 4)")),
+            };
+            let refp = int(data(4))?;
+            let (method, center) = match (&op[..3], refp) {
+                ("GEN", 0..=3) => ("geometric", refp),
+                ("DEN", 0..=2) => ("fft", refp),
+                ("DEN", 3..=5) => ("huygens", refp - 3),
+                _ => return Err(format!("Refp {refp}")),
+            };
+            m.insert("type".into(), json!("energy"));
+            m.insert("method".into(), json!(method));
+            if method == "geometric" && shape == "circle" && int(data(5))? == 0 {
+                m.insert("airy".into(), json!(true));
+            }
+            m.insert("shape".into(), json!(shape));
             m.insert(
-                "dir".into(),
-                json!(if op == "MTFT" { "tan" } else { "sag" }),
+                "center".into(),
+                json!(["chief", "centroid", "vertex", "middle"][center as usize]),
             );
+            m.insert("wave".into(), wave(int(INT2)?)?);
+            m.insert("field".into(), json!(field_no(int(data(1))?)?));
+            let v = num(data(2))?;
+            if op.ends_with('C') {
+                m.insert("size_at".into(), json!(v));
+                m.insert("target".into(), json!(target * 1e-3));
+            } else {
+                m.insert("fraction_at".into(), json!(v * 1e-3));
+                m.insert("target".into(), json!(target));
+            }
+        }
+        // STRH: Int1 標本、Int2 波長（0 は多色）、Data1 視野の番号、Data3 偏光・Data4 全構成は 0 だけ。標本は読まず lensbench の
+        // 既定（自動の瞳の格子の FFT の PSF）
+        "STRH" => {
+            if int(data(3))? != 0 || int(data(4))? != 0 {
+                return Err("only the Strehl ratio without polarization, of the current configuration, is supported".into());
+            }
+            m.insert("type".into(), json!("strehl"));
+            m.insert("wave".into(), wave(int(INT2)?)?);
+            m.insert("field".into(), json!(field_no(int(data(1))?)?));
+            m.insert("target".into(), json!(target));
+        }
+        // RELI・EFNO: Int1 標本、Int2 波長（0 は波長 1。OpticStudio 26.1 で実測）、Data1 視野の番号、Data2 偏光（0 だけ）。
+        // 標本は読まず lensbench の既定（瞳の縁 128 点）
+        "RELI" | "EFNO" => {
+            if int(data(2))? != 0 {
+                return Err("the illumination with polarization is not supported".into());
+            }
+            m.insert("type".into(), json!("illum"));
+            m.insert(
+                "q".into(),
+                json!(if op == "RELI" { "relative" } else { "fno" }),
+            );
+            m.insert("wave".into(), wave(int(INT2)?.max(1))?);
+            m.insert("field".into(), json!(field_no(int(data(1))?)?));
             m.insert("target".into(), json!(target));
         }
         // ZERN: Int1 項、Int2 波長、Data1 標本、Data2 視野の番号、Data3 種類（0 Fringe・1 Standard）、Data4 Epsilon
@@ -757,7 +864,8 @@ fn kind_of(
                     .filter(|_| k >= 0)
                     .ok_or(format!("data {k} (0 to 3)"))?;
                 m.insert("coef".into(), json!(c));
-                m.insert("target".into(), json!(target * unit));
+                let u = if sys.angle_field { unit } else { 1.0 };
+                m.insert("target".into(), json!(target * u));
             } else {
                 let c = ["radial", "x", "y"]
                     .get(k as usize)
@@ -765,7 +873,8 @@ fn kind_of(
                     .ok_or(format!("data {k} (0 to 2)"))?;
                 m.insert("field".into(), json!(field_no(int(data(2))?)?));
                 let abcd = [num(data(3))?, num(data(4))?, num(data(5))?, num(data(6))?];
-                m.insert("abcd".into(), json!(abcd.map(|v| v * unit)));
+                let u = if sys.angle_field { unit } else { 1.0 };
+                m.insert("abcd".into(), json!(abcd.map(|v| v * u)));
                 m.insert("component".into(), json!(c));
                 m.insert("target".into(), json!(target));
             }
@@ -994,7 +1103,12 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
             ));
         }
         // DIST は Absolute のときだけ長さ
-        let len = is_length(&src.op) || m.get("absolute") == Some(&json!(true));
+        // ABCD は角度の視野で長さ
+        let len = is_length(&src.op)
+            || m.get("absolute") == Some(&json!(true))
+            || (src.op == "ABCD" && cx.sys.angle_field);
+        // 値が µm の行（lensbench の項は mm）
+        let um = ["GENC", "DENC"].contains(&src.op.as_str());
         if let Some(side) = side {
             let single = m.get("type").and_then(Value::as_str) != Some("zplm");
             let Some(_) = m.remove("target").filter(|_| single) else {
@@ -1008,11 +1122,20 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
                 continue;
             };
             let t = r.num(TARGET).unwrap_or(0.0);
-            m.insert(side.into(), json!(if len { t * cx.unit } else { t }));
+            let t = if um {
+                t * 1e-3
+            } else if len {
+                t * cx.unit
+            } else {
+                t
+            };
+            m.insert(side.into(), json!(t));
         }
         // 長さの項の残差は mm になるので、重みをレンズ単位の 2 乗で割って OpticStudio と同じ釣り合いにする
         // 曲率（1/レンズ単位）の残差は逆に、重みにレンズ単位の 2 乗をかける
-        let weight = if len {
+        let weight = if um {
+            weight * 1e6
+        } else if len {
             weight / (cx.unit * cx.unit)
         } else if ["CVGT", "CVLT", "CVVA", "POWR"].contains(&src.op.as_str()) {
             weight * cx.unit * cx.unit

@@ -114,6 +114,9 @@
   DISC・FCGT・FCGS を読み書きする
 - **グリッド歪曲の係数**: `distortion` に `coef`（基準の視野での A〜D）・`abcd`（予測に使う係数）・`component`（radial・x・y）
   を足した。.zmx の ABCD・DISA を読み書きし、BSER を読む
+- **像の質の項**: `mtf` に `kind`（square 矩形波の応答・geometric 幾何 MTF・huygens Huygens MTF）と `dir: "avg"`（平均）を、
+  新しい種類 `energy`（包囲エネルギーの大きさ・割合）・`strehl`（ストレール比）・`illum`（相対照度・実効 F ナンバー）を足した。.zmx の
+  MTFA・MSWT・MSWS・MSWA・GMTT・GMTS・GMTA・MTHT・MTHS・MTHA・GENC・GENF・DENC・DENF・STRH・RELI・EFNO を読み書きする
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする
@@ -182,6 +185,7 @@
 
 ### 直した所
 
+- **.zmx の ABCD の目標の単位**: 角度でない視野（物体高・像高など）の .zmx で、ABCD・DISA の行の目標をレンズ単位から mm に直していた（係数は単位のない量）
 - **GUI の材料の候補**: 材料の欄を開いた直後にガラスカタログが届くと、今の材料ではなく同じ位置の別の硝材（F2 のつもりが MGF2 など）が
   選ばれていたのを、今の材料を選び直すようにした。打って絞るときも名前の完全一致を先頭に出す
 - **多重構成の表の空行**: .zmx の多重構成の表にある空の行（BLNK）で開けなかったのを、読み飛ばすようにした
