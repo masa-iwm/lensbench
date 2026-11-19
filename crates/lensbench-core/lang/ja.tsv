@@ -2367,3 +2367,5 @@ surface {k} has no position (ignored)	面 {k} は位置がありません（無�
 {kind} (there are {nf} field points)	{kind}（視野は {nf} 個）
 primary wavelength {v} (1 to {})	主波長 {v}（1〜{}）
 aperture value {v}	開口の値 {v}
+aperture type {v} (0 to 5)	開口の種類 {v}（0〜5）
+stop surface {v} (1 to {last})	絞りの面 {v}（1〜{last}）

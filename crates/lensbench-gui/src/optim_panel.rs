@@ -177,6 +177,8 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("surf", Int),
             ("to", Int),
             ("target", Num),
+            ("min", Num),
+            ("max", Num),
             ("edge", Bool),
             ("zone", Num),
             ("each", Choice(&["all", "air", "glass"])),
@@ -210,6 +212,8 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("y", Num),
             ("wave", Int),
             ("target", Num),
+            ("min", Num),
+            ("max", Num),
         ],
         "seidel" => &[
             ("q", Choice(&["spha", "coma", "asti", "fcur", "dist"])),
@@ -225,7 +229,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("target", Num),
         ],
         "lateral_color" => &[("wave", Int), ("wave2", Int), ("target", Num)],
-        "semi" => &[("surf", Int), ("to", Int), ("target", Num)],
+        "semi" => &[("surf", Int), ("to", Int), ("min", Num), ("max", Num)],
         "fnum" => &[
             ("field", Field),
             ("wave", Int),
@@ -304,7 +308,7 @@ fn defaults(ty: &str) -> Vec<(&'static str, &'static str)> {
         "distortion" => vec![("target", "")],
         "longitudinal" => vec![("zone", "0"), ("target", "")],
         "lateral_color" => vec![("wave", "1"), ("wave2", "3"), ("target", "")],
-        "semi" => vec![("surf", "1"), ("target", "")],
+        "semi" => vec![("surf", "1"), ("max", "")],
         "zplm" => vec![("macro", "0"), ("data", "0")],
         "plugin" => vec![("name", "rms"), ("field", "1"), ("output", "wfe")],
         _ => vec![],
@@ -1234,6 +1238,24 @@ pub(crate) fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Val
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 範囲の境界だけの項（semi・each の thickness）も欄から min・max を書ける
+    #[test]
+    fn bound_fields() {
+        let mut t = TermRow::new("semi");
+        t.set("max", "5");
+        assert_eq!(
+            term_json(&t).unwrap(),
+            json!({"type": "semi", "surf": 1, "max": 5.0})
+        );
+        let mut t = TermRow::new("thickness");
+        t.set("each", "air");
+        t.set("min", "0.5");
+        assert_eq!(
+            term_json(&t).unwrap(),
+            json!({"type": "thickness", "surf": 1, "each": "air", "min": 0.5})
+        );
+    }
 
     /// 評価関数の単位は項が同じ単位のときだけ（スポットは µm、波面は波、混ざると無し）
     #[test]

@@ -1738,6 +1738,16 @@
           "type": "string"
         },
         {
+          "const": "ApertureType",
+          "description": "開口の種類（OpticStudio の番号 0〜5: 入射瞳径・像側 F 値・物体側 NA・絞り径・近軸作動 F 値・物体側の開き角）。\n多重構成の行（.zmx の SATP）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Stop",
+          "description": "絞りの面の番号（値は整数）。多重構成の行（.zmx の STPS）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
           "additionalProperties": false,
           "description": "視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。\n最適化の変数には使えない",
           "properties": {

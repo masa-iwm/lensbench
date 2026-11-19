@@ -136,14 +136,8 @@ pub(super) fn aperture_kind(
     sf: &mut [Surface],
 ) -> Result<(ApertureKind, f64)> {
     let satp = fop(ops, "SATP", 0, aperture_type(raw)? as f64) as i64;
-    let kind = match satp {
-        0 => ApertureKind::Epd,
-        1 => ApertureKind::FNum,
-        2 => ApertureKind::Na,
-        3 => ApertureKind::Float,
-        4 => ApertureKind::Pwfn,
-        5 => ApertureKind::Cone,
-        _ => notimpl!("system aperture type {satp}"),
+    let Some(kind) = ApertureKind::from_os_code(satp) else {
+        notimpl!("system aperture type {satp}");
     };
     // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
     // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。

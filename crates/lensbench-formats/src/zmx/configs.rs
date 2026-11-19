@@ -109,6 +109,8 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "FLWT" => Kind::FieldW(i?),
         "PRWV" => Kind::Primary,
         "APER" => Kind::Aper,
+        "SATP" => Kind::ApertureType,
+        "STPS" => Kind::Stop,
         _ => return None,
     })
 }

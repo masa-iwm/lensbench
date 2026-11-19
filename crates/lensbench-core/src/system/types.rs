@@ -146,6 +146,35 @@ pub enum ApertureKind {
     #[serde(rename = "cone")]
     Cone,
 }
+
+impl ApertureKind {
+    /// OpticStudio の開口の種類の番号（.zmx・多重構成の SATP。0 入射瞳径、1 像側 F 値、2 物体側 NA、3 絞り径、
+    /// 4 近軸作動 F 値、5 物体側の開き角）
+    pub fn os_code(self) -> i64 {
+        match self {
+            ApertureKind::Epd => 0,
+            ApertureKind::FNum => 1,
+            ApertureKind::Na => 2,
+            ApertureKind::Float => 3,
+            ApertureKind::Pwfn => 4,
+            ApertureKind::Cone => 5,
+        }
+    }
+
+    /// [`ApertureKind::os_code`] の逆（番号が 0〜5 でなければ None）
+    pub fn from_os_code(n: i64) -> Option<ApertureKind> {
+        [
+            ApertureKind::Epd,
+            ApertureKind::FNum,
+            ApertureKind::Na,
+            ApertureKind::Float,
+            ApertureKind::Pwfn,
+            ApertureKind::Cone,
+        ]
+        .into_iter()
+        .find(|k| k.os_code() == n)
+    }
+}
 /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目、OpticStudio の Afocal Mode Units）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]

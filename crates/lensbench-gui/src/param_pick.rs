@@ -39,6 +39,8 @@ pub(crate) fn param_desc(name: &str) -> String {
             "objy" => tr("Object position Y").into(),
             "primary" => tr("Primary wavelength").into(),
             "aper" => tr("Aperture value").into(),
+            "atype" => tr("Aperture type").into(),
+            "stop" => tr("Stop surface").into(),
             _ if n.starts_with("wave") => trf("Wave {}", &[&&n[4..]]),
             _ if n.starts_with("wwt") => trf("Wave {} weight", &[&&n[3..]]),
             _ if n.starts_with("fwt") => trf("Field {} weight", &[&&n[3..]]),

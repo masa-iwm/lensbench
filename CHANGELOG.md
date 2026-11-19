@@ -47,6 +47,9 @@
 
 ### 足したもの
 
+- **多重構成の表に開口の種類と絞りの面**: 開口の種類 `atype`（OpticStudio の番号 0〜5）と絞りの面 `stop` を多重構成の表の行に
+  できる。.zmx の SATP・STPS を表に読み、書き出す（前は選んだ構成だけを読んだ）。GUI の評価関数の項の欄に `min`・`max` を足し、
+  `semi` と面ごとの `thickness`（`each`）の項を GUI から足せるようにした
 - **多重構成の表に系の値**: 波長 `wave1`〜、波長のウェイト `wwt1`〜、主波長 `primary`、開口の値 `aper`、視野 `fx1`〜・`fy1`〜・
   ウェイト `fwt1`〜 を多重構成の表の行にできる。.zmx の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT を表に読み、書き出す
   （前は選んだ構成だけを読んだ。WLWT・PRWV・FLWT が構成で変わる .zmx は読めなかった）。ガラス（GLSS）が構成で変わる .zmx は、

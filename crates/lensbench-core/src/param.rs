@@ -29,7 +29,7 @@ use crate::error::Result;
 use crate::pickup::pick_kind;
 use crate::solves::solve_kind_info;
 use crate::surface::{After, Tilt};
-use crate::system::{Keep, System};
+use crate::system::{ApertureKind, Keep, System};
 use crate::units::UnitKind;
 use crate::{invalid, notimpl};
 
@@ -80,6 +80,11 @@ pub enum Kind {
     Primary,
     /// 開口の値（開口の種類の単位: 入射瞳径 mm・F 値・NA など）。多重構成の行（.zmx の APER）。最適化の変数には使えない
     Aper,
+    /// 開口の種類（OpticStudio の番号 0〜5: 入射瞳径・像側 F 値・物体側 NA・絞り径・近軸作動 F 値・物体側の開き角）。
+    /// 多重構成の行（.zmx の SATP）。最適化の変数には使えない
+    ApertureType,
+    /// 絞りの面の番号（値は整数）。多重構成の行（.zmx の STPS）。最適化の変数には使えない
+    Stop,
     /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
     /// 最適化の変数には使えない
     FieldX(u8),
@@ -133,6 +138,8 @@ impl Kind {
             "semi" => Kind::Semi,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
+            "atype" => Kind::ApertureType,
+            "stop" => Kind::Stop,
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -198,6 +205,8 @@ impl Kind {
             Kind::WaveW(i) => format!("wwt{}", *i as usize + 1),
             Kind::Primary => "primary".into(),
             Kind::Aper => "aper".into(),
+            Kind::ApertureType => "atype".into(),
+            Kind::Stop => "stop".into(),
             Kind::FieldX(i) => format!("fx{}", *i as usize + 1),
             Kind::FieldY(i) => format!("fy{}", *i as usize + 1),
             Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
@@ -264,7 +273,7 @@ impl Kind {
         self.is_object() || self.is_system_value()
     }
 
-    /// 系の値（波長・重み・主波長・開口・視野）。公差・多重構成の行に使い、最適化の変数・微分には使えない
+    /// 系の値（波長・重み・主波長・開口・開口の種類・絞りの面・視野）。公差・多重構成の行に使い、最適化の変数・微分には使えない
     pub fn is_system_value(&self) -> bool {
         matches!(
             self,
@@ -272,6 +281,8 @@ impl Kind {
                 | Kind::WaveW(_)
                 | Kind::Primary
                 | Kind::Aper
+                | Kind::ApertureType
+                | Kind::Stop
                 | Kind::FieldX(_)
                 | Kind::FieldY(_)
                 | Kind::FieldW(_)
@@ -557,6 +568,8 @@ impl System {
             Kind::WaveW(i) => return Ok(self.weights[i as usize]),
             Kind::Primary => return Ok(self.primary as f64 + 1.0),
             Kind::Aper => return Ok(self.aperture.1),
+            Kind::ApertureType => return Ok(self.aperture.0.os_code() as f64),
+            Kind::Stop => return Ok(self.stop() as f64),
             Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
             Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
             Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
@@ -852,6 +865,17 @@ impl System {
                 }
                 Kind::WaveW(_) | Kind::FieldW(_) if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::Aper if !(v > 0.0) => invalid!("aperture value {v}"),
+                Kind::ApertureType
+                    if v.fract() != 0.0 || ApertureKind::from_os_code(v as i64).is_none() =>
+                {
+                    invalid!("aperture type {v} (0 to 5)");
+                }
+                Kind::Stop
+                    if v.fract() != 0.0 || v < 1.0 || v > self.surfaces.len() as f64 - 2.0 =>
+                {
+                    let last = self.surfaces.len() - 2;
+                    invalid!("stop surface {v} (1 to {last})");
+                }
                 _ => {}
             }
             if p.kind.is_system_value() {
@@ -899,6 +923,17 @@ impl System {
                 Kind::WaveW(i) => rx.weights[i as usize] = v,
                 Kind::Primary => rx.primary = v as usize - 1,
                 Kind::Aper => rx.aperture.1 = v,
+                Kind::ApertureType => {
+                    // 番号は上で確かめた
+                    if let Some(k) = ApertureKind::from_os_code(v as i64) {
+                        rx.aperture.0 = k;
+                    }
+                }
+                Kind::Stop => {
+                    for (j, d) in rx.surfaces.iter_mut().enumerate() {
+                        d.stop = j == v as usize;
+                    }
+                }
                 Kind::FieldX(i) => rx.fields[i as usize].x = v,
                 Kind::FieldY(i) => rx.fields[i as usize].y = v,
                 Kind::FieldW(i) => rx.fields[i as usize].w = v,
