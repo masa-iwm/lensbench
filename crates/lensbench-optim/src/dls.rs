@@ -436,6 +436,36 @@ impl Problem {
         Ok((self.merit_of(&r), parts.into_iter().map(|p| p.1).collect()))
     }
 
+    /// [`Self::term_values`] と、項ごとの評価関数への寄与 [%]（重みを掛けた残差の 2 乗の和の、全体に対する割合。
+    /// OpticStudio の評価関数エディタの % Contrib と同じ。全体が 0 なら 0）
+    pub fn term_values_contrib(&self, x: &[f64]) -> Result<(Vec<TermValue>, Vec<f64>)> {
+        let sys = self.systems(x)?;
+        let parts = map_maybe_par(&self.terms, |t| {
+            let r0 = eval_term(
+                &sys[t.config],
+                &t.kind,
+                None,
+                None,
+                self.stopped_as_vignetted,
+            )?
+            .0;
+            let v = term_value(&t.kind, &r0);
+            let mut r = r0;
+            t.clamp(&mut r, None);
+            let ss: f64 = r.iter().map(|v| v * v).sum::<f64>() * t.weight;
+            Ok((v, ss))
+        })?;
+        let total: f64 = parts.iter().map(|p| p.1).sum();
+        let pct = |ss: f64| {
+            if total > 0.0 && total.is_finite() {
+                100.0 * ss / total
+            } else {
+                0.0
+            }
+        };
+        Ok(parts.into_iter().map(|(v, ss)| (v, pct(ss))).unzip())
+    }
+
     /// 残差とヤコビアン（行優先 [残差][変数]）
     pub fn jacobian(&self, x: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
         self.check()?;

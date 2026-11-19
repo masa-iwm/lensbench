@@ -136,6 +136,11 @@ pub struct TermValue {
     pub value: f64,
     /// 値の意味（目標のある項は量そのもの quantity、ない項は √Σr² の rms）
     pub value_kind: String,
+    /// 評価関数への寄与 [%]（最適化の前・後。重みを掛けた残差の 2 乗の和の割合、OpticStudio の % Contrib）
+    #[serde(default)]
+    pub contrib0: f64,
+    #[serde(default)]
+    pub contrib: f64,
     /// 瞳の光線を並べる項の、最適化の後の光線の数
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rays: Option<RayCount>,

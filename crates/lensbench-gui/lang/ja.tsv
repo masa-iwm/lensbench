@@ -1531,6 +1531,43 @@ Distance from the image surface to where an axial ray crosses the axis − targe
 Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)	最大の視野の近軸主光線の像面での高さの wave2 − wave − 目標（LACL 相当）
 Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)	面 surf〜to のクリア半径を面ごとに min か max と比べ、はみ出しを足す（MNSD・MXSD 相当）
 Aperture maximum radius	開口の最大の半径
+Row {} {}	{} 行目の{}
+Copy	コピー
+Insert row above	上に行を挿入
+Insert row below	下に行を挿入
+Delete {} rows	{} 行を削除
+Delete row	行を削除
+Parameter {} of the current row's term type	今の行の項のタイプのパラメータ {}
+Configuration number (empty = the current one)	構成の番号（空は今の構成）
+Unknown term type {}	項のタイプ {} はありません
+{} min	{} の下限
+{} max	{} の上限
+No lens {}	レンズ {} はありません
+Set	組
+No set {}	組 {} はありません
+Decenter [mm]	偏心 [mm]
+Tilt [deg]	チルト [deg]
+Shift [mm]	移動 [mm]
+Parameter	パラメータ
+No distribution {}	分布 {} はありません
+This state is not used	この状態は使いません
+Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓ で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
+Tables (optimization, tolerance, swap, zoom)	表（最適化・公差・差し替え探索・ズーム）
+Change a number (also the grip at the right of the cell). Alt+↑ ↓: Shift ×10, Ctrl ×1/10	数を増減（セルの右端のつまみでも）。Alt+↑ ↓ は Shift で 10 倍、Ctrl で 1/10
+Insert a row	行を挿入
+Delete the selected rows	選んだ行を削除
+Clear the cell	セルを空にする
+Copy / paste as tab-separated text	タブ区切りでコピー・貼り付け
+Duplicate row	行を複製
+Duplicate the selected rows below them	選んだ行の写しを下に挿入
+% Contrib	寄与 %
+Evaluate	評価
+Value of the term at the last Evaluate or Optimize (after optimizing). With a target it is the quantity itself, otherwise √Σr²	最後に「評価」か最適化をしたときの項の値（最適化の後）。目標のある項は量そのもの、ない項は √Σr²
+Share of the merit function: weight × Σ residual² of the term over the sum of all terms	メリットファンクションに占める割合: 項の ウェイト × Σ 残差² の、全部の項の和に対する割合
+Compute the merit function and the value of each term for the current system without changing it	今のシステムを変えずに、メリットファンクションと項ごとの値を求める
+Move up	上へ
+Move down	下へ
+Move the selected rows up / down	選んだ行を上へ・下へ動かす
 + Configuration	+ 構成
 + Row	+ 行
 Add a configuration (state) copied from {}	{} を写した構成（状態）を足す
@@ -1539,7 +1576,6 @@ Add a multi-configuration row	多重構成の行にする
 Adds this value as a row of the Multi-configuration table, so each configuration (state) can have its own value	この値を多重構成の表の行にし、構成（状態）ごとに値を変えられるようにします
 Click a column header to make it the current configuration; right-click it to copy, rename or delete. Right-click a cell to use the base value, a row name to delete the row	列の見出しをクリックで今の構成に、右クリックで写す・名前を変える・消す。セルの右クリックで基本の値に戻し、行の名前の右クリックで行を消します
 Copy to a new configuration	写して新しい構成にする
-Delete row	行を消す
 Every configuration uses the base value	どの構成も基本の値にします
 Field {} x	視野 {} x
 Field {} y	視野 {} y

@@ -57,6 +57,20 @@ impl Core {
                         ],
                     ),
                     (
+                        tr("Tables (optimization, tolerance, swap, zoom)"),
+                        vec![
+                            ("← → ↑ ↓ / Tab", tr("Move between cells (Shift+↑ ↓ / Shift+click select a row range)")),
+                            ("Enter / F2", tr("Edit (typing also starts editing). Enter commits, Esc cancels")),
+                            ("Alt+drag / Alt+↑ ↓", tr("Change a number (also the grip at the right of the cell). Alt+↑ ↓: Shift ×10, Ctrl ×1/10")),
+                            ("Insert", tr("Insert a row")),
+                            ("Ctrl+D", tr("Duplicate the selected rows below them")),
+                            ("Ctrl+Shift+↑ ↓", tr("Move the selected rows up / down")),
+                            ("Ctrl+Delete", tr("Delete the selected rows")),
+                            ("Delete", tr("Clear the cell")),
+                            ("Ctrl+C / Ctrl+V", tr("Copy / paste as tab-separated text")),
+                        ],
+                    ),
+                    (
                         tr("Layout figure (combination)"),
                         vec![
                             ("[ ]", tr("Select the previous / next element")),

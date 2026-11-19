@@ -19,6 +19,7 @@ use crate::json_view::fmt_num;
 use crate::optim_panel::{section, small_edit, term_rows, terms_json, terms_ui, text_of, TermRow};
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use crate::widgets::sheet::{self, Cell, Sheet, SheetState};
 
 /// 差し替える所の行
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -105,6 +106,10 @@ pub(crate) struct SwapPanel {
     pub inserted: Option<usize>,
     /// 入れる前の組合せ（元に戻す）
     pub undo: Option<Combo>,
+    /// レンズ・変数・項の表の選択と書き換え中の文字
+    pub slots_sheet: SheetState,
+    pub vars_sheet: SheetState,
+    pub terms_sheet: SheetState,
 }
 
 impl Default for SwapPanel {
@@ -135,6 +140,9 @@ impl Default for SwapPanel {
             error: None,
             inserted: None,
             undo: None,
+            slots_sheet: SheetState::default(),
+            vars_sheet: SheetState::default(),
+            terms_sheet: SheetState::default(),
         }
     }
 }
@@ -533,7 +541,15 @@ pub(crate) fn ui(
                     vars_ui(ui, p, c, weak)
                 });
                 section(ui, "swap_terms_sec", tr("Extra merit terms"), |ui| {
-                    terms_ui(ui, "swap", &mut p.terms, &mut p.new_term, weak);
+                    terms_ui(
+                        ui,
+                        "swap",
+                        &mut p.terms,
+                        &mut p.new_term,
+                        &mut p.terms_sheet,
+                        None,
+                        weak,
+                    );
                 });
                 section(ui, "swap_states_sec", tr("Starts and states"), |ui| {
                     starts_states_ui(ui, p, c, weak)
@@ -556,58 +572,12 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
             .color(weak),
         );
     }
-    let mut del = None;
-    egui::Grid::new("swap_slots")
-        .striped(true)
-        .num_columns(7)
-        .show(ui, |ui| {
-            for h in [
-                tr("Lens"),
-                tr("Vendor"),
-                tr("Focal length [mm]"),
-                tr("Diameter [mm]"),
-                tr("Flip too"),
-                "",
-            ] {
-                ui.label(RichText::new(h).small().color(weak));
-            }
-            ui.end_row();
-            for (i, s) in p.slots.iter_mut().enumerate() {
-                let label = c
-                    .blocks
-                    .iter()
-                    .find(|b| b.0 == s.block)
-                    .map(|b| format!("{}  {}", b.0, b.1))
-                    .unwrap_or_else(|| s.block.clone());
-                egui::ComboBox::from_id_salt(("swap_slot", i))
-                    .selected_text(label)
-                    .width(140.0)
-                    .show_ui(ui, |ui| {
-                        for (id, d) in &c.blocks {
-                            ui.selectable_value(&mut s.block, id.clone(), format!("{id}  {d}"));
-                        }
-                    });
-                small_edit(ui, &mut s.vendor, 60.0, tr("All"));
-                ui.horizontal(|ui| {
-                    small_edit(ui, &mut s.efl[0], 44.0, "−∞");
-                    ui.label("–");
-                    small_edit(ui, &mut s.efl[1], 44.0, "∞");
-                });
-                ui.horizontal(|ui| {
-                    small_edit(ui, &mut s.dia[0], 36.0, "0");
-                    ui.label("–");
-                    small_edit(ui, &mut s.dia[1], 36.0, "∞");
-                });
-                ui.checkbox(&mut s.flip, "")
-                    .on_hover_text(tr("Try both orientations (doubles the number of sets)"));
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.slots.remove(i);
+    if !p.slots.is_empty() {
+        let mut ss = SlotSheet {
+            slots: &mut p.slots,
+            blocks: &c.blocks,
+        };
+        sheet::show(ui, "swap_slots", &mut p.slots_sheet, &mut ss);
     }
     let free: Vec<&(String, String)> = c
         .blocks
@@ -632,39 +602,178 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     );
 }
 
+/// 差し替える所の表（レンズ・メーカー・焦点距離と径の範囲・反転も）
+struct SlotSheet<'a> {
+    slots: &'a mut Vec<SlotRow>,
+    blocks: &'a [(String, String)],
+}
+
+impl Sheet for SlotSheet<'_> {
+    fn rows(&self) -> usize {
+        self.slots.len()
+    }
+    fn cols(&self) -> usize {
+        7
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        match col {
+            0 => tr("Lens").into(),
+            1 => tr("Vendor").into(),
+            2 => trf("{} min", &[&tr("Focal length [mm]")]),
+            3 => trf("{} max", &[&tr("Focal length [mm]")]),
+            4 => trf("{} min", &[&tr("Diameter [mm]")]),
+            5 => trf("{} max", &[&tr("Diameter [mm]")]),
+            _ => tr("Flip too").into(),
+        }
+    }
+    fn width(&self, col: usize) -> f32 {
+        [140.0, 70.0, 64.0, 64.0, 56.0, 56.0, 56.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let s = &self.slots[row];
+        match col {
+            0 => Cell::list(s.block.clone(), self.blocks.to_vec(), false).tip(
+                self.blocks
+                    .iter()
+                    .find(|b| b.0 == s.block)
+                    .map(|b| b.1.clone())
+                    .unwrap_or_default(),
+            ),
+            1 => Cell::text(s.vendor.clone()).hint(tr("All")),
+            2 => Cell::num(s.efl[0].clone()).hint("−∞"),
+            3 => Cell::num(s.efl[1].clone()).hint("∞"),
+            4 => Cell::num(s.dia[0].clone()).hint("0"),
+            5 => Cell::num(s.dia[1].clone()).hint("∞"),
+            _ => {
+                Cell::boolean(s.flip).tip(tr("Try both orientations (doubles the number of sets)"))
+            }
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        if col == 0 && !self.blocks.iter().any(|b| b.0 == t) {
+            return Err(trf("No lens {}", &[&t]));
+        }
+        if (2..=5).contains(&col) {
+            crate::widgets::parse_num(t, &self.header(col, None))?;
+        }
+        let s = &mut self.slots[row];
+        match col {
+            0 => s.block = t.into(),
+            1 => s.vendor = t.into(),
+            2 | 3 => s.efl[col - 2] = t.into(),
+            4 | 5 => s.dia[col - 4] = t.into(),
+            _ => s.flip = t == "true",
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        // まだ表に無い玉
+        let Some(b) = self
+            .blocks
+            .iter()
+            .find(|b| !self.slots.iter().any(|s| s.block == b.0))
+        else {
+            return false;
+        };
+        self.slots.insert(
+            at,
+            SlotRow {
+                block: b.0.clone(),
+                ..Default::default()
+            },
+        );
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.slots.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.slots.swap(a, a + 1);
+        true
+    }
+}
+
+/// 組ごとに最適化する変数の表
+struct VarSheet<'a> {
+    vars: &'a mut Vec<VarRow>,
+    names: Vec<(String, String)>,
+}
+
+impl Sheet for VarSheet<'_> {
+    fn rows(&self) -> usize {
+        self.vars.len()
+    }
+    fn cols(&self) -> usize {
+        3
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Name"), tr("Min"), tr("Max")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [110.0, 64.0, 64.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let v = &self.vars[row];
+        match col {
+            0 => {
+                let d = self
+                    .names
+                    .iter()
+                    .find(|n| n.0 == v.name)
+                    .map(|n| n.1.clone())
+                    .unwrap_or_default();
+                Cell::list(v.name.clone(), self.names.clone(), true)
+                    .hint("d1.t")
+                    .tip(d)
+            }
+            1 => Cell::num(v.lo.clone()).hint("−∞"),
+            _ => Cell::num(v.hi.clone()).hint("∞"),
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        let v = &mut self.vars[row];
+        match col {
+            0 => v.name = t.into(),
+            _ => {
+                crate::widgets::parse_num(t, &v.name)?;
+                if col == 1 {
+                    v.lo = t.into();
+                } else {
+                    v.hi = t.into();
+                }
+            }
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        self.vars.insert(
+            at,
+            VarRow {
+                lo: "0".into(),
+                ..Default::default()
+            },
+        );
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.vars.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.vars.swap(a, a + 1);
+        true
+    }
+}
+
 fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     let set = Set::Swap { gaps: &c.gaps };
-    let mut del = None;
-    egui::Grid::new("swap_vars")
-        .striped(true)
-        .num_columns(4)
-        .show(ui, |ui| {
-            for h in [tr("Name"), tr("Min"), tr("Max"), ""] {
-                ui.label(RichText::new(h).small().color(weak));
-            }
-            ui.end_row();
-            for (i, v) in p.vars.iter_mut().enumerate() {
-                let d = c
-                    .gaps
-                    .iter()
-                    .find(|g| format!("{}.t", g.0) == v.name)
-                    .map(|g| g.1.clone())
-                    .unwrap_or_default();
-                ui.horizontal(|ui| {
-                    pp::edit_pick(ui, &mut v.name, 80.0, "d1.t", &c.sys, set)
-                        .0
-                        .on_hover_text(d);
-                });
-                small_edit(ui, &mut v.lo, 50.0, "−∞");
-                small_edit(ui, &mut v.hi, 50.0, "∞");
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.vars.remove(i);
+    if !p.vars.is_empty() {
+        let mut vs = VarSheet {
+            vars: &mut p.vars,
+            names: pp::names(&c.sys, set),
+        };
+        sheet::show(ui, "swap_vars", &mut p.vars_sheet, &mut vs);
     }
     ui.horizontal_wrapped(|ui| {
         let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t, G2.shift"), &c.sys, set);

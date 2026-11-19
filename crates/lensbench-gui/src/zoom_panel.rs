@@ -10,9 +10,10 @@ use serde_json::{json, Value};
 
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
-use crate::optim_panel::{section, small_edit};
+use crate::optim_panel::section;
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use crate::widgets::sheet::{self, Cell, Sheet, SheetState};
 use lensbench_engine::session::views::{ZoomPoint, ZoomView};
 
 /// 状態の行（名前で覚える。選べる状態に無い行は出さない）
@@ -59,6 +60,9 @@ pub(crate) struct ZoomPanel {
     pub running: bool,
     pub result: Option<ZoomView>,
     pub error: Option<String>,
+    /// 状態・変数の表の選択と書き換え中の文字
+    pub states_sheet: SheetState,
+    pub vars_sheet: SheetState,
 }
 
 impl Default for ZoomPanel {
@@ -78,6 +82,8 @@ impl Default for ZoomPanel {
             running: false,
             result: None,
             error: None,
+            states_sheet: SheetState::default(),
+            vars_sheet: SheetState::default(),
         }
     }
 }
@@ -233,6 +239,115 @@ pub(crate) fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) 
     run
 }
 
+/// 解く状態の表（使う・状態・目標）。行は選べる状態で決まる（足す・消すはしない）
+struct StateSheet<'a> {
+    states: &'a mut BTreeMap<String, StateRow>,
+    cands: &'a [Cand],
+}
+
+impl Sheet for StateSheet<'_> {
+    fn rows(&self) -> usize {
+        self.cands.len()
+    }
+    fn cols(&self) -> usize {
+        3
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Use"), tr("State"), tr("Target")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [40.0, 110.0, 90.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let (is_cfg, name) = &self.cands[row];
+        let st = self.states.get(name).cloned().unwrap_or_default();
+        match col {
+            0 => Cell::boolean(st.on),
+            1 => Cell::text(if *is_cfg {
+                trf("Config {}", &[name])
+            } else {
+                name.clone()
+            })
+            .ro(Some(String::new())),
+            _ => Cell::num(st.target)
+                .hint(tr("No target"))
+                .ro((!st.on).then(|| tr("This state is not used").to_string())),
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let name = &self.cands[row].1;
+        let t = text.trim();
+        if col == 2 {
+            crate::widgets::parse_num(t, tr("Target"))?;
+        }
+        let st = self.states.entry(name.clone()).or_default();
+        match col {
+            0 => st.on = t == "true",
+            2 => st.target = t.into(),
+            _ => return Err(String::new()),
+        }
+        Ok(())
+    }
+}
+
+/// 解く変数の表
+struct VarSheet<'a> {
+    vars: &'a mut Vec<VarRow>,
+    names: Vec<(String, String)>,
+}
+
+impl Sheet for VarSheet<'_> {
+    fn rows(&self) -> usize {
+        self.vars.len()
+    }
+    fn cols(&self) -> usize {
+        3
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Name"), tr("Min"), tr("Max")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [110.0, 64.0, 64.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let v = &self.vars[row];
+        match col {
+            0 => Cell::list(v.name.clone(), self.names.clone(), true)
+                .hint("G2.shift")
+                .tip(pp::param_desc(&v.name)),
+            1 => Cell::num(v.lo.clone()).hint("−∞"),
+            _ => Cell::num(v.hi.clone()).hint("∞"),
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        let v = &mut self.vars[row];
+        match col {
+            0 => v.name = t.into(),
+            _ => {
+                crate::widgets::parse_num(t, &v.name)?;
+                if col == 1 {
+                    v.lo = t.into();
+                } else {
+                    v.hi = t.into();
+                }
+            }
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        self.vars.insert(at, VarRow::default());
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.vars.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.vars.swap(a, a + 1);
+        true
+    }
+}
+
 fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32) {
     if cands.is_empty() {
         ui.label(
@@ -249,24 +364,11 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
         ui.selectable_value(&mut p.pmag, false, tr("Focal length [mm]"));
         ui.selectable_value(&mut p.pmag, true, tr("Paraxial magnification"));
     });
-    egui::Grid::new("zoom_states")
-        .striped(true)
-        .num_columns(2)
-        .show(ui, |ui| {
-            for (is_cfg, name) in cands {
-                let row = p.states.entry(name.clone()).or_default();
-                let label = if *is_cfg {
-                    trf("Config {}", &[name])
-                } else {
-                    name.clone()
-                };
-                ui.checkbox(&mut row.on, label);
-                ui.add_enabled_ui(row.on, |ui| {
-                    small_edit(ui, &mut row.target, 80.0, tr("No target"));
-                });
-                ui.end_row();
-            }
-        });
+    let mut ss = StateSheet {
+        states: &mut p.states,
+        cands,
+    };
+    sheet::show(ui, "zoom_states", &mut p.states_sheet, &mut ss);
     ui.label(
         RichText::new(tr(
             "The selected states are solved in order. A state with an empty target is solved for the image only.",
@@ -278,32 +380,12 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
 
 fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
     let units = &sys.units;
-    let mut del = None;
-    egui::Grid::new("zoom_vars")
-        .striped(true)
-        .num_columns(4)
-        .show(ui, |ui| {
-            for (i, v) in p.vars.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    pp::edit_pick(
-                        ui,
-                        &mut v.name,
-                        90.0,
-                        "G2.shift",
-                        sys,
-                        Set::Var { combo: false },
-                    );
-                });
-                small_edit(ui, &mut v.lo, 60.0, tr("Min"));
-                small_edit(ui, &mut v.hi, 60.0, tr("Max"));
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.vars.remove(i);
+    if !p.vars.is_empty() {
+        let mut vs = VarSheet {
+            vars: &mut p.vars,
+            names: pp::names(sys, Set::Var { combo: false }),
+        };
+        sheet::show(ui, "zoom_vars", &mut p.vars_sheet, &mut vs);
     }
     ui.horizontal(|ui| {
         if ui.button(tr("Add parameter")).clicked() {

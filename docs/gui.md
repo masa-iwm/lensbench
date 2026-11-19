@@ -201,7 +201,7 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 ## 最適化
 
 - 最適化のパネル: 変数（`7.t`・`lens2.tx` など。打つと候補が出る・[…] で面・玉・群から選ぶ。範囲・効く構成）、評価関数（既定の
-  RMS スポット・波面と、項の表: spot・wavefront・mtf・paraxial・ray・opd・zernike・coupling・zplm・plugin。CLI の `--term` と同じキー・重み・構成）、
+  RMS スポット・波面と、項の表: spot・wavefront・mtf・paraxial・ray・opd・zernike・coupling・zplm・plugin。CLI の `--term` と同じキー・重み・構成。表の右に最後に回したときの値と寄与 %、「評価」で今のシステムのまま値だけ求める）、
   設定（反復の上限・微分・同時に扱う構成）を決めて「最適化する」。走っている間は評価関数の履歴が出て「止める」で止められる。結果は
   評価関数の履歴・変数と項の前後の値で、「システムに反映」で開いているシステム（組合せなら面の厚さ・曲率半径・コーニックを組合せの要素）に当て、
   「反映を元に戻す」で戻す。設定は serve の `optimize` と同じ JSON で保存・読込できる
@@ -259,6 +259,12 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 | | Shift+F10 | 右クリックの欄（キーボードのメニューキーは効かない） |
 | | Ctrl+L | ブロックのロック |
 | | Enter（ブロック）・Backspace | ブロックの中へ・外へ |
+| 最適化・公差・差し替え探索・ズームの表 | ← → ↑ ↓・Tab・Home・End | セルを移る（Shift+↑ ↓・Shift+クリックで行の範囲） |
+| | 文字・Enter・F2・ダブルクリック | 書き換え（Enter で決め、Tab・↑ ↓ で決めて隣へ、Esc で取り消し）。選ぶ欄は候補の一覧、チェックは Space |
+| | Alt+ドラッグ・右端のつまみ・Alt+↑ ↓ | 数を増減（ドラッグは Shift で細かく、Alt+↑ ↓ は 1 ずつ・Shift で 10・Ctrl で 0.1） |
+| | Insert / Ctrl+D / Ctrl+Delete / Delete | 行を挿入 / 選んだ行を下に複製 / 行を消す / セルを空に |
+| | Ctrl+Shift+↑ ↓ | 選んだ行を上へ / 下へ動かす（右クリックの「上へ」「下へ」も） |
+| | Ctrl+C / Ctrl+V | タブ区切りでコピー / 貼り付け（足りない行は足す） |
 | 状態 | Ctrl+A / Ctrl+Shift+A | 次 / 前の状態にする（どのパネルでも） |
 - 「ファイル > 操作を記録」（パレットも同じ）で、文書を変える操作を順に覚える。もう一度選ぶと記録をやめ、保存先を選んで
   JSON（`{"format": "lensbench-gui-ops", "version": 1, "start": 始めたときの組合せ, "ops": [...]}`）に書く。

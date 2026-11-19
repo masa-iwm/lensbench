@@ -15,6 +15,7 @@ use crate::json_view::fmt_num;
 use crate::optim_panel::{self as op, section, small_edit, text_of, OptPanel};
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use crate::widgets::sheet::{self, Cell, Sheet, SheetState};
 use lensbench_design::tol_report::StatsInfo;
 use lensbench_design::tolerance::ToleranceReport;
 
@@ -115,6 +116,10 @@ pub(crate) struct TolPanel {
     pub comp_cdf: bool,
     /// 設定の JSON にあってパネルに欄のない項目（読んだまま保存・実行に使う）
     pub extra: Map<String, Value>,
+    /// 玉・群・個別の公差の表の選択と書き換え中の文字
+    pub lens_sheet: SheetState,
+    pub group_sheet: SheetState,
+    pub tol_sheet: SheetState,
 }
 
 impl Default for TolPanel {
@@ -146,6 +151,9 @@ impl Default for TolPanel {
             comp_sel: 0,
             comp_cdf: false,
             extra: Map::new(),
+            lens_sheet: SheetState::default(),
+            group_sheet: SheetState::default(),
+            tol_sheet: SheetState::default(),
         }
     }
 }
@@ -574,7 +582,7 @@ pub(crate) fn ui(
                         .color(weak),
                 );
             });
-            section(ui, "tol_merit_sec", tr("Merit function"), |ui| op::merit_ui(ui, &mut p.opt, weak));
+            section(ui, "tol_merit_sec", tr("Merit function"), |ui| op::merit_ui(ui, &mut p.opt, false, weak));
             section(ui, "tol_run_sec", tr("Settings"), |ui| run_ui(ui, p, weak));
         });
     });
@@ -665,25 +673,12 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     ));
     // 玉ごとの組
     ui.label(RichText::new(tr("Set per lens")).strong());
-    let mut del = None;
-    for (i, l) in p.lenses.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            pp::edit(ui, &mut l.name, 90.0, "lens1", &c.sys, Set::Units);
-            egui::ComboBox::from_id_salt(("tol_lens_preset", i))
-                .selected_text(preset_label(&l.preset))
-                .width(80.0)
-                .show_ui(ui, |ui| {
-                    for (k, lb) in PRESETS {
-                        ui.selectable_value(&mut l.preset, k.to_string(), tr(lb));
-                    }
-                });
-            if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                del = Some(i);
-            }
-        });
-    }
-    if let Some(i) = del {
-        p.lenses.remove(i);
+    if !p.lenses.is_empty() {
+        let mut ls = LensSheet {
+            lenses: &mut p.lenses,
+            units: pp::names(&c.sys, Set::Units),
+        };
+        sheet::show(ui, "tol_lenses", &mut p.lens_sheet, &mut ls);
     }
     ui.menu_button(tr("Add lens"), |ui| {
         for u in &c.units {
@@ -703,24 +698,12 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         ))
         .strong(),
     );
-    let mut del = None;
-    egui::Grid::new("tol_groups")
-        .striped(true)
-        .num_columns(5)
-        .show(ui, |ui| {
-            for (i, g) in p.groups.iter_mut().enumerate() {
-                pp::edit(ui, &mut g.name, 70.0, "G1", &c.sys, Set::Units);
-                small_edit(ui, &mut g.decenter, 55.0, tr("Decenter"));
-                small_edit(ui, &mut g.tilt, 55.0, tr("Tilt"));
-                small_edit(ui, &mut g.shift, 55.0, tr("Shift"));
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.groups.remove(i);
+    if !p.groups.is_empty() {
+        let mut gs = GroupSheet {
+            groups: &mut p.groups,
+            units: pp::names(&c.sys, Set::Units),
+        };
+        sheet::show(ui, "tol_groups", &mut p.group_sheet, &mut gs);
     }
     ui.menu_button(tr("Add group"), |ui| {
         for u in &c.units {
@@ -735,39 +718,12 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     });
     // 個別の公差
     ui.label(RichText::new(tr("Individual tolerances (per surface)")).strong());
-    let mut del = None;
-    egui::Grid::new("tol_tols")
-        .striped(true)
-        .num_columns(5)
-        .show(ui, |ui| {
-            for (i, t) in p.tols.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    pp::edit_pick(ui, &mut t.param, 80.0, "3.t", &c.sys, Set::Any);
-                });
-                small_edit(ui, &mut t.pm, 60.0, "±");
-                egui::ComboBox::from_id_salt(("tol_dist", i))
-                    .selected_text(if t.dist.is_empty() {
-                        tr("Default")
-                    } else {
-                        dist_label(&t.dist)
-                    })
-                    .width(80.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.dist, String::new(), tr("Default"));
-                        for (k, l) in DISTS {
-                            ui.selectable_value(&mut t.dist, k.to_string(), tr(l));
-                        }
-                    });
-                ui.checkbox(&mut t.relative, tr("Ratio"))
-                    .on_hover_text(tr("Make ± a ratio of the current value (0.01 = ±1%)"));
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.tols.remove(i);
+    if !p.tols.is_empty() {
+        let mut ts = TolSheet {
+            tols: &mut p.tols,
+            names: pp::names(&c.sys, Set::Any),
+        };
+        sheet::show(ui, "tol_tols", &mut p.tol_sheet, &mut ts);
     }
     ui.horizontal_wrapped(|ui| {
         if ui.button(tr("Add a tolerance")).clicked() {
@@ -1195,6 +1151,197 @@ fn term_unit(label: &str) -> &'static str {
         "spot" | "centroid" => "mm",
         "wavefront" | "opd" | "zernike" => tr("waves"),
         _ => "",
+    }
+}
+
+/// 玉ごとの組の表
+struct LensSheet<'a> {
+    lenses: &'a mut Vec<LensRow>,
+    units: Vec<(String, String)>,
+}
+
+impl Sheet for LensSheet<'_> {
+    fn rows(&self) -> usize {
+        self.lenses.len()
+    }
+    fn cols(&self) -> usize {
+        2
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Lens"), tr("Set")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [100.0, 100.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let l = &self.lenses[row];
+        if col == 0 {
+            return Cell::list(l.name.clone(), self.units.clone(), true).hint("lens1");
+        }
+        let items = PRESETS
+            .iter()
+            .filter(|x| !x.0.is_empty())
+            .map(|x| (x.0.to_string(), tr(x.1).to_string()))
+            .collect();
+        Cell::list(l.preset.clone(), items, false)
+            .shown(preset_label(&l.preset))
+            .hint(tr("Default"))
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        let l = &mut self.lenses[row];
+        if col == 0 {
+            l.name = t.into();
+        } else if PRESETS.iter().any(|x| x.0 == t) {
+            l.preset = t.into();
+        } else {
+            return Err(trf("No set {}", &[&t]));
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        self.lenses.insert(
+            at,
+            LensRow {
+                name: String::new(),
+                preset: "none".into(),
+            },
+        );
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.lenses.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.lenses.swap(a, a + 1);
+        true
+    }
+}
+
+/// 群・ブロックの公差の表
+struct GroupSheet<'a> {
+    groups: &'a mut Vec<GroupRow>,
+    units: Vec<(String, String)>,
+}
+
+impl Sheet for GroupSheet<'_> {
+    fn rows(&self) -> usize {
+        self.groups.len()
+    }
+    fn cols(&self) -> usize {
+        4
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Name"), tr("Decenter"), tr("Tilt"), tr("Shift")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [80.0, 64.0, 64.0, 64.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let g = &self.groups[row];
+        match col {
+            0 => Cell::list(g.name.clone(), self.units.clone(), true).hint("G1"),
+            1 => Cell::num(g.decenter.clone()).tip(tr("Decenter [mm]")),
+            2 => Cell::num(g.tilt.clone()).tip(tr("Tilt [deg]")),
+            _ => Cell::num(g.shift.clone()).tip(tr("Shift [mm]")),
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let t = text.trim();
+        if col > 0 {
+            crate::widgets::parse_num(t, &self.header(col, None))?;
+        }
+        let g = &mut self.groups[row];
+        match col {
+            0 => g.name = t.into(),
+            1 => g.decenter = t.into(),
+            2 => g.tilt = t.into(),
+            _ => g.shift = t.into(),
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        self.groups.insert(at, GroupRow::default());
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.groups.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.groups.swap(a, a + 1);
+        true
+    }
+}
+
+/// 個別の公差の表
+struct TolSheet<'a> {
+    tols: &'a mut Vec<TolRow>,
+    names: Vec<(String, String)>,
+}
+
+impl Sheet for TolSheet<'_> {
+    fn rows(&self) -> usize {
+        self.tols.len()
+    }
+    fn cols(&self) -> usize {
+        4
+    }
+    fn header(&self, col: usize, _cur: Option<usize>) -> String {
+        [tr("Parameter"), "±", tr("Distribution"), tr("Ratio")][col].into()
+    }
+    fn width(&self, col: usize) -> f32 {
+        [90.0, 64.0, 100.0, 50.0][col]
+    }
+    fn cell(&self, row: usize, col: usize) -> Cell {
+        let t = &self.tols[row];
+        match col {
+            0 => Cell::list(t.param.clone(), self.names.clone(), true)
+                .hint("3.t")
+                .tip(pp::param_desc(&t.param)),
+            1 => Cell::num(t.pm.clone()),
+            2 => Cell::list(
+                t.dist.clone(),
+                DISTS
+                    .iter()
+                    .map(|x| (x.0.to_string(), tr(x.1).to_string()))
+                    .collect(),
+                false,
+            )
+            .shown(dist_label(&t.dist))
+            .hint(tr("Default")),
+            _ => Cell::boolean(t.relative)
+                .tip(tr("Make ± a ratio of the current value (0.01 = ±1%)")),
+        }
+    }
+    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
+        let v = text.trim();
+        let t = &mut self.tols[row];
+        match col {
+            0 => t.param = v.into(),
+            1 => {
+                crate::widgets::parse_num(v, &t.param)?;
+                t.pm = v.into();
+            }
+            2 => {
+                if !v.is_empty() && !DISTS.iter().any(|x| x.0 == v) {
+                    return Err(trf("No distribution {}", &[&v]));
+                }
+                t.dist = v.into();
+            }
+            _ => t.relative = v == "true",
+        }
+        Ok(())
+    }
+    fn insert(&mut self, at: usize) -> bool {
+        self.tols.insert(at, TolRow::default());
+        true
+    }
+    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
+        self.tols.drain(rows);
+    }
+    fn swap(&mut self, a: usize) -> bool {
+        self.tols.swap(a, a + 1);
+        true
     }
 }
 

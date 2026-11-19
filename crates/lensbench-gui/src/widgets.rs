@@ -9,6 +9,7 @@ pub(crate) mod cell;
 pub(crate) mod choices;
 pub(crate) mod menu;
 pub(crate) mod scale_bar;
+pub(crate) mod sheet;
 #[cfg(test)]
 mod ui_tests;
 

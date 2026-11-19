@@ -9,10 +9,12 @@ use egui::{RichText, Ui};
 use egui_plot::{Line, Plot};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+
+mod sheets;
 use lensbench_engine::session::views::{OptimizeView, TermValue};
 
 /// 項のキーの値の書き方
@@ -430,6 +432,13 @@ pub(crate) struct OptPanel {
     pub undo: Option<Vec<(String, f64)>>,
     /// 最適化を始めたときの系の世代（[`crate::app`] の sys_gen。変わっていれば結果を当てない）
     pub gen: u64,
+    /// 変数・項の表の選択と書き換え中の文字
+    pub vars_sheet: crate::widgets::sheet::SheetState,
+    pub terms_sheet: crate::widgets::sheet::SheetState,
+    /// 走らせたときの項（結果の値をどの行に出すか。行が変わったら出さない）
+    pub run_terms: Vec<TermRow>,
+    /// 「評価」を押した（変数なしで回す。ui の最後で Run にする）
+    pub eval_asked: bool,
 }
 
 impl OptPanel {
@@ -445,6 +454,23 @@ impl OptPanel {
             new_term: "paraxial".into(),
             ..Default::default()
         }
+    }
+
+    /// 項の表の値の列: 走らせたときと同じ行なら結果の（後の）値と寄与
+    pub(crate) fn term_vals(&self) -> Vec<Option<(f64, f64)>> {
+        let Some(r) = &self.result else {
+            return vec![None; self.terms.len()];
+        };
+        let extra: Vec<&TermValue> = r.terms.iter().filter(|t| !t.default).collect();
+        self.terms
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                (self.run_terms.get(i) == Some(t))
+                    .then(|| extra.get(i).map(|v| (v.value, v.contrib)))
+                    .flatten()
+            })
+            .collect()
     }
 
     /// serve の optimize の params（保存するファイルと同じ）
@@ -788,6 +814,7 @@ pub(crate) fn ui(
                             Ok(v) => {
                                 p.error = None;
                                 p.run_unit = merit_unit(p);
+                                p.run_terms = p.terms.clone();
                                 acts.push(Action::Run(v));
                             }
                             Err(e) => p.error = Some(e),
@@ -830,13 +857,26 @@ pub(crate) fn ui(
                     vars_ui(ui, p, c, weak)
                 });
                 section(ui, "opt_merit_sec", tr("Merit function"), |ui| {
-                    merit_ui(ui, p, weak)
+                    merit_ui(ui, p, true, weak)
                 });
                 section(ui, "opt_settings_sec", tr("Settings"), |ui| {
                     settings_ui(ui, p, weak)
                 });
             });
         });
+    // 「評価」: 変数なしで回す（系は変えず、評価関数と項の値だけ求める）
+    if std::mem::take(&mut p.eval_asked) && !p.running {
+        match p.params() {
+            Ok(mut v) => {
+                v["vars"] = json!([]);
+                p.error = None;
+                p.run_unit = merit_unit(p);
+                p.run_terms = p.terms.clone();
+                acts.push(Action::Run(v));
+            }
+            Err(e) => p.error = Some(e),
+        }
+    }
     acts
 }
 
@@ -856,42 +896,14 @@ fn fmt_g(x: f64) -> String {
 
 pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Color32) {
     let set = Set::Var { combo: c.combo };
-    let multi = !p.configs.trim().is_empty();
-    let mut del = None;
-    egui::Grid::new("opt_vars")
-        .striped(true)
-        .num_columns(if multi { 6 } else { 5 })
-        .show(ui, |ui| {
-            ui.label(RichText::new(tr("Name")).small().color(weak));
-            ui.label(RichText::new(tr("Current")).small().color(weak));
-            ui.label(RichText::new(tr("Min")).small().color(weak));
-            ui.label(RichText::new(tr("Max")).small().color(weak));
-            if multi {
-                ui.label(RichText::new(tr("Config")).small().color(weak));
-            }
-            ui.label("");
-            ui.end_row();
-            for (i, v) in p.vars.iter_mut().enumerate() {
-                pp::edit(ui, &mut v.name, 110.0, "7.t", &c.sys, set);
-                match var_value(c.rows, &v.name) {
-                    Some(x) => ui.label(RichText::new(fmt_num(x)).monospace()),
-                    None => ui.weak("—"),
-                };
-                small_edit(ui, &mut v.lo, 60.0, "−∞");
-                small_edit(ui, &mut v.hi, 60.0, "∞");
-                if multi {
-                    small_edit(ui, &mut v.configs, 50.0, tr("All")).on_hover_text(tr(
-                        "Configurations it applies to (comma separated, empty = all)",
-                    ));
-                }
-                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        p.vars.remove(i);
+    if !p.vars.is_empty() {
+        let mut vs = sheets::VarSheet {
+            vars: &mut p.vars,
+            rows: c.rows,
+            names: pp::names(&c.sys, set),
+            multi: !p.configs.trim().is_empty(),
+        };
+        crate::widgets::sheet::show(ui, "opt_vars", &mut p.vars_sheet, &mut vs);
     }
     ui.horizontal_wrapped(|ui| {
         let (_, mut enter) = pp::edit(
@@ -933,7 +945,8 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
     }
 }
 
-pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
+/// 評価関数の欄。vals は項の表に値・寄与の列と「評価」を出す（最適化のパネル）
+pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, vals: bool, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Default"));
         for (k, l) in [
@@ -961,7 +974,39 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             .color(weak),
         );
     }
-    terms_ui(ui, "opt", &mut p.terms, &mut p.new_term, weak);
+    if !vals {
+        terms_ui(
+            ui,
+            "opt",
+            &mut p.terms,
+            &mut p.new_term,
+            &mut p.terms_sheet,
+            None,
+            weak,
+        );
+        return;
+    }
+    let vals = p.term_vals();
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button(tr("Evaluate"))
+            .on_hover_text(tr(
+                "Compute the merit function and the value of each term for the current system without changing it",
+            ))
+            .clicked()
+        {
+            p.eval_asked = true;
+        }
+    });
+    terms_ui(
+        ui,
+        "opt",
+        &mut p.terms,
+        &mut p.new_term,
+        &mut p.terms_sheet,
+        Some(&vals),
+        weak,
+    );
 }
 
 /// 評価関数の項の欄（最適化・差し替え探索）。id は欄の id の頭（同時に出るパネルで分ける）
@@ -970,80 +1015,21 @@ pub(crate) fn terms_ui(
     id: &str,
     terms: &mut Vec<TermRow>,
     new_term: &mut String,
+    sheet: &mut crate::widgets::sheet::SheetState,
+    vals: Option<&[Option<(f64, f64)>]>,
     weak: egui::Color32,
 ) {
     if new_term.is_empty() {
         *new_term = "paraxial".into();
     }
-    let mut del = None;
-    for (i, t) in terms.iter_mut().enumerate() {
-        egui::Frame::group(ui.style())
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    egui::ComboBox::from_id_salt((id, "term_ty", i))
-                        .selected_text(t.ty.clone())
-                        .width(90.0)
-                        .show_ui(ui, |ui| {
-                            for ty in TERM_TYPES {
-                                if ui
-                                    .selectable_label(t.ty == *ty, *ty)
-                                    .on_hover_text(type_hint(ty))
-                                    .clicked()
-                                    && t.ty != *ty
-                                {
-                                    *t = TermRow::new(ty);
-                                }
-                            }
-                        })
-                        .response
-                        .on_hover_text(type_hint(&t.ty));
-                    for (k, kind) in keys(&t.ty) {
-                        ui.label(RichText::new(*k).small().color(weak));
-                        let mut v = t.get(k).to_string();
-                        let changed = match kind {
-                            KeyKind::Choice(_) | KeyKind::Bool => {
-                                let opts = match kind {
-                                    KeyKind::Choice(o) => *o,
-                                    _ => &["true", "false"],
-                                };
-                                let mut ch = false;
-                                egui::ComboBox::from_id_salt((id, "term_k", i, *k))
-                                    .selected_text(if v.is_empty() { "—" } else { v.as_str() })
-                                    .width(70.0)
-                                    .show_ui(ui, |ui| {
-                                        for o in opts.iter() {
-                                            ch |= ui
-                                                .selectable_value(&mut v, o.to_string(), *o)
-                                                .changed();
-                                        }
-                                    });
-                                ch
-                            }
-                            KeyKind::Field | KeyKind::Pair | KeyKind::Macro => {
-                                small_edit(ui, &mut v, 56.0, "").changed()
-                            }
-                            KeyKind::Text | KeyKind::Dirs | KeyKind::Json | KeyKind::JsonList => {
-                                small_edit(ui, &mut v, 140.0, "").changed()
-                            }
-                            _ => small_edit(ui, &mut v, 48.0, "").changed(),
-                        };
-                        if changed {
-                            t.set(k, &v);
-                        }
-                    }
-                    ui.label(RichText::new(tr("Weight")).small().color(weak));
-                    small_edit(ui, &mut t.weight, 40.0, "1");
-                    ui.label(RichText::new(tr("Config")).small().color(weak));
-                    small_edit(ui, &mut t.config, 30.0, "1");
-                    if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
-                        del = Some(i);
-                    }
-                });
-            });
-    }
-    if let Some(i) = del {
-        terms.remove(i);
+    if !terms.is_empty() {
+        let mut ts = sheets::TermSheet {
+            terms,
+            new_ty: new_term.as_str(),
+            npar: sheets::par_cols(),
+            vals,
+        };
+        crate::widgets::sheet::show(ui, (id, "terms"), sheet, &mut ts);
     }
     ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_id_salt((id, "new_term"))
@@ -1066,7 +1052,13 @@ pub(crate) fn terms_ui(
         .small()
         .color(weak),
     );
+    ui.label(RichText::new(tr(SHEET_KEYS)).small().color(weak));
 }
+
+/// 表の使い方（表の下の一言）
+pub(crate) const SHEET_KEYS: &str = n_(
+    "Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.",
+);
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {

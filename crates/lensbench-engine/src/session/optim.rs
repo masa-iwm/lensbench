@@ -228,8 +228,8 @@ pub(super) fn optimize(
         .iter()
         .map(|v| prob.configs[0].param_name(v.param))
         .collect();
-    let tv0 = prob.term_values(&r.x0)?;
-    let tv = prob.term_values(&r.x)?;
+    let (tv0, pc0) = prob.term_values_contrib(&r.x0)?;
+    let (tv, pc) = prob.term_values_contrib(&r.x)?;
     let rays = prob.ray_counts(&r.x)?;
     let stop = r.stop.as_str();
     // 読み込んだ系に当てられる変数（読み込んだ系の構成に効くもの）
@@ -270,6 +270,8 @@ pub(super) fn optimize(
             value0: tv0[i].value(),
             value: tv[i].value(),
             value_kind: tv[i].kind_name().to_string(),
+            contrib0: pc0[i],
+            contrib: pc[i],
             rays: rays[i].map(|c| views::RayCount {
                 total: c.total,
                 vignetted: c.vignetted,
