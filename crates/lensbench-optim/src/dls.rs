@@ -1427,8 +1427,10 @@ fn wfe_term(
         }
     }
     // 当てはめの基底（未知数: 波長ごとのピストン nw 個 + 傾き nt 個）。光線ごとの nu 個を 1 本の配列に並べる
+    // 区切りの長さ（未知数がない = 波長が 0 個のときは光線もなく、配列は空。長さ 0 では区切れないので 1 に）
+    let nc = nu.max(1);
     let mut bs = vec![0.0; rows.len() * nu];
-    for (row, b) in rows.iter().zip(bs.chunks_exact_mut(nu)) {
+    for (row, b) in rows.iter().zip(bs.chunks_exact_mut(nc)) {
         b[row.0] = 1.0;
         if nt == 2 {
             b[nw] = row.3;
@@ -1439,8 +1441,8 @@ fn wfe_term(
     // 正規方程式（g は nu × nu を行ごとに並べる。足す順・積の順は光線ごと・a ごと・c ごとのまま）
     let mut gf = vec![0.0; nu * nu];
     let mut v = vec![0.0; nu];
-    for (row, b) in rows.iter().zip(bs.chunks_exact(nu)) {
-        for ((va, ga), &ba) in v.iter_mut().zip(gf.chunks_exact_mut(nu)).zip(b) {
+    for (row, b) in rows.iter().zip(bs.chunks_exact(nc)) {
+        for ((va, ga), &ba) in v.iter_mut().zip(gf.chunks_exact_mut(nc)).zip(b) {
             let qa = row.5 * ba;
             *va += qa * row.2;
             for (gc, &bc) in ga.iter_mut().zip(b) {
@@ -1448,12 +1450,12 @@ fn wfe_term(
             }
         }
     }
-    let g: Vec<Vec<f64>> = gf.chunks_exact(nu).map(<[f64]>::to_vec).collect();
+    let g: Vec<Vec<f64>> = gf.chunks_exact(nc).map(<[f64]>::to_vec).collect();
     let cf = lensbench_core::linalg::solve_or_zero(g.clone(), v);
     let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
     let e: Vec<f64> = rows
         .iter()
-        .zip(bs.chunks_exact(nu))
+        .zip(bs.chunks_exact(nc))
         .map(|(row, b)| row.2 - dot(b, &cf))
         .collect();
     let amp: Vec<f64> = rows

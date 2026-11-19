@@ -571,6 +571,11 @@ pub fn geometric_mtf(
     geometric_mtf_axes(s, field, w, n, freqs, diff_limit, MtfAxes::default())
 }
 
+thread_local! {
+    /// [`geometric_mtf_axes`] の周波数ごとの和の作業の配列（位相・位相因子）
+    static GEO_BUF: std::cell::RefCell<(Vec<f64>, Vec<C64>)> = const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+}
+
 /// [`geometric_mtf`] で、子午・球欠の向きを axes で（[`MtfAxes`]）
 #[allow(clippy::too_many_arguments)]
 pub fn geometric_mtf_axes(
@@ -660,18 +665,20 @@ pub fn geometric_mtf_axes(
     let one = |f: f64| -> (f64, f64) {
         let ph = 2.0 * std::f64::consts::PI * f;
         let (mut a, mut b) = (C64::new(0.0, 0.0), C64::new(0.0, 0.0));
-        let (mut arg, mut out) = (Vec::new(), Vec::new());
-        let mut sum = |pos: &[f64], wq: &[f64]| -> C64 {
-            arg.clear();
-            arg.extend(pos.iter().map(|&x| ph * x));
-            out.clear();
-            out.resize(pos.len(), C64::new(0.0, 0.0));
-            lensbench_core::trig::cis_scaled(&arg, wq, &mut out);
-            let mut acc = C64::new(0.0, 0.0);
-            for &c in &out {
-                acc += c;
-            }
-            acc
+        // 位相と位相因子の作業の配列は、スレッドごとに 1 組を使い回す（周波数ごとに確保しない）
+        let sum = |pos: &[f64], wq: &[f64]| -> C64 {
+            GEO_BUF.with_borrow_mut(|(arg, out)| {
+                arg.clear();
+                arg.extend(pos.iter().map(|&x| ph * x));
+                out.clear();
+                out.resize(pos.len(), C64::new(0.0, 0.0));
+                lensbench_core::trig::cis_scaled(arg, wq, out);
+                let mut acc = C64::new(0.0, 0.0);
+                for &c in out.iter() {
+                    acc += c;
+                }
+                acc
+            })
         };
         for ((k, _, cut), [xs, ys, wq]) in sets.iter().zip(&cols) {
             let (aw, bw) = (sum(xs, wq), sum(ys, wq));
