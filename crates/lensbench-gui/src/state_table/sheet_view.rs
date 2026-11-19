@@ -125,10 +125,10 @@ impl Sheet for McSheet<'_> {
     fn header_tip(&self, col: usize, _cur: Option<usize>) -> String {
         match self.col(col) {
             Some(Some(n)) => trf(
-                "Click to make {} the current configuration; right-click to copy, insert, move, rename or delete",
+                "Double-click to make {} the current configuration; right-click to copy, insert, move, rename or delete",
                 &[n],
             ),
-            Some(None) => tr("Show the base values (no state)").into(),
+            Some(None) => tr("Double-click to show the base values (no state)").into(),
             None => String::new(),
         }
     }
@@ -165,11 +165,18 @@ impl Sheet for McSheet<'_> {
         };
         let own = st.is_some_and(|n| it.own(self.c, n));
         if let Some(m) = st.and_then(|n| picks::pick_of(self.c, it, n)) {
-            let from = if m.from.is_empty() {
+            let mut from = if m.from.is_empty() {
                 tr("Base").to_string()
             } else {
                 m.from.clone()
             };
+            let (owner, _) = picks::key_of(it);
+            if let Some(r) = (!m.row.is_empty())
+                .then(|| picks::src_item(owner.as_ref(), m))
+                .flatten()
+            {
+                from = format!("{from} {}", r.label(self.c));
+            }
             let why = trf(
                 "Pickup: {} × {} + {}",
                 &[
@@ -248,7 +255,8 @@ impl Sheet for McSheet<'_> {
     }
     fn header_ui(&self, resp: &egui::Response, col: usize) {
         let Some(st) = self.col(col) else { return };
-        if resp.clicked() && self.c.state != *st {
+        // 切り替えはダブルクリック（クリックは列を選ぶのに残す）
+        if resp.double_clicked() && self.c.state != *st {
             self.act(Act::Current(st.clone()));
         }
         let Some(n) = st else { return };
@@ -292,15 +300,28 @@ impl Sheet for McSheet<'_> {
             ui.close_menu();
         }
         if !it.locked(self.c) {
-            // その構成からピックアップしている構成は元にしない（互いのピックアップ）
-            let back: Vec<String> = self
-                .c
-                .states
+            // 同じ持ち主（要素か組合せ）の別の行、組合せの行（系の値・絞り）
+            let rows: Vec<(String, String)> = self
+                .rows
                 .iter()
-                .filter(|m| picks::pick_of(self.c, it, m).is_some_and(|p| p.from == *n))
-                .cloned()
+                .filter_map(|r| match r {
+                    Row::It(r) => picks::row_key(it, r)
+                        .filter(|k| !k.is_empty())
+                        .map(|k| (r.label(self.c), k)),
+                    Row::More => None,
+                })
                 .collect();
-            pick_menu(ui, &self.cols, n, &back, pk, &mut |a| {
+            // 輪になる元（自分自身・自分からピックアップしている値）は出さない
+            let (owner, _) = picks::key_of(it);
+            let ok = |row: &str, from: &str| {
+                let src = if row.is_empty() {
+                    Some(it.clone())
+                } else {
+                    picks::row_item(owner.as_ref(), row)
+                };
+                src.is_some_and(|s| !picks::would_loop(self.c, it, n, &s, from))
+            };
+            pick_menu(ui, &self.cols, &ok, &rows, pk, &mut |a| {
                 self.act(Act::Pick(row, n.clone(), a))
             });
         }

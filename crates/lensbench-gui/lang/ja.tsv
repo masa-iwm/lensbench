@@ -1504,7 +1504,6 @@ Show values not changed in any state	どの状態でも変えていない値も�
 changed	変更あり
 Use base value	基本の値に戻す
 shift	移動
-Show the base values (no state)	基本の値を出す（状態なし）
 {} can't be opened (it can't be written as a combination: {})	{} は開けません（組合せで書けません: {}）
 {} can't be split into elements, so it opens as one element that reads the .zmx (a saved project needs the .zmx)	{} は要素に分割できないので、.zmx を読む要素 1 つで開きます（保存したプロジェクトはこの .zmx を使います）
 Inserting surfaces and pasting is not available in a combination	面を挿入して貼り付ける操作は組合せではまだできません
@@ -1582,9 +1581,7 @@ Object distance	物体距離
 Only surfaces of combination elements can be multi-configuration rows	多重構成の行にできるのは組合せの要素の面だけです
 Other system settings	そのほかのシステムの設定
 Rename	名前を変える
-Surface value of an element	要素の面の値
 Surfaces are counted within the element from 1, without coordinate breaks. Every configuration starts with its current value	面は要素の中で 1 から、座標ブレークを除いて数えます。どの構成も今の値から始まります
-System value	システムの値
 The base value is read from the built system; select Base once to read it	基本の値は組み立てたシステムから読みます。読むには一度「基本」を選んでください
 Wavelength {} [µm]	波長 {} [µm]
 Wavelength {} weight	波長 {} のウェイト
@@ -1612,9 +1609,14 @@ Pick up from	ピックアップの元
 Pickup: {} × {} + {}	ピックアップ: {} × {} ＋ {}
 Remove pickup	ピックアップをやめる
 aperture max radius	開口の最大半径
-Click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration. Empty a cell (Delete) to use the base value	列の見出しをクリックで今の構成に、右クリックで写す・足す・動かす・名前を変える・消す。セルの右クリックで基本の値に戻す・ほかの構成をピックアップする。セルを空にする（Delete）と基本の値に戻ります
-Click to make {} the current configuration; right-click to copy, insert, move, rename or delete	クリックで {} を今の構成に、右クリックで写す・足す・動かす・名前を変える・消す
+Double-click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration or row. Empty a cell (Delete) to use the base value	列の見出しをダブルクリックで今の構成に、右クリックで写す・足す・動かす・名前を変える・消す。セルの右クリックで基本の値に戻す・ほかの構成や行をピックアップする。セルを空にする（Delete）と基本の値に戻ります
+Double-click to make {} the current configuration; right-click to copy, insert, move, rename or delete	ダブルクリックで {} を今の構成に、右クリックで写す・足す・動かす・名前を変える・消す
 Enter a value for {}	{} の値を入れてください
 Rename {}	{} の名前を変える
 The element is locked	要素はロックされています
 {} is not one of {}	{} は {} のどれでもありません
+Double-click to show the base values (no state)	ダブルクリックで基本の値を出す（状態なし）
+Pick up from another row	別の行からピックアップ
+Other system values	その他のシステムの値
+ON / OFF	ON / OFF
+asphere	非球面

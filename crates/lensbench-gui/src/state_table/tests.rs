@@ -224,7 +224,7 @@ fn config_pickups() {
         cache: &cache,
     };
     let air = Item::Air(vec![0]);
-    picks::set_pick(&mut c, &air, "B", "A", 2.0, 1.0);
+    picks::set_pick(&mut c, &air, "B", &picks::Src::conf("A"), 2.0, 1.0);
     air.set(&mut c, Some("A"), Val::Num(3.0), &cx);
     assert!(picks::apply(&mut c, &cx));
     assert_eq!(c.picks[0].air_in(Some("B")), 7.0);
@@ -236,9 +236,9 @@ fn config_pickups() {
         field: "t".into(),
         idx: None,
     });
-    picks::set_pick(&mut c, &t, "A", "", 1.0, 0.5);
+    picks::set_pick(&mut c, &t, "A", &picks::Src::conf(""), 1.0, 0.5);
     let w = Item::Sys(SysQ::Wave(0));
-    picks::set_pick(&mut c, &w, "B", "A", 1.0, 0.0);
+    picks::set_pick(&mut c, &w, "B", &picks::Src::conf("A"), 1.0, 0.0);
     w.set(&mut c, Some("A"), Val::Num(0.6), &cx);
     picks::apply(&mut c, &cx);
     assert_eq!(c.picks[0].state_edit("A", 0, "t"), Some(&json!(3.5)));
@@ -339,9 +339,9 @@ fn unwritable_pickup_is_not_a_change() {
         cache: &cache,
     };
     let w = Item::Sys(SysQ::Wave(0));
-    picks::set_pick(&mut c, &w, "A", "", 0.0, 0.0);
+    picks::set_pick(&mut c, &w, "A", &picks::Src::conf(""), 0.0, 0.0);
     let p = Item::Sys(SysQ::Primary);
-    picks::set_pick(&mut c, &p, "A", "", 0.0, 50.0);
+    picks::set_pick(&mut c, &p, "A", &picks::Src::conf(""), 0.0, 50.0);
     picks::apply(&mut c, &cx);
     assert!(!picks::apply(&mut c, &cx));
     // 書けない主波長のピックアップでシステムの値の写しを作らない
@@ -349,7 +349,7 @@ fn unwritable_pickup_is_not_a_change() {
         states: vec!["A".into()],
         ..Default::default()
     };
-    picks::set_pick(&mut d, &p, "A", "", 0.0, 50.0);
+    picks::set_pick(&mut d, &p, "A", &picks::Src::conf(""), 0.0, 50.0);
     picks::apply(&mut d, &cx);
     assert!(d.state_sys.is_empty());
 }
@@ -368,7 +368,7 @@ fn sheet_cells_and_set() {
     let air = Item::Air(vec![0]);
     let tele = Item::Sys(SysQ::Telecentric);
     let ap = Item::Sys(SysQ::ApType);
-    picks::set_pick(&mut c, &air, "B", "A", 2.0, 0.0);
+    picks::set_pick(&mut c, &air, "B", &picks::Src::conf("A"), 2.0, 0.0);
     let mut sh = sheet_view::McSheet {
         c: &mut c,
         rows: [&air, &tele, &ap]
@@ -454,4 +454,137 @@ fn sheet_keys_reach_state_values() {
     );
     frame(&mut c, &mut view, vec![], Default::default());
     assert_eq!(c.picks[0].air_in(Some("A")), 8.0);
+}
+
+/// 別の行からのピックアップ（OpticStudio の構成のピックアップの行）: 同じ構成の同じ要素の行・組合せの行（系の値）を元にでき、
+/// 面の番号を付け替えると元の面の行も付いていく。ほかの要素の行は元にできない
+#[test]
+fn pickups_from_another_row() {
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    c.picks.push(Pick::new(ElemKind::Plate));
+    c.picks.push(Pick::new(ElemKind::Plate));
+    let now = |f: &Face| (f.field == "t").then(|| json!(3.0));
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    let face = |surf: usize, field: &str| {
+        Item::Face(Face {
+            loc: vec![0],
+            surf,
+            field: field.into(),
+            idx: None,
+        })
+    };
+    let (t0, air) = (face(0, "t"), Item::Air(vec![0]));
+    let w = Item::Sys(SysQ::Wave(0));
+    assert_eq!(picks::row_key(&t0, &air).as_deref(), Some("air"));
+    assert_eq!(picks::row_key(&t0, &w).as_deref(), Some("sys:wave:0"));
+    assert_eq!(picks::row_key(&t0, &t0).as_deref(), Some(""));
+    assert_eq!(picks::row_key(&t0, &Item::Air(vec![1])), None);
+    // 構成 A の厚さ = 構成 A の後の空気 × 0.5
+    air.set(&mut c, Some("A"), Val::Num(4.0), &cx);
+    let src = picks::Src {
+        from: "A".into(),
+        row: "air".into(),
+    };
+    picks::set_pick(&mut c, &t0, "A", &src, 0.5, 0.0);
+    // 構成 B の後の空気 = 構成 B の波長 1 × 10
+    let wb = w.get(&c, Some("B"), &cx);
+    let Some(Val::Num(um)) = wb else {
+        panic!("{wb:?}")
+    };
+    let src = picks::Src {
+        from: "B".into(),
+        row: "sys:wave:0".into(),
+    };
+    picks::set_pick(&mut c, &air, "B", &src, 10.0, 0.0);
+    assert!(picks::apply(&mut c, &cx));
+    assert_eq!(c.picks[0].state_edit("A", 0, "t"), Some(&json!(2.0)));
+    assert_eq!(c.picks[0].air_in(Some("B")), um * 10.0);
+    // 保存して戻しても同じ
+    let j = picks::to_json(&c).unwrap();
+    let mut d = c.clone();
+    d.picks[0].mc_picks.clear();
+    picks::from_json(&mut d, Some(&j));
+    assert_eq!(d, c);
+    // 面の番号の付け替え: 先も元も付いていき、元の面が無くなればピックアップを外す
+    let k1 = face(1, "k");
+    let src = picks::Src {
+        from: "A".into(),
+        row: "face:0:t".into(),
+    };
+    picks::set_pick(&mut c, &k1, "B", &src, 1.0, 0.0);
+    c.picks[0].shift_face_picks(&|i| Some(i + 1));
+    let m = picks::pick_of(&c, &face(2, "k"), "B").unwrap();
+    assert_eq!(m.row, "face:1:t");
+    assert!(picks::pick_of(&c, &face(1, "t"), "A").is_some());
+    c.picks[0].shift_face_picks(&|i| (i != 1).then_some(i));
+    assert!(picks::pick_of(&c, &face(2, "k"), "B").is_none());
+    assert_eq!(c.picks[0].mc_picks.len(), 1, "{:?}", c.picks[0].mc_picks);
+}
+
+/// 行・「+ 行」の欄の要素の名前はプロジェクトの id を頭に付けて見分けられる
+#[test]
+fn element_names_have_ids() {
+    let mut c = Combo::default();
+    c.picks.push(Pick::new(ElemKind::Lens));
+    c.picks.push(Pick::new(ElemKind::Lens));
+    let (a, b) = (el_name(&c, &vec![0]), el_name(&c, &vec![1]));
+    assert_ne!(a, b);
+    let ids = c.ids_all();
+    assert!(
+        a.starts_with(&ids[0].1) && b.starts_with(&ids[1].1),
+        "{a} {b}"
+    );
+}
+
+/// 輪になるピックアップ（構成 A の厚さ ← A の空気 × 2、A の空気 ← A の厚さ × 2 など）は元に選べず、前の版で作った輪は
+/// 当てない（当てるたびに値が増えない）
+#[test]
+fn looped_pickups_are_not_applied() {
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    c.picks.push(Pick::new(ElemKind::Plate));
+    let now = |f: &Face| (f.field == "t").then(|| json!(3.0));
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    let t0 = Item::Face(Face {
+        loc: vec![0],
+        surf: 0,
+        field: "t".into(),
+        idx: None,
+    });
+    let air = Item::Air(vec![0]);
+    air.set(&mut c, Some("A"), Val::Num(4.0), &cx);
+    let src = picks::Src {
+        from: "A".into(),
+        row: "air".into(),
+    };
+    picks::set_pick(&mut c, &t0, "A", &src, 2.0, 0.0);
+    // 自分自身・逆向きは輪
+    assert!(picks::would_loop(&c, &t0, "A", &t0, "A"));
+    assert!(picks::would_loop(&c, &air, "A", &t0, "A"));
+    assert!(!picks::would_loop(&c, &air, "B", &t0, "A"));
+    assert!(!picks::would_loop(&c, &air, "A", &t0, ""));
+    // 前の版で作った輪（直に書く）は当てない
+    let src = picks::Src {
+        from: "A".into(),
+        row: "face:0:t".into(),
+    };
+    picks::set_pick(&mut c, &air, "A", &src, 2.0, 0.0);
+    picks::apply(&mut c, &cx);
+    let a = c.picks[0].air_in(Some("A"));
+    picks::apply(&mut c, &cx);
+    assert_eq!(c.picks[0].air_in(Some("A")), a);
+    assert_eq!(a, 4.0);
 }

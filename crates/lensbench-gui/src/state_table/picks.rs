@@ -116,19 +116,83 @@ pub(super) fn pick_of<'a>(c: &'a Combo, it: &Item, to: &str) -> Option<&'a McPic
     list(c, &loc)?.iter().find(|m| m.key == key && m.to == to)
 }
 
-/// 状態 to の行 it を、状態 from（空なら基本）の値 × scale ＋ offset にする（前のピックアップは置き換える）
-pub(super) fn set_pick(c: &mut Combo, it: &Item, to: &str, from: &str, scale: f64, offset: f64) {
+/// ピックアップの元: 状態 from（空なら基本）と行 row（空なら同じ行。[`row_key`]）
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Src {
+    pub from: String,
+    pub row: String,
+}
+
+impl Src {
+    /// 同じ行の、状態 from（空なら基本）の値
+    pub(crate) fn conf(from: &str) -> Src {
+        Src {
+            from: from.to_string(),
+            row: String::new(),
+        }
+    }
+}
+
+/// 状態 to の行 it を、元 src の値 × scale ＋ offset にする（前のピックアップは置き換える）
+pub(super) fn set_pick(c: &mut Combo, it: &Item, to: &str, src: &Src, scale: f64, offset: f64) {
     let (loc, key) = key_of(it);
     if let Some(v) = list_mut(c, &loc) {
         v.retain(|m| !(m.key == key && m.to == to));
         v.push(McPick {
             key,
             to: to.to_string(),
-            from: from.to_string(),
+            from: src.from.clone(),
+            row: src.row.clone(),
             scale,
             offset,
         });
     }
+}
+
+/// 行 it のピックアップの元にできる行 r の名前（同じ行は空。持ち主の違う要素の行は元にできないので None）
+pub(super) fn row_key(it: &Item, r: &Item) -> Option<String> {
+    if it == r {
+        return Some(String::new());
+    }
+    let ((a, _), (b, k)) = (key_of(it), key_of(r));
+    (b.is_none() || a == b).then_some(k)
+}
+
+/// ピックアップ m（持ち主 owner）の元の行
+pub(super) fn src_item(owner: Option<&Loc>, m: &McPick) -> Option<Item> {
+    if m.row.is_empty() {
+        return item_of(owner, &m.key);
+    }
+    row_item(owner, &m.row)
+}
+
+/// 持ち主 owner の行の名前 row（同じ持ち主か組合せの行）の行
+pub(super) fn row_item(owner: Option<&Loc>, row: &str) -> Option<Item> {
+    item_of(owner, row).or_else(|| item_of(None, row))
+}
+
+/// 状態 to の行 it を、状態 from（空なら基本）の行 src から取ると輪になるか（src の値がピックアップをたどって
+/// 状態 to の it から来る。自分自身も輪）
+pub(super) fn would_loop(c: &Combo, it: &Item, to: &str, src: &Item, from: &str) -> bool {
+    let (mut cur, mut st) = (src.clone(), from.to_string());
+    // 行と状態ごとにピックアップは 1 つなので、たどる道は 1 本。長すぎる道も輪とみなす
+    for _ in 0..256 {
+        if st.is_empty() {
+            return false;
+        }
+        if cur == *it && st == to {
+            return true;
+        }
+        let Some(m) = pick_of(c, &cur, &st) else {
+            return false;
+        };
+        let (owner, _) = key_of(&cur);
+        let Some(s) = src_item(owner.as_ref(), m) else {
+            return false;
+        };
+        (cur, st) = (s, m.from.clone());
+    }
+    true
 }
 
 /// 状態 to の行 it のピックアップをやめる（値はそのまま）
@@ -192,7 +256,14 @@ pub(super) fn apply(c: &mut Combo, cx: &Cx) -> bool {
                 continue;
             }
             let from = (!m.from.is_empty()).then_some(m.from.as_str());
-            let Some(v) = it.get(c, from, cx).and_then(|v| picked(m, v)) else {
+            let Some(src) = src_item(loc.as_ref(), m) else {
+                continue;
+            };
+            // 輪になったピックアップ（前の版で作ったものなど）は当てない
+            if would_loop(c, &it, &m.to, &src, &m.from) {
+                continue;
+            }
+            let Some(v) = src.get(c, from, cx).and_then(|v| picked(m, v)) else {
                 continue;
             };
             let before = it.get(c, Some(&m.to), cx);
@@ -225,7 +296,7 @@ pub(super) fn add_state_with_picks(c: &mut Combo, from: &str, rows: &[Item]) -> 
     }
     for it in rows {
         if !it.locked(c) {
-            set_pick(c, it, &name, from, 1.0, 0.0);
+            set_pick(c, it, &name, &Src::conf(from), 1.0, 0.0);
         }
     }
     Some(name)

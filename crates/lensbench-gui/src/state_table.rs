@@ -27,10 +27,8 @@ pub(crate) struct View {
     pub all: bool,
     /// 足した行（どの状態も基本と同じ値の系の値の行も出す。保存はしない）
     pub pinned: Vec<Item>,
-    /// 「+ 行」の面の行の選び（要素の番号・面・値）
-    pub add_el: usize,
+    /// 「+ 行」の、今の系に無い要素の面の番号
     pub add_surf: usize,
-    pub add_field: usize,
     /// 名前を変えている構成（元の名前・新しい名前）
     pub renaming: Option<(String, String)>,
     /// 名前を変えられなかった理由（次に名前を変えるか構成を足すまで出す）
@@ -139,6 +137,16 @@ fn snap_in(c: &Combo, st: Option<&str>) -> SysSnap {
 }
 
 impl SysQ {
+    /// 「+ 行」の欄のグループ（波長・開口・視野・その他）
+    fn group(self) -> usize {
+        match self {
+            SysQ::Wave(_) | SysQ::WaveW(_) | SysQ::Primary => 0,
+            SysQ::ApType | SysQ::ApValue => 1,
+            SysQ::FieldType | SysQ::FieldX(_) | SysQ::FieldY(_) | SysQ::FieldW(_) => 2,
+            SysQ::ObjDist | SysQ::Telecentric => 3,
+        }
+    }
+
     fn label(self) -> String {
         match self {
             SysQ::Wave(i) => trf("Wavelength {} [µm]", &[&(i + 1)]),
@@ -343,20 +351,11 @@ fn face_json(field: &str, v: &Val, idx: Option<usize>, old: Option<&Value>) -> O
 
 impl Face {
     fn label(&self, c: &Combo) -> String {
-        let el = c.get(&self.loc).map(Pick::label).unwrap_or_default();
-        let what = match (self.field.as_str(), self.idx) {
-            ("asph", Some(i)) => trf("asphere {}", &[&(i + 1)]),
-            ("r", _) => tr("radius").into(),
-            ("t", _) => tr("thickness").into(),
-            ("k", _) => tr("conic").into(),
-            ("semi", _) => tr("semi-diameter").into(),
-            ("ignore", _) => tr("ignore").into(),
-            ("material", _) => tr("material").into(),
-            ("coating", _) => tr("coating").into(),
-            ("aperture", _) => tr("aperture max radius").into(),
-            (f, _) => f.to_string(),
-        };
-        trf("{} surface {} {}", &[&el, &(self.surf + 1), &what])
+        let what = field_label(&self.field, self.idx);
+        trf(
+            "{} surface {} {}",
+            &[&el_name(c, &self.loc), &(self.surf + 1), &what],
+        )
     }
 
     /// 基本の値（基本の上書き、無ければ今の系の値か覚えた値）。今の状態がこの値を上書きしているときは
@@ -401,13 +400,36 @@ struct Cx<'a> {
     cache: &'a HashMap<Face, Value>,
 }
 
+/// 面の値の名前の表示（idx は並びの値の何番目か）
+fn field_label(field: &str, idx: Option<usize>) -> String {
+    match (field, idx) {
+        ("asph", Some(i)) => trf("asphere {}", &[&(i + 1)]),
+        ("asph", None) => tr("asphere").into(),
+        ("r", _) => tr("radius").into(),
+        ("t", _) => tr("thickness").into(),
+        ("k", _) => tr("conic").into(),
+        ("semi", _) => tr("semi-diameter").into(),
+        ("ignore", _) => tr("ignore").into(),
+        ("material", _) => tr("material").into(),
+        ("coating", _) => tr("coating").into(),
+        ("aperture", _) => tr("aperture max radius").into(),
+        (f, _) => f.to_string(),
+    }
+}
+
+/// 要素の表示の名前（プロジェクトの id と種類・品名。同じ種類の要素を見分けられるように）
+fn el_name(c: &Combo, l: &Loc) -> String {
+    let label = c.get(l).map(Pick::label).unwrap_or_default();
+    match c.ids_all().into_iter().find(|(x, _)| x == l) {
+        Some((_, id)) if !id.is_empty() => format!("{id} {label}"),
+        _ => label,
+    }
+}
+
 /// 絞りの面の表示（要素の名前と面の番号）
 fn stop_label(c: &Combo, at: &Option<(Loc, usize)>) -> String {
     match at {
-        Some((l, i)) => trf(
-            "{} surface {}",
-            &[&c.get(l).map(Pick::label).unwrap_or_default(), &(i + 1)],
-        ),
+        Some((l, i)) => trf("{} surface {}", &[&el_name(c, l), &(i + 1)]),
         None => tr("Before the first element (automatic)").into(),
     }
 }
@@ -423,7 +445,7 @@ fn place_get(p: &Pick, st: Option<&str>, k: usize) -> f64 {
 
 impl Item {
     fn label(&self, c: &Combo) -> String {
-        let el = |l: &Loc| c.get(l).map(Pick::label).unwrap_or_default();
+        let el = |l: &Loc| el_name(c, l);
         match self {
             Item::Sys(q) => q.label(),
             Item::Stop => tr("Stop surface").into(),
@@ -839,84 +861,140 @@ fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
     view.pinned.retain(|x| x != it);
 }
 
-/// 「+ 行」のメニュー: 系の値の行と、要素の面の行
+/// 「+ 行」のメニュー: 系の値（波長・開口・視野・その他）、絞りの面、要素ごと（ON/OFF・後の空気・偏心と傾き・
+/// 面ごとの値）、群の移動をグループの下の欄で選ぶ
 fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bool {
-    let mut add: Option<Item> = None;
+    let add: std::cell::RefCell<Option<Item>> = Default::default();
+    let shown = items(c, false, &view.pinned);
     ui.menu_button(tr("+ Row"), |ui| {
-        ui.label(RichText::new(tr("System value")).strong());
-        let shown = items(c, false, &view.pinned);
-        for q in SysQ::all(c) {
-            let it = Item::Sys(q);
-            if !shown.contains(&it) && ui.button(q.label()).clicked() {
-                add = Some(it);
+        // まだ表に無い行の欄（押すとその行を足す）
+        let pick = |ui: &mut Ui, it: Item, label: String| {
+            if !shown.contains(&it) && ui.button(label).clicked() {
+                *add.borrow_mut() = Some(it);
                 ui.close_menu();
             }
+        };
+        let sys = SysQ::all(c);
+        let groups = [
+            tr("Wavelengths"),
+            tr("Aperture"),
+            tr("Fields"),
+            tr("Other system values"),
+        ];
+        for (g, name) in groups.into_iter().enumerate() {
+            ui.menu_button(name, |ui| {
+                for q in sys.iter().filter(|q| q.group() == g) {
+                    pick(ui, Item::Sys(*q), q.label());
+                }
+            });
         }
-        if !shown.contains(&Item::Stop) && ui.button(tr("Stop surface")).clicked() {
-            add = Some(Item::Stop);
-            ui.close_menu();
-        }
+        pick(ui, Item::Stop, tr("Stop surface").into());
         ui.separator();
-        ui.label(RichText::new(tr("Surface value of an element")).strong());
         let locs: Vec<Loc> = c
             .all()
             .into_iter()
             .filter(|l| {
                 c.get(l)
-                    .is_some_and(|p| {
-                        !p.locked && !matches!(p.kind, ElemKind::Splitter | ElemKind::Aperture)
-                    })
+                    .is_some_and(|p| !matches!(p.kind, ElemKind::Splitter | ElemKind::Aperture))
             })
             .collect();
         if locs.is_empty() {
             ui.weak(tr("No elements"));
-            return;
         }
-        view.add_el = view.add_el.min(locs.len() - 1);
-        egui::ComboBox::from_id_salt("mce_add_el")
-            .selected_text(c.get(&locs[view.add_el]).map(Pick::label).unwrap_or_default())
-            .show_ui(ui, |ui| {
-                for (i, l) in locs.iter().enumerate() {
-                    let name = c.get(l).map(Pick::label).unwrap_or_default();
-                    ui.selectable_value(&mut view.add_el, i, name);
+        for l in &locs {
+            let Some(p) = c.get(l) else { continue };
+            ui.menu_button(el_name(c, l), |ui| {
+                if p.kind.has_on() {
+                    pick(ui, Item::On(l.clone()), tr("ON / OFF").into());
                 }
-            });
-        ui.horizontal(|ui| {
-            ui.label(tr("Surface"));
-            let mut k = view.add_surf + 1;
-            ui.add(egui::DragValue::new(&mut k).range(1..=999));
-            view.add_surf = k - 1;
-            egui::ComboBox::from_id_salt("mce_add_field")
-                .selected_text(FACE_FIELDS[view.add_field.min(FACE_FIELDS.len() - 1)].0)
-                .show_ui(ui, |ui| {
-                    for (i, (f, _)) in FACE_FIELDS.iter().enumerate() {
-                        ui.selectable_value(&mut view.add_field, i, *f);
+                pick(ui, Item::Air(l.clone()), tr("Air after").into());
+                if p.kind == ElemKind::ZmxRange {
+                    pick(ui, Item::Config(l.clone()), tr("Config").into());
+                }
+                if p.has_state_place() {
+                    let ks: &[usize] = if p.kind == ElemKind::Mirror {
+                        &[2, 3]
+                    } else {
+                        &[0, 1, 2, 3, 4]
+                    };
+                    for &k in ks {
+                        pick(ui, Item::Place(l.clone(), k), PLACE[k].to_string());
                     }
+                }
+                if p.locked {
+                    ui.weak(tr("The element is locked"));
+                    return;
+                }
+                ui.separator();
+                face_menu(ui, l, now, view, &mut |f| {
+                    *add.borrow_mut() = Some(Item::Face(f));
                 });
-        });
-        let (field, list) = FACE_FIELDS[view.add_field.min(FACE_FIELDS.len() - 1)];
-        if ui
-            .button(tr("Add"))
-            .on_hover_text(tr(
-                "Surfaces are counted within the element from 1, without coordinate breaks. Every configuration starts with its current value",
-            ))
-            .clicked()
-        {
-            add = Some(Item::Face(Face {
-                loc: locs[view.add_el].clone(),
-                surf: view.add_surf,
-                field: field.to_string(),
-                idx: list.then_some(0),
-            }));
-            ui.close_menu();
+            });
+        }
+        let gs: Vec<usize> = (0..c.groups.len()).collect();
+        if !gs.is_empty() {
+            ui.separator();
+            for g in gs {
+                let it = Item::Shift(g);
+                let label = it.label(c);
+                pick(ui, it, label);
+            }
         }
     });
-    match add {
+    match add.into_inner() {
         Some(it) => {
             add_row(c, view, it, now);
             true
         }
         None => false,
+    }
+}
+
+/// 要素 l の面ごとの値の欄（面は今の系から読めた面。読めなければ番号を打つ）。選んだ面の値を add へ
+fn face_menu(ui: &mut Ui, l: &Loc, now: FaceNow, view: &mut View, add: &mut dyn FnMut(Face)) {
+    let face = |surf: usize, field: &str, idx: Option<usize>| Face {
+        loc: l.clone(),
+        surf,
+        field: field.to_string(),
+        idx,
+    };
+    let fields = |ui: &mut Ui, surf: usize, add: &mut dyn FnMut(Face)| {
+        for (f, list) in FACE_FIELDS {
+            if ui.button(field_label(f, None)).clicked() {
+                add(face(surf, f, list.then_some(0)));
+                ui.close_menu();
+            }
+        }
+    };
+    let n = (0..999)
+        .take_while(|&i| now(&face(i, "r", None)).is_some())
+        .count();
+    for i in 0..n {
+        let r = now(&face(i, "r", None))
+            .and_then(|v| v.as_f64())
+            .filter(|r| r.is_finite() && *r != 0.0);
+        let label = match r {
+            Some(r) => format!(
+                "{}  (r {})",
+                trf("Surface {}", &[&(i + 1)]),
+                crate::json_view::fmt_num(r)
+            ),
+            None => trf("Surface {}", &[&(i + 1)]),
+        };
+        ui.menu_button(label, |ui| fields(ui, i, add));
+    }
+    if n == 0 {
+        // 今の系に無い要素（OFF など）は面の番号を打つ
+        ui.horizontal(|ui| {
+            ui.label(tr("Surface"));
+            let mut k = view.add_surf + 1;
+            ui.add(egui::DragValue::new(&mut k).range(1..=999))
+                .on_hover_text(tr(
+                    "Surfaces are counted within the element from 1, without coordinate breaks. Every configuration starts with its current value",
+                ));
+            view.add_surf = k - 1;
+        });
+        fields(ui, view.add_surf, add);
     }
 }
 
@@ -981,7 +1059,7 @@ pub(crate) fn ui(
     }
     ui.label(
         RichText::new(tr(
-            "Click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration. Empty a cell (Delete) to use the base value",
+            "Double-click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration or row. Empty a cell (Delete) to use the base value",
         ))
         .small()
         .color(weak),
@@ -1044,7 +1122,7 @@ pub(crate) fn ui(
             }
             sheet_view::Act::Pick(i, n, a) => {
                 match a {
-                    Some((from, k, o)) => picks::set_pick(c, &rows[i], &n, &from, k, o),
+                    Some((src, k, o)) => picks::set_pick(c, &rows[i], &n, &src, k, o),
                     None => picks::remove_pick(c, &rows[i], &n),
                 }
                 changed = true;
@@ -1131,7 +1209,7 @@ pub(crate) fn apply_picks(c: &mut Combo, cache: &HashMap<Face, Value>, now: Face
 }
 
 /// ピックアップの操作: (元の構成（空は基本）, 倍率, オフセット)。None はやめる
-type PickAct = Option<(String, f64, f64)>;
+type PickAct = Option<(picks::Src, f64, f64)>;
 
 /// ピックアップの値の表示
 fn val_text(c: &Combo, v: &Val) -> String {
@@ -1146,31 +1224,55 @@ fn val_text(c: &Combo, v: &Val) -> String {
     }
 }
 
-/// セルの右クリックのピックアップの項目: 元の構成を選ぶ・倍率とオフセットを変える・やめる。
-/// act に (元の構成（空は基本）, 倍率, オフセット) か、やめるなら None を渡す
+/// セルの右クリックのピックアップの項目: 元の構成を選ぶ（同じ行か、同じ持ち主の別の行）・倍率とオフセットを変える・
+/// やめる。rows は元にできる別の行（表示の名前・行の名前）、ok(行の名前, 構成) は元にできるか（輪にならないか）。
+/// act に (元, 倍率, オフセット) か、やめるなら None を渡す
 fn pick_menu(
     ui: &mut Ui,
     cols: &[Option<String>],
-    n: &str,
-    back: &[String],
+    ok: &dyn Fn(&str, &str) -> bool,
+    rows: &[(String, String)],
     pk: Option<&crate::combo::McPick>,
     act: &mut dyn FnMut(PickAct),
 ) {
     let (scale, offset) = pk.map_or((1.0, 0.0), |m| (m.scale, m.offset));
-    ui.menu_button(tr("Pick up from"), |ui| {
+    // 行 row の元にできる構成の欄（輪になる構成は除く）
+    let mut confs = |ui: &mut Ui, row: &str| {
         for col in cols {
             let from = col.clone().unwrap_or_default();
-            if from == n || back.contains(&from) {
+            if !ok(row, &from) {
                 continue;
             }
             let label = col.clone().unwrap_or_else(|| tr("Base").to_string());
-            let on = pk.is_some_and(|m| m.from == from);
+            let on = pk.is_some_and(|m| m.from == from && m.row == row);
             if ui.selectable_label(on, label).clicked() {
-                act(Some((from, scale, offset)));
+                let src = picks::Src {
+                    from,
+                    row: row.to_string(),
+                };
+                act(Some((src, scale, offset)));
                 ui.close_menu();
             }
         }
-    });
+    };
+    ui.menu_button(tr("Pick up from"), |ui| confs(ui, ""));
+    if !rows.is_empty() {
+        ui.menu_button(tr("Pick up from another row"), |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(360.0)
+                .show(ui, |ui| {
+                    for (label, key) in rows {
+                        let on = pk.is_some_and(|m| m.row == *key);
+                        let label = if on {
+                            RichText::new(label).strong()
+                        } else {
+                            RichText::new(label)
+                        };
+                        ui.menu_button(label, |ui| confs(ui, key));
+                    }
+                });
+        });
+    }
     if let Some(m) = pk {
         let (mut k, mut o) = (m.scale, m.offset);
         ui.horizontal(|ui| {
@@ -1179,7 +1281,11 @@ fn pick_menu(
             ui.label("+");
             let b = ui.add(egui::DragValue::new(&mut o).speed(0.01).max_decimals(6));
             if a.changed() || b.changed() {
-                act(Some((m.from.clone(), k, o)));
+                let src = picks::Src {
+                    from: m.from.clone(),
+                    row: m.row.clone(),
+                };
+                act(Some((src, k, o)));
             }
         });
         if ui.button(tr("Remove pickup")).clicked() {

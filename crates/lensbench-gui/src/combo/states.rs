@@ -20,35 +20,51 @@ fn rename_key<V>(m: &mut BTreeMap<String, V>, from: &str, to: &str) {
     }
 }
 
-/// 多重構成のピックアップ: 状態 to の行 key の値を、状態 from（空なら基本）の値 × scale ＋ offset にする
-/// （数でない値は写すだけ）。key は行の持ち主（要素か組合せ）の中での名前（`face:面:欄[:番号]`・`air` など）。
+/// 多重構成のピックアップ: 状態 to の行 key の値を、状態 from（空なら基本）の行 row（空なら同じ行）の値 × scale ＋ offset
+/// にする（数でない値は写すだけ。OpticStudio の構成のピックアップの構成と行）。key・row は行の持ち主（要素か組合せ）の中での
+/// 名前（`face:面:欄[:番号]`・`air` など）で、row は同じ持ち主の行か組合せの行（系の値・絞り）。
 /// 保存はプロジェクトの `gui.view.mc_picks`（要素の id ごと）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct McPick {
     pub key: String,
     pub to: String,
     pub from: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub row: String,
     pub scale: f64,
     pub offset: f64,
 }
 
+/// 面の値の行の名前の面の番号
+fn key_surf(k: &str) -> Option<usize> {
+    k.strip_prefix("face:")?.split(':').next()?.parse().ok()
+}
+
+/// 面の値の行の名前の面の番号を i に
+fn key_with_surf(k: &str, i: usize) -> String {
+    match k.strip_prefix("face:") {
+        Some(rest) => format!("face:{i}:{}", rest.split_once(':').map_or("", |(_, t)| t)),
+        None => k.to_string(),
+    }
+}
+
 impl McPick {
-    /// 面の値の行なら要素の面の番号
+    /// 面の値の行（先か元）なら要素の面の番号（先を先に）
     pub(crate) fn face_surf(&self) -> Option<usize> {
-        self.key
-            .strip_prefix("face:")?
-            .split(':')
-            .next()?
-            .parse()
-            .ok()
+        key_surf(&self.key).or_else(|| key_surf(&self.row))
     }
 
-    /// 面の値の行の面の番号を変える
-    fn set_face_surf(&mut self, i: usize) {
-        if let Some(rest) = self.key.strip_prefix("face:") {
-            let tail = rest.split_once(':').map_or("", |(_, t)| t);
-            self.key = format!("face:{i}:{tail}");
+    /// 先・元の面の値の行の面の番号を map で付け替える（無くなった面があれば false）
+    fn map_face_surf(&mut self, map: &dyn Fn(usize) -> Option<usize>) -> bool {
+        for k in [&mut self.key, &mut self.row] {
+            if let Some(i) = key_surf(k) {
+                match map(i) {
+                    Some(j) => *k = key_with_surf(k, j),
+                    None => return false,
+                }
+            }
         }
+        true
     }
 }
 
@@ -118,10 +134,7 @@ impl Pick {
 
     /// 面の番号を map で付け替える（ピックアップの面の行）
     pub(crate) fn shift_face_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
-        self.mc_picks.retain_mut(|m| match m.face_surf() {
-            None => true,
-            Some(i) => map(i).map(|j| m.set_face_surf(j)).is_some(),
-        });
+        self.mc_picks.retain_mut(|m| m.map_face_surf(map));
     }
 
     /// 状態 n で変えた値があるか
