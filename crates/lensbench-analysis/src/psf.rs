@@ -490,7 +490,7 @@ struct Czt {
 impl Czt {
     fn new(alpha: f64, n_in: usize, n0: f64, n_out: usize, m0: f64) -> Czt {
         let l = (n_in + n_out).next_power_of_two();
-        // exp(iπα t)。α t を 2 で割った余りにしてから π をかける（t が大きくても位相の誤差が増えない）
+        // exp(iπα t)。α t を 2 で割った余りにしてから π をかける（sin・cos の引数が小さくなる。α t の積の丸めは残る）
         let chirp = |t: f64| -> C64 {
             let v = alpha * t;
             let v = v - 2.0 * (0.5 * v).floor();

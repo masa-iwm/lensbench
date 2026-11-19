@@ -27,7 +27,8 @@ required-features = ["gui"]
 default = []
 # GUI（ネイティブの exe。wasm では Web 版の画面用）
 gui = ["lensbench-sdk/gui"]
-# Python の拡張モジュール（import 名は lensbench。公開の wheel と同じ環境に入れない）
+# Python の拡張モジュール（import 名は lensbench。公開の wheel と同じ環境に入れない）。wheel（cdylib）を組むときだけ付ける。
+# exe は py なしで組む（py を付けた lib は Python のシンボルが要るので、exe に繋ぐとリンクで落ちる）
 py = ["lensbench-sdk/py"]
 # Web 版の計算の Web Worker 用（threads はスレッドありの版）。公開の scripts/build_web.sh が gui・worker・threads を
 # 1 つずつ選んで wasm を作る
