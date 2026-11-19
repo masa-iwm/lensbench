@@ -63,6 +63,10 @@ pub(super) enum Msg {
     /// 欄の値の書き換え（組合せの図・要素の設定・状態の表・系の設定・カタログから足す。[`super::edit`]）。
     /// 元に戻す段は区切らない（入力の途中・ドラッグの途中も 1 段のまま。区切りは欄を離れたとき）
     Edit(super::edit::Edit),
+    /// 操作の記録を始める・やめて保存する（[`super::record`]）
+    Record,
+    /// 記録した操作のファイルを選んで流し直す
+    Replay,
 }
 
 /// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
@@ -291,10 +295,17 @@ impl App {
         if step {
             self.c.combo_hist.commit(&self.c.doc.combo);
         }
+        self.record_before();
+        let rec = self
+            .c
+            .rec
+            .as_ref()
+            .and_then(|_| super::record::Rec::from_msg(&msg));
         self.update_state(msg);
         if step {
             self.c.combo_hist.commit(&self.c.doc.combo);
         }
+        self.record(rec);
         self.c.fx.take()
     }
 
@@ -437,6 +448,8 @@ impl App {
                     .c
                     .fail(format!("{}: {why}", tr("The change could not be applied"))),
             },
+            Msg::Record => self.c.toggle_record(),
+            Msg::Replay => self.c.pick_replay(),
         }
     }
 }

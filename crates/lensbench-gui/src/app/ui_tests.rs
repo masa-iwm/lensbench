@@ -629,3 +629,63 @@ fn field_edits_are_messages() {
     assert_eq!(app.c.doc.combo, before);
     assert!(app.c.status.error, "{}", app.test_state());
 }
+
+/// 操作の記録: 欄の書き換え・元に戻す・構成の切り替えを記録してファイルの形にし、開き直した App で流し直すと同じ
+/// 組合せになる。流し直す前に今の組合せを記録を始めた時へ戻す
+#[test]
+fn recorded_operations_replay_to_the_same_combination() {
+    let _g = serial();
+    let r = root();
+    let args = || Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    };
+    let mut h = harness(args());
+    let app = h.state_mut();
+    let start = app.c.doc.combo.clone();
+    assert!(app.update(Msg::Record).is_empty());
+    assert!(app.c.rec.is_some());
+    let edit = |app: &mut App, f: &dyn Fn(&mut Combo)| {
+        let mut b = app.c.doc.combo.clone();
+        f(&mut b);
+        let e = edit::Edit::between(&app.c.doc.combo, &b).expect("changed");
+        app.update(Msg::Edit(e));
+    };
+    edit(app, &|c| c.picks[0].air += 1.5);
+    edit(app, &|c| c.picks[1].air += 0.25);
+    app.update(Msg::Undo(true, 1));
+    edit(app, &|c| c.picks[0].semi += 1.0);
+    app.update(Msg::CycleConfig(false));
+    // 返事を待って当たる変更（像面を焦点へ・差し替えの挿入など）は操作の外で組合せを変える: 次の操作の前に
+    // 変わった所として残り、その後の書き換えより先に当たる
+    app.c.doc.combo.picks[1].air += 3.0;
+    edit(app, &|c| c.picks[1].semi += 0.5);
+    // 文書を変えない操作は残らない
+    app.update(Msg::Theme(Mode::Light));
+    app.c.doc.combo.picks[0].air += 0.125;
+    let end = app.c.doc.combo.clone();
+    assert_ne!(end, start);
+    // やめるときに最後の変更も残る（保存の窓は出さずに中身を取る）
+    let mut rec = app.c.rec.take().expect("recording");
+    rec.note(&app.c.doc.combo);
+    let rec = rec.file;
+    assert_eq!(rec.ops.len(), 8, "{:?}", rec.ops);
+    assert!(rec
+        .ops
+        .iter()
+        .all(|r| matches!(r, record::Rec::Edit { .. })));
+    let rec = record::Record::read(&rec.text()).expect("reads back");
+    settle(&mut h);
+    drop(h);
+
+    // 開き直して先に別の書き換えをしておく（流し直すと記録を始めた時へ戻ってから当てる）
+    let mut h = harness(args());
+    let app = h.state_mut();
+    edit(app, &|c| c.picks[0].air += 7.0);
+    app.c.replay(rec);
+    let ctx = h.ctx.clone();
+    h.state_mut().dispatch_queued(&ctx);
+    assert_eq!(h.state().c.doc.combo, end);
+    settle(&mut h);
+}

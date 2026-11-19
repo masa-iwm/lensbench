@@ -200,7 +200,8 @@ pub(crate) fn elem_spans(
 }
 
 /// 表の列（変えられる値）。Par は面タイプのパラメータ（OpticStudio の Par 1〜8 と同じ番号）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Col {
     Type,
     Comment,
@@ -593,8 +594,9 @@ impl Col {
     }
 }
 
-/// 表から GUI に頼むこと
-#[derive(Debug, Clone, PartialEq)]
+/// 表から GUI に頼むこと（文書を変える操作は記録のファイルにこの形で残る）
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Act {
     /// 面 j の値を変える
     Edit { j: usize, col: Col, value: Value },

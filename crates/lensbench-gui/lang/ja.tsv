@@ -1516,5 +1516,15 @@ Focal length or cardinal point of surfaces from to to − target (like CARD, EFL
 Real-ray F-number 1/(n′(sin θ₊ + sin θ₋)) from the chief ray and the two rays at the pupil edge (y for tan, x for sag) − target (like TFNO and SFNO)	主光線と瞳の縁の 2 本（tan は y、sag は x の縁）の実光線の F ナンバー 1/(n′(sin θ₊ + sin θ₋)) − 目標（TFNO・SFNO 相当）
 Seidel aberration coefficient [waves] of surface surf (0 = sum) − target: spha W040, coma W131, asti W222, fcur W220, dist W311 (like SPHA, COMA, ASTI, FCUR and DIST)	面 surf（0 は和）のザイデル収差係数 [波] − 目標: spha W040・coma W131・asti W222・fcur W220・dist W311（SPHA・COMA・ASTI・FCUR・DIST 相当）
 Real-ray distortion of the chief ray of the largest field − target: percent of the paraxial image height, or real − paraxial height with absolute (like DIST of surface 0)	最大の視野の主光線の実光線の歪曲 − 目標: 近軸像高に対する %、absolute なら実像高 − 近軸像高（面 0 の DIST 相当）
+Record operations	操作を記録
+Stop recording and save…	記録をやめて保存…
+Replay recorded operations…	記録した操作を流し直す…
+Records the operations that change the document, to replay them later in the same order	文書を変える操作を記録し、後で同じ順に流し直せるようにします
+Recorded operations	記録した操作
+This is not a file of recorded operations	記録した操作のファイルではありません
+Recorded operations of version {} can't be read (this build reads up to version {})	版 {} の記録した操作は読めません（この版で読めるのは版 {} まで）
+Recording operations (run the command again to stop and save)	操作を記録しています（もう一度実行するとやめて保存します）
+Saved {} recorded operations to {}	記録した操作 {} 件を {} に保存しました
+Replaying {} recorded operations	記録した操作 {} 件を流し直しています
 Distance from the image surface to where an axial ray crosses the axis − target (zone 0 = paraxial marginal ray; like LONA). With wave2: the distance at wave2 − at wave (axial color, AXCL)	軸上の光線が光軸を横切る点の像面からの距離 − 目標（zone 0 は近軸周辺光線。LONA 相当）。wave2 があれば wave2 の距離 − wave の距離（軸上色収差、AXCL）
 Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)	最大の視野の近軸主光線の像面での高さの wave2 − wave − 目標（LACL 相当）

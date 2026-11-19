@@ -9,6 +9,7 @@ impl App {
     pub(super) fn logic(&mut self, ctx: &egui::Context) {
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.poll_open();
+        self.c.poll_replay();
         self.c.poll_saves();
         crate::files::flush_downloads();
         if crate::files::take_failed() {

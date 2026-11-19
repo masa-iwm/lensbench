@@ -20,6 +20,7 @@ mod panel_msgs;
 use msg::Msg;
 mod open_doc;
 mod panels;
+mod record;
 mod result;
 mod save_as;
 mod status;
@@ -380,6 +381,8 @@ struct Core {
     next_id: u64,
     /// パネルの中から頼まれた操作（パネルを描いた後に当てる）
     msgs: Vec<msg::Msg>,
+    /// 操作の記録（記録中だけ）
+    rec: Option<record::Recording>,
     /// まだ当てていない外への作用（計算の要求など）
     fx: msg::Fx,
     /// Web 版（元のタブ）: 解析のパネルを出した別の窓に写す系
@@ -622,24 +625,6 @@ impl Core {
         if let Some(f) = self.loc.file.clone() {
             self.open(&f);
         }
-    }
-
-    /// 系のファイルを選んで開く。start のフレームで選び始める（Web 版は選び終わった後のフレームで開くので、
-    /// 毎フレーム start = false で呼ぶ）
-    /// 開くファイルを選び終わっていれば開く（毎フレーム）
-    fn poll_open(&mut self) {
-        if let Some(p) = crate::files::open("open-system", false, crate::files::FileDialog::new) {
-            self.open_doc(&p);
-        }
-    }
-
-    /// 開くファイルを選ぶ窓を出す
-    fn pick_and_open(&mut self) {
-        self.dialog(
-            "open-system",
-            crate::files::FileDialog::new()
-                .add_filter(tr("Systems (.zmx, project .json)"), &["zmx", "json"]),
-        );
     }
 
     fn refresh_catalog(&mut self) {
@@ -2701,6 +2686,7 @@ impl Core {
             font,
             next_id,
             msgs: Vec::new(),
+            rec: None,
             fx: Default::default(),
             popup_doc: Default::default(),
         }

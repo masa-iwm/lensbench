@@ -71,6 +71,16 @@ impl App {
             "save as ctrl+shift+s",
             Msg::Save(true),
         );
+        push(
+            record_label(self.c.rec.is_some()).into(),
+            "record operations macro",
+            Msg::Record,
+        );
+        push(
+            tr("Replay recorded operations…").into(),
+            "replay operations macro",
+            Msg::Replay,
+        );
         for k in add_kinds() {
             let t = Pane {
                 id: 0,
@@ -378,6 +388,21 @@ impl App {
             {
                 ui.close_menu();
                 *cmd = Some(Msg::Save(true));
+            }
+            ui.separator();
+            if ui
+                .button(record_label(self.c.rec.is_some()))
+                .on_hover_text(tr(
+                    "Records the operations that change the document, to replay them later in the same order",
+                ))
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Msg::Record);
+            }
+            if ui.button(tr("Replay recorded operations…")).clicked() {
+                ui.close_menu();
+                *cmd = Some(Msg::Replay);
             }
             ui.separator();
             if ui.button(tr("Catalog folders…")).clicked() {
@@ -719,4 +744,13 @@ fn detach_label_web() {
         detach_label(false),
         "Move to separate window (another monitor)"
     );
+}
+
+/// 操作の記録の項目の文言（記録中はやめて保存する）
+fn record_label(on: bool) -> &'static str {
+    if on {
+        tr("Stop recording and save…")
+    } else {
+        tr("Record operations")
+    }
 }

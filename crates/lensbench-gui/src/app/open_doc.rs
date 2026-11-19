@@ -90,6 +90,24 @@ impl Core {
 }
 
 impl Core {
+    /// 開くファイルを選び終わっていれば開く（毎フレーム。Web 版は選び終わった後のフレームで返る）
+    pub(super) fn poll_open(&mut self) {
+        if let Some(p) = crate::files::open("open-system", false, crate::files::FileDialog::new) {
+            self.open_doc(&p);
+        }
+    }
+
+    /// 開くファイルを選ぶ窓を出す
+    pub(super) fn pick_and_open(&mut self) {
+        self.dialog(
+            "open-system",
+            crate::files::FileDialog::new()
+                .add_filter(tr("Systems (.zmx, project .json)"), &["zmx", "json"]),
+        );
+    }
+}
+
+impl Core {
     /// ブロックのプロジェクト p を、その場で組合せにして組み直す（下書きの Worker を待たない。ツアーの例）。
     /// 文書の段は呼ぶ側で積む
     pub(super) fn open_combo_now(&mut self, p: &Path) -> Result<(), String> {
