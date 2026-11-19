@@ -168,6 +168,38 @@ fn spot_scale(rays: &[SpotRays], primary: usize) -> (Vec<usize>, Vec<(f64, f64)>
     (fields, centers, rmax)
 }
 
+/// スポット図の枠どうしの間と、枠の下の縮尺の高さ
+const SPOT_GAP: f32 = 8.0;
+const BAR_H: f32 = 18.0;
+
+/// スポット図の列の数と枠の一辺。幅 w・高さ h に n 個の枠が入る中で枠がいちばん大きくなる列の数を選ぶ。
+/// 枠の下には縮尺など（below）と名前の行（高さ line）。名前の行は幅 label_w で、枠より広ければ 2 行に折り返す。
+/// 枠は 260 まで、狭すぎるときは 60 を下限にしてはみ出す
+fn spot_grid(n: usize, w: f32, h: f32, below: f32, line: f32, label_w: f32) -> (usize, f32) {
+    let n = n.max(1);
+    if !h.is_finite() {
+        // 高さの決まらない所では幅だけで決める
+        let cols = ((w / 150.0).floor() as usize).clamp(1, n);
+        let c = (w - SPOT_GAP * (cols as f32 - 1.0)) / cols as f32;
+        return (cols, c.clamp(60.0, 260.0));
+    }
+    let mut best = (1, f32::MIN);
+    for cols in 1..=n {
+        let rows = n.div_ceil(cols) as f32;
+        let cw = (w - SPOT_GAP * (cols as f32 - 1.0)) / cols as f32;
+        let fit = |lines: f32| {
+            let ch = (h - (below + line * lines + SPOT_GAP) * rows) / rows;
+            cw.min(ch).min(260.0)
+        };
+        let c1 = fit(1.0);
+        let c = if c1 >= label_w { c1 } else { fit(2.0) };
+        if c > best.1 + 0.5 {
+            best = (cols, c);
+        }
+    }
+    (best.0, best.1.max(60.0))
+}
+
 /// スポット図。rays_gen は光線の世代（届くたびに変わる。中心・縮尺はそのときだけ求める）
 pub(crate) fn spot(
     ui: &mut Ui,
@@ -204,14 +236,14 @@ pub(crate) fn spot(
     };
     let half_um = box_um / 2.0;
     let n = fields.len();
-    let avail = ui.available_width();
-    let cols = ((avail / 150.0).floor() as usize).clamp(1, n.max(1));
-    let cell = ((avail - 8.0 * cols as f32) / cols as f32).clamp(90.0, 260.0);
+    // 枠を並べる幅は上の行（凡例など）で広がる前の幅
+    let avail_w = ui.available_width();
     let vis = ui.visuals().clone();
     // 拡大・移動（全視野で共通。倍率と中心のずれ µm）。ホイール＝拡大、右・中ドラッグ＝移動、
     // ダブルクリック・Home＝全体
     let mut view: (f32, egui::Vec2) = (st.spot_zoom, egui::Vec2::from(st.spot_pan));
-    ui.horizontal(|ui| {
+    // 狭いパネルでは折り返す（横にはみ出すと枠を並べる幅も広がる）
+    ui.horizontal_wrapped(|ui| {
         ui.label(
             RichText::new(trf(
                 "Half width of a box {} µm",
@@ -269,11 +301,46 @@ pub(crate) fn spot(
             );
         }
     });
+    // 枠の大きさは残りの幅と高さの両方に合わせ、全視野の枠・縮尺・名前が見えるようにする
+    // （枠の上のホイールは拡大なので、はみ出すと下の視野へスクロールしにくい）
+    let sp = ui.spacing().clone();
+    let below = BAR_H + 2.0 * sp.item_spacing.y;
+    let line = sp
+        .interact_size
+        .y
+        .max(ui.text_style_height(&egui::TextStyle::Body))
+        + sp.item_spacing.y;
+    // 名前の行（視野の名前と RMS）のいちばん広い幅
+    let namer = field_namer(ui);
+    let body = egui::TextStyle::Body.resolve(ui.style());
+    let mono = egui::TextStyle::Monospace.resolve(ui.style());
+    let label_w = ui.fonts(|fo| {
+        let w = |t: String, f: &egui::FontId| {
+            fo.layout_no_wrap(t, f.clone(), egui::Color32::WHITE)
+                .size()
+                .x
+        };
+        fields
+            .iter()
+            .map(|&f| {
+                let rms = result.and_then(|r| spot_rms(r, f)).map_or(0.0, |r| {
+                    sp.item_spacing.x + w(format!("RMS {} µm", fmt_sig(r * 1e3, 3)), &mono)
+                });
+                w(namer(f), &body) + rms
+            })
+            .fold(0.0f32, f32::max)
+    });
+    let (cols, cell) = spot_grid(n, avail_w, ui.available_height(), below, line, label_w);
+    // 名前の行が枠に収まらなければ、視野の名前と RMS を 2 行に分ける
+    let two_lines = cell < label_w;
+    let small = ui.text_style_height(&egui::TextStyle::Small);
     egui::Grid::new(ui.next_auto_id())
-        .spacing([8.0, 8.0])
+        .spacing([SPOT_GAP, SPOT_GAP])
         .show(ui, |ui| {
             for (k, &f) in fields.iter().enumerate() {
                 ui.vertical(|ui| {
+                    // 名前の行が枠より広ければ折り返す（列の幅を枠に揃える）
+                    ui.set_max_width(cell);
                     let (resp, painter) =
                         ui.allocate_painter(egui::vec2(cell, cell), Sense::click_and_drag());
                     // 名前の関数は Context を握ったまま呼ばれるので、中で ui・ctx を読まない（読むと止まる）
@@ -331,7 +398,7 @@ pub(crate) fn spot(
                         }
                     }
                     // 枠の下に縮尺（OpticStudio と同じく倍率 1 では枠の幅、拡大したら見えている幅までのきりのよい長さ）
-                    let (br, bp) = ui.allocate_painter(egui::vec2(cell, 18.0), Sense::hover());
+                    let (br, bp) = ui.allocate_painter(egui::vec2(cell, BAR_H), Sense::hover());
                     let at = br.rect.left_bottom() + egui::vec2(4.0, -1.0);
                     let al = egui::Align2::LEFT_BOTTOM;
                     let weak = theme::weak_text(&vis);
@@ -363,13 +430,12 @@ pub(crate) fn spot(
                             fmt_sig(-d.y as f64, 3)
                         ));
                     }
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(fname.as_str()).color(theme::weak_text(&vis)));
+                    let rms_row = |ui: &mut Ui| {
                         if let Some(rms) = result.and_then(|r| spot_rms(r, f)) {
                             let um = rms * 1e3;
-                            ui.label(
-                                RichText::new(format!("RMS {} µm", fmt_sig(um, 3))).monospace(),
-                            );
+                            let t = RichText::new(format!("RMS {} µm", fmt_sig(um, 3))).monospace();
+                            // 2 行に分けるほど狭いときは小さい字にして折り返しを避ける
+                            ui.label(if two_lines { t.size(small) } else { t });
                             if let Some((t, col)) = delta_text(
                                 &vis,
                                 um,
@@ -379,7 +445,17 @@ pub(crate) fn spot(
                                     .on_hover_text(tr("Difference from before the change"));
                             }
                         }
-                    });
+                    };
+                    let name = RichText::new(fname.as_str()).color(theme::weak_text(&vis));
+                    if two_lines {
+                        ui.label(name.small());
+                        ui.horizontal_wrapped(rms_row);
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(name);
+                            rms_row(ui);
+                        });
+                    }
                 });
                 if (k + 1) % cols == 0 {
                     ui.end_row();
@@ -602,6 +678,27 @@ fn mtf_curves(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn spot_grid_fits_height() {
+        use super::{spot_grid, SPOT_GAP};
+        let (below, line) = (22.0, 22.0);
+        // 幅 380・高さ 300・視野 4・名前の行 150: 最後の行の縮尺・名前（折り返しも）まで入る
+        let (cols, cell) = spot_grid(4, 380.0, 300.0, below, line, 150.0);
+        let rows = 4usize.div_ceil(cols) as f32;
+        let lines = if cell >= 150.0 { 1.0 } else { 2.0 };
+        assert!(rows * (cell + below + line * lines + SPOT_GAP) <= 300.0 + 1e-3);
+        assert!(cols as f32 * cell + (cols as f32 - 1.0) * SPOT_GAP <= 380.0 + 1e-3);
+        // 横長なら 1 行、縦長なら 1 列
+        assert_eq!(spot_grid(4, 1200.0, 300.0, below, line, 100.0).0, 4);
+        assert_eq!(spot_grid(4, 200.0, 1200.0, below, line, 100.0).0, 1);
+        // 1 つだけなら上限 260
+        assert_eq!(spot_grid(1, 1000.0, 1000.0, below, line, 100.0), (1, 260.0));
+        // 狭すぎるときは下限 60
+        assert_eq!(spot_grid(9, 100.0, 100.0, below, line, 100.0).1, 60.0);
+        // 高さが決まらないときは幅だけ
+        assert_eq!(spot_grid(4, 500.0, f32::INFINITY, below, line, 100.0).0, 3);
+    }
+
     use super::*;
 
     #[test]
