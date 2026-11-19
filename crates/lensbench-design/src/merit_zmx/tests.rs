@@ -135,6 +135,35 @@ fn wizard_rows_become_terms() {
     assert!(z.notes[3].contains("row 16 (TRAD"));
 }
 
+/// 回転対称を使った Wizard の行（瞳の半分・軸上の腕 1 本）を対称でない系で読むと、注意を 1 回だけ出す
+#[test]
+fn symmetric_wizard_on_asymmetric_system() {
+    let rows = [
+        "DMFS 0 0 0 0 0 0 0 0 0 0",
+        "BLNK Sequential merit function: RMS spot x+y chief X Wgt = 1.0000 Y Wgt = 1.0000 RA 2 x 2 rays",
+        "BLNK Operands for field 1.",
+        "TRAD 0 1 0 0 0.5 0.5 0 0.5 0 0",
+        "TRAE 0 1 0 0 0.5 0.5 0 0.5 0 0",
+        "BLNK Operands for field 2.",
+        "TRAD 0 1 0 1 0.5 -0.5 0 0.0625 0 0",
+        "TRAE 0 1 0 1 0.5 -0.5 0 0.0625 0 0",
+        "TRAD 0 1 0 1 0.5 0.5 0 0.0625 0 0",
+        "TRAE 0 1 0 1 0.5 0.5 0 0.0625 0 0",
+    ];
+    let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+    let asym = ZmxSys {
+        symmetric: false,
+        ..Default::default()
+    };
+    let z = terms_from_zmx(&mf, 2, 9, &asym);
+    assert_eq!(z.terms.len(), 4);
+    assert_eq!(z.notes.len(), 1, "{:?}", z.notes);
+    assert!(z.notes[0].contains("row 4:") && z.notes[0].contains("axial symmetry"));
+    assert!(terms_from_zmx(&mf, 2, 9, &ZmxSys::default())
+        .notes
+        .is_empty());
+}
+
 #[test]
 fn more_calc_rows_become_terms() {
     let rows = [

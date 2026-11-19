@@ -38,12 +38,20 @@ pub(super) fn config_table(
     }
     let mut out = Vec::new();
     for (op, p1, parm, raw_vals) in rows {
-        // 変わるかは書いた文字で見る（GLSS などの名前の値も）
-        let varies = raw_vals.iter().any(|v| *v != raw_vals[0]);
         let vals: Vec<Option<f64>> = raw_vals
             .iter()
             .map(|v| v.as_deref().and_then(|x| fv(x).ok()))
             .collect();
+        // 変わるかは、数なら数で（1 と 1.0 は同じ）、数でなければ書いた文字で見る（GLSS などの名前の値）
+        let same =
+            |a: &(Option<String>, Option<f64>), b: &(Option<String>, Option<f64>)| match (a.1, b.1)
+            {
+                (Some(x), Some(y)) => x == y,
+                _ => a.0 == b.0,
+            };
+        let both: Vec<(Option<String>, Option<f64>)> =
+            raw_vals.iter().cloned().zip(vals.iter().copied()).collect();
+        let varies = both.iter().any(|v| !same(v, &both[0]));
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
         let kind = match (op.as_str(), surf) {
             ("THIC", Some(_)) => Some(Kind::Thick),

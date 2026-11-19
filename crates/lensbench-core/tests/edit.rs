@@ -573,3 +573,21 @@ fn curvature_solve_renumber() {
     assert_eq!(notes.len(), 1, "{notes:?}");
     assert!(s.solves.is_empty());
 }
+
+/// .zmx の多重構成で、同じ数を違う書き方（10 と 1.0E+01）にした行は構成で変わらない（表に入れない）
+#[test]
+fn configs_same_number_other_spelling() {
+    let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\nSURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n\
+MNUM 2 1\nTHIC 1 1 10 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 1 2 1.0E+01 0 0 0 1 1 1 0 0 \"\" 0\nAPER 0 1 10 0 0 0 1 1 1 0 0 \"\" 0\nAPER 0 2 12 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+    let s = lensbench_formats::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    let names: Vec<String> = s
+        .configs()
+        .unwrap()
+        .rows
+        .iter()
+        .map(|r| r.param.name())
+        .collect();
+    assert_eq!(names, ["aper"]);
+}

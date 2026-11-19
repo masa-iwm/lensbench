@@ -127,6 +127,13 @@ impl CalcOp {
             CalcOp::Sin => v[0].sin(),
             CalcOp::Cos => v[0].cos(),
             CalcOp::Tan => v[0].tan(),
+            CalcOp::Asin | CalcOp::Acos if !(-1.0..=1.0).contains(&v[0]) => {
+                invalid!(
+                    "{} of {} (outside -1 to 1) in a calc term",
+                    self.name(),
+                    v[0]
+                );
+            }
             CalcOp::Asin => v[0].asin(),
             CalcOp::Acos => v[0].acos(),
             CalcOp::Atan => v[0].atan(),

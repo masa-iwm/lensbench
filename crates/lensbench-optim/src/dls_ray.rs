@@ -6,19 +6,24 @@ use lensbench_core::system::{FieldType, Trace};
 /// 光線 t（面 1..=j を記録したもの）の、面 j での量 q
 pub(super) fn extra(s: &System, t: &Trace, j: usize, q: RayQ) -> Result<f64> {
     let frames = s.frames();
-    let fr = |k: usize| frames.surf[k].expect("traced surfaces have a position");
+    let fr = |k: usize| -> Result<_> {
+        match frames.surf[k] {
+            Some(f) => Ok(f),
+            None => invalid!("surface {k} has no position (ignored)"),
+        }
+    };
     let Some(at) = t.rec.iter().position(|r| r.surf == j) else {
         invalid!("surface {j} is ignored");
     };
     let e = t.rec[at].entry(0);
-    let f = fr(j);
+    let f = fr(j)?;
     // 面の後の方向（大域）と、面の前の方向（面 j の局所座標）
     let out = mv(&f.r, e.lmn);
     let before = if at == 0 {
         t.k0[0]
     } else {
         let p = t.rec[at - 1].entry(0);
-        mv(&fr(p.surf).r, p.lmn)
+        mv(&fr(p.surf)?.r, p.lmn)
     };
     let din = normalize(mtv(&f.r, before));
     let (_, zx, zy) = s.surfaces[j].shape().sag(e.xyz[0], e.xyz[1]);

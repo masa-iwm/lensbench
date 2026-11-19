@@ -1617,6 +1617,7 @@ calc rows nested too deeply	計算の行の入れ子が深すぎます
 the referenced row {} is in another configuration	参照する行 {} は別の構成にあります
 the referenced row {} ({}) is a bound, whose value OpticStudio moves to its target	参照する行 {}（{}）は片側の条件で、OpticStudio は値を目標に寄せます
 .zmx merit function row {}: the Wizard rows from here don't match the pupil sampling of its settings; they are read one by one	.zmx のメリットファンクションの行 {}: ここからの Wizard の行は設定の瞳のサンプリングと合わないので、1 行ずつ読みます
+.zmx merit function row {}: the Wizard rows assume axial symmetry but the system is not rotationally symmetric; the term uses the whole pupil, so its value differs from OpticStudio	.zmx のメリットファンクションの行 {}: Wizard の行は軸対称を仮定していますが、システムは回転対称ではありません。項は瞳全体を使うので、値は OpticStudio と違います
 zone {zone} (more than 0, up to 1)	zone {zone}（0 より大きく 1 以下）
 a thickness term with each needs min or max	each の厚みの項には min か max が要ります
 only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)	書けるのは 1 面のクリア半径での縁の厚みだけです（ETGT・ETLT・ETVA）
@@ -2359,6 +2360,10 @@ paraxial ray quantity {} (x, y, z, l, m, n, r, nl, nm, nn, tanx, tany)	近軸光
 to does not go with paraxial	to は paraxial と使えません
 term {i}: wave goes with power, ynip and index, not {}	項 {i}: wave は power・ynip・index と使います（{} には使えません）
 term {i}: surface {surf} ({first} to {last})	項 {i}: 面 {surf}（{first}〜{last}）
+the distortion needs a rotationally symmetric system	歪曲は回転対称のシステムだけで求めます
+Seidel coefficients need a rotationally symmetric system	ザイデル収差係数は回転対称のシステムだけで求めます
+{} of {} (outside -1 to 1) in a calc term	calc の項の {} の引数 {} が -1〜1 の外です
+surface {k} has no position (ignored)	面 {k} は位置がありません（無視の面）
 {kind} (there are {nf} field points)	{kind}（視野は {nf} 個）
 primary wavelength {v} (1 to {})	主波長 {v}（1〜{}）
 aperture value {v}	開口の値 {v}

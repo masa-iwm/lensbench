@@ -700,7 +700,7 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         row_config.push(config);
     }
     // Wizard の光線の行は視野ごとのスポット・波面の項にまとめる
-    let mut wiz = wizard::group(&mf.rows, &row_config, cx.unit);
+    let mut wiz = wizard::group(&mf.rows, &row_config, cx.unit, cx.sys.symmetric);
     cx.notes.append(&mut wiz.notes);
     let mut terms = Vec::new();
     let mut sources = Vec::new();

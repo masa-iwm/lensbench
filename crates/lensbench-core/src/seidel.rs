@@ -72,6 +72,9 @@ fn quartic_excess(sh: Shape, c0: f64) -> Option<f64> {
 
 /// 波長 w のザイデル和。ミラー・二次曲面と偶数次非球面でない面のある系は誤り
 pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
+    if !s.symmetric() {
+        invalid!("Seidel coefficients need a rotationally symmetric system");
+    }
     let sf = &s.surfaces;
     let img = s.image();
     let p = s.paraxial();
@@ -143,6 +146,9 @@ pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
 /// 最大の視野（正規化視野 (0, 1)）の主光線の像面での高さと近軸像高の差 [レンズ単位] と、近軸像高に対する % （波長 w）。
 /// OpticStudio の DIST の Surf 0（%）と Absolute（差）
 pub fn real_distortion(s: &System, w: usize) -> Result<(f64, f64)> {
+    if !s.symmetric() {
+        invalid!("the distortion needs a rotationally symmetric system");
+    }
     let img = s.image();
     let p = s.paraxial();
     let k = chief_scale(s);

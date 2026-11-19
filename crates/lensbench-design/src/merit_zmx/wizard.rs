@@ -113,8 +113,14 @@ fn points(q: &Map<String, Value>) -> Vec<(f64, f64, f64)> {
 }
 
 /// 1 つの波長の行の点 (px, py, 重み) が、求積の点（瞳全体、x の正の半分（Assume Axial Symmetry）、軸上の
-/// 視野で回転対称を使った 1 本の腕（GQ）・4 分の 1（RA））のどれかと、点も重みの比も同じか
-fn matches(rows: &[(f64, f64, f64)], full: &[(f64, f64, f64)], grid: bool, on_axis: bool) -> bool {
+/// 視野で回転対称を使った 1 本の腕（GQ）・4 分の 1（RA））のどれかと、点も重みの比も同じか。
+/// 同じなら Some(瞳全体か)（瞳全体でなければ Wizard は回転対称を使った）
+fn matches(
+    rows: &[(f64, f64, f64)],
+    full: &[(f64, f64, f64)],
+    grid: bool,
+    on_axis: bool,
+) -> Option<bool> {
     let e = 1e-9;
     let half: Vec<_> = full
         .iter()
@@ -140,19 +146,23 @@ fn matches(rows: &[(f64, f64, f64)], full: &[(f64, f64, f64)], grid: bool, on_ax
         v
     };
     let r = norm(rows);
-    [full.to_vec(), half, axis].iter().any(|c| {
-        let c = norm(c);
-        c.len() == r.len()
-            && c.iter().zip(&r).all(|(a, b)| {
-                (a.0 - b.0).abs() < 1e-6
-                    && (a.1 - b.1).abs() < 1e-6
-                    && (a.2 - b.2).abs() < 1e-6 * a.2
-            })
-    })
+    [full.to_vec(), half, axis]
+        .iter()
+        .position(|c| {
+            let c = norm(c);
+            c.len() == r.len()
+                && c.iter().zip(&r).all(|(a, b)| {
+                    (a.0 - b.0).abs() < 1e-6
+                        && (a.1 - b.1).abs() < 1e-6
+                        && (a.2 - b.2).abs() < 1e-6 * a.2
+                })
+        })
+        .map(|i| i == 0)
 }
 
 /// rows の Wizard の光線の行をまとめる。row_config は行ごとの構成、unit はレンズ単位 [mm]
-pub(super) fn group(rows: &[MeritRow], row_config: &[i64], unit: f64) -> Wizard {
+/// symmetric は系が回転対称か（でなければ、回転対称を使った Wizard の行に注意を出す）
+pub(super) fn group(rows: &[MeritRow], row_config: &[i64], unit: f64, symmetric: bool) -> Wizard {
     let mut out = Wizard {
         used: vec![false; rows.len()],
         terms: BTreeMap::new(),
@@ -169,7 +179,7 @@ pub(super) fn group(rows: &[MeritRow], row_config: &[i64], unit: f64) -> Wizard 
             .unwrap_or(rows.len());
         let settings = rows.get(d + 1).filter(|r| r.op == "BLNK");
         match settings.map(|r| quadrature(&r.comment)) {
-            Some(Ok(q)) => block(rows, row_config, unit, d + 2..end, &q, &mut out),
+            Some(Ok(q)) => block(rows, row_config, unit, d + 2..end, &q, symmetric, &mut out),
             Some(Err(e)) if settings.is_some_and(|r| r.comment.starts_with("Sequential")) => {
                 out.notes.push(format!(
                     ".zmx merit function row {}: {e}; its rows are read one by one",
@@ -190,6 +200,7 @@ fn block(
     unit: f64,
     range: std::ops::Range<usize>,
     q: &Map<String, Value>,
+    symmetric: bool,
     out: &mut Wizard,
 ) {
     // 視野の節の中の行（BLNK「Operands for field」から、光線・PRIM・CONF・BLNK でない行まで）
@@ -270,6 +281,7 @@ fn block(
         let mut waves: Vec<i64> = g.rows.iter().map(|r| r.1).collect();
         waves.sort_unstable();
         waves.dedup();
+        let mut reduced = false;
         let ok = waves.iter().all(|&wv| {
             let pts: Vec<_> = g
                 .rows
@@ -280,7 +292,13 @@ fn block(
             let f = g.m["field"]
                 .as_array()
                 .map_or(vec![], |a| a.iter().filter_map(Value::as_f64).collect());
-            matches(&pts, &full, grid, f.iter().all(|v| *v == 0.0))
+            match matches(&pts, &full, grid, f.iter().all(|v| *v == 0.0)) {
+                Some(whole) => {
+                    reduced |= !whole;
+                    true
+                }
+                None => false,
+            }
         });
         if !ok {
             for r in &g.rows {
@@ -291,6 +309,19 @@ fn block(
                 rows[g.first].row
             ));
             continue;
+        }
+        // 注意は 1 回だけ（Wizard の行のまとまりは視野・波長ごとに多い）
+        if reduced
+            && !symmetric
+            && !out
+                .notes
+                .iter()
+                .any(|n| n.contains("assume axial symmetry"))
+        {
+            out.notes.push(format!(
+                ".zmx merit function row {}: the Wizard rows assume axial symmetry but the system is not rotationally symmetric; the term uses the whole pupil, so its value differs from OpticStudio",
+                rows[g.first].row
+            ));
         }
         if g.weight > 0.0 {
             g.m.insert("weight".into(), json!(g.weight));
