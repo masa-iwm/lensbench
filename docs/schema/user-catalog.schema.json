@@ -1409,6 +1409,10 @@
           "description": "ブロックの id",
           "type": "string"
         },
+        "coordbrk": {
+          "description": "座標ブレークの面を指す（surface はブロックの座標ブレークだけを数えた番号）",
+          "type": "boolean"
+        },
         "surface": {
           "description": "ブロックの面の番号（0 始まり、座標ブレークを除く。往復するブロックは往路の面）",
           "format": "uint",

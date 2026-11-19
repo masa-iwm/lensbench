@@ -44,6 +44,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 面の絞り・ソルブ・ピックアップ（ブロックの `surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_macro_solve`・`add_pickup`・`remove_solve`・
   `remove_pickup` と同じ形で、当てる面（`surface`・`dst`）はそのブロックの面の番号（`surface_edits` と同じ数え方。往復するブロックは
   往路の面）。参照する面（`src`・`other`）は、ほかのブロックの面 `{"block": "L1", "surface": 0}` か、展開したシステムの面の番号・名前。
+  座標ブレークは `{"block": "S3", "surface": 0, "coordbrk": true}`（ブロックの座標ブレークだけを数えた番号。`dst` も、自分のブロックでもこの形）で指す。
   ほかの操作・知らないキーは読むときにエラー。例（id L2 の玉に）:
   `"surface_ops": [{"op": "add_solve", "surface": 1, "kind": "marginal_height"},
   {"op": "add_pickup", "dst": 1, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1}]`。

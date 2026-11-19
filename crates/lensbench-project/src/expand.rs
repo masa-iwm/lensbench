@@ -994,8 +994,7 @@ fn expand_body(
         let g = match r {
             BlockRef::Sys(r) => Some(edit_ops::surf_of(&s, r, "glrs")?),
             BlockRef::Block(f) => {
-                let j =
-                    block_face(&s, &f.block, f.surface, &map).map_err(|x| format!("glrs: {x}"))?;
+                let j = block_face_of(&s, f, &map).map_err(|x| format!("glrs: {x}"))?;
                 if j.is_none() {
                     warn.push(Note::new(
                         NoteKind::Glrs,

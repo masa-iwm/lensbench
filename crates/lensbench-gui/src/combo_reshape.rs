@@ -583,6 +583,7 @@ mod tests {
                 src: BlockRef::Block(lensbench_project::edit_ops::BlockFace {
                     block: "S".into(),
                     surface: 0,
+                    coordbrk: false,
                 }),
                 what: "c".into(),
                 scale: None,

@@ -312,14 +312,41 @@ fn zmx_files_become_combos() {
         ok.len() == 2 && split.contains(&"A0".to_string()),
         "{ok:?} {split:?}"
     );
-    // 作業フォルダからの相対パスで開いても（GUI の引数）。P0 は座標ブレークの値のピックアップがあり、要素に分けずに取り込む
-    let rel = Path::new("../../tests/projects/P0/template.zmx");
-    let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
-    assert!(
-        Path::new(&c.picks[0].path).is_absolute(),
-        "{}",
-        c.picks[0].path
-    );
+    // 作業フォルダからの相対パスで開いても（GUI の引数）、取り込みの .zmx のパスは絶対パス。構成で玉が空気に
+    // 変わる（要素の並びが変わる）多重構成は要素に分けずに取り込む
+    let tmp = std::env::temp_dir().join(format!("lb_gui_relzmx_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("unsplit.zmx"),
+        "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 5 0 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 3\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 40\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n\
+MNUM 2 1\n\
+GLSS 2 1 N-BK7 0 0 0 1 1 0 0.0 \"\" 0\nGLSS 2 2 \"\" 0 0 0 1 1 0 0.0 \"\" 0\n",
+    )
+    .unwrap();
+    // 作業フォルダから一時のフォルダへの相対パス（上へたどって共通の親から）
+    let cwd = std::env::current_dir().unwrap();
+    let up = cwd.ancestors().position(|a| tmp.starts_with(a));
+    if let Some(up) = up {
+        let common = cwd.ancestors().nth(up).unwrap();
+        let rel = std::iter::repeat_n(Path::new(".."), up)
+            .collect::<std::path::PathBuf>()
+            .join(tmp.strip_prefix(common).unwrap())
+            .join("unsplit.zmx");
+        let c = Combo::from_zmx(&rel, &gd, &[]).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange);
+        assert!(
+            Path::new(&c.picks[0].path).is_absolute(),
+            "{}",
+            c.picks[0].path
+        );
+    }
+    std::fs::remove_dir_all(&tmp).ok();
     // A0 の GLRS 8 は要素の面で持つ（前に要素を足しても同じ面）。分けた A0 では像の前のダミー面
     let c = Combo::from_zmx(Path::new("../../tests/refs/A0/system.zmx"), &gd, &[]).unwrap();
     assert_eq!(c.extra.glrs, Some(json!({ "block": "S2", "surface": 0 })));

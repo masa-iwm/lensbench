@@ -106,6 +106,7 @@ fn other_ref(p: &Project, x: Edited, r: &Ref) -> Result<BlockRef, String> {
     Ok(BlockRef::Block(BlockFace {
         block: id.to_string(),
         surface: i,
+        coordbrk: false,
     }))
 }
 

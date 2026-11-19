@@ -504,7 +504,9 @@ impl Combo {
             }
         }
         let f = |r: &mut BlockRef| match r {
-            BlockRef::Block(b) if b.block == id => map(b.surface).map(|j| b.surface = j).is_some(),
+            BlockRef::Block(b) if b.block == id && !b.coordbrk => {
+                map(b.surface).map(|j| b.surface = j).is_some()
+            }
             _ => true,
         };
         walk(&mut self.picks, &f);

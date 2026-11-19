@@ -460,7 +460,14 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
     }
     for q in &s.pickups {
         let name = lensbench_core::pickup::pick_kind_name;
-        let mut o = json!({ "op": "add_pickup", "dst": at(q.dst)?, "src": at(q.src)?,
+        // 座標ブレークの値のピックアップは座標ブレークの番号で指す
+        let any = |j: usize| -> Option<Value> {
+            at(j).or_else(|| {
+                let (b, i) = cb.get(j)?.as_ref()?;
+                Some(json!({ "block": b, "surface": i, "coordbrk": true }))
+            })
+        };
+        let mut o = json!({ "op": "add_pickup", "dst": any(q.dst)?, "src": any(q.src)?,
             "what": name(q.what), "scale": q.scale, "offset": q.offset });
         if let Some(w) = q.from {
             o["from"] = json!(name(w));
@@ -475,7 +482,10 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
             "surface"
         };
         let b = o[key]["block"].as_str()?.to_string();
-        o[key] = o[key]["surface"].clone();
+        // 座標ブレークはブロックの面の形のまま（ブロックの面の番号は座標ブレークを数えない）
+        if o[key]["coordbrk"] != true {
+            o[key] = o[key]["surface"].clone();
+        }
         let blk = blocks.iter_mut().find(|x| x["id"] == b.as_str())?;
         match blk["surface_ops"].as_array_mut() {
             Some(a) => a.push(o),
@@ -827,6 +837,28 @@ THIC 5 1 -30 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 5 2 -35 0 0 0 1 1 1 0 0 \"\" 0\n",
         assert_eq!(l.kind, ElemKind::Lens);
         assert_eq!(l.state_air.get(n), Some(&35.0));
         assert_eq!(l.state_edit(n, 0, "r"), Some(&json!(-40.0)));
+    }
+
+    /// 座標ブレークの値のピックアップ（P0 の傾けて戻す座標ブレーク）は、座標ブレークの番号で指す操作にして要素に分ける
+    #[test]
+    fn coordinate_break_pickups_split() {
+        let glass = vec![root().join("tests/glass")];
+        for n in ["expanded", "template"] {
+            let f = root().join(format!("tests/projects/P0/{n}.zmx"));
+            let c = Combo::from_zmx(&f, &glass, &[]).unwrap();
+            assert!(
+                !c.picks
+                    .iter()
+                    .any(|p| matches!(p.kind, ElemKind::ZmxRange | ElemKind::Raw)),
+                "{n}"
+            );
+            let cb_pick = c.picks.iter().flat_map(|p| &p.ops).any(|o| {
+                matches!(o, SurfaceOp::AddPickup(q)
+                    if matches!(&q.dst, BlockRef::Block(b) if b.coordbrk)
+                        && matches!(&q.src, BlockRef::Block(b) if b.coordbrk))
+            });
+            assert!(cb_pick, "{n}");
+        }
     }
 
     /// 開口（浮動の開口も）のある座標ブレーク（玉の中も）は要素に分ける

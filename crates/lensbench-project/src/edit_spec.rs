@@ -100,6 +100,9 @@ pub struct BlockFace {
     pub block: String,
     /// ブロックの面の番号（0 始まり、座標ブレークを除く。往復するブロックは往路の面）
     pub surface: usize,
+    /// 座標ブレークの面を指す（surface はブロックの座標ブレークだけを数えた番号）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordbrk: bool,
 }
 
 /// ブロックの `surface_ops` の面: ブロックの面 `{"block": id, "surface": i}` か、展開した系の面の番号か名前

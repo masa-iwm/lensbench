@@ -105,6 +105,30 @@ pub(crate) fn block_face(
         .ok_or(format!("block {block} surface {i} ({} surfaces)", faces.len()).into())
 }
 
+/// ブロックの面 f（座標ブレークを指すなら座標ブレークだけを数えた番号）の往路の系の面。ブロックが系に無ければ None
+pub(crate) fn block_face_of(
+    s: &System,
+    f: &crate::edit_ops::BlockFace,
+    map: &[SurfOrigin],
+) -> lensbench_core::Result<Option<usize>> {
+    if !f.coordbrk {
+        return block_face(s, &f.block, f.surface, map);
+    }
+    let Some(x) = fwd_run(map, &f.block) else {
+        return Ok(None);
+    };
+    let cbs = cbs_in(s, map, x);
+    cbs.get(f.surface).copied().map(Some).ok_or(
+        format!(
+            "block {} coordinate break {} ({} coordinate breaks)",
+            f.block,
+            f.surface,
+            cbs.len()
+        )
+        .into(),
+    )
+}
+
 /// 面の絞り・ソルブ・ピックアップを当てる（[`FaceMods::surface_ops`]。sites は [`face_sites`] で、その添字が
 /// [`SurfOrigin::mods`] の番号）。当てなかった操作の注意と、set_stop を当てたかを返す
 pub(crate) fn apply_surface_ops(
@@ -182,9 +206,7 @@ pub(crate) fn apply_surface_ops(
             let e = op.to_edit(|r| match r {
                 BlockRef::Sys(r) => Ok::<_, String>(Some(r)),
                 BlockRef::Block(f) => {
-                    match block_face(s, &f.block, f.surface, map)
-                        .map_err(|x| at(k, x.to_string()))?
-                    {
+                    match block_face_of(s, &f, map).map_err(|x| at(k, x.to_string()))? {
                         Some(j) => Ok(Some(Ref::Index(j))),
                         None => {
                             missing = Some(f.block);
