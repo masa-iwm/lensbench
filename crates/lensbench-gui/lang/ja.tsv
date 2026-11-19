@@ -1530,6 +1530,16 @@ Distance from the image surface to where an axial ray crosses the axis − targe
 Height on the image of the paraxial chief ray of the largest field at wave2 − at wave − target (like LACL)	最大の視野の近軸主光線の像面での高さの wave2 − wave − 目標（LACL 相当）
 Compare the semi-diameter of each surface from surf to to with min or max and sum the excess (like MNSD and MXSD)	面 surf〜to のクリア半径を面ごとに min か max と比べ、はみ出しを足す（MNSD・MXSD 相当）
 Aperture maximum radius	開口の最大の半径
+Aperture minimum radius	開口の最小の半径
+Aperture decenter X	開口の偏心 X
+Aperture decenter Y	開口の偏心 Y
+Order before the surface	面の前の順序
+Order after the surface	面の後の順序
+{} before the surface	面の前の{}
+{} after the surface	面の後の{}
+Apodization type	アポダイゼーションの種類
+Apodization factor	アポダイゼーションの係数
+OPD reference	OPD の基準
 Row {} {}	{} 行目の{}
 Copy	コピー
 Insert row above	上に行を挿入

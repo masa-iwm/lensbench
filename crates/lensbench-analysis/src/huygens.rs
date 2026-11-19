@@ -330,8 +330,10 @@ fn huygens_once(
             radius,
             sign,
         } => Some((center, radius, sign)),
-        RefSurface::Plane { .. } | RefSurface::Far { .. } => None,
+        RefSurface::Plane { .. } | RefSurface::Far { .. } | RefSurface::Image => None,
     };
+    // 像面の上の光路長そのままの基準なら、光源は像面の点
+    let at_image = matches!(RefSurface::of(s, pc, kc), RefSurface::Image);
     // 半径が無限大の参照球なら、光源は主光線の像点から光線へ下ろした垂線の足（OPD の to_ref と同じ）
     let far = matches!(RefSurface::of(s, pc, kc), RefSurface::Far { .. });
 
@@ -444,7 +446,9 @@ fn huygens_once(
                     }
                 }
                 None => {
-                    let t = if far {
+                    let t = if at_image {
+                        0.0
+                    } else if far {
                         -dot(sub(q, pc), k)
                     } else {
                         -dot(sub(q, pc), kc) / dot(k, kc)

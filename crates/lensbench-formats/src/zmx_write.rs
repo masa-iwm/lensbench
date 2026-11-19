@@ -820,6 +820,24 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::Semi => ("SDIA", p.index(), None, id),
         Kind::Ignore => ("IGNR", p.index(), None, id),
         Kind::ApMax => ("APMX", p.index(), None, id),
+        Kind::ApMin => ("APMN", p.index(), None, id),
+        Kind::ApDx => ("APDX", p.index(), None, id),
+        Kind::ApDy => ("APDY", p.index(), None, id),
+        Kind::ApType => ("APTP", p.index(), None, id),
+        Kind::BeforeOrder => ("CBOR", p.index(), None, id),
+        Kind::AfterOrder => ("CAOR", p.index(), None, id),
+        Kind::Before(i) => (
+            ["CBDX", "CBDY", "CBTX", "CBTY", "CBTZ"][i as usize],
+            p.index(),
+            None,
+            id,
+        ),
+        Kind::After(i) => (
+            ["CADX", "CADY", "CATX", "CATY", "CATZ"][i as usize],
+            p.index(),
+            None,
+            id,
+        ),
         Kind::Curv => ("CRVT", p.index(), None, id),
         Kind::Radius => ("CRVT", p.index(), None, |r| {
             if r == 0.0 {

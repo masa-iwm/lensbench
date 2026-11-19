@@ -206,6 +206,8 @@ pub enum RefSurface {
     /// 極限で、光線ごとに中心から光線へ下ろした垂線の足までの光路（像点との差の光線の向きの成分を引く。OpticStudio 26.1 の
     /// Reference OPD「Infinity」と一致）
     Far { center: V3 },
+    /// 像面の上の光路長そのまま（アフォーカル像空間の ROPD 3「Absolute 2」。OpticStudio 26.1 と一致）
+    Image,
 }
 
 /// 射出瞳の位置 expp（像面から）が有限で、参照球を置ける近さか（|expp| ≤ [`crate::tol::EXPP_FAR`]）
@@ -214,7 +216,7 @@ pub fn exit_pupil_near(expp: f64) -> bool {
     expp.is_finite() && expp.abs() <= crate::tol::EXPP_FAR
 }
 
-/// OPD の基準の設定（ROPD）が扱えるか: 射出瞳（2）か無限遠（1）、またはアフォーカル像空間
+/// OPD の基準の設定（ROPD）が扱えるか: 射出瞳（2）か無限遠（1）。アフォーカル像空間ではどれも（0〜3）
 pub fn check_ropd(s: &System) -> Result<()> {
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
         crate::notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
@@ -235,7 +237,7 @@ pub fn check_opd_reference(s: &System) -> Result<()> {
 
 impl RefSurface {
     /// アフォーカルでない系で、基準が半径が無限大の参照球か（ROPD が無限遠、または射出瞳が遠い・無限遠）
-    pub fn plane_for(s: &System) -> bool {
+    pub fn far_for(s: &System) -> bool {
         !s.afocal && (s.ropd == 1 || !exit_pupil_near(s.exit_pupil()))
     }
 
@@ -243,12 +245,19 @@ impl RefSurface {
     pub fn of(s: &System, pc: V3, kc: V3) -> RefSurface {
         let expp = s.exit_pupil();
         if s.afocal {
-            return RefSurface::Plane {
-                point: to_ref_plane_point(expp, pc, kc),
-                normal: kc,
+            // 射出瞳・無限遠の基準は射出瞳の位置の平面、絶対（ROPD 0）は主光線の像点を通る平面、絶対 2（3）は像面の上の
+            // 光路長そのまま（OpticStudio 26.1 で実測。射出瞳と無限遠は同じ値）
+            if s.ropd == 3 {
+                return RefSurface::Image;
+            }
+            let point = if s.ropd == 0 {
+                pc
+            } else {
+                to_ref_plane_point(expp, pc, kc)
             };
+            return RefSurface::Plane { point, normal: kc };
         }
-        if RefSurface::plane_for(s) {
+        if RefSurface::far_for(s) {
             return RefSurface::Far { center: pc };
         }
         let sc = (expp - pc[2]) / kc[2];
@@ -269,6 +278,7 @@ impl RefSurface {
                 opl + ni * dot(sub(point, q), normal) / dot(k, normal)
             }
             RefSurface::Far { center } => opl - ni * dot(sub(q, center), k),
+            RefSurface::Image => opl,
             RefSurface::Sphere {
                 center,
                 radius,

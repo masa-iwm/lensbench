@@ -116,6 +116,17 @@ pub enum Kind {
     Ignore,
     /// 円形の開口・遮蔽の最大の半径。多重構成の行（.zmx の APMX）。最適化の変数には使えない
     ApMax,
+    /// 円形の開口・遮蔽の最小の半径。多重構成の行（.zmx の APMN）。最適化の変数には使えない
+    ApMin,
+    /// 開口・遮蔽の偏心 x・y。多重構成の行（.zmx の APDX・APDY）。最適化の変数には使えない
+    ApDx,
+    ApDy,
+    /// 開口の種類（OpticStudio の番号: 0 なし・1 円形の開口・2 円形の遮蔽・3 スパイダー・4 矩形・6 楕円・10 浮動。
+    /// 変えられるのは 0〜2 の間で、半径は今の円形の開口・遮蔽の値）。多重構成の行（.zmx の APTP）。最適化の変数には使えない
+    ApType,
+    /// 面の前・後の傾き偏心の順序（0 偏心から、1 傾きから）。多重構成の行（.zmx の CBOR・CAOR）。最適化の変数には使えない
+    BeforeOrder,
+    AfterOrder,
     /// 面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。
     /// 最適化の変数には使えない
     Material,
@@ -164,6 +175,12 @@ impl Kind {
             "ignore" => Kind::Ignore,
             "apmax" => Kind::ApMax,
             "material" => Kind::Material,
+            "apmin" => Kind::ApMin,
+            "apdx" => Kind::ApDx,
+            "apdy" => Kind::ApDy,
+            "aptype" => Kind::ApType,
+            "beforeorder" => Kind::BeforeOrder,
+            "afterorder" => Kind::AfterOrder,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -259,6 +276,12 @@ impl Kind {
             Kind::Ignore => "ignore".into(),
             Kind::ApMax => "apmax".into(),
             Kind::Material => "material".into(),
+            Kind::ApMin => "apmin".into(),
+            Kind::ApDx => "apdx".into(),
+            Kind::ApDy => "apdy".into(),
+            Kind::ApType => "aptype".into(),
+            Kind::BeforeOrder => "beforeorder".into(),
+            Kind::AfterOrder => "afterorder".into(),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -293,11 +316,23 @@ impl Kind {
         )
     }
 
-    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視・開口の最大の半径）。最適化の変数・微分には使えない
+    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視・開口・面の前後の傾き偏心の値と順序）。最適化の変数・微分には
+    /// 使えない
     pub fn is_table_only(&self) -> bool {
         matches!(
             self,
-            Kind::Semi | Kind::Ignore | Kind::ApMax | Kind::Material
+            Kind::Semi
+                | Kind::Ignore
+                | Kind::ApMax
+                | Kind::ApMin
+                | Kind::ApDx
+                | Kind::ApDy
+                | Kind::ApType
+                | Kind::Before(_)
+                | Kind::After(_)
+                | Kind::BeforeOrder
+                | Kind::AfterOrder
+                | Kind::Material
         )
     }
 
@@ -709,6 +744,42 @@ impl System {
                     p.name()
                 ),
             },
+            Kind::ApMin => match d.ap {
+                Aperture::Circular { min, .. } | Aperture::Obsc { min, .. } => min,
+                _ => invalid!(
+                    "{}: surface has no circular aperture or obscuration",
+                    p.name()
+                ),
+            },
+            Kind::ApDx | Kind::ApDy => match aperture_decenter(&d.ap) {
+                Some((dx, dy)) => {
+                    if p.kind == Kind::ApDx {
+                        dx
+                    } else {
+                        dy
+                    }
+                }
+                None => invalid!("{}: surface has no aperture", p.name()),
+            },
+            Kind::ApType => aperture_os_code(&d.ap) as f64,
+            Kind::Before(i) => d.before.map_or(0.0, |t| t.d[i as usize]),
+            Kind::BeforeOrder => d.before.map_or(0.0, |t| f64::from(t.order)),
+            Kind::After(i) => match d.after {
+                After::Tilt(t) => t.d[i as usize],
+                After::None => 0.0,
+                After::Reverse => invalid!(
+                    "{}: the tilt and decenter after the surface reverses the one before",
+                    p.name()
+                ),
+            },
+            Kind::AfterOrder => match d.after {
+                After::Tilt(t) => f64::from(t.order),
+                After::None => 0.0,
+                After::Reverse => invalid!(
+                    "{}: the tilt and decenter after the surface reverses the one before",
+                    p.name()
+                ),
+            },
             Kind::Dn => d.dn,
             Kind::Disp => d.disp,
             k => {
@@ -958,6 +1029,57 @@ impl System {
                 Kind::Ignore if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
                 Kind::ApMax if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::Material => invalid!("{}: a material is a name, not a number", p.name()),
+                Kind::ApMin if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::BeforeOrder | Kind::AfterOrder if v != 0.0 && v != 1.0 => {
+                    invalid!("{} = {v} (0 or 1)", p.name())
+                }
+                Kind::ApType if v.fract() != 0.0 || !(0.0..=2.0).contains(&v) => {
+                    invalid!("{}: aperture type {v} (0 to 2 can be set)", p.name())
+                }
+                Kind::ApType
+                    if v != 0.0
+                        && !matches!(
+                            self.surfaces[p.index()].ap,
+                            Aperture::Circular { .. } | Aperture::Obsc { .. }
+                        ) =>
+                {
+                    invalid!(
+                        "{}: surface has no circular aperture or obscuration (its radii are kept)",
+                        p.name()
+                    )
+                }
+                Kind::ApMin
+                    if !matches!(
+                        self.surfaces[p.index()].ap,
+                        Aperture::Circular { .. } | Aperture::Obsc { .. }
+                    ) =>
+                {
+                    invalid!(
+                        "{}: surface has no circular aperture or obscuration",
+                        p.name()
+                    )
+                }
+                Kind::ApDx | Kind::ApDy
+                    if aperture_decenter(&self.surfaces[p.index()].ap).is_none() =>
+                {
+                    invalid!("{}: surface has no aperture", p.name())
+                }
+                Kind::Before(_) | Kind::BeforeOrder | Kind::After(_) | Kind::AfterOrder
+                    if self.surfaces[p.index()].is_coord_break() =>
+                {
+                    invalid!(
+                        "{}: a coordinate break has no surface tilt or decenter",
+                        p.name()
+                    )
+                }
+                Kind::After(_) | Kind::AfterOrder
+                    if self.surfaces[p.index()].after == After::Reverse =>
+                {
+                    invalid!(
+                        "{}: the tilt and decenter after the surface reverses the one before",
+                        p.name()
+                    )
+                }
                 Kind::ApMax
                     if !matches!(
                         self.surfaces[p.index()].ap,
@@ -1144,6 +1266,16 @@ impl System {
                         *max = v;
                     }
                 }
+                Kind::ApMin
+                | Kind::ApDx
+                | Kind::ApDy
+                | Kind::ApType
+                | Kind::Before(_)
+                | Kind::BeforeOrder
+                | Kind::After(_)
+                | Kind::AfterOrder => {
+                    set_surface_table_value(d, p.kind, v);
+                }
                 Kind::Dn => {
                     d.dn = v;
                     index = true;
@@ -1186,7 +1318,14 @@ impl System {
 /// 変えるパラメータから、残してよいキャッシュを決める
 pub(crate) fn keep_for(changes: &[(Param, f64)]) -> Keep {
     // 玉・群の剛体の動きは傾き偏心と同じ（座標系だけ）。移動は厚さ、dn・disp は屈折率
-    let tilt = |k: Kind| k.tilt_index().is_some() || k.is_unit_motion();
+    let tilt = |k: Kind| {
+        k.tilt_index().is_some()
+            || k.is_unit_motion()
+            || matches!(
+                k,
+                Kind::Before(_) | Kind::After(_) | Kind::BeforeOrder | Kind::AfterOrder
+            )
+    };
     let geom = changes.iter().any(|(p, _)| {
         p.kind == Kind::Thick || p.kind == Kind::Unit(UnitKind::Shift) || tilt(p.kind)
     });
@@ -1195,4 +1334,109 @@ pub(crate) fn keep_for(changes: &[(Param, f64)]) -> Keep {
         frames: !geom,
         paraxial: only_tilt,
     }
+}
+
+/// 開口・遮蔽の偏心（偏心を持たない開口は None）
+fn aperture_decenter(a: &Aperture) -> Option<(f64, f64)> {
+    match *a {
+        Aperture::Circular { dx, dy, .. }
+        | Aperture::Rect { dx, dy, .. }
+        | Aperture::Ellipse { dx, dy, .. }
+        | Aperture::Obsc { dx, dy, .. }
+        | Aperture::Spider { dx, dy, .. } => Some((dx, dy)),
+        _ => None,
+    }
+}
+
+fn set_aperture_decenter(a: &mut Aperture, y: bool, v: f64) {
+    if let Aperture::Circular { dx, dy, .. }
+    | Aperture::Rect { dx, dy, .. }
+    | Aperture::Ellipse { dx, dy, .. }
+    | Aperture::Obsc { dx, dy, .. }
+    | Aperture::Spider { dx, dy, .. } = a
+    {
+        *if y { dy } else { dx } = v;
+    }
+}
+
+/// 開口の種類の OpticStudio の番号（SurfaceApertureTypes の順）
+fn aperture_os_code(a: &Aperture) -> i64 {
+    match a {
+        Aperture::None => 0,
+        Aperture::Circular { .. } => 1,
+        Aperture::Obsc { .. } => 2,
+        Aperture::Spider { .. } => 3,
+        Aperture::Rect { .. } => 4,
+        Aperture::Ellipse { .. } => 6,
+        Aperture::Floating { .. } => 10,
+    }
+}
+
+/// 開口の種類を番号 n（0〜2）にする。半径・偏心は今の円形の開口・遮蔽の値（なしにしたら捨てる）
+fn set_aperture_os_code(a: &mut Aperture, n: i64) {
+    let (min, max, dx, dy) = match *a {
+        Aperture::Circular { min, max, dx, dy } | Aperture::Obsc { min, max, dx, dy } => {
+            (min, max, dx, dy)
+        }
+        _ => {
+            if n == 0 {
+                *a = Aperture::None;
+            }
+            return;
+        }
+    };
+    *a = match n {
+        1 => Aperture::Circular { min, max, dx, dy },
+        2 => Aperture::Obsc { min, max, dx, dy },
+        _ => Aperture::None,
+    };
+}
+
+/// 面の多重構成の表だけの値（開口の最小の半径・偏心・種類、面の前後の傾き偏心の値と順序）を面 d に入れる（値は確かめない）。
+/// 面の前後の傾き偏心を表の値で作るときは、面の後を変えない（OpticStudio と同じく、後は値 0 のまま）。無いものに 0 を入れるときは
+/// 作らない。ほかの種類は何もせず false
+pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64) -> bool {
+    match k {
+        Kind::ApMin => {
+            if let Aperture::Circular { min, .. } | Aperture::Obsc { min, .. } = &mut d.ap {
+                *min = v;
+            }
+        }
+        Kind::ApDx | Kind::ApDy => set_aperture_decenter(&mut d.ap, k == Kind::ApDy, v),
+        Kind::ApType => set_aperture_os_code(&mut d.ap, v as i64),
+        Kind::Before(_) | Kind::BeforeOrder if d.before.is_none() && v == 0.0 => {}
+        Kind::After(_) | Kind::AfterOrder if d.after == After::None && v == 0.0 => {}
+        Kind::Before(i) => {
+            d.before
+                .get_or_insert(Tilt {
+                    d: [0.0; 5],
+                    order: 0,
+                })
+                .d[i as usize] = v
+        }
+        Kind::BeforeOrder => {
+            d.before
+                .get_or_insert(Tilt {
+                    d: [0.0; 5],
+                    order: 0,
+                })
+                .order = v as u8
+        }
+        Kind::After(_) | Kind::AfterOrder => {
+            if d.after == After::None {
+                d.after = After::Tilt(Tilt {
+                    d: [0.0; 5],
+                    order: 0,
+                });
+            }
+            if let After::Tilt(t) = &mut d.after {
+                match k {
+                    Kind::After(i) => t.d[i as usize] = v,
+                    _ => t.order = v as u8,
+                }
+            }
+        }
+        _ => return false,
+    }
+    true
 }

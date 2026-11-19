@@ -26,7 +26,8 @@ const HARMLESS: &[&str] = &[
 const MCE_HANDLED: &[&str] = &[
     "THIC", "IGNR", "APMX", "SDIA", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN", "WAVE", "GLSS",
     "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC",
-    "APDT", "APDF", "RAAM", "OPDR",
+    "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY",
+    "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
     "MCOM", "CWGT",
 ];
@@ -441,6 +442,7 @@ pub fn document(
             None => {}
         }
     }
+    configs::apply_config_values(&ops, &mut rx);
     rx.coating_file = set.coating_file;
     rx.name = set.name;
     rx.import_notes = raw.notes.clone();

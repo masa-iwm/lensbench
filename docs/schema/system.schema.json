@@ -1628,7 +1628,9 @@
             "Tz",
             "ObjY",
             "Pres",
-            "Apod"
+            "Apod",
+            "ApDy",
+            "AfterOrder"
           ],
           "type": "string"
         },
@@ -1858,6 +1860,26 @@
         {
           "const": "ApMax",
           "description": "円形の開口・遮蔽の最大の半径。多重構成の行（.zmx の APMX）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "ApMin",
+          "description": "円形の開口・遮蔽の最小の半径。多重構成の行（.zmx の APMN）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "ApDx",
+          "description": "開口・遮蔽の偏心 x・y。多重構成の行（.zmx の APDX・APDY）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "ApType",
+          "description": "開口の種類（OpticStudio の番号: 0 なし・1 円形の開口・2 円形の遮蔽・3 スパイダー・4 矩形・6 楕円・10 浮動。\n変えられるのは 0〜2 の間で、半径は今の円形の開口・遮蔽の値）。多重構成の行（.zmx の APTP）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "BeforeOrder",
+          "description": "面の前・後の傾き偏心の順序（0 偏心から、1 傾きから）。多重構成の行（.zmx の CBOR・CAOR）。最適化の変数には使えない",
           "type": "string"
         },
         {

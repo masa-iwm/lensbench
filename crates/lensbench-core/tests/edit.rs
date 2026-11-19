@@ -536,6 +536,59 @@ fn configs_environment_and_settings() {
     }
 }
 
+/// 面の前後の傾き偏心の値・順序と、開口の最小の半径・偏心・種類も多重構成の行にできる
+#[test]
+fn configs_surface_tilt_and_aperture() {
+    use lensbench_core::surface::{After, Aperture};
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.set_config_count(2).unwrap();
+    let p = |k| Param::new(2, k);
+    // 傾き偏心の無い面に表で値を入れても、面の後は値 0 のまま（OpticStudio と同じ）
+    s.set_config_row(p(Kind::Before(1)), vec![0.0, 0.3])
+        .unwrap();
+    s.set_config_row(p(Kind::BeforeOrder), vec![0.0, 1.0])
+        .unwrap();
+    s.set_config_row(p(Kind::After(2)), vec![0.0, -0.4])
+        .unwrap();
+    let c2 = s.config(2).unwrap();
+    let d = &c2.surfaces[2];
+    assert_eq!(d.before.unwrap().d[1], 0.3);
+    assert_eq!(d.before.unwrap().order, 1);
+    assert!(matches!(d.after, After::Tilt(t) if t.d[2] == -0.4));
+    assert!(s.config(1).unwrap().surfaces[2].before.is_none());
+    assert!(Kind::Before(0).is_table_only() && Kind::ApType.is_table_only());
+    // 開口: 円形の開口の面だけ。種類は 0〜2 の間で変え、半径はそのまま
+    assert!(s.set_config_row(p(Kind::ApMin), vec![0.0, 1.0]).is_err());
+    s.edit_raw(|rx| {
+        rx.surfaces[2].ap = Aperture::Circular {
+            min: 0.0,
+            max: 3.0,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
+    s.set_config_row(p(Kind::ApMin), vec![0.0, 1.0]).unwrap();
+    s.set_config_row(p(Kind::ApDy), vec![0.0, 0.5]).unwrap();
+    s.set_config_row(p(Kind::ApType), vec![1.0, 2.0]).unwrap();
+    let c2 = s.config(2).unwrap();
+    assert_eq!(
+        c2.surfaces[2].ap,
+        Aperture::Obsc {
+            min: 1.0,
+            max: 3.0,
+            dx: 0.0,
+            dy: 0.5
+        }
+    );
+    assert!(s.set_config_row(p(Kind::ApType), vec![1.0, 4.0]).is_err());
+    assert!(s
+        .set_config_row(p(Kind::AfterOrder), vec![0.0, 2.0])
+        .is_err());
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

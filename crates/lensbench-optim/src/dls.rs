@@ -1216,9 +1216,12 @@ fn to_ref_d(
     let expp = s.exit_pupil();
     let dd = sub(q, pc);
     let ddd = sub(dq, dpc);
+    if s.afocal && s.ropd == 3 {
+        return dopl;
+    }
     if s.afocal {
-        // opl + ni a / b、a = (pe − q)·kc、pe = 射出瞳の位置で主光線の上の点（無限遠なら pc）
-        let (pe, dpe) = if exit_pupil_near(expp) {
+        // opl + ni a / b、a = (pe − q)·kc、pe = 射出瞳の位置で主光線の上の点（無限遠・ROPD 0 なら pc）
+        let (pe, dpe) = if exit_pupil_near(expp) && s.ropd != 0 {
             let u = (expp - pc[2]) / kc[2];
             let du = (dexpp - dpc[2]) / kc[2] - u * dkc[2] / kc[2];
             (
@@ -1234,7 +1237,7 @@ fn to_ref_d(
         let db = dot(dk, kc) + dot(k, dkc);
         return dopl + dni * a / b + ni * (da / b - a * db / (b * b));
     }
-    if RefSurface::plane_for(s) {
+    if RefSurface::far_for(s) {
         // opl − ni (q − pc)·k
         let b = dot(dd, k);
         return dopl - dni * b - ni * (dot(ddd, k) + dot(dd, dk));

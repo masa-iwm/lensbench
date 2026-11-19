@@ -787,6 +787,36 @@ fn kind_of(
                 "STPS" => ("stop".to_string(), 1.0),
                 "IGNR" => (format!("{j}.ignore"), 1.0),
                 "APMX" => (format!("{j}.apmax"), unit),
+                "APMN" => (format!("{j}.apmin"), unit),
+                "APDX" => (format!("{j}.apdx"), unit),
+                "APDY" => (format!("{j}.apdy"), unit),
+                "APTP" => (format!("{j}.aptype"), 1.0),
+                "CBOR" => (format!("{j}.beforeorder"), 1.0),
+                "CAOR" => (format!("{j}.afterorder"), 1.0),
+                "CBDX" | "CBDY" | "CADX" | "CADY" => (
+                    format!(
+                        "{j}.{}{}",
+                        if mop.starts_with("CB") {
+                            "before"
+                        } else {
+                            "after"
+                        },
+                        u8::from(mop.ends_with('Y'))
+                    ),
+                    unit,
+                ),
+                "CBTX" | "CBTY" | "CBTZ" | "CATX" | "CATY" | "CATZ" => (
+                    format!(
+                        "{j}.{}{}",
+                        if mop.starts_with("CB") {
+                            "before"
+                        } else {
+                            "after"
+                        },
+                        2 + "XYZ".find(&mop[3..]).unwrap_or(0)
+                    ),
+                    1.0,
+                ),
                 "TEMP" => ("temp".to_string(), 1.0),
                 "PRES" => ("pres".to_string(), 1.0),
                 "AFOC" => ("afocal".to_string(), 1.0),

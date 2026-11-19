@@ -30,6 +30,16 @@ pub(crate) enum Set<'a> {
     Swap { gaps: &'a [(String, String)] },
 }
 
+/// 面の前後の傾き偏心の値の名前（before0〜4・after0〜4）の (後か, 値の位置 dx dy tx ty tz)
+fn tilt_slot(k: &str) -> Option<(bool, usize)> {
+    let (after, n) = match k.strip_prefix("before") {
+        Some(n) => (false, n),
+        None => (true, k.strip_prefix("after")?),
+    };
+    let i = n.parse::<usize>().ok().filter(|&i| i < 5)?;
+    Some((after, i))
+}
+
 /// パラメータの名前の説明（3.t → 面 3 の厚さ、G1.shift → G1 の移動）
 pub(crate) fn param_desc(name: &str) -> String {
     let Some((who, k)) = name.trim().rsplit_once('.') else {
@@ -42,6 +52,13 @@ pub(crate) fn param_desc(name: &str) -> String {
             "atype" => tr("Aperture type").into(),
             "stop" => tr("Stop surface").into(),
             "ftype" => tr("Field type").into(),
+            "temp" => tr("Temperature").into(),
+            "pres" => tr("Pressure").into(),
+            "afocal" => tr("Afocal").into(),
+            "apodtype" => tr("Apodization type").into(),
+            "apod" => tr("Apodization factor").into(),
+            "aiming" => tr("Ray aiming").into(),
+            "ropd" => tr("OPD reference").into(),
             _ if n.starts_with("wave") => trf("Wave {}", &[&&n[4..]]),
             _ if n.starts_with("wwt") => trf("Wave {} weight", &[&&n[3..]]),
             _ if n.starts_with("fwt") => trf("Field {} weight", &[&&n[3..]]),
@@ -65,6 +82,27 @@ pub(crate) fn param_desc(name: &str) -> String {
         "semi" => tr("Semi-diameter").into(),
         "ignore" => tr("Ignore this surface").into(),
         "apmax" => tr("Aperture maximum radius").into(),
+        "apmin" => tr("Aperture minimum radius").into(),
+        "apdx" => tr("Aperture decenter X").into(),
+        "apdy" => tr("Aperture decenter Y").into(),
+        "aptype" => tr("Aperture type").into(),
+        "beforeorder" => tr("Order before the surface").into(),
+        "afterorder" => tr("Order after the surface").into(),
+        b if tilt_slot(b).is_some() => {
+            let (after, i) = tilt_slot(b).unwrap_or_default();
+            let what = [
+                tr("Decenter X"),
+                tr("Decenter Y"),
+                tr("Tilt X"),
+                tr("Tilt Y"),
+                tr("Tilt Z"),
+            ][i];
+            if after {
+                trf("{} after the surface", &[&what])
+            } else {
+                trf("{} before the surface", &[&what])
+            }
+        }
         "material" => tr("Material").into(),
         "shift" => tr("Shift").into(),
         a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => {

@@ -2412,6 +2412,11 @@ apodization type {v} (0 to 2)	アポダイゼーションの種類 {v}（0〜2�
 apodization factor {v}	アポダイゼーションの係数 {v}
 ray aiming {v} (0 to 2)	光線エイミング {v}（0〜2）
 OPD reference {v} (0 to 3)	OPD の基準 {v}（0〜3）
+{}: surface has no aperture	{}: 面に開口がありません
+{}: the tilt and decenter after the surface reverses the one before	{}: 面の後のチルト・偏心は面の前のものを戻す設定です
+{}: aperture type {v} (0 to 2 can be set)	{}: 開口の種類 {v}（設定できるのは 0〜2）
+{}: surface has no circular aperture or obscuration (its radii are kept)	{}: 面に円形の開口も遮蔽もありません（その半径を使います）
+{}: a coordinate break has no surface tilt or decenter	{}: 座標ブレークには面のチルト・偏心がありません
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません
 {}: surface has no circular aperture or obscuration	{}: 面に円形の開口も遮蔽もありません
 {}: set a material row by names	{}: 材料の行は名前で設定してください

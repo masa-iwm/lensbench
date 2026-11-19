@@ -93,6 +93,8 @@ pub(super) fn config_table(
             ("SDIA", Some(_)) => Some(Kind::Semi),
             ("IGNR", Some(_)) => Some(Kind::Ignore),
             ("APMX", Some(_)) => Some(Kind::ApMax),
+            // 開口の最小の半径・偏心・種類、面の前・後の傾き偏心の値と順序
+            (o, Some(_)) if surface_table_kind(o).is_some() => surface_table_kind(o),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
             ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
                 lensbench_core::pickup::kind_of_pick(
@@ -155,6 +157,65 @@ fn material_pickers(raw: &Raw, j: usize) -> Vec<usize> {
             false
         })
         .collect()
+}
+
+/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
+/// 値の位置は dx dy tx ty tz の順）の種類（[`lensbench_core::param::set_surface_table_value`] で入れる種類）
+fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
+    use lensbench_core::param::Kind;
+    match op {
+        "APMN" => return Some(Kind::ApMin),
+        "APDX" => return Some(Kind::ApDx),
+        "APDY" => return Some(Kind::ApDy),
+        "APTP" => return Some(Kind::ApType),
+        "CBOR" => return Some(Kind::BeforeOrder),
+        "CAOR" => return Some(Kind::AfterOrder),
+        _ => {}
+    }
+    let i = ["DX", "DY", "TX", "TY", "TZ"]
+        .iter()
+        .position(|t| op.get(2..) == Some(*t))? as u8;
+    match op.get(..2)? {
+        "CB" => Some(Kind::Before(i)),
+        "CA" => Some(Kind::After(i)),
+        _ => None,
+    }
+}
+
+/// 読む構成の多重構成の値のうち、面・系の値を作るときに見ない演算子（温度・気圧・アフォーカル・アポダイゼーション・光線
+/// エイミング・OPD の基準と、[`surface_table_kind`] の面の値）を rx に入れる（.zmx を今の構成でない構成で読むとき）
+pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Prescription) {
+    use lensbench_core::pupil::Apodization;
+    use lensbench_core::system::Aiming;
+    let num = |op: &str, p1: i64| ops.get(&(op.to_string(), p1)).and_then(|v| fv(v).ok());
+    if let Some(v) = num("TEMP", 0) {
+        rx.temperature = v;
+    }
+    if let Some(v) = num("PRES", 0) {
+        rx.pressure = v;
+    }
+    if let Some(v) = num("AFOC", 0) {
+        rx.afocal = v != 0.0;
+    }
+    if num("APDT", 0).is_some() || num("APDF", 0).is_some() {
+        let t = num("APDT", 0).map_or(rx.apodization.os_code(), |v| v as i64);
+        let g = num("APDF", 0).unwrap_or(rx.apodization.factor());
+        rx.apodization = Apodization::from_os_code(t, g);
+    }
+    if let Some(v) = num("RAAM", 0) {
+        rx.aiming = Aiming::from_os_code(v as i64);
+    }
+    if let Some(v) = num("OPDR", 0) {
+        rx.ropd = v as i64;
+    }
+    for ((op, p1), v) in ops {
+        let (Some(k), Ok(j), Ok(v)) = (surface_table_kind(op), usize::try_from(*p1), fv(v)) else {
+            continue;
+        };
+        if let Some(d) = rx.surfaces.get_mut(j) {
+            lensbench_core::param::set_surface_table_value(d, k, v);
+        }
+    }
 }
 
 /// 系の値の演算子のパラメータの種類（番号 1 は波長・視野の番号、1 から）

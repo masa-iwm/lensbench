@@ -221,6 +221,72 @@ fn analytic_jacobian_matches_fd() {
     }
 }
 
+/// OPD の基準「無限遠」（半径が無限大の参照球）の OPD・波面の項と、アフォーカル像空間（角度）のスポット・重心の項の
+/// 解析的な微分も差分と合う
+#[test]
+fn analytic_jacobian_far_reference_and_afocal() {
+    for name in ["A0", "A3"] {
+        let s = load(name);
+        let field = FieldSel::Index(s.fields.len() - 1);
+        let mut far = s.clone();
+        far.edit_raw(|rx| {
+            rx.ropd = 1;
+            Ok(())
+        })
+        .unwrap();
+        for kind in [
+            TermKind::Opd {
+                field,
+                wave: None,
+                px: 0.3,
+                py: 0.7,
+                target: 0.0,
+            },
+            TermKind::Wavefront {
+                field,
+                wave: None,
+                rings: 3,
+                reference: RmsRef::Centroid,
+                quad: Default::default(),
+            },
+        ] {
+            check_jac(name, &far, kind);
+        }
+        let mut afocal = s.clone();
+        afocal
+            .edit_raw(|rx| {
+                rx.afocal = true;
+                Ok(())
+            })
+            .unwrap();
+        for reference in [RmsRef::Centroid, RmsRef::Chief] {
+            check_jac(
+                name,
+                &afocal,
+                TermKind::Spot {
+                    field,
+                    wave: None,
+                    rings: 3,
+                    reference,
+                    quad: Default::default(),
+                    axis: Default::default(),
+                },
+            );
+        }
+        check_jac(
+            name,
+            &afocal,
+            TermKind::Centroid {
+                field,
+                wave: None,
+                rings: 3,
+                y: true,
+                target: 0.0,
+            },
+        );
+    }
+}
+
 /// 像面の手前の厚さと絞りの後の傾き・偏心をずらした系を、元の評価関数の値以下まで戻す
 #[test]
 fn dls_recovers_perturbed() {
