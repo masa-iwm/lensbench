@@ -12,9 +12,19 @@ const RADIAL: usize = 24;
 const ANGULAR: usize = 32;
 
 pub(super) fn check(i: usize, k: &TermKind, s: &System) -> Result<()> {
-    let TermKind::Volume { surf, to, .. } = k else {
+    let TermKind::Volume {
+        surf,
+        to,
+        mass,
+        cylinder,
+        ..
+    } = k
+    else {
         unreachable!("not a volume term");
     };
+    if *mass && *cylinder {
+        invalid!("term {i}: mass and cylinder of a volume term can't go together");
+    }
     if *surf == 0 || surf > to || *to >= s.image() {
         invalid!(
             "term {i}: volume of surfaces {surf} to {to} (1 to {})",
@@ -30,6 +40,7 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
         to,
         mass,
         clear,
+        cylinder,
         target,
     } = k
     else {
@@ -38,6 +49,29 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
     // ミラーの後の向き・座標ブレークを挟む要素は OpticStudio で確かめていない
     if mirror_in(s, 1, *to + 1) {
         invalid!("volume of surfaces {surf} to {to}: systems with mirrors are not supported yet");
+    }
+    let rad = |i: usize| -> Result<f64> {
+        if *clear {
+            Ok(s.surfaces[i].semi)
+        } else {
+            Ok(surface_value(s, i, SurfQ::MechDiam, 0.0, 0.0, s.primary)? / 2.0)
+        }
+    };
+    if *cylinder {
+        let mut r: f64 = 0.0;
+        let mut len: f64 = 0.0;
+        for j in *surf..=*to + 1 {
+            r = r.max(rad(j)?);
+            if j <= *to {
+                len += s.surfaces[j].t;
+            }
+        }
+        // mm³ → cm³
+        let v = std::f64::consts::PI * r * r * len.abs() / 1000.0;
+        if !v.is_finite() {
+            invalid!("the volume of surfaces {surf} to {to} is not finite");
+        }
+        return Ok((vec![v - target], None));
     }
     let mut v = 0.0;
     for j in *surf..=*to {
@@ -54,13 +88,6 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
             }
         } else {
             1.0
-        };
-        let rad = |i: usize| -> Result<f64> {
-            if *clear {
-                Ok(s.surfaces[i].semi)
-            } else {
-                Ok(surface_value(s, i, SurfQ::MechDiam, 0.0, 0.0, s.primary)? / 2.0)
-            }
         };
         let r = rad(j)?.max(rad(j + 1)?);
         // mm³ → cm³

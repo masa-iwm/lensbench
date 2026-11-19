@@ -444,6 +444,8 @@ pub enum TermKind {
         to: usize,
         mass: bool,
         clear: bool,
+        /// 面 surf から to + 1 を包む最小の円柱（頂点の間の厚みの和 × π 半径の最大²、OpticStudio の CVOL）
+        cylinder: bool,
         target: f64,
     },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
@@ -691,10 +693,12 @@ pub enum ParaxQ {
     /// ペッツバール和の曲率 −n′ Σ (n′ − n) c / (n n′) [1/レンズ単位]（PETC）と、その逆数の半径（PETZ）
     Petc,
     Petz,
+    /// 波長 [µm]（WLEN。`wave` の波長、既定は主波長）
+    Wlen,
 }
 
 impl ParaxQ {
-    pub const ALL: [ParaxQ; 17] = [
+    pub const ALL: [ParaxQ; 18] = [
         ParaxQ::Efl,
         ParaxQ::Pmag,
         ParaxQ::Enpp,
@@ -712,6 +716,7 @@ impl ParaxQ {
         ParaxQ::Linv,
         ParaxQ::Petc,
         ParaxQ::Petz,
+        ParaxQ::Wlen,
     ];
     pub fn parse(s: &str) -> Result<ParaxQ> {
         let t = s.trim().to_ascii_lowercase();
@@ -744,6 +749,7 @@ impl ParaxQ {
             ParaxQ::Linv => "linv",
             ParaxQ::Petc => "petc",
             ParaxQ::Petz => "petz",
+            ParaxQ::Wlen => "wlen",
         }
     }
     /// 波長 wave（0 始まり、None は主波長）を主波長にした系の値。主波長を変えた系を作れなければ NaN
@@ -765,11 +771,17 @@ impl ParaxQ {
             _ => self.value(s),
         }
     }
-    /// 波長を選べる量（efl・pimh・amag・linv・petc・petz。OpticStudio の Wave）
+    /// 波長を選べる量（efl・pimh・amag・linv・petc・petz・wlen。OpticStudio の Wave）
     pub fn has_wave(&self) -> bool {
         matches!(
             self,
-            ParaxQ::Efl | ParaxQ::Pimh | ParaxQ::Amag | ParaxQ::Linv | ParaxQ::Petc | ParaxQ::Petz
+            ParaxQ::Efl
+                | ParaxQ::Pimh
+                | ParaxQ::Amag
+                | ParaxQ::Linv
+                | ParaxQ::Petc
+                | ParaxQ::Petz
+                | ParaxQ::Wlen
         )
     }
     /// 波長 w で近軸光線を追って求める量（主波長の入射瞳・EPD のまま。OpticStudio 26.1 の実測どおり）
@@ -782,6 +794,7 @@ impl ParaxQ {
             s.ptrace(y0, u0, w, None)
         };
         Some(match self {
+            ParaxQ::Wlen => s.wavelengths[w],
             ParaxQ::Amag => {
                 let (_, uc) = chief();
                 uc[img - 1] / p.chief.1[0]

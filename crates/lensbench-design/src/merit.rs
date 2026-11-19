@@ -522,6 +522,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             to: t.to.unwrap_or(t.surf),
             mass: t.mass.unwrap_or(false),
             clear: t.clear.unwrap_or(false),
+            cylinder: t.cylinder.unwrap_or(false),
             target: t
                 .target
                 .ok_or("volume term has no target (or min and max)")?,

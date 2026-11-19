@@ -167,6 +167,8 @@ impl Rows<'_> {
 fn os_scale(op: &str) -> Option<f64> {
     match op {
         "GENC" | "DENC" => Some(1e3),
+        // CVOL は mm³、項は cm³
+        "CVOL" => Some(1e3),
         _ => None,
     }
 }

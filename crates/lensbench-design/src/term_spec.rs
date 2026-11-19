@@ -287,6 +287,9 @@ pub struct VolumeSpec {
     pub mass: Option<bool>,
     /// 外径をクリア半径でとる。既定は玉の半径（mech_diam の半分）
     pub clear: Option<bool>,
+    /// 要素の形でなく、面 surf から to + 1 を包む最小の円柱の体積 [cm³]（長さは頂点の間の厚みの和、半径は面の半径の最大。
+    /// 矢高は入れない）。mass とは使わない
+    pub cylinder: Option<bool>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }

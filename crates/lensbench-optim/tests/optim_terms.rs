@@ -727,6 +727,7 @@ fn volume_and_total_terms() {
                 to: 1,
                 mass: false,
                 clear: true,
+                cylinder: false,
                 target: 0.0,
             },
         )

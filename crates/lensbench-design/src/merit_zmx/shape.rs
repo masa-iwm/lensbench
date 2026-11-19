@@ -86,6 +86,31 @@ pub(super) fn kind(r: &MeritRow, unit: f64, image: usize) -> Result<Map<String, 
             }
             m.insert("target".into(), json!(target));
         }
+        // CVOL: Int1 から Int2 の面を包む最小の円柱の体積 [レンズ単位³]（頂点の位置と半径から、矢高は入れない。Data2 の Mode 0 は
+        // 玉の半径、1 はクリア半径）。lensbench の項は面 Int1 から Int2 − 1 の要素を包む円柱の cm³
+        "CVOL" => {
+            let s1 = int(INT1)?;
+            let s2 = int(INT2)?;
+            if s1 < 1 || s2 <= s1 || s2 as usize > image - 1 {
+                return Err(format!(
+                    "surfaces {s1} to {s2} (the volume of one surface is 0)"
+                ));
+            }
+            m.insert("type".into(), json!("volume"));
+            m.insert("cylinder".into(), json!(true));
+            m.insert("surf".into(), json!(s1));
+            if s2 - 1 != s1 {
+                m.insert("to".into(), json!(s2 - 1));
+            }
+            match int(data(2))? {
+                0 => {}
+                1 => {
+                    m.insert("clear".into(), json!(true));
+                }
+                k => return Err(format!("mode {k} (0 or 1)")),
+            }
+            m.insert("target".into(), json!(target * unit.powi(3) * 1e-3));
+        }
         _ => unreachable!("not a shape row"),
     }
     Ok(m)

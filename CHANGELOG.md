@@ -117,6 +117,8 @@
 - **像の質の項**: `mtf` に `kind`（square 矩形波の応答・geometric 幾何 MTF・huygens Huygens MTF）と `dir: "avg"`（平均）を、
   新しい種類 `energy`（包囲エネルギーの大きさ・割合）・`strehl`（ストレール比）・`illum`（相対照度・実効 F ナンバー）を足した。.zmx の
   MTFA・MSWT・MSWS・MSWA・GMTT・GMTS・GMTA・MTHT・MTHS・MTHA・GENC・GENF・DENC・DENF・STRH・RELI・EFNO を読み書きする
+- **波長・円柱の体積の項と、評価関数の流れの行**: `paraxial` の `q` に `wlen`（波長）を、`volume` に `cylinder`（面を包む円柱の体積）を
+  足した。.zmx の WLEN・CVOL を読み書きし、ENDX・GOTO（後の行・飛ばす行を項にしない）と FDMO・FDRE（視野を変える）を読む
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

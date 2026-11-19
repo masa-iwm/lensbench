@@ -1627,7 +1627,7 @@ a thickness term with each needs min or max	each の厚みの項には min か m
 only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)	書けるのは 1 面のクリア半径での縁の厚みだけです（ETGT・ETLT・ETVA）
 this operand is not supported	このオペランドには対応していません
 wavelength {w} (lensbench reads the wavelength only for EFFL, PIMH, AMAG, LINV, PETZ and PETC)	波長 {w}（lensbench が波長を読むのは EFFL・PIMH・AMAG・LINV・PETZ・PETC だけです）
-term {i}: wave goes with efl, pimh, amag, linv, petc and petz, not {}	項 {i}: wave は efl・pimh・amag・linv・petc・petz の項と使います（{} には使えません）
+term {i}: wave goes with efl, pimh, amag, linv, petc, petz and wlen, not {}	項 {i}: wave は efl・pimh・amag・linv・petc・petz・wlen の項と使います（{} には使えません）
 a target other than 0 ({target}) can't be written as a spot or wavefront term	0 でない目標（{target}）はスポット・波面の項で表せません
 MTF frequencies in lens units other than mm are not checked	mm 以外のレンズ単位の MTF の周波数は確かめていません
 Zernike type {k} (only Fringe 0 and Standard 1)	Zernike の種類 {k}（Fringe 0・Standard 1 だけです）

@@ -1304,6 +1304,13 @@
                 "null"
               ]
             },
+            "cylinder": {
+              "description": "要素の形でなく、面 surf から to + 1 を包む最小の円柱の体積 [cm³]（長さは頂点の間の厚みの和、半径は面の半径の最大。\n矢高は入れない）。mass とは使わない",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "mass": {
               "description": "硝材の要素だけの質量 [g]（密度はカタログ）。既定は体積",
               "type": [

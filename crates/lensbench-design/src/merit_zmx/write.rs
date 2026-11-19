@@ -50,7 +50,7 @@ pub fn rows_from_terms(
         }
         let weight = t.get("weight").and_then(Value::as_f64).unwrap_or(1.0);
         // 値が µm の行は、mm の項と同じ釣り合いになるよう重みを 1e-6 倍（読むときの逆）
-        let weight = if ["GENC", "DENC"].contains(&out.0) {
+        let weight = if ["GENC", "DENC", "CVOL"].contains(&out.0) {
             weight * 1e-6
         } else {
             weight
@@ -709,6 +709,16 @@ fn row_of(
             let s1 = num("surf").unwrap_or(1.0);
             let s2 = num("to").unwrap_or(s1);
             let clear = t.get("clear") == Some(&Value::Bool(true));
+            if t.get("cylinder") == Some(&Value::Bool(true)) {
+                // CVOL は面 Surf1 から Surf2 を包む円柱の mm³
+                let p = [s1, s2 + 1.0, 0.0, f64::from(clear), 0.0, 0.0, 0.0, 0.0];
+                let b = match bound(0.0) {
+                    Bound::Target(x) => Bound::Target(x * 1e3),
+                    Bound::Side(o, x) => Bound::Side(o, x * 1e3),
+                    b => b,
+                };
+                return Ok(("CVOL", p, b));
+            }
             let op = if t.get("mass") == Some(&Value::Bool(true)) {
                 "TMAS"
             } else {

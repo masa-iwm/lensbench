@@ -12,6 +12,7 @@
 
 use lensbench_formats::zmx::merit::{MeritFunction, MeritRow};
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 
 mod calc;
 mod shape;
@@ -115,6 +116,7 @@ const PARAXIAL: &[(&str, &str, bool)] = &[
     ("LINV", "linv", true),
     ("PETZ", "petz", true),
     ("PETC", "petc", false),
+    ("WLEN", "wlen", false),
 ];
 
 /// 1 本の光線の演算子と lensbench の量、長さか
@@ -268,7 +270,10 @@ fn kind_of(
         m.insert("type".into(), json!("paraxial"));
         m.insert("q".into(), json!(q));
         let reads = matches!(*q, "efl" | "pimh" | "amag" | "linv" | "petz" | "petc");
-        if w != 0 && w as usize != primary {
+        if *q == "wlen" {
+            // WLEN の Wave 0 は波長 1（OpticStudio 26.1 で実測）
+            m.insert("wave".into(), json!(w.max(1)));
+        } else if w != 0 && w as usize != primary {
             if !reads || w < 0 {
                 return Err(format!(
                     "wavelength {w} (lensbench reads the wavelength only for EFFL, PIMH, AMAG, LINV, PETZ and PETC)"
@@ -455,7 +460,7 @@ fn kind_of(
             let key = if op.starts_with("MN") { "min" } else { "max" };
             m.insert(key.into(), json!(target * unit));
         }
-        "TTGT" | "TTLT" | "TTVA" | "PMGT" | "PMLT" | "PMVA" | "VOLU" | "TMAS" => {
+        "TTGT" | "TTLT" | "TTVA" | "PMGT" | "PMLT" | "PMVA" | "VOLU" | "TMAS" | "CVOL" => {
             return shape::kind(r, unit, image)
         }
         // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
@@ -1015,12 +1020,16 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         }
         row_config.push(config);
     }
+    let flow = flow(&mf.rows, &mut cx);
     // Wizard の光線の行は視野ごとのスポット・波面の項にまとめる
     let mut wiz = wizard::group(&mf.rows, &row_config, cx.unit, cx.sys.symmetric);
     cx.notes.append(&mut wiz.notes);
     let mut terms = Vec::new();
     let mut sources = Vec::new();
     for (i, r) in mf.rows.iter().enumerate() {
+        let Some(fields) = &flow[i] else {
+            continue;
+        };
         if wiz.used[i] {
             for m in wiz.terms.remove(&i).unwrap_or_default() {
                 terms.push(Value::Object(m));
@@ -1124,6 +1133,8 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
             let t = r.num(TARGET).unwrap_or(0.0);
             let t = if um {
                 t * 1e-3
+            } else if src.op == "CVOL" {
+                t * cx.unit.powi(3) * 1e-3
             } else if len {
                 t * cx.unit
             } else {
@@ -1135,6 +1146,9 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         // 曲率（1/レンズ単位）の残差は逆に、重みにレンズ単位の 2 乗をかける
         let weight = if um {
             weight * 1e6
+        } else if src.op == "CVOL" {
+            // レンズ単位³ を cm³ に
+            weight / (cx.unit.powi(3) * 1e-3).powi(2)
         } else if len {
             weight / (cx.unit * cx.unit)
         } else if ["CVGT", "CVLT", "CVVA", "POWR"].contains(&src.op.as_str()) {
@@ -1146,7 +1160,11 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         if config != 1 {
             m.insert("config".into(), json!(config));
         }
-        terms.push(Value::Object(m));
+        let mut v = Value::Object(m);
+        if !fields.is_empty() {
+            modified_fields(&mut v, fields);
+        }
+        terms.push(v);
         sources.push(r.row);
     }
     ZmxMerit {
@@ -1154,6 +1172,80 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         sources,
         notes: cx.notes,
         configs,
+    }
+}
+
+/// 行ごとの、評価する行か（ENDX の後・GOTO で飛ばす行は None）と、その行で FDMO が変えている視野（番号 → 正規化視野）。
+/// OpticStudio 26.1 で実測: ENDX の後の行は 0。GOTO n は自分の行から行 n の手前までを飛ばす（n が自分の行以下なら何も
+/// 飛ばさない）。FDMO は FDRE（または評価の終わり）まで、視野の番号で指す行の視野を変え、Hx・Hy を直接書いた行は変えない
+fn flow(rows: &[MeritRow], cx: &mut Ctx) -> Vec<Option<BTreeMap<i64, (f64, f64)>>> {
+    let mut out = Vec::with_capacity(rows.len());
+    let mut fields = BTreeMap::new();
+    let mut skip_to = 0usize;
+    let mut end = false;
+    for (i, r) in rows.iter().enumerate() {
+        if end || i + 1 < skip_to {
+            out.push(None);
+            continue;
+        }
+        let int = |k: usize| r.int(k).map_err(|e| e.to_string());
+        let num = |k: usize| r.num(k).map_err(|e| e.to_string());
+        match r.op.as_str() {
+            "ENDX" => end = true,
+            "GOTO" => match int(INT1) {
+                Ok(n) if n as usize > i + 1 => skip_to = n as usize,
+                Ok(_) => {}
+                Err(e) => cx.skip(r, &e),
+            },
+            "FDMO" => {
+                let f = (|| -> Result<(i64, f64, f64, bool), String> {
+                    let vig = (3..=6).any(|k| num(data(k)).unwrap_or(0.0) != 0.0);
+                    Ok((int(INT1)?, num(data(1))?, num(data(2))?, vig))
+                })();
+                match f {
+                    Ok((f, hx, hy, vig)) => {
+                        if vig {
+                            cx.notes.push(format!(
+                                ".zmx merit function row {} (FDMO, line {}): the vignetting factors are not used",
+                                r.row, r.line
+                            ));
+                        }
+                        fields.insert(f, (hx, hy));
+                    }
+                    Err(e) => cx.skip(r, &e),
+                }
+            }
+            "FDRE" => match int(INT1) {
+                Ok(f) => {
+                    fields.remove(&f);
+                }
+                Err(e) => cx.skip(r, &e),
+            },
+            _ => {}
+        }
+        if matches!(r.op.as_str(), "ENDX" | "GOTO" | "FDMO" | "FDRE") {
+            out.push(None);
+        } else {
+            out.push(Some(fields.clone()));
+        }
+    }
+    out
+}
+
+/// 項（と calc の引数の項）の視野の番号のうち FDMO が変えたものを正規化視野にする
+fn modified_fields(v: &mut Value, fields: &BTreeMap<i64, (f64, f64)>) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m.iter_mut() {
+                let hit = x.as_i64().and_then(|n| fields.get(&n));
+                match hit {
+                    Some(&(hx, hy)) if k == "field" || k == "reference" => *x = json!([hx, hy]),
+                    _ => modified_fields(x, fields),
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| modified_fields(x, fields)),
+        _ => {}
     }
 }
 

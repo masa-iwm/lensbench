@@ -220,6 +220,18 @@ fn calc_rows_use_the_row_units() {
     assert_eq!(a["args"][1], json!(1e3));
 }
 
+/// CVOL（mm³、項は cm³）を参照する計算の行も mm³ に直す
+#[test]
+fn calc_rows_use_cvol_units() {
+    let rows = ["CVOL 1 3 0 0 0 0 0 0 0 0", "OPVA 1 0 0 0 0 0 1 1 0 0"];
+    let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
+    let z = terms_from_zmx(&mf, 2, 9, &ZmxSys::default());
+    assert!(z.notes.is_empty(), "{:?}", z.notes);
+    let a = &z.terms[0]["args"][0];
+    assert_eq!(a["args"][0]["cylinder"], json!(true));
+    assert_eq!(a["args"][1], json!(1e3));
+}
+
 #[test]
 fn calc_rows_stop_growing() {
     // 前の 2 行を足す行を重ねると、入れ子の行の数は倍々に増える。上限を超えた行は注意にする
@@ -409,6 +421,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "ray", "paraxial": true, "surf": 4, "wave": 1, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "nm", "target": 0.1, "weight": 1.0}),
         json!({"type": "paraxial", "q": "linv", "wave": 3, "target": 4.0, "weight": 1.0}),
         json!({"type": "paraxial", "q": "petz", "target": -600.0, "weight": 1.0}),
+        json!({"type": "paraxial", "q": "wlen", "wave": 3, "target": 0.6, "weight": 1.0}),
         json!({"type": "surface", "surf": 2, "q": "power", "wave": 1, "target": 0.01, "weight": 1.0}),
         json!({"type": "surface", "surf": 3, "q": "index", "wave": 3, "target": 1.6, "weight": 1.0}),
         json!({"type": "cardinal", "q": "efl", "from": 1, "to": 3, "wave": null, "target": 40.0, "weight": 1.0}),
@@ -458,6 +471,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "surface", "surf": 1, "q": "param", "param": 2, "target": 0.001, "weight": 1.0}),
         json!({"type": "volume", "surf": 1, "to": 4, "target": 30.0, "weight": 1.0}),
         json!({"type": "volume", "surf": 3, "mass": true, "clear": true, "max": 60.0, "weight": 1.0}),
+        json!({"type": "volume", "surf": 1, "to": 2, "cylinder": true, "target": 30.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0, "weight": 1.0}),
         json!({"type": "ray", "surf": 4, "wave": 2, "field": [0.0, 1.0], "px": 0.0, "py": 1.0, "q": "trar", "target": 0.0, "weight": 1.0}),
         json!({"type": "ray", "wave": 1, "field": [0.0, 0.7], "px": 0.3, "py": 0.5, "q": "anay", "target": 0.0, "weight": 1.0}),

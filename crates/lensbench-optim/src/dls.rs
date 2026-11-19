@@ -806,7 +806,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             if let Some(w) = wave {
                 if !q.has_wave() {
                     invalid!(
-                        "term {i}: wave goes with efl, pimh, amag, linv, petc and petz, not {}",
+                        "term {i}: wave goes with efl, pimh, amag, linv, petc, petz and wlen, not {}",
                         q.name()
                     );
                 }
