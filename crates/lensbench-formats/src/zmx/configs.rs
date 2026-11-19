@@ -41,6 +41,8 @@ pub(super) fn config_table(
         let vals: Vec<Option<f64>> = raw_vals
             .iter()
             .map(|v| v.as_deref().and_then(|x| fv(x).ok()))
+            // 経緯儀の角度（FLTP 4）は x・y の角度で入っているので角度（0）として読む
+            .map(|v| v.map(|x| if op == "FLTP" && x == 4.0 { 0.0 } else { x }))
             .collect();
         // 変わるかは、数なら数で（1 と 1.0 は同じ）、数でなければ書いた文字で見る（GLSS などの名前の値）
         let same =
@@ -57,6 +59,8 @@ pub(super) fn config_table(
             ("THIC", Some(_)) => Some(Kind::Thick),
             ("CRVT", Some(_)) => Some(Kind::Curv),
             ("CONN", Some(_)) => Some(Kind::Conic),
+            ("SDIA", Some(_)) => Some(Kind::Semi),
+            ("IGNR", Some(_)) => Some(Kind::Ignore),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
             ("PRAM", Some(k)) => u8::try_from(parm).ok().and_then(|i| {
                 lensbench_core::pickup::kind_of_pick(

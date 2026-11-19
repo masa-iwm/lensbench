@@ -796,6 +796,8 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
     let d = s.surfaces.get(p.surface()?)?;
     Some(match p.kind {
         Kind::Thick => ("THIC", p.index(), None, id),
+        Kind::Semi => ("SDIA", p.index(), None, id),
+        Kind::Ignore => ("IGNR", p.index(), None, id),
         Kind::Curv => ("CRVT", p.index(), None, id),
         Kind::Radius => ("CRVT", p.index(), None, |r| {
             if r == 0.0 {

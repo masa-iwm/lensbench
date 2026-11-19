@@ -125,14 +125,17 @@ pub(super) fn surface_value(
         SurfQ::Thick => f.t - sag(f, x, y) + sag(&s.surfaces[j + 1], x, y),
         SurfQ::Diam => 2.0 * f.semi,
         SurfQ::MechDiam => {
+            // 無視した面は無いものとして玉をつなぐ（OpticStudio 26.1 の多重構成の IGNR で確かめた）
+            let ign = |i: usize| s.surfaces[i].ignore;
             let (mut a, mut b) = (j, j);
-            while a > 1 && glass(s, a - 1) {
+            while a > 1 && (glass(s, a - 1) || ign(a - 1)) {
                 a -= 1;
             }
-            while b < s.image() && glass(s, b) {
+            while b < s.image() && (glass(s, b) || ign(b)) {
                 b += 1;
             }
-            2.0 * (a..=b).map(|i| s.surfaces[i].semi).fold(0.0, f64::max)
+            let semi = (a..=b).filter(|&i| !ign(i)).map(|i| s.surfaces[i].semi);
+            2.0 * semi.fold(0.0, f64::max)
         }
         SurfQ::Gx | SurfQ::Gy | SurfQ::Gz => {
             let Some(fr) = s.frames().surf[j] else {

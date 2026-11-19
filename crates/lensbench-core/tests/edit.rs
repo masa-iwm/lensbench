@@ -472,6 +472,18 @@ fn configs_aperture_type_and_stop() {
     assert_eq!(c2.surfaces.iter().filter(|d| d.stop).count(), 1);
     let c1 = c2.config(1).unwrap();
     assert_eq!((c1.aperture.0, c1.stop()), (ApertureKind::Epd, 1));
+    s.set_config_row(Param::new(2, Kind::Semi), vec![3.0, 4.0])
+        .unwrap();
+    s.set_config_row(Param::new(2, Kind::Ignore), vec![0.0, 1.0])
+        .unwrap();
+    let c2 = s.config(2).unwrap();
+    assert_eq!(
+        (c2.surfaces[2].semi, c2.surfaces[2].semi_auto),
+        (4.0, false)
+    );
+    assert!(c2.surfaces[2].ignore && !c2.config(1).unwrap().surfaces[2].ignore);
+    // 半直径・面の無視は最適化の変数にできない（表の行だけ）
+    assert!(Kind::Semi.is_table_only() && Kind::Ignore.is_table_only());
     for p in ["atype", "stop", "ftype"] {
         assert_eq!(s.param(p).unwrap().name(), p);
     }
@@ -482,6 +494,15 @@ fn configs_aperture_type_and_stop() {
     assert!(s.set_config_row(sys(Kind::Stop), vec![1.0, 1.5]).is_err());
     assert!(s.set_config_row(sys(Kind::Stop), vec![1.0, 3.0]).is_err());
     assert!(s.set_config_row(sys(Kind::Stop), vec![0.0, 1.0]).is_err());
+    assert!(s
+        .set_config_row(Param::new(2, Kind::Ignore), vec![0.0, 0.5])
+        .is_err());
+    assert!(s
+        .set_config_row(Param::new(0, Kind::Ignore), vec![0.0, 1.0])
+        .is_err());
+    assert!(s
+        .set_config_row(Param::new(2, Kind::Semi), vec![1.0, -1.0])
+        .is_err());
     assert!(s
         .set_config_row(sys(Kind::FieldType), vec![0.0, 4.0])
         .is_err());
@@ -624,4 +645,44 @@ MNUM 2 1\nTHIC 1 1 10 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 1 2 1.0E+01 0 0 0 1 1 1 0 0 \
         .map(|r| r.param.name())
         .collect();
     assert_eq!(names, ["aper"]);
+}
+
+/// 多重構成の FLTP: 経緯儀の角度（4）は角度（0）として表に読む。レンズ単位が mm でなく、角度と高さが構成で入れ替わるとき、
+/// 高さの視野は構成ごとの種類で換算し、行の無い視野（元の種類で換算した XFLN・YFLN を使う）があれば断る
+#[test]
+fn configs_field_type_rows() {
+    let head = |unit: &str, fields: &str| {
+        format!(
+            "VERS 260327 42\nMODE SEQ\nUNIT {unit} X W X CM MR CPMM\nENPD 1\nFTYP 0 0 2 1 0 0 0\nYFLN 0 {fields}\nFWGN 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\nSURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\nMNUM 2 1\n"
+        )
+    };
+    let load = |txt: &str| {
+        let raw = lensbench_formats::zmx::parse_text(txt).unwrap();
+        lensbench_formats::zmx::build(&raw, &Default::default(), &[], None)
+    };
+    // 経緯儀の角度
+    let t =
+        head("MM", "5") + "FLTP 0 1 0 0 0 0 1 1 1 0 0 \"\" 0\nFLTP 0 2 4 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let s = load(&t).unwrap();
+    assert!(
+        s.configs().is_none_or(|c| c.rows.is_empty()),
+        "{:?}",
+        s.configs()
+    );
+    // インチ: 構成 2 は近軸像高、視野 2 の行があれば 25.4 倍
+    let rows = "FLTP 0 1 0 0 0 0 1 1 1 0 0 \"\" 0\nFLTP 0 2 2 0 0 0 1 1 1 0 0 \"\" 0\n\
+YFIE 2 1 5 0 0 0 1 1 1 0 0 \"\" 0\nYFIE 2 2 2 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let s = load(&(head("IN", "5") + rows)).unwrap();
+    let c2 = s.config(2).unwrap();
+    assert_eq!(c2.field_type, FieldType::ParH);
+    assert!((c2.fields[1].y - 50.8).abs() < 1e-12, "{}", c2.fields[1].y);
+    assert_eq!(s.config(1).unwrap().fields[1].y, 5.0);
+    // 行の無い視野があれば断る
+    let rows = "FLTP 0 1 0 0 0 0 1 1 1 0 0 \"\" 0\nFLTP 0 2 1 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let e = load(&(head("IN", "5") + rows)).unwrap_err().to_string();
+    assert!(
+        e.contains("FLTP switches between angles and heights"),
+        "{e}"
+    );
 }

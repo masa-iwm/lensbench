@@ -62,6 +62,8 @@ pub(crate) fn param_desc(name: &str) -> String {
         "tz" => tr("Tilt Z").into(),
         "dn" => tr("index offset").into(),
         "disp" => tr("dispersion change").into(),
+        "semi" => tr("Semi-diameter").into(),
+        "ignore" => tr("Ignore this surface").into(),
         "shift" => tr("Shift").into(),
         a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => {
             trf("r^{} coefficient", &[&&a[1..]])

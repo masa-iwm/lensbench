@@ -40,7 +40,8 @@
   RSCE・RSCH・RWCE・RWCH は `quadrature: "opticstudio"` の項にし、瞳の求積を OpticStudio 26.1 と同じにする（腕 2·Ring 本を
   90° 回して置く。Double Gauss 28 の Ring 2〜6・6 視野・各波長で 1e-10 で一致。Ring 1 の Hx = 0・Hy ≠ 0 の RSCE だけは
   OpticStudio の置き方が分からず数 % 違う。多色の RWCE は波長ごとの傾きの除き方が違い、Ring 2 以上で 1.4e-5、Ring 1 では大きく
-  違う）。lensbench の項の既定（`quadrature: "lensbench"`、腕 4·rings + 2 本）は少ない rings でも収束に近く、Ring が小さいと
+  違う。OpticStudio の RSCE などは面の開口でけらないが、lensbench の項はけった光線を除く。けられのある系では値が違う）。
+  lensbench の項の既定（`quadrature: "lensbench"`、腕 4·rings + 2 本）は少ない rings でも収束に近く、Ring が小さいと
   OpticStudio の値と違う（DG28 の RSCH の Ring 2 で 14%）。評価関数の Wizard の行（DMFS の後の「Operands for field N.」の
   OPDX・TRAR・TRAC・TRAD・TRAE・TRCX・TRCY）は、構成・視野ごとにまとめてスポット・波面の項 1 つ（x+y の行は `axis` が x と y の
   2 つ）にし、重みを行の重みの和にする。瞳の点は DMFS の次の BLNK の設定文から、GQ は `quadrature: "opticstudio"` と `arms`

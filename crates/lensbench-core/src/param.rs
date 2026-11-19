@@ -95,8 +95,11 @@ pub enum Kind {
     FieldW(u8),
     /// 玉・群のパラメータ（付く先は [`Target::Unit`]）
     Unit(UnitKind),
-    /// 半直径（semi-diameter）。ピックアップ・マクロのソルブの量（パラメータには使えない）
+    /// 半直径（semi-diameter）。ピックアップ・マクロのソルブの量と、多重構成の行（.zmx の SDIA。固定の半直径にし、
+    /// 浮動開口の面はその半直径でける）。最適化の変数には使えない
     Semi,
+    /// 面を無視するか（1 で無視、0 で使う）。多重構成の行（.zmx の IGNR）。最適化の変数には使えない
+    Ignore,
     /// 面タイプのパラメータ（.zmx の PARM の番号、1 から）。ピックアップ・マクロのソルブの量（パラメータは
     /// [`Kind::Asph`] などの意味のある名前で）
     Parm(u8),
@@ -139,6 +142,7 @@ impl Kind {
             "objx" => Kind::ObjX,
             "objy" => Kind::ObjY,
             "semi" => Kind::Semi,
+            "ignore" => Kind::Ignore,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -217,6 +221,7 @@ impl Kind {
             Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
             Kind::Unit(u) => u.name().into(),
             Kind::Semi => "semi".into(),
+            Kind::Ignore => "ignore".into(),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -249,6 +254,11 @@ impl Kind {
             self,
             Kind::Semi | Kind::Parm(_) | Kind::Before(_) | Kind::After(_) | Kind::Coating
         )
+    }
+
+    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視）。最適化の変数・微分には使えない
+    pub fn is_table_only(&self) -> bool {
+        matches!(self, Kind::Semi | Kind::Ignore)
     }
 
     /// 傾き偏心の値の位置（dx dy tx ty tz）
@@ -472,7 +482,7 @@ impl System {
         if Param::new(p.index(), p.kind) != p {
             invalid!("parameter {}: the target doesn't match the kind", p.name());
         }
-        if p.kind.is_pick_only() {
+        if p.kind.is_pick_only() && !p.kind.is_table_only() {
             invalid!("{} is a pickup quantity, not a parameter", p.kind.name());
         }
         if p.kind.is_object() {
@@ -635,6 +645,8 @@ impl System {
                 .and_then(|u| u.value(k.name()))
                 .unwrap_or(0.0),
             Kind::Thick => d.t,
+            Kind::Semi => d.semi,
+            Kind::Ignore => f64::from(u8::from(d.ignore)),
             Kind::Dn => d.dn,
             Kind::Disp => d.disp,
             k => {
@@ -880,6 +892,14 @@ impl System {
                 {
                     invalid!("aperture type {v} (0 to 5)");
                 }
+                Kind::Semi if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::Ignore if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
+                Kind::Ignore if p.index() == 0 || p.index() + 1 >= self.surfaces.len() => {
+                    invalid!(
+                        "{}: the object and image surfaces can't be ignored",
+                        p.name()
+                    );
+                }
                 Kind::FieldType
                     if v.fract() != 0.0
                         || crate::system::FieldType::from_os_code(v as i64).is_none() =>
@@ -996,6 +1016,15 @@ impl System {
                     *slot = Some(u);
                 }
                 Kind::Thick => d.t = v,
+                Kind::Semi => {
+                    d.semi = v;
+                    d.semi_auto = false;
+                    // 浮動開口は面の半直径でける
+                    if let crate::surface::Aperture::Floating { semi } = &mut d.ap {
+                        *semi = v;
+                    }
+                }
+                Kind::Ignore => d.ignore = v != 0.0,
                 Kind::Dn => {
                     d.dn = v;
                     index = true;

@@ -1813,7 +1813,12 @@
         },
         {
           "const": "Semi",
-          "description": "半直径（semi-diameter）。ピックアップ・マクロのソルブの量（パラメータには使えない）",
+          "description": "半直径（semi-diameter）。ピックアップ・マクロのソルブの量と、多重構成の行（.zmx の SDIA。固定の半直径にし、\n光線はけらない）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Ignore",
+          "description": "面を無視するか（1 で無視、0 で使う）。多重構成の行（.zmx の IGNR）。最適化の変数には使えない",
           "type": "string"
         },
         {

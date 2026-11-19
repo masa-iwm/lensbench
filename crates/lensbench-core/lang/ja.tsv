@@ -152,7 +152,7 @@ no merit function terms	メリットファンクションの項がありませ�
 must be 0 or more ({v})	0 以上に（{v}）
 damping must be a positive number ({})	damping は正の数に（{}）
 variable {q}: moving the object point is not system data	変数 {q}: 物点の移動はシステムのデータではありません
-variable {q}: a system value is not a variable	変数 {q}: システムの値は変数にできません
+variable {q}: {} is not a variable	変数 {q}: {} は変数にできません
 variable {q}: range [{}, {}]	変数 {q}: 範囲 [{}, {}]
 variable {q}: no configuration it acts on	変数 {q}: 効く構成がありません
 variable {q}: the same parameter twice in overlapping configurations	変数 {q}: 同じパラメータが重なる構成で 2 回
@@ -622,7 +622,7 @@ a lens with a spider aperture of an odd number of arms is not reversed	アーム
 reversing a lens with a mirror or coordinate break	ミラー・座標ブレークを含むレンズの反転
 the rebuilt system has no stop	組み直したシステムに絞りがありません
 object shift {} with an object at infinity	無限遠物体で物点の移動 {}
-no derivative by system value {}	システムの値 {} の微分はありません
+no derivative by {}	{} の微分はありません
 internal error: lens or group {} must be expanded to surface parameters first	内部エラー: レンズ・群の {} は面のパラメータに展開してから
 object distance of an object at infinity	無限遠物体の物体距離
 analytic derivatives of a system with ZPL macro solves on parameters	パラメータの ZPL マクロのソルブがあるシステムの解析的な微分
@@ -2368,6 +2368,9 @@ surface {k} has no position (ignored)	面 {k} は位置がありません（無�
 primary wavelength {v} (1 to {})	主波長 {v}（1〜{}）
 aperture value {v}	開口の値 {v}
 aperture type {v} (0 to 5)	開口の種類 {v}（0〜5）
+{} = {v} (0 or 1)	{} = {v}（0 か 1）
+{}: the object and image surfaces can't be ignored	{}: 物体面と像面は無視できません
 stop surface {v} (1 to {last})	絞りの面 {v}（1〜{last}）
+configuration {c}: FLTP switches between angles and heights but field {} has no {op} row (lens unit {unit})	構成 {c}: FLTP が角度と高さで入れ替わりますが、視野 {} に {op} の行がありません（レンズ単位 {unit}）
 field type {v} (0 to 3)	視野の種類 {v}（0〜3）
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません

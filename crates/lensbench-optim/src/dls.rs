@@ -257,8 +257,8 @@ impl Problem {
             if v.param.kind.is_object() {
                 invalid!("variable {q}: moving the object point is not system data");
             }
-            if v.param.kind.is_system_value() {
-                invalid!("variable {q}: a system value is not a variable");
+            if v.param.kind.is_system_value() || v.param.kind.is_table_only() {
+                invalid!("variable {q}: {} is not a variable", v.param.name());
             }
             if !(v.lo <= v.hi) {
                 invalid!("variable {q}: range [{}, {}]", v.lo, v.hi);

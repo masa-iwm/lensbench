@@ -322,8 +322,12 @@ fn params_carry_their_target() {
         kind: Kind::Thick,
     };
     assert!(s.check_param(bad).is_err());
-    // ピックアップ・マクロのソルブだけの量（半直径・PARM の番号・前後の傾き偏心・膜）はパラメータにならない
-    for n in ["2.semi", "2.p1", "2.before0", "2.coating"] {
+    // ピックアップ・マクロのソルブだけの量（PARM の番号・前後の傾き偏心・膜）はパラメータにならない
+    for n in ["2.p1", "2.before0", "2.coating"] {
         assert!(s.param(n).is_err(), "{n}");
+    }
+    // 半直径・面の無視は多重構成の表の行だけ（最適化の変数・微分には使えない）
+    for n in ["2.semi", "2.ignore"] {
+        assert!(s.param(n).unwrap().kind.is_table_only(), "{n}");
     }
 }

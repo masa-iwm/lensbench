@@ -139,6 +139,39 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
             .map(|v| v as i64)
             .unwrap_or(satp0)
     };
+    // 構成ごとの視野の種類（XFIE・YFIE は高さなら長さ）。経緯儀の角度 4 は角度
+    let fltp_of = |c: i64| -> i64 {
+        raw.mce
+            .iter()
+            .find(|m| m.0 == "FLTP" && m.2 == c)
+            .and_then(|m| fv(&m.3).ok())
+            .map(|v| v as i64)
+            .unwrap_or(ftyp0)
+    };
+    // 行の無い視野の値は XFLN・YFLN（元の種類で換算した）を使うので、角度と高さが入れ替わる構成で行の無い視野があれば断る
+    let ncfg = raw.mce.iter().map(|m| m.2).max().unwrap_or(0);
+    for c in 1..=ncfg {
+        if matches!(fltp_of(c), 1..=3) == height_fields {
+            continue;
+        }
+        for (op, key) in [("XFIE", "XFLN"), ("YFIE", "YFLN")] {
+            let base = r
+                .sysl
+                .get(key)
+                .and_then(|v| v.first())
+                .cloned()
+                .unwrap_or_default();
+            for (i, x) in base.iter().enumerate() {
+                let row = raw
+                    .mce
+                    .iter()
+                    .any(|m| m.0 == op && m.1 == i as i64 + 1 && m.2 == c);
+                if !row && fv(x).unwrap_or(0.0) != 0.0 {
+                    invalid!("configuration {c}: FLTP switches between angles and heights but field {} has no {op} row (lens unit {unit})", i + 1);
+                }
+            }
+        }
+    }
     let typs: Vec<String> = raw
         .surfs
         .iter()
@@ -148,7 +181,7 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         let k = match op.as_str() {
             "THIC" | "SDIA" | "APMX" => f,
             "CRVT" => 1.0 / f,
-            "XFIE" | "YFIE" if height_fields => f,
+            "XFIE" | "YFIE" if matches!(fltp_of(*c), 1..=3) => f,
             // 入射瞳径・浮動の絞りの半径は長さ、F 値・NA・コーン角はそのまま
             "APER" => match satp_of(*c) {
                 0 | 3 => f,
