@@ -463,13 +463,16 @@ fn configs_aperture_type_and_stop() {
     s.set_config_row(sys(Kind::ApertureType), vec![0.0, 4.0])
         .unwrap();
     s.set_config_row(sys(Kind::Stop), vec![1.0, 2.0]).unwrap();
+    s.set_config_row(sys(Kind::FieldType), vec![0.0, 2.0])
+        .unwrap();
     let c2 = s.config(2).unwrap();
+    assert_eq!(c2.field_type, FieldType::ParH);
     assert_eq!(c2.aperture.0, ApertureKind::Pwfn);
     assert_eq!(c2.stop(), 2);
     assert_eq!(c2.surfaces.iter().filter(|d| d.stop).count(), 1);
     let c1 = c2.config(1).unwrap();
     assert_eq!((c1.aperture.0, c1.stop()), (ApertureKind::Epd, 1));
-    for p in ["atype", "stop"] {
+    for p in ["atype", "stop", "ftype"] {
         assert_eq!(s.param(p).unwrap().name(), p);
     }
     // 番号の外・整数でない値・物体面と像面は絞りにできない
@@ -479,6 +482,9 @@ fn configs_aperture_type_and_stop() {
     assert!(s.set_config_row(sys(Kind::Stop), vec![1.0, 1.5]).is_err());
     assert!(s.set_config_row(sys(Kind::Stop), vec![1.0, 3.0]).is_err());
     assert!(s.set_config_row(sys(Kind::Stop), vec![0.0, 1.0]).is_err());
+    assert!(s
+        .set_config_row(sys(Kind::FieldType), vec![0.0, 4.0])
+        .is_err());
 }
 
 /// 名前で面の値を変える: ピックアップ・ソルブで決まる値はエラー、値の読み出しと往復

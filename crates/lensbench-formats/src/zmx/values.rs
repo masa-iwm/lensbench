@@ -170,7 +170,7 @@ pub(super) struct Fields {
 
 pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
     let tele = fop(ops, "TELE", 0, *ftyp.get(1).unwrap_or(&0) as f64) != 0.0;
-    let typ = match ftyp[0] {
+    let typ = match fop(ops, "FLTP", 0, ftyp[0] as f64) as i64 {
         0 | 4 => FieldType::Angle, // 経緯儀: ファイルには x・y の角度で入っている
         1 => FieldType::ObjH,
         2 => FieldType::ParH,

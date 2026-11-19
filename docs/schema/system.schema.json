@@ -1697,7 +1697,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる\n（光源の波長のずれの公差用。最適化の変数・多重構成の行には使えない）",
+          "description": "系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる\n（光源の波長のずれの公差・多重構成の行（.zmx の WAVE）用。最適化の変数には使えない）",
           "properties": {
             "Wave": {
               "format": "uint8",
@@ -1745,6 +1745,11 @@
         {
           "const": "Stop",
           "description": "絞りの面の番号（値は整数）。多重構成の行（.zmx の STPS）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "FieldType",
+          "description": "視野の種類（OpticStudio の番号 0〜3: 角度・物体高・近軸像高・実像高）。多重構成の行（.zmx の FLTP）。\n最適化の変数には使えない",
           "type": "string"
         },
         {

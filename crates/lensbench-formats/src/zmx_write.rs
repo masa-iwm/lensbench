@@ -790,6 +790,7 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::Aper => return Some(("APER", 0, None, id)),
         Kind::ApertureType => return Some(("SATP", 0, None, id)),
         Kind::Stop => return Some(("STPS", 0, None, id)),
+        Kind::FieldType => return Some(("FLTP", 0, None, id)),
         _ => {}
     }
     let d = s.surfaces.get(p.surface()?)?;

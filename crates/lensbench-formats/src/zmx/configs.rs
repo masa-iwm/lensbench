@@ -111,6 +111,7 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "APER" => Kind::Aper,
         "SATP" => Kind::ApertureType,
         "STPS" => Kind::Stop,
+        "FLTP" => Kind::FieldType,
         _ => return None,
     })
 }

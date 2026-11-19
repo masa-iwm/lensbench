@@ -85,6 +85,9 @@ pub enum Kind {
     ApertureType,
     /// 絞りの面の番号（値は整数）。多重構成の行（.zmx の STPS）。最適化の変数には使えない
     Stop,
+    /// 視野の種類（OpticStudio の番号 0〜3: 角度・物体高・近軸像高・実像高）。多重構成の行（.zmx の FLTP）。
+    /// 最適化の変数には使えない
+    FieldType,
     /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
     /// 最適化の変数には使えない
     FieldX(u8),
@@ -140,6 +143,7 @@ impl Kind {
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
             "stop" => Kind::Stop,
+            "ftype" => Kind::FieldType,
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -207,6 +211,7 @@ impl Kind {
             Kind::Aper => "aper".into(),
             Kind::ApertureType => "atype".into(),
             Kind::Stop => "stop".into(),
+            Kind::FieldType => "ftype".into(),
             Kind::FieldX(i) => format!("fx{}", *i as usize + 1),
             Kind::FieldY(i) => format!("fy{}", *i as usize + 1),
             Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
@@ -283,6 +288,7 @@ impl Kind {
                 | Kind::Aper
                 | Kind::ApertureType
                 | Kind::Stop
+                | Kind::FieldType
                 | Kind::FieldX(_)
                 | Kind::FieldY(_)
                 | Kind::FieldW(_)
@@ -570,6 +576,10 @@ impl System {
             Kind::Aper => return Ok(self.aperture.1),
             Kind::ApertureType => return Ok(self.aperture.0.os_code() as f64),
             Kind::Stop => return Ok(self.stop() as f64),
+            Kind::FieldType => match self.field_type.os_code() {
+                Some(n) => return Ok(n as f64),
+                None => invalid!("a solved field type has no field type number"),
+            },
             Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
             Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
             Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
@@ -870,6 +880,12 @@ impl System {
                 {
                     invalid!("aperture type {v} (0 to 5)");
                 }
+                Kind::FieldType
+                    if v.fract() != 0.0
+                        || crate::system::FieldType::from_os_code(v as i64).is_none() =>
+                {
+                    invalid!("field type {v} (0 to 3)");
+                }
                 Kind::Stop
                     if v.fract() != 0.0 || v < 1.0 || v > self.surfaces.len() as f64 - 2.0 =>
                 {
@@ -927,6 +943,12 @@ impl System {
                     // 番号は上で確かめた
                     if let Some(k) = ApertureKind::from_os_code(v as i64) {
                         rx.aperture.0 = k;
+                    }
+                }
+                Kind::FieldType => {
+                    // 番号は上で確かめた
+                    if let Some(t) = crate::system::FieldType::from_os_code(v as i64) {
+                        rx.field_type = t;
                     }
                 }
                 Kind::Stop => {

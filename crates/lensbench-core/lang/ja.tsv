@@ -2369,3 +2369,5 @@ primary wavelength {v} (1 to {})	主波長 {v}（1〜{}）
 aperture value {v}	開口の値 {v}
 aperture type {v} (0 to 5)	開口の種類 {v}（0〜5）
 stop surface {v} (1 to {last})	絞りの面 {v}（1〜{last}）
+field type {v} (0 to 3)	視野の種類 {v}（0〜3）
+a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません

@@ -30,6 +30,32 @@ pub enum FieldKind {
     Solve,
 }
 
+impl FieldType {
+    /// OpticStudio の視野の種類の番号（.zmx の FTYP・多重構成の FLTP。0 角度、1 物体高、2 近軸像高、3 実像高）。
+    /// 条件で定める視野は番号が無いので None
+    pub fn os_code(self) -> Option<i64> {
+        match self {
+            FieldType::Angle => Some(0),
+            FieldType::ObjH => Some(1),
+            FieldType::ParH => Some(2),
+            FieldType::RealH => Some(3),
+            FieldType::Solve(_) => None,
+        }
+    }
+
+    /// [`FieldType::os_code`] の逆（0〜3 のほかは None。経緯儀の角度 4 は読む側で角度にする）
+    pub fn from_os_code(n: i64) -> Option<FieldType> {
+        [
+            FieldType::Angle,
+            FieldType::ObjH,
+            FieldType::ParH,
+            FieldType::RealH,
+        ]
+        .into_iter()
+        .find(|t| t.os_code() == Some(n))
+    }
+}
+
 impl FieldKind {
     /// 視野の種類と条件
     pub fn of(t: FieldType) -> (FieldKind, Option<FieldCond>) {
