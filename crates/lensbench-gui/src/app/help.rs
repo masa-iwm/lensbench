@@ -57,7 +57,7 @@ impl Core {
                         ],
                     ),
                     (
-                        tr("Tables (optimization, tolerance, swap, zoom)"),
+                        tr("Tables (optimization, tolerance, swap, zoom, multi-configuration, fields, wavelengths, coating curves)"),
                         vec![
                             ("← → ↑ ↓ / Tab", tr("Move between cells (dragging, Shift+arrows or Shift+click select a range)")),
                             ("Ctrl+A", tr("Select the whole table (row numbers and column headings select whole rows and columns)")),

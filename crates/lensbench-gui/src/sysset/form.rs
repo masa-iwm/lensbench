@@ -17,6 +17,9 @@ use crate::combo::Combo;
 use crate::i18n::tr;
 use crate::theme;
 
+#[path = "form_sheets.rs"]
+mod sheets;
+
 /// 系の設定の共通の値
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SysForm {
@@ -295,117 +298,23 @@ fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
         ui.data_mut(|d| d.insert_temp(vid, show_vig));
     }
     let unit = super::field_unit(f.field_kind);
-    let mut del = None;
-    egui::Grid::new(id.with("fields"))
-        .striped(true)
-        .spacing([6.0, 2.0])
-        .show(ui, |ui| {
-            for h in ["#", "x", "y", tr("Weight")] {
-                ui.label(RichText::new(h).color(weak));
-            }
-            if show_vig {
-                for h in ["vdx", "vdy", "vcx", "vcy", "van"] {
-                    ui.label(RichText::new(h.to_ascii_uppercase()).color(weak));
-                }
-            }
-            ui.end_row();
-            for (i, p) in f.fields.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
-                for v in [&mut p.x, &mut p.y] {
-                    drag(
-                        ui,
-                        egui::DragValue::new(v)
-                            .speed(0.05)
-                            .max_decimals(6)
-                            .suffix(unit),
-                        busy,
-                    );
-                }
-                drag(
-                    ui,
-                    egui::DragValue::new(&mut p.w)
-                        .speed(0.05)
-                        .range(0.0..=1e6)
-                        .max_decimals(4),
-                    busy,
-                );
-                if show_vig {
-                    for v in p.vig.iter_mut() {
-                        drag(
-                            ui,
-                            egui::DragValue::new(v).speed(0.01).max_decimals(6),
-                            busy,
-                        );
-                    }
-                }
-                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del.filter(|_| f.fields.len() > 1) {
-        f.fields.remove(i);
-    }
-    if ui.small_button(tr("+ Add field")).clicked() {
-        let next = f
-            .fields
-            .last()
-            .map_or(FieldPt::y(0.0), |p| FieldPt::xyw(p.x, p.y + 1.0, p.w));
-        f.fields.push(next);
-    }
+    let mut sh = sheets::FieldSheet {
+        fields: &mut f.fields,
+        vig: show_vig,
+        unit,
+    };
+    let (_, b) = crate::widgets::sheet::show_temp(ui, id.with("fields"), &mut sh);
+    *busy |= b;
 }
 
 /// 波長の表と既定の組
 fn waves_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
     let weak = theme::weak_text(ui.visuals());
     ui.label(RichText::new(tr("Wavelengths")).strong());
-    let mut del = None;
-    egui::Grid::new(id.with("waves"))
-        .num_columns(5)
-        .striped(true)
-        .spacing([6.0, 2.0])
-        .show(ui, |ui| {
-            for h in ["#", tr("Wavelengths [µm]"), tr("Weight"), tr("Primary"), ""] {
-                ui.label(RichText::new(h).color(weak));
-            }
-            ui.end_row();
-            for (i, w) in f.waves.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
-                drag(
-                    ui,
-                    egui::DragValue::new(&mut w.um)
-                        .speed(0.001)
-                        .range(0.1..=30.0)
-                        .max_decimals(7),
-                    busy,
-                );
-                drag(
-                    ui,
-                    egui::DragValue::new(&mut w.w)
-                        .speed(0.05)
-                        .range(0.0..=1e6)
-                        .max_decimals(4),
-                    busy,
-                );
-                ui.radio_value(&mut f.primary, i + 1, "");
-                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del.filter(|_| f.waves.len() > 1) {
-        f.waves.remove(i);
-        if f.primary > i + 1 || f.primary > f.waves.len() {
-            f.primary = f.primary.saturating_sub(1).max(1);
-        }
-    }
+    let (_, b) =
+        crate::widgets::sheet::show_temp(ui, id.with("waves"), &mut sheets::WaveSheet { f });
+    *busy |= b;
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button(tr("+ Add wavelength")).clicked() {
-            let next = f.waves.last().map_or(0.5875618, |w| w.um + 0.05);
-            f.waves.push(WavePt::um(next));
-        }
         ui.label(RichText::new(tr("Presets:")).small().color(weak));
         for (name, set) in PRESETS {
             if ui.small_button(*name).clicked() {

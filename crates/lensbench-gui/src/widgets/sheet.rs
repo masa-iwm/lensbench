@@ -442,6 +442,42 @@ pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn
     changed
 }
 
+/// 書いた数（空は def）。lo 未満・hi 超は誤り
+pub(crate) fn num_in(t: &str, what: &str, def: f64, lo: f64, hi: f64) -> Result<f64, String> {
+    let x = crate::widgets::parse_num(t, what)?.unwrap_or(def);
+    if x < lo || x > hi {
+        return Err(trf(
+            "{} must be from {} to {}",
+            &[
+                &what,
+                &crate::json_view::fmt_num(lo),
+                &crate::json_view::fmt_num(hi),
+            ],
+        ));
+    }
+    Ok(x)
+}
+
+/// n 行から消す行の範囲（全部の行なら最初の行は残す）。消す行が無ければ None
+pub(crate) fn keep_range(n: usize, rows: RangeInclusive<usize>) -> Option<(usize, usize)> {
+    let hi = (*rows.end()).min(n.checked_sub(1)?);
+    let lo = match *rows.start() {
+        0 if hi + 1 == n => 1,
+        lo => lo,
+    };
+    (lo <= hi).then_some((lo, hi))
+}
+
+/// 表の状態を egui の一時の記憶に置いて描く（状態を持つ所の無いフォームの表）。(書き換えたか, 数をドラッグ中か)
+pub(crate) fn show_temp(ui: &mut Ui, id: impl Hash, sh: &mut dyn Sheet) -> (bool, bool) {
+    let id = egui::Id::new(id);
+    let mut st: SheetState = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let changed = show(ui, id, &mut st, sh);
+    let busy = st.drag.is_some();
+    ui.data_mut(|d| d.insert_temp(id, st));
+    (changed, busy)
+}
+
 fn table(
     ui: &mut Ui,
     id: egui::Id,

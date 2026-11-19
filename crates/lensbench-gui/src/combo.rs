@@ -1874,7 +1874,12 @@ pub(crate) fn ui(
     let opened = egui::ScrollArea::both()
         .id_salt("combo_editor")
         .auto_shrink([false, false])
-        .show(&mut bottom, |ui| editor(ui, combo, view))
+        .show(&mut bottom, |ui| {
+            let opened = editor(ui, combo, view);
+            // 横のスクロールバーが最後の要素に重ならない
+            crate::widgets::scroll_gap(ui);
+            opened
+        })
         .inner;
     if let Some(k) = opened.or(view.open.take()) {
         act = Some(Act::Open(k));

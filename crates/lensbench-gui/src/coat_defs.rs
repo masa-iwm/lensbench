@@ -10,6 +10,9 @@ use lensbench_project::filter::{CoatSpec, Ideal};
 use crate::i18n::{n_, tr, trf};
 use crate::theme;
 
+#[path = "coat_curve.rs"]
+mod curve;
+
 /// 次の描画で膜の定義の欄を開いて見せる（通し確認）
 pub(crate) fn focus(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("lensbench_coat_focus"), true));
@@ -258,60 +261,13 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
         } => {
             // 行: 波長 [nm]・透過・反射（反射を使わなければ空）
             let use_r = !r.is_empty();
-            let mut del = None;
-            egui::Grid::new(id.with("curve"))
-                .num_columns(4)
-                .spacing([6.0, 2.0])
-                .show(ui, |ui| {
-                    ui.label(tr("Wavelength [nm]"));
-                    ui.label(tr("Transmission"));
-                    ui.label(tr("Reflection"));
-                    ui.end_row();
-                    for i in 0..wavelengths_nm.len().min(t.len()) {
-                        ui.add(
-                            egui::DragValue::new(&mut wavelengths_nm[i])
-                                .range(1.0..=5000.0)
-                                .speed(1.0),
-                        );
-                        ui.add(
-                            egui::DragValue::new(&mut t[i])
-                                .range(0.0..=1.0)
-                                .speed(0.005)
-                                .max_decimals(6),
-                        );
-                        if use_r && i < r.len() {
-                            ui.add(
-                                egui::DragValue::new(&mut r[i])
-                                    .range(0.0..=1.0)
-                                    .speed(0.005)
-                                    .max_decimals(6),
-                            );
-                        } else {
-                            ui.label("—");
-                        }
-                        if wavelengths_nm.len() > 2 && ui.small_button("✖").clicked() {
-                            del = Some(i);
-                        }
-                        ui.end_row();
-                    }
-                });
-            if let Some(i) = del {
-                wavelengths_nm.remove(i);
-                t.remove(i);
-                if i < r.len() {
-                    r.remove(i);
-                }
-            }
+            let mut sh = curve::CurveSheet {
+                l: &mut *wavelengths_nm,
+                t: &mut *t,
+                r: &mut *r,
+            };
+            crate::widgets::sheet::show_temp(ui, id.with("curve"), &mut sh);
             ui.horizontal(|ui| {
-                if ui.small_button(tr("＋ Row")).clicked() {
-                    let l = wavelengths_nm.last().copied().unwrap_or(500.0) + 50.0;
-                    let tt = t.last().copied().unwrap_or(0.9);
-                    wavelengths_nm.push(l);
-                    t.push(tt);
-                    if use_r {
-                        r.push(r.last().copied().unwrap_or(0.0));
-                    }
-                }
                 let mut ur = use_r;
                 if ui
                     .checkbox(&mut ur, tr("Also give reflection"))

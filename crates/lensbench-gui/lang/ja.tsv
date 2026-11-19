@@ -1651,3 +1651,5 @@ Drag a row number / heading	行の番号・見出しのドラッグ
 Move the rows / the column (configuration columns of the multi-configuration table)	行を動かす・列を動かす（多重構成の表の構成の列）
 Empty last row	最後の空の行
 Type or pick a value in its first cell to add a row	左端のセルに値を打つか選ぶと行を足す
+{} must be from {} to {}	{} は {} から {} まで
+Tables (optimization, tolerance, swap, zoom, multi-configuration, fields, wavelengths, coating curves)	表（最適化・公差・差し替え探索・ズーム・多重構成・視野・波長・コーティングの曲線）
