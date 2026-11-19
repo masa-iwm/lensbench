@@ -1552,13 +1552,10 @@ Shift [mm]	移動 [mm]
 Parameter	パラメータ
 No distribution {}	分布 {} はありません
 This state is not used	この状態は使いません
-Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓ で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
 Tables (optimization, tolerance, swap, zoom)	表（最適化・公差・差し替え探索・ズーム）
 Change a number (also the grip at the right of the cell). Alt+↑ ↓: Shift ×10, Ctrl ×1/10	数を増減（セルの右端のつまみでも）。Alt+↑ ↓ は Shift で 10 倍、Ctrl で 1/10
 Insert a row	行を挿入
 Delete the selected rows	選んだ行を削除
-Clear the cell	セルを空にする
-Copy / paste as tab-separated text	タブ区切りでコピー・貼り付け
 Duplicate row	行を複製
 Duplicate the selected rows below them	選んだ行の写しを下に挿入
 % Contrib	寄与 %
@@ -1618,6 +1615,20 @@ Enter a value for {}	{} の値を入れてください
 Rename {}	{} の名前を変える
 The element is locked	要素はロックされています
 {} is not one of {}	{} は {} のどれでもありません
+Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。ドラッグ・Shift+クリック・Shift+矢印で範囲を選び、行の番号・列の見出し・# で行全体・列全体・表全体を選ぶ。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓ で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
+Select all (Ctrl+A)	すべて選択（Ctrl+A）
+Comment row (like BLNK in OpticStudio); not part of the merit function	コメントの行（OpticStudio の BLNK）。メリットファンクションには入りません
+▶ Show the parameter columns	▶ パラメータの列を表示
+◀ Fold the parameter columns	◀ パラメータの列を折りたたむ
+Folded, the parameters of each term are summarized in one column	折りたたむと、各項のパラメータを 1 列に要約して表示します
+The parameters of each term (show the parameter columns to edit them)	各項のパラメータ（書き換えるにはパラメータの列を表示）
+Show the parameter columns to edit the parameters	パラメータを書き換えるにはパラメータの列を表示してください
+Move between cells (dragging, Shift+arrows or Shift+click select a range)	セルを移る（ドラッグ・Shift+矢印・Shift+クリックで範囲を選ぶ）
+Select the whole table (row numbers and column headings select whole rows and columns)	表全体を選ぶ（行の番号・列の見出しで行全体・列全体）
+Typing	打ち込み
+A cell with choices completes what you type with the first choice that starts with it (Backspace keeps only what you typed)	候補のあるセルは、打った文字で始まる最初の候補で補う（Backspace で打った文字だけに）
+Clear the selected cells	選んだセルを空にする
+Copy / paste as tab-separated text (a single value pasted on a range fills it)	タブ区切りでコピー・貼り付け（範囲に 1 つの値を貼ると範囲を埋める）
 Double-click to show the base values (no state)	ダブルクリックで基本の値を出す（状態なし）
 Pick up from another row	別の行からピックアップ
 Other system values	その他のシステムの値

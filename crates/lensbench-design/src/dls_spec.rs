@@ -440,6 +440,9 @@ impl OptimizeParams {
         }
         let n_default = p.terms.len();
         for (i, t) in self.terms.iter().enumerate() {
+            if crate::merit::is_comment(t) {
+                continue;
+            }
             let t = crate::merit::term_from_json(t, &p.configs)
                 .map_err(|e| Error::Invalid(format!("term {}: {e}", i + 1)))?;
             p.terms.push(t);

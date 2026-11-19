@@ -50,7 +50,8 @@ fn terms_schema_matches_reader() {
         {"type": "mtf", "field": [0, 0.5], "freq": 30, "dir": "tan", "min": 0.3, "config": 1},
         {"type": "zplm", "macro": 7, "data": 2, "macro_dirs": ["."]},
         {"type": "paraxial", "q": "efl", "min": 351},
-        {"type": "plugin", "name": "rms", "field": 1, "output": "wfe", "args": {"rings": 4}}
+        {"type": "plugin", "name": "rms", "field": 1, "output": "wfe", "args": {"rings": 4}},
+        {"type": "comment", "text": "image quality"}
     ]);
     let errs: Vec<String> = v.iter_errors(&ok).map(|e| e.to_string()).collect();
     assert!(errs.is_empty(), "{}", errs.join("\n"));
@@ -100,6 +101,14 @@ fn terms_schema_matches_reader() {
         "{e}"
     );
     assert!(terms(serde_json::json!({"type": "paraxial", "q": "efl"})).is_err());
+    // コメントの行は 1 つの項としては誤り、並びでは飛ばす
+    assert!(terms(serde_json::json!({"type": "comment", "text": "x"})).is_err());
+    let list = lensbench_design::merit::terms_from_json(
+        &serde_json::json!([{"type": "comment"}, {"type": "paraxial", "q": "efl", "target": 50}]),
+        std::slice::from_ref(&s),
+    )
+    .unwrap();
+    assert_eq!(list.len(), 1);
     terms(serde_json::json!({"type": "paraxial", "q": "efl", "min": 351})).unwrap();
     let e = terms(serde_json::json!({"type": "spot", "field": 1, "min": 1})).unwrap_err();
     assert!(

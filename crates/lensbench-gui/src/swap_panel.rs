@@ -109,7 +109,7 @@ pub(crate) struct SwapPanel {
     /// レンズ・変数・項の表の選択と書き換え中の文字
     pub slots_sheet: SheetState,
     pub vars_sheet: SheetState,
-    pub terms_sheet: SheetState,
+    pub terms_sheet: crate::optim_panel::TermsState,
 }
 
 impl Default for SwapPanel {
@@ -142,7 +142,7 @@ impl Default for SwapPanel {
             undo: None,
             slots_sheet: SheetState::default(),
             vars_sheet: SheetState::default(),
-            terms_sheet: SheetState::default(),
+            terms_sheet: Default::default(),
         }
     }
 }
@@ -1045,6 +1045,7 @@ fn result_ui(
                     ui.end_row();
                 }
             });
+            crate::widgets::scroll_gap(ui);
         });
     if ui
         .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo use")))

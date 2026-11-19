@@ -49,12 +49,20 @@ use crate::term_spec::{
     QuadName, RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
 };
 
-/// 項の並び（配列か 1 つのオブジェクト）
+/// コメントの行（`{"type": "comment", "text": ...}`）か。項の並びを読むときに飛ばす（番号は飛ばさずに数える）
+pub fn is_comment(v: &Value) -> bool {
+    v.get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t.eq_ignore_ascii_case("comment"))
+}
+
+/// 項の並び（配列か 1 つのオブジェクト）。コメントの行は飛ばす
 pub fn terms_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<Vec<Term>> {
     match v {
         Value::Array(a) => a
             .iter()
             .enumerate()
+            .filter(|(_, t)| !is_comment(t))
             .map(|(i, t)| {
                 term_from_json(t, configs)
                     .map_err(|e| e.map_message(|e| format!("term {}: {e}", i + 1)))
@@ -197,7 +205,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 25] = [
+    const TYPES: [&str; 26] = [
         "spot",
         "wavefront",
         "mtf",
@@ -223,6 +231,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "zplm",
         "plugin",
         "calc",
+        "comment",
     ];
     if !TYPES.contains(&ty.as_str()) {
         return Err(format!("type {ty} (one of {})", TYPES.join(", ")).into());
@@ -707,6 +716,9 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             target: t.target.ok_or("semi term has no min or max")?,
         },
         TermSpec::Calc(c) => calc_kind(c, s)?,
+        TermSpec::Comment(_) => {
+            return Err("a comment is not a term (it is skipped in a list of terms)".into())
+        }
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
             let pv = [t.hx, t.hy, t.px, t.py].map(|x| x.unwrap_or(0.0));

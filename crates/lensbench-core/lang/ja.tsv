@@ -2422,6 +2422,7 @@ a surface term with to needs min or max	to のある surface の項には min �
 term {i}: {} has no range (to)	項 {i}: {} には範囲（to）がありません
 surface {j}: glass {name} is not in the catalogs	面 {j}: 硝材 {name} がカタログにありません
 surface quantity {q} with to	to のある面の量 {q}
+a comment is not a term (it is skipped in a list of terms)	コメントは項ではありません（項の並びでは飛ばします）
 Grid {}	Grid {}
 OpticStudio's DENC and DENF have no middle of the spot	OpticStudio の DENC・DENF には点の広がりの中心がありません
 Refp {refp}	Refp {refp}

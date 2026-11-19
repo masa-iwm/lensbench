@@ -265,6 +265,7 @@ fn table(ui: &mut Ui, u: Units, id: egui::Id, cols: &[String], rows: &[Value]) {
                 }
             });
         });
+        crate::widgets::scroll_gap(ui);
     });
     ui.data_mut(|d| d.insert_temp(sort_id, sort));
 }

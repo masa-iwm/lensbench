@@ -914,6 +914,7 @@ fn comps_ui(
                     ui.end_row();
                 }
             });
+            crate::widgets::scroll_gap(ui);
         });
     if !r.tilt_magnitudes.is_empty() {
         ui.label(
@@ -1042,6 +1043,7 @@ fn result_ui(
                     ui.end_row();
                 }
             });
+            crate::widgets::scroll_gap(ui);
         });
     if let Some(e) = r.rss_estimate {
         ui.label(

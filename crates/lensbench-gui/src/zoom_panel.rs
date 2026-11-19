@@ -488,6 +488,7 @@ fn result_ui(ui: &mut Ui, r: &ZoomView, weak: egui::Color32) {
                         ui.end_row();
                     }
                 });
+            crate::widgets::scroll_gap(ui);
         });
     // 変数の軌跡（横軸は位置: 状態 k は k）
     Plot::new("zoom_plot")

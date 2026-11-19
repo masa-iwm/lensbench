@@ -560,6 +560,16 @@ pub enum TermSpec {
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),
+    /// コメントの行（OpticStudio の BLNK）。評価関数に入らず、項の並びを読むときに飛ばす
+    Comment(CommentSpec),
+}
+
+/// コメントの行
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct CommentSpec {
+    /// コメントの文
+    pub text: Option<String>,
 }
 
 /// calc の項: 引数（数か、1 つの値の項。項には weight・config・min・max を書かない）の op − target

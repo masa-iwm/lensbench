@@ -2464,6 +2464,55 @@
             "args"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "コメントの行（OpticStudio の BLNK）。評価関数に入らず、項の並びを読むときに飛ばす",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "text": {
+              "description": "コメントの文",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "comment",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
         }
       ],
       "title": "TermSpec"

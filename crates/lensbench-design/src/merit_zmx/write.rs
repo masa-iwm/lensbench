@@ -21,6 +21,11 @@ pub fn rows_from_terms(
         .and_then(|r| r.int(INT1).ok())
         .map_or(1, |c| c.max(1) as u64);
     for (i, t) in terms.iter().enumerate() {
+        if crate::merit::is_comment(t) {
+            let text = t.get("text").and_then(Value::as_str).unwrap_or_default();
+            rows.push(MeritRow::blank(text));
+            continue;
+        }
         let c = t.get("config").and_then(Value::as_u64).unwrap_or(1);
         let Some(s) = (c >= 1).then(|| systems.get(c as usize - 1)).flatten() else {
             notes.push(format!(

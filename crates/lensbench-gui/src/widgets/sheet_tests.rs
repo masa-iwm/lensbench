@@ -327,3 +327,214 @@ fn move_rows() {
     b.key_mods(Key::ArrowUp, cs);
     assert_eq!(b.rows.0[1][0], "v0");
 }
+
+/// Shift+矢印で四角に広げ、コピーは範囲、Delete は範囲を空に
+#[test]
+fn range_select_copy_delete() {
+    let mut b = Bench::new(3);
+    b.frame(vec![]);
+    b.click(b.cell_pos(0, "Name"));
+    let sh = Modifiers::SHIFT;
+    b.key_mods(Key::ArrowDown, sh);
+    b.key_mods(Key::ArrowRight, sh);
+    assert_eq!(b.st.selection(), Some((0..=1, 0..=1)));
+    b.key(Key::Delete);
+    assert_eq!(b.rows.0[0], [String::new(), String::new()]);
+    assert_eq!(b.rows.0[1], [String::new(), String::new()]);
+    assert_eq!(b.rows.0[2][0], "v2");
+}
+
+/// 1 つの値を範囲に貼ると範囲を埋める
+#[test]
+fn paste_fills_range() {
+    let mut b = Bench::new(3);
+    b.frame(vec![]);
+    b.click(b.cell_pos(0, "Value"));
+    b.key_mods(Key::ArrowDown, Modifiers::SHIFT);
+    b.key_mods(Key::ArrowDown, Modifiers::SHIFT);
+    b.frame(vec![Event::Paste("9\n".into())]);
+    b.frame(vec![]);
+    for r in 0..3 {
+        assert_eq!(b.rows.0[r][1], "9");
+    }
+    assert_eq!(b.rows.0[1][0], "v1");
+}
+
+/// 行の番号で行全体、列の見出しで列全体、Ctrl+A で表全体
+#[test]
+fn select_rows_cols_all() {
+    let mut b = Bench::new(3);
+    b.frame(vec![]);
+    let num = |r: usize| Pos2::new(8.0 + 10.0, 8.0 + ROW_H * (r as f32 + 1.5));
+    b.click(num(1));
+    assert_eq!(b.st.selection(), Some((1..=1, 0..=1)));
+    let head = Pos2::new(8.0 + 26.0 + 70.0 + 45.0, 8.0 + ROW_H * 0.5);
+    b.click(head);
+    assert_eq!(b.st.selection(), Some((0..=2, 1..=1)));
+    b.key_mods(Key::A, Modifiers::COMMAND);
+    assert_eq!(b.st.selection(), Some((0..=2, 0..=1)));
+    // 表全体を選んで Ctrl+Delete で全部の行を消す
+    b.key_mods(Key::Delete, Modifiers::COMMAND);
+    assert!(b.rows.0.is_empty());
+}
+
+#[test]
+fn completion_is_prefix() {
+    let items: Vec<(String, String)> = ["trax", "tray", "x"]
+        .iter()
+        .map(|s| (s.to_string(), String::new()))
+        .collect();
+    assert_eq!(completion(&items, "TR").as_deref(), Some("trax"));
+    assert_eq!(completion(&items, "x"), None);
+    assert_eq!(completion(&items, ""), None);
+    // 同じ名前の候補があれば伸ばさない
+    let items: Vec<(String, String)> = ["lens10", "lens1"]
+        .iter()
+        .map(|s| (s.to_string(), String::new()))
+        .collect();
+    assert_eq!(completion(&items, "LENS1"), None);
+    assert_eq!(completion(&items, "len").as_deref(), Some("lens10"));
+}
+
+/// 候補の 1 列の表
+struct Pick(Vec<String>);
+
+impl Sheet for Pick {
+    fn rows(&self) -> usize {
+        self.0.len()
+    }
+    fn cols(&self) -> usize {
+        1
+    }
+    fn header(&self, _col: usize, _cur: Option<usize>) -> String {
+        "Lens".into()
+    }
+    fn cell(&self, row: usize, _col: usize) -> Cell {
+        let items = ["lens10", "lens1", "trax"]
+            .iter()
+            .map(|s| (s.to_string(), String::new()))
+            .collect();
+        Cell::list(self.0[row].clone(), items, true)
+    }
+    fn set(&mut self, row: usize, _col: usize, text: &str) -> Result<(), String> {
+        self.0[row] = text.into();
+        Ok(())
+    }
+}
+
+/// 打つたびに補い（1 文字おきにならない）、同じ名前の候補があれば長い候補に伸ばさない
+#[test]
+fn typing_completes_each_char() {
+    let ctx = egui::Context::default();
+    let mut st = SheetState::default();
+    let mut sh = Pick(vec![String::new()]);
+    st.select(0, 0);
+    let mut t = 0.0;
+    let mut run = |st: &mut SheetState, sh: &mut Pick, events: Vec<Event>| {
+        t += 0.05;
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(600.0, 400.0))),
+            time: Some(t),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                show(ui, "p", st, sh);
+            });
+        });
+    };
+    let key = |k: Key| Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    run(&mut st, &mut sh, vec![]);
+    for (typed, want) in [("t", "trax"), ("r", "trax")] {
+        run(&mut st, &mut sh, vec![Event::Text(typed.into())]);
+        run(&mut st, &mut sh, vec![]);
+        assert_eq!(st.edit.as_ref().unwrap().text, want, "{typed}");
+    }
+    run(&mut st, &mut sh, vec![key(Key::Escape)]);
+    run(&mut st, &mut sh, vec![]);
+    for c in ["l", "e", "n", "s", "1"] {
+        run(&mut st, &mut sh, vec![Event::Text(c.into())]);
+        run(&mut st, &mut sh, vec![]);
+    }
+    run(&mut st, &mut sh, vec![key(Key::Enter)]);
+    run(&mut st, &mut sh, vec![]);
+    assert_eq!(sh.0[0], "lens1");
+}
+
+/// Alt なしのドラッグは範囲を選ぶ（数は変えない）
+#[test]
+fn drag_selects_range() {
+    let mut b = Bench::new(3);
+    b.frame(vec![]);
+    let (p, q) = (b.cell_pos(0, "Name"), b.cell_pos(2, "Value"));
+    b.frame(vec![Event::PointerMoved(p)]);
+    b.frame(vec![Event::PointerButton {
+        pos: p,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    }]);
+    for k in 1..=6 {
+        let t = k as f32 / 6.0;
+        b.frame(vec![Event::PointerMoved(p + (q - p) * t)]);
+    }
+    b.frame(vec![Event::PointerButton {
+        pos: q,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    b.frame(vec![]);
+    assert_eq!(b.st.selection(), Some((0..=2, 0..=1)));
+    assert_eq!(b.rows.0[2][1], "2.5");
+    assert!(!b.changed);
+}
+
+/// 候補のあるセルの右の ▼ を押すと候補の一覧で書き始める
+#[test]
+fn arrow_opens_choices() {
+    let ctx = egui::Context::default();
+    let mut st = SheetState::default();
+    let mut sh = Pick(vec!["trax".into()]);
+    let mut t = 0.0;
+    let mut run = |st: &mut SheetState, sh: &mut Pick, events: Vec<Event>| {
+        t += 0.3;
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(600.0, 400.0))),
+            time: Some(t),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                show(ui, "p", st, sh);
+            });
+        });
+    };
+    run(&mut st, &mut sh, vec![]);
+    // 列の初めの幅 70 の右端の少し内側
+    let p = Pos2::new(8.0 + 26.0 + 70.0 - 6.0, 8.0 + ROW_H * 1.5);
+    run(&mut st, &mut sh, vec![Event::PointerMoved(p)]);
+    for pressed in [true, false] {
+        run(
+            &mut st,
+            &mut sh,
+            vec![Event::PointerButton {
+                pos: p,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            }],
+        );
+    }
+    run(&mut st, &mut sh, vec![]);
+    assert!(st.editing());
+    assert_eq!(st.edit.as_ref().unwrap().text, "trax");
+}

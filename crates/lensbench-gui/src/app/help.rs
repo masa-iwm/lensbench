@@ -59,15 +59,17 @@ impl Core {
                     (
                         tr("Tables (optimization, tolerance, swap, zoom)"),
                         vec![
-                            ("← → ↑ ↓ / Tab", tr("Move between cells (Shift+↑ ↓ / Shift+click select a row range)")),
+                            ("← → ↑ ↓ / Tab", tr("Move between cells (dragging, Shift+arrows or Shift+click select a range)")),
+                            ("Ctrl+A", tr("Select the whole table (row numbers and column headings select whole rows and columns)")),
                             ("Enter / F2", tr("Edit (typing also starts editing). Enter commits, Esc cancels")),
+                            (tr("Typing"), tr("A cell with choices completes what you type with the first choice that starts with it (Backspace keeps only what you typed)")),
                             ("Alt+drag / Alt+↑ ↓", tr("Change a number (also the grip at the right of the cell). Alt+↑ ↓: Shift ×10, Ctrl ×1/10")),
                             ("Insert", tr("Insert a row")),
                             ("Ctrl+D", tr("Duplicate the selected rows below them")),
                             ("Ctrl+Shift+↑ ↓", tr("Move the selected rows up / down")),
                             ("Ctrl+Delete", tr("Delete the selected rows")),
-                            ("Delete", tr("Clear the cell")),
-                            ("Ctrl+C / Ctrl+V", tr("Copy / paste as tab-separated text")),
+                            ("Delete", tr("Clear the selected cells")),
+                            ("Ctrl+C / Ctrl+V", tr("Copy / paste as tab-separated text (a single value pasted on a range fills it)")),
                         ],
                     ),
                     (

@@ -123,6 +123,7 @@ pub(crate) const TERM_TYPES: &[&str] = &[
     "lateral_color",
     "semi",
     "volume",
+    "comment",
 ];
 
 /// 種類ごとのキー（weight・config は共通）
@@ -303,6 +304,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("target", Num),
         ],
         "lateral_color" => &[("wave", Int), ("wave2", Int), ("target", Num)],
+        "comment" => &[("text", Text)],
         "semi" => &[("surf", Int), ("to", Int), ("min", Num), ("max", Num)],
         "fnum" => &[
             ("field", Field),
@@ -365,6 +367,7 @@ fn type_hint(ty: &str) -> &'static str {
         "fnum" => tr("Real-ray F-number 1/(n′(sin θ₊ + sin θ₋)) from the chief ray and the two rays at the pupil edge (y for tan, x for sag) − target (like TFNO and SFNO)"),
         "cardinal" => tr("Focal length or cardinal point of surfaces from to to − target (like CARD, EFLX and EFLY; empty from and to = surface 1 to the last surface before the image). Object-side points are measured from surface from, image-side points from surface to"),
         "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
+        "comment" => tr("Comment row (like BLNK in OpticStudio); not part of the merit function"),
         "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
     }
@@ -480,7 +483,7 @@ pub(crate) struct OptPanel {
     pub gen: u64,
     /// 変数・項の表の選択と書き換え中の文字
     pub vars_sheet: crate::widgets::sheet::SheetState,
-    pub terms_sheet: crate::widgets::sheet::SheetState,
+    pub terms_sheet: TermsState,
     /// 走らせたときの項（結果の値をどの行に出すか。行が変わったら出さない）
     pub run_terms: Vec<TermRow>,
     /// 「評価」を押した（変数なしで回す。ui の最後で Run にする）
@@ -508,12 +511,18 @@ impl OptPanel {
             return vec![None; self.terms.len()];
         };
         let extra: Vec<&TermValue> = r.terms.iter().filter(|t| !t.default).collect();
+        // 結果の項はコメントの行を飛ばした順
+        let mut k = 0;
         self.terms
             .iter()
             .enumerate()
             .map(|(i, t)| {
+                if t.ty == "comment" {
+                    return None;
+                }
+                k += 1;
                 (self.run_terms.get(i) == Some(t))
-                    .then(|| extra.get(i).map(|v| (v.value, v.contrib)))
+                    .then(|| extra.get(k - 1).map(|v| (v.value, v.contrib)))
                     .flatten()
             })
             .collect()
@@ -1055,13 +1064,21 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, vals: bool, weak: egui::Co
     );
 }
 
+/// 評価関数の項の表の選択と、パラメータの列を畳んだか
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TermsState {
+    pub sheet: crate::widgets::sheet::SheetState,
+    /// P1..Pn の列を畳んで要約の 1 列にする
+    pub fold: bool,
+}
+
 /// 評価関数の項の欄（最適化・差し替え探索）。id は欄の id の頭（同時に出るパネルで分ける）
 pub(crate) fn terms_ui(
     ui: &mut Ui,
     id: &str,
     terms: &mut Vec<TermRow>,
     new_term: &mut String,
-    sheet: &mut crate::widgets::sheet::SheetState,
+    st: &mut TermsState,
     vals: Option<&[Option<(f64, f64)>]>,
     weak: egui::Color32,
 ) {
@@ -1069,13 +1086,29 @@ pub(crate) fn terms_ui(
         *new_term = "paraxial".into();
     }
     if !terms.is_empty() {
+        let label = if st.fold {
+            tr("▶ Show the parameter columns")
+        } else {
+            tr("◀ Fold the parameter columns")
+        };
+        if ui
+            .small_button(label)
+            .on_hover_text(tr(
+                "Folded, the parameters of each term are summarized in one column",
+            ))
+            .clicked()
+        {
+            st.fold = !st.fold;
+        }
         let mut ts = sheets::TermSheet {
             terms,
             new_ty: new_term.as_str(),
             npar: sheets::par_cols(),
             vals,
+            fold: st.fold,
         };
-        crate::widgets::sheet::show(ui, (id, "terms"), sheet, &mut ts);
+        // 畳んだ表と開いた表で列の幅を別に覚える
+        crate::widgets::sheet::show(ui, (id, "terms", st.fold), &mut st.sheet, &mut ts);
     }
     ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_id_salt((id, "new_term"))
@@ -1103,7 +1136,7 @@ pub(crate) fn terms_ui(
 
 /// 表の使い方（表の下の一言）
 pub(crate) const SHEET_KEYS: &str = n_(
-    "Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.",
+    "Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.",
 );
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {

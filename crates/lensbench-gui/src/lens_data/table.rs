@@ -411,7 +411,11 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
     let cols = &v.cols;
     let cur_typ = v.cur_typ.as_deref();
     // 幅が足りなければ横に流す（見出しと横のスクロールバーの分を引く）
-    let table_h = (top.available_height() - 22.0 - 14.0).max(20.0);
+    let gap = {
+        let s = top.spacing().scroll;
+        s.bar_width + s.bar_inner_margin + s.bar_outer_margin + 2.0
+    };
+    let table_h = (top.available_height() - 22.0 - gap).max(20.0);
     egui::ScrollArea::horizontal()
         .id_salt("lens_data_h")
         .show(top, |ui| {
@@ -502,6 +506,8 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
                     None,
                 );
             }
+            // 横のスクロールバーが最後の行に重ならない（上の table_h でこの分を引いてある）
+            crate::widgets::scroll_gap(ui);
         });
 }
 

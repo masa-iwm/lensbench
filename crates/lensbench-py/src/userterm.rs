@@ -197,6 +197,10 @@ pub(crate) fn add_terms(
             continue;
         }
         let v = crate::pyjson::from_py(d.as_any())?;
+        // コメントの行は飛ばす（番号は数える）
+        if lensbench_design::merit::is_comment(&v) {
+            continue;
+        }
         let term = lensbench_design::merit::term_from_json(&v, &p.configs)
             .map_err(|e| value_err(format!("terms[{i}]: {e}")))?;
         p.terms.push(term);

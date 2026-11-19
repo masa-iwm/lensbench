@@ -61,6 +61,12 @@ pub(crate) fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
         .ok_or_else(|| trf("Value of {} is not a number: {}", &[&what, &t]))
 }
 
+/// 横に流す表の下の余白（横のスクロールバーが最後の行に重ならない）。ScrollArea::horizontal の中、表の後に置く
+pub(crate) fn scroll_gap(ui: &mut egui::Ui) {
+    let s = ui.spacing().scroll;
+    ui.add_space(s.bar_width + s.bar_inner_margin + s.bar_outer_margin + 2.0);
+}
+
 /// 候補の並べ方: 前方一致なら Some(true)、名前か説明の部分一致なら Some(false)、合わなければ None。
 /// 名前・説明・打った文字は同じ大小（小文字か大文字）に揃えて渡す（補完つきの欄で共通）
 pub(crate) fn match_rank(name: &str, desc: &str, q: &str) -> Option<bool> {
