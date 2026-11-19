@@ -57,7 +57,7 @@ pub use lm::*;
 
 #[path = "dls_jac.rs"]
 mod jac;
-use jac::{pupil_d, JacCache, PupilCache};
+use jac::{pupil_d, typical, JacCache, PupilCache};
 
 #[path = "dls_spot.rs"]
 mod spot;
@@ -713,20 +713,6 @@ fn noisy_fd(s: &System, k: &TermKind, v: Kind) -> bool {
         || v.is_unit_motion())
 }
 
-/// 差分の刻みの目安（種類ごとの値の大きさ）
-fn typical(k: Kind) -> f64 {
-    match k {
-        Kind::Curv => 1e-2,
-        Kind::Radius => 10.0,
-        Kind::Conic => 1.0,
-        Kind::Asph(i) => 1e-3 / 10f64.powi(2 * i as i32 + 2),
-        Kind::Zern(_) => 1e-3,
-        Kind::Dn => 1e-3,
-        Kind::Disp => 1e-2,
-        _ => 1.0,
-    }
-}
-
 /// v のそれぞれに f をかける（[`par::try_map`]。誤りが出たら残りは始めない）
 fn map_maybe_par<T: Sync, R: Send>(
     v: &[T],
@@ -880,7 +866,10 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
         }
         TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
         TermKind::Cardinal { .. } => return card::check(i, k, s),
-        TermKind::Seidel { .. } | TermKind::Distortion { .. } => return seidel::check(i, k, s),
+        TermKind::Seidel { .. }
+        | TermKind::Distortion { .. }
+        | TermKind::Longitudinal { .. }
+        | TermKind::LateralColor { .. } => return seidel::check(i, k, s),
         TermKind::Calc { op, args, .. } => {
             let (lo, hi) = op.arity();
             let n = args.len();
@@ -1111,7 +1100,10 @@ fn eval_term(
         }
         TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Cardinal { .. } => card::term(s, k),
-        TermKind::Seidel { .. } | TermKind::Distortion { .. } => seidel::term(s, k),
+        TermKind::Seidel { .. }
+        | TermKind::Distortion { .. }
+        | TermKind::Longitudinal { .. }
+        | TermKind::LateralColor { .. } => seidel::term(s, k),
         TermKind::FNum { .. } => ray::fnum_term(s, k),
         TermKind::Calc { op, args, target } => {
             let v: Vec<f64> = args

@@ -304,6 +304,31 @@ pub struct DistortionSpec {
     pub target: Option<f64>,
 }
 
+/// longitudinal の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct LongSpec {
+    /// 波長の番号。null・省略は主波長
+    pub wave: Option<usize>,
+    /// 差をとる波長の番号（値は wave2 の距離 − wave の距離、軸上色収差）
+    pub wave2: Option<usize>,
+    /// 瞳の帯 0〜1（0・省略は近軸周辺光線）
+    pub zone: Option<f64>,
+    /// 目標 [レンズ単位]（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// lateral_color の項
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct LatColorSpec {
+    /// 波長の番号（値は wave2 の高さ − wave の高さ）。wave の null・省略は主波長
+    pub wave: Option<usize>,
+    pub wave2: usize,
+    /// 目標 [レンズ単位]（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// 厚みの項で面ごとに比べる面の媒質
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -398,6 +423,9 @@ pub enum TermSpec {
     Fnum(FNumSpec),
     Seidel(SeidelSpec),
     Distortion(DistortionSpec),
+    Longitudinal(LongSpec),
+    #[serde(rename = "lateral_color")]
+    LateralColor(LatColorSpec),
     Zplm(ZplmSpec),
     Plugin(PluginSpec),
     Calc(CalcSpec),

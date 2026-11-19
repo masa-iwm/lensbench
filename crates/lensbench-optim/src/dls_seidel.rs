@@ -1,7 +1,8 @@
-//! ザイデル収差係数の項（[`TermKind::Seidel`]）と、最大の視野の実光線の歪曲の項（[`TermKind::Distortion`]）
+//! ザイデル収差係数の項（[`TermKind::Seidel`]）、最大の視野の実光線の歪曲の項（[`TermKind::Distortion`]）、
+//! 縦収差・軸上色収差の項（[`TermKind::Longitudinal`]）と倍率色収差の項（[`TermKind::LateralColor`]）
 
 use super::*;
-use lensbench_core::seidel::{real_distortion, seidel};
+use lensbench_core::seidel::{chief_height, longitudinal, real_distortion, seidel};
 
 /// ザイデル収差係数（波面収差の係数 [波]、[`lensbench_core::seidel::Seidel::waves`]）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,32 @@ pub(super) fn check(i: usize, k: &TermKind, s: &System) -> Result<()> {
             (wave, target)
         }
         TermKind::Distortion { wave, target, .. } => (wave, target),
+        TermKind::Longitudinal {
+            wave,
+            wave2,
+            zone,
+            target,
+        } => {
+            if !(0.0..=1.0).contains(zone) {
+                invalid!("term {i}: zone {zone} (0 to 1)");
+            }
+            if let Some(w) = wave2 {
+                if *w >= s.wavelengths.len() {
+                    invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
+                }
+            }
+            (wave, target)
+        }
+        TermKind::LateralColor {
+            wave,
+            wave2,
+            target,
+        } => {
+            if *wave2 >= s.wavelengths.len() {
+                invalid!("term {i}: wavelength {wave2} (of {})", s.wavelengths.len());
+            }
+            (wave, target)
+        }
         _ => unreachable!("not a Seidel term"),
     };
     if !target.is_finite() {
@@ -83,6 +110,24 @@ fn value(s: &System, k: &TermKind) -> Result<f64> {
         TermKind::Distortion { wave, absolute, .. } => {
             let (d, pct) = real_distortion(s, wave.unwrap_or(s.primary))?;
             Ok(if *absolute { d } else { pct })
+        }
+        TermKind::Longitudinal {
+            wave, wave2, zone, ..
+        } => {
+            let w = wave.unwrap_or(s.primary);
+            let a = longitudinal(s, w, *zone)?;
+            Ok(match wave2 {
+                Some(w2) => longitudinal(s, *w2, *zone)? - a,
+                None => a,
+            })
+        }
+        TermKind::LateralColor { wave, wave2, .. } => {
+            let w = wave.unwrap_or(s.primary);
+            let v = chief_height(s, *wave2) - chief_height(s, w);
+            if !v.is_finite() {
+                invalid!("the lateral color is not finite");
+            }
+            Ok(v)
         }
         _ => unreachable!("not a Seidel term"),
     }

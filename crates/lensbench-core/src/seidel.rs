@@ -115,13 +115,11 @@ pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
             -h * h * c * (1.0 / n2 - 1.0 / n1),
             0.0,
         ];
-        // 平面は Δ(u/n)/A = 1/n′² − 1/n²（A = 0 の平行光でも有限）。曲面で周辺光線が曲率の中心を通る（A = 0）と
-        // S_V は決まらず、下で有限でない誤りになる
-        v[4] = if c == 0.0 {
-            -ab.powi(3) * y * (1.0 / (n2 * n2) - 1.0 / (n1 * n1))
-        } else {
-            ab / a * (v[2] + v[3])
-        };
+        // S_V = Ā (−Ā² y Δ(1/n²) + ȳ c Δ(1/n) (Ā y + H))。Ā/A · (S_III + S_IV) を割り算なしに書いた形で、
+        // 周辺光線が面に垂直に入る（A = 0、同心の面）ときも平面でも有限
+        v[4] = ab
+            * (-ab * ab * y * (1.0 / (n2 * n2) - 1.0 / (n1 * n1))
+                + yc[j] * c * (1.0 / n2 - 1.0 / n1) * (ab * y + h));
         // 非球面の分: ΔS_I = 8 Δ₄ (n′ − n) y⁴、ΔS_II〜ΔS_V は ȳ/y の 1〜3 乗を掛ける
         if d4 != 0.0 {
             let ds = 8.0 * d4 * (n2 - n1) * y.powi(4);
@@ -168,4 +166,41 @@ pub fn real_distortion(s: &System, w: usize) -> Result<(f64, f64)> {
         invalid!("the distortion is not finite");
     }
     Ok((d, pct))
+}
+
+/// 軸上の光線が光軸を横切る点の、像面の頂点からの距離 [レンズ単位]（波長 w）。zone 0 は近軸周辺光線（主波長の入射瞳の縁を
+/// 通す）、zone > 0 は正規化瞳座標 (0, zone) の実光線。OpticStudio の LONA（26.1 で実測）
+pub fn longitudinal(s: &System, w: usize, zone: f64) -> Result<f64> {
+    let img = s.image();
+    let v = if zone == 0.0 {
+        let p = s.paraxial();
+        let (ym, um) = s.ptrace(p.marginal.0[1], p.marginal.1[0], w, None);
+        -ym[img] / um[img - 1]
+    } else {
+        let t = s.try_trace(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[zone],
+            Some(w),
+            None,
+            false,
+        )?;
+        let r = &t.rays[0];
+        if let Some(j) = r.status.surf() {
+            invalid!("the ray of zone {zone} stopped (surface {j})");
+        }
+        -r.xyz[1] * r.lmn[2] / r.lmn[1]
+    };
+    if !v.is_finite() {
+        invalid!("the longitudinal aberration of zone {zone} is not finite");
+    }
+    Ok(v)
+}
+
+/// 最大の視野へ合わせた近軸主光線の像面での高さ [レンズ単位]（波長 w。主光線は主波長の入射瞳の中心を通す）。
+/// 2 つの波長の差が OpticStudio の LACL（26.1 で実測）
+pub fn chief_height(s: &System, w: usize) -> f64 {
+    let p = s.paraxial();
+    let k = chief_scale(s);
+    s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None).0[s.image()]
 }

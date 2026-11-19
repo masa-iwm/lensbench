@@ -2311,6 +2311,13 @@ cardinal term has no target (or min and max)	cardinal の項に target（か min
 fnum term has no target (or min and max)	fnum の項に target（か min・max）がありません
 seidel term has no target (or min and max)	seidel の項に target（か min・max）がありません
 distortion term has no target (or min and max)	distortion の項に target（か min・max）がありません
+longitudinal term has no target (or min and max)	longitudinal の項に target（か min・max）がありません
+lateral_color term has no target (or min and max)	lateral_color の項に target（か min・max）がありません
+term {i}: zone {zone} (0 to 1)	項 {i}: 帯 {zone}（0〜1）
+the ray of zone {zone} stopped (surface {j})	帯 {zone} の光線が止まりました（面 {j}）
+the longitudinal aberration of zone {zone} is not finite	帯 {zone} の縦収差が有限ではありません
+the lateral color is not finite	倍率色収差が有限ではありません
+zone {z} (0 to 1)	帯 {z}（0〜1）
 Seidel quantity {s} ({})	ザイデルの量 {s}（{}）
 term {i}: surface {surf} (0 to {})	項 {i}: 面 {surf}（0〜{}）
 term {i}: target {target}	項 {i}: 目標 {target}

@@ -1,7 +1,8 @@
 //! ヤコビアン 1 回の中で項の間で共有する計算（変数をずらした系・開始の光線・射出瞳の微分）
 
-use super::{launch_of, typical, waves, TermKind};
+use super::{launch_of, waves, TermKind};
 use lensbench_core::error::Result;
+use lensbench_core::param::Kind;
 use lensbench_core::param::Param;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::LockExt;
@@ -174,4 +175,18 @@ pub(super) fn pupil_d(s: &System, p: Param, pc: Option<&PupilCache>) -> Result<A
         c.lock_ok().insert(p, d.clone());
     }
     Ok(d)
+}
+
+/// 差分の刻みの目安（種類ごとの値の大きさ）
+pub(super) fn typical(k: Kind) -> f64 {
+    match k {
+        Kind::Curv => 1e-2,
+        Kind::Radius => 10.0,
+        Kind::Conic => 1.0,
+        Kind::Asph(i) => 1e-3 / 10f64.powi(2 * i as i32 + 2),
+        Kind::Zern(_) => 1e-3,
+        Kind::Dn => 1e-3,
+        Kind::Disp => 1e-2,
+        _ => 1.0,
+    }
 }

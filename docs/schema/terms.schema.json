@@ -1515,6 +1515,147 @@
         },
         {
           "additionalProperties": false,
+          "description": "longitudinal の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標 [レンズ単位]（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "longitudinal",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "wave2": {
+              "description": "差をとる波長の番号（値は wave2 の距離 − wave の距離、軸上色収差）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "zone": {
+              "description": "瞳の帯 0〜1（0・省略は近軸周辺光線）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "lateral_color の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標 [レンズ単位]（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "lateral_color",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号（値は wave2 の高さ − wave の高さ）。wave の null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "wave2": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "wave2"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "zplm の項",
           "properties": {
             "config": {

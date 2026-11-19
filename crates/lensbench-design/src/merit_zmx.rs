@@ -572,6 +572,36 @@ fn kind_of(
                 m.insert("target".into(), json!(target));
             }
         }
+        // LONA: 波長 Int1・帯 Data1。AXCL: 波長 Int1・Int2・帯 Data1（Int2 の距離 − Int1 の距離）。LACL: 波長 Int1・Int2
+        // （Int2 の主光線の高さ − Int1）。OpticStudio 26.1 で実測
+        "LONA" | "AXCL" => {
+            let z = num(data(1))?;
+            if !(0.0..=1.0).contains(&z) {
+                return Err(format!("zone {z} (0 to 1)"));
+            }
+            m.insert("type".into(), json!("longitudinal"));
+            m.insert("wave".into(), wave(int(INT1)?)?);
+            if op == "AXCL" {
+                // Wave2 の 0 も主波長（差なので null にしない）
+                let w2 = match int(INT2)? {
+                    0 => primary as i64,
+                    w => w,
+                };
+                m.insert("wave2".into(), wave(w2)?);
+            }
+            m.insert("zone".into(), json!(z));
+            m.insert("target".into(), json!(target * unit));
+        }
+        "LACL" => {
+            let w2 = match int(INT2)? {
+                0 => primary as i64,
+                w => w,
+            };
+            m.insert("type".into(), json!("lateral_color"));
+            m.insert("wave".into(), wave(int(INT1)?)?);
+            m.insert("wave2".into(), json!(w2));
+            m.insert("target".into(), json!(target * unit));
+        }
         // SFNO・TFNO: 視野 Int1・波長 Int2 の実光線の F ナンバー（OpticStudio 26.1 で実測）
         "SFNO" | "TFNO" => {
             m.insert("type".into(), json!("fnum"));
@@ -776,6 +806,7 @@ fn is_length(op: &str) -> bool {
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
             "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
+            "LONA", "AXCL", "LACL",
         ]
         .contains(&op)
 }
@@ -1135,6 +1166,19 @@ fn row_of(
             let abs = t.get("absolute").and_then(Value::as_bool) == Some(true);
             let p = [0.0, w, if abs { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0, 0.0, 0.0];
             ("DIST", p, bound(0.0))
+        }
+        "longitudinal" => {
+            let w = if wave() == 0.0 { primary } else { wave() };
+            let z = num("zone").unwrap_or(0.0);
+            match t.get("wave2").and_then(Value::as_f64) {
+                Some(w2) => ("AXCL", [w, w2, z, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0)),
+                None => ("LONA", [w, 0.0, z, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0)),
+            }
+        }
+        "lateral_color" => {
+            let w = if wave() == 0.0 { primary } else { wave() };
+            let w2 = num("wave2").unwrap_or(primary);
+            ("LACL", [w, w2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
         }
         "fnum" => {
             let op = match t.get("dir").and_then(Value::as_str) {

@@ -18,6 +18,8 @@
 //! | `fnum` | field、wave、dir（"tan"（既定）・"sag"）、target。実光線の F ナンバー 1/(n′(sin θ₊ + sin θ₋))（主光線と瞳の縁の 2 本の角度） |
 //! | `seidel` | q（spha・coma・asti・fcur・dist）、surf（0 は和、0）、wave、target [波] |
 //! | `distortion` | wave、absolute（true で実像高 − 近軸像高 [レンズ単位]、false で %）、target。最大の視野の主光線 |
+//! | `longitudinal` | wave、wave2（差をとる波長）、zone（0〜1、0 は近軸）、target [レンズ単位]。軸上の光線が光軸を横切る点の像面からの距離 |
+//! | `lateral_color` | wave、wave2、target [レンズ単位]。最大の視野の近軸主光線の像面での高さの差（wave2 − wave） |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
 //! | `coupling` | wave、na（送り・受けとも）か na_source・na_receiver、source・receiver [x, y]、grid（101）、na_max、clip_stop、target |
 //! | `zplm` | macro（番号 nn なら ZPLnn.ZPL、か名前）か file（.ZPL のパス）、data（OPTRETURN の番号、0）、hx・hy・px・py（PVHX…、0）、macro_dirs（探すフォルダの並び）、target |
@@ -193,7 +195,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 18] = [
+    const TYPES: [&str; 20] = [
         "spot",
         "wavefront",
         "mtf",
@@ -209,6 +211,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "fnum",
         "seidel",
         "distortion",
+        "longitudinal",
+        "lateral_color",
         "zplm",
         "plugin",
         "calc",
@@ -245,6 +249,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::FNum { .. }
             | TermKind::Seidel { .. }
             | TermKind::Distortion { .. }
+            | TermKind::Longitudinal { .. }
+            | TermKind::LateralColor { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -490,6 +496,21 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 .target
                 .ok_or("distortion term has no target (or min and max)")?,
         },
+        TermSpec::Longitudinal(t) => TermKind::Longitudinal {
+            wave: wave(t.wave, s)?,
+            wave2: wave(t.wave2, s)?,
+            zone: t.zone.unwrap_or(0.0),
+            target: t
+                .target
+                .ok_or("longitudinal term has no target (or min and max)")?,
+        },
+        TermSpec::LateralColor(t) => TermKind::LateralColor {
+            wave: wave(t.wave, s)?,
+            wave2: wave(Some(t.wave2), s)?.unwrap_or(s.primary),
+            target: t
+                .target
+                .ok_or("lateral_color term has no target (or min and max)")?,
+        },
         TermSpec::Calc(c) => calc_kind(c, s)?,
         TermSpec::Zplm(t) => {
             let m = zplm_macro(&t, s)?;
@@ -685,6 +706,8 @@ mod tests {
             r#"{"type": "fnum", "field": 1}"#,
             r#"{"type": "seidel", "q": "petz", "target": 0}"#,
             r#"{"type": "distortion"}"#,
+            r#"{"type": "longitudinal", "zone": 0.5}"#,
+            r#"{"type": "lateral_color", "target": 0}"#,
         ] {
             let v: Value = serde_json::from_str(bad).unwrap();
             assert!(

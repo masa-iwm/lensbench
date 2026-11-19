@@ -323,6 +323,22 @@ pub enum TermKind {
         absolute: bool,
         target: f64,
     },
+    /// 軸上の光線（zone 0 は近軸周辺光線、ほかは正規化瞳座標 (0, zone) の実光線）が光軸を横切る点の、像面からの距離
+    /// [レンズ単位] − target（波長 wave、None は主波長。OpticStudio の LONA）。wave2 があればその波長の距離との差
+    /// （wave2 − wave、AXCL）。微分は差分
+    Longitudinal {
+        wave: Option<usize>,
+        wave2: Option<usize>,
+        zone: f64,
+        target: f64,
+    },
+    /// 最大の視野の近軸主光線の像面での高さの、波長 wave2 と wave（None は主波長）の差 [レンズ単位] − target
+    /// （OpticStudio の LACL）。微分は差分
+    LateralColor {
+        wave: Option<usize>,
+        wave2: usize,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -731,6 +747,8 @@ impl TermKind {
             | TermKind::FNum { target, .. }
             | TermKind::Seidel { target, .. }
             | TermKind::Distortion { target, .. }
+            | TermKind::Longitudinal { target, .. }
+            | TermKind::LateralColor { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -902,6 +920,8 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::FNum { .. }
         | TermKind::Seidel { .. }
         | TermKind::Distortion { .. }
+        | TermKind::Longitudinal { .. }
+        | TermKind::LateralColor { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

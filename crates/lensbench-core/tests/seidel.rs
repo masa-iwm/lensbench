@@ -62,3 +62,24 @@ fn mirror_rejected() {
     let s = sys("SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\nSURF 1\n  STOP\n  TYPE STANDARD\n  CURV -0.01\n  DISZ -50\n  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n");
     assert!(seidel(&s, 0).is_err());
 }
+
+/// 曲率の中心に物点がある面（周辺光線が面に垂直に入る A = 0）: S_I・S_II は 0、S_V も有限
+#[test]
+fn concentric_surface() {
+    let l: f64 = 100.0;
+    // 視野 2 つ（0°・5°）、主光線が 0 でないように
+    let head = HEAD
+        .replace("FTYP 0 0 1 1", "FTYP 0 0 2 1")
+        .replace("YFLN 0\nFWGN 1", "YFLN 0 5\nFWGN 1 1");
+    let raw = zmx::parse_text(&format!(
+        "{head}SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ {l}\nSURF 1\n  STOP\n  TYPE STANDARD\n  CURV {}\n  DISZ 10\n  GLAS ___BLANK 1 0 1.5 0 0 0 0 0 0\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 50\nSURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        -1.0 / l
+    ))
+    .unwrap();
+    let s = zmx::build(&raw, &Default::default(), &[], None).unwrap();
+    let v = seidel(&s, 0).unwrap().at(1);
+    for (i, x) in v[..2].iter().enumerate() {
+        assert!(x.abs() < 1e-15, "S_{} = {x}", i + 1);
+    }
+    assert!(v[4].is_finite() && v[3] != 0.0, "{v:?}");
+}
