@@ -332,6 +332,12 @@ pub struct DistortionSpec {
     /// true で校正した f-θ 歪曲: y の向きの視野で、主光線の高さに原点を通る y = cθ を当てたずれの絶対値の最大
     /// （角度の視野だけ。OpticStudio の DISC）
     pub ftheta: Option<bool>,
+    /// a・b・c・d で、基準の視野でのグリッド歪曲の係数 J（∂(x, y)/∂t の [[a, b], [c, d]]）を値にする（OpticStudio の ABCD）
+    pub coef: Option<String>,
+    /// 予測に使う [A, B, C, D]（基準の視野での J の代わり。OpticStudio の DISA）
+    pub abcd: Option<[f64; 4]>,
+    /// 歪曲の向き: radial（既定）・x・y（x・y は差の成分と、予測の変位の成分に対する %。OpticStudio の DISA の Data）
+    pub component: Option<String>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }

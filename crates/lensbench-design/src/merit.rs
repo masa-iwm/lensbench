@@ -35,6 +35,7 @@
 use lensbench_analysis::analysis::ZernKind;
 use lensbench_analysis::fiber::FiberOpts;
 use lensbench_analysis::sweep::RmsRef;
+use lensbench_core::seidel::DistComp;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
@@ -545,7 +546,29 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             absolute: t.absolute.unwrap_or(false),
             field: t.field.map(|f| field(f, s)).transpose()?,
             reference: t.reference.map(|f| field(f, s)).transpose()?,
+            abcd: t.abcd,
+            component: match t.component.as_deref().unwrap_or("radial") {
+                "radial" => DistComp::Radial,
+                "x" => DistComp::X,
+                "y" => DistComp::Y,
+                c => return Err(format!("distortion component {c} (radial, x, y)").into()),
+            },
             mode: match (t.peak.unwrap_or(false), t.ftheta.unwrap_or(false)) {
+                _ if t.coef.is_some()
+                    && (t.peak == Some(true) || t.ftheta == Some(true) || t.abcd.is_some()) =>
+                {
+                    return Err("a distortion coefficient term has no peak, ftheta or abcd".into())
+                }
+                _ if t.coef.is_some() => match t.coef.as_deref().unwrap_or("") {
+                    "a" => DistMode::Coef(0),
+                    "b" => DistMode::Coef(1),
+                    "c" => DistMode::Coef(2),
+                    "d" => DistMode::Coef(3),
+                    c => return Err(format!("distortion coefficient {c} (a, b, c, d)").into()),
+                },
+                (_, _) if t.abcd.is_some() && (t.peak == Some(true) || t.ftheta == Some(true)) => {
+                    return Err("a distortion term with abcd has no peak or ftheta".into())
+                }
                 (false, false) => DistMode::At,
                 (true, false) if t.reference.is_none() => DistMode::Max,
                 (false, true) if t.field.is_none() && t.reference.is_none() => DistMode::FTheta,

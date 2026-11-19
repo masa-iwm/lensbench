@@ -1550,10 +1550,37 @@
           "additionalProperties": false,
           "description": "distortion の項",
           "properties": {
+            "abcd": {
+              "description": "予測に使う [A, B, C, D]（基準の視野での J の代わり。OpticStudio の DISA）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "absolute": {
               "description": "true で実像高 − 予測の像高 [レンズ単位]、false・省略で予測の像高に対する %",
               "type": [
                 "boolean",
+                "null"
+              ]
+            },
+            "coef": {
+              "description": "a・b・c・d で、基準の視野でのグリッド歪曲の係数 J（∂(x, y)/∂t の [[a, b], [c, d]]）を値にする（OpticStudio の ABCD）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "component": {
+              "description": "歪曲の向き: radial（既定）・x・y（x・y は差の成分と、予測の変位の成分に対する %。OpticStudio の DISA の Data）",
+              "type": [
+                "string",
                 "null"
               ]
             },

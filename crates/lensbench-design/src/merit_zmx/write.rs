@@ -348,7 +348,8 @@ fn row_of(
             };
             (op, [j, w, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
         }
-        // 既定（最大の視野・軸上の基準）は DIST、peak は DIMX、ftheta は DISC、視野か基準があれば DISG（Wave が負で長さ）
+        // 既定（最大の視野・軸上の基準）は DIST、coef は ABCD、abcd は DISA、peak は DIMX、ftheta は DISC、視野か基準があれば
+        // DISG（Wave が負で長さ）
         "distortion" => {
             let w = if wave() == 0.0 { primary } else { wave() };
             let abs = t.get("absolute").and_then(Value::as_bool) == Some(true);
@@ -361,7 +362,39 @@ fn row_of(
                     _ => return Err("OpticStudio needs a field number for the reference".into()),
                 },
             };
-            if flag("ftheta") {
+            if let Some(c) = t.get("coef").and_then(Value::as_str) {
+                let k = ["a", "b", "c", "d"]
+                    .iter()
+                    .position(|x| *x == c)
+                    .ok_or(format!("coefficient {c}"))?;
+                (
+                    "ABCD",
+                    [reference, w, k as f64, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    bound(0.0),
+                )
+            } else if let Some(v) = t.get("abcd").and_then(Value::as_array) {
+                let x = |i: usize| v.get(i).and_then(Value::as_f64).unwrap_or(0.0);
+                let comp = match t
+                    .get("component")
+                    .and_then(Value::as_str)
+                    .unwrap_or("radial")
+                {
+                    "x" => 1.0,
+                    "y" => 2.0,
+                    _ => 0.0,
+                };
+                if abs {
+                    return Err("DISA of OpticStudio gives only percent (not absolute)".into());
+                }
+                let p = [reference, w, comp, field_no()?, x(0), x(1), x(2), x(3)];
+                ("DISA", p, bound(0.0))
+            } else if t
+                .get("component")
+                .and_then(Value::as_str)
+                .is_some_and(|c| c != "radial")
+            {
+                return Err("only the radial distortion without abcd can be written".into());
+            } else if flag("ftheta") {
                 ("DISC", [0.0, w, a, 0.0, 0.0, 0.0, 0.0, 0.0], bound(0.0))
             } else if flag("peak") {
                 let f = if t.get("field").is_some() {

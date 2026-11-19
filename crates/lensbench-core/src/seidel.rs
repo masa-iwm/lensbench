@@ -224,18 +224,43 @@ fn chief_xy(s: &System, h: (f64, f64), w: usize) -> Result<[f64; 2]> {
     Ok([r.xyz[0], r.xyz[1]])
 }
 
-/// 一般の歪曲（OpticStudio の DISG）: 視野 h の主光線の像面の点 p と、基準の視野 r の点 p_r からの線形の予測
-/// p_r + J (t − t_r) の差 d を、|d|（符号は d と予測の変位 J (t − t_r) の内積の符号）と、|J (t − t_r)| に対する % で返す。
-/// t は [`field_t`]、J は基準の視野での ∂(x, y)/∂t（グリッド歪曲の A・B・C・D）。基準が None なら軸上で、J は近軸主光線から
-/// （回転対称な系だけ）。OpticStudio 26.1 で実測（Double Gauss 28 の軸上・視野 2 の基準、斜めの視野で 1e-10）
-pub fn distortion_at(
-    s: &System,
-    w: usize,
-    h: (f64, f64),
-    reference: Option<(f64, f64)>,
-) -> Result<(f64, f64)> {
-    let t = field_t(s, h.0, h.1)?;
-    let (pr, tr, j) = match reference {
+/// 歪曲の線形の予測の基準: 基準の視野の主光線の像面の点 p、その視野の t（[`field_t`]）、そこでの ∂(x, y)/∂t の J
+/// （グリッド歪曲の A・B・C・D = J[0][0]・J[0][1]・J[1][0]・J[1][1]）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DistRef {
+    pub p: [f64; 2],
+    pub t: [f64; 2],
+    pub j: [[f64; 2]; 2],
+}
+
+/// 歪曲の向き（OpticStudio の DISA の Data 0・1・2）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DistComp {
+    /// 動径（ずれの長さ、符号は予測の変位との内積の符号）
+    #[default]
+    Radial,
+    X,
+    Y,
+}
+
+/// 基準の視野（None は軸上）の主光線の点と t（J は単位行列）
+pub fn distortion_point(s: &System, w: usize, reference: Option<(f64, f64)>) -> Result<DistRef> {
+    let (p, t) = match reference {
+        None => ([0.0, 0.0], [0.0, 0.0]),
+        Some(r) => (chief_xy(s, r, w)?, field_t(s, r.0, r.1)?),
+    };
+    Ok(DistRef {
+        p,
+        t,
+        j: [[1.0, 0.0], [0.0, 1.0]],
+    })
+}
+
+/// 基準の視野（None は軸上）での [`DistRef`]。軸上の J は近軸主光線の倍率（回転対称な系だけ）、ほかは主光線の点を
+/// t で中心差分した値
+pub fn distortion_ref(s: &System, w: usize, reference: Option<(f64, f64)>) -> Result<DistRef> {
+    let mut r = distortion_point(s, w, reference)?;
+    r.j = match reference {
         None => {
             if !s.symmetric() {
                 invalid!("the distortion against the axis needs a rotationally symmetric system");
@@ -252,11 +277,9 @@ pub fn distortion_at(
                 s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max)
             };
             let m = yc[img] / tm;
-            ([0.0, 0.0], [0.0, 0.0], [[m, 0.0], [0.0, m]])
+            [[m, 0.0], [0.0, m]]
         }
-        Some(r) => {
-            let tr = field_t(s, r.0, r.1)?;
-            let pr = chief_xy(s, r, w)?;
+        Some(_) => {
             let tm = field_t(s, 1.0, 0.0)?[0]
                 .abs()
                 .max(field_t(s, 0.0, 1.0)?[1].abs());
@@ -266,7 +289,7 @@ pub fn distortion_at(
             let d = 1e-5 * tm;
             let mut j = [[0.0; 2]; 2];
             for k in 0..2 {
-                let (mut a, mut b) = (tr, tr);
+                let (mut a, mut b) = (r.t, r.t);
                 a[k] -= d;
                 b[k] += d;
                 let (pa, pb) = (
@@ -277,32 +300,68 @@ pub fn distortion_at(
                     j[i][k] = (pb[i] - pa[i]) / (2.0 * d);
                 }
             }
-            (pr, tr, j)
+            j
         }
     };
+    if r.j.iter().flatten().any(|v| !v.is_finite()) {
+        invalid!("the distortion is not finite");
+    }
+    Ok(r)
+}
+
+/// 視野 h の主光線の像面の点 p と、基準 r からの線形の予測 p_r + J (t − t_r) の差 d を、長さと予測の変位
+/// Δ = J (t − t_r) に対する % で返す。動径は |d|（符号は d·Δ の符号）と |d| / |Δ|、x・y はその成分 d_x と d_x / Δ_x
+/// （Δ の成分が 0 なら % は 0）。OpticStudio の DISG・DISA（26.1 で実測）
+pub fn distortion_against(
+    s: &System,
+    w: usize,
+    h: (f64, f64),
+    r: &DistRef,
+    comp: DistComp,
+) -> Result<(f64, f64)> {
+    let t = field_t(s, h.0, h.1)?;
     let p = chief_xy(s, h, w)?;
-    let dt = [t[0] - tr[0], t[1] - tr[1]];
+    let (j, dt) = (r.j, [t[0] - r.t[0], t[1] - r.t[1]]);
     let del = [
         j[0][0] * dt[0] + j[0][1] * dt[1],
         j[1][0] * dt[0] + j[1][1] * dt[1],
     ];
-    let d = [p[0] - pr[0] - del[0], p[1] - pr[1] - del[1]];
-    let n = del[0].hypot(del[1]);
-    let v = d[0].hypot(d[1]).copysign(d[0] * del[0] + d[1] * del[1]);
-    let pct = if n > 0.0 { 100.0 * v / n } else { 0.0 };
+    let d = [p[0] - r.p[0] - del[0], p[1] - r.p[1] - del[1]];
+    let (v, n) = match comp {
+        DistComp::Radial => (
+            d[0].hypot(d[1]).copysign(d[0] * del[0] + d[1] * del[1]),
+            del[0].hypot(del[1]),
+        ),
+        DistComp::X => (d[0], del[0]),
+        DistComp::Y => (d[1], del[1]),
+    };
+    let pct = if n != 0.0 { 100.0 * v / n } else { 0.0 };
     if !v.is_finite() || !pct.is_finite() {
         invalid!("the distortion is not finite");
     }
     Ok((v, pct))
 }
 
+/// 一般の歪曲（OpticStudio の DISG）: 基準の視野 reference（None は軸上）からの [`distortion_against`] の動径。
+/// OpticStudio 26.1 で実測（Double Gauss 28 の軸上・視野 2 の基準、斜めの視野で 1e-10）
+pub fn distortion_at(
+    s: &System,
+    w: usize,
+    h: (f64, f64),
+    reference: Option<(f64, f64)>,
+) -> Result<(f64, f64)> {
+    let r = distortion_ref(s, w, reference)?;
+    distortion_against(s, w, h, &r, DistComp::Radial)
+}
+
 /// 軸上から視野 h までの線の上（100 等分の点）の、軸上を基準にした [`distortion_at`] の絶対値の最大（absolute なら長さ、
 /// でなければ %）。OpticStudio の DIMX
 pub fn distortion_max(s: &System, w: usize, h: (f64, f64), absolute: bool) -> Result<f64> {
+    let r = distortion_ref(s, w, None)?;
     let mut m: f64 = 0.0;
     for k in 1..=100 {
         let f = k as f64 / 100.0;
-        let (v, pct) = distortion_at(s, w, (h.0 * f, h.1 * f), None)?;
+        let (v, pct) = distortion_against(s, w, (h.0 * f, h.1 * f), &r, DistComp::Radial)?;
         m = m.max(if absolute { v.abs() } else { pct.abs() });
     }
     Ok(m)

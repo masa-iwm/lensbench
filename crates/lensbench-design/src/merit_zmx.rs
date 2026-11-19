@@ -741,6 +741,46 @@ fn kind_of(
                 json!(if abs { target * unit } else { target }),
             );
         }
+        // ABCD: 基準の視野 Int1 でのグリッド歪曲の係数（Data1 の 0〜3 が A〜D）、波長 Int2。DISA: 基準 Int1・波長 Int2・
+        // 向き Data1（0 動径・1 x・2 y）・視野 Data2 の主光線の歪曲 [%] を、Data3〜Data6 の A〜D で予測して。OpticStudio 26.1 で実測
+        "ABCD" | "DISA" => {
+            m.insert("type".into(), json!("distortion"));
+            m.insert("wave".into(), wave(int(INT2)?)?);
+            let f = int(INT1)?;
+            if f != 0 {
+                m.insert("reference".into(), json!(field_no(f)?));
+            }
+            let k = int(data(1))?;
+            if op == "ABCD" {
+                let c = ["a", "b", "c", "d"]
+                    .get(k as usize)
+                    .filter(|_| k >= 0)
+                    .ok_or(format!("data {k} (0 to 3)"))?;
+                m.insert("coef".into(), json!(c));
+                m.insert("target".into(), json!(target * unit));
+            } else {
+                let c = ["radial", "x", "y"]
+                    .get(k as usize)
+                    .filter(|_| k >= 0)
+                    .ok_or(format!("data {k} (0 to 2)"))?;
+                m.insert("field".into(), json!(field_no(int(data(2))?)?));
+                let abcd = [num(data(3))?, num(data(4))?, num(data(5))?, num(data(6))?];
+                m.insert("abcd".into(), json!(abcd.map(|v| v * unit)));
+                m.insert("component".into(), json!(c));
+                m.insert("target".into(), json!(target));
+            }
+        }
+        // BSER: 軸上の視野の主光線の像面での動径 / 有効焦点距離（波長 Int2）。ray の r と paraxial の efl の比の calc
+        "BSER" => {
+            m.insert("type".into(), json!("calc"));
+            m.insert("op".into(), json!("div"));
+            let r = json!({"type": "ray", "wave": wave(int(INT2)?)?, "field": [0.0, 0.0], "px": 0.0, "py": 0.0, "q": "r", "target": 0.0});
+            m.insert(
+                "args".into(),
+                json!([r, {"type": "paraxial", "q": "efl", "target": 0.0}]),
+            );
+            m.insert("target".into(), json!(target));
+        }
         // LONA: 波長 Int1・帯 Data1。AXCL: 波長 Int1・Int2・帯 Data1（Int2 の距離 − Int1 の距離）。LACL: 波長 Int1・Int2
         // （Int2 の主光線の高さ − Int1）。OpticStudio 26.1 で実測
         "LONA" | "AXCL" => {

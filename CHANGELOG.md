@@ -34,6 +34,8 @@
   前と同じ値は設定 `exact` で
 - **Zernike の項の値が変わる**: 最適化の `zernike` の項を既定で 37 項以上で当てはめた係数にした（前は求める項までで当てはめて
   いた）。当てはめる項の数は `fit` で変えられ、.zmx から読んだ ZERN の行は OpticStudio と同じ数にする
+- **倒立した像の歪曲の長さの符号**: `distortion` の `absolute: true` の値を、像の y の差ではなく、予測より像が内側なら負
+  （OpticStudio の DISG と同じ）にした。近軸像高が負の系（倒立した像）では前と符号が逆になる。% の値は変わらない
 
 ### 変えたもの
 
@@ -104,6 +106,8 @@
 - **一般の歪曲・像面湾曲**: `distortion` に `field`・`reference`（基準の視野からの線形の予測との差）・`peak`（軸上から
   視野までの最大）・`ftheta`（校正した f-θ 歪曲）を、`ray` の `q` に `fcgt`・`fcgs`（像面湾曲）を足した。.zmx の DISG・DIMX・
   DISC・FCGT・FCGS を読み書きする
+- **グリッド歪曲の係数**: `distortion` に `coef`（基準の視野での A〜D）・`abcd`（予測に使う係数）・`component`（radial・x・y）
+  を足した。.zmx の ABCD・DISA を読み書きし、BSER を読む
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

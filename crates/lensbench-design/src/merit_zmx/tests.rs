@@ -307,6 +307,9 @@ fn terms_can_be_read() {
         "DYDY 0 0 0 1 0 0 0 1 0 0",
         "RSRE 3 0 0 0.5 0 0 0 1 0 0",
         "SPCH 0 0 0.7 0 0 0 0 1 0 0",
+        "BSER 0 2 0 0 0 0 0 1 0 0",
+        "ABCD 2 2 3 0 0 0 0 1 0 0",
+        "DISA 1 2 0 3 99 0 0 1 99 0",
     ];
     let mf = merit_function_text(&zmx("MM", &rows)).unwrap();
     let z = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
@@ -318,7 +321,7 @@ fn terms_can_be_read() {
     p.terms = t;
     p.check().unwrap();
     let v = p.term_values(&[]).unwrap();
-    assert_eq!(v.len(), 12);
+    assert_eq!(v.len(), 15);
     assert_eq!(v[0].value(), s.paraxial().efl);
     // Wizard の行をまとめた項（格子・腕・x と y）
     let rows = [
@@ -405,6 +408,8 @@ fn terms_to_rows_and_back() {
         json!({"type": "distortion", "wave": 3, "absolute": true, "ftheta": true, "max": 0.1, "weight": 1.0}),
         json!({"type": "distortion", "wave": 2, "absolute": false, "field": [0.5, 0.5], "reference": 2, "target": 0.0, "weight": 1.0}),
         json!({"type": "distortion", "wave": 1, "absolute": true, "field": [0.0, 0.7], "target": 0.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "reference": 2, "coef": "d", "target": 98.0, "weight": 1.0}),
+        json!({"type": "distortion", "wave": 2, "reference": 1, "field": 3, "abcd": [99.0, 0.0, 0.0, 99.0], "component": "y", "target": 0.0, "weight": 1.0}),
         json!({"type": "ray", "wave": 2, "field": [0.0, 0.7], "px": 0.0, "py": 0.0, "q": "fcgs", "target": 0.0, "weight": 1.0}),
         json!({"type": "longitudinal", "wave": 1, "zone": 0.7, "target": 0.1, "weight": 1.0}),
         json!({"type": "longitudinal", "wave": 1, "wave2": 3, "zone": 0.0, "max": 0.05, "weight": 1.0}),

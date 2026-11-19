@@ -2362,6 +2362,12 @@ the distortion against the axis needs a rotationally symmetric system	軸上を�
 the distortion needs a field other than the axis	歪曲には軸上でない視野が要ります
 the f-theta distortion needs angle fields	f-θ の歪曲には角度の視野が要ります
 the f-theta distortion is not finite	f-θ の歪曲が有限ではありません
+distortion component {c} (radial, x, y)	歪曲の向き {c}（radial・x・y）
+a distortion coefficient term has no peak, ftheta or abcd	歪曲の係数の項には peak・ftheta・abcd を書けません
+distortion coefficient {c} (a, b, c, d)	歪曲の係数 {c}（a・b・c・d）
+a distortion term with abcd has no peak or ftheta	abcd のある歪曲の項には peak・ftheta を書けません
+DISA of OpticStudio gives only percent (not absolute)	OpticStudio の DISA は % だけです（absolute は書けません）
+only the radial distortion without abcd can be written	abcd の無い歪曲は動径（radial）だけ書けます
 the sum of the Seidel distortion has no OpticStudio operand (DIST of surface 0 is the real distortion)	ザイデルの歪曲の和に当たる OpticStudio のオペランドはありません（面 0 の DIST は実光線の歪曲）
 dir of an fnum term is tan or sag	fnum の項の dir は tan か sag です
 the F-number is not finite (wavelength {w})	F ナンバーが有限ではありません（波長 {w}）

@@ -326,13 +326,17 @@ pub enum TermKind {
     /// 主光線の実光線の歪曲 − target（absolute なら長さ [レンズ単位]、でなければ予測の像高に対する %）。微分は差分。
     /// [`DistMode::At`] は視野 field（None は正規化視野 (0, 1)）の、基準の視野 reference（None は軸上、近軸主光線の倍率）
     /// からの一般の歪曲（[`lensbench_core::seidel::distortion_at`]。OpticStudio の DIST の Surf 0 と Absolute、DISG）。
-    /// [`DistMode::Max`] は軸上から field までの絶対値の最大（DIMX）、[`DistMode::FTheta`] は校正した f-θ 歪曲（DISC）
+    /// [`DistMode::Max`] は軸上から field までの絶対値の最大（DIMX）、[`DistMode::FTheta`] は校正した f-θ 歪曲（DISC）、
+    /// [`DistMode::Coef`] は基準の視野でのグリッド歪曲の A〜D（ABCD）。abcd を与えると基準での J の代わりに使い、
+    /// component で動径・x・y を選ぶ（DISA）
     Distortion {
         wave: Option<usize>,
         absolute: bool,
         field: Option<FieldSel>,
         reference: Option<FieldSel>,
         mode: DistMode,
+        abcd: Option<[f64; 4]>,
+        component: lensbench_core::seidel::DistComp,
         target: f64,
     },
     /// 軸上の光線（zone 0 は近軸周辺光線、ほかは正規化瞳座標 (0, zone) の実光線）が光軸を横切る点の、像面からの距離
@@ -393,6 +397,8 @@ pub enum DistMode {
     Max,
     /// 校正した f-θ 歪曲（y の向きの視野の全体）
     FTheta,
+    /// 基準の視野でのグリッド歪曲の係数（0〜3 が A〜D）
+    Coef(usize),
 }
 
 /// 光線の量（[`TermKind::Ray`]）。面の局所座標

@@ -3,7 +3,8 @@
 
 use super::*;
 use lensbench_core::seidel::{
-    chief_height, distortion_at, distortion_max, ftheta_distortion, longitudinal, seidel,
+    chief_height, distortion_against, distortion_max, distortion_point, distortion_ref,
+    ftheta_distortion, longitudinal, seidel, DistRef,
 };
 
 /// ザイデル収差係数（波面収差の係数 [波]、[`lensbench_core::seidel::Seidel::waves`]）
@@ -115,6 +116,8 @@ fn value(s: &System, k: &TermKind) -> Result<f64> {
             field,
             reference,
             mode,
+            abcd,
+            component,
             ..
         } => {
             let w = wave.unwrap_or(s.primary);
@@ -125,20 +128,33 @@ fn value(s: &System, k: &TermKind) -> Result<f64> {
                 }
             };
             let h = norm(field, (0.0, 1.0))?;
-            let (d, pct) = match mode {
-                DistMode::At => {
-                    // 軸上の視野の基準は近軸主光線の倍率（数値の微分より正確）
-                    let r = match reference {
-                        Some(r) => Some(norm(&Some(*r), (0.0, 0.0))?).filter(|&h| h != (0.0, 0.0)),
-                        None => None,
-                    };
-                    distortion_at(s, w, h, r)?
+            // 軸上の視野の基準は近軸主光線の倍率（数値の微分より正確）
+            let r = match reference {
+                Some(r) => Some(norm(&Some(*r), (0.0, 0.0))?).filter(|&h| h != (0.0, 0.0)),
+                None => None,
+            };
+            let base = || -> Result<DistRef> {
+                match abcd {
+                    Some([a, b, c, d]) => {
+                        let mut x = distortion_point(s, w, r)?;
+                        x.j = [[*a, *b], [*c, *d]];
+                        Ok(x)
+                    }
+                    None => distortion_ref(s, w, r),
                 }
+            };
+            let (d, pct) = match mode {
+                DistMode::At => distortion_against(s, w, h, &base()?, *component)?,
                 DistMode::Max => {
                     let m = distortion_max(s, w, h, *absolute)?;
                     (m, m)
                 }
                 DistMode::FTheta => ftheta_distortion(s, w)?,
+                DistMode::Coef(k) => {
+                    let j = distortion_ref(s, w, r)?.j;
+                    let v = j[k / 2][k % 2];
+                    (v, v)
+                }
             };
             Ok(if *absolute { d } else { pct })
         }
