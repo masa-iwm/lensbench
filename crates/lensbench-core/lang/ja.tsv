@@ -2316,8 +2316,8 @@ longitudinal term has no target (or min and max)	longitudinal の項に target�
 lateral_color term has no target (or min and max)	lateral_color の項に target（か min・max）がありません
 semi term has no min or max	semi の項に min か max がありません
 a semi term needs min or max	semi の項には min か max が要ります
-term {i}: semi-diameters of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} のクリア半径（1〜{}）
-the semi-diameters of surfaces {surf} to {to} are not finite	面 {surf}〜{to} のクリア半径が有限ではありません
+term {i}: {} of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} の {}（1〜{}）
+the {} of surfaces {surf} to {to} are not finite	面 {surf}〜{to} の {} が有限ではありません
 term {i}: zone {zone} (0 to 1)	項 {i}: 帯 {zone}（0〜1）
 the ray of zone {zone} stopped (surface {j})	帯 {zone} の光線が止まりました（面 {j}）
 the longitudinal aberration of zone {zone} is not finite	帯 {zone} の縦収差が有限ではありません
@@ -2381,3 +2381,10 @@ multi-configuration row {} configuration {k}: no material {i}	多重構成の行
 multi-configuration row {} has names (only material rows do)	多重構成の行 {} に名前があります（名前を持つのは材料の行だけです）
 {param} is not a material row	{param} は材料の行ではありません
 multi-configuration row {}	多重構成の行 {}
+a semi term or a surface term with to needs min or max	semi の項と to のある surface の項には min か max が要ります
+a surface term with to has no wave, x or y	to のある surface の項に wave・x・y は書けません
+q semi goes with to (or use the semi term)	q の semi は to と一緒に使います（semi の項でも書けます）
+a surface term with to needs min or max	to のある surface の項には min か max が要ります
+term {i}: {} has no range (to)	項 {i}: {} には範囲（to）がありません
+surface {j}: glass {name} is not in the catalogs	面 {j}: 硝材 {name} がカタログにありません
+surface quantity {q} with to	to のある面の量 {q}

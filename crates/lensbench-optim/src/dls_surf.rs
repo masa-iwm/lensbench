@@ -30,10 +30,23 @@ pub enum SurfQ {
     Ynip,
     /// 面の後の媒質の屈折率（INDX）
     Index,
+    /// 半直径（範囲の項 [`TermKind::SurfEach`] の MNSD・MXSD）
+    Semi,
+    /// 面の局所座標の z 軸のグローバル座標での向き（GLCA・GLCB・GLCC）
+    Ga,
+    Gb,
+    Gc,
+    /// 面の後のガラスの d 線（587.5618 nm）の屈折率・アッベ数 νd（カタログの温度、分散式から）・ΔPgF・相対価格・熱膨張係数
+    /// −30〜70 °C [10⁻⁶/K]（GCOS・GTCE、範囲の項で MNIN〜MXPD）。空気は 0
+    Nd,
+    Vd,
+    Dpgf,
+    Cost,
+    Tce,
 }
 
 impl SurfQ {
-    pub const ALL: [SurfQ; 14] = [
+    pub const ALL: [SurfQ; 23] = [
         SurfQ::Curv,
         SurfQ::Conic,
         SurfQ::Sag,
@@ -48,6 +61,15 @@ impl SurfQ {
         SurfQ::Power,
         SurfQ::Ynip,
         SurfQ::Index,
+        SurfQ::Semi,
+        SurfQ::Ga,
+        SurfQ::Gb,
+        SurfQ::Gc,
+        SurfQ::Nd,
+        SurfQ::Vd,
+        SurfQ::Dpgf,
+        SurfQ::Cost,
+        SurfQ::Tce,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -65,6 +87,15 @@ impl SurfQ {
             SurfQ::Power => "power",
             SurfQ::Ynip => "ynip",
             SurfQ::Index => "index",
+            SurfQ::Semi => "semi",
+            SurfQ::Ga => "ga",
+            SurfQ::Gb => "gb",
+            SurfQ::Gc => "gc",
+            SurfQ::Nd => "nd",
+            SurfQ::Vd => "vd",
+            SurfQ::Dpgf => "dpgf",
+            SurfQ::Cost => "cost",
+            SurfQ::Tce => "tce",
         }
     }
     pub fn parse(s: &str) -> Result<SurfQ> {
@@ -81,7 +112,18 @@ impl SurfQ {
     pub fn is_length(self) -> bool {
         !matches!(
             self,
-            SurfQ::Curv | SurfQ::Conic | SurfQ::Power | SurfQ::Index
+            SurfQ::Curv
+                | SurfQ::Conic
+                | SurfQ::Power
+                | SurfQ::Index
+                | SurfQ::Ga
+                | SurfQ::Gb
+                | SurfQ::Gc
+                | SurfQ::Nd
+                | SurfQ::Vd
+                | SurfQ::Dpgf
+                | SurfQ::Cost
+                | SurfQ::Tce
         )
     }
     /// 波長を選べる量
@@ -161,11 +203,59 @@ pub(super) fn surface_value(
             ym[j] * n_before() * i
         }
         SurfQ::Index => s.n(j)[w],
+        SurfQ::Semi => f.semi,
+        SurfQ::Ga | SurfQ::Gb | SurfQ::Gc => {
+            let Some(fr) = s.frames().surf[j] else {
+                invalid!("surface {j} has no position (ignored, or the object at infinity)");
+            };
+            fr.r[match q {
+                SurfQ::Ga => 0,
+                SurfQ::Gb => 1,
+                _ => 2,
+            }][2]
+        }
+        SurfQ::Nd | SurfQ::Vd | SurfQ::Dpgf | SurfQ::Cost | SurfQ::Tce => {
+            let g = glass_values(s, j)?;
+            match q {
+                SurfQ::Nd => g[0],
+                SurfQ::Vd => g[1],
+                SurfQ::Dpgf => g[2],
+                SurfQ::Cost => g[3],
+                _ => g[4],
+            }
+        }
     };
     if !v.is_finite() {
         invalid!("{} of surface {j} is not finite", q.name());
     }
     Ok(v)
+}
+
+/// 面 j の後のガラスの [nd, νd, ΔPgF, 相対価格, 熱膨張係数]（カタログの温度の分散式から。空気・ミラーは 0）
+fn glass_values(s: &System, j: usize) -> Result<[f64; 5]> {
+    use lensbench_core::material::Material;
+    const D: f64 = 0.5875618;
+    const F: f64 = 0.4861327;
+    const C: f64 = 0.6562725;
+    Ok(match &s.surfaces[j].mat {
+        Material::Glass(name) => {
+            let Some(g) = s.glasses.get(name) else {
+                invalid!("surface {j}: glass {name} is not in the catalogs");
+            };
+            let nd = g.n_cat(D);
+            let p = g.props.unwrap_or_default();
+            [
+                nd,
+                (nd - 1.0) / (g.n_cat(F) - g.n_cat(C)),
+                p.dpgf,
+                p.cost,
+                p.tce,
+            ]
+        }
+        Material::Model { nd, vd, dpgf } => [*nd, *vd, *dpgf, 0.0, 0.0],
+        Material::Index(n) => [*n, 0.0, 0.0, 0.0, 0.0],
+        _ => [0.0; 5],
+    })
 }
 
 pub(super) fn check(
@@ -219,10 +309,13 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
 pub(super) fn reads_semi(k: &TermKind) -> bool {
     match k {
         TermKind::Surface { q, .. } => {
-            matches!(q, SurfQ::Diam | SurfQ::MechDiam | SurfQ::SagX | SurfQ::SagY)
+            matches!(
+                q,
+                SurfQ::Diam | SurfQ::MechDiam | SurfQ::SagX | SurfQ::SagY | SurfQ::Semi
+            )
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
-        TermKind::SemiEach { .. } => true,
+        TermKind::SurfEach { q, .. } => *q == SurfQ::Semi,
         TermKind::Calc { args, .. } => args.iter().any(|a| match a {
             CalcArg::Term(k) => reads_semi(k),
             _ => false,
@@ -232,41 +325,48 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
 }
 
 pub(super) fn semi_check(i: usize, k: &TermKind, s: &System) -> Result<()> {
-    let TermKind::SemiEach { surf, to, .. } = k else {
-        unreachable!("not a semi-diameter term");
+    let TermKind::SurfEach { q, surf, to, .. } = k else {
+        unreachable!("not a surface range term");
     };
     if *surf == 0 || surf > to || *to >= s.image() {
         invalid!(
-            "term {i}: semi-diameters of surfaces {surf} to {to} (1 to {})",
+            "term {i}: {} of surfaces {surf} to {to} (1 to {})",
+            q.name(),
             s.image() - 1
         );
+    }
+    if !matches!(
+        q,
+        SurfQ::Semi | SurfQ::Nd | SurfQ::Vd | SurfQ::Dpgf | SurfQ::Cost | SurfQ::Tce
+    ) {
+        invalid!("term {i}: {} has no range (to)", q.name());
+    }
+    for j in *surf..=*to {
+        surface_value(s, j, *q, 0.0, 0.0, s.primary)?;
     }
     Ok(())
 }
 
 pub(super) fn semi_term(s: &System, k: &TermKind) -> Result<TermOut> {
-    let TermKind::SemiEach {
+    let TermKind::SurfEach {
+        q,
         surf,
         to,
         upper,
         target,
     } = k
     else {
-        unreachable!("not a semi-diameter term");
+        unreachable!("not a surface range term");
     };
-    let excess: f64 = (*surf..=*to)
-        .filter(|&i| !s.surfaces[i].ignore)
-        .map(|i| {
-            let d = s.surfaces[i].semi - target;
-            if *upper {
-                d.max(0.0)
-            } else {
-                d.min(0.0)
-            }
-        })
-        .sum();
+    // ガラスの量はガラスの面だけ（OpticStudio 26.1 の MNIN〜MXPD で、空気の面は数えない）
+    let counts = |i: usize| *q == SurfQ::Semi || glass(s, i);
+    let mut excess = 0.0;
+    for i in (*surf..=*to).filter(|&i| !s.surfaces[i].ignore && counts(i)) {
+        let d = surface_value(s, i, *q, 0.0, 0.0, s.primary)? - target;
+        excess += if *upper { d.max(0.0) } else { d.min(0.0) };
+    }
     if !excess.is_finite() {
-        invalid!("the semi-diameters of surfaces {surf} to {to} are not finite");
+        invalid!("the {} of surfaces {surf} to {to} are not finite", q.name());
     }
     Ok((vec![excess], None))
 }

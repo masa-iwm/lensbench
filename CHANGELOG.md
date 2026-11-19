@@ -92,6 +92,9 @@
   境界）。.zmx の CTGT・CTLT・CTVA・TTHI・ETGT・ETLT・ETVA と範囲の境界 MNCT〜MNEG をこの項にし、書き出しも同じオペランドにする
 - **計算の項**: 最適化の項 `calc`（数・1 つの値の項の和・差・積・商・絶対値・√|a|・逆数・最大・最小・√Σa²・三角関数）。.zmx の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・
   RECI・CONS・MAXX・MINN・QSUM・SINE〜ATAN・OPVA・ABGT・ABLT をこの項にする
+- **硝材の量と面の向きの項**: `surface` の `q` に `nd`・`vd`・`dpgf`・`cost`・`tce`（面の後の硝材。カタログの ED・OD の行を
+  読む）と `ga`・`gb`・`gc`（面の z 軸の向き）。`to` を書くと面の範囲を面ごとに `min`・`max` と比べてはみ出しを足す。.zmx の
+  GCOS・GTCE・GLCA〜GLCC・MNIN・MXIN・MNAB・MXAB・MNPD・MXPD を読み書きする
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

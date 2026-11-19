@@ -866,7 +866,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
         }
         TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
         TermKind::Cardinal { .. } => return card::check(i, k, s),
-        TermKind::SemiEach { .. } => return surf::semi_check(i, k, s),
+        TermKind::SurfEach { .. } => return surf::semi_check(i, k, s),
         TermKind::Seidel { .. }
         | TermKind::Distortion { .. }
         | TermKind::Longitudinal { .. }
@@ -1101,7 +1101,7 @@ fn eval_term(
         }
         TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Cardinal { .. } => card::term(s, k),
-        TermKind::SemiEach { .. } => surf::semi_term(s, k),
+        TermKind::SurfEach { .. } => surf::semi_term(s, k),
         TermKind::Seidel { .. }
         | TermKind::Distortion { .. }
         | TermKind::Longitudinal { .. }

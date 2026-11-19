@@ -398,7 +398,8 @@ fn kind_of(
         }
         // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
         "CVGT" | "CVLT" | "CVVA" | "COGT" | "COLT" | "COVA" | "DMGT" | "DMLT" | "DMVA" | "SAGX"
-        | "SAGY" | "SSAG" | "STHI" | "GLCX" | "GLCY" | "GLCZ" => {
+        | "SAGY" | "SSAG" | "STHI" | "GLCX" | "GLCY" | "GLCZ" | "GLCA" | "GLCB" | "GLCC"
+        | "GCOS" | "GTCE" => {
             let j = int(INT1)?;
             let last = if op == "STHI" { image - 1 } else { image };
             if j < 0 || j as usize > last {
@@ -422,7 +423,13 @@ fn kind_of(
                 "STHI" => ("thick", Some((num(data(1))?, num(data(2))?))),
                 "GLCX" => ("gx", None),
                 "GLCY" => ("gy", None),
-                _ => ("gz", None),
+                "GLCZ" => ("gz", None),
+                "GLCA" => ("ga", None),
+                "GLCB" => ("gb", None),
+                "GLCC" => ("gc", None),
+                // 面の後のガラスの相対価格・熱膨張係数（カタログの OD・ED の行、空気は 0。OpticStudio 26.1 で実測）
+                "GCOS" => ("cost", None),
+                _ => ("tce", None),
             };
             m.insert("type".into(), json!("surface"));
             m.insert("surf".into(), json!(j));
@@ -436,7 +443,7 @@ fn kind_of(
                 "LT" => "max",
                 _ => "target",
             };
-            let len = !matches!(q, "curv" | "conic");
+            let len = !matches!(q, "curv" | "conic" | "ga" | "gb" | "gc" | "cost" | "tce");
             // 曲率は 1/レンズ単位
             let t = match q {
                 "curv" => target / unit,
@@ -614,20 +621,30 @@ fn kind_of(
             m.insert("wave2".into(), json!(w2));
             m.insert("target".into(), json!(target * unit));
         }
-        // MNSD・MXSD: 面 Int1〜Int2 の半直径を目標と比べてはみ出しを足す（OpticStudio 26.1 で実測、値は目標 ± Σ はみ出し）
-        "MNSD" | "MXSD" => {
+        // MNSD・MXSD: 面 Int1〜Int2 の半直径を目標と比べてはみ出しを足す（OpticStudio 26.1 で実測、値は目標 ± Σ はみ出し）。
+        // MNIN〜MXPD は面の後のガラスの nd・νd・ΔPgF で、ガラスの面だけ（同じく実測）
+        "MNSD" | "MXSD" | "MNIN" | "MXIN" | "MNAB" | "MXAB" | "MNPD" | "MXPD" => {
             let s1 = int(INT1)?;
             let s2 = int(INT2)?.min(image as i64 - 1);
             if s1 < 1 || s2 < s1 {
                 return Err(format!("surfaces {s1} to {s2}"));
             }
-            m.insert("type".into(), json!("semi"));
+            let side = if op.starts_with("MN") { "min" } else { "max" };
+            if op.ends_with("SD") {
+                m.insert("type".into(), json!("semi"));
+                m.insert(side.into(), json!(target * unit));
+            } else {
+                m.insert("type".into(), json!("surface"));
+                let q = match &op[2..] {
+                    "IN" => "nd",
+                    "AB" => "vd",
+                    _ => "dpgf",
+                };
+                m.insert("q".into(), json!(q));
+                m.insert(side.into(), json!(target));
+            }
             m.insert("surf".into(), json!(s1));
             m.insert("to".into(), json!(s2));
-            m.insert(
-                if op == "MNSD" { "min" } else { "max" }.into(),
-                json!(target * unit),
-            );
         }
         // SFNO・TFNO: 視野 Int1・波長 Int2 の実光線の F ナンバー（OpticStudio 26.1 で実測）
         "SFNO" | "TFNO" => {
@@ -1299,6 +1316,24 @@ fn row_of(
                 }
             }
         }
+        "surface" if t.get("to").is_some() => {
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let s1 = num("surf").unwrap_or(1.0);
+            let s2 = num("to").unwrap_or(s1);
+            let p = [s1, s2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let (mn, mx) = match q {
+                "semi" => ("MNSD", "MXSD"),
+                "nd" => ("MNIN", "MXIN"),
+                "vd" => ("MNAB", "MXAB"),
+                "dpgf" => ("MNPD", "MXPD"),
+                _ => return Err(format!("surface quantity {q} with to")),
+            };
+            match bound(0.0) {
+                Bound::Side("OPGT", b) => (mn, p, Bound::Target(b)),
+                Bound::Side(_, b) => (mx, p, Bound::Target(b)),
+                _ => return Err("a surface term with to needs min or max".into()),
+            }
+        }
         "surface" => {
             let q = t.get("q").and_then(Value::as_str).unwrap_or("");
             let mut p = [
@@ -1333,6 +1368,11 @@ fn row_of(
                 "gx" => ("GLCX", "", ""),
                 "gy" => ("GLCY", "", ""),
                 "gz" => ("GLCZ", "", ""),
+                "ga" => ("GLCA", "", ""),
+                "gb" => ("GLCB", "", ""),
+                "gc" => ("GLCC", "", ""),
+                "cost" => ("GCOS", "", ""),
+                "tce" => ("GTCE", "", ""),
                 "power" | "ynip" | "index" => {
                     p[1] = if wave() == 0.0 { primary } else { wave() };
                     let op = match q {

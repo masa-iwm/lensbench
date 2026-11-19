@@ -21,6 +21,31 @@ pub struct Glass {
     pub ld: Option<[f64; 2]>,
     /// 波長 [µm]、内部透過率、厚さ [mm]
     pub it: Vec<[f64; 3]>,
+    /// カタログの性質（AGF の ED・OD の行）。無ければ None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub props: Option<GlassProps>,
+}
+
+/// カタログのガラスの性質（AGF の ED の行の熱膨張係数・比重・ΔPgF、OD の行の相対価格）
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+pub struct GlassProps {
+    /// 熱膨張係数 −30〜70 °C [10⁻⁶/K]（ED の 1 番目）
+    pub tce: f64,
+    /// 比重 [g/cm³]（ED の 3 番目）
+    pub density: f64,
+    /// 部分分散比の偏差 ΔPgF（ED の 4 番目）
+    pub dpgf: f64,
+    /// 相対価格（OD の 1 番目。書いていなければ 0）
+    pub cost: f64,
 }
 
 impl Glass {
@@ -316,6 +341,7 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
                     td: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 20.0],
                     ld: None,
                     it: Vec::new(),
+                    props: None,
                 });
             }
             "CD" => {
@@ -338,6 +364,18 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
                     g.it.push([f(t[1])?, f(t[2])?, f(t[3])?]);
                 }
             }
+            // 性質の行は屈折率に効かないので、読めない値（"_" など）は 0 にして止めない
+            "ED" if t.len() >= 5 => {
+                if let Some(g) = cur.as_mut() {
+                    let p = g.props.get_or_insert_with(GlassProps::default);
+                    (p.tce, p.density, p.dpgf) = (loose(t[1]), loose(t[3]), loose(t[4]));
+                }
+            }
+            "OD" if t.len() >= 2 => {
+                if let Some(g) = cur.as_mut() {
+                    g.props.get_or_insert_with(GlassProps::default).cost = loose(t[1]);
+                }
+            }
             "LD" if t.len() >= 3 => {
                 if let Some(g) = cur.as_mut() {
                     g.ld = Some([f(t[1])?, f(t[2])?]);
@@ -348,6 +386,14 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
     }
     flush(cur.take(), &mut out);
     Ok(out)
+}
+
+/// 性質の行の数（読めなければ 0）
+fn loose(s: &str) -> f64 {
+    s.parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0)
 }
 
 /// 分散式ごとの係数の数

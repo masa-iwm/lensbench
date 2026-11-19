@@ -346,9 +346,11 @@ pub enum TermKind {
         wave2: usize,
         target: f64,
     },
-    /// 面 surf から to までの半直径を面ごとに target と比べ、はみ出しを足した値 − target（upper なら上限、でなければ下限。
-    /// 値は target ± Σ はみ出し。OpticStudio の MXSD・MNSD）。微分は差分
-    SemiEach {
+    /// 面 surf から to までの量 q（半直径 [`SurfQ::Semi`] か、面の後のガラスの nd・νd・ΔPgF・価格・熱膨張係数）を面ごとに
+    /// target と比べ、はみ出しを足した値 − target（upper なら上限、でなければ下限。値は target ± Σ はみ出し。ガラスの量は
+    /// ガラスの面だけ。OpticStudio の MXSD・MNSD・MNIN・MXIN・MNAB・MXAB・MNPD・MXPD）。微分は差分
+    SurfEach {
+        q: SurfQ,
         surf: usize,
         to: usize,
         upper: bool,
@@ -764,7 +766,7 @@ impl TermKind {
             | TermKind::Distortion { target, .. }
             | TermKind::Longitudinal { target, .. }
             | TermKind::LateralColor { target, .. }
-            | TermKind::SemiEach { target, .. }
+            | TermKind::SurfEach { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -938,7 +940,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Distortion { .. }
         | TermKind::Longitudinal { .. }
         | TermKind::LateralColor { .. }
-        | TermKind::SemiEach { .. }
+        | TermKind::SurfEach { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

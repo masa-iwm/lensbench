@@ -1159,7 +1159,7 @@
               ]
             },
             "q": {
-              "description": "量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・power・ynip・index）",
+              "description": "量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・dpgf・\ncost・tce・semi）",
               "type": "string"
             },
             "surf": {
@@ -1173,6 +1173,15 @@
               "format": "double",
               "type": [
                 "number",
+                "null"
+              ]
+            },
+            "to": {
+              "description": "範囲の最後の面（semi・nd・vd・dpgf・cost・tce だけ）。書けば面 surf から to までを面ごとに min か max と比べ、\nはみ出しを足す（ガラスの量はガラスの面だけ）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
                 "null"
               ]
             },

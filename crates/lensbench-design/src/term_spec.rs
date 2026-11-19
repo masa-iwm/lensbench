@@ -237,8 +237,12 @@ pub struct ThickSpec {
 pub struct SurfSpec {
     /// 面の番号（物体面 0）
     pub surf: usize,
-    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・power・ynip・index）
+    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・dpgf・
+    /// cost・tce・semi）
     pub q: String,
+    /// 範囲の最後の面（semi・nd・vd・dpgf・cost・tce だけ）。書けば面 surf から to までを面ごとに min か max と比べ、
+    /// はみ出しを足す（ガラスの量はガラスの面だけ）
+    pub to: Option<usize>,
     /// sag・thick を測る点 [レンズ単位]（既定 0）
     pub x: Option<f64>,
     pub y: Option<f64>,

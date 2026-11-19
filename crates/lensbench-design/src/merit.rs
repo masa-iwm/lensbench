@@ -253,7 +253,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Distortion { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
-            | TermKind::SemiEach { .. }
+            | TermKind::SurfEach { .. }
             | TermKind::Calc { .. }
     );
     // 面ごとに比べる厚みの項は min・max の向きで残差を決める
@@ -264,9 +264,9 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         }
         e.upper = side == Side::Max;
     }
-    if let TermKind::SemiEach { upper, .. } = &mut kind {
+    if let TermKind::SurfEach { upper, .. } = &mut kind {
         if side == Side::Eq {
-            return Err("a semi term needs min or max".into());
+            return Err("a semi term or a surface term with to needs min or max".into());
         }
         *upper = side == Side::Max;
     }
@@ -452,6 +452,25 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             if (t.x.is_some() || t.y.is_some()) && !matches!(q, SurfQ::Sag | SurfQ::Thick) {
                 return Err("x and y go with sag and thick".to_string().into());
             }
+            if let Some(to) = t.to {
+                if t.wave.is_some() || t.x.is_some() || t.y.is_some() {
+                    return Err("a surface term with to has no wave, x or y"
+                        .to_string()
+                        .into());
+                }
+                return Ok(TermKind::SurfEach {
+                    q,
+                    surf: t.surf,
+                    to,
+                    upper: false,
+                    target: t.target.ok_or("surface term with to has no min or max")?,
+                });
+            }
+            if q == SurfQ::Semi {
+                return Err("q semi goes with to (or use the semi term)"
+                    .to_string()
+                    .into());
+            }
             TermKind::Surface {
                 surf: t.surf,
                 q,
@@ -520,7 +539,8 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 .target
                 .ok_or("lateral_color term has no target (or min and max)")?,
         },
-        TermSpec::Semi(t) => TermKind::SemiEach {
+        TermSpec::Semi(t) => TermKind::SurfEach {
+            q: SurfQ::Semi,
             surf: t.surf,
             to: t.to.unwrap_or(t.surf),
             upper: false,

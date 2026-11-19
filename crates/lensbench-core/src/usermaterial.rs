@@ -97,6 +97,7 @@ impl MaterialCatalog {
                     td: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, m.tref()],
                     ld: m.range(),
                     it: m.transmittance(),
+                    props: None,
                 };
                 (g.name.clone(), g)
             })
