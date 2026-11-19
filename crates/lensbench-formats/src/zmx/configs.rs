@@ -3,7 +3,7 @@
 use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
-/// 偶数次非球面・座標ブレークの PRAM、系の値の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、系の値の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -55,6 +55,37 @@ pub(super) fn config_table(
             raw_vals.iter().cloned().zip(vals.iter().copied()).collect();
         let varies = both.iter().any(|v| !same(v, &both[0]));
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
+        if let ("GLSS", Some(j), true) = (op.as_str(), surf, varies) {
+            // 材料の行: 書いていない構成は今の材料。材料をピックアップする面（GLSS の無い面）も同じ行を持つ
+            let now = s.surfaces[j].mat.name();
+            let names: Vec<String> = raw_vals
+                .iter()
+                .map(|v| {
+                    v.as_deref()
+                        .map_or(now.clone(), |x| x.trim_matches('"').to_string())
+                })
+                .collect();
+            for k in std::iter::once(j).chain(material_pickers(raw, j)) {
+                let mut row = ConfigRow {
+                    param: Param::new(k, Kind::Material),
+                    values: Vec::new(),
+                    names: Vec::new(),
+                    picks: Vec::new(),
+                };
+                for n in &names {
+                    let i = match row.names.iter().position(|x| x == n) {
+                        Some(i) => i,
+                        None => {
+                            row.names.push(n.clone());
+                            row.names.len() - 1
+                        }
+                    };
+                    row.values.push(i as f64);
+                }
+                out.push(row);
+            }
+            continue;
+        }
         let kind = match (op.as_str(), surf) {
             ("THIC", Some(_)) => Some(Kind::Thick),
             ("CRVT", Some(_)) => Some(Kind::Curv),
@@ -86,6 +117,7 @@ pub(super) fn config_table(
                 out.push(ConfigRow {
                     param: p,
                     values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
+                    names: Vec::new(),
                     picks: Vec::new(),
                 });
             }
@@ -100,6 +132,29 @@ pub(super) fn config_table(
         active,
         rows: out,
     })
+}
+
+/// 面 j の材料をピックアップする面（連なっていても。途中に多重構成の GLSS がある面は除く）
+fn material_pickers(raw: &Raw, j: usize) -> Vec<usize> {
+    let glss = |k: usize| {
+        raw.mce
+            .iter()
+            .any(|(op, p1, ..)| op == "GLSS" && *p1 == k as i64)
+    };
+    (0..raw.surfs.len())
+        .filter(|&k| k != j && !glss(k))
+        .filter(|&k| {
+            let mut i = k;
+            for _ in 0..raw.surfs.len() {
+                match raw.surfs[i].glas_pickup {
+                    Some(src) if src == j => return true,
+                    Some(src) if src < raw.surfs.len() && !glss(src) => i = src,
+                    _ => return false,
+                }
+            }
+            false
+        })
+        .collect()
 }
 
 /// 系の値の演算子のパラメータの種類（番号 1 は波長・視野の番号、1 から）

@@ -27,7 +27,8 @@
 //!   動き・移動が 0 のときだけ）
 //! - `add_mech` part（機構部品、系ファイルの mechanics の要素と同じ形） ／ `set_mech` mech（名前か番号）, part（書いた項目
 //!   だけ変える） ／ `remove_mech` mech
-//! - `set_config_count` n ／ `set_config_row` param, values ／ `add_config_row` param（どの構成も今の値）／
+//! - `set_config_count` n ／ `set_config_row` param, values ／ `set_config_materials` param（`N.material`）, names
+//!   （構成ごとの材料の名前） ／ `add_config_row` param（どの構成も今の値）／
 //!   `remove_config_row` param ／ `set_config` k
 //!
 //! 値: 数・数の並び・文字列・真偽。aperture は {"type": "circular", "max": 3, …} か null。
@@ -815,11 +816,24 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
             t.set_config_row(p, values.iter().map(|x| x.0).collect())
                 .map_err(e)?;
         }
+        O::SetConfigMaterials { param, names } => {
+            let p = t.param(param).map_err(e)?;
+            if p.kind != lensbench_core::param::Kind::Material {
+                return Err(format!("{param} is not a material row").into());
+            }
+            t.set_config_materials(p.index(), names).map_err(e)?;
+        }
         O::AddConfigRow { param } => {
             let p = t.param(param).map_err(e)?;
             let n = t.configs().map_or(1, |c| c.n);
-            let v = t.get_param(p).map_err(e)?;
-            t.set_config_row(p, vec![v; n]).map_err(e)?;
+            if p.kind == lensbench_core::param::Kind::Material {
+                let now = t.surfaces[p.index()].mat.name();
+                t.set_config_materials(p.index(), &vec![now; n])
+                    .map_err(e)?;
+            } else {
+                let v = t.get_param(p).map_err(e)?;
+                t.set_config_row(p, vec![v; n]).map_err(e)?;
+            }
         }
         O::RemoveConfigRow { param } => {
             let p = t.param(param).map_err(e)?;

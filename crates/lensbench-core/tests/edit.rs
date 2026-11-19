@@ -453,6 +453,42 @@ fn configs_system_values() {
     assert!(s.set_config_row(sys(Kind::ObjX), vec![0.0, 1.0]).is_err());
 }
 
+/// 面の材料の行（名前の値）。構成ごとの系はその材料になり、面の表で変えた材料は今の構成の列に入る
+#[test]
+fn configs_material_rows() {
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.set_config_count(3).unwrap();
+    let names: Vec<String> = ["1.5,60", "1.6,40", "1.5,60"].map(String::from).into();
+    s.set_config_materials(2, &names).unwrap();
+    let c = s.configs().unwrap();
+    assert_eq!(c.rows[0].names, ["1.5,60", "1.6,40"]);
+    assert_eq!(c.rows[0].values, [0.0, 1.0, 0.0]);
+    let n = |s: &System| s.surfaces[2].mat.name();
+    assert_eq!(
+        n(&s.config(2).unwrap()),
+        n(&s.config(2).unwrap().config(2).unwrap())
+    );
+    assert_ne!(n(&s.config(1).unwrap()), n(&s.config(2).unwrap()));
+    // 数の値・最適化の変数にはできない
+    let p = Param::new(2, Kind::Material);
+    assert!(p.kind.is_table_only());
+    assert!(s.set_config_row(p, vec![0.0; 3]).is_err());
+    assert!(s.get_param(p).is_err());
+    // 面の表で材料を変えると今の構成の列に入る（無い名前は足す）
+    s.set_material(2, "1.7,30").unwrap();
+    s.sync_active_config();
+    let r = &s.configs().unwrap().rows[0];
+    assert_eq!(r.name_at(1).unwrap(), "1.7,30");
+    assert_eq!(r.name_at(3).unwrap(), "1.5,60");
+    // 構成を減らして 1 つにすると、残った構成の材料が系に入る
+    let mut t = s.clone();
+    t.remove_config(1).unwrap();
+    t.remove_config(1).unwrap();
+    assert!(t.configs().is_none());
+    assert_eq!(n(&t), "1.5,60");
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

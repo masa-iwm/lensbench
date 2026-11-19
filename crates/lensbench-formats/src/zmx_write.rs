@@ -753,6 +753,17 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     if let Some(c) = &s.configs {
         w(&mut o, format!("MNUM {} {}", c.n, c.active));
         for r in &c.rows {
+            if r.is_material() {
+                for k in 1..=c.n {
+                    let name = r.name_at(k).map_err(|e| e.to_string())?;
+                    let p1 = r.param.index();
+                    w(
+                        &mut o,
+                        format!("GLSS {p1} {k} \"{name}\" 0 0 0 1 1 0 0 \"\" 0"),
+                    );
+                }
+                continue;
+            }
             let Some((op, p1, parm, conv)) = config_op(s, r.param) else {
                 continue;
             };

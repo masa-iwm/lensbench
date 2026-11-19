@@ -947,6 +947,13 @@
     "ConfigRow": {
       "description": "多重構成の表の 1 行",
       "properties": {
+        "names": {
+          "description": "材料の行の材料の名前（面の表の材料と同じ書き方）。ほかの行は空で、省く",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "param": {
           "$ref": "#/$defs/Param"
         },
@@ -958,7 +965,7 @@
           "type": "array"
         },
         "values": {
-          "description": "構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値",
+          "description": "構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値。\n材料の行（[`Kind::Material`]）は `names` の番号（0 始まり）",
           "items": {
             "anyOf": [
               {
@@ -1824,6 +1831,11 @@
         {
           "const": "ApMax",
           "description": "円形の開口・遮蔽の最大の半径。多重構成の行（.zmx の APMX）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Material",
+          "description": "面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。\n最適化の変数には使えない",
           "type": "string"
         },
         {

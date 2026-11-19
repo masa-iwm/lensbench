@@ -1102,8 +1102,15 @@ fn config_diff(spec: &LoadSpec, src: &Source) -> Result<Value, RpcErr> {
             systems.iter().any(|s| f(s) != a)
         };
         type Get = fn(&lensbench_core::surface::Surface) -> String;
-        let checks: [(&str, Get); 4] = [
-            ("glass", |d| d.mat.name()),
+        if differs(&|s| s.surfaces[j].mat.name()) {
+            let names: Vec<String> = systems.iter().map(|s| s.surfaces[j].mat.name()).collect();
+            ops.push(json!({
+                "op": "set_config_materials",
+                "param": systems[0].param_name(Param::new(j, Kind::Material)),
+                "names": names,
+            }));
+        }
+        let checks: [(&str, Get); 3] = [
             ("ignore", |d| d.ignore.to_string()),
             ("semi-diameter", |d| format!("{:?}", d.semi)),
             ("stop", |d| d.stop.to_string()),

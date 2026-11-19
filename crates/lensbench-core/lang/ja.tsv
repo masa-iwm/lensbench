@@ -2375,3 +2375,9 @@ configuration {c}: FLTP switches between angles and heights but field {} has no 
 field type {v} (0 to 3)	視野の種類 {v}（0〜3）
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません
 {}: surface has no circular aperture or obscuration	{}: 面に円形の開口も遮蔽もありません
+{}: set a material row by names	{}: 材料の行は名前で設定してください
+multi-configuration row {} configuration {k}: no material {i}	多重構成の行 {} の構成 {k}: 材料 {i} がありません
+{}: a material is a name, not a number	{}: 材料は名前で、数ではありません
+multi-configuration row {} has names (only material rows do)	多重構成の行 {} に名前があります（名前を持つのは材料の行だけです）
+{param} is not a material row	{param} は材料の行ではありません
+multi-configuration row {}	多重構成の行 {}

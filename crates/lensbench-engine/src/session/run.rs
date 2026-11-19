@@ -225,6 +225,7 @@ fn config_table(sess: &Session) -> Result<views::ConfigTable, RpcErr> {
                 .map(|r| views::ConfigRow {
                     param: s.param_name(r.param),
                     values: r.values.clone(),
+                    names: r.names.clone(),
                     picks: r.picks.clone(),
                 })
                 .collect()

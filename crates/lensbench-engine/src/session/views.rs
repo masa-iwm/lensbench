@@ -71,6 +71,9 @@ pub struct ConfigRow {
     /// 構成ごとの値（NaN は JSON の null）
     #[serde(deserialize_with = "nan_for_null")]
     pub values: Vec<f64>,
+    /// 材料の行（`N.material`）の材料の名前。values はこの番号（0 始まり）。ほかの行は空で、省く
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
     pub picks: Vec<ConfigPick>,
 }
 
@@ -357,6 +360,7 @@ mod tests {
             rows: vec![ConfigRow {
                 param: "3.t".into(),
                 values: vec![1.0, f64::NAN],
+                names: Vec::new(),
                 picks: vec![ConfigPick {
                     k: 2,
                     from: 1,

@@ -102,6 +102,9 @@ pub enum Kind {
     Ignore,
     /// 円形の開口・遮蔽の最大の半径。多重構成の行（.zmx の APMX）。最適化の変数には使えない
     ApMax,
+    /// 面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。
+    /// 最適化の変数には使えない
+    Material,
     /// 面タイプのパラメータ（.zmx の PARM の番号、1 から）。ピックアップ・マクロのソルブの量（パラメータは
     /// [`Kind::Asph`] などの意味のある名前で）
     Parm(u8),
@@ -146,6 +149,7 @@ impl Kind {
             "semi" => Kind::Semi,
             "ignore" => Kind::Ignore,
             "apmax" => Kind::ApMax,
+            "material" => Kind::Material,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -226,6 +230,7 @@ impl Kind {
             Kind::Semi => "semi".into(),
             Kind::Ignore => "ignore".into(),
             Kind::ApMax => "apmax".into(),
+            Kind::Material => "material".into(),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -262,7 +267,10 @@ impl Kind {
 
     /// 多重構成の表の行にだけ使う面の値（半直径・面の無視・開口の最大の半径）。最適化の変数・微分には使えない
     pub fn is_table_only(&self) -> bool {
-        matches!(self, Kind::Semi | Kind::Ignore | Kind::ApMax)
+        matches!(
+            self,
+            Kind::Semi | Kind::Ignore | Kind::ApMax | Kind::Material
+        )
     }
 
     /// 傾き偏心の値の位置（dx dy tx ty tz）
@@ -651,6 +659,7 @@ impl System {
             Kind::Thick => d.t,
             Kind::Semi => d.semi,
             Kind::Ignore => f64::from(u8::from(d.ignore)),
+            Kind::Material => invalid!("{}: a material is a name, not a number", p.name()),
             Kind::ApMax => match d.ap {
                 Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } => max,
                 _ => invalid!(
@@ -906,6 +915,7 @@ impl System {
                 Kind::Semi if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::Ignore if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
                 Kind::ApMax if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::Material => invalid!("{}: a material is a name, not a number", p.name()),
                 Kind::ApMax
                     if !matches!(
                         self.surfaces[p.index()].ap,
@@ -1048,6 +1058,8 @@ impl System {
                     }
                 }
                 Kind::Ignore => d.ignore = v != 0.0,
+                // 上で断った
+                Kind::Material => {}
                 Kind::ApMax => {
                     if let Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } = &mut d.ap {
                         *max = v;

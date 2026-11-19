@@ -635,6 +635,31 @@
         },
         {
           "additionalProperties": false,
+          "description": "多重構成の表の材料の行（param は `N.material`、構成ごとの材料の名前）",
+          "properties": {
+            "names": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "op": {
+              "const": "set_config_materials",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "param",
+            "names"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "多重構成の表に行を足す（どの構成も今の値）",
           "properties": {
             "op": {
