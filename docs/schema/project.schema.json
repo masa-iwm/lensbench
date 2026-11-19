@@ -3907,6 +3907,10 @@
       "additionalProperties": false,
       "description": "ブロックの面の値の上書き（[`FaceMods::surface_edits`]）。面はブロックの面のうち座標ブレークを除いて数えた\n番号（0 始まり。偏心・傾きの座標ブレークの有無で番号が変わらないように）。値は系の面の値（順次の面の値。\n鏡の後は厚さ・曲率の符号が逆）で、名前は [`lensbench_core::edit::SURF_FIELDS`]",
       "properties": {
+        "coordbrk": {
+          "description": "座標ブレークの面を指す（surface はブロックの面の座標ブレークだけを数えた番号。ブロックの偏心・傾きの座標ブレークは\n数えない。往復するブロックでは使えない）",
+          "type": "boolean"
+        },
         "fields": {
           "additionalProperties": true,
           "type": "object"

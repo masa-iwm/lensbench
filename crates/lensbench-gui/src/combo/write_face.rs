@@ -208,6 +208,10 @@ impl Pick {
 
     /// 中身（種類ごとの欄）に書く。書けたか
     fn write_source(&mut self, rel: usize, key: &str, v: &Value) -> bool {
+        // 座標ブレークの値は上書きで持つ
+        if key.starts_with(crate::combo_tree::CB_FIELD) {
+            return false;
+        }
         match self.kind {
             ElemKind::Lens => self.write_lens(rel, key, v),
             ElemKind::Surfaces => {
@@ -441,7 +445,9 @@ impl Pick {
     /// この要素の面（座標ブレークを除く番号）を map で付け替える。None になった面の上書き・操作は外す
     pub(crate) fn shift_faces(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
         let remap = |v: &mut Vec<SurfEdit>| {
+            // 座標ブレークの上書きは座標ブレークの番号なので面の付け替えでは変えない
             v.retain_mut(|e| match map(e.surface) {
+                _ if e.field.starts_with(crate::combo_tree::CB_FIELD) => true,
                 Some(i) => {
                     e.surface = i;
                     true

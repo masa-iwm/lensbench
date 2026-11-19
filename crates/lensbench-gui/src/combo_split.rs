@@ -142,7 +142,9 @@ fn config_set(
         }
     }
     // 面の値（系の面の値。曲率は半径で）
-    let mut edits: BTreeMap<String, BTreeMap<usize, Map<String, Value>>> = BTreeMap::new();
+    // ブロック id → (座標ブレークか, ブロックの面の番号) → 値
+    type Edits = BTreeMap<String, BTreeMap<(bool, usize), Map<String, Value>>>;
+    let mut edits: Edits = BTreeMap::new();
     for j in 1..s0.surfaces.len() - 1 {
         let x = lensbench_project::edit_ops::surf_fields_json(s0, j).ok()?;
         let y = lensbench_project::edit_ops::surf_fields_json(sk, j).ok()?;
@@ -155,7 +157,8 @@ fn config_set(
             if skip {
                 continue;
             }
-            let (id, i) = a.face[j].as_ref()?;
+            let is_cb = s0.surfaces[j].typ() == SurfType::CoordBrk;
+            let (id, i) = if is_cb { &a.cb[j] } else { &a.face[j] }.as_ref()?;
             let val = match name.as_str() {
                 "mirror" => return None,
                 "r" => json!(radius_of(sk.surfaces[j].c)?),
@@ -164,7 +167,7 @@ fn config_set(
             edits
                 .entry(id.clone())
                 .or_default()
-                .entry(*i)
+                .entry((is_cb, *i))
                 .or_default()
                 .insert(name.clone(), val);
         }
@@ -172,7 +175,10 @@ fn config_set(
     for (id, m) in edits {
         let es: Vec<Value> = m
             .into_iter()
-            .map(|(i, f)| json!({ "surface": i, "fields": f }))
+            .map(|((cb, i), f)| match cb {
+                true => json!({ "surface": i, "coordbrk": true, "fields": f }),
+                false => json!({ "surface": i, "fields": f }),
+            })
             .collect();
         set.entry(id).or_insert_with(|| json!({}))["surface_edits"] = json!(es);
     }
@@ -237,6 +243,7 @@ fn mirror_block(a: &lensbench_core::surface::Surface, id: &str) -> Option<Value>
     let plain = a.typ() == SurfType::Standard
         && matches!(a.ap, Aperture::None)
         && a.coat.is_empty()
+        && !a.ignore
         && !a.semi_auto
         && a.before.is_none()
         && a.after == lensbench_core::surface::After::None;
@@ -260,6 +267,8 @@ struct Parts {
     v: Value,
     /// 系の面 → (ブロック id, ブロックの面)（座標ブレーク・物体・像は None）
     face: Vec<Option<(String, usize)>>,
+    /// 座標ブレークの系の面 → (ブロック id, ブロックの座標ブレークだけを数えた番号)
+    cb: Vec<Option<(String, usize)>>,
     /// 空気のブロックの blocks の位置・その前のブロックの id・厚さを持つ系の面
     airs: Vec<(usize, String, usize)>,
 }
@@ -272,6 +281,7 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
     let mut blocks = Vec::new();
     // 系の面 → (ブロック id, ブロックの面)
     let mut face: Vec<Option<(String, usize)>> = vec![None; img + 1];
+    let mut cb: Vec<Option<(String, usize)>> = vec![None; img + 1];
     let mut stop: Option<(String, usize)> = None;
     let mut airs = Vec::new();
     // 面を光の進む向きで（ブロックは向きで書き、鏡の後は展開が裏返す）。鏡の後の面は裏返し、厚さの符号を返す
@@ -379,12 +389,14 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
             }
         }
         // ブロックの面の番号は座標ブレークを除いて数える（座標ブレークは面の上書き・操作で指せない）
-        let mut i = 0;
+        let (mut i, mut ci) = (0, 0);
         for x in j..=k {
             if s.surfaces[x].typ() == SurfType::CoordBrk {
                 if s.surfaces[x].stop {
                     return None;
                 }
+                cb[x] = Some((id.clone(), ci));
+                ci += 1;
                 continue;
             }
             face[x] = Some((id.clone(), i));
@@ -481,7 +493,7 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
     if !s.macros.is_empty() {
         v["macros"] = serde_json::to_value(&s.macros).ok()?;
     }
-    Some(Parts { v, face, airs })
+    Some(Parts { v, face, cb, airs })
 }
 
 #[cfg(test)]
@@ -817,7 +829,7 @@ THIC 5 1 -30 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 5 2 -35 0 0 0 1 1 1 0 0 \"\" 0\n",
         assert_eq!(l.state_edit(n, 0, "r"), Some(&json!(-40.0)));
     }
 
-    /// 開口のある座標ブレーク（玉の中も）は面の行で書いて要素に分ける
+    /// 開口（浮動の開口も）のある座標ブレーク（玉の中も）は要素に分ける
     #[test]
     fn a_coordinate_break_with_an_aperture_splits() {
         let tmp = std::env::temp_dir().join(format!("lb_gui_cbap_{}", std::process::id()));
@@ -832,7 +844,7 @@ SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 5 0 0 0 1 \"\"\n\
 SURF 2\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 3\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 8 0 0 0 1 \"\"\n\
 SURF 3\n  TYPE COORDBRK\n  PARM 1 0\n  PARM 2 0.1\n  PARM 3 0\n  PARM 4 0\n  PARM 5 0\n  PARM 6 0\n  DISZ 2\n  SQAP 3 3 0 0\n\
 SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\n  DIAM 8 0 0 0 1 \"\"\n\
-SURF 5\n  TYPE COORDBRK\n  PARM 1 0\n  PARM 2 0\n  PARM 3 0\n  PARM 4 0\n  PARM 5 0\n  PARM 6 0\n  DISZ 30\n  CLAP 0 4 0\n\
+SURF 5\n  TYPE COORDBRK\n  PARM 1 0\n  PARM 2 0\n  PARM 3 0\n  PARM 4 0\n  PARM 5 0\n  PARM 6 0\n  DISZ 30\n  FLAP 0 4 0\n\
 SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
         )
         .unwrap();
@@ -872,5 +884,10 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
         assert_eq!(s.surfaces[4].c, -1.0 / 80.0);
         assert_eq!(s.surfaces[2].c, 0.02);
         assert!(s.surfaces[3].ap != lensbench_core::surface::Aperture::None);
+        // 空気中の座標ブレークの浮動の開口もそのまま
+        assert!(matches!(
+            s.surfaces[5].ap,
+            lensbench_core::surface::Aperture::Floating { .. }
+        ));
     }
 }

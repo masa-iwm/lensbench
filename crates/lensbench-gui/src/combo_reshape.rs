@@ -266,6 +266,11 @@ impl Combo {
         }
         // 面の上書き・操作を分けた先へ（ほかの部分の面を指す操作は移せないので分けない）
         for e in &p.edits {
+            if e.field.starts_with(crate::combo_tree::CB_FIELD) {
+                return Err(
+                    tr("An element with changed coordinate break values can't be split").into(),
+                );
+            }
             let &(pi, f) = face_of.get(e.surface).ok_or_else(outside)?;
             let mut e = e.clone();
             e.surface = f;

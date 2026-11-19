@@ -629,7 +629,7 @@ fn elem_or_raw(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
         for (k, x) in e["fields"].as_object().into_iter().flatten() {
             p.edits.push(SurfEdit {
                 surface,
-                field: k.clone(),
+                field: crate::combo_tree::edit_field(e, k),
                 value: x.clone(),
             });
         }
@@ -1077,9 +1077,10 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                         for e in x.as_array().ok_or("state surface_edits")? {
                             let surface =
                                 e["surface"].as_u64().ok_or("state surface_edits")? as usize;
-                            for (field, v) in e["fields"].as_object().into_iter().flatten() {
-                                if q.base_edit(surface, field) != Some(v) {
-                                    q.set_state_edit(&n, surface, field, v.clone());
+                            for (k, v) in e["fields"].as_object().into_iter().flatten() {
+                                let field = crate::combo_tree::edit_field(e, k);
+                                if q.base_edit(surface, &field) != Some(v) {
+                                    q.set_state_edit(&n, surface, &field, v.clone());
                                 }
                             }
                         }
@@ -1092,7 +1093,7 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                                     .as_object()
                                     .into_iter()
                                     .flatten()
-                                    .map(move |(k, _)| (j, k.clone()))
+                                    .map(move |(k, _)| (j, crate::combo_tree::edit_field(e, k)))
                             })
                             .collect();
                         if q.edits
@@ -1245,13 +1246,19 @@ fn canon(v: &Value) -> R<Value> {
                 let mut one: Vec<Value> = es
                     .iter()
                     .flat_map(|e| {
-                        e["fields"].as_object().into_iter().flatten().map(
-                            |(k, x)| json!({ "surface": e["surface"], "fields": { k.clone(): x } }),
-                        )
+                        e["fields"].as_object().into_iter().flatten().map(|(k, x)| {
+                            let mut o =
+                                json!({ "surface": e["surface"], "fields": { k.clone(): x } });
+                            if e["coordbrk"] == true {
+                                o["coordbrk"] = json!(true);
+                            }
+                            o
+                        })
                     })
                     .collect();
                 one.sort_by_key(|e| {
                     (
+                        e["coordbrk"] == true,
                         e["surface"].as_u64(),
                         e["fields"]
                             .as_object()

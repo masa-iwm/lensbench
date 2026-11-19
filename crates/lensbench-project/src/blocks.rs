@@ -478,6 +478,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let [dx, dy] = place.decenter;
         let [tx, ty, tz] = place.tilt;
         self.push(cb([dx, dy, tx, ty, tz], 0, 0.0));
+        self.mark_placed();
         let start = self.sf.len();
         let p0 = self.parity;
         body(self)?;
@@ -495,7 +496,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let (dx2, dy2, t2) = cb_return(place, l);
         // 戻りの座標ブレークの x・y の偏心は傾きを戻したあとの（元の）座標で
         self.put(cb([dx2, dy2, -tx, -ty, -tz], 1, t2 + tail));
+        self.mark_placed();
         Ok(())
+    }
+
+    /// 最後に足した面を置き方の座標ブレークにする（[`SurfOrigin::placed`]）
+    fn mark_placed(&mut self) {
+        if let Some(m) = self.map.last_mut() {
+            m.placed = true;
+        }
     }
 
     /// OpticStudio の座標のままの要素（.zmx から取り込んだもの、鏡のあとは負の厚さ）を足す。
@@ -726,6 +735,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         // 今の座標で −t2 進む（gap は光の進む向きの長さを取る）
         self.gap(-t2 * self.parity);
         self.put(cb([-dx2, -dy2, tx, ty, tz], 0, 0.0));
+        self.mark_placed();
         for s in rev {
             self.push(s.clone());
         }
@@ -733,6 +743,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             s.t = 0.0;
         }
         self.put(cb([-dx, -dy, -tx, -ty, -tz], 1, 0.0));
+        self.mark_placed();
         Ok(())
     }
 
@@ -1211,6 +1222,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 };
                 if fold {
                     self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
+                    self.mark_placed();
                 }
                 let mut m = m;
                 if self.parity < 0.0 {
@@ -1226,11 +1238,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     // 往路を戻る鏡の傾き（据え付けの誤差など）: 鏡だけを傾け、座標は元の軸へ戻す（順序 1 で逆の傾き）。
                     // 復路の面は往路と同じ位置にあり、光線は鏡の傾きの 2 倍の角でそこを戻る
                     self.put(cb([0.0, 0.0, -tilt[0], -tilt[1], 0.0], 1, 0.0));
+                    self.mark_placed();
                 } else if fold {
                     // 鏡の後の軸を反射した光軸に乗せる: 前の座標ブレークが R = Rx(tx)·Ry(ty) なら、鏡の座標で入射の軸は
                     // Rᵀz、反射はその z 成分の反転。後の回転 R₂ は R₂z = diag(−1, −1, 1)·Rᵀz を満たせばよく、
                     // R₂ = Ry(ty)·Rx(tx)、つまり同じ角で回す順を逆にした座標ブレーク（順序 1）。1 軸の傾きでは順序によらない
                     self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 1, 0.0));
+                    self.mark_placed();
                 }
                 self.note(id, Some(faces), start);
                 if back {

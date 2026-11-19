@@ -498,6 +498,10 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
         (c.surfaces[k].cb(), c.surfaces[k].cb_order()),
         ([0.1, 0.0, 0.0, 0.0, 0.0], 1)
     );
+    // 座標ブレークにも浮動の開口を付けられる（半直径の円）
+    let f = with(r#"{"coordbrk": [0, 0, 0, 0, 0], "semi": 2.5, "aperture": {"type": "floating"}}"#);
+    assert_eq!(f.surfaces[k].typ(), SurfType::CoordBrk);
+    assert_eq!(f.surfaces[k].ap, Aperture::Floating { semi: 2.5 });
     let (px, py) = ([0.0, 0.4], [0.3, -0.6]);
     let t0 = base
         .try_trace(FieldSel::Index(3), &px, &py, Some(1), None, false)
@@ -529,10 +533,6 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
             r#"{"coordbrk": [0, 0, 1, 0, 0], "glass": "N-BK7"}"#,
             "no glass after",
         ),
-        (
-            r#"{"coordbrk": [0, 0, 1, 0, 0], "aperture": {"type": "floating"}}"#,
-            "aperture",
-        ),
         (r#"{"coordbrk": [0, 0, 1, 0, 0], "order": 2}"#, "order"),
     ] {
         let e = try_project(&format!(
@@ -541,6 +541,32 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
         .unwrap_err();
         assert!(e.message().unwrap_or_default().contains(msg), "{s}: {e}");
     }
+}
+
+/// surface_edits の coordbrk はブロックの面の座標ブレークだけを数える（偏心・傾きの入口・戻りの座標ブレークは数えない）
+#[test]
+fn coordbrk_edits_skip_placement_breaks() {
+    let s = try_project(
+        r#"[{"type": "zmx", "path": "A0/system.zmx"},
+            {"type": "surfaces", "id": "S", "decenter": [0.1, 0],
+             "surfaces": [{"t": 1}, {"coordbrk": [0, 0, 0, 0, 0]}],
+             "surface_edits": [{"surface": 0, "coordbrk": true, "fields": {"ignore": true}}]}]"#,
+    )
+    .unwrap();
+    let cbs: Vec<usize> = (0..s.surfaces.len())
+        .filter(|&j| s.surfaces[j].is_coord_break())
+        .collect();
+    let ign: Vec<bool> = cbs.iter().map(|&j| s.surfaces[j].ignore).collect();
+    // 入口・面の座標ブレーク・戻り
+    assert_eq!(ign[ign.len() - 3..], [false, true, false], "{cbs:?}");
+    // 番号が座標ブレークの数を超えれば誤り
+    let e = try_project(
+        r#"[{"type": "zmx", "path": "A0/system.zmx"},
+            {"type": "surfaces", "id": "S", "decenter": [0.1, 0], "surfaces": [{"t": 1}],
+             "surface_edits": [{"surface": 0, "coordbrk": true, "fields": {"ignore": true}}]}]"#,
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("coordinate break"), "{e}");
 }
 
 /// zmx ブロックの厚さのソルブ（A0 の面 7、像面の焦点）は、次の面まで取り込めば残り、set_param で解き直す

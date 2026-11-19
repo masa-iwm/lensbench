@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::combo::{Combo, ElemKind, Pick};
-use crate::combo_tree::Loc;
+use crate::combo_tree::{Loc, CB_FIELD};
 use crate::i18n::{tr, trf};
 use crate::sysset::{ApertureField, ApertureKind, Choice, FieldKind, SysSnap};
 use crate::theme;
@@ -276,6 +276,7 @@ impl SysQ {
 /// 面の値の JSON を表の値に（field で型を決める）
 fn face_val(field: &str, idx: Option<usize>, v: Option<&Value>) -> Val {
     let Some(v) = v else { return Val::Unknown };
+    let field = field.strip_prefix(CB_FIELD).unwrap_or(field);
     let v = match idx {
         Some(i) => match v.as_array() {
             Some(a) => a.get(i).unwrap_or(&Value::Null),
@@ -314,6 +315,7 @@ fn circular(v: &Value) -> bool {
 
 /// 表の値を面の値の JSON に。並び（idx）は前の並び old の idx 番目を変える
 fn face_json(field: &str, v: &Val, idx: Option<usize>, old: Option<&Value>) -> Option<Value> {
+    let field = field.strip_prefix(CB_FIELD).unwrap_or(field);
     if field == "aperture" {
         // 基本の開口が分かり、無いか円形・遮蔽のときだけ最大の半径を変える（ほかの形は置き換えない）
         let (Val::Num(x), Some(old)) = (v, old) else {
@@ -354,6 +356,12 @@ fn face_json(field: &str, v: &Val, idx: Option<usize>, old: Option<&Value>) -> O
 impl Face {
     fn label(&self, c: &Combo) -> String {
         let what = field_label(&self.field, self.idx);
+        if self.field.starts_with(CB_FIELD) {
+            return trf(
+                "{} coordinate break {} {}",
+                &[&el_name(c, &self.loc), &(self.surf + 1), &what],
+            );
+        }
         trf(
             "{} surface {} {}",
             &[&el_name(c, &self.loc), &(self.surf + 1), &what],
@@ -404,7 +412,10 @@ struct Cx<'a> {
 
 /// 面の値の名前の表示（idx は並びの値の何番目か）
 fn field_label(field: &str, idx: Option<usize>) -> String {
+    let field = field.strip_prefix(CB_FIELD).unwrap_or(field);
     match (field, idx) {
+        ("cb", Some(i)) => PLACE.get(i).copied().unwrap_or_default().to_string(),
+        ("cb_order", _) => tr("order").into(),
         ("asph", Some(i)) => trf("asphere {}", &[&(i + 1)]),
         ("asph", None) => tr("asphere").into(),
         ("r", _) => tr("radius").into(),
@@ -740,12 +751,14 @@ impl Item {
 fn face_items(l: &Loc, p: &Pick) -> Vec<Face> {
     let mut out: Vec<Face> = Vec::new();
     for e in p.state_edits.values().flatten() {
-        let idxs: Vec<Option<usize>> = if e.field == "asph" {
+        // 並びの値（非球面の係数・座標ブレークの偏心と傾き）は 0 でない番号ごとの行
+        let listed = e.field == "asph" || e.field == format!("{CB_FIELD}cb");
+        let idxs: Vec<Option<usize>> = if listed {
             let n = p
                 .state_edits
                 .values()
                 .flatten()
-                .filter(|x| x.surface == e.surface && x.field == "asph")
+                .filter(|x| x.surface == e.surface && x.field == e.field)
                 .filter_map(|x| x.value.as_array().map(Vec::len))
                 .max()
                 .unwrap_or(0);
@@ -753,7 +766,7 @@ fn face_items(l: &Loc, p: &Pick) -> Vec<Face> {
                 .filter(|&i| {
                     p.state_edits.values().flatten().any(|x| {
                         x.surface == e.surface
-                            && x.field == "asph"
+                            && x.field == e.field
                             && x.value
                                 .get(i)
                                 .and_then(Value::as_f64)
@@ -779,6 +792,16 @@ fn face_items(l: &Loc, p: &Pick) -> Vec<Face> {
     }
     out.sort_by(|a, b| (a.surf, &a.field, a.idx).cmp(&(b.surf, &b.field, b.idx)));
     out
+}
+
+/// 状態で変えた面の行の表示（試験用。言語の設定によらず英語の名前）
+#[cfg(test)]
+pub(crate) fn face_rows(c: &Combo) -> Vec<String> {
+    items(c, false, &[])
+        .iter()
+        .filter(|it| matches!(it, Item::Face(_)))
+        .map(|it| it.label(c))
+        .collect()
 }
 
 /// 表の行。all なら状態で変えていない値（要素の ON/OFF・後の空気・構成、群の移動、系の値）も。pinned は足した行
@@ -1037,6 +1060,25 @@ fn face_menu(ui: &mut Ui, l: &Loc, now: FaceNow, view: &mut View, add: &mut dyn 
             None => trf("Surface {}", &[&(i + 1)]),
         };
         ui.menu_button(label, |ui| fields(ui, i, add));
+    }
+    // 座標ブレーク（座標ブレークだけを数えた番号）: 無視と偏心・傾き
+    let ncb = (0..999)
+        .take_while(|&i| now(&face(i, &format!("{CB_FIELD}cb"), None)).is_some())
+        .count();
+    for i in 0..ncb {
+        ui.menu_button(trf("Coordinate break {}", &[&(i + 1)]), |ui| {
+            let ign = format!("{CB_FIELD}ignore");
+            if ui.button(field_label(&ign, None)).clicked() {
+                add(face(i, &ign, None));
+                ui.close_menu();
+            }
+            for (k, name) in PLACE.iter().enumerate() {
+                if ui.button(*name).clicked() {
+                    add(face(i, &format!("{CB_FIELD}cb"), Some(k)));
+                    ui.close_menu();
+                }
+            }
+        });
     }
     if n == 0 {
         // 今の系に無い要素（OFF など）は面の番号を打つ

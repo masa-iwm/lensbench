@@ -157,12 +157,10 @@ impl Core {
 
     /// 状態の表（変えた値は組合せの変更として組み直す）
     pub(super) fn config_ui(&mut self, ui: &mut Ui) {
-        let faces = self.face_index();
+        let (faces, cbs) = (self.face_index(), self.face_index_of(true));
         let rows = &self.sys.ld_rows;
-        let now = |f: &crate::state_table::Face| -> Option<Value> {
-            let j = *faces.get(&(f.loc.clone(), f.surf))?;
-            ld_combo::face_value(rows.get(j)?, &f.field)
-        };
+        let now =
+            |f: &crate::state_table::Face| -> Option<Value> { face_now(rows, &faces, &cbs, f) };
         // 絞りにできる面: 今の系の要素の面（経路の順、面の順）
         let mut stops: Vec<(crate::combo_tree::Loc, usize)> = faces.keys().cloned().collect();
         stops.sort_by_key(|k| faces[k]);
@@ -176,17 +174,20 @@ impl Core {
         if self.doc.combo.states.is_empty() {
             return false;
         }
-        let faces = self.face_index();
+        let (faces, cbs) = (self.face_index(), self.face_index_of(true));
         let rows = &self.sys.ld_rows;
-        let now = |f: &crate::state_table::Face| -> Option<Value> {
-            let j = *faces.get(&(f.loc.clone(), f.surf))?;
-            ld_combo::face_value(rows.get(j)?, &f.field)
-        };
+        let now =
+            |f: &crate::state_table::Face| -> Option<Value> { face_now(rows, &faces, &cbs, f) };
         crate::state_table::apply_picks(&mut self.doc.combo, &self.p.states.base_cache, &now)
     }
 
     /// 組合せの要素の面（場所・要素の面の番号）→ 今の系の面の番号（今の経路の要素だけ）
     pub(super) fn face_index(&self) -> HashMap<(crate::combo_tree::Loc, usize), usize> {
+        self.face_index_of(false)
+    }
+
+    /// 今の系の要素の面（cb なら座標ブレークだけを数えた番号、でなければ座標ブレークを除いた番号）→ 系の面
+    fn face_index_of(&self, cb: bool) -> HashMap<(crate::combo_tree::Loc, usize), usize> {
         let mut out = HashMap::new();
         let rows = &self.sys.ld_rows;
         if rows.is_empty() {
@@ -195,12 +196,30 @@ impl Core {
         let lead = self.doc.combo.lead_stop();
         let live = self.doc.combo.span_ids();
         let spans = lens_data::elem_spans(&live, &self.sys.elem_blocks, lead, rows);
-        for (step, span) in self.doc.combo.chain().iter().zip(spans) {
+        let c = &self.doc.combo;
+        for (step, span) in c.chain().iter().zip(spans) {
             let Some([a, b]) = span else { continue };
-            for (i, j) in (a..=b)
-                .filter(|&j| rows.get(j).is_some_and(|r| !r.is_cb()))
-                .enumerate()
-            {
+            let mut js: Vec<usize> = (a..=b)
+                .filter(|&j| rows.get(j).is_some_and(|r| r.is_cb() == cb))
+                .collect();
+            // 偏心・傾きを付けた要素の入口・戻りの座標ブレークは要素の面ではない（要素の座標ブレークの番号に数えない）。
+            // 鏡の座標ブレークは傾きのものだけ
+            let p = c.get(&step.loc);
+            if cb && p.is_some_and(|p| p.kind == crate::combo::ElemKind::Mirror) {
+                continue;
+            }
+            let moved = p.is_some_and(|p| {
+                let pl = p.place_in(c.active_state());
+                p.has_state_place() && pl.decenter.iter().chain(&pl.tilt).any(|v| *v != 0.0)
+            });
+            if cb && moved {
+                if js.len() < 2 {
+                    continue;
+                }
+                js.pop();
+                js.remove(0);
+            }
+            for (i, j) in js.into_iter().enumerate() {
                 out.insert((step.loc.clone(), i), j);
             }
         }
@@ -320,4 +339,19 @@ impl Core {
             _ => false,
         }
     }
+}
+
+/// 状態の表の面の行の今の系の値（座標ブレークの項目は座標ブレークの番号で引く）
+fn face_now(
+    rows: &[crate::lens_data::Row],
+    faces: &HashMap<(crate::combo_tree::Loc, usize), usize>,
+    cbs: &HashMap<(crate::combo_tree::Loc, usize), usize>,
+    f: &crate::state_table::Face,
+) -> Option<Value> {
+    let (map, field) = match f.field.strip_prefix(crate::combo_tree::CB_FIELD) {
+        Some(k) => (cbs, k),
+        None => (faces, f.field.as_str()),
+    };
+    let j = *map.get(&(f.loc.clone(), f.surf))?;
+    ld_combo::face_value(rows.get(j)?, field)
 }

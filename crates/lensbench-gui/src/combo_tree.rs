@@ -638,12 +638,30 @@ pub(crate) fn block_has_faces(b: &Value) -> bool {
     )
 }
 
+/// 座標ブレークの面の上書きの項目の名前の頭（surface は要素の座標ブレークだけを数えた番号。プロジェクトの
+/// surface_edits の coordbrk）
+pub(crate) const CB_FIELD: &str = "cb:";
+
+/// プロジェクトの surface_edits の 1 つ e の項目 k の、要素の上書きの名前（座標ブレークなら頭に [`CB_FIELD`]）
+pub(crate) fn edit_field(e: &Value, k: &str) -> String {
+    if e["coordbrk"] == true {
+        format!("{CB_FIELD}{k}")
+    } else {
+        k.to_string()
+    }
+}
+
 /// 面の上書きをブロックの surface_edits の JSON に
 pub(crate) fn edits_json(edits: &[crate::combo::SurfEdit]) -> Value {
     Value::Array(
         edits
             .iter()
-            .map(|e| json!({ "surface": e.surface, "fields": { e.field.clone(): e.value } }))
+            .map(|e| match e.field.strip_prefix(CB_FIELD) {
+                Some(k) => {
+                    json!({ "surface": e.surface, "coordbrk": true, "fields": { k: e.value } })
+                }
+                None => json!({ "surface": e.surface, "fields": { e.field.clone(): e.value } }),
+            })
             .collect(),
     )
 }

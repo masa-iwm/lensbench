@@ -1636,4 +1636,8 @@ Pick up from another row	別の行からピックアップ
 Other system values	その他のシステムの値
 ON / OFF	ON / OFF
 asphere	非球面
+An element with changed coordinate break values can't be split	座標ブレークの値を変えた要素は分割できません
+order	順序
+{} coordinate break {} {}	{} 座標ブレーク {} {}
+Coordinate break {}	座標ブレーク {}
 Comment row	コメント行

@@ -974,6 +974,10 @@ impl Block {
 #[serde(deny_unknown_fields)]
 pub struct SurfaceEdit {
     pub surface: usize,
+    /// 座標ブレークの面を指す（surface はブロックの面の座標ブレークだけを数えた番号。ブロックの偏心・傾きの座標ブレークは
+    /// 数えない。往復するブロックでは使えない）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordbrk: bool,
     pub fields: Map<String, Value>,
 }
 

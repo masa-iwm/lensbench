@@ -453,9 +453,6 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
                     .into(),
             );
         }
-        if matches!(aperture, Some(SurfAperture::Floating)) {
-            return Err("a coordinate break surface can't have a floating aperture".into());
-        }
         return Ok(SurfSpec {
             t: f.t,
             semi: Semi::of(f),

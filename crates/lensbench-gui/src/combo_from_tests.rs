@@ -404,12 +404,22 @@ fn multi_config_zmx_opens_with_states() {
                     .system;
             lensbench_project::same_system(sk, &t).unwrap_or_else(|e| panic!("{name} {n}: {e}"));
         }
+        if name == "p7" {
+            // p7 は構成で座標ブレークの無視が変わる（座標ブレークの上書きの状態の値）
+            let cb = c.all().into_iter().filter_map(|l| c.get(&l)).any(|p| {
+                p.state_edits
+                    .values()
+                    .flatten()
+                    .any(|e| e.field.starts_with(crate::combo_tree::CB_FIELD))
+            });
+            assert!(cb, "{name}");
+        }
         eprintln!("{name}: {}", if import { "import" } else { "split" });
         seen.push((name, import));
     }
     assert!(seen.len() >= 3, "{seen:?}");
-    // p6 は構成 1 で要素に分かれ、面の無視が状態の値になる
-    assert!(seen.contains(&("p6", false)), "{seen:?}");
+    // どれも構成 1 で要素に分かれ、面・座標ブレークの無視や値・鏡の無視が状態の値になる
+    assert!(seen.iter().all(|(_, import)| !import), "{seen:?}");
     let _ = std::fs::remove_dir_all(&lb);
 }
 
@@ -541,6 +551,67 @@ fn state_surface_edits_round_trip() {
     }
     assert!(format!("{:?}", a.surfaces[j].mat).contains("F2"));
     assert!(format!("{:?}", base.surfaces[j].mat).contains("N-BK7"));
+}
+
+/// 座標ブレークの状態の値（surface_edits の coordbrk）: 要素の上書きの「cb:」の項目に読み、書き戻すと同じ形。
+/// 展開した系では状態ごとに座標ブレークの無視・偏心が変わる。表の行は座標ブレークの番号で出る
+#[test]
+fn state_coordbrk_edits_round_trip() {
+    use lensbench_project::{expand, Env, ExpandOpts, Project};
+    let v = json!({ "wavelengths": [{ "um": 0.5876 }], "aperture": { "type": "epd", "value": 6 },
+        "blocks": [{ "type": "stop", "semi": 3 }, { "type": "air", "t": 5 },
+          { "type": "surfaces", "id": "S", "surfaces": [{ "coordbrk": [0, 0, 0, 0, 0] }] },
+          { "type": "air", "t": 30 }],
+        "states": [
+          { "name": "A", "set": { "S": { "surface_edits": [
+              { "surface": 0, "coordbrk": true, "fields": { "ignore": true } },
+              { "surface": 0, "coordbrk": true, "fields": { "cb": [0.5, 0, 0, 0, 0] } }] } } },
+          { "name": "B" }] });
+    let c = Combo::from_project(&v, &root()).unwrap();
+    let p = &c.picks[0];
+    assert_eq!(p.state_edit("A", 0, "cb:ignore"), Some(&json!(true)));
+    let back = c.project();
+    let es = &back["states"][0]["set"]["S"]["surface_edits"];
+    assert!(
+        es.as_array()
+            .is_some_and(|a| a.len() == 2 && a.iter().all(|e| e["coordbrk"] == true)),
+        "{back}"
+    );
+    let c2 = Combo::from_project(&back, &root()).unwrap();
+    assert_eq!(c2.picks[0].state_edits, c.picks[0].state_edits);
+    let pj = Project::from_json(&back.to_string()).unwrap();
+    let env = Env {
+        step_files: None,
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let sys = |n: &str| {
+        expand(&pj.with_state(n).unwrap(), &env, &ExpandOpts::default())
+            .unwrap()
+            .system
+    };
+    let (a, b) = (sys("A"), sys("B"));
+    let j = (1..a.image())
+        .find(|&j| a.surfaces[j].is_coord_break())
+        .unwrap();
+    assert!(a.surfaces[j].ignore && !b.surfaces[j].ignore);
+    assert_eq!(a.surfaces[j].cb()[0], 0.5);
+    assert_eq!(b.surfaces[j].cb()[0], 0.0);
+    // 表の行: 座標ブレークの無視と、偏心 dx（0 でない並びの番号だけ）
+    let rows: Vec<String> = crate::state_table::face_rows(&c);
+    assert!(
+        rows.iter().any(|r| r.contains("coordinate break 1 ignore")),
+        "{rows:?}"
+    );
+    assert!(
+        rows.iter().any(|r| r.contains("coordinate break 1 dx")),
+        "{rows:?}"
+    );
+    assert!(
+        !rows.iter().any(|r| r.contains("coordinate break 1 dy")),
+        "{rows:?}"
+    );
 }
 
 /// 状態ごとの絞りの面（多重構成の STPS）: 状態の set の surface_ops に set_stop を足して書き、読み戻すと同じ。

@@ -251,11 +251,78 @@ pub(crate) fn apply_surface_edits(
             .into_iter()
             .map(|r| faces_in(s, r))
             .collect();
-        let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
-            continue;
-        };
+        let cbs: Vec<Vec<usize>> = runs_where(map, here, Some(false))
+            .into_iter()
+            .map(|r| cbs_in(s, map, r))
+            .collect();
+        let has_back = !runs_where(map, here, Some(true)).is_empty();
+        let n = fwd.first().map_or(0, Vec::len);
         for e in &f.surface_edits {
-            apply_surface_edit(s, label, e, n, &fwd, &back)?;
+            if e.coordbrk {
+                apply_cb_edit(s, label, e, &cbs, has_back)?;
+            } else if n > 0 {
+                apply_surface_edit(s, label, e, n, &fwd, &back)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 範囲 r の、ブロックの面の座標ブレーク（置き方の入口・戻りの座標ブレークは除く）
+fn cbs_in(s: &System, map: &[SurfOrigin], r: [usize; 2]) -> Vec<usize> {
+    (r[0]..=r[1])
+        .filter(|&j| s.surfaces[j].is_coord_break() && !map.get(j).is_some_and(|o| o.placed))
+        .collect()
+}
+
+/// 座標ブレークの面の値の上書き 1 つ（cbs は往路の範囲ごとの座標ブレークの面）
+fn apply_cb_edit(
+    s: &mut System,
+    label: &str,
+    e: &SurfaceEdit,
+    cbs: &[Vec<usize>],
+    has_back: bool,
+) -> lensbench_core::Result<()> {
+    let err = |why: lensbench_core::Error| {
+        why.map_message(|why| {
+            format!(
+                "surface_edits: block {} coordinate break {}: {why}",
+                label, e.surface
+            )
+        })
+    };
+    if has_back {
+        return Err(err(
+            "a coordinate break of a round-trip block can't be changed".into(),
+        ));
+    }
+    let n = cbs.first().map_or(0, Vec::len);
+    if e.surface >= n {
+        return Err(format!(
+            "surface_edits: block {} coordinate break {} ({n} coordinate breaks)",
+            label, e.surface
+        )
+        .into());
+    }
+    let (named, data): (Map<String, Value>, Map<String, Value>) = e
+        .fields
+        .clone()
+        .into_iter()
+        .partition(|(k, _)| lensbench_core::edit::SURF_FIELDS.contains(&k.as_str()));
+    let f =
+        edit_ops::surf_fields(&Value::Object(named)).map_err(|x| format!("surface_edits: {x}"))?;
+    for v in cbs {
+        let j = *v.get(e.surface).ok_or_else(|| {
+            err(
+                "the ranges in the same direction have different numbers of coordinate breaks"
+                    .into(),
+            )
+        })?;
+        if !f.is_empty() {
+            s.set_surface_fields(j, &f).map_err(err)?;
+        }
+        if !data.is_empty() {
+            edit_ops::set_surface_data(s, j, &data).map_err(err)?;
         }
     }
     Ok(())

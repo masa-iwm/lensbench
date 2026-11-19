@@ -231,9 +231,6 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
         if q.order > 1 {
             return Err(format!("coordinate break order {} (0 or 1)", q.order).into());
         }
-        if matches!(q.aperture, Some(SurfAperture::Floating)) {
-            return Err("a coordinate break surface can't have a floating aperture".into());
-        }
         s.form = Form::CoordBrk {
             cb: d,
             order: q.order,
@@ -326,6 +323,9 @@ pub struct SurfOrigin {
     pub face: Option<FaceId>,
     /// 展開中だけ: 面を足した木のブロックのアドレス（[`Ctx::leaf`]）。展開の終わりに face にして 0 に戻す
     pub(crate) leaf: usize,
+    /// ブロックの偏心・傾き（置き方）の入口・戻りの座標ブレーク（ブロックの面ではない。surface_edits の coordbrk の
+    /// 番号に数えない）
+    pub(crate) placed: bool,
 }
 
 /// プロジェクトのブロックの木の中の位置（上から順の段）

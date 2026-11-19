@@ -134,7 +134,10 @@ fn sys_index(x: Edited, r: &Ref) -> Option<usize> {
 
 /// ブロックの面の上書きに 1 つ足す。同じ面の同じ欄の前の上書きは外す（空になった上書きも）
 fn put_edit(edits: &mut Vec<SurfaceEdit>, e: SurfaceEdit) {
-    for q in edits.iter_mut().filter(|q| q.surface == e.surface) {
+    for q in edits
+        .iter_mut()
+        .filter(|q| q.surface == e.surface && q.coordbrk == e.coordbrk)
+    {
         q.fields.retain(|k, _| !e.fields.contains_key(k));
     }
     edits.retain(|q| !q.fields.is_empty());
@@ -186,7 +189,14 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
                     .into(),
             );
         }
-        Ok((f.node, Mod::Edit(SurfaceEdit { surface: i, fields })))
+        Ok((
+            f.node,
+            Mod::Edit(SurfaceEdit {
+                surface: i,
+                coordbrk: false,
+                fields,
+            }),
+        ))
     };
     // 当てる面（surface・dst）はブロックの面の番号
     let own = |r: &Ref| -> Result<(NodePath, BlockRef), String> {
