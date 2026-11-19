@@ -2306,7 +2306,21 @@ surface quantity {q}	面の量 {q}
 surface {j} has no position (ignored, or the object at infinity)	面 {j} には位置がありません（無視する面か、無限遠の物体）
 {} of surface {j} is not finite	面 {j} の {} が有限ではありません
 {} of surface {j}: systems with mirrors are not supported yet	面 {j} の {}: ミラーのあるシステムにはまだ対応していません
-x and y go with sag and thick	x と y は sag と thick と使います
+x and y go with sag, thick and total	x と y は sag・thick・total と使います
+q param needs param (the parameter number)	q param には param（パラメータの番号）が要ります
+param goes with q param	param は q param と使います
+surface term with to has no min or max	to のある surface の項に min か max がありません
+volume term has no target (or min and max)	volume の項に target（か min・max）がありません
+code {c} (0 to 3)	コード {c}（0〜3）
+parameter {n}	パラメータ {n}
+mode {k} (0 or 1)	モード {k}（0 か 1）
+only the total thickness along +y, +x, −y or −x can be written (TTVA)	書けるのは +y・+x・−y・−x の向きの包む厚みだけです（TTVA）
+term {i}: volume of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} の体積（1〜{}）
+volume of surfaces {surf} to {to}: systems with mirrors are not supported yet	面 {surf}〜{to} の体積: ミラーのあるシステムにはまだ対応していません
+volume of surface {j}: elements next to ignored surfaces or coordinate breaks are not supported yet	面 {j} の体積: 無視する面・座標ブレークに接する要素にはまだ対応していません
+surface {j}: glass {name} has no density in the catalog	面 {j}: 硝材 {name} のカタログに密度がありません
+surface {j}: the material has no density (only catalog glasses)	面 {j}: 材料に密度がありません（カタログの硝材だけ）
+the volume of surfaces {surf} to {to} is not finite	面 {surf}〜{to} の体積が有限ではありません
 surface term has no target (or min and max)	surface の項に target（か min・max）がありません
 cardinal term has no target (or min and max)	cardinal の項に target（か min・max）がありません
 fnum term has no target (or min and max)	fnum の項に target（か min・max）がありません

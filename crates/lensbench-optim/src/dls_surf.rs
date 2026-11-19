@@ -43,10 +43,15 @@ pub enum SurfQ {
     Dpgf,
     Cost,
     Tce,
+    /// 点 (x, y) の向き（(0, 0) は +y）の、包む厚み: 中心の厚み + max(0, 次の面の矢高) − min(0, 面の矢高)。矢高は
+    /// それぞれのクリア半径の点（面はクリア半径の外で平らなので、玉の半径で測っても同じ。OpticStudio の TTVA・TTGT・TTLT）
+    Total,
+    /// 面タイプのパラメータ n（.zmx の PARM の番号。値を持たない番号は 0。OpticStudio の PMVA・PMGT・PMLT）
+    Parm(u8),
 }
 
 impl SurfQ {
-    pub const ALL: [SurfQ; 23] = [
+    pub const ALL: [SurfQ; 25] = [
         SurfQ::Curv,
         SurfQ::Conic,
         SurfQ::Sag,
@@ -70,6 +75,8 @@ impl SurfQ {
         SurfQ::Dpgf,
         SurfQ::Cost,
         SurfQ::Tce,
+        SurfQ::Total,
+        SurfQ::Parm(0),
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -96,6 +103,8 @@ impl SurfQ {
             SurfQ::Dpgf => "dpgf",
             SurfQ::Cost => "cost",
             SurfQ::Tce => "tce",
+            SurfQ::Total => "total",
+            SurfQ::Parm(_) => "param",
         }
     }
     pub fn parse(s: &str) -> Result<SurfQ> {
@@ -124,6 +133,7 @@ impl SurfQ {
                 | SurfQ::Dpgf
                 | SurfQ::Cost
                 | SurfQ::Tce
+                | SurfQ::Parm(_)
         )
     }
     /// 波長を選べる量
@@ -151,7 +161,10 @@ pub(super) fn surface_value(
     // 面の前の屈折率（物体面は物体空間、無視する面・座標ブレークを飛ばす）
     let n_before = || s.index_before(j, w);
     // ミラーの面のパワー・ミラーの後の符号は OpticStudio で確かめていない
-    if (q == SurfQ::Power && f.is_mirror()) || (q == SurfQ::Ynip && super::mirror_in(s, 1, j)) {
+    if (q == SurfQ::Power && f.is_mirror())
+        || (q == SurfQ::Ynip && super::mirror_in(s, 1, j))
+        || (q == SurfQ::Total && super::mirror_in(s, 1, j + 1))
+    {
         invalid!(
             "{} of surface {j}: systems with mirrors are not supported yet",
             q.name()
@@ -165,6 +178,16 @@ pub(super) fn surface_value(
         SurfQ::SagX => sag(f, f.semi, 0.0),
         SurfQ::SagY => sag(f, 0.0, f.semi),
         SurfQ::Thick => f.t - sag(f, x, y) + sag(&s.surfaces[j + 1], x, y),
+        SurfQ::Total => {
+            let (dx, dy) = if x == 0.0 && y == 0.0 {
+                (0.0, 1.0)
+            } else {
+                (x / x.hypot(y), y / x.hypot(y))
+            };
+            let edge = |f: &lensbench_core::surface::Surface| sag(f, dx * f.semi, dy * f.semi);
+            f.t + edge(&s.surfaces[j + 1]).max(0.0) - edge(f).min(0.0)
+        }
+        SurfQ::Parm(n) => lensbench_core::pickup::surf_parm(f, n).unwrap_or(0.0),
         SurfQ::Diam => 2.0 * f.semi,
         SurfQ::MechDiam => {
             // 無視した面は無いものとして玉をつなぐ（OpticStudio 26.1 の多重構成の IGNR で確かめた）
@@ -265,7 +288,7 @@ pub(super) fn check(
     wave: Option<usize>,
     s: &System,
 ) -> Result<()> {
-    let last = if q == SurfQ::Thick {
+    let last = if matches!(q, SurfQ::Thick | SurfQ::Total) {
         s.image() - 1
     } else {
         s.image()
@@ -311,10 +334,16 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
         TermKind::Surface { q, .. } => {
             matches!(
                 q,
-                SurfQ::Diam | SurfQ::MechDiam | SurfQ::SagX | SurfQ::SagY | SurfQ::Semi
+                SurfQ::Diam
+                    | SurfQ::MechDiam
+                    | SurfQ::SagX
+                    | SurfQ::SagY
+                    | SurfQ::Semi
+                    | SurfQ::Total
             )
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
+        TermKind::Volume { .. } => true,
         TermKind::SurfEach { q, .. } => *q == SurfQ::Semi,
         TermKind::Calc { args, .. } => args.iter().any(|a| match a {
             CalcArg::Term(k) => reads_semi(k),
@@ -369,4 +398,53 @@ pub(super) fn semi_term(s: &System, k: &TermKind) -> Result<TermOut> {
         invalid!("the {} of surfaces {surf} to {to} are not finite", q.name());
     }
     Ok((vec![excess], None))
+}
+
+/// 厚みの項（[`TermKind::Thickness`]）
+pub(super) fn thickness_term(s: &System, k: &TermKind) -> Result<TermOut> {
+    let TermKind::Thickness {
+        surf,
+        to,
+        target,
+        edge,
+        each,
+    } = k
+    else {
+        unreachable!("not a thickness term");
+    };
+    let x = |i: usize| match edge {
+        // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの半直径 × z の高さ、y の向き）
+        Some(z) => {
+            let sag = |f: &lensbench_core::surface::Surface| f.shape().sag(0.0, z * f.semi).0;
+            s.surfaces[i].t - sag(&s.surfaces[i]) + sag(&s.surfaces[i + 1])
+        }
+        None => s.surfaces[i].t,
+    };
+    let v: f64 = match each {
+        None => (*surf..=*to).map(x).sum(),
+        Some(e) => {
+            (*surf..=*to)
+                .filter(|&i| {
+                    let m = &s.surfaces[i].mat;
+                    match e.medium {
+                        Medium::All => true,
+                        Medium::Air => m.is_air() || !m.is_medium(),
+                        Medium::Glass => m.is_medium() && !m.is_air(),
+                    }
+                })
+                .map(|i| {
+                    if e.upper {
+                        (x(i) - target).max(0.0)
+                    } else {
+                        (x(i) - target).min(0.0)
+                    }
+                })
+                .sum::<f64>()
+                + target
+        }
+    };
+    if !v.is_finite() {
+        invalid!("the thickness of surfaces {surf} to {to} is not finite");
+    }
+    Ok((vec![v - target], None))
 }

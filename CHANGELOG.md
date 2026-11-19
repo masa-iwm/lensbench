@@ -95,6 +95,9 @@
 - **硝材の量と面の向きの項**: `surface` の `q` に `nd`・`vd`・`dpgf`・`cost`・`tce`（面の後の硝材。カタログの ED・OD の行を
   読む）と `ga`・`gb`・`gc`（面の z 軸の向き）。`to` を書くと面の範囲を面ごとに `min`・`max` と比べてはみ出しを足す。.zmx の
   GCOS・GTCE・GLCA〜GLCC・MNIN・MXIN・MNAB・MXAB・MNPD・MXPD を読み書きする
+- **包む厚み・面のパラメータ・体積と質量の項**: `surface` の `q` に `total`（クリア半径の矢高で包む厚み、`x`・`y` で向き）と
+  `param`（面タイプのパラメータ）、新しい種類 `volume`（面の間の要素の体積 [cm³]、`mass: true` で硝材の質量 [g]）。.zmx の
+  TTVA・TTGT・TTLT・PMVA・PMGT・PMLT・VOLU・TMAS を読み書きする
 - **半直径の境界の項**: `semi`（面ごとの半直径を `min`・`max` と比べてはみ出しを足す）。.zmx の MNSD・MXSD を読み書きする
 - **縦収差・色収差の項**: `longitudinal`（軸上の光線の像面からの距離、`wave2` で軸上色収差）と `lateral_color`（倍率色収差）。.zmx の LONA・AXCL・LACL を読み書きする
 - **ザイデル収差係数・歪曲の項**: 面ごと・和のザイデル収差係数 `seidel`（spha・coma・asti・fcur・dist [波]）と、最大の視野の実光線の歪曲 `distortion`（% か差）。.zmx の SPHA・COMA・ASTI・FCUR・DIST を読み書きする

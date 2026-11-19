@@ -356,6 +356,17 @@ pub enum TermKind {
         upper: bool,
         target: f64,
     },
+    /// 面 surf から to までの要素の体積 [cm³]（mass なら硝材の要素だけの質量 [g]、密度はカタログ）− target。面 i の要素は
+    /// 面 i と i + 1 の間（空気の間も含む）。外径は 2 面の半径の大きい方（clear ならクリア半径、でなければ玉の半径
+    /// [`SurfQ::MechDiam`] の半分）で、面はクリア半径の外で縁の高さのまま平ら。面の局所座標で数値積分（OpticStudio の
+    /// VOLU・TMAS）。微分は差分
+    Volume {
+        surf: usize,
+        to: usize,
+        mass: bool,
+        clear: bool,
+        target: f64,
+    },
     /// 計算の項: 引数（1 つの値の項の値か定数）の op − target（OpticStudio の SUMM・OSUM・DIFF・PROD・DIVI・ABSO・SQRT・RECI、
     /// CONS は定数の引数）。引数の項の target は使わない（値そのもの）。微分は差分
     Calc {
@@ -767,6 +778,7 @@ impl TermKind {
             | TermKind::Longitudinal { target, .. }
             | TermKind::LateralColor { target, .. }
             | TermKind::SurfEach { target, .. }
+            | TermKind::Volume { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
         }
@@ -941,6 +953,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Longitudinal { .. }
         | TermKind::LateralColor { .. }
         | TermKind::SurfEach { .. }
+        | TermKind::Volume { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),
     }

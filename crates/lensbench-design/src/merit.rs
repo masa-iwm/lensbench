@@ -196,7 +196,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 21] = [
+    const TYPES: [&str; 22] = [
         "spot",
         "wavefront",
         "mtf",
@@ -208,6 +208,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "coupling",
         "thickness",
         "surface",
+        "volume",
         "cardinal",
         "fnum",
         "seidel",
@@ -247,6 +248,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Coupling { .. }
             | TermKind::Thickness { .. }
             | TermKind::Surface { .. }
+            | TermKind::Volume { .. }
             | TermKind::Cardinal { .. }
             | TermKind::FNum { .. }
             | TermKind::Seidel { .. }
@@ -448,9 +450,21 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             }
         }
         TermSpec::Surface(t) => {
-            let q = SurfQ::parse(&t.q)?;
-            if (t.x.is_some() || t.y.is_some()) && !matches!(q, SurfQ::Sag | SurfQ::Thick) {
-                return Err("x and y go with sag and thick".to_string().into());
+            let mut q = SurfQ::parse(&t.q)?;
+            if (t.x.is_some() || t.y.is_some())
+                && !matches!(q, SurfQ::Sag | SurfQ::Thick | SurfQ::Total)
+            {
+                return Err("x and y go with sag, thick and total".to_string().into());
+            }
+            match (q, t.param) {
+                (SurfQ::Parm(_), Some(n)) => q = SurfQ::Parm(n),
+                (SurfQ::Parm(_), None) => {
+                    return Err("q param needs param (the parameter number)"
+                        .to_string()
+                        .into())
+                }
+                (_, Some(_)) => return Err("param goes with q param".to_string().into()),
+                _ => {}
             }
             if let Some(to) = t.to {
                 if t.wave.is_some() || t.x.is_some() || t.y.is_some() {
@@ -482,6 +496,15 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                     .ok_or("surface term has no target (or min and max)")?,
             }
         }
+        TermSpec::Volume(t) => TermKind::Volume {
+            surf: t.surf,
+            to: t.to.unwrap_or(t.surf),
+            mass: t.mass.unwrap_or(false),
+            clear: t.clear.unwrap_or(false),
+            target: t
+                .target
+                .ok_or("volume term has no target (or min and max)")?,
+        },
         TermSpec::Cardinal(t) => {
             let last = (1..s.image())
                 .rev()

@@ -707,3 +707,56 @@ fn thickness_term() {
     );
     assert!(bad.check().is_err());
 }
+
+/// 体積の項: 平らな面の要素は半径の大きい方の円柱。包む厚み（surface の total）は平らなら中心の厚み、凹の前の面は縁の
+/// 矢高だけ厚い
+#[test]
+fn volume_and_total_terms() {
+    let s0 = load("A0");
+    let curv = |c1: f64| {
+        let p1 = s0.param("1.c").unwrap();
+        let p2 = s0.param("2.c").unwrap();
+        s0.with_params(&[(p1, c1), (p2, 0.0)]).unwrap()
+    };
+    let value = |s: &System, kind: TermKind| one(s, kind).term_values(&[]).unwrap()[0].value();
+    let vol = |s: &System| {
+        value(
+            s,
+            TermKind::Volume {
+                surf: 1,
+                to: 1,
+                mass: false,
+                clear: true,
+                target: 0.0,
+            },
+        )
+    };
+    let total = |s: &System, x: f64, y: f64| {
+        value(
+            s,
+            TermKind::Surface {
+                surf: 1,
+                q: lensbench_optim::SurfQ::Total,
+                x,
+                y,
+                wave: None,
+                target: 0.0,
+            },
+        )
+    };
+    let s = curv(0.0);
+    let (a, b) = (&s.surfaces[1], &s.surfaces[2]);
+    let r = a.semi.max(b.semi);
+    let want = std::f64::consts::PI * r * r * a.t / 1000.0;
+    assert!((vol(&s) - want).abs() < 1e-12 * want, "{} {want}", vol(&s));
+    assert_eq!(total(&s, 0.0, 0.0), a.t);
+    // 凸の前の面は包む厚みを変えない。凹の前の面は縁の矢高の分だけ厚い（向きによらない）
+    let s = curv(0.02);
+    assert!((total(&s, -1.0, 0.0) - s.surfaces[1].t).abs() < 1e-12);
+    let s = curv(-0.02);
+    let h = s.surfaces[1].semi;
+    let sag = -0.02 * h * h / (1.0 + (1.0 - 0.0004 * h * h).sqrt());
+    assert!((total(&s, 1.0, 0.0) - (s.surfaces[1].t - sag)).abs() < 1e-12);
+    // 凹の前の面の分だけ体積は増える（縁の外は縁の高さのまま平ら）
+    assert!(vol(&s) > want);
+}

@@ -14,6 +14,7 @@ use lensbench_formats::zmx::merit::{MeritFunction, MeritRow};
 use serde_json::{json, Map, Value};
 
 mod calc;
+mod shape;
 mod wizard;
 
 /// .zmx から写した評価関数
@@ -395,6 +396,9 @@ fn kind_of(
             m.insert("each".into(), json!(each));
             let key = if op.starts_with("MN") { "min" } else { "max" };
             m.insert(key.into(), json!(target * unit));
+        }
+        "TTGT" | "TTLT" | "TTVA" | "PMGT" | "PMLT" | "PMVA" | "VOLU" | "TMAS" => {
+            return shape::kind(r, unit, image)
         }
         // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
         "CVGT" | "CVLT" | "CVVA" | "COGT" | "COLT" | "COVA" | "DMGT" | "DMLT" | "DMVA" | "SAGX"
@@ -850,7 +854,7 @@ fn is_length(op: &str) -> bool {
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
             "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
-            "LONA", "AXCL", "LACL", "MNSD", "MXSD",
+            "LONA", "AXCL", "LACL", "MNSD", "MXSD", "TTGT", "TTLT", "TTVA",
         ]
         .contains(&op)
 }
@@ -1365,6 +1369,24 @@ fn row_of(
                     (p[2], p[3]) = (x, y);
                     ("STHI", "", "")
                 }
+                "total" => {
+                    // Code 0〜3 = +y・+x・−y・−x の向き
+                    p[1] = match (x, y) {
+                        (0.0, y) if y >= 0.0 => 0.0,
+                        (x, 0.0) if x > 0.0 => 1.0,
+                        (0.0, _) => 2.0,
+                        (_, 0.0) => 3.0,
+                        _ => return Err(
+                            "only the total thickness along +y, +x, −y or −x can be written (TTVA)"
+                                .into(),
+                        ),
+                    };
+                    ("TTVA", "TTGT", "TTLT")
+                }
+                "param" => {
+                    p[1] = num("param").unwrap_or(0.0);
+                    ("PMVA", "PMGT", "PMLT")
+                }
                 "gx" => ("GLCX", "", ""),
                 "gy" => ("GLCY", "", ""),
                 "gz" => ("GLCZ", "", ""),
@@ -1389,6 +1411,18 @@ fn row_of(
                 Bound::Side(_, b) if !lt.is_empty() => (lt, p, Bound::Target(b)),
                 b => (va, p, b),
             }
+        }
+        "volume" => {
+            let s1 = num("surf").unwrap_or(1.0);
+            let s2 = num("to").unwrap_or(s1);
+            let clear = t.get("clear") == Some(&Value::Bool(true));
+            let op = if t.get("mass") == Some(&Value::Bool(true)) {
+                "TMAS"
+            } else {
+                "VOLU"
+            };
+            let p = [s1, s2, 0.0, f64::from(clear), 0.0, 0.0, 0.0, 0.0];
+            (op, p, bound(0.0))
         }
         "cardinal" => {
             let q = t.get("q").and_then(Value::as_str).unwrap_or("");

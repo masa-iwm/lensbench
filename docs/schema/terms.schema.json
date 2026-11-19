@@ -1158,8 +1158,18 @@
                 "null"
               ]
             },
+            "param": {
+              "description": "面タイプのパラメータの番号（.zmx の PARM の番号、param だけ）",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "q": {
-              "description": "量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・dpgf・\ncost・tce・semi）",
+              "description": "量（curv・conic・sag・sagx・sagy・thick・total・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・\ndpgf・cost・tce・semi・param）",
               "type": "string"
             },
             "surf": {
@@ -1206,7 +1216,7 @@
               ]
             },
             "x": {
-              "description": "sag・thick を測る点 [レンズ単位]（既定 0）",
+              "description": "sag・thick を測る点 [レンズ単位]（既定 0）。total は測る向き（既定 +y）",
               "format": "double",
               "type": [
                 "number",
@@ -1225,6 +1235,86 @@
             "type",
             "surf",
             "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "volume の項（面 surf から to までの要素の体積 [cm³] か質量 [g]）",
+          "properties": {
+            "clear": {
+              "description": "外径をクリア半径でとる。既定は玉の半径（mech_diam の半分）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "mass": {
+              "description": "硝材の要素だけの質量 [g]（密度はカタログ）。既定は体積",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "surf": {
+              "description": "最初の面の番号（面 i の要素は面 i と i + 1 の間、空気の間も含む）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "to": {
+              "description": "最後の面（既定 surf）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "volume",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "surf"
           ],
           "type": "object"
         },

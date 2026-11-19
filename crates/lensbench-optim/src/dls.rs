@@ -76,6 +76,8 @@ pub use seidel::SeidelQ;
 
 #[path = "dls_surf.rs"]
 mod surf;
+#[path = "dls_vol.rs"]
+mod vol;
 use surf::reads_semi;
 pub use surf::SurfQ;
 
@@ -867,6 +869,7 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
         TermKind::Surface { surf, q, wave, .. } => return surf::check(i, *surf, *q, *wave, s),
         TermKind::Cardinal { .. } => return card::check(i, k, s),
         TermKind::SurfEach { .. } => return surf::semi_check(i, k, s),
+        TermKind::Volume { .. } => return vol::check(i, k, s),
         TermKind::Seidel { .. }
         | TermKind::Distortion { .. }
         | TermKind::Longitudinal { .. }
@@ -1055,50 +1058,8 @@ fn eval_term(
             }
             Ok((vec![c.eta - target], None))
         }
-        TermKind::Thickness {
-            surf,
-            to,
-            target,
-            edge,
-            each,
-        } => {
-            let x = |i: usize| match edge {
-                // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの半直径 × z の高さ、y の向き）
-                Some(z) => {
-                    let sag =
-                        |f: &lensbench_core::surface::Surface| f.shape().sag(0.0, z * f.semi).0;
-                    s.surfaces[i].t - sag(&s.surfaces[i]) + sag(&s.surfaces[i + 1])
-                }
-                None => s.surfaces[i].t,
-            };
-            let v: f64 = match each {
-                None => (*surf..=*to).map(x).sum(),
-                Some(e) => {
-                    (*surf..=*to)
-                        .filter(|&i| {
-                            let m = &s.surfaces[i].mat;
-                            match e.medium {
-                                Medium::All => true,
-                                Medium::Air => m.is_air() || !m.is_medium(),
-                                Medium::Glass => m.is_medium() && !m.is_air(),
-                            }
-                        })
-                        .map(|i| {
-                            if e.upper {
-                                (x(i) - target).max(0.0)
-                            } else {
-                                (x(i) - target).min(0.0)
-                            }
-                        })
-                        .sum::<f64>()
-                        + target
-                }
-            };
-            if !v.is_finite() {
-                invalid!("the thickness of surfaces {surf} to {to} is not finite");
-            }
-            Ok((vec![v - target], None))
-        }
+        TermKind::Thickness { .. } => surf::thickness_term(s, k),
+        TermKind::Volume { .. } => vol::term(s, k),
         TermKind::Surface { .. } => surf::term(s, k),
         TermKind::Cardinal { .. } => card::term(s, k),
         TermKind::SurfEach { .. } => surf::semi_term(s, k),

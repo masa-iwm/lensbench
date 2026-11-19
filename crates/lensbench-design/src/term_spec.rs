@@ -237,17 +237,35 @@ pub struct ThickSpec {
 pub struct SurfSpec {
     /// 面の番号（物体面 0）
     pub surf: usize,
-    /// 量（curv・conic・sag・sagx・sagy・thick・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・dpgf・
-    /// cost・tce・semi）
+    /// 量（curv・conic・sag・sagx・sagy・thick・total・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・
+    /// dpgf・cost・tce・semi・param）
     pub q: String,
+    /// 面タイプのパラメータの番号（.zmx の PARM の番号、param だけ）
+    pub param: Option<u8>,
     /// 範囲の最後の面（semi・nd・vd・dpgf・cost・tce だけ）。書けば面 surf から to までを面ごとに min か max と比べ、
     /// はみ出しを足す（ガラスの量はガラスの面だけ）
     pub to: Option<usize>,
-    /// sag・thick を測る点 [レンズ単位]（既定 0）
+    /// sag・thick を測る点 [レンズ単位]（既定 0）。total は測る向き（既定 +y）
     pub x: Option<f64>,
     pub y: Option<f64>,
     /// 波長の番号（power・ynip・index だけ）。null・省略は主波長
     pub wave: Option<usize>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// volume の項（面 surf から to までの要素の体積 [cm³] か質量 [g]）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct VolumeSpec {
+    /// 最初の面の番号（面 i の要素は面 i と i + 1 の間、空気の間も含む）
+    pub surf: usize,
+    /// 最後の面（既定 surf）
+    pub to: Option<usize>,
+    /// 硝材の要素だけの質量 [g]（密度はカタログ）。既定は体積
+    pub mass: Option<bool>,
+    /// 外径をクリア半径でとる。既定は玉の半径（mech_diam の半分）
+    pub clear: Option<bool>,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,
 }
@@ -434,6 +452,7 @@ pub enum TermSpec {
     Coupling(CouplingSpec),
     Thickness(ThickSpec),
     Surface(SurfSpec),
+    Volume(VolumeSpec),
     Cardinal(CardSpec),
     Fnum(FNumSpec),
     Seidel(SeidelSpec),

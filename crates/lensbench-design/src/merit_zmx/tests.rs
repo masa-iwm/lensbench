@@ -420,6 +420,11 @@ fn terms_to_rows_and_back() {
         json!({"type": "surface", "surf": 1, "to": 5, "q": "nd", "min": 1.5, "weight": 1.0}),
         json!({"type": "surface", "surf": 1, "to": 5, "q": "vd", "max": 60.0, "weight": 1.0}),
         json!({"type": "surface", "surf": 2, "to": 4, "q": "dpgf", "min": -0.01, "weight": 1.0}),
+        json!({"type": "surface", "surf": 1, "q": "total", "max": 12.0, "weight": 1.0}),
+        json!({"type": "surface", "surf": 3, "q": "total", "x": -1.0, "y": 0.0, "target": 14.0, "weight": 1.0}),
+        json!({"type": "surface", "surf": 1, "q": "param", "param": 2, "target": 0.001, "weight": 1.0}),
+        json!({"type": "volume", "surf": 1, "to": 4, "target": 30.0, "weight": 1.0}),
+        json!({"type": "volume", "surf": 3, "mass": true, "clear": true, "max": 60.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "max": 3.0, "weight": 1.0}),
         json!({"type": "centroid", "wave": null, "field": 1, "q": "x", "target": 0.0, "weight": 1.0, "config": 2}),
     ];

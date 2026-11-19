@@ -550,7 +550,11 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Distortion { .. } => "distortion",
         K::Longitudinal { .. } => "longitudinal",
         K::LateralColor { .. } => "lateral_color",
-        K::SurfEach { .. } => "semi",
+        K::SurfEach {
+            q: lensbench_optim::SurfQ::Semi,
+            ..
+        } => "semi",
+        K::SurfEach { .. } => "surface",
         K::Centroid { .. } => "centroid",
         K::Ray { .. } => "ray",
         K::RayPath { .. } => "ray",
@@ -560,6 +564,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Coupling { .. } => "coupling",
         K::Thickness { .. } => "thickness",
         K::Surface { .. } => "surface",
+        K::Volume { .. } => "volume",
         K::Calc { .. } => "calc",
         K::User(_) => "user",
     }
