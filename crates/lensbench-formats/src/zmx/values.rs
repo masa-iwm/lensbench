@@ -81,14 +81,14 @@ pub(super) fn wavelengths(raw: &Raw, ops: &Ops, opt: &LoadOptions) -> Result<Wav
             .get(&i)
             .ok_or_else(|| Error::Invalid(format!("no wavelength {i}")))?;
         wl.push(fop(ops, "WAVE", i, l));
-        wwt.push(w);
+        wwt.push(fop(ops, "WLWT", i, w));
     }
     if let Some(w) = &opt.wavelengths {
         wl = w.clone();
         wwt = vec![1.0; wl.len()];
     }
     let primary = count_in(
-        sys_f(raw, "PWAV", 0, 1.0)?,
+        fop(ops, "PRWV", 0, sys_f(raw, "PWAV", 0, 1.0)?),
         "zmx primary wavelength PWAV",
         1,
         MAX_WAVES,
@@ -204,7 +204,7 @@ pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
         .map(|i| Field {
             x: fop(ops, "XFIE", i as i64 + 1, xs[i]),
             y: fop(ops, "YFIE", i as i64 + 1, ys[i]),
-            w: fw[i],
+            w: fop(ops, "FLWT", i as i64 + 1, fw[i]),
             vdx: vd[0][i],
             vdy: vd[1][i],
             vcx: vd[2][i],

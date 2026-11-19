@@ -1713,6 +1713,78 @@
         },
         {
           "additionalProperties": false,
+          "description": "系の波長 i の重み（0 始まり、名前は wwt1 から）。多重構成の行（.zmx の WLWT）。最適化の変数には使えない",
+          "properties": {
+            "WaveW": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "WaveW"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "Primary",
+          "description": "主波長の番号（1 から。値は整数）。多重構成の行（.zmx の PRWV）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Aper",
+          "description": "開口の値（開口の種類の単位: 入射瞳径 mm・F 値・NA など）。多重構成の行（.zmx の APER）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。\n最適化の変数には使えない",
+          "properties": {
+            "FieldX": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "FieldX"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "FieldY": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "FieldY"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "FieldW": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "FieldW"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "玉・群のパラメータ（付く先は [`Target::Unit`]）",
           "properties": {
             "Unit": {

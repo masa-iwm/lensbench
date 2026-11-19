@@ -74,6 +74,17 @@ pub enum Kind {
     /// 系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる
     /// （光源の波長のずれの公差用。最適化の変数・多重構成の行には使えない）
     Wave(u8),
+    /// 系の波長 i の重み（0 始まり、名前は wwt1 から）。多重構成の行（.zmx の WLWT）。最適化の変数には使えない
+    WaveW(u8),
+    /// 主波長の番号（1 から。値は整数）。多重構成の行（.zmx の PRWV）。最適化の変数には使えない
+    Primary,
+    /// 開口の値（開口の種類の単位: 入射瞳径 mm・F 値・NA など）。多重構成の行（.zmx の APER）。最適化の変数には使えない
+    Aper,
+    /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
+    /// 最適化の変数には使えない
+    FieldX(u8),
+    FieldY(u8),
+    FieldW(u8),
     /// 玉・群のパラメータ（付く先は [`Target::Unit`]）
     Unit(UnitKind),
     /// 半直径（semi-diameter）。ピックアップ・マクロのソルブの量（パラメータには使えない）
@@ -120,6 +131,8 @@ impl Kind {
             "objx" => Kind::ObjX,
             "objy" => Kind::ObjY,
             "semi" => Kind::Semi,
+            "primary" => Kind::Primary,
+            "aper" => Kind::Aper,
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -131,6 +144,18 @@ impl Kind {
                 }
                 if let Some(i) = num("parm").or_else(|| num("p")) {
                     return Ok(Kind::Parm(i));
+                }
+                for (pre, f) in [
+                    ("wwt", Kind::WaveW as fn(u8) -> Kind),
+                    ("fx", Kind::FieldX),
+                    ("fy", Kind::FieldY),
+                    ("fwt", Kind::FieldW),
+                ] {
+                    if let Some(n) = l.strip_prefix(pre).and_then(|v| v.parse::<u16>().ok()) {
+                        if (1..=256).contains(&n) {
+                            return Ok(f((n - 1) as u8));
+                        }
+                    }
                 }
                 if let Some(n) = l.strip_prefix("wave").and_then(|v| v.parse::<u16>().ok()) {
                     if (1..=256).contains(&n) {
@@ -147,7 +172,7 @@ impl Kind {
                         return Ok(Kind::Asph(n / 2 - 1));
                     }
                 }
-                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)")
+                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. wwt1.. primary aper fx1.. fy1.. fwt1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)")
             }
         })
     }
@@ -170,6 +195,12 @@ impl Kind {
             Kind::ObjX => "objx".into(),
             Kind::ObjY => "objy".into(),
             Kind::Wave(i) => format!("wave{}", *i as usize + 1),
+            Kind::WaveW(i) => format!("wwt{}", *i as usize + 1),
+            Kind::Primary => "primary".into(),
+            Kind::Aper => "aper".into(),
+            Kind::FieldX(i) => format!("fx{}", *i as usize + 1),
+            Kind::FieldY(i) => format!("fy{}", *i as usize + 1),
+            Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
             Kind::Unit(u) => u.name().into(),
             Kind::Semi => "semi".into(),
             Kind::Parm(i) => format!("p{i}"),
@@ -230,7 +261,21 @@ impl Kind {
 
     /// 面・玉・群に付かない系全体のパラメータ（物点の移動・波長）。[`Param::surf`] は使わない
     pub fn is_global(&self) -> bool {
-        self.is_object() || self.is_wave()
+        self.is_object() || self.is_system_value()
+    }
+
+    /// 系の値（波長・重み・主波長・開口・視野）。公差・多重構成の行に使い、最適化の変数・微分には使えない
+    pub fn is_system_value(&self) -> bool {
+        matches!(
+            self,
+            Kind::Wave(_)
+                | Kind::WaveW(_)
+                | Kind::Primary
+                | Kind::Aper
+                | Kind::FieldX(_)
+                | Kind::FieldY(_)
+                | Kind::FieldW(_)
+        )
     }
 
     /// 玉・群のパラメータ
@@ -416,11 +461,21 @@ impl System {
         if p.kind.is_object() {
             return Ok(());
         }
-        if let Kind::Wave(i) = p.kind {
+        if let Kind::Wave(i) | Kind::WaveW(i) = p.kind {
             if i as usize >= self.wavelengths.len() {
                 let (kind, nw) = (p.kind.name(), self.wavelengths.len());
                 invalid!("{kind} (there are {nw} wavelengths)");
             }
+            return Ok(());
+        }
+        if let Kind::FieldX(i) | Kind::FieldY(i) | Kind::FieldW(i) = p.kind {
+            if i as usize >= self.fields.len() {
+                let (kind, nf) = (p.kind.name(), self.fields.len());
+                invalid!("{kind} (there are {nf} field points)");
+            }
+            return Ok(());
+        }
+        if p.kind.is_system_value() {
             return Ok(());
         }
         if let Kind::Unit(k) = p.kind {
@@ -497,8 +552,15 @@ impl System {
             let kind = p.kind.name();
             invalid!("field point {kind} is not system data (it is a trace input)");
         }
-        if let Kind::Wave(i) = p.kind {
-            return Ok(self.wavelengths[i as usize]);
+        match p.kind {
+            Kind::Wave(i) => return Ok(self.wavelengths[i as usize]),
+            Kind::WaveW(i) => return Ok(self.weights[i as usize]),
+            Kind::Primary => return Ok(self.primary as f64 + 1.0),
+            Kind::Aper => return Ok(self.aperture.1),
+            Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
+            Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
+            Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
+            _ => {}
         }
         if let Kind::Unit(k) = p.kind {
             let u = &self.units[p.index()];
@@ -782,6 +844,19 @@ impl System {
                 }
                 continue;
             }
+            match p.kind {
+                Kind::Primary
+                    if v.fract() != 0.0 || v < 1.0 || v > self.wavelengths.len() as f64 =>
+                {
+                    invalid!("primary wavelength {v} (1 to {})", self.wavelengths.len());
+                }
+                Kind::WaveW(_) | Kind::FieldW(_) if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::Aper if !(v > 0.0) => invalid!("aperture value {v}"),
+                _ => {}
+            }
+            if p.kind.is_system_value() {
+                continue;
+            }
             let solved = |k: Kind| {
                 self.solves
                     .iter()
@@ -818,7 +893,18 @@ impl System {
             index = true;
         }
         for &(p, v) in changes {
-            if p.kind.is_wave() {
+            let rx = self.rx_mut();
+            match p.kind {
+                Kind::Wave(_) => continue,
+                Kind::WaveW(i) => rx.weights[i as usize] = v,
+                Kind::Primary => rx.primary = v as usize - 1,
+                Kind::Aper => rx.aperture.1 = v,
+                Kind::FieldX(i) => rx.fields[i as usize].x = v,
+                Kind::FieldY(i) => rx.fields[i as usize].y = v,
+                Kind::FieldW(i) => rx.fields[i as usize].w = v,
+                _ => {}
+            }
+            if p.kind.is_system_value() {
                 continue;
             }
             let d = &mut self.rx_mut().surfaces[p.index()];

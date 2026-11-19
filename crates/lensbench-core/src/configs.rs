@@ -130,11 +130,8 @@ impl System {
             invalid!("{} values ({} configurations)", values.len(), c.n);
         }
         self.check_param(p)?;
-        if p.kind.is_global() {
-            invalid!(
-                "{} can't go in the table (field points, wavelengths)",
-                p.name()
-            );
+        if p.kind.is_object() {
+            invalid!("{} can't go in the table (it is a trace input)", p.name());
         }
         let mut c = c.clone();
         // ピックアップは残す（ピックアップの構成の値を変えたら、その構成のピックアップは外す）
@@ -153,7 +150,15 @@ impl System {
         c.rows.push(row);
         let mut s = self.clone();
         s.rx_mut().configs = Some(c);
-        let k = s.configs.as_ref().map(|c| c.active).unwrap_or(1);
+        let (k, n) = s
+            .configs
+            .as_ref()
+            .map(|c| (c.active, c.n))
+            .unwrap_or((1, 1));
+        // ほかの構成の値も系にできるか確かめる（範囲の外の主波長・0 の開口など）
+        for j in (1..=n).filter(|&j| j != k) {
+            s.config(j)?;
+        }
         *self = s.config(k)?;
         Ok(())
     }

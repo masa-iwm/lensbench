@@ -778,8 +778,19 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
 type ConfigOp = (&'static str, usize, Option<u8>, fn(f64) -> f64);
 fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
     use lensbench_core::param::Kind;
-    let d = s.surfaces.get(p.surface()?)?;
     let id: fn(f64) -> f64 = |v| v;
+    let n = |i: u8| i as usize + 1;
+    match p.kind {
+        Kind::Wave(i) => return Some(("WAVE", n(i), None, id)),
+        Kind::WaveW(i) => return Some(("WLWT", n(i), None, id)),
+        Kind::FieldX(i) => return Some(("XFIE", n(i), None, id)),
+        Kind::FieldY(i) => return Some(("YFIE", n(i), None, id)),
+        Kind::FieldW(i) => return Some(("FLWT", n(i), None, id)),
+        Kind::Primary => return Some(("PRWV", 0, None, id)),
+        Kind::Aper => return Some(("APER", 0, None, id)),
+        _ => {}
+    }
+    let d = s.surfaces.get(p.surface()?)?;
     Some(match p.kind {
         Kind::Thick => ("THIC", p.index(), None, id),
         Kind::Curv => ("CRVT", p.index(), None, id),

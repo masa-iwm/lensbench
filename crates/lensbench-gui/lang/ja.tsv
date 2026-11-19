@@ -95,6 +95,11 @@ Positive	正
 Both signs	正負とも
 Wavelengths [µm]	波長 [µm]
 Wave {}	波長 {}
+Wave {} weight	波長 {} のウェイト
+Field {} weight	視野 {} のウェイト
+Field {} X	視野 {} の X
+Field {} Y	視野 {} の Y
+Aperture value	開口の値
 Delete	削除
 Ready	準備完了
 Focal length	焦点距離

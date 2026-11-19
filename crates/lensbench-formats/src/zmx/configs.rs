@@ -3,7 +3,7 @@
 use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
-/// 偶数次非球面・座標ブレークの PRAM。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// 偶数次非球面・座標ブレークの PRAM、系の値の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -13,7 +13,7 @@ pub(super) fn config_table(
 ) -> lensbench_core::Result<lensbench_core::configs::Configs> {
     use lensbench_core::configs::{ConfigRow, Configs};
     use lensbench_core::param::{Kind, Param};
-    let mut rows: Vec<(String, i64, i64, Vec<Option<f64>>)> = Vec::new();
+    let mut rows: Vec<(String, i64, i64, Vec<Option<String>>)> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
         let parm = if op == "PRAM" {
             rest.get(1)
@@ -33,13 +33,17 @@ pub(super) fn config_table(
             }
         };
         if (1..=n as i64).contains(c) {
-            rows[i].3[*c as usize - 1] = fv(v).ok();
+            rows[i].3[*c as usize - 1] = Some(v.clone());
         }
     }
     let mut out = Vec::new();
-    for (op, p1, parm, vals) in rows {
-        let first = vals.first().copied().flatten();
-        let varies = vals.iter().any(|v| *v != first);
+    for (op, p1, parm, raw_vals) in rows {
+        // 変わるかは書いた文字で見る（GLSS などの名前の値も）
+        let varies = raw_vals.iter().any(|v| *v != raw_vals[0]);
+        let vals: Vec<Option<f64>> = raw_vals
+            .iter()
+            .map(|v| v.as_deref().and_then(|x| fv(x).ok()))
+            .collect();
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
         let kind = match (op.as_str(), surf) {
             ("THIC", Some(_)) => Some(Kind::Thick),
@@ -52,14 +56,18 @@ pub(super) fn config_table(
                     lensbench_core::param::Kind::Parm(i),
                 )
             }),
-            _ => None,
+            _ => system_kind(&op, p1),
         };
         match kind {
             Some(kind) => {
                 if !varies {
                     continue;
                 }
-                let p = Param::new(surf.expect("surface number checked above"), kind);
+                let p = if kind.is_global() {
+                    Param::system(kind)
+                } else {
+                    Param::new(surf.expect("surface number checked above"), kind)
+                };
                 // 書いていない構成の値は今の系の値
                 let now = s.get_param(p)?;
                 out.push(ConfigRow {
@@ -78,5 +86,21 @@ pub(super) fn config_table(
         n,
         active,
         rows: out,
+    })
+}
+
+/// 系の値の演算子のパラメータの種類（番号 1 は波長・視野の番号、1 から）
+fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
+    use lensbench_core::param::Kind;
+    let i = u8::try_from(p1 - 1).ok();
+    Some(match op {
+        "WAVE" => Kind::Wave(i?),
+        "WLWT" => Kind::WaveW(i?),
+        "XFIE" => Kind::FieldX(i?),
+        "YFIE" => Kind::FieldY(i?),
+        "FLWT" => Kind::FieldW(i?),
+        "PRWV" => Kind::Primary,
+        "APER" => Kind::Aper,
+        _ => return None,
     })
 }

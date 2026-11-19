@@ -405,6 +405,54 @@ fn configs_table() {
     assert!(s.configs().is_none());
 }
 
+/// 多重構成の表の系の値の行（波長・重み・主波長・開口・視野）: 構成の系に入り、範囲の外の値と物点の移動はエラー
+#[test]
+fn configs_system_values() {
+    let mut s = empty();
+    s.set_config_count(2).unwrap();
+    let sys = Param::system;
+    s.set_config_row(sys(Kind::Aper), vec![10.0, 20.0]).unwrap();
+    s.set_config_row(sys(Kind::Primary), vec![2.0, 1.0])
+        .unwrap();
+    s.set_config_row(sys(Kind::WaveW(0)), vec![1.0, 3.0])
+        .unwrap();
+    s.set_config_row(sys(Kind::Wave(0)), vec![0.4861, 0.45])
+        .unwrap();
+    s.set_config_row(sys(Kind::FieldY(1)), vec![1.0, 2.0])
+        .unwrap();
+    s.set_config_row(sys(Kind::FieldX(1)), vec![0.0, 0.5])
+        .unwrap();
+    s.set_config_row(sys(Kind::FieldW(1)), vec![1.0, 0.5])
+        .unwrap();
+    let c2 = s.config(2).unwrap();
+    assert_eq!(c2.aperture.1, 20.0);
+    assert_eq!(c2.paraxial().epd, 20.0);
+    assert_eq!(c2.primary, 0);
+    assert_eq!(c2.weights[0], 3.0);
+    assert_eq!(c2.wavelengths[0], 0.45);
+    assert_eq!(
+        (c2.fields[1].x, c2.fields[1].y, c2.fields[1].w),
+        (0.5, 2.0, 0.5)
+    );
+    let c1 = c2.config(1).unwrap();
+    assert_eq!((c1.aperture.1, c1.primary, c1.fields[1].y), (10.0, 1, 1.0));
+    for p in ["aper", "primary", "wwt1", "fx2", "fy2", "fwt2"] {
+        assert_eq!(s.param(p).unwrap().name(), p);
+    }
+    // 範囲の外
+    assert!(s
+        .set_config_row(sys(Kind::Primary), vec![1.0, 4.0])
+        .is_err());
+    assert!(s
+        .set_config_row(sys(Kind::Primary), vec![1.0, 1.5])
+        .is_err());
+    assert!(s.set_config_row(sys(Kind::Aper), vec![10.0, 0.0]).is_err());
+    assert!(s
+        .set_config_row(sys(Kind::FieldY(2)), vec![1.0, 2.0])
+        .is_err());
+    assert!(s.set_config_row(sys(Kind::ObjX), vec![0.0, 1.0]).is_err());
+}
+
 /// 名前で面の値を変える: ピックアップ・ソルブで決まる値はエラー、値の読み出しと往復
 #[test]
 fn surface_fields_by_name() {

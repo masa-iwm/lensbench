@@ -152,7 +152,7 @@ no merit function terms	メリットファンクションの項がありませ�
 must be 0 or more ({v})	0 以上に（{v}）
 damping must be a positive number ({})	damping は正の数に（{}）
 variable {q}: moving the object point is not system data	変数 {q}: 物点の移動はシステムのデータではありません
-variable {q}: the wavelength is a tolerance item only	変数 {q}: 波長は変数にできません（公差の項目だけ）
+variable {q}: a system value is not a variable	変数 {q}: システムの値は変数にできません
 variable {q}: range [{}, {}]	変数 {q}: 範囲 [{}, {}]
 variable {q}: no configuration it acts on	変数 {q}: 効く構成がありません
 variable {q}: the same parameter twice in overlapping configurations	変数 {q}: 同じパラメータが重なる構成で 2 回
@@ -334,7 +334,7 @@ no solve of {} on surface {surf}	面 {surf} の {} のソルブはありませ�
 0 configurations	構成の数 0
 only one configuration (set_config_count first)	構成が 1 つ（先に set_config_count）
 {} values ({} configurations)	値の数 {}（構成 {}）
-{} can't go in the table (field points, wavelengths)	{} は表に入れられません（物点・波長）
+{} can't go in the table (it is a trace input)	{} は表に入れられません（追跡の入力）
 position {at} to insert a configuration (1 to {})	構成を挿入する位置 {at}（1〜{}）
 configuration {from} (1 to {})	構成 {from}（1〜{}）
 only one configuration	構成が 1 つ
@@ -352,7 +352,7 @@ solve {n} needs another surface (other)	ソルブ {n} には別の面（other）
 macro number {param}	マクロの番号 {param}
 solve type {name} ({})	ソルブの種類 {name}（{}）
 pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)	ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）
-parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜 u_<設定>、ピックアップでは semi p1〜 before0〜4 after0〜4 coating も）
+parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1.. wwt1.. primary aper fx1.. fy1.. fwt1.. u_<setting>, for pickups also semi p1.. before0..4 after0..4 coating)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜 wwt1〜 primary aper fx1〜 fy1〜 fwt1〜 u_<設定>、ピックアップでは semi p1〜 before0〜4 after0〜4 coating も）
 no surface named {t}	名前 {t} の面がありません
 several surfaces are named {t} ({hits:?}); use the number	名前 {t} の面が複数あります（{hits:?}）。番号で指定してください
 parameter {s} (write surface.type, e.g. 3.t)	パラメータ {s}（面.種類 の形で、例 3.t）
@@ -622,7 +622,7 @@ a lens with a spider aperture of an odd number of arms is not reversed	アーム
 reversing a lens with a mirror or coordinate break	ミラー・座標ブレークを含むレンズの反転
 the rebuilt system has no stop	組み直したシステムに絞りがありません
 object shift {} with an object at infinity	無限遠物体で物点の移動 {}
-no derivative by wavelength {}	波長 {} の微分はありません
+no derivative by system value {}	システムの値 {} の微分はありません
 internal error: lens or group {} must be expanded to surface parameters first	内部エラー: レンズ・群の {} は面のパラメータに展開してから
 object distance of an object at infinity	無限遠物体の物体距離
 analytic derivatives of a system with ZPL macro solves on parameters	パラメータの ZPL マクロのソルブがあるシステムの解析的な微分
@@ -2355,3 +2355,6 @@ paraxial ray quantity {} (x, y, z, l, m, n, r, nl, nm, nn, tanx, tany)	近軸光
 to does not go with paraxial	to は paraxial と使えません
 term {i}: wave goes with power, ynip and index, not {}	項 {i}: wave は power・ynip・index と使います（{} には使えません）
 term {i}: surface {surf} ({first} to {last})	項 {i}: 面 {surf}（{first}〜{last}）
+{kind} (there are {nf} field points)	{kind}（視野は {nf} 個）
+primary wavelength {v} (1 to {})	主波長 {v}（1〜{}）
+aperture value {v}	開口の値 {v}

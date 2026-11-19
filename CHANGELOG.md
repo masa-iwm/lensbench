@@ -35,6 +35,10 @@
 
 ### 足したもの
 
+- **多重構成の表に系の値**: 波長 `wave1`〜、波長のウェイト `wwt1`〜、主波長 `primary`、開口の値 `aper`、視野 `fx1`〜・`fy1`〜・
+  ウェイト `fwt1`〜 を多重構成の表の行にできる。.zmx の WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT を表に読み、書き出す
+  （前は選んだ構成だけを読んだ。WLWT・PRWV・FLWT が構成で変わる .zmx は読めなかった）。ガラス（GLSS）が構成で変わる .zmx は、
+  前は黙って構成 1 のガラスにしていたが、選んだ構成だけを読んだと知らせる
 - **プロジェクトの ZPL マクロ**: プロジェクトに `macros`（マクロの名前と .ZPL の中身）を書き、ブロックの `surface_ops` の
   `add_solve`（`macro_curv`・`macro_thick`）と新しい `add_macro_solve`（円錐係数・半直径・面タイプのパラメータ）でマクロを
   名前か番号で指して解く。マクロのファイルは読まない。serve の `edit` でも `add_macro_solve` が使える

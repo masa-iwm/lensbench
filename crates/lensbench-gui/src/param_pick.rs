@@ -37,7 +37,13 @@ pub(crate) fn param_desc(name: &str) -> String {
         return match n {
             "objx" => tr("Object position X").into(),
             "objy" => tr("Object position Y").into(),
+            "primary" => tr("Primary wavelength").into(),
+            "aper" => tr("Aperture value").into(),
             _ if n.starts_with("wave") => trf("Wave {}", &[&&n[4..]]),
+            _ if n.starts_with("wwt") => trf("Wave {} weight", &[&&n[3..]]),
+            _ if n.starts_with("fwt") => trf("Field {} weight", &[&&n[3..]]),
+            _ if n.starts_with("fx") => trf("Field {} X", &[&&n[2..]]),
+            _ if n.starts_with("fy") => trf("Field {} Y", &[&&n[2..]]),
             _ => String::new(),
         };
     };

@@ -36,6 +36,9 @@ pub struct ZmxSys {
     pub glass: Vec<bool>,
     /// 回転対称か（でなければ X の向きの EFLX・CARD は読まない。lensbench の近軸追跡は Y-Z 面）
     pub symmetric: bool,
+    /// 主波長が多重構成で変わるか（変われば EFFL・PIMH などの波長は主波長と同じ番号でも番号のまま読む。
+    /// OpticStudio は Wave 0 を置いたときの主波長の番号にして保存する）
+    pub primary_varies: bool,
 }
 
 impl Default for ZmxSys {
@@ -43,6 +46,7 @@ impl Default for ZmxSys {
         ZmxSys {
             glass: Vec::new(),
             symmetric: true,
+            primary_varies: false,
         }
     }
 }
@@ -56,6 +60,11 @@ impl ZmxSys {
                 .map(|f| f.mat.is_medium() && !f.mat.is_air())
                 .collect(),
             symmetric: s.symmetric(),
+            primary_varies: s.configs().is_some_and(|c| {
+                c.rows
+                    .iter()
+                    .any(|r| r.param.kind == lensbench_core::param::Kind::Primary)
+            }),
         }
     }
 }
@@ -205,12 +214,15 @@ fn kind_of(
         let w = int(INT2)?;
         m.insert("type".into(), json!("paraxial"));
         m.insert("q".into(), json!(q));
+        let reads = matches!(*q, "efl" | "pimh" | "amag" | "linv" | "petz" | "petc");
         if w != 0 && w as usize != primary {
-            if !matches!(*q, "efl" | "pimh" | "amag" | "linv" | "petz" | "petc") || w < 0 {
+            if !reads || w < 0 {
                 return Err(format!(
                     "wavelength {w} (lensbench reads the wavelength only for EFFL, PIMH, AMAG, LINV, PETZ and PETC)"
                 ));
             }
+            m.insert("wave".into(), json!(w));
+        } else if w != 0 && reads && sys.primary_varies {
             m.insert("wave".into(), json!(w));
         }
         m.insert(

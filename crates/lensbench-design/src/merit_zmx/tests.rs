@@ -466,6 +466,7 @@ fn efla_single_lens_only() {
     let sys = ZmxSys {
         glass: vec![false, true, false, true, true, false, false, false],
         symmetric: true,
+        ..Default::default()
     };
     let rows = [
         "EFLA 1 0 0 0 0 0 0 1 0 0",

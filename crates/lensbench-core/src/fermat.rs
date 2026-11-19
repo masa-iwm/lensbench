@@ -295,8 +295,8 @@ impl System {
                     [0.0, 1.0, 0.0]
                 };
             }
-            Kind::Wave(_) => {
-                invalid!("no derivative by wavelength {}", p.kind.name());
+            k if k.is_system_value() => {
+                invalid!("no derivative by system value {}", p.kind.name());
             }
             Kind::Unit(k) if k.motion_index().is_none() => {
                 invalid!(
