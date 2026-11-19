@@ -73,7 +73,7 @@ pub(crate) enum Tag {
     Tolerance,
     /// ズーム軌跡（serve の zoom）
     Zoom,
-    /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける）
+    /// 系を変えた後の表の読み直し（面の表と要約を 1 つの要求で。[`Done::split`] で分ける）
     Refresh,
     /// カタログのフォルダの様子（下書きの folders。AGF の名前・見つからないフォルダ）
     Folders,

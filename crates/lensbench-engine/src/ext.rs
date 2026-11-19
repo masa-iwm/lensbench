@@ -226,7 +226,7 @@ impl Extensions {
         n.extend(
             self.materials
                 .iter()
-                .map(|(c, _)| format!("material catalog {}", c.to_uppercase())),
+                .map(|(c, _)| format!("material catalog {}", c.to_ascii_uppercase())),
         );
         for s in &self.sources {
             n.extend(

@@ -55,7 +55,9 @@ jobs:
             schema="lensbench-schema-$tag.tar.gz"
             if ! grep -qxF "$schema" <<< "$assets"; then
               gh api "repos/$REPO/tarball/$tag" > "target/$tag-src.tar.gz" || { echo "::warning::$tag の木を取れない"; continue; }
-              python3 scripts/docs_versions.py pack-schema "target/$tag-src.tar.gz" "target/snap/$schema"
+              # 1 つのタグで止まっても後ろのタグは続ける（止まったタグは次の回にまた試す）
+              python3 scripts/docs_versions.py pack-schema "target/$tag-src.tar.gz" "target/snap/$schema" \
+                || { echo "::warning::$tag のスキーマを固められない"; continue; }
               gh release upload "$tag" -R "$REPO" "target/snap/$schema"
             fi
             asset="lensbench-docs-$tag.tar.gz"
@@ -67,7 +69,8 @@ jobs:
               continue
             fi
             gh run download "$run" -R "$REPO" -n site-book -D "target/snap/$tag"
-            python3 scripts/docs_versions.py snapshot "target/snap/$tag" "target/snap/$asset"
+            python3 scripts/docs_versions.py snapshot "target/snap/$tag" "target/snap/$asset" \
+              || { echo "::warning::$tag の使い方のページを固められない"; continue; }
             gh release upload "$tag" -R "$REPO" "target/snap/$asset"
           done
 

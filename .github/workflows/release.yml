@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
-            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$DIST.zip"; then
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$DIST.zip"; then
               echo "::error::$TAG のリリースにはもう $DIST.zip がある。タグを打ち直さず次の版を切る"
               exit 1
             fi

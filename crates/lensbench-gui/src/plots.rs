@@ -220,9 +220,9 @@ pub(crate) fn spot(
             .small()
             .color(theme::weak_text(&vis)),
         );
-        // 縮尺の長さ（0 は自動）
+        // 枠の幅（＝枠の下の縮尺の長さ、0 は自動）
         ui.label(
-            RichText::new(tr("Scale bar"))
+            RichText::new(tr("Box width"))
                 .small()
                 .color(theme::weak_text(&vis)),
         );

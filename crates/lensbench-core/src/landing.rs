@@ -44,7 +44,6 @@ enum Mode {
     Pass,
 }
 
-/// 1 本の光線の、1 つの面での幾何（局所座標）
 /// 光線ごとの作業の配列（[`System::land_grad_raw`]、スレッドごとに使い回す）
 struct Scratch {
     geo: Vec<Geo>,
@@ -55,6 +54,7 @@ struct Scratch {
     cum: Vec<[f64; NY * 6]>,
 }
 
+/// 1 本の光線の、1 つの面での幾何（局所座標）
 #[derive(Clone, Copy)]
 struct Geo {
     /// 面の座標系の回転（物体に固定した座標系）

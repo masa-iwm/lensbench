@@ -580,6 +580,30 @@ mod tests {
             ("zoom", json!({ "vars": ["G2.shift"], "efl": [50, null] })),
             ("swap", json!({ "slots": [{ "block": "A" }], "top": 3 })),
             ("tolerance", json!({ "configs": [1], "trials": 10 })),
+            (
+                "load",
+                json!({ "file": "a.zmx", "glass_dirs": ["g"], "cfg": 2, "strict_macros": true }),
+            ),
+            ("reload", json!({})),
+            ("undo", json!({ "steps": 2 })),
+            ("get", json!({ "param": "3.t" })),
+            ("get", json!({ "params": ["3.t", "4.c"] })),
+            ("set", json!({ "values": { "3.t": 10.0 } })),
+            ("write", json!({ "path": "a.zmx" })),
+            (
+                "edit",
+                json!({ "ops": [{ "op": "set_stop", "surface": 1 }] }),
+            ),
+            (
+                "write_back",
+                json!({ "ops": [{ "op": "set_stop", "surface": 1 }] }),
+            ),
+            ("save", json!({ "path": "a.json" })),
+            (
+                "save_range",
+                json!({ "path": "a.json", "from": 1, "to": 3 }),
+            ),
+            ("surface_data", json!({ "surface": 2 })),
         ];
         for (m, p) in cases {
             let r = Request::parse(m, &p).unwrap_or_else(|e| panic!("{m}: {}", e.msg));

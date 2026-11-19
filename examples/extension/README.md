@@ -8,6 +8,8 @@
 - `src/bin/cli.rs`・`src/bin/gui.rs`: それを渡す exe の入口
 - `src/lib.rs` の `web`: Web 版の入口（wasm32 だけ）
 - `tests/check.rs`: 足し忘れの検査（`lensbench_sdk::check`）とプラグインの試験
+- 機能 `py` は Python の wheel（cdylib）を組むときだけ付ける。exe（`example-cli`・`example-gui`）は `py` なしで組む
+  （`py` は Python の拡張モジュールとして組む設定で、exe には要らない）
 
 Cargo.lock は公開のものを写してから組むと、公開の CI で試した依存の版になります（`cargo` が雛形の分だけ足す）。
 

@@ -1,5 +1,6 @@
 //! 単体試験で .zmx から系を作る。.zmx の読込は lensbench-formats にあり、その系は core の別の組み立て（試験でない
 //! もの）の型なので、文書を書いて読み直してこのクレートの [`System`] に移す（キャッシュは読み直しで作り直す）
+//! `#[serde(skip)]` の欄（`field_wave`）は運ばない（.zmx の読込はこの欄を埋めないので、読んだ系では同じ）
 
 use crate::System;
 pub(crate) use lensbench_formats::zmx::{parse_text, LoadOptions};

@@ -71,7 +71,7 @@ impl Access {
             "ping" | "describe" | "echo" | "system" | "history" | "get" | "surface"
             | "surface_data" | "system_data" | "config_table" | "configs" | "analyze" | "trace"
             | "plugin" | "plugins" | "analysis_args" | "layout" | "glasses" | "lenses"
-            | "catalog_search" => Access::Read,
+            | "catalog_search" | "preview" => Access::Read,
             "optimize" | "tolerance" | "swap" | "zoom" => Access::Long,
             _ => Access::Write,
         }

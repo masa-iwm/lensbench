@@ -51,7 +51,8 @@ pub trait MaterialModel: Send + Sync {
 #[derive(Clone)]
 pub struct MaterialCatalog {
     pub name: String,
-    pub models: Vec<Arc<dyn MaterialModel>>,
+    /// 材料（読むのは [`MaterialCatalog::models`]。後から書き換えると名前の索引とずれるので外には出さない）
+    models: Vec<Arc<dyn MaterialModel>>,
     /// 名前 → models の番号（屈折率を求めるたびに引くので）
     index: HashMap<String, usize>,
 }
@@ -100,6 +101,11 @@ impl MaterialCatalog {
                 (g.name.clone(), g)
             })
             .collect()
+    }
+
+    /// 材料（並びは登録の順）
+    pub fn models(&self) -> &[Arc<dyn MaterialModel>] {
+        &self.models
     }
 
     /// 名前の材料

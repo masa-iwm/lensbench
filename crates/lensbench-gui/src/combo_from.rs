@@ -626,7 +626,11 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
             p.mirror_mut().conic = f(&b["conic"], 0.0);
             let t: [f64; 2] = arr(&b["tilt"]);
             p.tilt = [t[0], t[1], 0.0];
-            p.semi = f(&b["semi"], 0.0);
+            // 行で書いた鏡の半直径は行の中（配置図などが p.semi を見るので写す。書き戻すのは行のまま）
+            p.semi = match b.get("row").filter(|r| !r.is_null()) {
+                Some(r) => f(&r["semi"], 0.0),
+                None => f(&b["semi"], 0.0),
+            };
             p.coat = s(&b["coat"]);
             p.mirror_mut().back = b["back"] == true;
             p.on = b["on"].as_bool().unwrap_or(true);
