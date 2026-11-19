@@ -171,6 +171,20 @@ impl Core {
         });
     }
 
+    /// 多重構成のピックアップを当てる（組合せを変えたあと・面の表を受け取ったあと）。変えたか
+    pub(super) fn apply_mc_picks(&mut self) -> bool {
+        if self.doc.combo.states.is_empty() {
+            return false;
+        }
+        let faces = self.face_index();
+        let rows = &self.sys.ld_rows;
+        let now = |f: &crate::state_table::Face| -> Option<Value> {
+            let j = *faces.get(&(f.loc.clone(), f.surf))?;
+            ld_combo::face_value(rows.get(j)?, &f.field)
+        };
+        crate::state_table::apply_picks(&mut self.doc.combo, &self.p.states.base_cache, &now)
+    }
+
     /// 組合せの要素の面（場所・要素の面の番号）→ 今の系の面の番号（今の経路の要素だけ）
     pub(super) fn face_index(&self) -> HashMap<(crate::combo_tree::Loc, usize), usize> {
         let mut out = HashMap::new();

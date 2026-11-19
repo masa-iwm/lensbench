@@ -17,6 +17,9 @@ use crate::i18n::{tr, trf};
 use crate::sysset::{ApertureField, ApertureKind, Choice, FieldKind, SysSnap};
 use crate::theme;
 
+mod picks;
+pub(crate) use picks::{from_json as picks_from_json, to_json as picks_json};
+
 /// 表の表示の設定
 #[derive(Debug, Clone, Default)]
 pub(crate) struct View {
@@ -34,6 +37,8 @@ pub(crate) struct View {
     pub rename_err: Option<String>,
     /// 面の値の基本の値（今の系から読めたとき覚えておく。今の状態が上書きしているときに使う）
     pub base_cache: HashMap<Face, Value>,
+    /// 面の表を受け取ってピックアップを当て直し、組み直したところ（次の面の表では当て直さない。輪で止まらなくならないよう）
+    pub picks_rebuilt: bool,
 }
 
 /// 要素の面の値（多重構成の面の行）。面は要素の面のうち座標ブレークを除いた番号、field は面の値の名前
@@ -56,6 +61,7 @@ pub(crate) const FACE_FIELDS: &[(&str, bool)] = &[
     ("ignore", false),
     ("material", false),
     ("coating", false),
+    ("aperture", false),
 ];
 
 /// 状態ごとに変えられる系の値（[`SysSnap`] の項目）
@@ -264,6 +270,12 @@ fn face_val(field: &str, idx: Option<usize>, v: Option<&Value>) -> Val {
         None => v,
     };
     match field {
+        // 円形の開口・遮蔽の最大の半径（多重構成の APMX）。開口が無ければ 0、ほかの形は読めない
+        "aperture" if v.is_null() => Val::Num(0.0),
+        "aperture" => match (circular(v), v.get("max").and_then(Value::as_f64)) {
+            (true, Some(x)) => Val::Num(x),
+            _ => Val::Unknown,
+        },
         "material" | "coating" | "comment" => Val::Text(v.as_str().unwrap_or_default().to_string()),
         "ignore" => Val::Bool(v == true),
         _ => match v.as_f64() {
@@ -278,8 +290,32 @@ fn face_val(field: &str, idx: Option<usize>, v: Option<&Value>) -> Val {
     }
 }
 
+/// 円形の開口か遮蔽（最大の半径を持つ形）
+fn circular(v: &Value) -> bool {
+    matches!(
+        v["type"].as_str(),
+        Some("circular" | "obsc" | "obscuration")
+    )
+}
+
 /// 表の値を面の値の JSON に。並び（idx）は前の並び old の idx 番目を変える
-fn face_json(v: &Val, idx: Option<usize>, old: Option<&Value>) -> Option<Value> {
+fn face_json(field: &str, v: &Val, idx: Option<usize>, old: Option<&Value>) -> Option<Value> {
+    if field == "aperture" {
+        // 基本の開口が分かり、無いか円形・遮蔽のときだけ最大の半径を変える（ほかの形は置き換えない）
+        let (Val::Num(x), Some(old)) = (v, old) else {
+            return None;
+        };
+        let mut a = match old {
+            Value::Null => json!({ "type": "circular", "min": 0.0 }),
+            o if circular(o) => o.clone(),
+            _ => return None,
+        };
+        if *x <= 0.0 {
+            return Some(Value::Null);
+        }
+        a["max"] = json!(x);
+        return Some(a);
+    }
     let x = match v {
         Val::Num(x) if x.is_infinite() => json!({ "$f": if *x > 0.0 { "inf" } else { "-inf" } }),
         Val::Num(x) => json!(x),
@@ -313,6 +349,7 @@ impl Face {
             ("ignore", _) => tr("ignore").into(),
             ("material", _) => tr("material").into(),
             ("coating", _) => tr("coating").into(),
+            ("aperture", _) => tr("aperture max radius").into(),
             (f, _) => f.to_string(),
         };
         trf("{} surface {} {}", &[&el, &(self.surf + 1), &what])
@@ -442,6 +479,15 @@ impl Item {
         })
     }
 
+    /// ロックで変えられない行（ロックした要素の面の値、位置もロックした要素の空気・偏心・傾き）
+    fn locked(&self, c: &Combo) -> bool {
+        match self {
+            Item::Face(f) => c.get(&f.loc).is_some_and(|p| p.locked),
+            Item::Air(l) | Item::Place(l, _) => c.get(l).is_some_and(Pick::fixed),
+            _ => false,
+        }
+    }
+
     /// 状態 n で値を変えているか
     fn own(&self, c: &Combo, n: &str) -> bool {
         match self {
@@ -498,7 +544,7 @@ impl Item {
                     return;
                 }
                 let old = f.raw(c, st, cx.now, cx.cache);
-                let Some(x) = face_json(&v, f.idx, old.as_ref()) else {
+                let Some(x) = face_json(&f.field, &v, f.idx, old.as_ref()) else {
                     return;
                 };
                 if let Some(p) = c.get_mut(&f.loc) {
@@ -678,6 +724,11 @@ fn face_items(l: &Loc, p: &Pick) -> Vec<Face> {
 
 /// 表の行。all なら状態で変えていない値（要素の ON/OFF・後の空気・構成、群の移動、系の値）も。pinned は足した行
 fn items(c: &Combo, all: bool, pinned: &[Item]) -> Vec<Item> {
+    // ピックアップのある行は値が基本と同じでも出す
+    let mut pinned = pinned.to_vec();
+    pinned.extend(picks::rows(c));
+    let pinned = &pinned[..];
+    let pin = |it: &Item| pinned.contains(it);
     let mut out = Vec::new();
     for q in SysQ::all(c) {
         let it = Item::Sys(q);
@@ -691,16 +742,20 @@ fn items(c: &Combo, all: bool, pinned: &[Item]) -> Vec<Item> {
     }
     for l in c.all() {
         let Some(p) = c.get(&l) else { continue };
-        if p.kind.has_on() && (all || !p.state_on.is_empty()) {
-            out.push(Item::On(l.clone()));
+        let on = Item::On(l.clone());
+        if p.kind.has_on() && (all || !p.state_on.is_empty() || pin(&on)) {
+            out.push(on);
         }
-        if all || !p.state_air.is_empty() {
-            out.push(Item::Air(l.clone()));
+        let air = Item::Air(l.clone());
+        if all || !p.state_air.is_empty() || pin(&air) {
+            out.push(air);
         }
-        if p.kind == ElemKind::ZmxRange && (all || !p.zmx().state_config.is_empty()) {
-            out.push(Item::Config(l.clone()));
+        let cf = Item::Config(l.clone());
+        if p.kind == ElemKind::ZmxRange && (all || !p.zmx().state_config.is_empty() || pin(&cf)) {
+            out.push(cf);
         }
-        if p.has_state_place() && !p.state_place.is_empty() {
+        let placed = (0..5).any(|k| pin(&Item::Place(l.clone(), k)));
+        if p.has_state_place() && (!p.state_place.is_empty() || placed) {
             let ks: &[usize] = if p.kind == ElemKind::Mirror {
                 &[2, 3]
             } else {
@@ -709,7 +764,9 @@ fn items(c: &Combo, all: bool, pinned: &[Item]) -> Vec<Item> {
             out.extend(ks.iter().map(|&k| Item::Place(l.clone(), k)));
         }
         for (g, z) in p.zmx().zgroups.iter().enumerate() {
-            if p.kind == ElemKind::ZmxRange && !z.state_shift.is_empty() {
+            if p.kind == ElemKind::ZmxRange
+                && (!z.state_shift.is_empty() || pin(&Item::ZShift(l.clone(), g)))
+            {
                 out.push(Item::ZShift(l.clone(), g));
             }
         }
@@ -722,11 +779,11 @@ fn items(c: &Combo, all: bool, pinned: &[Item]) -> Vec<Item> {
         out.extend(faces);
     }
     for (g, d) in c.groups.iter().enumerate() {
-        if !d.state_shift.is_empty() || (all && !d.role.is_empty()) {
+        if !d.state_shift.is_empty() || (all && !d.role.is_empty()) || pin(&Item::Shift(g)) {
             out.push(Item::Shift(g));
         }
     }
-    if !c.state_path.is_empty() || (all && !c.path.is_empty()) {
+    if !c.state_path.is_empty() || (all && !c.path.is_empty()) || pin(&Item::Path) {
         out.push(Item::Path);
     }
     out
@@ -771,6 +828,7 @@ pub(crate) fn add_row(c: &mut Combo, view: &mut View, it: Item, now: FaceNow) {
 
 /// 行を消す: どの状態の値も基本の値に戻す
 fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
+    picks::remove_row_picks(c, it);
     for n in c.states.clone() {
         it.clear(c, &n);
     }
@@ -861,6 +919,11 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
 /// 構成（状態）の列の見出しの右クリック: 写して足す・名前を変える・消す
 enum HeadAct {
     Copy(String),
+    /// 基本の値の構成をその右に足す
+    NewBase(String),
+    /// どの行もその構成のピックアップにした構成をその右に足す
+    WithPicks(String),
+    Move(String, isize),
     Rename(String),
     Remove(String),
 }
@@ -946,6 +1009,7 @@ pub(crate) fn ui(
         .collect();
     let mut set: Option<(usize, Option<String>, Val)> = None;
     let mut clear: Option<(usize, String)> = None;
+    let mut pick_act: Option<(usize, String, PickAct)> = None;
     let mut del_row: Option<usize> = None;
     let mut pick_state: Option<Option<String>> = None;
     let mut head: Option<HeadAct> = None;
@@ -1004,6 +1068,28 @@ pub(crate) fn ui(
                                     head = Some(HeadAct::Copy(n.clone()));
                                     ui.close_menu();
                                 }
+                                if ui.button(tr("Insert a configuration with the base values")).clicked() {
+                                    head = Some(HeadAct::NewBase(n.clone()));
+                                    ui.close_menu();
+                                }
+                                if ui
+                                    .button(tr("Insert a configuration with pickups"))
+                                    .on_hover_text(tr("Every row of the new configuration picks up this configuration (× 1 + 0)"))
+                                    .clicked()
+                                {
+                                    head = Some(HeadAct::WithPicks(n.clone()));
+                                    ui.close_menu();
+                                }
+                                ui.separator();
+                                if ui.button(tr("Move left")).clicked() {
+                                    head = Some(HeadAct::Move(n.clone(), -1));
+                                    ui.close_menu();
+                                }
+                                if ui.button(tr("Move right")).clicked() {
+                                    head = Some(HeadAct::Move(n.clone(), 1));
+                                    ui.close_menu();
+                                }
+                                ui.separator();
                                 if ui.button(tr("Rename")).clicked() {
                                     renaming = Some((n.clone(), n.clone()));
                                     rename_err = None;
@@ -1050,7 +1136,19 @@ pub(crate) fn ui(
                                 let st = col.as_deref();
                                 let own = st.is_some_and(|n| it.own(c, n));
                                 let Some(v) = it.get(c, st, &cx) else { return };
-                                let resp = match v {
+                                let pk = st.and_then(|n| picks::pick_of(c, it, n)).cloned();
+                                let resp = if let Some(m) = &pk {
+                                    // ピックアップの値は打ち込めない（右クリックで倍率・オフセットを変える・やめる）
+                                    let from = if m.from.is_empty() { tr("Base").to_string() } else { m.from.clone() };
+                                    ui.add(
+                                        egui::Label::new(RichText::new(format!("{} P", val_text(c, &v))).color(weak))
+                                            .sense(egui::Sense::click()),
+                                    )
+                                    .on_hover_text(trf(
+                                        "Pickup: {} × {} + {}",
+                                        &[&from, &crate::json_view::fmt_num(m.scale), &crate::json_view::fmt_num(m.offset)],
+                                    ))
+                                } else { match v {
                                     Val::Bool(mut b) => {
                                         let r = ui.checkbox(&mut b, "");
                                         if r.changed() {
@@ -1145,7 +1243,7 @@ pub(crate) fn ui(
                                         }
                                         r
                                     }
-                                };
+                                } };
                                 if own {
                                     ui.painter().rect_stroke(
                                         resp.rect.expand(1.0),
@@ -1154,12 +1252,18 @@ pub(crate) fn ui(
                                         egui::StrokeKind::Outside,
                                     );
                                 }
-                                if let Some(n) = col.as_ref().filter(|_| own) {
+                                if let Some(n) = col.as_ref() {
                                     resp.context_menu(|ui| {
-                                        if ui.button(tr("Use base value")).clicked() {
+                                        if own && pk.is_none() && ui.button(tr("Use base value")).clicked() {
                                             clear = Some((i, n.clone()));
                                             ui.close_menu();
                                         }
+                                        if it.locked(c) {
+                                            return;
+                                        }
+                                        // その構成からピックアップしている構成は元にしない（互いのピックアップ）
+                                        let back: Vec<String> = c.states.iter().filter(|m| picks::pick_of(c, it, m).is_some_and(|p| p.from == *n)).cloned().collect();
+                                        pick_menu(ui, &cols, n, &back, pk.as_ref(), &mut |a| pick_act = Some((i, n.clone(), a)));
                                     });
                                 }
                             });
@@ -1178,6 +1282,13 @@ pub(crate) fn ui(
         rows[i].clear(c, &n);
         changed = true;
     }
+    if let Some((i, n, a)) = pick_act {
+        match a {
+            Some((from, k, o)) => picks::set_pick(c, &rows[i], &n, &from, k, o),
+            None => picks::remove_pick(c, &rows[i], &n),
+        }
+        changed = true;
+    }
     if let Some(i) = del_row {
         remove_row(c, view, &rows[i]);
         changed = true;
@@ -1190,6 +1301,16 @@ pub(crate) fn ui(
             c.add_state(&name, Some(&n));
             changed = true;
         }
+        Some(HeadAct::NewBase(n)) => {
+            let name = c.next_config_name();
+            c.add_state(&name, None);
+            c.place_state_after(&name, &n);
+            changed = true;
+        }
+        Some(HeadAct::WithPicks(n)) => {
+            changed |= picks::add_state_with_picks(c, &n, &rows).is_some();
+        }
+        Some(HeadAct::Move(n, d)) => changed |= c.move_state(&n, d),
         Some(HeadAct::Rename(n)) => {
             if let Some((from, to)) = view.renaming.take() {
                 if !n.is_empty() {
@@ -1210,217 +1331,76 @@ pub(crate) fn ui(
         c.state = s;
         changed = true;
     }
+    // 変えた値をピックアップの先にも
+    if changed {
+        apply_picks(c, &view.base_cache, now);
+    }
     changed
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// ピックアップを全部当てる（値を変えたあと）。変えたか
+pub(crate) fn apply_picks(c: &mut Combo, cache: &HashMap<Face, Value>, now: FaceNow) -> bool {
+    picks::apply(c, &Cx { now, cache })
+}
 
-    /// 状態で変えた値の行だけを出し、状態の列のセルを変えるとその状態の値、基本に戻すと外れる
-    #[test]
-    fn rows_follow_state_values() {
-        let mut c = Combo::default();
-        let mut z = Pick::new(ElemKind::ZmxRange);
-        z.path = "a.zmx".into();
-        c.picks.push(z);
-        c.picks.push(Pick::new(ElemKind::Plate));
-        c.states = vec!["Config 1".into(), "Config 2".into()];
-        assert!(items(&c, false, &[]).is_empty());
-        c.picks[0]
-            .zmx_mut()
-            .state_config
-            .insert("Config 2".into(), 2);
-        let rows = items(&c, false, &[]);
-        assert_eq!(rows, vec![Item::Config(vec![0])]);
-        let none = |_: &Face| None;
-        let cache = HashMap::new();
-        let cx = Cx {
-            now: &none,
-            cache: &cache,
-        };
-        rows[0].set(&mut c, Some("Config 1"), Val::Int(1), &cx);
-        assert!(rows[0].own(&c, "Config 1"));
-        assert_eq!(c.picks[0].config_in(Some("Config 2")), 2);
-        rows[0].clear(&mut c, "Config 2");
-        assert_eq!(c.picks[0].config_in(Some("Config 2")), 1);
-        // 全部: 要素の ON/OFF・後の空気・構成
-        let all = items(&c, true, &[]);
-        assert!(all.contains(&Item::On(vec![1])) && all.contains(&Item::Air(vec![1])));
-        Item::Air(vec![1]).set(&mut c, Some("Config 2"), Val::Num(7.0), &cx);
-        assert_eq!(c.picks[1].air_in(Some("Config 2")), 7.0);
-        assert_eq!(c.picks[1].air_in(None), c.picks[1].air);
-    }
+/// ピックアップの操作: (元の構成（空は基本）, 倍率, オフセット)。None はやめる
+type PickAct = Option<(String, f64, f64)>;
 
-    /// 系の値の行: 状態の列を変えるとその状態の系の値になり、基本に戻すと（ほかに違いが無ければ）状態の系の値は外れる
-    #[test]
-    fn system_rows() {
-        let mut c = Combo {
-            states: vec!["A".into(), "B".into()],
-            ..Default::default()
-        };
-        assert!(!items(&c, false, &[])
-            .iter()
-            .any(|i| matches!(i, Item::Sys(_))));
-        let none = |_: &Face| None;
-        let cache = HashMap::new();
-        let cx = Cx {
-            now: &none,
-            cache: &cache,
-        };
-        let w2 = Item::Sys(SysQ::Wave(1));
-        w2.set(&mut c, Some("A"), Val::Num(0.55), &cx);
-        assert_eq!(c.state_sys["A"].waves[1].um, 0.55);
-        assert!(w2.own(&c, "A") && !w2.own(&c, "B"));
-        assert!(items(&c, false, &[]).contains(&w2));
-        assert_eq!(w2.get(&c, Some("B"), &cx), Some(Val::Num(c.waves[1].um)));
-        // 開口の種類を F 値にすると初めの値
-        let at = Item::Sys(SysQ::ApType);
-        at.set(&mut c, Some("B"), Val::Choice(1, &AP_KEYS), &cx);
-        assert_eq!(c.state_sys["B"].aperture, ApertureKind::FNum);
-        assert_eq!(
-            Item::Sys(SysQ::ApValue).get(&c, Some("B"), &cx),
-            Some(Val::Num(5.0))
-        );
-        // 物体距離
-        let od = Item::Sys(SysQ::ObjDist);
-        od.set(&mut c, Some("A"), Val::Text("100".into()), &cx);
-        assert_eq!(c.state_sys["A"].object_distance, Some(100.0));
-        w2.clear(&mut c, "A");
-        od.clear(&mut c, "A");
-        assert!(!c.state_sys.contains_key("A"));
-        // 基本を変える
-        w2.set(&mut c, None, Val::Num(0.6), &cx);
-        assert_eq!(c.waves[1].um, 0.6);
-    }
-
-    /// 面の行: 足すと全部の状態に今の値が入り、状態の列を変えるとその状態だけ、行を消すと上書きが外れる
-    #[test]
-    fn face_rows() {
-        let mut c = Combo::default();
-        c.picks.push(Pick::new(ElemKind::Plate));
-        let mut view = View::default();
-        let now = |f: &Face| match f.field.as_str() {
-            "t" => Some(json!(3.0)),
-            "asph" => Some(json!([])),
-            _ => None,
-        };
-        let f = Face {
-            loc: vec![0],
-            surf: 0,
-            field: "t".into(),
-            idx: None,
-        };
-        // 状態が無ければ構成 2 つを足す
-        add_row(&mut c, &mut view, Item::Face(f.clone()), &now);
-        assert_eq!(c.states, ["Config 1", "Config 2"]);
-        assert_eq!(c.picks[0].state_edit("Config 2", 0, "t"), Some(&json!(3.0)));
-        let it = Item::Face(f.clone());
-        assert!(items(&c, false, &view.pinned).contains(&it));
-        let cache = HashMap::new();
-        let cx = Cx {
-            now: &now,
-            cache: &cache,
-        };
-        it.set(&mut c, Some("Config 2"), Val::Num(5.0), &cx);
-        assert_eq!(it.get(&c, Some("Config 2"), &cx), Some(Val::Num(5.0)));
-        assert_eq!(it.get(&c, Some("Config 1"), &cx), Some(Val::Num(3.0)));
-        assert_eq!(
-            c.picks[0].edits_in("Config 2").unwrap()[0].value,
-            json!(5.0)
-        );
-        // 並びの値（非球面）は番号の所だけ変える
-        let a = Item::Face(Face {
-            field: "asph".into(),
-            idx: Some(1),
-            ..f.clone()
-        });
-        a.set(&mut c, Some("Config 1"), Val::Num(-2e-5), &cx);
-        assert_eq!(
-            c.picks[0].state_edit("Config 1", 0, "asph"),
-            Some(&json!([0.0, -2e-5]))
-        );
-        assert!(items(&c, false, &[]).contains(&a));
-        remove_row(&mut c, &mut view, &it);
-        assert!(c.picks[0].state_edit("Config 2", 0, "t").is_none());
-        assert!(!items(&c, false, &view.pinned).contains(&it));
-        // 面の並びが変わると状態の上書きも外れる
-        c.picks[0].reversed = !c.picks[0].reversed;
-        assert!(c.picks[0].drop_stale_edits() > 0);
-        assert!(c.picks[0].state_edits.is_empty());
-    }
-
-    /// 今の状態が上書きしている値は基本の値として読まない
-    #[test]
-    fn current_state_value_is_not_base() {
-        // 今の状態 A が t を 5 に上書きし、今の系の t は 5（基本は 3 だが覚えていない）
-        let mut c = Combo {
-            states: vec!["A".into(), "B".into()],
-            state: Some("A".into()),
-            ..Default::default()
-        };
-        c.picks.push(Pick::new(ElemKind::Plate));
-        c.picks[0].set_state_edit("A", 0, "t", json!(5.0));
-        let now = |f: &Face| (f.field == "t").then(|| json!(5.0));
-        let f = Face {
-            loc: vec![0],
-            surf: 0,
-            field: "t".into(),
-            idx: None,
-        };
-        let mut view = View::default();
-        add_row(&mut c, &mut view, Item::Face(f.clone()), &now);
-        // 基本が分からないので B には値を入れない
-        assert_eq!(c.picks[0].state_edit("B", 0, "t"), None);
-        let cache = HashMap::new();
-        let cx = Cx {
-            now: &now,
-            cache: &cache,
-        };
-        assert_eq!(
-            Item::Face(f.clone()).get(&c, Some("B"), &cx),
-            Some(Val::Unknown)
-        );
-        // 覚えた基本の値があればそれを入れる
-        view.base_cache.insert(f.clone(), json!(3.0));
-        add_row(&mut c, &mut view, Item::Face(f.clone()), &now);
-        assert_eq!(c.picks[0].state_edit("B", 0, "t"), Some(&json!(3.0)));
-        // ロックした要素の面の値は変えない
-        c.picks[0].locked = true;
-        let k = Face {
-            field: "k".into(),
-            ..f
-        };
-        add_row(&mut c, &mut view, Item::Face(k.clone()), &now);
-        Item::Face(k).set(&mut c, Some("B"), Val::Num(-1.0), &cx);
-        assert_eq!(c.picks[0].state_edit("B", 0, "k"), None);
-    }
-
-    /// 絞りの面・テレセントリックの行
-    #[test]
-    fn stop_tele_rows() {
-        let mut c = Combo {
-            states: vec!["A".into()],
-            ..Default::default()
-        };
-        c.picks.push(Pick::new(ElemKind::Plate));
-        let none = |_: &Face| None;
-        let cache = HashMap::new();
-        let cx = Cx {
-            now: &none,
-            cache: &cache,
-        };
-        let at = Some((vec![0], 1));
-        Item::Stop.set(&mut c, Some("A"), Val::Stop(at.clone()), &cx);
-        assert!(Item::Stop.own(&c, "A"));
-        assert_eq!(Item::Stop.get(&c, Some("A"), &cx), Some(Val::Stop(at)));
-        assert!(items(&c, false, &[]).contains(&Item::Stop));
-        // 基本と同じ絞りにすると状態の値は外れる
-        let base = c.base_stop();
-        Item::Stop.set(&mut c, Some("A"), Val::Stop(base), &cx);
-        assert!(!Item::Stop.own(&c, "A"));
-        let tele = Item::Sys(SysQ::Telecentric);
-        tele.set(&mut c, Some("A"), Val::Bool(true), &cx);
-        assert!(c.state_sys["A"].telecentric && !c.telecentric);
+/// ピックアップの値の表示
+fn val_text(c: &Combo, v: &Val) -> String {
+    match v {
+        Val::Bool(b) => if *b { "1" } else { "0" }.into(),
+        Val::Num(x) => crate::json_view::fmt_num(*x),
+        Val::Int(k) => k.to_string(),
+        Val::Text(t) => t.clone(),
+        Val::Choice(k, keys) => keys.get(*k).copied().unwrap_or("—").into(),
+        Val::Stop(at) => stop_label(c, at),
+        Val::Unknown => "—".into(),
     }
 }
+
+/// セルの右クリックのピックアップの項目: 元の構成を選ぶ・倍率とオフセットを変える・やめる。
+/// act に (元の構成（空は基本）, 倍率, オフセット) か、やめるなら None を渡す
+fn pick_menu(
+    ui: &mut Ui,
+    cols: &[Option<String>],
+    n: &str,
+    back: &[String],
+    pk: Option<&crate::combo::McPick>,
+    act: &mut dyn FnMut(PickAct),
+) {
+    let (scale, offset) = pk.map_or((1.0, 0.0), |m| (m.scale, m.offset));
+    ui.menu_button(tr("Pick up from"), |ui| {
+        for col in cols {
+            let from = col.clone().unwrap_or_default();
+            if from == n || back.contains(&from) {
+                continue;
+            }
+            let label = col.clone().unwrap_or_else(|| tr("Base").to_string());
+            let on = pk.is_some_and(|m| m.from == from);
+            if ui.selectable_label(on, label).clicked() {
+                act(Some((from, scale, offset)));
+                ui.close_menu();
+            }
+        }
+    });
+    if let Some(m) = pk {
+        let (mut k, mut o) = (m.scale, m.offset);
+        ui.horizontal(|ui| {
+            ui.label("×");
+            let a = ui.add(egui::DragValue::new(&mut k).speed(0.01).max_decimals(6));
+            ui.label("+");
+            let b = ui.add(egui::DragValue::new(&mut o).speed(0.01).max_decimals(6));
+            if a.changed() || b.changed() {
+                act(Some((m.from.clone(), k, o)));
+            }
+        });
+        if ui.button(tr("Remove pickup")).clicked() {
+            act(None);
+            ui.close_menu();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

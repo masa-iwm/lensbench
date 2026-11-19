@@ -1605,3 +1605,12 @@ radius	曲率半径
 thickness	厚み
 Object space telecentric	物体側テレセントリック
 {} surface {}	{} 面 {}
+Every row of the new configuration picks up this configuration (× 1 + 0)	新しい構成のどの行もこの構成をピックアップする（× 1 ＋ 0）
+Insert a configuration with pickups	ピックアップで構成を足す
+Insert a configuration with the base values	基本の値で構成を足す
+Move left	左へ
+Move right	右へ
+Pick up from	ピックアップの元
+Pickup: {} × {} + {}	ピックアップ: {} × {} ＋ {}
+Remove pickup	ピックアップをやめる
+aperture max radius	開口の最大半径

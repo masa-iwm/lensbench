@@ -42,6 +42,7 @@ use figure::{cube_of_prism, inside};
 pub(crate) use kind_data::KindData;
 pub(crate) use mech::MechPick;
 pub(crate) use mirror::MirrorData;
+pub(crate) use states::McPick;
 pub(crate) use sys_extra::SysExtra;
 pub(crate) use zgroup::{ZGroup, ZmxSrc};
 
@@ -361,6 +362,9 @@ pub(crate) struct Pick {
     /// 状態ごとの絞りの面（状態の名前 → この要素の面の番号。どの状態も絞りは 1 つの要素だけ。多重構成の STPS）
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub state_stop: BTreeMap<String, usize>,
+    /// 多重構成のピックアップ（この要素の行。[`McPick`]）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mc_picks: Vec<McPick>,
     /// BS: 口 B・C・D の先の並びを持つ（並びの最後に置く）
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
@@ -419,6 +423,7 @@ impl Default for Pick {
             state_place: BTreeMap::new(),
             state_edits: BTreeMap::new(),
             state_stop: BTreeMap::new(),
+            mc_picks: Vec::new(),
             group: String::new(),
             edits_for: String::new(),
             id: String::new(),
@@ -446,37 +451,6 @@ impl Pick {
             self.bs().form,
             kinds
         )
-    }
-
-    /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
-    /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
-    pub(crate) fn drop_stale_edits(&mut self) -> usize {
-        if self.edits.is_empty()
-            && self.ops.is_empty()
-            && self.state_edits.is_empty()
-            && self.state_stop.is_empty()
-        {
-            self.edits_for.clear();
-            return 0;
-        }
-        let sig = self.surf_sig();
-        if self.edits_for.is_empty() {
-            self.edits_for = sig;
-            return 0;
-        }
-        if self.edits_for == sig {
-            return 0;
-        }
-        let n = self.edits.len()
-            + self.ops.len()
-            + self.state_edits.values().map(Vec::len).sum::<usize>()
-            + self.state_stop.len();
-        self.edits.clear();
-        self.ops.clear();
-        self.state_edits.clear();
-        self.state_stop.clear();
-        self.edits_for.clear();
-        n
     }
 
     /// 位置もロックしている（図・キーで動かせず、偏心・傾き・後の空気も変えられない）
@@ -947,6 +921,9 @@ pub(crate) struct Combo {
     /// 状態ごとの、欄の無い系の値（温度・気圧、GLRS、像面など。プロジェクトの状態の project の項目をそのまま）
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub state_more: BTreeMap<String, serde_json::Map<String, Value>>,
+    /// 多重構成のピックアップ（要素の行でないもの。要素の行は [`Pick::mc_picks`]）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mc_picks: Vec<McPick>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
@@ -1007,6 +984,7 @@ impl Default for Combo {
             state_sys: BTreeMap::new(),
             state_path: BTreeMap::new(),
             state_more: BTreeMap::new(),
+            mc_picks: Vec::new(),
             coatings: BTreeMap::new(),
             coating_file: None,
             macros: Vec::new(),

@@ -454,6 +454,7 @@ impl Pick {
             remap(v);
         }
         self.state_edits.retain(|_, v| !v.is_empty());
+        self.shift_face_picks(map);
         self.state_stop.retain(|_, i| match map(*i) {
             Some(j) => {
                 *i = j;

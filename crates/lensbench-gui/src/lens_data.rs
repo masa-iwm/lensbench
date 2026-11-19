@@ -48,6 +48,8 @@ pub(crate) struct Row {
     pub stop: bool,
     /// 光線が通らない面（無視）
     pub ignore: bool,
+    /// 開口（無ければ null。プロジェクトの面の aperture と同じ形）
+    pub aperture: Value,
     /// 非球面の係数 r², r⁴, …（面タイプのパラメータ）
     pub asph: Vec<f64>,
     /// x の曲率（Toroidal）
@@ -124,6 +126,7 @@ pub(crate) fn parse_view(r: views::SurfacesView) -> (Vec<Row>, Vec<Unit>) {
             k: f.k,
             stop: f.stop,
             ignore: f.ignore,
+            aperture: f.aperture,
             asph: f.asph,
             cx: f.cx,
             cb: f.cb,

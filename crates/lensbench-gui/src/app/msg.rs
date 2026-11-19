@@ -443,7 +443,11 @@ impl App {
                 self.c.pending_set.insert(p, x);
             }
             Msg::Edit(e) => match e.apply(&mut self.c.doc.combo) {
-                Ok(()) => self.c.fx.push(Effect::Repaint),
+                Ok(()) => {
+                    // 変えた値を多重構成のピックアップの先にも
+                    self.c.apply_mc_picks();
+                    self.c.fx.push(Effect::Repaint)
+                }
                 Err(why) => self
                     .c
                     .fail(format!("{}: {why}", tr("The change could not be applied"))),

@@ -20,7 +20,110 @@ fn rename_key<V>(m: &mut BTreeMap<String, V>, from: &str, to: &str) {
     }
 }
 
+/// 多重構成のピックアップ: 状態 to の行 key の値を、状態 from（空なら基本）の値 × scale ＋ offset にする
+/// （数でない値は写すだけ）。key は行の持ち主（要素か組合せ）の中での名前（`face:面:欄[:番号]`・`air` など）。
+/// 保存はプロジェクトの `gui.view.mc_picks`（要素の id ごと）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct McPick {
+    pub key: String,
+    pub to: String,
+    pub from: String,
+    pub scale: f64,
+    pub offset: f64,
+}
+
+impl McPick {
+    /// 面の値の行なら要素の面の番号
+    pub(crate) fn face_surf(&self) -> Option<usize> {
+        self.key
+            .strip_prefix("face:")?
+            .split(':')
+            .next()?
+            .parse()
+            .ok()
+    }
+
+    /// 面の値の行の面の番号を変える
+    fn set_face_surf(&mut self, i: usize) {
+        if let Some(rest) = self.key.strip_prefix("face:") {
+            let tail = rest.split_once(':').map_or("", |(_, t)| t);
+            self.key = format!("face:{i}:{tail}");
+        }
+    }
+}
+
+/// ピックアップの状態の名前を変える・消す・写す
+fn picks_rename(v: &mut [McPick], from: &str, to: &str) {
+    for m in v {
+        if m.to == from {
+            m.to = to.to_string();
+        }
+        if m.from == from {
+            m.from = to.to_string();
+        }
+    }
+}
+
+fn picks_copy(v: &mut Vec<McPick>, from: &str, to: &str) {
+    let add: Vec<McPick> = v
+        .iter()
+        .filter(|m| m.to == from)
+        .map(|m| McPick {
+            to: to.to_string(),
+            ..m.clone()
+        })
+        .collect();
+    v.retain(|m| m.to != to);
+    v.extend(add);
+}
+
 impl Pick {
+    /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
+    /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
+    pub(crate) fn drop_stale_edits(&mut self) -> usize {
+        if self.edits.is_empty()
+            && self.ops.is_empty()
+            && self.state_edits.is_empty()
+            && self.state_stop.is_empty()
+            && !self.mc_picks.iter().any(|m| m.face_surf().is_some())
+        {
+            self.edits_for.clear();
+            return 0;
+        }
+        let sig = self.surf_sig();
+        if self.edits_for.is_empty() {
+            self.edits_for = sig;
+            return 0;
+        }
+        if self.edits_for == sig {
+            return 0;
+        }
+        let n = self.edits.len()
+            + self.ops.len()
+            + self.state_edits.values().map(Vec::len).sum::<usize>()
+            + self.state_stop.len()
+            + self
+                .mc_picks
+                .iter()
+                .filter(|m| m.face_surf().is_some())
+                .count();
+        self.edits.clear();
+        self.ops.clear();
+        self.state_edits.clear();
+        self.state_stop.clear();
+        self.mc_picks.retain(|m| m.face_surf().is_none());
+        self.edits_for.clear();
+        n
+    }
+
+    /// 面の番号を map で付け替える（ピックアップの面の行）
+    pub(crate) fn shift_face_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
+        self.mc_picks.retain_mut(|m| match m.face_surf() {
+            None => true,
+            Some(i) => map(i).map(|j| m.set_face_surf(j)).is_some(),
+        });
+    }
+
     /// 状態 n で変えた値があるか
     pub(crate) fn has_state_values(&self, n: &str) -> bool {
         self.state_on.contains_key(n)
@@ -29,6 +132,7 @@ impl Pick {
             || self.zmx().state_config.contains_key(n)
             || self.state_edits.contains_key(n)
             || self.state_stop.contains_key(n)
+            || self.mc_picks.iter().any(|m| m.to == n)
     }
 
     /// 状態 n で変えた値をやめる
@@ -38,6 +142,7 @@ impl Pick {
         self.state_place.remove(n);
         self.state_edits.remove(n);
         self.state_stop.remove(n);
+        self.mc_picks.retain(|m| m.to != n);
         if let Some(KindData::Zmx(z)) = self.data.as_deref_mut() {
             z.state_config.remove(n);
         }
@@ -45,6 +150,16 @@ impl Pick {
 }
 
 impl Combo {
+    /// ピックアップの並びの全部（組合せ・要素）に f を当てる
+    pub(crate) fn each_pick_list(&mut self, f: &mut dyn FnMut(&mut Vec<McPick>)) {
+        for l in self.all() {
+            if let Some(p) = self.get_mut(&l) {
+                f(&mut p.mc_picks);
+            }
+        }
+        f(&mut self.mc_picks);
+    }
+
     /// 状態ごとの値の表の全部に f を当てる（状態の名前 → 値の表）
     fn each_state_map(&mut self, f: &mut dyn FnMut(&mut dyn StateMap)) {
         for l in self.all() {
@@ -81,6 +196,7 @@ impl Combo {
         if let Some(f) = from.filter(|f| self.states.iter().any(|s| s == f)) {
             let f = f.to_string();
             self.each_state_map(&mut |m| m.copy(&f, name));
+            self.each_pick_list(&mut |v| picks_copy(v, &f, name));
             let at = self
                 .states
                 .iter()
@@ -98,6 +214,7 @@ impl Combo {
     pub(crate) fn remove_state(&mut self, n: &str) {
         self.states.retain(|s| s != n);
         self.each_state_map(&mut |m| m.remove(n));
+        self.each_pick_list(&mut |v| v.retain(|m| m.to != n && m.from != n));
         if self.state.as_deref() == Some(n) {
             self.state = None;
         }
@@ -120,6 +237,7 @@ impl Combo {
         };
         self.states[i] = to.to_string();
         self.each_state_map(&mut |m| m.rename(from, to));
+        self.each_pick_list(&mut |v| picks_rename(v, from, to));
         if self.state.as_deref() == Some(from) {
             self.state = Some(to.to_string());
         }
@@ -217,6 +335,43 @@ impl Combo {
     }
 
     /// 状態 n の名前の写しに使える名前（「n 2」「n 3」…で、まだ無いもの）
+    /// 状態 n を d だけ動かす（列の入れ替え。状態は名前で指すので値・ピックアップはそのまま）。動かしたか
+    pub(crate) fn move_state(&mut self, n: &str, d: isize) -> bool {
+        let Some(i) = self.states.iter().position(|s| s == n) else {
+            return false;
+        };
+        let j = i as isize + d;
+        if j < 0 || j as usize >= self.states.len() {
+            return false;
+        }
+        let s = self.states.remove(i);
+        self.states.insert(j as usize, s);
+        true
+    }
+
+    /// 状態 n を状態 after のすぐ右に置く
+    pub(crate) fn place_state_after(&mut self, n: &str, after: &str) {
+        if let Some(i) = self.states.iter().position(|s| s == n) {
+            let s = self.states.remove(i);
+            let at = self
+                .states
+                .iter()
+                .position(|x| x == after)
+                .map_or(self.states.len(), |k| k + 1);
+            self.states.insert(at, s);
+        }
+    }
+
+    /// 「Config N」の形の空いた名前
+    pub(crate) fn next_config_name(&self) -> String {
+        let name = format!("Config {}", self.states.len() + 1);
+        if self.states.contains(&name) {
+            self.free_state_name(&name)
+        } else {
+            name
+        }
+    }
+
     pub(crate) fn free_state_name(&self, base: &str) -> String {
         (2..)
             .map(|k| format!("{base} {k}"))

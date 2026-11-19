@@ -96,6 +96,7 @@ pub(crate) fn face_value(r: &lens_data::Row, field: &str) -> Option<Value> {
         "coating" => json!(r.coating),
         "comment" => json!(r.comment),
         "asph" => json!(r.asph),
+        "aperture" => r.aperture.clone(),
         _ => return None,
     })
 }

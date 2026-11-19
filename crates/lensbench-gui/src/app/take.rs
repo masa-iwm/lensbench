@@ -358,6 +358,13 @@ impl Core {
                 self.p.ld.insp.stale();
                 self.sys.ld_rows = rows;
                 self.sys.ld_units = units;
+                // 面の基本の値が変わっていれば多重構成のピックアップの先も変え、組み直す
+                // （当て直しで組み直すのは 1 回まで）
+                if std::mem::take(&mut self.p.states.picks_rebuilt) {
+                } else if self.apply_mc_picks() {
+                    self.p.states.picks_rebuilt = true;
+                    self.build_combo(self.doc.combo.project());
+                }
                 // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる
                 #[cfg(not(target_arch = "wasm32"))]
                 {

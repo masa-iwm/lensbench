@@ -34,6 +34,9 @@ pub(super) fn project_file(c: &Combo) -> Value {
     if let Some(s) = &c.state {
         view.insert("state".into(), s.clone().into());
     }
+    if let Some(m) = crate::state_table::picks_json(c) {
+        view.insert("mc_picks".into(), m);
+    }
     if !view.is_empty() {
         v["gui"] = json!({ "view": view });
     }
@@ -50,6 +53,7 @@ pub(super) fn apply_view(c: &mut Combo, gui: Option<&Value>) {
             .as_array()
             .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(id)))
     };
+    crate::state_table::picks_from_json(c, view.get("mc_picks"));
     for (loc, id) in c.ids_all() {
         let (l, pl) = (has("locked", &id), has("lock_place", &id));
         if let Some(p) = c.get_mut(&loc) {
