@@ -208,9 +208,20 @@ impl SheetState {
         let (ar, ac) = self.anchor.unwrap_or((r, c));
         Some((ar.min(r)..=ar.max(r), ac.min(c)..=ac.max(c)))
     }
-    /// 選んでいる行の範囲
-    fn rows_sel(&self) -> Option<RangeInclusive<usize>> {
-        self.sel().map(|x| x.0)
+    /// 行の操作（移動・複製・削除）の行。列だけを選んだとき（全部の行・一部の列）は今の行だけ
+    /// （列の見出しを押して Ctrl+Delete で全部の行を消さない）。n・m は表の行と列の数
+    fn op_rows(&self, n: usize, m: usize) -> Option<RangeInclusive<usize>> {
+        let (rows, cols) = self.sel()?;
+        let col_only = self.multi()
+            && n > 1
+            && *rows.start() == 0
+            && *rows.end() + 1 == n
+            && !(*cols.start() == 0 && *cols.end() + 1 == m);
+        if col_only {
+            self.cur.map(|(r, _)| r..=r)
+        } else {
+            Some(rows)
+        }
     }
     /// 2 つ以上のセルを選んでいるか
     fn multi(&self) -> bool {
@@ -702,7 +713,10 @@ fn cell_ui(
 /// 行の右クリックの欄（行の番号・セルで同じ）
 fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usize) {
     out.clicked = true;
-    let sel = st.rows_sel().filter(|s| s.contains(&r)).unwrap_or(r..=r);
+    let sel = st
+        .op_rows(sh.rows(), sh.cols())
+        .filter(|s| s.contains(&r))
+        .unwrap_or(r..=r);
     if ui.button(tr("Copy")).on_hover_text("Ctrl+C").clicked() {
         out.copy = true;
         ui.close_menu();
@@ -1018,15 +1032,15 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
     }
     // Ctrl+Shift+↑↓: 選んだ行を上下へ動かす
     if ev.command && ev.shift && (ev.up || ev.down) {
-        out.shift = st.rows_sel().map(|s| (s, if ev.up { -1 } else { 1 }));
+        out.shift = st.op_rows(n, m).map(|s| (s, if ev.up { -1 } else { 1 }));
         return ev.tab;
     }
     if ev.dup {
-        out.duplicate = st.rows_sel();
+        out.duplicate = st.op_rows(n, m);
         return ev.tab;
     }
     if ev.del && ev.command {
-        out.remove = st.rows_sel();
+        out.remove = st.op_rows(n, m);
         return ev.tab;
     }
     // Alt+↑↓: 数を 1 ずつ増減（Shift で 10、Ctrl で 0.1。多重構成の表と同じ）

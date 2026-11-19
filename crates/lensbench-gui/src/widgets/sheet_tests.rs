@@ -538,3 +538,16 @@ fn arrow_opens_choices() {
     assert!(st.editing());
     assert_eq!(st.edit.as_ref().unwrap().text, "trax");
 }
+
+/// 列だけを選んだときの行の操作は今の行だけ（全部の行を消さない）
+#[test]
+fn column_selection_row_ops_use_current_row() {
+    let mut b = Bench::new(3);
+    b.frame(vec![]);
+    let head = Pos2::new(8.0 + 26.0 + 70.0 + 45.0, 8.0 + ROW_H * 0.5);
+    b.click(head);
+    assert_eq!(b.st.selection(), Some((0..=2, 1..=1)));
+    b.key_mods(Key::Delete, Modifiers::COMMAND);
+    assert_eq!(b.rows.0.len(), 2);
+    assert_eq!(b.rows.0[0][0], "v1");
+}
