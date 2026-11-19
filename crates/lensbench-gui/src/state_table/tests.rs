@@ -344,4 +344,114 @@ fn unwritable_pickup_is_not_a_change() {
     picks::set_pick(&mut c, &p, "A", "", 0.0, 50.0);
     picks::apply(&mut c, &cx);
     assert!(!picks::apply(&mut c, &cx));
+    // 書けない主波長のピックアップでシステムの値の写しを作らない
+    let mut d = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    picks::set_pick(&mut d, &p, "A", "", 0.0, 50.0);
+    picks::apply(&mut d, &cx);
+    assert!(d.state_sys.is_empty());
+}
+
+/// 表の部品で描く状態の表: セルの種類・打った文字の読み方・空にすると基本へ・ピックアップは書けない・行の入れ替え
+#[test]
+fn sheet_cells_and_set() {
+    use crate::widgets::sheet::{Kind, Sheet};
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    c.picks.push(Pick::new(ElemKind::Plate));
+    let none = |_: &Face| None;
+    let cache = HashMap::new();
+    let air = Item::Air(vec![0]);
+    let tele = Item::Sys(SysQ::Telecentric);
+    let ap = Item::Sys(SysQ::ApType);
+    picks::set_pick(&mut c, &air, "B", "A", 2.0, 0.0);
+    let mut sh = sheet_view::McSheet {
+        c: &mut c,
+        rows: [&air, &tele, &ap]
+            .into_iter()
+            .cloned()
+            .map(sheet_view::Row::It)
+            .collect(),
+        cols: vec![None, Some("A".into()), Some("B".into())],
+        now: &none,
+        cache: &cache,
+        stops: &[],
+        acts: Default::default(),
+    };
+    assert_eq!(sh.cols(), 4);
+    assert!(sh.cell(0, 0).ro.is_some());
+    assert!(matches!(sh.cell(0, 2).kind, Kind::Num { .. }));
+    assert_eq!(sh.cell(1, 2).kind, Kind::Bool);
+    assert!(matches!(sh.cell(2, 2).kind, Kind::List { .. }));
+    sh.set(0, 2, "4").unwrap();
+    assert!(sh.cell(0, 2).mark);
+    assert!(sh.set(0, 2, "x").is_err());
+    assert!(sh.set(2, 2, "nope").is_err());
+    sh.set(2, 2, "fnum").unwrap();
+    // ピックアップのセルは書けない
+    assert!(sh.cell(0, 3).ro.is_some());
+    // 空にすると基本の値
+    sh.set(0, 2, "").unwrap();
+    assert!(!sh.cell(0, 2).mark);
+    assert!(sh.swap(0));
+    assert!(matches!(sh.acts.borrow()[0], sheet_view::Act::Swap(0)));
+    assert!(sh.c.state_sys["A"].aperture == ApertureKind::FNum);
+}
+
+/// 表を描いて、セルを選んで Alt+↑ で 1 増やす（表の部品のキーが状態の値に届く）
+#[test]
+fn sheet_keys_reach_state_values() {
+    let _g = crate::serve_lock();
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    c.picks.push(Pick::new(ElemKind::Plate));
+    c.picks[0].state_air.insert("A".into(), 7.0);
+    let mut view = View::default();
+    let none = |_: &Face| None;
+    let ctx = egui::Context::default();
+    let mut t = 0.0;
+    let mut frame =
+        |c: &mut Combo, view: &mut View, events: Vec<egui::Event>, mods: egui::Modifiers| {
+            t += 0.05;
+            let raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 500.0),
+                )),
+                time: Some(t),
+                events,
+                modifiers: mods,
+                ..Default::default()
+            };
+            let _ = ctx.run(raw, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    super::ui(ui, c, view, &none, &[]);
+                });
+            });
+        };
+    frame(&mut c, &mut view, vec![], Default::default());
+    frame(&mut c, &mut view, vec![], Default::default());
+    // 空気の行の A の列（行 1、列 3: 値の名前・基本・A）のセルを選ぶ
+    view.sheet.select(0, 2);
+    let key = |k: egui::Key, m: egui::Modifiers| egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    };
+    frame(
+        &mut c,
+        &mut view,
+        vec![key(egui::Key::ArrowUp, egui::Modifiers::ALT)],
+        egui::Modifiers::ALT,
+    );
+    frame(&mut c, &mut view, vec![], Default::default());
+    assert_eq!(c.picks[0].air_in(Some("A")), 8.0);
 }

@@ -6,7 +6,6 @@
 //! 右クリックで写して足す・名前を変える・消す
 
 use egui::{RichText, Ui};
-use egui_extras::{Column, TableBuilder};
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -18,6 +17,7 @@ use crate::sysset::{ApertureField, ApertureKind, Choice, FieldKind, SysSnap};
 use crate::theme;
 
 mod picks;
+mod sheet_view;
 pub(crate) use picks::{from_json as picks_from_json, to_json as picks_json};
 
 /// 表の表示の設定
@@ -39,6 +39,10 @@ pub(crate) struct View {
     pub base_cache: HashMap<Face, Value>,
     /// 面の表を受け取ってピックアップを当て直し、組み直したところ（次の面の表では当て直さない。輪で止まらなくならないよう）
     pub picks_rebuilt: bool,
+    /// 表の選択と書き換え中の文字
+    pub sheet: crate::widgets::sheet::SheetState,
+    /// 入れ替えた行の順（表示だけ。保存しない）
+    pub order: Vec<Item>,
 }
 
 /// 要素の面の値（多重構成の面の行）。面は要素の面のうち座標ブレークを除いた番号、field は面の値の名前
@@ -917,6 +921,7 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
 }
 
 /// 構成（状態）の列の見出しの右クリック: 写して足す・名前を変える・消す
+#[derive(Debug, Clone)]
 enum HeadAct {
     Copy(String),
     /// 基本の値の構成をその右に足す
@@ -924,7 +929,6 @@ enum HeadAct {
     /// どの行もその構成のピックアップにした構成をその右に足す
     WithPicks(String),
     Move(String, isize),
-    Rename(String),
     Remove(String),
 }
 
@@ -938,7 +942,6 @@ pub(crate) fn ui(
     stops: &[(Loc, usize)],
 ) -> bool {
     let weak = theme::weak_text(ui.visuals());
-    let accent = ui.visuals().selection.stroke.color;
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
         let from = c.active_state().map(str::to_string);
@@ -964,6 +967,7 @@ pub(crate) fn ui(
         if !c.states.is_empty() {
             ui.checkbox(&mut view.all, tr("Show values not changed in any state"));
         }
+        changed |= rename_ui(ui, c, view);
         if let Some(e) = &view.rename_err {
             ui.colored_label(ui.visuals().error_fg_color, e);
         }
@@ -977,7 +981,7 @@ pub(crate) fn ui(
     }
     ui.label(
         RichText::new(tr(
-            "Click a column header to make it the current configuration; right-click it to copy, rename or delete. Right-click a cell to use the base value, a row name to delete the row",
+            "Click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration. Empty a cell (Delete) to use the base value",
         ))
         .small()
         .color(weak),
@@ -999,302 +1003,66 @@ pub(crate) fn ui(
             }
         }
     }
-    let cx = Cx {
-        now,
-        cache: &view.base_cache,
-    };
-    let states = c.states.clone();
+    // 行の並び（右クリック・Ctrl+Shift+↑↓ で入れ替えた順。表示だけ）
+    let mut rows = rows;
+    sort_rows(&mut rows, &view.order);
+    let mut srows: Vec<sheet_view::Row> = rows.iter().cloned().map(sheet_view::Row::It).collect();
+    if c.states.iter().any(|n| c.state_more.contains_key(n)) {
+        srows.push(sheet_view::Row::More);
+    }
     let cols: Vec<Option<String>> = std::iter::once(None)
-        .chain(states.iter().cloned().map(Some))
+        .chain(c.states.iter().cloned().map(Some))
         .collect();
-    let mut set: Option<(usize, Option<String>, Val)> = None;
-    let mut clear: Option<(usize, String)> = None;
-    let mut pick_act: Option<(usize, String, PickAct)> = None;
-    let mut del_row: Option<usize> = None;
-    let mut pick_state: Option<Option<String>> = None;
-    let mut head: Option<HeadAct> = None;
-    let mut renaming = view.renaming.clone();
-    let mut rename_err = view.rename_err.clone();
-    egui::ScrollArea::horizontal()
-        .id_salt("state_table_h")
-        .show(ui, |ui| {
-            let mut tb = TableBuilder::new(ui)
-                .striped(true)
-                // 低いパネルでもパネルの中に収める（既定の最低 200 だとはみ出し、最後の行までスクロールできない）
-                .min_scrolled_height(0.0)
-                .column(Column::auto().at_least(160.0).resizable(true));
-            for _ in &cols {
-                tb = tb.column(Column::auto().at_least(80.0));
-            }
-            tb.header(22.0, |mut h| {
-                h.col(|ui| {
-                    ui.label(RichText::new(tr("Value")).color(weak));
-                });
-                for col in &cols {
-                    h.col(|ui| {
-                        // 名前を変えている列は欄
-                        if let (Some(n), Some((from, to))) = (col, renaming.as_mut()) {
-                            if from == n {
-                                let r = ui.add(egui::TextEdit::singleline(to).desired_width(80.0));
-                                r.request_focus();
-                                if r.lost_focus() {
-                                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                        head = Some(HeadAct::Rename(n.clone()));
-                                    } else {
-                                        head = Some(HeadAct::Rename(String::new()));
-                                    }
-                                }
-                                return;
-                            }
-                        }
-                        let name = col.clone().unwrap_or_else(|| tr("Base").to_string());
-                        let is_cur = c.state == *col;
-                        let text = if is_cur {
-                            RichText::new(name).strong().color(accent)
-                        } else {
-                            RichText::new(name)
-                        };
-                        let hint = match col {
-                            Some(n) => trf("Make {} the current state", &[n]),
-                            None => tr("Show the base values (no state)").to_string(),
-                        };
-                        let r = ui.selectable_label(is_cur, text).on_hover_text(hint);
-                        if r.clicked() && !is_cur {
-                            pick_state = Some(col.clone());
-                        }
-                        if let Some(n) = col {
-                            r.context_menu(|ui| {
-                                if ui.button(tr("Copy to a new configuration")).clicked() {
-                                    head = Some(HeadAct::Copy(n.clone()));
-                                    ui.close_menu();
-                                }
-                                if ui.button(tr("Insert a configuration with the base values")).clicked() {
-                                    head = Some(HeadAct::NewBase(n.clone()));
-                                    ui.close_menu();
-                                }
-                                if ui
-                                    .button(tr("Insert a configuration with pickups"))
-                                    .on_hover_text(tr("Every row of the new configuration picks up this configuration (× 1 + 0)"))
-                                    .clicked()
-                                {
-                                    head = Some(HeadAct::WithPicks(n.clone()));
-                                    ui.close_menu();
-                                }
-                                ui.separator();
-                                if ui.button(tr("Move left")).clicked() {
-                                    head = Some(HeadAct::Move(n.clone(), -1));
-                                    ui.close_menu();
-                                }
-                                if ui.button(tr("Move right")).clicked() {
-                                    head = Some(HeadAct::Move(n.clone(), 1));
-                                    ui.close_menu();
-                                }
-                                ui.separator();
-                                if ui.button(tr("Rename")).clicked() {
-                                    renaming = Some((n.clone(), n.clone()));
-                                    rename_err = None;
-                                    ui.close_menu();
-                                }
-                                if ui.button(tr("Delete")).clicked() {
-                                    head = Some(HeadAct::Remove(n.clone()));
-                                    ui.close_menu();
-                                }
-                            });
-                        }
-                    });
-                }
-            })
-            .body(|mut body| {
-                // 表に行の無い系の値（温度・気圧・GLRS など）を状態で変えたか
-                let more_own = |n: &str| c.state_more.contains_key(n);
-                if states.iter().any(|n| more_own(n)) {
-                    body.row(20.0, |mut r| {
-                        r.col(|ui| {
-                            ui.label(RichText::new(tr("Other system settings")).color(weak));
-                        });
-                        for col in &cols {
-                            r.col(|ui| {
-                                let own = col.as_deref().is_some_and(more_own);
-                                ui.label(if own { tr("changed") } else { "—" });
-                            });
-                        }
-                    });
-                }
-                for (i, it) in rows.iter().enumerate() {
-                    body.row(22.0, |mut r| {
-                        r.col(|ui| {
-                            let resp = ui.label(it.label(c));
-                            resp.context_menu(|ui| {
-                                if ui.button(tr("Delete row")).on_hover_text(tr("Every configuration uses the base value")).clicked() {
-                                    del_row = Some(i);
-                                    ui.close_menu();
-                                }
-                            });
-                        });
-                        for col in &cols {
-                            r.col(|ui| {
-                                let st = col.as_deref();
-                                let own = st.is_some_and(|n| it.own(c, n));
-                                let Some(v) = it.get(c, st, &cx) else { return };
-                                let pk = st.and_then(|n| picks::pick_of(c, it, n)).cloned();
-                                let resp = if let Some(m) = &pk {
-                                    // ピックアップの値は打ち込めない（右クリックで倍率・オフセットを変える・やめる）
-                                    let from = if m.from.is_empty() { tr("Base").to_string() } else { m.from.clone() };
-                                    ui.add(
-                                        egui::Label::new(RichText::new(format!("{} P", val_text(c, &v))).color(weak))
-                                            .sense(egui::Sense::click()),
-                                    )
-                                    .on_hover_text(trf(
-                                        "Pickup: {} × {} + {}",
-                                        &[&from, &crate::json_view::fmt_num(m.scale), &crate::json_view::fmt_num(m.offset)],
-                                    ))
-                                } else { match v {
-                                    Val::Bool(mut b) => {
-                                        let r = ui.checkbox(&mut b, "");
-                                        if r.changed() {
-                                            set = Some((i, col.clone(), Val::Bool(b)));
-                                        }
-                                        r
-                                    }
-                                    Val::Num(mut x) => {
-                                        let r = ui.add(egui::DragValue::new(&mut x).speed(0.1).max_decimals(6));
-                                        if r.changed() {
-                                            set = Some((i, col.clone(), Val::Num(x)));
-                                        }
-                                        r
-                                    }
-                                    Val::Int(mut k) => {
-                                        let r = ui.add(egui::DragValue::new(&mut k).range(1..=999));
-                                        if r.changed() {
-                                            set = Some((i, col.clone(), Val::Int(k)));
-                                        }
-                                        r
-                                    }
-                                    Val::Text(mut t) => {
-                                        let r = ui.add(egui::TextEdit::singleline(&mut t).desired_width(70.0));
-                                        if r.changed() {
-                                            set = Some((i, col.clone(), Val::Text(t)));
-                                        }
-                                        r
-                                    }
-                                    Val::Choice(mut k, keys) => {
-                                        let was = k;
-                                        let r = egui::ComboBox::from_id_salt(("mce_choice", i, col.clone()))
-                                            .selected_text(keys.get(k).copied().unwrap_or("—"))
-                                            .width(80.0)
-                                            .show_ui(ui, |ui| {
-                                                for (j, key) in keys.iter().enumerate() {
-                                                    ui.selectable_value(&mut k, j, *key);
-                                                }
-                                            })
-                                            .response;
-                                        if k != was {
-                                            set = Some((i, col.clone(), Val::Choice(k, keys)));
-                                        }
-                                        r
-                                    }
-                                    Val::Unknown => {
-                                        // 読めない値も打ち込めば値になる（数・true/false・文字）。Enter かフォーカスが
-                                        // 外れたときに確定し、Esc で取り消す（打ち込み中の文字は覚えておく）
-                                        let buf = ui.id().with(("mce_unknown", i, col.clone()));
-                                        let mut t = ui.data_mut(|d| d.get_temp::<String>(buf)).unwrap_or_default();
-                                        let r = ui
-                                            .add(egui::TextEdit::singleline(&mut t).hint_text("—").desired_width(70.0))
-                                            .on_hover_text(tr(
-                                                "The base value is read from the built system; select Base once to read it",
-                                            ));
-                                        let done = r.lost_focus();
-                                        if done {
-                                            ui.data_mut(|d| d.remove::<String>(buf));
-                                        } else if r.changed() {
-                                            ui.data_mut(|d| d.insert_temp(buf, t.clone()));
-                                        }
-                                        let esc = ui.input(|inp| inp.key_pressed(egui::Key::Escape));
-                                        if done && !esc && !t.trim().is_empty() {
-                                            let v = match (t.trim().parse::<f64>(), t.trim()) {
-                                                (Ok(x), _) => Val::Num(x),
-                                                (_, "true") => Val::Bool(true),
-                                                (_, "false") => Val::Bool(false),
-                                                _ => Val::Text(t),
-                                            };
-                                            set = Some((i, col.clone(), v));
-                                        }
-                                        r
-                                    }
-                                    Val::Stop(at) => {
-                                        let mut pick = at.clone();
-                                        let r = egui::ComboBox::from_id_salt(("mce_stop", col.clone()))
-                                            .selected_text(stop_label(c, &at))
-                                            .width(120.0)
-                                            .show_ui(ui, |ui| {
-                                                // 先頭に自動で置く絞りは基本だけ（状態から指せるブロックが無い）
-                                                if col.is_none() {
-                                                    ui.selectable_value(&mut pick, None, stop_label(c, &None));
-                                                }
-                                                for f in stops {
-                                                    let x = Some(f.clone());
-                                                    let name = stop_label(c, &x);
-                                                    ui.selectable_value(&mut pick, x, name);
-                                                }
-                                            })
-                                            .response;
-                                        if pick != at {
-                                            set = Some((i, col.clone(), Val::Stop(pick)));
-                                        }
-                                        r
-                                    }
-                                } };
-                                if own {
-                                    ui.painter().rect_stroke(
-                                        resp.rect.expand(1.0),
-                                        2.0,
-                                        egui::Stroke::new(1.0_f32, accent),
-                                        egui::StrokeKind::Outside,
-                                    );
-                                }
-                                if let Some(n) = col.as_ref() {
-                                    resp.context_menu(|ui| {
-                                        if own && pk.is_none() && ui.button(tr("Use base value")).clicked() {
-                                            clear = Some((i, n.clone()));
-                                            ui.close_menu();
-                                        }
-                                        if it.locked(c) {
-                                            return;
-                                        }
-                                        // その構成からピックアップしている構成は元にしない（互いのピックアップ）
-                                        let back: Vec<String> = c.states.iter().filter(|m| picks::pick_of(c, it, m).is_some_and(|p| p.from == *n)).cloned().collect();
-                                        pick_menu(ui, &cols, n, &back, pk.as_ref(), &mut |a| pick_act = Some((i, n.clone(), a)));
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-        });
-    if let Some((i, col, v)) = set {
-        let cache = view.base_cache.clone();
-        let cx = Cx { now, cache: &cache };
-        rows[i].set(c, col.as_deref(), v, &cx);
-        changed = true;
-    }
-    if let Some((i, n)) = clear {
-        rows[i].clear(c, &n);
-        changed = true;
-    }
-    if let Some((i, n, a)) = pick_act {
+    let cache = view.base_cache.clone();
+    let mut sh = sheet_view::McSheet {
+        c,
+        rows: srows,
+        cols,
+        now,
+        cache: &cache,
+        stops,
+        acts: Default::default(),
+    };
+    changed |= crate::widgets::sheet::show(ui, "state_table", &mut view.sheet, &mut sh);
+    let acts = sh.acts.take();
+    let c = sh.c;
+    let mut head = None;
+    for a in acts {
         match a {
-            Some((from, k, o)) => picks::set_pick(c, &rows[i], &n, &from, k, o),
-            None => picks::remove_pick(c, &rows[i], &n),
+            sheet_view::Act::Head(h) => head = Some(h),
+            sheet_view::Act::Current(s) => {
+                c.state = s;
+                changed = true;
+            }
+            sheet_view::Act::Rename(n) => {
+                view.renaming = Some((n.clone(), n));
+                view.rename_err = None;
+            }
+            sheet_view::Act::Clear(i, n) => {
+                rows[i].clear(c, &n);
+                changed = true;
+            }
+            sheet_view::Act::Pick(i, n, a) => {
+                match a {
+                    Some((from, k, o)) => picks::set_pick(c, &rows[i], &n, &from, k, o),
+                    None => picks::remove_pick(c, &rows[i], &n),
+                }
+                changed = true;
+            }
+            sheet_view::Act::Remove(r) => {
+                for i in r.filter(|&i| i < rows.len()) {
+                    remove_row(c, view, &rows[i]);
+                }
+                changed = true;
+            }
+            sheet_view::Act::Swap(a) => {
+                if a + 1 < rows.len() {
+                    rows.swap(a, a + 1);
+                    view.order = rows.clone();
+                }
+            }
         }
-        changed = true;
     }
-    if let Some(i) = del_row {
-        remove_row(c, view, &rows[i]);
-        changed = true;
-    }
-    view.renaming = renaming;
-    view.rename_err = rename_err;
     match head {
         Some(HeadAct::Copy(n)) => {
             let name = c.free_state_name(&n);
@@ -1311,29 +1079,48 @@ pub(crate) fn ui(
             changed |= picks::add_state_with_picks(c, &n, &rows).is_some();
         }
         Some(HeadAct::Move(n, d)) => changed |= c.move_state(&n, d),
-        Some(HeadAct::Rename(n)) => {
-            if let Some((from, to)) = view.renaming.take() {
-                if !n.is_empty() {
-                    match c.rename_state(&from, &to) {
-                        Ok(()) => changed = true,
-                        Err(e) => view.rename_err = Some(e),
-                    }
-                }
-            }
-        }
         Some(HeadAct::Remove(n)) => {
             c.remove_state(&n);
             changed = true;
         }
         None => {}
     }
-    if let Some(s) = pick_state {
-        c.state = s;
-        changed = true;
-    }
     // 変えた値をピックアップの先にも
     if changed {
         apply_picks(c, &view.base_cache, now);
+    }
+    changed
+}
+
+/// 行を入れ替えた順（order）に並べる（order に無い行は元の順で後ろ）
+fn sort_rows(rows: &mut [Item], order: &[Item]) {
+    if order.is_empty() {
+        return;
+    }
+    let pos = |it: &Item| order.iter().position(|x| x == it).unwrap_or(usize::MAX);
+    rows.sort_by_key(pos);
+}
+
+/// 名前を変えている構成の欄（Enter で決める、Esc でやめる）
+fn rename_ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
+    let Some((from, to)) = view.renaming.as_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    ui.label(trf("Rename {}", &[&from.as_str()]));
+    let r = ui.add(egui::TextEdit::singleline(to).desired_width(100.0));
+    if !r.has_focus() && !r.lost_focus() {
+        r.request_focus();
+    }
+    if r.lost_focus() {
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            let (from, to) = (from.clone(), to.clone());
+            match c.rename_state(&from, &to) {
+                Ok(()) => changed = true,
+                Err(e) => view.rename_err = Some(e),
+            }
+        }
+        view.renaming = None;
     }
     changed
 }

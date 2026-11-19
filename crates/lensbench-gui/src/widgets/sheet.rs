@@ -45,6 +45,8 @@ pub(crate) struct Cell {
     pub tip: String,
     /// 出す文字が値と違うとき（候補の訳した名前など）
     pub shown: Option<String>,
+    /// 枠で目立たせる（多重構成の表のその構成で変えた値など）
+    pub mark: bool,
 }
 
 impl Cell {
@@ -56,6 +58,7 @@ impl Cell {
             hint: String::new(),
             tip: String::new(),
             shown: None,
+            mark: false,
         }
     }
     pub(crate) fn text(t: impl Into<String>) -> Cell {
@@ -92,6 +95,10 @@ impl Cell {
         self.shown = Some(t.into());
         self
     }
+    pub(crate) fn mark(mut self, m: bool) -> Cell {
+        self.mark = m;
+        self
+    }
     pub(crate) fn ro(mut self, why: Option<String>) -> Cell {
         self.ro = why;
         self
@@ -126,6 +133,14 @@ pub(crate) trait Sheet {
     fn swap(&mut self, _a: usize) -> bool {
         false
     }
+    /// 空の行を足せる表か（false なら右クリックの欄に行の挿入・複製を出さない）
+    fn can_insert(&self) -> bool {
+        true
+    }
+    /// 列の見出しの応答（クリック・右クリックの欄を表の側で受ける。表の側は操作を貯めて show の後に当てる）
+    fn header_ui(&self, _resp: &egui::Response, _col: usize) {}
+    /// セルの右クリックの欄の頭に表の側の項目を足す
+    fn cell_menu(&self, _ui: &mut Ui, _row: usize, _col: usize) {}
 }
 
 /// 書き換え中のセル
@@ -176,6 +191,12 @@ impl SheetState {
         let r = self.cur?.0;
         let a = self.anchor.unwrap_or(r);
         Some(a.min(r)..=a.max(r))
+    }
+    /// セル (r, c) を選んでキーを受ける（試験）
+    #[cfg(test)]
+    pub(crate) fn select(&mut self, r: usize, c: usize) {
+        self.cur = Some((r, c));
+        self.active = true;
     }
     #[cfg(test)]
     pub(crate) fn cur(&self) -> Option<(usize, usize)> {
@@ -293,12 +314,16 @@ fn table(ui: &mut Ui, id: egui::Id, st: &mut SheetState, sh: &dyn Sheet, out: &m
                         let t = sh.header(c, cur_row);
                         let r = ui.add(
                             egui::Label::new(RichText::new(t).small().strong().color(weak))
-                                .truncate(),
+                                .truncate()
+                                .sense(Sense::click()),
                         );
                         let tip = sh.header_tip(c, cur_row);
-                        if !tip.is_empty() {
-                            r.on_hover_text(tip);
-                        }
+                        let r = if tip.is_empty() {
+                            r
+                        } else {
+                            r.on_hover_text(tip)
+                        };
+                        sh.header_ui(&r, c);
                     });
                 }
                 h.col(|_| {});
@@ -455,6 +480,13 @@ fn cell_ui(
             egui::Stroke::new(1.5_f32, accent),
             egui::StrokeKind::Inside,
         );
+    } else if cell.mark {
+        ui.painter().rect_stroke(
+            rect.shrink(1.0),
+            2.0,
+            egui::Stroke::new(1.0_f32, accent.gamma_multiply(0.7)),
+            egui::StrokeKind::Inside,
+        );
     }
     if drag_ok && resp.drag_started() {
         let press = ui.input(|i| i.pointer.press_origin());
@@ -501,6 +533,7 @@ fn cell_ui(
         out.start = Some((r, c, None));
     }
     resp.context_menu(|ui| {
+        sh.cell_menu(ui, r, c);
         if cell.ro.is_none() {
             if ui.button(tr("Edit")).clicked() {
                 out.start = Some((r, c, None));
@@ -517,22 +550,24 @@ fn cell_ui(
 }
 
 /// 行の右クリックの欄（行の番号・セルで同じ）
-fn row_menu(ui: &mut Ui, st: &SheetState, _sh: &dyn Sheet, out: &mut Out, r: usize) {
+fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usize) {
     out.clicked = true;
     let sel = st.rows_sel().filter(|s| s.contains(&r)).unwrap_or(r..=r);
     if ui.button(tr("Copy")).on_hover_text("Ctrl+C").clicked() {
         out.copy = true;
         ui.close_menu();
     }
-    if ui
-        .button(tr("Insert row above"))
-        .on_hover_text("Insert")
-        .clicked()
+    let ins = sh.can_insert();
+    if ins
+        && ui
+            .button(tr("Insert row above"))
+            .on_hover_text("Insert")
+            .clicked()
     {
         out.insert = Some(r);
         ui.close_menu();
     }
-    if ui.button(tr("Insert row below")).clicked() {
+    if ins && ui.button(tr("Insert row below")).clicked() {
         out.insert = Some(r + 1);
         ui.close_menu();
     }
@@ -552,10 +587,11 @@ fn row_menu(ui: &mut Ui, st: &SheetState, _sh: &dyn Sheet, out: &mut Out, r: usi
         out.shift = Some((sel.clone(), 1));
         ui.close_menu();
     }
-    if ui
-        .button(tr("Duplicate row"))
-        .on_hover_text("Ctrl+D")
-        .clicked()
+    if ins
+        && ui
+            .button(tr("Duplicate row"))
+            .on_hover_text("Ctrl+D")
+            .clicked()
     {
         out.duplicate = Some(sel.clone());
         ui.close_menu();

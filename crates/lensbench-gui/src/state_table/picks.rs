@@ -198,8 +198,14 @@ pub(super) fn apply(c: &mut Combo, cx: &Cx) -> bool {
             let before = it.get(c, Some(&m.to), cx);
             if before.as_ref() != Some(&v) {
                 // 書けない値（範囲の外・読めない基本の値など）もあるので、読み直して変わったときだけ変えたとする
+                // 書けなかったときは書く前に戻す（システムの値の写しなどを残さない）
+                let saved = c.clone();
                 it.set(c, Some(&m.to), v, cx);
-                any |= it.get(c, Some(&m.to), cx) != before;
+                if it.get(c, Some(&m.to), cx) == before {
+                    *c = saved;
+                } else {
+                    any = true;
+                }
             }
         }
         if !any {

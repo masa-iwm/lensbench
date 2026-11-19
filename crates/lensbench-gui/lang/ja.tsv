@@ -1505,7 +1505,6 @@ changed	変更あり
 Use base value	基本の値に戻す
 shift	移動
 Show the base values (no state)	基本の値を出す（状態なし）
-Make {} the current state	{} を今の状態にする
 {} can't be opened (it can't be written as a combination: {})	{} は開けません（組合せで書けません: {}）
 {} can't be split into elements, so it opens as one element that reads the .zmx (a saved project needs the .zmx)	{} は要素に分割できないので、.zmx を読む要素 1 つで開きます（保存したプロジェクトはこの .zmx を使います）
 Inserting surfaces and pasting is not available in a combination	面を挿入して貼り付ける操作は組合せではまだできません
@@ -1574,7 +1573,6 @@ Add a configuration (state) copied from {}	{} を写した構成（状態）を�
 Add a configuration (state) with the base values	基本の値の構成（状態）を足す
 Add a multi-configuration row	多重構成の行にする
 Adds this value as a row of the Multi-configuration table, so each configuration (state) can have its own value	この値を多重構成の表の行にし、構成（状態）ごとに値を変えられるようにします
-Click a column header to make it the current configuration; right-click it to copy, rename or delete. Right-click a cell to use the base value, a row name to delete the row	列の見出しをクリックで今の構成に、右クリックで写す・名前を変える・消す。セルの右クリックで基本の値に戻し、行の名前の右クリックで行を消します
 Copy to a new configuration	写して新しい構成にする
 Every configuration uses the base value	どの構成も基本の値にします
 Field {} x	視野 {} x
@@ -1614,3 +1612,9 @@ Pick up from	ピックアップの元
 Pickup: {} × {} + {}	ピックアップ: {} × {} ＋ {}
 Remove pickup	ピックアップをやめる
 aperture max radius	開口の最大半径
+Click a column header to make it the current configuration; right-click it to copy, insert, move, rename or delete. Right-click a cell to use the base value or pick up another configuration. Empty a cell (Delete) to use the base value	列の見出しをクリックで今の構成に、右クリックで写す・足す・動かす・名前を変える・消す。セルの右クリックで基本の値に戻す・ほかの構成をピックアップする。セルを空にする（Delete）と基本の値に戻ります
+Click to make {} the current configuration; right-click to copy, insert, move, rename or delete	クリックで {} を今の構成に、右クリックで写す・足す・動かす・名前を変える・消す
+Enter a value for {}	{} の値を入れてください
+Rename {}	{} の名前を変える
+The element is locked	要素はロックされています
+{} is not one of {}	{} は {} のどれでもありません

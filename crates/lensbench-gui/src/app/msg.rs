@@ -445,6 +445,8 @@ impl App {
             Msg::Edit(e) => match e.apply(&mut self.c.doc.combo) {
                 Ok(()) => {
                     // 変えた値を多重構成のピックアップの先にも
+                    // 組合せを変えたので、面の表からの当て直しもまたできる（組み直しが失敗したままにしない）
+                    self.c.p.states.picks_rebuilt = false;
                     self.c.apply_mc_picks();
                     self.c.fx.push(Effect::Repaint)
                 }
