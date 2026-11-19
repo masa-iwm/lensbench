@@ -1375,6 +1375,172 @@
         },
         {
           "additionalProperties": false,
+          "description": "tsag の項（面 surf の、点から傾けた向きに測った矢高）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "flat": {
+              "description": "面をクリア半径の外で縁の矢高のまま平らにする（玉の半径がクリア半径より大きい面だけ。既定 false）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "point": {
+              "description": "測る点の面の局所座標 [x, y, z]（既定 [0, 0, 0]）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "surf": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "tilt": {
+              "description": "測る向き: z 軸を x・y・z 軸まわりに回す角 [deg]（既定 [0, 0, 0]）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "tsag",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "surf"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "bfs の項（面 surf の、削る体積が最小の最適球の量）",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "q": {
+              "description": "量（curv・radius・vertex・depth・volume・slope・depth_rms・slope_rms）",
+              "type": "string"
+            },
+            "rmax": {
+              "description": "外側（既定 0 はクリア半径）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "rmin": {
+              "description": "当てはめる半径の範囲の内側（既定 0）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "surf": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "bfs",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "surf",
+            "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "cardinal の項",
           "properties": {
             "config": {

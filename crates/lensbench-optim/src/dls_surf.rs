@@ -359,7 +359,7 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
             )
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
-        TermKind::Volume { .. } => true,
+        TermKind::Volume { .. } | TermKind::Shape { .. } => true,
         TermKind::Param { param, .. } => param.kind == lensbench_core::param::Kind::Semi,
         TermKind::SurfEach { q, .. } => *q == SurfQ::Semi,
         TermKind::Spread { term, .. } => reads_semi(term),

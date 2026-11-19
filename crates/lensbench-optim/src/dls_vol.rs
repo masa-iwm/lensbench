@@ -11,7 +11,13 @@ const GRIN_DENSITY: f64 = 3.6;
 const RADIAL: usize = 24;
 const ANGULAR: usize = 32;
 
+#[path = "dls_shape.rs"]
+mod shape;
+
 pub(super) fn check(i: usize, k: &TermKind, s: &System) -> Result<()> {
+    if let TermKind::Shape { .. } = k {
+        return shape::check(i, k, s);
+    }
     let TermKind::Volume {
         surf,
         to,
@@ -35,6 +41,9 @@ pub(super) fn check(i: usize, k: &TermKind, s: &System) -> Result<()> {
 }
 
 pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
+    if let TermKind::Shape { .. } = k {
+        return shape::term(s, k);
+    }
     let TermKind::Volume {
         surf,
         to,

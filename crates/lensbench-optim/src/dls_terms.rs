@@ -444,6 +444,8 @@ pub enum TermKind {
         upper: bool,
         target: f64,
     },
+    /// 面 surf の形の量 − target（[`ShapeQ`]: 傾けた向きの矢高・最適球。OpticStudio の TSAG・BFSD）。微分は差分
+    Shape { surf: usize, q: ShapeQ, target: f64 },
     /// 面 surf から to までの要素の体積 [cm³]（mass なら硝材の要素だけの質量 [g]、密度はカタログ）− target。面 i の要素は
     /// 面 i と i + 1 の間（空気の間も含む）。外径は 2 面の半径の大きい方（clear ならクリア半径、でなければ玉の半径
     /// [`SurfQ::MechDiam`] の半分）で、面はクリア半径の外で縁の高さのまま平ら。面の局所座標で数値積分（OpticStudio の
@@ -924,6 +926,70 @@ impl UserTermRef {
     }
 }
 
+/// 面の形の量（[`TermKind::Shape`]）。長さはレンズ単位
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ShapeQ {
+    /// 面の局所座標の点 p から、x・y・z 軸まわりに tilt [deg] 回した z 軸の向きに面まで測った距離（面が向きの前なら正）。
+    /// flat なら面を、クリア半径の外で縁の矢高のまま平らにする（玉の半径がクリア半径より大きい面だけ。OpticStudio の
+    /// TSAG の Mode 0）
+    Tsag {
+        p: [f64; 3],
+        tilt: [f64; 3],
+        flat: bool,
+    },
+    /// 半径 rmin から rmax（rmax 0 はクリア半径）の y の向きの断面に当てはめた、削る体積が最小の最適球の量
+    Bfs { data: BfsData, rmin: f64, rmax: f64 },
+}
+
+/// 最適球（BFS）の量。球は面の空気の側（面の後がガラスなら前、でなければ後）に置き、面との差（削る深さ）は 0 以上
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BfsData {
+    /// 曲率 [1/レンズ単位]
+    Curv,
+    /// 曲率半径
+    Radius,
+    /// 球の頂点の、面の頂点からの z
+    Vertex,
+    /// 削る深さの最大
+    Depth,
+    /// 削る体積 [レンズ単位³]
+    Volume,
+    /// 面と球の傾き dz/dr の差の絶対値の最大
+    Slope,
+    /// 削る深さの RMS（面積の重み）
+    DepthRms,
+    /// 傾きの差の RMS（面積の重み）
+    SlopeRms,
+}
+
+impl BfsData {
+    pub const ALL: [BfsData; 8] = [
+        BfsData::Curv,
+        BfsData::Radius,
+        BfsData::Vertex,
+        BfsData::Depth,
+        BfsData::Volume,
+        BfsData::Slope,
+        BfsData::DepthRms,
+        BfsData::SlopeRms,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            BfsData::Curv => "curv",
+            BfsData::Radius => "radius",
+            BfsData::Vertex => "vertex",
+            BfsData::Depth => "depth",
+            BfsData::Volume => "volume",
+            BfsData::Slope => "slope",
+            BfsData::DepthRms => "depth_rms",
+            BfsData::SlopeRms => "slope_rms",
+        }
+    }
+    pub fn parse(s: &str) -> Option<BfsData> {
+        BfsData::ALL.into_iter().find(|d| d.name() == s)
+    }
+}
+
 impl TermKind {
     /// 1 つの値と目標の差を残差にする項の目標
     pub fn target(&self) -> Option<f64> {
@@ -947,6 +1013,7 @@ impl TermKind {
             | TermKind::LateralColor { target, .. }
             | TermKind::SurfEach { target, .. }
             | TermKind::Volume { target, .. }
+            | TermKind::Shape { target, .. }
             | TermKind::Energy { target, .. }
             | TermKind::Strehl { target, .. }
             | TermKind::Param { target, .. }
@@ -1127,6 +1194,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::LateralColor { .. }
         | TermKind::SurfEach { .. }
         | TermKind::Volume { .. }
+        | TermKind::Shape { .. }
         | TermKind::Energy { .. }
         | TermKind::Strehl { .. }
         | TermKind::Param { .. }

@@ -2454,3 +2454,8 @@ the square wave MTF needs a positive frequency ({freq})	矩形波の MTF には�
 the multi-configuration operand {o} of row {k}	多重構成の行 {k} の演算子 {o}
 the term of a spread term must be a term with a single value	spread の項の term は 1 つの値の項にしてください
 a spread term is evaluated over all the configurations	spread の項はすべての構成で求めます
+bfs q {}	bfs の q {}
+data {d} (0 to 7)	Data {d}（0〜7）
+the line from ({}, {}, {}) doesn't meet surface {j}	点 ({}, {}, {}) からの線が面 {j} に当たりません
+best-fit sphere of surface {j} from radius {rmin} to {r1}	面 {j} の半径 {rmin} から {r1} の最適球
+the sag of surface {j} is not finite up to radius {r1}	面 {j} の矢高が半径 {r1} までで有限ではありません

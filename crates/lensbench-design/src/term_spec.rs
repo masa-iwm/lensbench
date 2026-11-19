@@ -294,6 +294,36 @@ pub struct VolumeSpec {
     pub target: Option<f64>,
 }
 
+/// tsag の項（面 surf の、点から傾けた向きに測った矢高）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct TsagSpec {
+    pub surf: usize,
+    /// 測る点の面の局所座標 [x, y, z]（既定 [0, 0, 0]）
+    pub point: Option<[f64; 3]>,
+    /// 測る向き: z 軸を x・y・z 軸まわりに回す角 [deg]（既定 [0, 0, 0]）
+    pub tilt: Option<[f64; 3]>,
+    /// 面をクリア半径の外で縁の矢高のまま平らにする（玉の半径がクリア半径より大きい面だけ。既定 false）
+    pub flat: Option<bool>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// bfs の項（面 surf の、削る体積が最小の最適球の量）
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct BfsSpec {
+    pub surf: usize,
+    /// 量（curv・radius・vertex・depth・volume・slope・depth_rms・slope_rms）
+    pub q: String,
+    /// 当てはめる半径の範囲の内側（既定 0）
+    pub rmin: Option<f64>,
+    /// 外側（既定 0 はクリア半径）
+    pub rmax: Option<f64>,
+    /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
 /// cardinal の項
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -557,6 +587,8 @@ pub enum TermSpec {
     Thickness(ThickSpec),
     Surface(SurfSpec),
     Volume(VolumeSpec),
+    Tsag(TsagSpec),
+    Bfs(BfsSpec),
     Cardinal(CardSpec),
     Fnum(FNumSpec),
     Seidel(SeidelSpec),

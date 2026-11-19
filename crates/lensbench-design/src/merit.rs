@@ -205,7 +205,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 28] = [
+    const TYPES: [&str; 30] = [
         "spot",
         "wavefront",
         "mtf",
@@ -218,6 +218,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "thickness",
         "surface",
         "volume",
+        "tsag",
+        "bfs",
         "cardinal",
         "fnum",
         "seidel",
@@ -264,6 +266,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Thickness { .. }
             | TermKind::Surface { .. }
             | TermKind::Volume { .. }
+            | TermKind::Shape { .. }
             | TermKind::Cardinal { .. }
             | TermKind::FNum { .. }
             | TermKind::Seidel { .. }
@@ -539,6 +542,30 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             target: t
                 .target
                 .ok_or("volume term has no target (or min and max)")?,
+        },
+        TermSpec::Tsag(t) => TermKind::Shape {
+            surf: t.surf,
+            q: lensbench_optim::ShapeQ::Tsag {
+                p: t.point.unwrap_or([0.0; 3]),
+                tilt: t.tilt.unwrap_or([0.0; 3]),
+                flat: t.flat.unwrap_or(false),
+            },
+            target: t.target.ok_or("tsag term has no target (or min and max)")?,
+        },
+        TermSpec::Bfs(t) => TermKind::Shape {
+            surf: t.surf,
+            q: lensbench_optim::ShapeQ::Bfs {
+                data: lensbench_optim::BfsData::parse(&t.q).ok_or_else(|| {
+                    format!(
+                        "bfs q {} ({})",
+                        t.q,
+                        lensbench_optim::BfsData::ALL.map(|d| d.name()).join(", ")
+                    )
+                })?,
+                rmin: t.rmin.unwrap_or(0.0),
+                rmax: t.rmax.unwrap_or(0.0),
+            },
+            target: t.target.ok_or("bfs term has no target (or min and max)")?,
         },
         TermSpec::Cardinal(t) => {
             let last = (1..s.image())

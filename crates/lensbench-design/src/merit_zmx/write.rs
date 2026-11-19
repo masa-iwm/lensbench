@@ -735,6 +735,47 @@ fn row_of(
                 b => (va, p, b),
             }
         }
+        "tsag" => {
+            let v3 = |k: &str| -> [f64; 3] {
+                let a = t.get(k).and_then(Value::as_array);
+                let x = |i: usize| {
+                    a.and_then(|a| a.get(i))
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                };
+                [x(0), x(1), x(2)]
+            };
+            let (pt, tl) = (v3("point"), v3("tilt"));
+            let flat = t.get("flat") == Some(&Value::Bool(true));
+            let p = [
+                num("surf").unwrap_or(1.0),
+                f64::from(!flat),
+                pt[0],
+                pt[1],
+                pt[2],
+                tl[0],
+                tl[1],
+                tl[2],
+            ];
+            ("TSAG", p, bound(0.0))
+        }
+        "bfs" => {
+            let q = t.get("q").and_then(Value::as_str).unwrap_or("");
+            let Some(d) = super::shape::BFSD.iter().position(|x| *x == q) else {
+                return Err(format!("bfs q {q}"));
+            };
+            let p = [
+                num("surf").unwrap_or(1.0),
+                d as f64,
+                num("rmin").unwrap_or(0.0),
+                num("rmax").unwrap_or(0.0),
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ];
+            ("BFSD", p, bound(0.0))
+        }
         "volume" => {
             let s1 = num("surf").unwrap_or(1.0);
             let s2 = num("to").unwrap_or(s1);

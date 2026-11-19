@@ -468,9 +468,8 @@ fn kind_of(
             let key = if op.starts_with("MN") { "min" } else { "max" };
             m.insert(key.into(), json!(target * unit));
         }
-        "TTGT" | "TTLT" | "TTVA" | "PMGT" | "PMLT" | "PMVA" | "VOLU" | "TMAS" | "CVOL" => {
-            return shape::kind(r, unit, image)
-        }
+        "TTGT" | "TTLT" | "TTVA" | "PMGT" | "PMLT" | "PMVA" | "VOLU" | "TMAS" | "CVOL" | "TSAG"
+        | "BFSD" => return shape::kind(r, unit, image),
         // 面の量: CV 曲率・CO コーニック・DM 径（Mode 0 は玉の径）の ≥・≤・＝、矢高・点の厚み・大域座標
         "CVGT" | "CVLT" | "CVVA" | "COGT" | "COLT" | "COVA" | "DMGT" | "DMLT" | "DMVA" | "SAGX"
         | "SAGY" | "SSAG" | "STHI" | "GLCX" | "GLCY" | "GLCZ" | "GLCA" | "GLCB" | "GLCC"
@@ -1219,6 +1218,8 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
         } else if src.op == "CVOL" {
             // レンズ単位³ を cm³ に
             weight / (cx.unit.powi(3) * 1e-3).powi(2)
+        } else if src.op == "BFSD" {
+            weight / shape::bfsd_scale(src.int(INT2).unwrap_or(1), cx.unit).powi(2)
         } else if len {
             weight / (cx.unit * cx.unit)
         } else if ["CVGT", "CVLT", "CVVA", "POWR"].contains(&src.op.as_str()) {
@@ -1336,7 +1337,7 @@ fn is_length(op: &str) -> bool {
             "TRCX", "TRCY", "ETGT", "ETLT", "ETVA", "MNCT", "MXCT", "MNCA", "MXCA", "MNCG", "MXCG",
             "MNET", "MXET", "MNEA", "MXEA", "MNEG", "MXEG", "DMGT", "DMLT", "DMVA", "SAGX", "SAGY",
             "SSAG", "STHI", "GLCX", "GLCY", "GLCZ", "PLEN", "YNIP", "EFLX", "EFLY", "EFLA", "CARD",
-            "LONA", "AXCL", "LACL", "MNSD", "MXSD", "TTGT", "TTLT", "TTVA", "ZTHI",
+            "LONA", "AXCL", "LACL", "MNSD", "MXSD", "TTGT", "TTLT", "TTVA", "ZTHI", "TSAG",
         ]
         .contains(&op)
 }

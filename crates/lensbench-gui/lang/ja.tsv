@@ -1641,3 +1641,5 @@ order	順序
 {} coordinate break {} {}	{} 座標ブレーク {} {}
 Coordinate break {}	座標ブレーク {}
 Comment row	コメント行
+Distance from point (x, y, z in the surface's local coordinates) to surface surf along the z axis turned by tilt (about x, y and z [deg]) − target (like TSAG). flat: the surface is flat outside the clear semi-diameter when the lens edge is larger (Mode 0)	点（面のローカル座標の x, y, z）から、z 軸を tilt（x・y・z 軸まわり [deg]）だけ回した向きに面 surf まで測った距離 − 目標（TSAG 相当）。flat: レンズの縁がクリア半径より大きい面を、クリア半径の外で平らにする（Mode 0）
+Best-fit sphere of surface surf with the least material to remove, fitted from radius rmin to rmax (0 = clear semi-diameter) − target: q curv, radius, vertex, depth (largest), volume, slope (largest slope difference), depth_rms, slope_rms (like BFSD)	削る体積が最小になる面 surf の最適球（半径 rmin から rmax まで、0 はクリア半径）の量 − 目標: q は curv・radius・vertex・depth（最大）・volume・slope（チルトの差の最大）・depth_rms・slope_rms（BFSD 相当）

@@ -570,6 +570,11 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Thickness { .. } => "thickness",
         K::Surface { .. } => "surface",
         K::Volume { .. } => "volume",
+        K::Shape {
+            q: lensbench_optim::ShapeQ::Tsag { .. },
+            ..
+        } => "tsag",
+        K::Shape { .. } => "bfs",
         K::Calc { .. } => "calc",
         K::User(_) => "user",
     }
