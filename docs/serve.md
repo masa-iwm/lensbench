@@ -69,44 +69,44 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
 | `cancel` | | 処理している要求（読むだけの要求が並行に回っていれば、その全部）に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」のエラーで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
 | `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
-| `load` | `file`、`cfg`・`state`・`beam_path`・`glass_dirs`・`lens_catalogs`・`history`・`strict_macros`（省略可。true で .zmx のマクロのソルブを解けなければエラー、CLI の `--strict-macros`） | システムの概要（面の数・視野・波長など）と `notes`（読んだときの注意: プロジェクトの展開・分散式・マクロ・.zmx の読めなかった行など。CLI では標準エラーに出るもの）、`blocks`（プロジェクトの id のあるブロック・群ごとのシステムの面の範囲 `{id, forward: [[最初, 最後], …], back}`。群が中のブロックより先、`back` はミラーの復路の範囲。BS はミラーで戻って BS を通る面も BS の範囲（口の先の面は入らない）。面を足す・消す `edit` の後は空。`system` の結果にも）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前のシステムを 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
+| `load` | （下の節） | （下の節） |
 | `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリがシステムのファイルを書き換えた後に |
 | `system` | | システムの概要（`load` と同じ。`notes` は読んだときの注意） |
-| `undo`・`redo` | `steps`（まとめて戻す段の数、省略で 1） | 読み込んだ後の `set`・`edit`（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで、同じパラメータの `set` が 1 秒以内に続けば 1 段、戻した後に変えるとやり直す段は消える、`load`・`reload` で空。`history: "push"` で読んだときは読む前のシステムも 1 段）。`surfaces`・`system_hash`・残りの段の数 `undo`・`redo`。開く・読み直すを越えて戻した・やり直したときは `loaded`（そのシステムの概要、`load` の結果と同じ）。`set`・`edit` の結果にも `undo`・`redo` |
-| `history` | | 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、開く・読み直すは `{"open": ファイル名}`・`{"reload": ファイル名}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも |
+| `undo`・`redo` | （下の節） | （下の節） |
+| `history` | （下の節） | （下の節） |
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
 | `write` | `path` | 今のシステムを .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意） |
 | `save` | `path` | 今のシステム（`set`・`edit` の後）をシステムファイル（.json）に書く。`written`・`system_hash`・`notes`（値が同じカタログのファイルが見つからず hash を書けないカタログ） |
-| `save_project` | `path` | 読み込んだプロジェクト（.json）に、読み込んだ後の面の変更（`set` の面の値 `3.t`・`3.c`・`3.radius`・`3.thickness` など。非球面係数 `3.a4`・Zernike・偏心などの面のパラメータは、変わった面のデータの項目、`edit` の `set_surface`・`set_surface_data`・`set_material`・`set_stop`・`add_solve`・`add_pickup`・`remove_solve`・`remove_pickup`）を、面を足したブロックの `surface_edits`・`surface_ops` として書き足して書く。面はどのブロックの何番目の面かで戻す。書き戻せない変更（面を入れる・消す `edit` とその後の変更、座標ブレーク・復路の面、ブロックの最後の面の厚み（後ろの空気のブロックで変える）、往復するブロックの最後の面の材料（同じ）、ピックアップの元・ソルブの参照が id の無いブロックの面、玉・群・系の設定、`set` の面でないパラメータ、書き足すと今の状態・経路でプロジェクトが展開できなくなる上書き（往復するブロックの面の前後の偏心、鏡の面の dn など））は書かずに `notes`。書いたプロジェクトは必ず読める。往復するブロックの面の値は復路の面にも当たる（編集した系では往路の面だけ）ので `notes` で知らせる。`written`・`notes` |
-| `write_back` | `ops`: 操作の並び（`edit` と同じ形） | 読み込んだプロジェクトに ops を `save_project` と同じく書き戻し、面の上書き・操作が変わったブロックを返す。保存も、読み込んだシステムの変更もしない（GUI の組合せの面の表が要素に当てて組み直す）。ソルブ・ピックアップは同じ面・量のものを 1 つにまとめ、ブロックの元（.zmx など）にあるものを置き換える・外すときは外す操作も置く。`blocks`（`id`・`faces`（`surface_edits`・`surface_ops`）、id のあるブロックだけ）・`notes` |
+| `save_project` | （下の節） | （下の節） |
+| `write_back` | （下の節） | （下の節） |
 | `save_range` | `path`・`from`・`to` | 今のシステムの面 from〜to と物体面・像面だけをシステムファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces`・`notes`（`save` と同じ） |
 | `edit` | `ops`: 操作の並び（下） | システムを編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すればシステムは変えない |
 | `surface` | `surface`（番号か名前、省くと全部） | 面の値（`fields`、全部なら `surfaces` の並びと、玉・群の面の範囲 `units`（name・spans・auto、偏心・傾き `motion`（dx dy tx ty tz）・移動 `shift`・媒質の `dn`・`disp`（面ごとに違えば null））） |
 | `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。core の面の serde の形、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |
-| `system_data` | | システム全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。core のシステムの serde の形 |
+| `system_data` | （下の節） | （下の節） |
 | `config_table` | | 多重構成の表: 構成の数 `n`・今の構成 `active`・行 `rows`（`param`・構成ごとの `values`・材料の行の材料の名前 `names`（values はその番号）・構成のピックアップ `picks`（`k`・`from`・`scale`・`offset`））。.zmx なら、ファイルの多重構成の数 `zmx_cfgs` と読んだ構成 `zmx_cfg` |
 | `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。システムは変えない |
-| `analyze` | `cmd` と CLI と同じ引数 | CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings` |
+| `analyze` | （下の節） | （下の節） |
 | `analysis_args` | `cmd` | 解析のサブコマンドの引数の一覧（GUI の設定欄）: `args`（`name`・`type`・`default`・`unit`・`doc`、選択肢は `choices`、旗を繰り返すものは `repeat`）。`type` は `num`・`count`（0 以上の整数）・`int`・`flag`・`str`・`choice`・`nums`（数のカンマ区切り、JSON では並び）・`path`。システムの読み方の引数は除く |
 | `plugins` | | 登録された解析・検出器のプラグインの一覧: `plugins`（`name`・`kind`・`doc`・`needs_system`・`config`・`params`・`inputs`・`outputs`）。`params` は設定の項目の型・既定（`analysis_args` の `args` と同じ形、個数の決まった並びは `len`）。CLI の `plugins --json` と同じ |
-| `catalog_add` | `catalog`（ユーザーカタログのファイル）、`name`、`blocks`（ブロックの id の並び: 1 つか、最上位の並びの範囲の最初と最後）、`description`・`replace`・`vendor`（省略可） | 読み込んだプロジェクト（状態を当てて）のブロック・範囲（間の空気も）を項目に保存する（CLI の `catalog-add --block`）。ブロックの面の表の変更（`surface_edits`）は玉の面に焼き込む。ファイルが無ければ作る。結果は `catalog_items` と同じと `added` |
+| `catalog_add` | （下の節） | （下の節） |
 | `catalog_items` | `catalog` | `vendor`・`items`（`name`・`description`・`glass_catalogs`・`blocks`（ブロックの数）） |
 | `catalog_edit` | `catalog`、`name`、`rename`・`description`・`delete: true`・`vendor`（どれか） | 項目の名前の変更・説明の変更・削除。結果は `catalog_items` と同じ |
-| `catalog_fill` | `catalog`（未完の品のあるカタログ）、`item`、`out`（補足のカタログのファイル。無ければ作る）、`thickness`・`diameter`（mm。径は数か [幅, 高さ]。足りない値の分）、`from`（`page`・`step`・`manual`）、`frame`（省略可。枠付きの品の枠。ユーザーカタログの `mech` と同じ形）・`frame_reversed`（光は枠の z の大きい端から入る）、`spec`（省略可。仕様表の値 `thickness`・`diameter`・`mount_thickness`・`mount_diameter`・`clear_aperture`）・`glass_visible`（STEP のガラスと枠が 1 つの立体で、ガラスの径が見えている径） | 未完の品（`missing` のある項目）に値を足して `out` に同じ型番の普通の品として書く。`frame` は品の `frame` に入れる。`spec` があれば、ガラス・枠の寸法と仕様表の値を比べ、0.05 mm より違う項目（有効径は枠の最小の穴より大きい時）を `notes` に書き、品に有効径が無ければ `spec` の有効径を入れる。`out` は 1 つのメーカーの品だけ。結果は `catalog`・`item`・`vendor`・`specs`・`notes`・`frame`・`frame_reversed` |
-| `cad_step` | `catalog`（ユーザーカタログ）、`item`、`cache`（省略可。キャッシュのフォルダ。省略で CLI の cad-step と同じ既定の場所。`--root` のときはその中だけ） | 品の STEP を 1 件だけ取ってキャッシュに置く（キャッシュ → 共有の置き場 → `cad.step` の配布元の順。置き場は docs/project-file.md）。結果は `item`・`url`・`path`（キャッシュのファイル）・`cached`・`source`（`cache`・`store`（共有の置き場から）・`vendor`・`vendor_uploaded`（配布元から取り置き場にも上げた））・`store_notes`（置き場を読めない・上げられない理由）・`measured`（catalog-step と同じ測った値）・`notes`（簡易外形の長さ・外径・外形の形との食い違い。空なら合う）。取れなければエラー（品ページの URL を添える）。Web 版では使えない |
+| `catalog_fill` | （下の節） | （下の節） |
+| `cad_step` | （下の節） | （下の節） |
 | `plugin` | `name`、`config`（数・文字列・数の並び）、`inputs`（JSON の数の並び、入れ子で多次元）か bin | プラグインを 1 回呼ぶ。システムの要るもの（spot・mtf など）には読み込んだシステム（`set`・`edit` の後）と膜を渡す。出力は bin（`<f8`・`<c16`・`|b1`、形つき）、数 1 つの出力は `values` にも入れる |
 | `trace` | `px`・`py`（bin か JSON の並び）、`field`（1 始まり）か `hx`・`hy`、`wave`、`last`、`global` | `rays`・`ok`・`hx`・`hy`・`wave`・`last`、bin に `x y z l m n opl`（<f8）・`err vig`（<i4） |
-| `layout` | `field`・`wave`（1 始まりの並び、省略は全視野・主波長）、`plane`（見る面 `yz`・`xz`・`3d`、既定 `yz`）、`unfold`（true で光路に沿って展開、2D だけ）、`fan`（`y`・`x`・`cross`・`grid`・`ring`、既定は見る面の向き、3d は `ring`）、`rays`（既定 7、ring は 12）、`first`・`last`、`color`（光線の色分け `field`・`wave`・`cfg`。与えると結果に `color`） | 見る面の断面（[z, y] の点、`xz` なら [z, x]）: `plane`、`solids`（玉・ミラー、`surfaces`）、`plates`（像面・物体面）、`rays`（`field`・`wave`・`px`・`py`・`vig`・`err`・`pts`）、`surfaces`（`vertex`・`stop`・`mirror`・`semi`・`t`）、`units`（玉・群の名前と面の範囲 `spans`）、`blocks`（`load` と同じブロック・群ごとの面の範囲。GUI は組合せの要素の面をこれで引く）、`configs`（重ねた構成の名前）。GUI のレイアウト図。`cfgs`（.zmx の多重構成の番号）・`states`（状態の名前）・`beam_paths`（BS の経路）を並びか `"all"` で与えると、その構成を重ねる（CLI の `layout --cfgs/--states/--beam-paths` と同じ）。.zmx の多重構成は読み込んだシステムの多重構成の表から作るので `set`・`edit` の変更が入る（表を読めなかった .zmx と、プロジェクトの別の状態・経路は、読んだときのファイルから作って変更を当て直す。構成で値の違うパラメータの `set` は当てずに `notes` へ）。読み込んだ後にファイルを書き換えても `reload` までは読んだときのもの。`offset` [dx, dy, dz] で構成 k を k 倍ずらす。光線の `cfg` は構成の番号（0 始まり）。`unfold` はミラー・BS の反射ごとに後ろをミラーの頂点の接平面で鏡映し、折れる前の光軸の延長に並べ直す（`surfaces` の `vertex` も展開した位置、結果に `unfold: true`。座標ブレークの点は光線から除く）。`plane: "3d"` は断面の代わりに `meshes`（立体・面の網: `kind` は `glass`・`mirror`・`image`・`object`・`paraxial`、`surfaces` [前, 後]、`pos` は [x, y, z] を平らに並べた mm、`tris` は 3 つずつの番号）と `rays`（`pts` は [x, y, z]）、`surfaces`（`vertex` [x, y, z]・`stop`）・`units`・`configs`。`mech_detail: true` で、3D の機構部品を取った品の STEP の詳しい形で描く（キャッシュに STEP の無い部品は簡易外形） |
-| `layout_export` | `file`（書き出すファイル。形式は拡張子で `svg`・`png`・`dxf`・`gltf`・`glb`・`obj`・`stl`・`step`・`stp`）と `layout` と同じ引数（構成の重ね描き・`offset` も）。2D の形式は `plane` の面（`3d` なら `yz`）、3D の形式は 3D の場面（`unfold` は無視）。`color`（既定は重ね描きなら `cfg`、ほかは `field`）・`width`（PNG の横幅 px、既定 1600）・`segments`（周方向・面の線の分割数、既定 64）・`rings`（3D の半径方向の分割数、既定 16）・`tube`（3D の光線の管の半径 mm）・`mech_detail`（true で機構部品を取った品の STEP の形で書く。3D の形式は三角形、STEP は元の立体を写す）。CLI の `layout -o` と同じ書き出し | `written`（パス）・`format`・`solids`（立体の数）・`rays`（光線の数）・`notes`（構成を当てられなかった説明、STEP に写した品の長さを mm に直せなかった実体など）。GUI のレイアウトの書き出し |
-| `optimize` | 設定は CLI の `optimize`・Python の `System.optimize` と同じ型（`lensbench_design::dls_spec::OptimizeParams`、知らないキーはエラー）。`vars`（`"7.t"`・`"7.t=0.5:3"` か `{"name", "lo", "hi", "configs"}` の並び）、`merit`（`spot`・`wavefront`・`none`）・`rings`・`reference`、`terms`（CLI の `--term` と同じ JSON の項の並び）、`configs`（.zmx の構成番号か状態の名前の並び。省けば読み込んだシステムだけ）、`iters`・`jac`（`auto`・`fd`・`forward`）・`qr`・`gtol`・`active_set`（[最適化](optimize.md) の反復の設定）、`stopped_as_vignetted`（止まった光線をけられた光線と同じく除く）、`apply` | 減衰最小二乗。`names`・`x0`・`x`・`merit0`・`merit`・`history`・`iterations`・`stop`、`terms`（項ごとの `value0`・`value` と値の意味 `value_kind`（目標のある項は量そのもの `quantity`、ない項は √Σr² の `rms`）、評価関数への寄与 [%] `contrib0`・`contrib`（重み × Σ残差² の全体に対する割合）、瞳の光線を並べる項は最適化の後の光線の数 `rays`（`total`・`vignetted`・`stopped`）、既定の評価関数の項は `default: true`）、`applicable`（読み込んだシステムの構成に効く変数）。`apply: true` なら効く変数を読み込んだシステムに `set` する（`applied`）。他の構成は、.zmx なら読み込んだシステムの多重構成の表から（変更が入ったまま）、表の無い .zmx とプロジェクトの状態は読んだときのファイルから作って読み込んだ後の変更を当てる（当てられない `set` は `notes`）。GUI の最適化パネル |
-| `tolerance` | `lensbench tolerance --spec` と同じ JSON（`trials`・`seed`・`dist`・`preset`・`catalog`・`lenses`・`groups`・`tols`・`compensators`・`merit`・`terms` など、`lensbench_design::tolerance`）に加えて `configs`（optimize と同じ） | モンテカルロ公差。`nominal`・`merit`（統計）・`cdf`（評価関数の昇順）・`terms`（項ごとの統計と `cdf`）・`compensators`（試行ごとの `values` も）・`tilt_magnitudes`（tx・ty の組の大きさ [分]）・`merit_values`・`sensitivity`（公差ごとの lo・hi の評価関数の変化、悪い順）・`rss_estimate`・`correlation`・`failed`・`errors`。読み込んだシステム（set・edit の後）を使う。進み具合は `tolerance_progress()`、中止は `tolerance_cancel()` |
-| `zoom` | 設定は CLI の `zoom`・Python の `zoom` と同じ型（`ZoomParams`、知らないキーはエラー）。`configs`（状態の名前か .zmx の構成番号の並び、省けばすべて）・`vars`（`"G2.shift"`・`"G2.shift=-5:20"` か `{name, lo, hi}`）・`efl` か `pmag`（状態ごとの目標の並び、`null` は目標なし。CLI の書き方 `"95,-,130"` も可）・`steps`・`merit`・`reference`・`rings`・`iters`・`tol`・`method`（`penalty`・`lagrange`）・`qr`・`gtol`・`active_set`・`stopped_as_vignetted` | ズーム軌跡（CLI の `zoom --json` と同じ: `quantity`・`vars`・`path`・`warnings`）と `notes`。読み込んだ後の値の変更は各状態のシステムにも当てる |
-| `swap` | `lensbench swap --spec` と同じ設定（`slots`・`vars`・`merit`・`reference`・`rings`・`iters`・`efl`・`state`・`max_count`）、`project`（プロジェクトの JSON。省けば読み込んだファイル。`--allow-remote`・`--root` では使えない）、`top`（50、0 はすべて）・`threads`・`count_only` | カタログレンズの差し替え探索。`count`・`done`・`failed`・`cancelled`・`seconds`・`slots`（所ごとの候補）・`results`（評価関数の小さい順、CLI と同じ行）。`count_only` なら `count`・`slots` だけ。読み込んだシステムのガラス・レンズカタログのフォルダを使う。GUI の差し替え探索パネル |
+| `layout` | （下の節） | （下の節） |
+| `layout_export` | （下の節） | （下の節） |
+| `optimize` | （下の節） | （下の節） |
+| `tolerance` | （下の節） | （下の節） |
+| `zoom` | （下の節） | （下の節） |
+| `swap` | （下の節） | （下の節） |
 | `configs` | | 重ねて描ける構成: `cfgs`（.zmx の構成の数）、`states`（プロジェクトの状態の名前）、`paths`（今の状態で BS のとれる経路） |
 | `echo` | 任意の bin | 同じ bin を返す（通信の時間を測る） |
 | `glasses` | `glass_dirs`（並び、省略可。LENSBENCH_GLASSCAT も使う） | `catalogs`（名前・パス・数）、`glasses`（`name`・`catalog`・`nd`・`vd`・`formula`・`range_um`）。nd・vd はカタログ温度の分散式から |
-| `lenses` | `lens_catalogs`（.zmx のファイル・フォルダの並び）、`glass_dirs` | `lenses`（`vendor`・`part`・`efl`・`diameter`・`thickness`・`elements`・`pieces`（ガラスの枚数、貼り合わせは 2 枚以上）・`surfaces`・`glasses`・`mirror`・`curv`（最初の玉の前・後ろの面の曲率 [1/mm]）、読めなければ `error`）。efl はカタログの値、無ければ主波長の近軸の値。玉の無いミラーは `mirror: true` とミラーの面の `radius`・`conic`（efl は −radius/2）。`kind` は `lens`・`mirror`・`splitter`。フォルダの中の lensbench 形式のカタログ（ユーザーカタログの .json）の項目も並べ、`source`（`catalog` の絶対パス・`item`）、`description`、ミラー・BS の膜の `coat`、BS の中身の `splitter`（`form`・`size`・`glass`・`ratio`・`ar` など。経路・向きは除く）を付ける。`category`（品の種類: lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other）、.json の品の `url`・`specs`・`tags`・`spec_source`・`checked`、同じメーカーの .json の `overlay`・`url_template` で足した値も付ける。面の並びだけの品は `kind: "surfaces"`（`jones` は Jones 面があるか）。未完の品（`missing` のある項目）は `kind: "incomplete"`・`incomplete: true`・`missing`（分かっている `diameter`・`thickness` は仕様から）で、同じメーカー・型番の普通の品があれば並べない |
+| `lenses` | （下の節） | （下の節） |
 | `catalog_search` | `lenses` と同じに加えて `kinds`（品の種類の並び）・`vendor`・`text`・`specs`（`名前>=値` などの並び、CLI `catalog-search --spec` と同じ書き方）・`fits`（径 [mm]。その素子が入る機構部品だけ、CLI `--fits`） | `lenses` と同じ形で、条件に合う品だけ |
 | `shutdown` | | サーバーを止める |
 
@@ -122,11 +122,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   値がオブジェクトの設定（センサの設定など）はオブジェクトのまま渡す（CLI では JSON の文字列で渡す）
 - `trace` の結果は最後の面（`last`、省くと像面）の局所座標、`global: true` なら大域座標。`err`・`vig` が 0 の光線が通った光線。
   `opl` は幾何的な光路長。コアの追跡とビット一致する
-- `edit` の操作（`op` と引数。面は番号か名前）: `insert_surface` at・surface（面の値: type comment t c r k asph cx material coating semi ignore
-  aperture cb cb_order focal jones dn disp）、`delete_surface` surface、`set_surface` surface・fields、`set_surface_type` surface・type、
-  `set_material` surface・material、`set_stop` surface、`add_pickup` dst・src・what（c r t k p1〜 dn disp semi before0〜4 after0〜4）・scale・offset・from（元の量、省くと what）、`remove_pickup` dst・what、
-  `add_solve` surface・kind（marginal_height など、Python の add_solve と同じ名前）・value・other（別の面）・param・macro（macro_curv・macro_thick のマクロの名前か番号）、`remove_solve` surface・what（t か c）、`add_macro_solve` surface・macro（システムのマクロの名前か番号）・what（k・semi・p1〜。円錐係数・半直径・面タイプのパラメータを ZPL マクロで解く）、`set_param` param・value、`set_config_count` n、`set_config_row` param・values、`set_config_materials` param（`N.material`）・names（構成ごとの材料の名前）、`add_config_row` param（どの構成も今の値）、
-  `remove_config_row` param、`insert_config` at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups）、`remove_config` k（構成が 1 つになると表を消す）、`set_config_pickup` param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる）、`remove_config_pickup` param・k、`set_config` k（表の操作でない操作・`set` で表の行の値を変えると、今の構成の列も変わる）、`set_system_data` data（`system_data` の data と同じ形で、書いた項目だけ変える。波長・視野の数も変えられる）、`set_surface_data` surface・data（`surface_data` の data と同じ形で、書いた項目だけ変える。開口 ap・前後の傾き偏心 before・after・面タイプの形のデータ zern grid bin2 cylf grin もここで。stop・mirror・n は変えない）。開口は `{"type": "circular", "max": 3}` か null、inf は `{"$f": "inf"}`。
+- `edit` の操作は `op` と引数（面は番号か名前）で、一覧は下の「edit の操作」の表。
   例: `{"ops": [{"op": "insert_surface", "at": 3, "surface": {"r": 50, "t": 5, "material": "N-BK7"}}]}`
   操作の形はスキーマ [edit-ops](schema/edit-ops.schema.json)（玉・群の `define_unit`・`set_unit`・`remove_unit`、機構部品の `add_mech`・`set_mech`・`remove_mech` も）。
   知らない操作・キー・型の合わない値は、どの操作も当てる前に invalid params（-32602）のエラー（「操作 2 (set_stop): unknown field …」）
@@ -134,6 +130,119 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   LENSBENCH_GLASSCAT から探す
 - 数は JSON から丸めずに読む（Python の `float` を送れば同じ f64 が届く）
 - 像面距離などの解き（ソルブ）のあるシステムでは、値を変えてから元に戻すと、解きを前の値から解き直すので 1e-14 程度の差が残ることがある
+
+### 長い method の params・result
+
+#### `load`
+
+- params: `file`、`cfg`・`state`・`beam_path`・`glass_dirs`・`lens_catalogs`・`history`・`strict_macros`（省略可。true で .zmx のマクロのソルブを解けなければエラー、CLI の `--strict-macros`）
+- result: システムの概要（面の数・視野・波長など）と `notes`（読んだときの注意: プロジェクトの展開・分散式・マクロ・.zmx の読めなかった行など。CLI では標準エラーに出るもの）、`blocks`（プロジェクトの id のあるブロック・群ごとのシステムの面の範囲 `{id, forward: [[最初, 最後], …], back}`。群が中のブロックより先、`back` はミラーの復路の範囲。BS はミラーで戻って BS を通る面も BS の範囲（口の先の面は入らない）。面を足す・消す `edit` の後は空。`system` の結果にも）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前のシステムを 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list`
+
+#### `undo`・`redo`
+
+- params: `steps`（まとめて戻す段の数、省略で 1）
+- result: 読み込んだ後の `set`・`edit`（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで、同じパラメータの `set` が 1 秒以内に続けば 1 段、戻した後に変えるとやり直す段は消える、`load`・`reload` で空。`history: "push"` で読んだときは読む前のシステムも 1 段）。`surfaces`・`system_hash`・残りの段の数 `undo`・`redo`。開く・読み直すを越えて戻した・やり直したときは `loaded`（そのシステムの概要、`load` の結果と同じ）。`set`・`edit` の結果にも `undo`・`redo`
+
+#### `history`
+
+- params: なし
+- result: 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、開く・読み直すは `{"open": ファイル名}`・`{"reload": ファイル名}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも
+
+#### `save_project`
+
+- params: `path`
+- result: 読み込んだプロジェクト（.json）に、読み込んだ後の面の変更（`set` の面の値 `3.t`・`3.c`・`3.radius`・`3.thickness` など。非球面係数 `3.a4`・Zernike・偏心などの面のパラメータは、変わった面のデータの項目、`edit` の `set_surface`・`set_surface_data`・`set_material`・`set_stop`・`add_solve`・`add_pickup`・`remove_solve`・`remove_pickup`）を、面を足したブロックの `surface_edits`・`surface_ops` として書き足して書く。面はどのブロックの何番目の面かで戻す。書き戻せない変更（面を入れる・消す `edit` とその後の変更、座標ブレーク・復路の面、ブロックの最後の面の厚み（後ろの空気のブロックで変える）、往復するブロックの最後の面の材料（同じ）、ピックアップの元・ソルブの参照が id の無いブロックの面、玉・群・系の設定、`set` の面でないパラメータ、書き足すと今の状態・経路でプロジェクトが展開できなくなる上書き（往復するブロックの面の前後の偏心、鏡の面の dn など））は書かずに `notes`。書いたプロジェクトは必ず読める。往復するブロックの面の値は復路の面にも当たる（編集した系では往路の面だけ）ので `notes` で知らせる。`written`・`notes`
+
+#### `write_back`
+
+- params: `ops`: 操作の並び（`edit` と同じ形）
+- result: 読み込んだプロジェクトに ops を `save_project` と同じく書き戻し、面の上書き・操作が変わったブロックを返す。保存も、読み込んだシステムの変更もしない（GUI の組合せの面の表が要素に当てて組み直す）。ソルブ・ピックアップは同じ面・量のものを 1 つにまとめ、ブロックの元（.zmx など）にあるものを置き換える・外すときは外す操作も置く。`blocks`（`id`・`faces`（`surface_edits`・`surface_ops`）、id のあるブロックだけ）・`notes`
+
+#### `system_data`
+
+- params: なし
+- result: システム全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。core のシステムの serde の形
+
+#### `analyze`
+
+- params: `cmd` と CLI と同じ引数
+- result: CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings`
+
+#### `catalog_add`
+
+- params: `catalog`（ユーザーカタログのファイル）、`name`、`blocks`（ブロックの id の並び: 1 つか、最上位の並びの範囲の最初と最後）、`description`・`replace`・`vendor`（省略可）
+- result: 読み込んだプロジェクト（状態を当てて）のブロック・範囲（間の空気も）を項目に保存する（CLI の `catalog-add --block`）。ブロックの面の表の変更（`surface_edits`）は玉の面に焼き込む。ファイルが無ければ作る。結果は `catalog_items` と同じと `added`
+
+#### `catalog_fill`
+
+- params: `catalog`（未完の品のあるカタログ）、`item`、`out`（補足のカタログのファイル。無ければ作る）、`thickness`・`diameter`（mm。径は数か [幅, 高さ]。足りない値の分）、`from`（`page`・`step`・`manual`）、`frame`（省略可。枠付きの品の枠。ユーザーカタログの `mech` と同じ形）・`frame_reversed`（光は枠の z の大きい端から入る）、`spec`（省略可。仕様表の値 `thickness`・`diameter`・`mount_thickness`・`mount_diameter`・`clear_aperture`）・`glass_visible`（STEP のガラスと枠が 1 つの立体で、ガラスの径が見えている径）
+- result: 未完の品（`missing` のある項目）に値を足して `out` に同じ型番の普通の品として書く。`frame` は品の `frame` に入れる。`spec` があれば、ガラス・枠の寸法と仕様表の値を比べ、0.05 mm より違う項目（有効径は枠の最小の穴より大きい時）を `notes` に書き、品に有効径が無ければ `spec` の有効径を入れる。`out` は 1 つのメーカーの品だけ。結果は `catalog`・`item`・`vendor`・`specs`・`notes`・`frame`・`frame_reversed`
+
+#### `cad_step`
+
+- params: `catalog`（ユーザーカタログ）、`item`、`cache`（省略可。キャッシュのフォルダ。省略で CLI の cad-step と同じ既定の場所。`--root` のときはその中だけ）
+- result: 品の STEP を 1 件だけ取ってキャッシュに置く（キャッシュ → 共有の置き場 → `cad.step` の配布元の順。置き場は docs/project-file.md）。結果は `item`・`url`・`path`（キャッシュのファイル）・`cached`・`source`（`cache`・`store`（共有の置き場から）・`vendor`・`vendor_uploaded`（配布元から取り置き場にも上げた））・`store_notes`（置き場を読めない・上げられない理由）・`measured`（catalog-step と同じ測った値）・`notes`（簡易外形の長さ・外径・外形の形との食い違い。空なら合う）。取れなければエラー（品ページの URL を添える）。Web 版では使えない
+
+#### `layout`
+
+- params: `field`・`wave`（1 始まりの並び、省略は全視野・主波長）、`plane`（見る面 `yz`・`xz`・`3d`、既定 `yz`）、`unfold`（true で光路に沿って展開、2D だけ）、`fan`（`y`・`x`・`cross`・`grid`・`ring`、既定は見る面の向き、3d は `ring`）、`rays`（既定 7、ring は 12）、`first`・`last`、`color`（光線の色分け `field`・`wave`・`cfg`。与えると結果に `color`）
+- result: 見る面の断面（[z, y] の点、`xz` なら [z, x]）: `plane`、`solids`（玉・ミラー、`surfaces`）、`plates`（像面・物体面）、`rays`（`field`・`wave`・`px`・`py`・`vig`・`err`・`pts`）、`surfaces`（`vertex`・`stop`・`mirror`・`semi`・`t`）、`units`（玉・群の名前と面の範囲 `spans`）、`blocks`（`load` と同じブロック・群ごとの面の範囲。GUI は組合せの要素の面をこれで引く）、`configs`（重ねた構成の名前）。GUI のレイアウト図。`cfgs`（.zmx の多重構成の番号）・`states`（状態の名前）・`beam_paths`（BS の経路）を並びか `"all"` で与えると、その構成を重ねる（CLI の `layout --cfgs/--states/--beam-paths` と同じ）。.zmx の多重構成は読み込んだシステムの多重構成の表から作るので `set`・`edit` の変更が入る（表を読めなかった .zmx と、プロジェクトの別の状態・経路は、読んだときのファイルから作って変更を当て直す。構成で値の違うパラメータの `set` は当てずに `notes` へ）。読み込んだ後にファイルを書き換えても `reload` までは読んだときのもの。`offset` [dx, dy, dz] で構成 k を k 倍ずらす。光線の `cfg` は構成の番号（0 始まり）。`unfold` はミラー・BS の反射ごとに後ろをミラーの頂点の接平面で鏡映し、折れる前の光軸の延長に並べ直す（`surfaces` の `vertex` も展開した位置、結果に `unfold: true`。座標ブレークの点は光線から除く）。`plane: "3d"` は断面の代わりに `meshes`（立体・面の網: `kind` は `glass`・`mirror`・`image`・`object`・`paraxial`、`surfaces` [前, 後]、`pos` は [x, y, z] を平らに並べた mm、`tris` は 3 つずつの番号）と `rays`（`pts` は [x, y, z]）、`surfaces`（`vertex` [x, y, z]・`stop`）・`units`・`configs`。`mech_detail: true` で、3D の機構部品を取った品の STEP の詳しい形で描く（キャッシュに STEP の無い部品は簡易外形）
+
+#### `layout_export`
+
+- params: `file`（書き出すファイル。形式は拡張子で `svg`・`png`・`dxf`・`gltf`・`glb`・`obj`・`stl`・`step`・`stp`）と `layout` と同じ引数（構成の重ね描き・`offset` も）。2D の形式は `plane` の面（`3d` なら `yz`）、3D の形式は 3D の場面（`unfold` は無視）。`color`（既定は重ね描きなら `cfg`、ほかは `field`）・`width`（PNG の横幅 px、既定 1600）・`segments`（周方向・面の線の分割数、既定 64）・`rings`（3D の半径方向の分割数、既定 16）・`tube`（3D の光線の管の半径 mm）・`mech_detail`（true で機構部品を取った品の STEP の形で書く。3D の形式は三角形、STEP は元の立体を写す）。CLI の `layout -o` と同じ書き出し
+- result: `written`（パス）・`format`・`solids`（立体の数）・`rays`（光線の数）・`notes`（構成を当てられなかった説明、STEP に写した品の長さを mm に直せなかった実体など）。GUI のレイアウトの書き出し
+
+#### `optimize`
+
+- params: 設定は CLI の `optimize`・Python の `System.optimize` と同じ型（`lensbench_design::dls_spec::OptimizeParams`、知らないキーはエラー）。`vars`（`"7.t"`・`"7.t=0.5:3"` か `{"name", "lo", "hi", "configs"}` の並び）、`merit`（`spot`・`wavefront`・`none`）・`rings`・`reference`、`terms`（CLI の `--term` と同じ JSON の項の並び）、`configs`（.zmx の構成番号か状態の名前の並び。省けば読み込んだシステムだけ）、`iters`・`jac`（`auto`・`fd`・`forward`）・`qr`・`gtol`・`active_set`（[最適化](optimize.md) の反復の設定）、`stopped_as_vignetted`（止まった光線をけられた光線と同じく除く）、`apply`
+- result: 減衰最小二乗。`names`・`x0`・`x`・`merit0`・`merit`・`history`・`iterations`・`stop`、`terms`（項ごとの `value0`・`value` と値の意味 `value_kind`（目標のある項は量そのもの `quantity`、ない項は √Σr² の `rms`）、評価関数への寄与 [%] `contrib0`・`contrib`（重み × Σ残差² の全体に対する割合）、瞳の光線を並べる項は最適化の後の光線の数 `rays`（`total`・`vignetted`・`stopped`）、既定の評価関数の項は `default: true`）、`applicable`（読み込んだシステムの構成に効く変数）。`apply: true` なら効く変数を読み込んだシステムに `set` する（`applied`）。他の構成は、.zmx なら読み込んだシステムの多重構成の表から（変更が入ったまま）、表の無い .zmx とプロジェクトの状態は読んだときのファイルから作って読み込んだ後の変更を当てる（当てられない `set` は `notes`）。GUI の最適化パネル
+
+#### `tolerance`
+
+- params: `lensbench tolerance --spec` と同じ JSON（`trials`・`seed`・`dist`・`preset`・`catalog`・`lenses`・`groups`・`tols`・`compensators`・`merit`・`terms` など、`lensbench_design::tolerance`）に加えて `configs`（optimize と同じ）
+- result: モンテカルロ公差。`nominal`・`merit`（統計）・`cdf`（評価関数の昇順）・`terms`（項ごとの統計と `cdf`）・`compensators`（試行ごとの `values` も）・`tilt_magnitudes`（tx・ty の組の大きさ [分]）・`merit_values`・`sensitivity`（公差ごとの lo・hi の評価関数の変化、悪い順）・`rss_estimate`・`correlation`・`failed`・`errors`。読み込んだシステム（set・edit の後）を使う。進み具合は `tolerance_progress()`、中止は `tolerance_cancel()`
+
+#### `zoom`
+
+- params: 設定は CLI の `zoom`・Python の `zoom` と同じ型（`ZoomParams`、知らないキーはエラー）。`configs`（状態の名前か .zmx の構成番号の並び、省けばすべて）・`vars`（`"G2.shift"`・`"G2.shift=-5:20"` か `{name, lo, hi}`）・`efl` か `pmag`（状態ごとの目標の並び、`null` は目標なし。CLI の書き方 `"95,-,130"` も可）・`steps`・`merit`・`reference`・`rings`・`iters`・`tol`・`method`（`penalty`・`lagrange`）・`qr`・`gtol`・`active_set`・`stopped_as_vignetted`
+- result: ズーム軌跡（CLI の `zoom --json` と同じ: `quantity`・`vars`・`path`・`warnings`）と `notes`。読み込んだ後の値の変更は各状態のシステムにも当てる
+
+#### `swap`
+
+- params: `lensbench swap --spec` と同じ設定（`slots`・`vars`・`merit`・`reference`・`rings`・`iters`・`efl`・`state`・`max_count`）、`project`（プロジェクトの JSON。省けば読み込んだファイル。`--allow-remote`・`--root` では使えない）、`top`（50、0 はすべて）・`threads`・`count_only`
+- result: カタログレンズの差し替え探索。`count`・`done`・`failed`・`cancelled`・`seconds`・`slots`（所ごとの候補）・`results`（評価関数の小さい順、CLI と同じ行）。`count_only` なら `count`・`slots` だけ。読み込んだシステムのガラス・レンズカタログのフォルダを使う。GUI の差し替え探索パネル
+
+#### `lenses`
+
+- params: `lens_catalogs`（.zmx のファイル・フォルダの並び）、`glass_dirs`
+- result: `lenses`（`vendor`・`part`・`efl`・`diameter`・`thickness`・`elements`・`pieces`（ガラスの枚数、貼り合わせは 2 枚以上）・`surfaces`・`glasses`・`mirror`・`curv`（最初の玉の前・後ろの面の曲率 [1/mm]）、読めなければ `error`）。efl はカタログの値、無ければ主波長の近軸の値。玉の無いミラーは `mirror: true` とミラーの面の `radius`・`conic`（efl は −radius/2）。`kind` は `lens`・`mirror`・`splitter`。フォルダの中の lensbench 形式のカタログ（ユーザーカタログの .json）の項目も並べ、`source`（`catalog` の絶対パス・`item`）、`description`、ミラー・BS の膜の `coat`、BS の中身の `splitter`（`form`・`size`・`glass`・`ratio`・`ar` など。経路・向きは除く）を付ける。`category`（品の種類: lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other）、.json の品の `url`・`specs`・`tags`・`spec_source`・`checked`、同じメーカーの .json の `overlay`・`url_template` で足した値も付ける。面の並びだけの品は `kind: "surfaces"`（`jones` は Jones 面があるか）。未完の品（`missing` のある項目）は `kind: "incomplete"`・`incomplete: true`・`missing`（分かっている `diameter`・`thickness` は仕様から）で、同じメーカー・型番の普通の品があれば並べない
+
+### edit の操作
+
+| op | 引数 |
+| --- | --- |
+| `insert_surface` | at・surface（面の値: type comment t c r k asph cx material coating semi ignore aperture cb cb_order focal jones dn disp） |
+| `delete_surface` | surface |
+| `set_surface` | surface・fields |
+| `set_surface_type` | surface・type、 `set_material` surface・material |
+| `set_stop` | surface |
+| `add_pickup` | dst・src・what（c r t k p1〜 dn disp semi before0〜4 after0〜4）・scale・offset・from（元の量、省くと what） |
+| `remove_pickup` | dst・what、 `add_solve` surface・kind（marginal_height など、Python の add_solve と同じ名前）・value・other（別の面）・param・macro（macro_curv・macro_thick のマクロの名前か番号） |
+| `remove_solve` | surface・what（t か c） |
+| `add_macro_solve` | surface・macro（システムのマクロの名前か番号）・what（k・semi・p1〜。円錐係数・半直径・面タイプのパラメータを ZPL マクロで解く） |
+| `set_param` | param・value |
+| `set_config_count` | n |
+| `set_config_row` | param・values |
+| `set_config_materials` | param（`N.material`）・names（構成ごとの材料の名前） |
+| `add_config_row` | param（どの構成も今の値）、 `remove_config_row` param |
+| `insert_config` | at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups） |
+| `remove_config` | k（構成が 1 つになると表を消す） |
+| `set_config_pickup` | param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる） |
+| `remove_config_pickup` | param・k |
+| `set_config` | k（表の操作でない操作・`set` で表の行の値を変えると、今の構成の列も変わる） |
+| `set_system_data` | data（`system_data` の data と同じ形で、書いた項目だけ変える。波長・視野の数も変えられる） |
+| `set_surface_data` | surface・data（`surface_data` の data と同じ形で、書いた項目だけ変える。開口 ap・前後の傾き偏心 before・after・面タイプの形のデータ zern grid bin2 cylf grin もここで。stop・mirror・n は変えない）。開口は `{"type": "circular", "max": 3}` か null、inf は `{"$f": "inf"}` |
 
 `glasses`・`lenses`・`catalog_search` は読み込んだシステムと関係なく使える（GUI のカタログブラウザ）。
 

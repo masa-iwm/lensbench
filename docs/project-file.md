@@ -2,6 +2,8 @@
 
 `.json` のプロジェクトファイルは玉・空気・絞り・ミラー・面の並び・.zmx のインポート・群のブロックでシステムを組む（例は `examples/projects`）。
 
+## JSON スキーマ
+
 JSON スキーマは `docs/schema/` にある: `project`（プロジェクトファイル）・`system`（システムファイル）・`user-catalog`（ユーザーカタログ）・
 `swap`（差し替え探索の `--spec`）・`terms`（評価関数の項）・`tolerance`（公差の `--spec`）の `.schema.json`。スキーマはドキュメントの
 サイトにも版ごとに置く（`https://masa-iwm.github.io/lensbench/schema/v0.5/project.schema.json` のように lensbench の版の小数第 1 位まで。
@@ -11,6 +13,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 （lensbench は読むときに `$schema` を無視する）。スキーマは serde の型
 （`lensbench_project::schema`）から作り、テストで型とずれていないか・例題が合うかを確かめる。型を変えたら
 `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema::` で作り直す。
+
+## 形式とブロック
 
 - 形式の印 `"format": "lensbench-project"` と版 `"format_version": 1`。lensbench が書くファイルにはいつも付く。省略したファイルは今の版として読み、
   読める版より新しい版のファイルは誤りにする（知らない項目を落として黙って計算しないため）
@@ -24,6 +28,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 群（`"type": "group"`）は `role`（`zoom`・`focus`・`fixed`）と移動 `shift` [mm] を持つ。`shift` は前の間隔に足し、後の間隔から引くので、
   群の外の合計長は変わらない（ミラーを含む群は、ミラーの枚数によらず動かせない）。.zmx のインポートでは `groups` に面の範囲（`from`・`to`、その面に始まる玉・面と間の空気）で群を置ける（玉モード）。
   群にも偏心・傾き・ON/OFF を付けられる。
+
+## 状態・面の上書き・ソルブとピックアップ
+
 - 状態（`states`、多重構成に当たる）は名前と変更の組。`set` はブロックの `id` ごとに変える値（`on`・`off`・`t`・`shift`・`decenter`・`tilt`・
   .zmx の構成番号 `config` など、ブロックの JSON の項目）、`project` はシステムの値（`object_distance`・`aperture`・`fields` など）。
   CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand` に `ExpandOpts { state, .. }` を渡す。
@@ -53,6 +60,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `remove_solve`・`remove_pickup` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す
   （値はそのまま残る。外すものが無ければ当てずに注意）。GUI の面の表で組合せの玉の元のソルブを外すと、これで保存される
 
+## システムの値（視野・像面・物体・アフォーカル・瞳・環境）
+
 - 視野の種類（`fields.type`）は `angle`・`object_height`・`paraxial_image_height`・`real_image_height` と、条件で定める視野 `solve`。
   `solve` では `fields.solve` の条件について、視野の (x, y) が目標値になる物体（有限なら物点、無限遠なら方向）を主波長の主光線で解く。
   条件は `{"cond": "position", "surface": 面}`（面での位置。像面なら実像高と同じ）、`{"cond": "dir_sum", "s1": 面, "s2": 面}`
@@ -79,6 +88,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   .zmx の ENVD と同じ）。ガラスの屈折率はこの環境で計算し、インポートした .zmx の環境と違えば注意を出す。
 - 知らないキー（綴りの違いなど）はエラーにする。GUI は自分の編集の状態を `gui` に残す。
 
+## ビームスプリッター
+
 - ビームスプリッター（`"type": "splitter"`）: 形は `cube`（`size` 一辺・`glass`、斜面が 45°）・`plate`（`thickness`・`glass`・`semi`、
   `wedge` でくさび、`split_face` で分ける面 front・back）・`ideal`（厚さのない面）。分ける面の傾きは `angle`（既定 [45, 0]、ミラーの tilt と同じ約束）。
   分岐比は `ratio`（偏光によらない理想膜の強度透過率、既定 0.5）・`coat`（膜ファイル・LBCM の膜）・`pbs`（理想の偏光ビームスプリッター
@@ -104,6 +115,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
     1.5e-9（膜 BS3・AR2、`LBBS.DAT`。ガラスは試験のカタログを OpticStudio に入れて同じにした）。分ける面の膜の反射（硝材どうし・空気から）は
     Reflection vs Angle と R 5e-8・位相 5e-5°。OpticStudio の順次のシステムでは反射の面は膜なしのミラーで書いて形だけを比べる
     （キューブの斜面を MIRROR にすると 45° の BS3 で Rs 0.413 になり、Reflection vs Angle の硝材どうしの境界の値 0.497 と合わない）。
+
+## カタログ
+
 - ユーザーカタログ（JSON）: 玉モードで得た玉や組んだブロック（測定系・被検レンズなど）を名前で保存し、`{"type": "user", "catalog": "my.json", "item": "名前"}`
   のブロックで他のプロジェクトから使う（群と同じに入り、偏心・傾き・ON/OFF・状態も使える）。.zmx の玉は面を直接書いた玉に、.zmx のインポートと
   ユーザーカタログの参照のパスは絶対パスにして保存する。メーカーのレンズカタログの玉（`vendor`・`part`）は参照のまま保存するので、使う側でも
@@ -121,6 +135,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   （向き・経路・寸法は組合せで変えられる）。ほかの項目は玉として `{"type": "user"}` で参照する。例: `examples/lenses/LBP/parts.json`
   gzip で圧縮した `.json.gz` もそのまま読む（同じ名前の `.json` があればそちら）。プロジェクトなどで `x.json` を指していて `x.json.gz`
   だけがあるときも、それを読む（リリースのカタログは .json.gz で配る）。
+
+## 偏光子・波長板・複屈折材
+
 - 偏光子・波長板の面: 面の並び（`surfaces`）の面に `"polarizer": {"axis_deg", "extinction_ratio", "transmittance"}`（理想の直線偏光子。
   透過軸の強度透過率と消光比、省略は 1 と無限）か `"waveplate": {"retardance", "wavelength_um", "axis_deg", "order", "transmittance"}`
   （速い軸 axis_deg、設計波長での遅延 retardance 波長、多次は整数の order。遅延は波長ごとに (order + retardance)·wavelength_um/λ）を書く。
@@ -150,6 +167,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   OpticStudio 26.1 と照合（結晶軸を法線から 30° 傾けた水晶 1 mm、`tests/birefringent/os_b5.json`）: 光線の位置・向き（walk-off を含む）と
   Mode 1 の偏光は一致する。OS は異常光の道の光路長を no × 光線の長さで数え（垂直入射で 1 mm あたり約 2e-3 mm 短い）、Mode 2・3 の常光・異常光の
   位相の差にも no·(光線の長さ − 厚さ) を足す（この例で 0.02〜0.04 波）。どちらも物理の式（波数ベクトルの位相）を採る。.zmx を読むと、この違いが出る板（Mode 1・3 と、結晶軸を法線から傾けた Mode 2・3）を読込の注意で知らせる。
+
+## 特別な面・鏡・膜・マクロ
+
 - ほかの欄で書けない面: 面の並び・自作の玉の面に `{"row": {…}}` と書くと、システムファイル（版 2）の面の行
   （`shape`・`action`・`medium`・`aperture`・`semi`・`t`・`ignore`・`dn`・`disp`・`comment`・`coating` など）で面を書ける。
   Zernike Standard / Fringe Sag・Grid Sag・Irregular・Tilted・Binary 2・Cylinder Fresnel・理想レンズ・GRIN の媒質・無視する面などに使う。
@@ -197,6 +217,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   エラーを出さずに表全体を R = T = 0 として読むので、書き出しでは全角度の波長の和集合に並べ直す（lensbench では同じ値）。
   理想の形の表は点が多く（1 膜で 1,500〜3,600 波長 × 13 角度）、膜ファイルが大きいと OpticStudio の読み込みに数十秒かかる。
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
+
+## 機構部品と品の形
+
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
   `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z", "max_diameter"}`（`max_diameter` は上下から挟むホルダー（バー型・ジョー型）のように径を選ばない部品の入る径の上限で、`diameter`〜`max_diameter` の素子が入る。保持径が太すぎる確認はしない）・`front_thread`・`back_thread`・`outline`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
@@ -262,6 +285,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   写したもの（名前は「部品の名前 detail 番号」）で描く。STEP の立体は catalog-step と同じ測り方で部品の座標（z は枠の端から光軸の向き、
   x は角の部品の辺に直交）に置くので、簡易外形と同じ所に重なる（`reversed` なら反転する）。2D の断面図・`mech-check` の
   ケラレ・当たりは簡易外形のまま
+
+## カタログの品の種類・未完の品
+
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、
@@ -278,12 +304,16 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   次からは未完の品の代わりに並ぶ（元のカタログは書き換えない）。serve は `catalog_fill`。品ページは選んだ品の 1 件だけを開き、
   まとめて取りに行くことはしない。
 
+## 状態の例
+
 ```json
 "states": [
   {"name": "near", "project": {"object_distance": 500}, "set": {"front": {"shift": -0.4}}},
   {"name": "no L3", "set": {"L3": {"on": false, "off": "air"}}}
 ]
 ```
+
+## 膜の境界
 
 `coatings` は全コンフィグの境界（`膜|前の媒質|後の媒質`）と膜の扱い（膜なし、理想膜、膜ファイルの薄膜・表、実測表、モデル）を一覧にし、
 偏光追跡に実測表かモデルが要る境界（暗号化された膜など）を `needs_table` に挙げる。
