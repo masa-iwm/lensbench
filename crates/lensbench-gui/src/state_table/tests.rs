@@ -894,3 +894,32 @@ fn row_rank_follows_face_numbers() {
     c.picks[0].shift_faces(&|i| (i != 2).then_some(i));
     assert_eq!(c.picks[0].mc_rank.len(), 1);
 }
+
+/// 入れ替えた並びのコメント行をまとめて消しても、選んだ行が消える（番号の大きい順に消す）
+#[test]
+fn remove_reordered_comment_rows() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    let now = |_: &Face| None;
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    for t in ["c0", "c1", "c2"] {
+        c.mc_comments.push(Default::default());
+        let k = c.mc_comments.len() - 1;
+        Item::Comment(k).set(&mut c, None, Val::Text(t.into()), &cx);
+    }
+    let rows = vec![Item::Comment(1), Item::Comment(0), Item::Comment(2)];
+    picks::set_order(&mut c, &rows);
+    let mut view = View::default();
+    remove_rows(&mut c, &mut view, &rows, 0..=1, &now);
+    assert_eq!(c.mc_comments.len(), 1);
+    assert_eq!(
+        Item::Comment(0).get(&c, None, &cx),
+        Some(Val::Text("c2".into()))
+    );
+}

@@ -943,8 +943,16 @@ fn remove_rows(
     r: std::ops::RangeInclusive<usize>,
     now: FaceNow,
 ) {
-    for i in r.filter(|&i| i < rows.len()).rev() {
-        remove_row(c, view, &rows[i], now);
+    let mut sel: Vec<&Item> = r.filter_map(|i| rows.get(i)).collect();
+    // コメント行は番号で指し、消すと後ろの番号が詰まるので、表の並び（入れ替えた順）でなく番号の大きい順に消す
+    sel.sort_by_key(|it| {
+        std::cmp::Reverse(match it {
+            Item::Comment(k) => Some(*k),
+            _ => None,
+        })
+    });
+    for it in sel {
+        remove_row(c, view, it, now);
     }
 }
 
