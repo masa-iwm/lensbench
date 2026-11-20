@@ -146,7 +146,11 @@ impl System {
             rows: Vec::new(),
         });
         for r in c.rows.iter_mut() {
-            let now = self.row_value(r)?;
+            // 開口の無い面の半径・偏心の行は 0（OpticStudio も使わない）
+            let now = match self.row_value(r) {
+                Err(_) if is_aperture_value(r.param.kind) && self.no_aperture(r.param) => 0.0,
+                v => v?,
+            };
             r.values.resize(n, now);
             r.picks.retain(|p| p.k <= n && p.from <= n);
         }
@@ -449,12 +453,15 @@ impl System {
 
     /// 表の行 rows の構成 k（1 始まり）の値を入れた系。材料・膜の行は名前で面の材料・膜にする
     fn with_config_values(&self, rows: &[ConfigRow], k: usize) -> Result<System> {
+        let (base, off) = self.with_config_aperture_types(rows, k)?;
         let ch: Vec<(Param, f64)> = rows
             .iter()
-            .filter(|r| !r.has_names())
+            .filter(|r| !r.has_names() && r.param.kind != Kind::ApType)
+            // 開口の無い構成の面の半径・偏心の行は使わない（OpticStudio と同じ）
+            .filter(|r| !(is_aperture_value(r.param.kind) && off.contains(&r.param.index())))
             .map(|r| (r.param, r.values[k - 1]))
             .collect();
-        let mut s = self.with_params(&ch)?;
+        let mut s = base.with_params(&ch)?;
         for r in rows.iter().filter(|r| r.is_material()) {
             let name = r.name_at(k)?;
             if s.surfaces[r.param.index()].mat.name() != name {
@@ -468,6 +475,41 @@ impl System {
             }
         }
         Ok(s)
+    }
+
+    /// 開口の種類の行（[`Kind::ApType`]）の構成 k の値を先に入れた系と、開口の無い面。今の構成で開口の無い面を円形の開口・
+    /// 遮蔽にするときは、同じ構成の最大の半径の行が要る（半径はその行から入る。OpticStudio は開口の無い構成でも半径の行の値を持つ）
+    fn with_config_aperture_types(
+        &self,
+        rows: &[ConfigRow],
+        k: usize,
+    ) -> Result<(System, Vec<usize>)> {
+        let mut s = self.clone();
+        let mut off = Vec::new();
+        for r in rows.iter().filter(|r| r.param.kind == Kind::ApType) {
+            let (j, v) = (r.param.index(), r.values[k - 1]);
+            let none = matches!(
+                s.surfaces.get(j).map(|d| &d.ap),
+                Some(crate::surface::Aperture::None)
+            );
+            let has_max = rows.iter().any(|q| q.param == Param::new(j, Kind::ApMax));
+            if v == 0.0 {
+                off.push(j);
+            }
+            if none && (v == 1.0 || v == 2.0) && has_max {
+                s.edit_raw(|rx| {
+                    rx.surfaces[j].ap = crate::surface::Aperture::Circular {
+                        min: 0.0,
+                        max: 0.0,
+                        dx: 0.0,
+                        dy: 0.0,
+                    };
+                    Ok(())
+                })?;
+            }
+            s = s.with_params(&[(r.param, v)])?;
+        }
+        Ok((s, off))
     }
 
     /// 行 r の今の系の値。材料・膜の行は今の材料・膜の名前の番号（無ければ名前を足す）
@@ -528,5 +570,20 @@ impl System {
             }
         }
         Ok(())
+    }
+}
+
+/// 円形の開口・遮蔽の半径・偏心の行か
+fn is_aperture_value(k: Kind) -> bool {
+    matches!(k, Kind::ApMin | Kind::ApMax | Kind::ApDx | Kind::ApDy)
+}
+
+impl System {
+    /// p の面に開口が無いか
+    fn no_aperture(&self, p: Param) -> bool {
+        matches!(
+            self.surfaces.get(p.index()).map(|d| &d.ap),
+            Some(crate::surface::Aperture::None)
+        )
     }
 }

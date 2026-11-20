@@ -1596,6 +1596,7 @@ zmx line {} ({})	zmx の {} 行目（{}）
 the value of OpticStudio for a field with both Hx and Hy not 0 could not be reproduced; the term may differ	Hx・Hy がどちらも 0 でない視野の OpticStudio の値は再現できませんでした。項の値は違うことがあります
 Wave 0 is read as the primary wavelength (OpticStudio returns 0)	Wave 0 は主波長として読みます（OpticStudio は 0 を返します）
 lensbench uses a central difference; OpticStudio's one-sided difference differs by about 1e-4	lensbench は中心差分を使います。OpticStudio の片側の差分とは 1e-4 ほど違います
+OpticStudio measures the encircled energy of an off-axis field on the plane normal to the chief ray, lensbench on the image plane (about 1% apart in the check); the term may differ	OpticStudio は軸外の視野の包囲エネルギーを主光線に垂直な面で、lensbench は像面で測ります（確かめた例で 1% ほどの差）。項の値が違うことがあります
 .zmx merit function row {row}: {e}; skipped	.zmx のメリットファンクションの行 {row}: {e}。飛ばしました
 ".zmx merit function row {}: {e}; its rows are read one by one	.zmx のメリットファンクションの行 {}: {e}。その後の行は 1 行ずつ読みます
 the Wizard's "{what}" is not supported (only RMS)	Wizard の「{what}」には対応していません（RMS だけです）
@@ -1673,7 +1674,10 @@ surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formu
 the multi-configuration table of a system with moved lenses or groups can't be written to .zmx (the surface numbers change)	レンズ・群を動かしたシステムの多重構成の表は .zmx に書けません（面の番号が変わります）
 multi-configuration row {} can't be written to .zmx	多重構成の行 {} は .zmx に書けません
 only the values of the configuration pickups of multi-configuration row {} were written	多重構成の行 {} の構成のピックアップは値だけ書きました
-multi-configuration row {} configuration {}: the configuration pickup from row {} was read as its value	多重構成の行 {} の構成 {}: 行 {} からの構成のピックアップは値として読みました
+multi-configuration row {} configuration {}: {why}	多重構成の行 {} の構成 {}: {why}
+the configuration pickup from row {} was read as its value	行 {} からの構成のピックアップは値として読みました
+the solve of kind {t} (a thermal pickup or another one) was read as its value	種類 {t} のソルブ（熱のピックアップなど）は値として読みました
+multi-configuration row {op} {p1}: surface {k} has no solve or pickup it sets (OpticStudio does not use it either); not kept in the table	多重構成の行 {op} {p1}: 面 {k} には、この行が設定するソルブ・ピックアップがありません（OpticStudio も使いません）。表には入れません
 lens and group moves were written as coordinate breaks (the surface numbers change)	レンズ・群の動きは座標ブレークに展開して書きました（面の番号が変わります）
 the {what} pickup of surface {} (from surface {}) can't be written to .zmx, so only the value was written	面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書きました
 {} mechanical parts can't be written to .zmx	機構部品 {} 個は .zmx に書けません

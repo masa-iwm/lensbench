@@ -36,24 +36,26 @@ fn mce_line(line: &str) -> Option<(String, i64, i64, String, Vec<String>)> {
 
 /// 多重構成の行の値の後の欄: 種類（0 固定・1 変数・2 以上は構成のピックアップで元の構成 + 1）・番号 2・番号 3・
 /// 元の構成・元の行・倍率・オフセット（OpticStudio 26.1 で確認。同じ演算子の別の行からも拾える）。表のピックアップは
-/// 同じ行からだけなので、別の行からのもの（その行の番号を返す）・種類と元の構成が合わないものは固定（種類 0）にして値を使う
-fn config_pickup_columns(rest: &mut [String], row: usize) -> Option<i64> {
+/// 同じ行からだけなので、別の行からのものと、種類と元の構成が合わないもの（熱のピックアップは元の構成 1 で種類 5 と
+/// 書かれる）は固定（種類 0）にして値を使い、知らせの文を返す
+fn config_pickup_columns(rest: &mut [String], row: usize) -> Option<String> {
     let num = |i: usize| rest.get(i).and_then(|x| x.parse::<i64>().ok());
     let (t, from, src) = (num(0)?, num(3), num(4));
     if t < 2 {
         return None;
     }
-    if from != Some(t - 1) {
-        rest[0] = "0".into();
+    let why = if from != Some(t - 1) {
+        format!("the solve of kind {t} (a thermal pickup or another one) was read as its value")
+    } else if src != i64::try_from(row).ok() {
+        format!(
+            "the configuration pickup from row {} was read as its value",
+            src.unwrap_or(0)
+        )
+    } else {
         return None;
-    }
-    match src {
-        Some(r) if r == i64::try_from(row).ok()? => None,
-        _ => {
-            rest[0] = "0".into();
-            src
-        }
-    }
+    };
+    rest[0] = "0".into();
+    Some(why)
 }
 
 pub fn parse_text(txt: &str) -> Result<Raw> {
@@ -136,12 +138,11 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 raw.mce_rows.push((m.0.clone(), m.1, parm));
             }
             last_cfg = m.2;
-            if let Some(src) = config_pickup_columns(&mut m.4, raw.mce_rows.len()) {
+            if let Some(why) = config_pickup_columns(&mut m.4, raw.mce_rows.len()) {
                 raw.notes.push(format!(
-                    "multi-configuration row {} configuration {}: the configuration pickup from row {} was read as its value",
+                    "multi-configuration row {} configuration {}: {why}",
                     raw.mce_rows.len(),
-                    m.2,
-                    src
+                    m.2
                 ));
             }
             if m.0 == "IGNM" {

@@ -498,9 +498,23 @@ fn aperture(s: &RawSurf, k: usize, d: &mut Surface, ops: &Ops) {
             dx,
             dy,
         }
+    } else if let (Some(1.0 | 2.0), Some(max)) = (op(ops, "APTP", k), op(ops, "APMX", k)) {
+        // 今の構成で開口の無い面（CLAP の行が無い）でも、多重構成で円形の開口・遮蔽にする構成は APMN・APMX の値
+        // （OpticStudio 26.1 で確認）。種類・最小の半径・偏心は後で表の値を入れる（configs::apply_config_values）
+        Aperture::Circular {
+            min: 0.0,
+            max,
+            dx,
+            dy,
+        }
     } else {
         Aperture::None
     };
+}
+
+/// 多重構成の演算子 name・番号 k の今の構成の値
+fn op(ops: &Ops, name: &str, k: i64) -> Option<f64> {
+    ops.get(&(name.to_string(), k)).and_then(|v| fv(v).ok())
 }
 
 /// Zernike Sag・Grid Sag の面の読込（OpticStudio 26.1 の書き方、OpticStudio で書き出した .zmx で確認）:

@@ -15,6 +15,7 @@ pub(super) fn config_table(
     ),
     n: usize,
     active: usize,
+    notes: &mut Vec<String>,
 ) -> lensbench_core::Result<lensbench_core::configs::Configs> {
     use lensbench_core::configs::{ConfigPick, ConfigRow, Configs};
     use lensbench_core::param::{Kind, Param};
@@ -135,6 +136,11 @@ pub(super) fn config_table(
                 let kind = solve_kind(o, parm);
                 let p = Param::new(k, kind.expect("checked in the guard"));
                 let Ok(now) = lensbench_core::param::solve_value(links.0, links.1, p) else {
+                    if changes {
+                        notes.push(format!(
+                            "multi-configuration row {op} {p1}: surface {k} has no solve or pickup it sets (OpticStudio does not use it either); not kept in the table"
+                        ));
+                    }
                     continue;
                 };
                 if varies {
@@ -173,8 +179,12 @@ pub(super) fn config_table(
                 } else {
                     Param::new(surf.expect("surface number checked above"), kind)
                 };
-                // 書いていない構成の値は今の系の値。同じパラメータの行（FVAN と FTAN）は後の行が勝つ
-                let now = s.get_param(p)?;
+                // 書いていない構成の値は今の系の値（全部の構成に値があれば使わない。今の構成で開口の無い面の半径の行など）。
+                // 同じパラメータの行（FVAN と FTAN）は後の行が勝つ
+                let now = match s.get_param(p) {
+                    Err(_) if vals.iter().all(Option::is_some) => 0.0,
+                    v => v?,
+                };
                 out.retain(|r| r.param != p);
                 out.push(numeric_row(p, &vals, now, picks));
             }

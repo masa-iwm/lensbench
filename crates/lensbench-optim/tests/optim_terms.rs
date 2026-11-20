@@ -761,3 +761,34 @@ fn volume_and_total_terms() {
     // 凹の前の面の分だけ体積は増える（縁の外は縁の高さのまま平ら）
     assert!(vol(&s) > want);
 }
+
+/// 平面に当てはめた最適球は曲率 0・半径 0（パラメータ `r` と同じく平面の半径は 0。丸めの残りの曲率から大きな半径を出さない）
+#[test]
+fn bfs_of_plane() {
+    use lensbench_optim::{BfsData, ShapeQ};
+    for name in SYSTEMS {
+        let s = load(name);
+        let Some(j) = (1..s.image()).find(|&j| s.surfaces[j].c == 0.0 && s.surfaces[j].semi > 0.0)
+        else {
+            continue;
+        };
+        for (data, want) in [(BfsData::Curv, 0.0), (BfsData::Radius, 0.0)] {
+            let p = one(
+                &s,
+                TermKind::Shape {
+                    surf: j,
+                    q: ShapeQ::Bfs {
+                        data,
+                        rmin: 0.0,
+                        rmax: 0.0,
+                    },
+                    target: 0.0,
+                },
+            );
+            let v = p.term_values(&[]).unwrap()[0].value();
+            assert_eq!(v, want, "{name} surface {j} {data:?}");
+        }
+        return;
+    }
+    panic!("no plane surface in the test systems");
+}

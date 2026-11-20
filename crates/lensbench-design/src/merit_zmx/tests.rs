@@ -530,7 +530,9 @@ fn terms_to_rows_and_back() {
     let mf = merit_function_text(&z).unwrap();
     assert_eq!(mf.rows.len(), rows.len() + 1);
     let back = terms_from_zmx(&mf, s.primary + 1, s.image(), &ZmxSys::of(&s));
-    assert!(back.notes.is_empty(), "{:?}", back.notes);
+    // 軸外の DENC は OpticStudio と測る面が違う知らせだけ
+    assert_eq!(back.notes.len(), 1, "{:?}", back.notes);
+    assert!(back.notes[0].contains("(DENC, ") && back.notes[0].contains("off-axis field"));
     // MTF の標本は渡さない
     let mut want = terms.clone();
     want[4].as_object_mut().unwrap().remove("n");

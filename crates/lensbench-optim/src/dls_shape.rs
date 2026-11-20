@@ -163,7 +163,11 @@ fn bfs(s: &System, j: usize, data: BfsData, rmin: f64, rmax: f64) -> Result<f64>
             f2 = obj(x2);
         }
     }
-    let c = (a + b) / 2.0;
+    // 平面に当てはめると曲率は探す幅の丸めの残り（1e-16 ほど）になるので 0 にする（半径はパラメータ `r` と同じく平面で 0）
+    let c = match (a + b) / 2.0 {
+        c if (c * r1).abs() < 1e-12 => 0.0,
+        c => c,
+    };
     let (d, dep) = fit(c);
     let slope: Vec<f64> = r
         .iter()
@@ -178,6 +182,7 @@ fn bfs(s: &System, j: usize, data: BfsData, rmin: f64, rmax: f64) -> Result<f64>
     };
     Ok(match data {
         BfsData::Curv => c,
+        BfsData::Radius if c == 0.0 => 0.0,
         BfsData::Radius => 1.0 / c,
         BfsData::Vertex => d,
         BfsData::Depth => dep.iter().copied().fold(0.0, f64::max),

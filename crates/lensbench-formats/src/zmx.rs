@@ -428,8 +428,17 @@ pub fn document(
     )?;
     // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）
     let solves = macros::solves(raw);
-    let configs =
-        (ncfg > 1).then(|| config_table(raw, &s, (&solves, &pickups), ncfg as usize, cfg as usize));
+    let mut config_notes = Vec::new();
+    let configs = (ncfg > 1).then(|| {
+        config_table(
+            raw,
+            &s,
+            (&solves, &pickups),
+            ncfg as usize,
+            cfg as usize,
+            &mut config_notes,
+        )
+    });
     let mut rx = s.into_prescription();
     rx.temperature = temp;
     rx.pressure = pres;
@@ -458,7 +467,10 @@ pub fn document(
         rx.import_notes.extend(n);
     }
     match configs {
-        Some(Ok(c)) => rx.configs = Some(c),
+        Some(Ok(c)) => {
+            rx.configs = Some(c);
+            rx.import_notes.extend(config_notes);
+        }
         Some(Err(why)) => rx.import_notes.push(format!(
             "only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)"
         )),

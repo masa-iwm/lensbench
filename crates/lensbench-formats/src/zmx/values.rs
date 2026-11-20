@@ -10,9 +10,9 @@ pub(super) fn config_ops(raw: &Raw, cfg: i64) -> Result<Ops> {
     let key = |op: &String, p1: i64, rest: &[String]| (op.clone(), p1, rest.get(1).cloned());
     let mut vals: HashMap<(String, i64, Option<String>), HashSet<String>> = HashMap::new();
     for (op, p1, c, v, rest) in &raw.mce {
-        vals.entry(key(op, *p1, rest))
-            .or_default()
-            .insert(v.clone());
+        // 変わるかは、数なら数で（1 と 1.0 は同じ）、数でなければ書いた文字で見る（表の config_table と同じ）
+        let norm = fv(v).map_or_else(|_| v.clone(), |x| format!("{x:?}"));
+        vals.entry(key(op, *p1, rest)).or_default().insert(norm);
         if *c == cfg {
             // PSP は面と PARM の番号で決まるので、鍵の名前に PARM の番号を付ける（configs::apply_solve_values）
             let name = match rest.get(1) {

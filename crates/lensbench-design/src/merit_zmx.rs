@@ -52,6 +52,8 @@ pub struct ZmxSys {
     pub mce: Vec<(String, i64, i64)>,
     /// 構成の数（ZTHI は構成をまたぐ項で、すべての構成を使う）
     pub configs: usize,
+    /// 視野ごとに軸外か（1 始まりの視野 i は `off_axis[i - 1]`。軸外の DENC・DENF に知らせを出す。空なら視野 1 だけ軸上とみなす）
+    pub off_axis: Vec<bool>,
 }
 
 impl Default for ZmxSys {
@@ -64,6 +66,7 @@ impl Default for ZmxSys {
             angle_field: true,
             mce: Vec::new(),
             configs: 1,
+            off_axis: Vec::new(),
         }
     }
 }
@@ -86,6 +89,7 @@ impl ZmxSys {
             angle_field: matches!(s.field_type, lensbench_core::system::FieldType::Angle),
             mce: Vec::new(),
             configs: s.configs().map_or(1, |c| c.n),
+            off_axis: s.fields.iter().map(|f| f.x != 0.0 || f.y != 0.0).collect(),
         }
     }
 }
@@ -210,9 +214,12 @@ fn field_no(f: i64) -> Result<usize, String> {
 }
 
 /// 読めるが値が OpticStudio と違うと分かっている行の注意（OpticStudio 26.1 の実測）
-fn read_differs(r: &MeritRow) -> Option<&'static str> {
+fn read_differs(r: &MeritRow, sys: &ZmxSys) -> Option<&'static str> {
     let num = |i: usize| r.num(i).unwrap_or(0.0);
     match r.op.as_str() {
+        "DENC" | "DENF" if off_axis(sys, num(data(1))) => Some(
+            "OpticStudio measures the encircled energy of an off-axis field on the plane normal to the chief ray, lensbench on the image plane (about 1% apart in the check); the term may differ",
+        ),
         "RSRH" if num(data(1)) != 0.0 && num(data(2)) != 0.0 => Some(
             "the value of OpticStudio for a field with both Hx and Hy not 0 could not be reproduced; the term may differ",
         ),
@@ -225,6 +232,15 @@ fn read_differs(r: &MeritRow) -> Option<&'static str> {
             "the value of OpticStudio about the vertex could not be reproduced (about 0.6% larger in the check); the term may differ",
         ),
         _ => None,
+    }
+}
+
+/// 視野 f（1 始まり、.zmx の Field の欄）が軸外か
+fn off_axis(sys: &ZmxSys, f: f64) -> bool {
+    let i = f as usize;
+    match sys.off_axis.get(i.wrapping_sub(1)) {
+        Some(&o) => o,
+        None => i > 1,
     }
 }
 
@@ -1230,7 +1246,7 @@ pub fn terms_from_zmx(mf: &MeritFunction, primary: usize, image: usize, sys: &Zm
                 continue;
             }
         };
-        if let Some(why) = read_differs(src) {
+        if let Some(why) = read_differs(src, cx.sys) {
             cx.notes.push(format!(
                 ".zmx merit function row {} ({}, line {}): {why}",
                 src.row, src.op, src.line
