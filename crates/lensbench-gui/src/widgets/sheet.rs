@@ -1293,7 +1293,8 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
                 st.edit = None;
                 st.active = true;
                 st.note = None;
-                if let Some((dr, dc)) = out.after {
+                // 行の無い表（最後の空の行に何も書かずに確定した）は動かない
+                if let Some((dr, dc)) = out.after.filter(|_| sh.rows() > 0 && sh.cols() > 0) {
                     let (n, m) = (sh.rows(), sh.cols());
                     st.cur = Some(if dr == 0 {
                         step(r, c, dc, n, m)

@@ -639,3 +639,20 @@ fn drag_headers_move() {
     assert_eq!(b.rows.0[0][1], "v1");
     assert_eq!(b.st.selection(), Some((0..=2, 1..=1)));
 }
+
+/// 行の無い表で最後の空の行を書き始め、何も打たずに ↓・↑・Tab で確定しても落ちない
+#[test]
+fn empty_table_ghost_keys() {
+    for k in [Key::ArrowDown, Key::ArrowUp, Key::Tab] {
+        let mut b = Bench::new(0);
+        b.rows.1 = true;
+        b.frame(vec![]);
+        b.click(b.cell_pos(0, "Name"));
+        assert_eq!(b.st.cur(), Some((0, 0)));
+        b.key(Key::Enter);
+        assert!(b.st.editing());
+        b.key(k);
+        assert!(!b.st.editing(), "{k:?}");
+        assert_eq!(b.rows.0.len(), 0);
+    }
+}

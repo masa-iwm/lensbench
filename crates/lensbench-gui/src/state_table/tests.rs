@@ -675,3 +675,31 @@ fn comment_rows() {
     let (loc, key) = picks::key_of(&Item::Comment(0));
     assert_eq!(picks::item_of(loc.as_ref(), &key), Some(Item::Comment(0)));
 }
+
+/// コメント行を 2 行まとめて消すと、選んだ 2 行が消える（番号が詰まっても別の行を消さない）
+#[test]
+fn remove_several_comment_rows() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    let now = |_: &Face| None;
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    for t in ["c0", "c1", "c2"] {
+        c.mc_comments.push(Default::default());
+        let k = c.mc_comments.len() - 1;
+        Item::Comment(k).set(&mut c, None, Val::Text(t.into()), &cx);
+    }
+    let rows: Vec<Item> = (0..3).map(Item::Comment).collect();
+    let mut view = View::default();
+    remove_rows(&mut c, &mut view, &rows, 0..=1);
+    assert_eq!(c.mc_comments.len(), 1);
+    assert_eq!(
+        Item::Comment(0).get(&c, None, &cx),
+        Some(Val::Text("c2".into()))
+    );
+}

@@ -909,6 +909,13 @@ pub(crate) fn add_row(c: &mut Combo, view: &mut View, it: Item, now: FaceNow) {
     }
 }
 
+/// 表の行 r（描いた時の rows の番号）を消す。後ろから消す（コメント行を消すと後ろのコメント行の番号が詰まる）
+fn remove_rows(c: &mut Combo, view: &mut View, rows: &[Item], r: std::ops::RangeInclusive<usize>) {
+    for i in r.filter(|&i| i < rows.len()).rev() {
+        remove_row(c, view, &rows[i]);
+    }
+}
+
 /// 行を消す: どの状態の値も基本の値に戻す（コメント行は行ごと消す）
 fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
     picks::remove_row_picks(c, it);
@@ -1230,9 +1237,7 @@ pub(crate) fn ui(
                 changed = true;
             }
             sheet_view::Act::Remove(r) => {
-                for i in r.filter(|&i| i < rows.len()) {
-                    remove_row(c, view, &rows[i]);
-                }
+                remove_rows(c, view, &rows, r);
                 changed = true;
             }
             sheet_view::Act::Add(Some(it)) => {
