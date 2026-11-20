@@ -28,6 +28,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `crates/lensbench-cad` | メーカーの品の CAD データ（公式の STEP）の取得・置き場・形の測定、膜のモデルの取得 |
 | `crates/lensbench-analysis` | 実光線の解析（MTF・スポット・Zernike・波面・PSF・POP・焦点の掃引・ファイバ結合）と同梱のプラグイン: システムを追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
+| `crates/lensbench-sdk` | 外のクレートから解析・プラグイン・面・形・材料を足して自分の exe・wheel を組むときに依存する 1 つのクレート（[ライブラリ](rust.md) の拡張の約束） |
 | `crates/lensbench-engine` | 実行の層: 解析の登録簿・システムの読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
 | `crates/lensbench-cli` | コマンドライン（`lensbench`）。引数の解釈と serve の要求を運ぶ道（TCP・パイプ） |
 | `crates/lensbench-gui` | GUI（`lensbench-gui`、eframe・egui）。計算は serve と同じ API をプロセス内で呼ぶ |

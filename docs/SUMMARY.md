@@ -8,6 +8,7 @@
 - [GUI](gui.md)
 - [CLI](cli.md)
   - [.zmx の読込の約束](zmx.md)
+  - [解析（MTF・PSF・RMS）](analysis.md)
   - [ゴースト（2 回反射）](ghost.md)
   - [簡易 POP（回折の伝搬）](pop.md)
   - [書き出し](export.md)
@@ -24,6 +25,7 @@
 - [ライブラリ（Rust）](rust.md)
 - [Web 版](web.md)
 - [番号・単位・省いたときの約束](conventions.md)
+- [パラメータの名前](params.md)
 - [壊れる変更](changes.md)
 - [版の付け方](versioning.md)
 

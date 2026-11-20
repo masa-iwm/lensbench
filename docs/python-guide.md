@@ -30,7 +30,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
 - `jones_z`（(光線, 2)）に出射電場の z 成分（最後の面の局所座標）。像面への入射角が大きいシステムでは無視できない
 - 物体を直接: `trace(None, px, py, object=(x, y))`（有限物体の物点 [mm]）・`object=(l, m, n)`（無限遠の方向）。`s.object_of(視野)` で視野の物体
 - パラメータの変更: `s.get_param("3.t")`、`s.set_param("L1.c", 0.02)`、`s.set_params({"3.t": 10, "5.dx": 0.01})`、
-  `s2 = s.with_params({...})`（元のシステムは変えない）。種類は c r k a2〜a16 t dx dy tx ty tz dn disp
+  `s2 = s.with_params({...})`（元のシステムは変えない）。種類は c r k a2〜a16 t dx dy tx ty tz dn disp など（全部の名前は [パラメータの名前](params.md)）
 - 玉・群の単位のパラメータ: `"lens2.tx"`・`"G.shift"` のように `名前.種類`（dx dy tx ty tz shift dn disp）。
   玉は読込で `lens1`・`lens2` …（玉モードの番号）、群は `s.define_unit("G", [(3, 7)], pivot=(0, 0, 1))`
   （ダブルパスなら往きと戻りの範囲を 2 つ）、プロジェクトではブロック・群の id。`s.units()` で一覧。偏心・傾きは

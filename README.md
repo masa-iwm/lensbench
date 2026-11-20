@@ -24,8 +24,10 @@ target/release/lensbench spot tests/refs/A0/system.zmx --glass-dir tests/glass
 target/release/lensbench info examples/projects/P8_catalog_two.json --lens-catalog examples/lenses
 ```
 
-GUI は `cargo build --release -p lensbench-gui` のあと `target/release/lensbench-gui examples/projects/P8_catalog_two.json`。
-Windows の GUI の exe と Python の wheel は CI の成果物（`lensbench-gui-windows` など、7 日で消える）からも取れる。
+Windows の GUI と CLI の exe は [Releases](https://github.com/masa-iwm/lensbench/releases) の `lensbench-win64-<版>.zip`（v0.5.0 から。インストール不要）。
+
+GUI を作るときは `cargo build --release -p lensbench-gui` のあと `target/release/lensbench-gui examples/projects/P8_catalog_two.json`。
+main の最新の exe と Python の wheel は CI の成果物（`lensbench-gui-windows`・`wheel-<OS>`、7 日で消える）から取れる。
 
 ## ドキュメント
 

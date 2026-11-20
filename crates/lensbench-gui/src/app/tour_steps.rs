@@ -63,6 +63,8 @@ impl App {
                 self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
             }
             Step::Zoom => self.tour_zoom(ctx, dir),
+            // ズームの例の状態（wide・mid・tele）を多重構成の表で見せる
+            Step::MultiConfig => self.dispatch(ctx, Msg::FocusKind(Kind::MultiConfig)),
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
                 let cfg = AnaCfg::new("pop");

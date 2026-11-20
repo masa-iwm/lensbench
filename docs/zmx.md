@@ -1,17 +1,20 @@
 # .zmx の読込の約束（OpticStudio との違い）
 
 - レンズ単位が mm 以外（`UNIT` の IN・CM・METER）の .zmx は、読込で mm に直す（長さの値・偶数次非球面の係数・厚さのソルブの値・
-  入射瞳径・高さの視野・多重構成の THIC・SDIA・CRVT）。結果も mm で出る。換算の決まっていない面タイプ・データは読込で止める
+  入射瞳径・高さの視野、多重構成の長さの行: THIC・SDIA・CRVT・APMX・APMN・APDX・APDY・CBDX・CBDY・CADX・CADY・PRAM、
+  構成ごとの視野の種類で高さの XFIE・YFIE、構成ごとの開口の種類で入射瞳径・絞り径の APER、ソルブの条件の長さの値と構成のピックアップのオフセット）。結果も mm で出る。換算の決まっていない面タイプ・データは読込で止める
 - 浮動開口（`FLAP`）の外の光線をける（OpticStudio と同じ）。クリア半径を固定（`DIAM 値 1`）にした玉の面（前か後ろがガラス）で開口のない面は、
   浮動開口にする（OpticStudio 2026 R1 も読込で `FLAP` を足してける。機械的なクリア半径の行 `MEMA` があっても同じ。空気どうしの面には足さない）。
   lensbench でクリア半径を固定にした玉の面も、.zmx に書き出して読み直すと浮動開口でける。浮動開口でけないようにするにはシステムの設定 `floating_clip` を false にする
   （システムファイル・プロジェクトの `floating_clip`、serve の `set_system_data`、Python の `System.floating_clip`、GUI のシステムの設定）。
   光線エイミングの追跡は開口を見ない
 - 視野がすべて 0（軸上だけ）のシステムでは、正規化視野 (hx, hy) を与えても軸上のまま追う（OpticStudio と同じ）
-- 多重構成の `PRAM`（面の PARM）は構成ごとに読む。面の色 `SCOL`、構成の名前 `MCOM`・重み `CWGT` は読み飛ばす。面の熱膨張係数 `TCED` は面の `tce` として読み書きする（光線追跡には効かない。プロジェクトファイルには残らない）
+- 面の色 `SCOL` は読み飛ばす。面の熱膨張係数 `TCED` は面の `tce` として読み書きする（光線追跡には効かない。プロジェクトファイルには残らない）。
+  多重構成は下の「多重構成」
 - Gradium（GRINSUR8）・Gradient 9 の近軸は、小さい実光線の極限（媒質の中の近軸の受け渡し）。OpticStudio の近軸（EFFL、曲率の F 値ソルブ）は
   これと 1% 程度違うシステムがある（付属のサンプルの Gradium のシステムで EFL 37.50 と 37.89）。実光線は面の形が同じなら一致する
-- 読まないもの: 非順次の部品（`NSOH`）、回折・ホログラム・ユーザー定義の面タイプ
+- 読まないもの: 非順次の部品（`NSOH`、非順次の物体には対応していないと断る）、Binary 2 のほかの回折の面・ホログラム・ユーザー定義（DLL）の面タイプ。
+  読む面タイプは下の「読む面タイプ」
 - 複屈折材の板（`BIRE__IN`・`BIRE_OUT`）は Mode 0〜3 を読む。Mode 1・3（異常光の道）の光路長は波数ベクトルから数える
   （OpticStudio は光線の長さあたり no で数えるので、光路長・OPD が違う。読込の注意に出す）。近軸の量（像の位置など）は常光で数える
 - 面タイプ Tilted（`TILTSURF`、z = x tan α + y tan β、局所座標は傾けない）・Odd Asphere（`ODDASPHE`、標準面 + Σ β_i r^i）・
@@ -29,6 +32,47 @@
 - クリア半径の `DIAM 値 0` は自動（光線から求め直す）。ただし、自動のクリア半径を入れる前の lensbench が書いた .zmx（`VERS 260327 42 20120530 20120530`
   で、どの面にも `MEMA` の行がない）は、固定のクリア半径も `DIAM 値 0` で書いていたので、ファイルの値で固定として読む
   （OpticStudio は同じファイルを自動として読む。今の lensbench の書き出しは固定を `DIAM 値 1` で書き、`MEMA` の行も書く）
+- 角度の視野は 90° を超えてもよい（光は物体側の後ろから来る。方向余弦 n < 0）。ちょうど 90° は未対応。面との交点は OpticStudio と
+  同じ根の式（空間の向き σ に対して ff / (gg + σ √disc)）で求めるので、光線が空間の向きと逆に進むときは頂点から遠い側の根になる
+  （付属の 210° 広角レンズの 105° の視野、90° 折り曲げの放物面ミラーで OpticStudio と一致）
+- 光線エイミングで近軸の入射瞳から絞りに届かない光線は、継続法で解き直す（主光線は視野を軸上から、ほかの光線は解けた近い光線から目標を動かす）
+
+## 読む面タイプ
+
+| .zmx の名前 | 面タイプ |
+|---|---|
+| `STANDARD` | 標準面 |
+| `EVENASPH` | 偶数次非球面 |
+| `ODDASPHE` | Odd Asphere |
+| `TOROIDAL` | トロイダル |
+| `PARAXIAL` | 理想レンズ |
+| `COORDBRK` | 座標ブレーク |
+| `JONESMAT` | Jones 行列 |
+| `SZERNSAG`・`FZERNSAG` | Zernike Standard Sag・Zernike Fringe Sag |
+| `GRID_SAG` | Grid Sag |
+| `FRESNELS`・`CFRESNEL` | フレネル・円柱フレネル |
+| `BINARY_2` | Binary 2（回折の位相） |
+| `GRINSUR8`・`GRINSUR9` | Gradium・Gradient 9 |
+| `TILTSURF` | Tilted |
+| `IRREGULA` | Irregular |
+| `BIRE__IN`・`BIRE_OUT` | 複屈折材の板の入口・出口（形は標準面） |
+
+ほかの面タイプは読込で止める。
+
+## 多重構成
+
+構成で変わる行は、多重構成の表（[パラメータの名前](params.md) の「多重構成」の列）に読み、書き出しも同じオペランドに書く。
+
+- 表に読むオペランド: THIC・CRVT・CONN・PRAM（偶数次非球面の係数・Zernike の係数・座標ブレークの値など）・SDIA・IGNR・APMX・APMN・APDX・APDY・APTP・
+  CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
+  システムの値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR
+- 名前を読み替えるもの: FVAN は FTAN（同じ値）、古い名前の PAR1〜PAR8 は PRAM の PARM 1〜8、面の範囲の無視 IGNM は面ごとの IGNR
+- モデルガラスでない面の MIND・MABB・MDPG、ソルブもピックアップも無い面の CSP・TSP・PSP は OpticStudio でも効かないので表に入れない
+- 構成のピックアップ（セルごとの元の構成・倍率・オフセット）は表の行のピックアップ（`picks`）に読み、書き出す。一括の指定 PUCN も読む。
+  別の行からのピックアップは値として読み、注意を出す
+- 構成で変わっても表に入れないもの: 構成の重み CWGT、MOFF。物体空間テレセントリック TELE が構成で変わると、選んだ構成だけを読み、その旨を注意に出す
+- GUI で開くと、構成の名前の MCOM はコメント行に、構成の題名 LTTL は構成（状態）の名前になる（[GUI](gui.md) の多重構成）。CLI・Python の読込は読み飛ばす
+- ほかのオペランドが構成で変わる .zmx は、読込で止める（構成で変わらなければ使わない）
 
 
 ## 書き出し（`zmx_write`）の欄
@@ -52,7 +96,3 @@
 
 書かない行: `POLS`（ないと非偏光・Jx 0・Jy 1）、`SDMA`（ないと Fast Semi-Diameters がオン、余裕 0）、`MIRR`（ないとミラーの基板 Curved・厚さ 0）、
 `PUSH`（瞳のずらし。ないと 0）。どれも OpticStudio の既定と同じ。材料の Offset のずれ（#10・#11 が 0 でない）は、ずれの式を確かめていないので読込で止める。
-- 角度の視野は 90° を超えてもよい（光は物体側の後ろから来る。方向余弦 n < 0）。ちょうど 90° は未対応。面との交点は OpticStudio と
-  同じ根の式（空間の向き σ に対して ff / (gg + σ √disc)）で求めるので、光線が空間の向きと逆に進むときは頂点から遠い側の根になる
-  （付属の 210° 広角レンズの 105° の視野、90° 折り曲げの放物面ミラーで OpticStudio と一致）
-- 光線エイミングで近軸の入射瞳から絞りに届かない光線は、継続法で解き直す（主光線は視野を軸上から、ほかの光線は解けた近い光線から目標を動かす）

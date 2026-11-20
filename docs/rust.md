@@ -59,7 +59,7 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   計算の Web Worker 用（`worker`・`threads`）の wasm を作り、公開の Web 版のページ・JS と一緒に置く
   （[Web 版](web.md)）。同梱のファイルは `lensbench_sdk::web::set_extra`。
 
-## パラメータ変更・光路長の微分・光線の解き
+### 拡張の口（プラグイン・面・形・材料）
 
 - `lensbench_core::plugin`: 検出器・解析のプラグインの約束。`Plugin`（名前・種類・`prepare(&Config)`）と
   `Instance`（`run(&Context, &Arrays) -> Arrays`）を実装し、`Registry` に名前で登録する。`run` は状態を持たず、
@@ -100,10 +100,13 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   よい。システムファイルにはカタログの名前だけを書き（hash は空）、カタログを足していないプロセスで読むとカタログが
   無い誤り。.zmx に書くと GCAT にカタログの名前が入るが、OpticStudio には無い（書き出しの注意に挙げる）。`check_material` で約束を確かめられる
 
+## パラメータ変更・光路長の微分・光線の解き
+
 - `lensbench_core::param`: システムを作り直さずにパラメータを変える。面は番号か名前（コメント）で、`sys.param("L1.t")`・
   `sys.param("3.c")` のように指定し、`set_param`・`with_params`（軽い複製）で変える。種類は `c` `r` `k` `a2`〜`a16`
   `t` `dx` `dy` `tx` `ty` `tz`（座標ブレークならその値、他の面は前の傾き偏心）、`dn`・`disp`（媒質の屈折率のずれと
-  分散の相対変化: n = n0 + dn + disp·(n0 − n0(主波長))）。変えたシステムの追跡は同じ値の .zmx を読み直したシステムとビット一致する
+  分散の相対変化: n = n0 + dn + disp·(n0 − n0(主波長))）。変えたシステムの追跡は同じ値の .zmx を読み直したシステムとビット一致する。
+  ほかの種類（半直径・開口・システムの値・ソルブの条件の値など、多重構成の表の行にするもの）は [パラメータの名前](params.md)
 - `lensbench_core::edit`: システムの編集。`insert_surface`・`delete_surface`・`set_surface_fields`（名前と値の組）・
   `set_surface_type`・`set_material`・`add_pickup`・`add_solve`・多重構成の表 `Configs`（`set_config_row`・`config(k)`）。
   システムの欄は書き換えられない（読むのは `sys.surfaces` など、文書は `sys.prescription()`）。値を直すときは

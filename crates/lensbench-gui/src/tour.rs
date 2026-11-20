@@ -112,6 +112,8 @@ pub(crate) enum Step {
     States,
     Coatings,
     Zoom,
+    /// ズームの例（3 状態）の多重構成の表
+    MultiConfig,
     UndoOpen,
     Catalog,
     Combo,
@@ -138,7 +140,7 @@ pub(crate) enum Step {
 }
 
 impl Step {
-    const ORDER: [Step; 29] = [
+    const ORDER: [Step; 30] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -166,6 +168,7 @@ impl Step {
         Step::States,
         Step::Coatings,
         Step::Zoom,
+        Step::MultiConfig,
         Step::UndoOpen,
         Step::Done,
     ];
@@ -199,6 +202,7 @@ impl Step {
             Step::States => "16_states",
             Step::Coatings => "17_coatings",
             Step::Zoom => "18_zoom",
+            Step::MultiConfig => "19_multiconfig",
             Step::UndoOpen => "20_undo_open",
             Step::Done => "done",
         }
@@ -357,6 +361,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 28);
+        assert_eq!(n, 29);
     }
 }

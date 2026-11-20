@@ -33,7 +33,7 @@
 
 ## 評価関数の項
 
-`--term '{"type":"paraxial","q":"efl","target":50,"weight":10}'`（複数可）か `--terms 項の配列.json` で既定の評価関数に項を足す（`--merit none` なら足した項だけ）。。種類:
+`--term '{"type":"paraxial","q":"efl","target":50,"weight":10}'`（複数可）か `--terms 項の配列.json` で既定の評価関数に項を足す（`--merit none` なら足した項だけ）。種類:
 
 - `spot`: アフォーカル像空間の系は解析のスポットと同じ角度
 - `wavefront`
