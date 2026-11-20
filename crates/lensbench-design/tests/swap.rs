@@ -316,7 +316,8 @@ fn prescreen_is_written_and_resumed() {
         } else {
             &mc
         };
-        c.store(pr.ran, Relaxed);
+        // 知らせは並行の作業者から前後して届くので、最後でなく最大を取る
+        c.fetch_max(pr.ran, Relaxed);
     });
     let with_cb = |f: &dyn Fn() -> lensbench_core::Result<Vec<swap::SwapResult>>| {
         par::with_progress(Some(cb.clone()), f)
@@ -331,12 +332,13 @@ fn prescreen_is_written_and_resumed() {
     assert_eq!(lines, 1 + s.count());
     // 本番の結果を消して回し直すと、一段目は書いた値を使い、本番だけ回す
     std::fs::remove_file(&f).unwrap();
-    screen.store(usize::MAX, Relaxed);
+    screen.store(0, Relaxed);
+    main.store(0, Relaxed);
     let r2 = with_cb(&|| s.run_to(Some(&f), true, None))
         .map(vals)
         .unwrap();
     assert_eq!(r2, mem);
-    assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
+    assert_eq!(screen.load(Relaxed), 0, "一段目は回さない");
     assert_eq!(main.load(Relaxed), 3);
     // keep を変えると二段目は続きから回せない（誤りの文は二段目だけ回し直す方法を言う）。r.jsonl を消せば一段目は使い回す
     let (p2, dir2) = project();
@@ -351,10 +353,10 @@ fn prescreen_is_written_and_resumed() {
         "{e}"
     );
     std::fs::remove_file(&f).unwrap();
-    screen.store(usize::MAX, Relaxed);
+    screen.store(0, Relaxed);
     let r4 = with_cb(&|| s4.run_to(Some(&f), true, None)).unwrap();
     assert_eq!(r4.len(), 4);
-    assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
+    assert_eq!(screen.load(Relaxed), 0, "一段目は回さない");
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -480,7 +482,7 @@ fn run_to_file_and_resume() {
     let r2c = ran.clone();
     let cb: par::ProgressFn = std::sync::Arc::new(move |e| {
         if let par::Event::Count(pr) = e {
-            r2c.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
+            r2c.fetch_max(pr.ran, std::sync::atomic::Ordering::Relaxed);
         }
     });
     let r2 = par::with_progress(Some(cb), || s.run_to(Some(&f), true, Some(1)))
