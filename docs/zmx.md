@@ -1,6 +1,6 @@
 # .zmx の読込の約束（OpticStudio との違い）
 
-- レンズ単位が mm 以外（`UNIT` の IN・CM・METER）の .zmx は、読込で mm に直す（長さの値・偶数次非球面の係数・厚さのソルブの値・
+- レンズ単位が mm 以外（`UNIT` の IN・CM・METER）の .zmx は、読込で mm に直す（長さの値・偶数次非球面の係数・厚みのソルブの値・
   入射瞳径・高さの視野、多重構成の長さの行: THIC・SDIA・CRVT・APMX・APMN・APDX・APDY・CBDX・CBDY・CADX・CADY・MCSD・CHZN・PRAM、
   構成ごとの視野の種類で高さの XFIE・YFIE、構成ごとの開口の種類で入射瞳径・絞り径の APER、ソルブの条件の長さの値と構成のピックアップのオフセット）。結果も mm で出る。換算の決まっていない面タイプ・データは読込で止める
 - 浮動開口（`FLAP`）の外の光線をける（OpticStudio と同じ）。クリア半径を固定（`DIAM 値 1`）にした玉の面（前か後ろがガラス）で開口のない面は、
@@ -97,5 +97,5 @@
 | `SPID 幅 本数 0` | | スパイダー開口。#1 腕の全幅、#2 腕の本数。開口の偏心は別の行 `OBDC x y` |
 | `HIDE 0 0 0 0 0 1 0 0 0 0 0 0 0` | 無視する面だけ | #6 Ignore This Surface。ほかは描画の設定（行がないと全部 0） |
 
-書かない行: `POLS`（ないと非偏光・Jx 0・Jy 1）、`SDMA`（ないと Fast Semi-Diameters がオン、余裕 0）、`MIRR`（ないとミラーの基板 Curved・厚さ 0）、
+書かない行: `POLS`（ないと非偏光・Jx 0・Jy 1）、`SDMA`（ないと Fast Semi-Diameters がオン、余裕 0）、`MIRR`（ないとミラーの基板 Curved・厚み 0）、
 `PUSH`（瞳のずらし。ないと 0）。どれも OpticStudio の既定と同じ。材料の Offset のずれ（#10・#11 が 0 でない）は、ずれの式を確かめていないので読込で止める。

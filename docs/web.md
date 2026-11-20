@@ -100,7 +100,7 @@ RUSTFLAGS="-C target-feature=+simd128" CARGO_TARGET_WASM32_WASIP1_RUNNER="wasmti
 
 同梱する見本は `crates/lensbench-web/build.rs` が集める: 公開用ガラス `tests/glass`、例題のレンズ
 `examples/lenses`、例題のプロジェクト `examples/projects`、`tests/refs/*/system.zmx`。
-ベンダーのカタログ（AGF・ZMF・膜の表）は同梱しない。
+ベンダーのカタログ（AGF・ZMF・コーティングの表）は同梱しない。
 
 ## 公開（GitHub Pages、誰でも見られる）
 

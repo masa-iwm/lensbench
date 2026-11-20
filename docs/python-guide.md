@@ -21,8 +21,8 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
 - 番号は CLI と同じ（視野・波長は 1 始まり、面は OpticStudio の面番号）。結果は CLI（`rays --save`）とビット一致し、スレッド数にもよらない
 - `last=`（途中の面で止める）、`record=True`（全面の交点 `rec_*`、(波長, 面, 光線)）、`globals=True`（大域の位置・方向と開始点）
 - `pol=`: True で主波長、または波長の番号。列は入射偏光（物体側の局所 x・y）、行は最後の面の局所座標の出射電場の x・y。
-  膜の振幅・位相込み、E ∝ exp(−ikL)。`pol_phase=True` で伝搬の位相 exp(−ik·OPL) も掛ける（既定は掛けない）
-- 偏光で使う膜の表・モデルは `load(..., coatings=[...])`、膜ファイルの置き換えは `coating_file=`
+  コーティングの振幅・位相込み、E ∝ exp(−ikL)。`pol_phase=True` で伝搬の位相 exp(−ik·OPL) も掛ける（既定は掛けない）
+- 偏光で使うコーティングの表・モデルは `load(..., coatings=[...])`、コーティングファイルの置き換えは `coating_file=`
 - `pol_grid=25`（または `(nx, ny)`）: 偏光追跡を正規化瞳座標 [−1, 1]² の粗い格子で行い、伝搬の位相を除いた Jones を 3 次スプライン
   （not-a-knot）で全光線へ補間する。テスト系 37 本（121² の瞳、主波長、最大視野）で全光線の偏光追跡との差は 25² で 3.4e-6 以下
   （高次の Zernike 面の Z3 だけ 1e-3。瞳の上で急に変わるシステムでは格子を細かくするか使わない）。止まった格子点は最も近い有効な点で埋め、
@@ -40,15 +40,15 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   `s.set_surface(j, ...)`、`s.delete_surface(j)`（外したピックアップ・ソルブの説明を返す）、`s.set_surface_type(j, "COORDBRK")`、
   `s.set_material(j, "MIRROR")`、`s.set_stop(j)`、`s.add_glass_catalogs(["SCHOTT"], dirs=[...])`。
   ピックアップ `s.add_pickup(dst, src, "c", scale=-1)`（面の前・後の傾き偏心も `"before0"`〜`"before4"`・`"after0"`〜`"after4"` で。
-  面の後を元の面の前から引くなら `src_what="before0"`）・`remove_pickup`・`pickups()`、厚さのソルブ `s.add_solve(j, height=0)`・
-  `remove_solve`・`solves()`。多重構成の表 `s.set_config_count(3)`・`s.set_config_row("5.t", [10, 12, 14])`・材料・膜の行 `s.set_config_names("3.material", ["N-BK7", "N-SF6", "N-BK7"])`・`s.config_names("3.material")`・`s.config(2)`（新しいシステム）・
+  面の後を元の面の前から引くなら `src_what="before0"`）・`remove_pickup`・`pickups()`、厚みのソルブ `s.add_solve(j, height=0)`・
+  `remove_solve`・`solves()`。多重構成の表 `s.set_config_count(3)`・`s.set_config_row("5.t", [10, 12, 14])`・材料・コーティングの行 `s.set_config_names("3.material", ["N-BK7", "N-SF6", "N-BK7"])`・`s.config_names("3.material")`・`s.config(2)`（新しいシステム）・
   `s.set_config(2)`・`s.configs()`。どの編集も失敗すればシステムは元のまま。編集の後はピックアップとソルブを解き直し、面番号は付け替える
 - 光路長の微分: `trace(..., grad=["3.t", "objx"])` で `grad`（(波長, 光線, パラメータ)）
 - 多数のシステムをまとめて: `lb.trace_many([s1, s2, ...], 1, px, py, grad=[...])` → システムごとの dict の list。
   引数は `trace` と同じで、結果はシステムごとの `trace` とビット一致。システムの単位でも並列にするので、システムごとの光線が少なくても
   コアを使い切る（4 コア・256 本・32〜1716 本で、システムごとの 1 スレッドの 2.2〜4.1 倍、システムごとに 4 スレッドで呼ぶときの 3.3〜5.9 倍）
 - 近軸量: `s.cardinal(wave=None)` で基点（OpticStudio の Cardinal Points 相当: 焦点・主点・反主点・節点・反節点、物体空間は面 1 から・像空間は像面から、媒質の中の焦点距離 `f_object`・`f_image`、空気換算の `efl`、`bfl`・`ffl`）、`s.system_data()` でシステムデータ（`effl`・`enpp`・`expp`・`wfno` など OpticStudio のオペランド名の小文字）。変更後のシステムの値
-- ファイバ結合: `s.fiber_coupling(na_source, na_receiver=None, wave=None, source=(0, 0), receiver=(0, 0), grid=101, pol=False, clip_stop=True)` → `eta`・`system`・`receiver`・`phase_step`（格子の隣り合う点の位相の差の最大 [rad]、π/2 を超えたら警告を出すので grid を増やす）（pol=True なら膜込みの `jones` (2, 2)、入射偏光 e の結合は |jones @ e|²）。送り側は物点、受け側は像面の点の、遠視野 1/e² の NA のガウスモードで、受け側の方向空間で重なり積分をとる（有限物体のシステム）。システムの絞りの外を通る光は既定でシステムの損失 `system` に数える（`clip_stop=False` で無視）
+- ファイバ結合: `s.fiber_coupling(na_source, na_receiver=None, wave=None, source=(0, 0), receiver=(0, 0), grid=101, pol=False, clip_stop=True)` → `eta`・`system`・`receiver`・`phase_step`（格子の隣り合う点の位相の差の最大 [rad]、π/2 を超えたら警告を出すので grid を増やす）（pol=True ならコーティング込みの `jones` (2, 2)、入射偏光 e の結合は |jones @ e|²）。送り側は物点、受け側は像面の点の、遠視野 1/e² の NA のガウスモードで、受け側の方向空間で重なり積分をとる（有限物体のシステム）。システムの絞りの外を通る光は既定でシステムの損失 `system` に数える（`clip_stop=False` で無視）
 - システムファイル: `s.save("x.json")` で lensbench 独自の JSON（版 2）に、書いた値を欠けなく保存し（面・ガラスの名前・パラメータの変更・
   ピックアップ・ソルブ・玉と群・多重構成の表・dn と disp・`coatings=` のパス）、`lb.System.load("x.json")` で読み直す（追跡はビット一致）。
   ガラスは名前と、使ったカタログの名前・ファイルの hash だけを書き、読むときにカタログを探す（`glass_dirs=`・システムファイルのフォルダ・
@@ -69,7 +69,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   i 番目の組は (種, i) だけで決まる（スレッド数・再開・順序によらない）。相関はガウスのコピュラ（周辺分布はそのまま）。
   同じファイルに同じ計算（頭が同じ）なら終わった組を飛ばす。func の中の lensbench の追跡・解析は GIL を外すので並列に進む
   （Python の計算ばかりの func は並列にならない）。Rust からは `lensbench_runs`（`Sampler`・`Grid`・`run`）
-- pickle: `pickle.dumps(s)` でシステムをシステムファイルの JSON のバイト列にし、別プロセスで作り直せる（パラメータ変更・ピックアップ・ガラス・エイミング・視野の種類を含め、追跡はビット一致）。膜ファイルと `coatings=` の表とガラスのカタログは同じパスから読み直す（同じ計算機向け）
+- pickle: `pickle.dumps(s)` でシステムをシステムファイルの JSON のバイト列にし、別プロセスで作り直せる（パラメータ変更・ピックアップ・ガラス・エイミング・視野の種類を含め、追跡はビット一致）。コーティングファイルと `coatings=` の表とガラスのカタログは同じパスから読み直す（同じ計算機向け）
 - 多重構成をまとめて: `cs = lb.System.load_configs("x.zmx", configs=None)`（省くと全構成、ファイルは 1 回だけ読む）→
   `lb.trace_many(cs, None, px, py, object=物点)` で同じ物点・同じ瞳の格子で全構成を一度に追跡（絞りの径の切替 APMX・APER なども構成どおり）
 - 視野の種類: `s.field_type`、`s.set_field_type(kind, cond=None, fields=None)`（条件で定める視野はプロジェクトファイルの節を参照）

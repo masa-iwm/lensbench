@@ -11,7 +11,7 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 像面の傾き・回転は考えない。子午・球欠の向きは `--axes`: `field`（既定）は子午が視野の向き（物理の子午面）、`pupil` は子午が瞳の y・球欠が x
 （OpticStudio の FFT MTF と同じ）。違うのは x の成分のある視野だけで、そのような視野で OpticStudio と比べるときは `--axes pupil`
 （`mtf-focus`・`mtf-field`・`geo-mtf`・`huygens-mtf` も同じ）。
-`--polarization` で膜の透過とフレネル損失を瞳の振幅に入れる（偏光なしでシステムの膜を使う。OpticStudio の Use Polarization に当たる。
+`--polarization` でコーティングの透過とフレネル損失を瞳の振幅に入れる（偏光なしでシステムのコーティングを使う。OpticStudio の Use Polarization に当たる。
 `psf`・`huygens-mtf` も）。瞳のアポダイゼーションは常に入る。照合は `crates/lensbench-verify/src/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 本で 3e-4〜2e-3）。
 `--each-wave` で多色に加えて波長ごとの MTF（`waves`）も出す（波長ごとの計算を使い回すので別々に求めるより約 2 倍速い）。
 `--method fft` は瞳関数（直径 512〜4096 点の格子）の自己相関を FFT で全周波数まとめて求める: 時間が周波数の数によらないので、
@@ -24,8 +24,8 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 
 既存の MTF・スポット・波面との突き合わせは `tests/mtf_family.rs`、OpticStudio との照合は下の最後の項:
 
-- `mtf-focus`（Through Focus MTF 相当）: 像面を `--range` の ±範囲で `--points` 点ずらした回折 MTF。ずらしは像面の手前の面の厚さに
-  足す（厚さのソルブは解き直さない）。
+- `mtf-focus`（Through Focus MTF 相当）: 像面を `--range` の ±範囲で `--points` 点ずらした回折 MTF。ずらしは像面の手前の面の厚みに
+  足す（厚みのソルブは解き直さない）。
 - `mtf-field`（MTF vs Field 相当）: 正規化視野 0〜1 を `--points` 点（`--axis y`・`x`）。OpticStudio と同じくケラレ係数は使わない（`rms --vs field` も）。
 - `rms`（RMS vs Field・Focus・Wavelength 相当）: `--vs field|focus|wavelength`。量はスポット半径（`spot`・`spot_x`・`spot_y`）、
   波面収差 `wfe` [波]、ストレール比の近似 `strehl` = exp(−(2π wfe)²)。`--reference centroid`（スポットは重心、波面はピストンと傾きを除く）か

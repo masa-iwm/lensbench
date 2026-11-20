@@ -18,7 +18,7 @@
   - [カタログレンズの差し替え探索](swap.md)
   - [照合試験（verify）](verify.md)
 - [プロジェクトファイル](project-file.md)
-- [膜の実測表とモデル](coatings.md)
+- [コーティングの実測表とモデル](coatings.md)
 - [別アプリとの解析ループ（serve・watch）](serve.md)
 - [Python から使う](python-guide.md)
   - [Python API の約束](python.md)

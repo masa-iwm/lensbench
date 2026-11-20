@@ -7,7 +7,7 @@ A sequential ray-tracing tool for evaluating and optimizing systems built from s
 
 - Windows の GUI（インストール不要の単一 exe）、Linux・Windows の CLI、Python、ブラウザの Web 版
 - .zmx（面のまま、または玉ごと）と AGF のガラスカタログを読み、カタログのレンズをブロックで組む
-- スポット・波面・Zernike・MTF・PSF・簡易 POP・ゴースト・干渉縞・膜と偏光、最適化・モンテカルロ公差・ズーム・カタログレンズの差し替え探索
+- スポット・波面・Zernike・MTF・PSF・簡易 POP・ゴースト・干渉縞・コーティングと偏光、最適化・モンテカルロ公差・ズーム・カタログレンズの差し替え探索
 - 計算結果は OpticStudio の出力と数値で照合している（照合に使った基準データは `tests/` に置く）
 
 Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansys とは関係がなく、その製品の互換品ではありません。
@@ -23,9 +23,9 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `crates/lensbench-project` | ブロックで組むプロジェクトファイルと面への展開 |
 | `crates/lensbench-runs` | 一括実行（公差・モンテカルロ・掃引を並列に回し、JSONL に書いて途中から再開）、共通の乱数と検出器の雑音 |
 | `crates/lensbench-optim` | 減衰最小二乗の最適化（評価関数の項・ZPL マクロの項 ZPLM）とズーム軌跡 |
-| `crates/lensbench-design` | 評価関数の項・モンテカルロ公差・差し替え探索（設定と結果の JSON、公差の計算）、膜のモデルの当てはめと設計 |
+| `crates/lensbench-design` | 評価関数の項・モンテカルロ公差・差し替え探索（設定と結果の JSON、公差の計算）、コーティングのモデルの当てはめと設計 |
 | `crates/lensbench-export` | 書き出し（レイアウトの 2D・3D・STEP、追跡結果の CSV・JSON・npz） |
-| `crates/lensbench-cad` | メーカーの品の CAD データ（公式の STEP）の取得・置き場・形の測定、膜のモデルの取得 |
+| `crates/lensbench-cad` | メーカーの品の CAD データ（公式の STEP）の取得・置き場・形の測定、コーティングのモデルの取得 |
 | `crates/lensbench-analysis` | 実光線の解析（MTF・スポット・Zernike・波面・PSF・POP・焦点の掃引・ファイバ結合）と同梱のプラグイン: システムを追跡する解析（スポット・MTF・PSF など）、Huygens PSF・MTF・ゴーストの経路・単色の干渉縞・偏光の格子の計算 |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
 | `crates/lensbench-sdk` | 外のクレートから解析・プラグイン・面・形・材料を足して自分の exe・wheel を組むときに依存する 1 つのクレート（[ライブラリ](rust.md) の拡張の約束） |
@@ -41,7 +41,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `docs` | このドキュメント（mdBook の元）と JSON スキーマ（`docs/schema`） |
 | `scripts/check_public.py` | 公開できないファイル（メーカーのカタログなど）が入っていないかの検査。CI で全履歴に対して実行 |
 
-メーカーのレンズ・ガラス・膜のカタログはこのリポジトリに含めない。利用者が手元のファイルを指定して読む。
+メーカーのレンズ・ガラス・コーティングのカタログはこのリポジトリに含めない。利用者が手元のファイルを指定して読む。
 
 ## テスト用データ
 

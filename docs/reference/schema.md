@@ -41,7 +41,7 @@ serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_S
   `toroid`・`zernike_standard`・`zernike_fringe`・`grid_sag`・`tilted`・`irregular`・`cylinder`、種類ごとの値だけ。省くと平面）、
   働き `action`（省くと屈折。`reflect`・`paraxial`・`jones`・`binary2`・`fresnel`・`cylinder_fresnel`・`birefringent_in`・
   `birefringent_out`・`user` など）、`aperture`・`coating`・`stop`・`semi`（数か `"auto"`）・`before`・`after`（傾き・偏心、`"reverse"`）・
-  `ignore`・`comment`・厚さ `t`・媒質 `medium`・`dn`・`disp`。座標ブレークは `coordinate_break` の行。既定値の欄は省く。
+  `ignore`・`comment`・厚み `t`・媒質 `medium`・`dn`・`disp`。座標ブレークは `coordinate_break` の行。既定値の欄は省く。
 - 曲率は半径でなく曲率 `c` で書く（往復で値のビットが変わらない）。
 - 媒質は省略（空気。ミラー・座標ブレークは前の媒質）・ガラスの名前・モデルガラス `{"model": {"nd": …, "vd": …, "dpgf": …}}`
   （`vd` 0 は分散なし）・屈折率分布 `{"grin": …}`。ガラスの名前は「名前@カタログ」でもよく、そのカタログ（`catalogs` か

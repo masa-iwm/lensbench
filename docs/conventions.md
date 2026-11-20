@@ -7,7 +7,7 @@ CLI・serve・Python・GUI・プラグインで共通の約束。解析ごとの
 | もの | 始まり | 例 |
 | --- | --- | --- |
 | 視野・波長 | 1 | `--field 2`、`{"wave": 1}`、Python の `field=2` |
-| 面 | 0（物体面が 0。OpticStudio と同じ） | `3.t`（面 3 の厚さ）、`surface: 5` |
+| 面 | 0（物体面が 0。OpticStudio と同じ） | `3.t`（面 3 の厚み）、`surface: 5` |
 | 玉・構成（多重構成） | 1 | `lens: 2`、optimize の `vars[].configs: [1, 3]` |
 
 範囲の外の番号は「視野 9 はありません（1〜3）」の形のエラー（`data.kind = "invalid"`、Python は `lensbench.InvalidError`）。

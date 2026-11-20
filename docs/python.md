@@ -24,8 +24,8 @@
 
 ### 変更履歴
 
-- **2.3**: 多重構成の表の材料・膜の行を名前で書く `System.set_config_names(spec, names)`（spec は `N.material` か `N.coating`、
-  膜の名前の空は膜なし）と、構成ごとの名前を読む `System.config_names(spec)` を追加。`configs()` の材料・膜の行の値は名前の番号。
+- **2.3**: 多重構成の表の材料・コーティングの行を名前で書く `System.set_config_names(spec, names)`（spec は `N.material` か `N.coating`、
+  コーティングの名前の空はコーティングなし）と、構成ごとの名前を読む `System.config_names(spec)` を追加。`configs()` の材料・コーティングの行の値は名前の番号。
 - **2.2**: `huygens_psf`・`huygens_mtf` の既定の計算を速い近似（像のグリッドの区画ごとに位相と振幅を 2 次式で）にした。強度は前と
   1e-7 程度で合う。前と同じ厳密な和は、足した引数 `exact=True` で。
 - **2.1**: MTF の `mtf`・`mtf_focus`・`mtf_field`・`geo_mtf`・`huygens_mtf` に子午・球欠の向き `axes`（`"field"` が既定で子午が視野の向き、
@@ -48,7 +48,7 @@
 
 | 量 | 単位 |
 | --- | --- |
-| 長さ（位置・厚さ・半径・偏心・光路長 OPL・`opl`・`grad` の分子） | mm |
+| 長さ（位置・厚み・半径・偏心・光路長 OPL・`opl`・`grad` の分子） | mm |
 | 曲率 `c` | 1/mm |
 | 波長 | µm（名前に `_nm` が付く引数だけ nm） |
 | 角度（面の傾き tx・ty・tz、視野角、入射角、光線のエイミングの角度） | deg（OpticStudio と同じ） |
@@ -111,10 +111,10 @@ CLI では単数形の旗を繰り返します。
 `project.state_not_found`（無い状態の名前）・`project.block_not_found`（無いブロックの id）・`catalog.lens_not_found`（カタログに無い品）・
 `argument.invalid`（構成・状態・経路の指定のエラー）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）。符号の無いエラーの `code` は種類と同じ。システムの保存や編集などの一部のエラーは、まだ種類のない `lensbench.Error` になります（順に種類を付けていきます）。
 - 文は「種類: 内容」の形です（`不正:`・`未対応:`・`読込:`）。**面に関わるエラーには面の名札が付きます**:
-  `面 番号(種類, 材料, 膜 名前, 「コメント」)`（空の項は省く）。例:
+  `面 番号(種類, 材料, コーティング 名前, 「コメント」)`（空の項は省く）。例:
 
   ```text
-  未対応: 面 1(STANDARD, N-SK16, 膜 MYCOAT): 膜 MYCOAT（境界 MYCOAT|AIR|N-SK16）: 膜ファイルになく、実測表もモデルもない（暗号化された膜？）
+  未対応: 面 1(STANDARD, N-SK16, コーティング MYCOAT): コーティング MYCOAT（境界 MYCOAT|AIR|N-SK16）: コーティングファイルになく、実測表もモデルもありません（暗号化されたコーティング？）
   ```
 
 - 警告（分散式の範囲外、プロジェクトの読み替えなど）は Python の `warnings` で出ます。
@@ -152,7 +152,7 @@ r = s.analyze("mtf", field=1, max_freq=100)  # 結果は CLI の --json と同�
 | `trace_spot.py` | 視野ごとに瞳の格子を追い、RMS スポット半径を出す |
 | `grad_opl.py` | 光路長の微分 `trace(grad=...)` を差分と比べる |
 | `solve_ray.py` | 像面の指定点を主光線が通る物点を解く（`solve_ray`） |
-| `param_sweep.py` | 厚さを掃引して CSV に書く（`with_params`・`progress`・`run_settings`） |
+| `param_sweep.py` | 厚みを掃引して CSV に書く（`with_params`・`progress`・`run_settings`） |
 
 ```sh
 python examples/python/trace_spot.py
@@ -176,7 +176,7 @@ exe に Python は入っていません。外の Python を見つけてスクリ
   | 引数 | 環境変数 | 効き方 |
   | --- | --- | --- |
   | `--glass-dir` | `LENSBENCH_GLASSCAT`（前に足す） | `System.load` などがガラスを探す |
-  | `--coatings` | `LENSBENCH_COATINGS` | `coatings=` を省いたときの膜の実測表・モデル |
+  | `--coatings` | `LENSBENCH_COATINGS` | `coatings=` を省いたときのコーティングの実測表・モデル |
   | `--threads` | `LENSBENCH_THREADS`・`RAYON_NUM_THREADS` | `threads=` を省いた計算のスレッド数 |
   | `--out` | `LENSBENCH_OUT` | 出力先（無ければ作る）。スクリプトが `run_settings()["out"]` で使う |
   | `--log` | `LENSBENCH_LOG` | ログのファイル |

@@ -86,7 +86,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。core の面の serde の形、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |
 | `system_data` | （下の節） | （下の節） |
 | `config_table` | | 多重構成の表: 構成の数 `n`・今の構成 `active`・行 `rows`（`param`・構成ごとの `values`・材料の行の材料の名前 `names`（values はその番号）・構成のピックアップ `picks`（`k`・`from`・`scale`・`offset`））。.zmx なら、ファイルの多重構成の数 `zmx_cfgs` と読んだ構成 `zmx_cfg` |
-| `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。システムは変えない |
+| `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚み・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。システムは変えない |
 | `analyze` | （下の節） | （下の節） |
 | `analysis_args` | `cmd` | 解析のサブコマンドの引数の一覧（GUI の設定欄）: `args`（`name`・`type`・`default`・`unit`・`doc`、選択肢は `choices`、旗を繰り返すものは `repeat`）。`type` は `num`・`count`（0 以上の整数）・`int`・`flag`・`str`・`choice`・`nums`（数のカンマ区切り、JSON では並び）・`path`。システムの読み方の引数は除く |
 | `plugins` | | 登録された解析・検出器のプラグインの一覧: `plugins`（`name`・`kind`・`doc`・`needs_system`・`config`・`params`・`inputs`・`outputs`）。`params` は設定の項目の型・既定（`analysis_args` の `args` と同じ形、個数の決まった並びは `len`）。CLI の `plugins --json` と同じ |
@@ -95,7 +95,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `catalog_edit` | `catalog`、`name`、`rename`・`description`・`delete: true`・`vendor`（どれか） | 項目の名前の変更・説明の変更・削除。結果は `catalog_items` と同じ |
 | `catalog_fill` | （下の節） | （下の節） |
 | `cad_step` | （下の節） | （下の節） |
-| `plugin` | `name`、`config`（数・文字列・数の並び）、`inputs`（JSON の数の並び、入れ子で多次元）か bin | プラグインを 1 回呼ぶ。システムの要るもの（spot・mtf など）には読み込んだシステム（`set`・`edit` の後）と膜を渡す。出力は bin（`<f8`・`<c16`・`|b1`、形つき）、数 1 つの出力は `values` にも入れる |
+| `plugin` | `name`、`config`（数・文字列・数の並び）、`inputs`（JSON の数の並び、入れ子で多次元）か bin | プラグインを 1 回呼ぶ。システムの要るもの（spot・mtf など）には読み込んだシステム（`set`・`edit` の後）とコーティングを渡す。出力は bin（`<f8`・`<c16`・`|b1`、形つき）、数 1 つの出力は `values` にも入れる |
 | `trace` | `px`・`py`（bin か JSON の並び）、`field`（1 始まり）か `hx`・`hy`、`wave`、`last`、`global` | `rays`・`ok`・`hx`・`hy`・`wave`・`last`、bin に `x y z l m n opl`（<f8）・`err vig`（<i4） |
 | `layout` | （下の節） | （下の節） |
 | `layout_export` | （下の節） | （下の節） |
@@ -166,7 +166,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 #### `analyze`
 
 - params: `cmd` と CLI と同じ引数
-- result: CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings`
+- result: CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）のコーティングの境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings`
 
 #### `catalog_add`
 
@@ -216,7 +216,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 #### `lenses`
 
 - params: `lens_catalogs`（.zmx のファイル・フォルダの並び）、`glass_dirs`
-- result: `lenses`（`vendor`・`part`・`efl`・`diameter`・`thickness`・`elements`・`pieces`（ガラスの枚数、貼り合わせは 2 枚以上）・`surfaces`・`glasses`・`mirror`・`curv`（最初の玉の前・後ろの面の曲率 [1/mm]）、読めなければ `error`）。efl はカタログの値、無ければ主波長の近軸の値。玉の無いミラーは `mirror: true` とミラーの面の `radius`・`conic`（efl は −radius/2）。`kind` は `lens`・`mirror`・`splitter`。フォルダの中の lensbench 形式のカタログ（ユーザーカタログの .json）の項目も並べ、`source`（`catalog` の絶対パス・`item`）、`description`、ミラー・BS の膜の `coat`、BS の中身の `splitter`（`form`・`size`・`glass`・`ratio`・`ar` など。経路・向きは除く）を付ける。`category`（品の種類: lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other）、.json の品の `url`・`specs`・`tags`・`spec_source`・`checked`、同じメーカーの .json の `overlay`・`url_template` で足した値も付ける。面の並びだけの品は `kind: "surfaces"`（`jones` は Jones 面があるか）。未完の品（`missing` のある項目）は `kind: "incomplete"`・`incomplete: true`・`missing`（分かっている `diameter`・`thickness` は仕様から）で、同じメーカー・型番の普通の品があれば並べない
+- result: `lenses`（`vendor`・`part`・`efl`・`diameter`・`thickness`・`elements`・`pieces`（ガラスの枚数、貼り合わせは 2 枚以上）・`surfaces`・`glasses`・`mirror`・`curv`（最初の玉の前・後ろの面の曲率 [1/mm]）、読めなければ `error`）。efl はカタログの値、無ければ主波長の近軸の値。玉の無いミラーは `mirror: true` とミラーの面の `radius`・`conic`（efl は −radius/2）。`kind` は `lens`・`mirror`・`splitter`。フォルダの中の lensbench 形式のカタログ（ユーザーカタログの .json）の項目も並べ、`source`（`catalog` の絶対パス・`item`）、`description`、ミラー・BS のコーティングの `coat`、BS の中身の `splitter`（`form`・`size`・`glass`・`ratio`・`ar` など。経路・向きは除く）を付ける。`category`（品の種類: lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other）、.json の品の `url`・`specs`・`tags`・`spec_source`・`checked`、同じメーカーの .json の `overlay`・`url_template` で足した値も付ける。面の並びだけの品は `kind: "surfaces"`（`jones` は Jones 面があるか）。未完の品（`missing` のある項目）は `kind: "incomplete"`・`incomplete: true`・`missing`（分かっている `diameter`・`thickness` は仕様から）で、同じメーカー・型番の普通の品があれば並べない
 
 ### edit の操作
 
@@ -235,8 +235,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `set_config_count` | n |
 | `set_config_row` | param・values |
 | `set_config_materials` | param（`N.material`）・names（構成ごとの材料の名前） |
-| `set_config_coatings` | param（`N.coating`）・names（構成ごとの膜の名前、空は膜なし） |
-| `add_config_row` | param（どの構成も今の値。材料・膜の行は今の名前）、 `remove_config_row` param |
+| `set_config_coatings` | param（`N.coating`）・names（構成ごとのコーティングの名前、空はコーティングなし） |
+| `add_config_row` | param（どの構成も今の値。材料・コーティングの行は今の名前）、 `remove_config_row` param |
 | `insert_config` | at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups） |
 | `remove_config` | k（構成が 1 つになると表を消す） |
 | `set_config_pickup` | param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる） |
@@ -258,7 +258,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 - 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か状態の名前）で選ぶ。
   光束ごとにシステムのファイルをその構成・状態で読み、読み込んだ後の変更（`set`・`edit`）を順に当てる
 - `set` のパラメータで、その光束のファイルの値が読み込んだシステムの変える前の値と違うもの（多重構成の表で構成ごとに値が違うもの）は当てず、
-  結果の `notes` に書く。例: 構成 1 を読み込み、試料の腕だけの厚さを `set` すると、参照（構成 2）の厚さは変えない
+  結果の `notes` に書く。例: 構成 1 を読み込み、試料の腕だけの厚みを `set` すると、参照（構成 2）の厚みは変えない
 - プロジェクトの別の状態・BS の経路の系では、変更の面を番号でなく、どのブロックの何番目の面かで探す（状態で前の玉を外して
   面の番号がずれても、変えた玉の面に当たる）。その状態に無い面（外した玉の面、状態で面の数が変わったブロックの面など）への変更は当てず、結果の `notes` に書く。
   面を入れる・消す `edit` も同じ面の前・その面に当てる（当てられなければ、後の面の変更は当てない）

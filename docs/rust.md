@@ -63,7 +63,7 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 
 - `lensbench_core::plugin`: 検出器・解析のプラグインの約束。`Plugin`（名前・種類・`prepare(&Config)`）と
   `Instance`（`run(&Context, &Arrays) -> Arrays`）を実装し、`Registry` に名前で登録する。`run` は状態を持たず、
-  同じ `Instance` を複数スレッドから呼んでよい（`run_many`）。システムを追跡するものは `Context` でシステムと膜を受け取る。
+  同じ `Instance` を複数スレッドから呼んでよい（`run_many`）。システムを追跡するものは `Context` でシステムとコーティングを受け取る。
   多くの方向の微分を流す解析は、任意の `linearize`（`run` と同じ出力と、入力の微分 1 方向から出力の微分を作る `Linear`）を
   実装すると、呼ぶ側は解析を 1 回で済ませられる（既定は None）。
   同梱のプラグインはワークスペース内の crate（`lensbench-analysis`）で、CLI・Python に組み込む（`lensbench plugins`）
@@ -76,7 +76,7 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   `sin`（f sin θ）・`equisolid`（2f sin(θ/2)）・`stereographic`（2f tan(θ/2)）・`poly`（h = f(θ + c₁θ³ + c₂θ⁵ + …)、`coef`）・
   `table`（`theta_deg`・`height` の表を PCHIP で補間））。同じ方向の光線は焦点面の (h(θ), f) に無収差で集まる（物体は無限遠を想定）
 - `lensbench_core::usershape`（SDK では `lensbench_sdk::shape`）: 利用者が定義する形の口。面の形は土台の二次曲面
-  （`c`・`k`）にモデルの矢高を足したもので、働きはふつうの屈折・反射（材料・膜・偏光・dOPL/dp・着地点の微分・
+  （`c`・`k`）にモデルの矢高を足したもので、働きはふつうの屈折・反射（材料・コーティング・偏光・dOPL/dp・着地点の微分・
   玉の反転はほかの面と同じに効く）。`ShapeModel`（名前・`prepare(&Config)`）の `ShapeInstance::sag(x, y)`
   （土台に足す矢高と勾配 (z, ∂z/∂x, ∂z/∂y)）を実装し、変数にしたい設定の項目は `dsag(項目, x, y)` も返す。
   `Extensions::shape_model` か拡張の表の `add_shape_model` で足す。面は種類 `USERSHAPE` で、書き方は 2 通り:
