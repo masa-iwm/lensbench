@@ -19,10 +19,11 @@ use crate::theme;
 mod picks;
 mod sheet_view;
 pub(crate) use picks::{
-    drop_unused_groups, from_json as picks_from_json, to_json as picks_json, zgroup_removed,
+    drop_unused_groups, from_json as picks_from_json, order_from_json, order_json, remap_rank,
+    to_json as picks_json, zgroup_removed,
 };
 #[cfg(test)]
-use picks::{remap_index_order, remap_index_picks};
+use picks::{remap_index_picks, remap_index_rank};
 
 /// 表の表示の設定
 #[derive(Debug, Clone, Default)]
@@ -1291,7 +1292,7 @@ pub(crate) fn ui(
                 // 並べた順は組合せに持つ（保存し、元に戻すの対象）
                 if a + 1 < rows.len() {
                     rows.swap(a, a + 1);
-                    c.mc_order = picks::order_keys(c, &rows);
+                    picks::set_order(c, &rows);
                     changed = true;
                 }
             }

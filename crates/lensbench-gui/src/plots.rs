@@ -315,6 +315,7 @@ pub(crate) fn spot(
     let namer = field_namer(ui);
     let body = egui::TextStyle::Body.resolve(ui.style());
     let mono = egui::TextStyle::Monospace.resolve(ui.style());
+    let smallf = egui::TextStyle::Small.resolve(ui.style());
     let label_w = ui.fonts(|fo| {
         let w = |t: String, f: &egui::FontId| {
             fo.layout_no_wrap(t, f.clone(), egui::Color32::WHITE)
@@ -325,7 +326,14 @@ pub(crate) fn spot(
             .iter()
             .map(|&f| {
                 let rms = result.and_then(|r| spot_rms(r, f)).map_or(0.0, |r| {
-                    sp.item_spacing.x + w(format!("RMS {} µm", fmt_sig(r * 1e3, 3)), &mono)
+                    // 前との差の表示も同じ行に並ぶ
+                    let d = delta_text(
+                        &vis,
+                        r * 1e3,
+                        prev.and_then(|p| spot_rms(p, f)).map(|x| x * 1e3),
+                    )
+                    .map_or(0.0, |(t, _)| sp.item_spacing.x + w(t, &smallf));
+                    sp.item_spacing.x + w(format!("RMS {} µm", fmt_sig(r * 1e3, 3)), &mono) + d
                 });
                 w(namer(f), &body) + rms
             })

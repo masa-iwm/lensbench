@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::combo::McPick;
+use std::collections::BTreeMap;
 
 fn sys_key(q: SysQ) -> String {
     match q {
@@ -244,77 +245,118 @@ pub(super) fn remap_index_picks(
     });
 }
 
-/// 組合せの行で番号で指す行（`shift:g`）の並びの鍵を map で付け替える（消えた番号は並びから外す）
-pub(super) fn remap_index_order(c: &mut Combo, head: &str, map: &dyn Fn(usize) -> Option<usize>) {
-    c.mc_order.retain_mut(|(loc, key)| {
-        if loc.is_some() {
-            return true;
-        }
-        let Some(i) = key
-            .strip_prefix(head)
-            .and_then(|k| k.strip_prefix(':'))
-            .and_then(|k| k.parse::<usize>().ok())
-        else {
-            return true;
-        };
-        match map(i) {
-            None => false,
-            Some(j) => {
-                *key = format!("{head}:{j}");
-                true
-            }
-        }
+/// 番号で指す行の名前 `head:i` の i
+fn index_of(k: &str, head: &str) -> Option<usize> {
+    k.strip_prefix(head)?.strip_prefix(':')?.parse().ok()
+}
+
+/// 行の順位の鍵（行の名前）を f で付け替える（f が None なら変えない、Some(None) なら外す）
+pub(crate) fn remap_rank(
+    m: &mut BTreeMap<String, u32>,
+    f: &dyn Fn(&str) -> Option<Option<String>>,
+) {
+    *m = std::mem::take(m)
+        .into_iter()
+        .filter_map(|(k, r)| match f(&k) {
+            None => Some((k, r)),
+            Some(n) => n.map(|n| (n, r)),
+        })
+        .collect();
+}
+
+/// 番号で指す行（`head:i`）の順位の鍵を map で付け替える（消えた番号は外す）
+pub(super) fn remap_index_rank(
+    m: &mut BTreeMap<String, u32>,
+    head: &str,
+    map: &dyn Fn(usize) -> Option<usize>,
+) {
+    remap_rank(m, &|k| {
+        index_of(k, head).map(|i| map(i).map(|j| format!("{head}:{j}")))
     });
 }
 
-/// 行の並びの鍵（要素の id（組合せの行は None）と、持ち主の中での行の名前）
-pub(super) fn order_keys(c: &Combo, rows: &[Item]) -> Vec<(Option<String>, String)> {
-    let ids: HashMap<Loc, String> = c.ids_all().into_iter().collect();
-    rows.iter()
-        .map(|it| {
-            let (loc, key) = key_of(it);
-            (loc.and_then(|l| ids.get(&l).cloned()), key)
-        })
-        .collect()
-}
-
-/// 行を並べ替えた順（[`Combo::mc_order`]）に並べる（順に無い行は元の順で後ろ）
-pub(super) fn sort_rows(c: &Combo, rows: &mut Vec<Item>) {
-    if c.mc_order.is_empty() {
-        return;
+fn rank_map<'a>(c: &'a Combo, loc: &Option<Loc>) -> Option<&'a BTreeMap<String, u32>> {
+    match loc {
+        None => Some(&c.mc_rank),
+        Some(l) => c.get(l).map(|p| &p.mc_rank),
     }
-    let keys = order_keys(c, rows);
-    let pos =
-        |k: &(Option<String>, String)| c.mc_order.iter().position(|x| x == k).unwrap_or(usize::MAX);
-    let mut v: Vec<(usize, Item)> = rows
-        .drain(..)
-        .zip(keys.iter())
-        .map(|(it, k)| (pos(k), it))
-        .collect();
-    v.sort_by_key(|x| x.0);
-    rows.extend(v.into_iter().map(|x| x.1));
 }
 
-/// コメント行 k を消したとき、後ろのコメント行の並びの番号を詰める
-pub(super) fn shift_comment_order(c: &mut Combo, k: usize) {
-    c.mc_order.retain_mut(|(loc, key)| {
-        let Some(j) = loc
-            .is_none()
-            .then(|| {
-                key.strip_prefix("comment:")
-                    .and_then(|j| j.parse::<usize>().ok())
-            })
-            .flatten()
-        else {
-            return true;
+/// 表の今の並び rows を行の順位にする（前の順位は全部捨てる）
+pub(super) fn set_order(c: &mut Combo, rows: &[Item]) {
+    c.mc_rank.clear();
+    for l in c.all() {
+        if let Some(p) = c.get_mut(&l) {
+            p.mc_rank.clear();
+        }
+    }
+    for (r, it) in rows.iter().enumerate() {
+        let (loc, key) = key_of(it);
+        let m = match &loc {
+            None => Some(&mut c.mc_rank),
+            Some(l) => c.get_mut(l).map(|p| &mut p.mc_rank),
         };
-        if j == k {
-            return false;
+        if let Some(m) = m {
+            m.insert(key, r as u32);
         }
-        if j > k {
-            *key = format!("comment:{}", j - 1);
+    }
+}
+
+/// 行を順位の順に並べる（順位の無い行は元の順で後ろ）
+pub(super) fn sort_rows(c: &Combo, rows: &mut [Item]) {
+    let rank = |it: &Item| {
+        let (loc, key) = key_of(it);
+        rank_map(c, &loc)
+            .and_then(|m| m.get(&key))
+            .copied()
+            .unwrap_or(u32::MAX)
+    };
+    rows.sort_by_cached_key(rank);
+}
+
+/// 保存の形: 順位の順に（要素の id（組合せの行は None）, 行の名前）
+pub(crate) fn order_json(c: &Combo) -> Vec<(Option<String>, String)> {
+    let mut v: Vec<(u32, Option<String>, String)> = c
+        .mc_rank
+        .iter()
+        .map(|(k, r)| (*r, None, k.clone()))
+        .collect();
+    for (l, id) in c.ids_all() {
+        if let Some(p) = c.get(&l) {
+            v.extend(
+                p.mc_rank
+                    .iter()
+                    .map(|(k, r)| (*r, Some(id.clone()), k.clone())),
+            );
         }
-        true
+    }
+    v.sort();
+    v.into_iter().map(|(_, id, k)| (id, k)).collect()
+}
+
+/// [`order_json`] の形から順位を戻す（無い要素の行は捨てる）
+pub(crate) fn order_from_json(c: &mut Combo, v: &[(Option<String>, String)]) {
+    let ids: HashMap<String, Loc> = c.ids_all().into_iter().map(|(l, id)| (id, l)).collect();
+    for (r, (id, key)) in v.iter().enumerate() {
+        let m = match id {
+            None => Some(&mut c.mc_rank),
+            Some(id) => ids
+                .get(id)
+                .and_then(|l| c.get_mut(l))
+                .map(|p| &mut p.mc_rank),
+        };
+        if let Some(m) = m {
+            m.insert(key.clone(), r as u32);
+        }
+    }
+}
+
+/// コメント行 k を消したとき、後ろのコメント行の順位の番号を詰める
+pub(super) fn shift_comment_order(c: &mut Combo, k: usize) {
+    remap_index_rank(&mut c.mc_rank, "comment", &|j| match j.cmp(&k) {
+        std::cmp::Ordering::Less => Some(j),
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Greater => Some(j - 1),
     });
 }
 
@@ -462,6 +504,7 @@ pub(crate) fn zgroup_removed(p: &mut crate::combo::Pick, i: usize) {
         std::cmp::Ordering::Greater => Some(j - 1),
     };
     remap_index_picks(&mut p.mc_picks, "zshift", &map);
+    remap_index_rank(&mut p.mc_rank, "zshift", &map);
 }
 
 /// 使わなくなった既定のままの群（名前を打つ途中の群など）を消し、群の移動の行（群を番号で指す）を今の番号へ付け替える
@@ -480,7 +523,7 @@ pub(crate) fn drop_unused_groups(combo: &mut Combo, names: &[String]) {
             .and_then(|n| after.iter().position(|x| x == n))
     };
     remap_index_picks(&mut combo.mc_picks, "shift", &map);
-    remap_index_order(combo, "shift", &map);
+    remap_index_rank(&mut combo.mc_rank, "shift", &map);
     for l in combo.all() {
         if let Some(p) = combo.get_mut(&l) {
             remap_index_picks(&mut p.mc_picks, "shift", &map);

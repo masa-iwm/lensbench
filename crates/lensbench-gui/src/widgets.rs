@@ -187,7 +187,7 @@ pub(crate) fn pan_zoom_pans(ui: &Ui, resp: &Response, left_pans: bool) -> bool {
 }
 
 /// 囲んだ所 b を図の場所 rect いっぱいに広げる操作（b の中心を rect の中心へ動かし、rect の中心で拡大）
-fn zoom_to_box(rect: egui::Rect, b: egui::Rect) -> Option<PanZoom> {
+pub(crate) fn zoom_to_box(rect: egui::Rect, b: egui::Rect) -> Option<PanZoom> {
     if b.width() < 4.0 || b.height() < 4.0 {
         return None;
     }

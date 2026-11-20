@@ -117,6 +117,18 @@ fn picks_copy(v: &mut Vec<McPick>, from: &str, to: &str) {
 }
 
 impl Pick {
+    /// 状態 st での ON/OFF
+    pub(crate) fn on_in(&self, st: Option<&str>) -> bool {
+        st.and_then(|n| self.state_on.get(n).copied())
+            .unwrap_or(self.on)
+    }
+
+    /// 状態 st での後の空気
+    pub(crate) fn air_in(&self, st: Option<&str>) -> f64 {
+        st.and_then(|n| self.state_air.get(n).copied())
+            .unwrap_or(self.air)
+    }
+
     /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
     /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
     pub(crate) fn drop_stale_edits(&mut self) -> usize {
@@ -158,11 +170,20 @@ impl Pick {
     /// 面の番号を map で付け替える（ピックアップの面の行）
     pub(crate) fn shift_face_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
         self.mc_picks.retain_mut(|m| m.map_face_surf(map));
+        self.shift_rank_surf(map, false);
+    }
+
+    /// 多重構成の表の行の順位の、面（cb なら座標ブレーク）の行の番号を map で付け替える
+    fn shift_rank_surf(&mut self, map: &dyn Fn(usize) -> Option<usize>, cb: bool) {
+        crate::state_table::remap_rank(&mut self.mc_rank, &|k| {
+            key_surf_of(k, cb).map(|i| map(i).map(|j| key_with_surf(k, j)))
+        });
     }
 
     /// 座標ブレークの行のピックアップの座標ブレークの番号を map で付け替える
     pub(crate) fn shift_cb_picks(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
         self.mc_picks.retain_mut(|m| m.map_key_surf(map, true));
+        self.shift_rank_surf(map, true);
     }
 
     /// 状態 n で変えた値があるか

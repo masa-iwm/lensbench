@@ -372,6 +372,9 @@ pub(crate) struct Pick {
     /// 多重構成のピックアップ（この要素の行。[`McPick`]）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mc_picks: Vec<McPick>,
+    /// 多重構成の表で並べ替えた行の順位（この要素の行の名前 → 順位。組合せの行は [`Combo::mc_rank`]）
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mc_rank: BTreeMap<String, u32>,
     /// BS: 口 B・C・D の先の並びを持つ（並びの最後に置く）
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
@@ -431,6 +434,7 @@ impl Default for Pick {
             state_edits: BTreeMap::new(),
             state_stop: BTreeMap::new(),
             mc_picks: Vec::new(),
+            mc_rank: BTreeMap::new(),
             group: String::new(),
             edits_for: String::new(),
             id: String::new(),
@@ -812,18 +816,6 @@ impl Pick {
         ]
     }
 
-    /// 状態 st での ON/OFF
-    pub(crate) fn on_in(&self, st: Option<&str>) -> bool {
-        st.and_then(|n| self.state_on.get(n).copied())
-            .unwrap_or(self.on)
-    }
-
-    /// 状態 st での後の空気
-    pub(crate) fn air_in(&self, st: Option<&str>) -> f64 {
-        st.and_then(|n| self.state_air.get(n).copied())
-            .unwrap_or(self.air)
-    }
-
     /// 状態ごとに偏心・傾きを変えられる要素か（置き方を持つ要素と鏡）
     pub(crate) fn has_state_place(&self) -> bool {
         place_fields(self.kind) || self.kind == ElemKind::Mirror
@@ -934,9 +926,9 @@ pub(crate) struct Combo {
     /// 多重構成の表のコメント行（OpticStudio の MCOM。プロジェクトの `gui.view.mc_comments` に保存）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mc_comments: Vec<McComment>,
-    /// 多重構成の表で並べ替えた行の順（要素の id（組合せの行は None）と行の名前。`gui.view.mc_order` に保存）
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mc_order: Vec<(Option<String>, String)>,
+    /// 多重構成の表で並べ替えた組合せの行の順位（要素の行は [`Pick::mc_rank`]。`gui.view.mc_order` に保存）
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mc_rank: BTreeMap<String, u32>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
@@ -999,7 +991,7 @@ impl Default for Combo {
             state_more: BTreeMap::new(),
             mc_picks: Vec::new(),
             mc_comments: Vec::new(),
-            mc_order: Vec::new(),
+            mc_rank: BTreeMap::new(),
             coatings: BTreeMap::new(),
             coating_file: None,
             macros: Vec::new(),

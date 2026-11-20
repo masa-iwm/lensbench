@@ -592,7 +592,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
 
 pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let Some(n) = c.active_state().map(str::to_string) else {
-        body(ui, c, cats);
+        base_body(ui, c, cats);
         return;
     };
     let weak = theme::weak_text(ui.visuals());
@@ -616,7 +616,7 @@ pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                 .color(weak),
         );
         ui.add_space(4.0);
-        body(ui, c, cats);
+        base_body(ui, c, cats);
         return;
     };
     // 状態の値を当てた写しで編集し、状態の値と、ほかの（共通の）項目の変更を戻す
@@ -629,6 +629,15 @@ pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     t.set_state_snap(&n, &edited);
     if t != *c {
         *c = t;
+    }
+}
+
+/// 基本の値の欄。視野・波長を足す・消す・入れ替えたら、状態で変えた点を同じ点に付いていかせる
+fn base_body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
+    let before = (!c.state_sys.is_empty()).then(|| c.snap());
+    body(ui, c, cats);
+    if let Some(b) = before {
+        c.base_lists_changed(&b);
     }
 }
 

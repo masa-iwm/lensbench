@@ -40,8 +40,9 @@ pub(super) fn project_file(c: &Combo) -> Value {
     if !c.mc_comments.is_empty() {
         view.insert("mc_comments".into(), json!(c.mc_comments));
     }
-    if !c.mc_order.is_empty() {
-        view.insert("mc_order".into(), json!(c.mc_order));
+    let order = crate::state_table::order_json(c);
+    if !order.is_empty() {
+        view.insert("mc_order".into(), json!(order));
     }
     if !view.is_empty() {
         v["gui"] = json!({ "view": view });
@@ -64,7 +65,9 @@ pub(super) fn apply_view(c: &mut Combo, gui: Option<&Value>) {
         c.mc_comments = serde_json::from_value(v.clone()).unwrap_or_default();
     }
     if let Some(v) = view.get("mc_order") {
-        c.mc_order = serde_json::from_value(v.clone()).unwrap_or_default();
+        let v: Vec<(Option<String>, String)> =
+            serde_json::from_value(v.clone()).unwrap_or_default();
+        crate::state_table::order_from_json(c, &v);
     }
     for (loc, id) in c.ids_all() {
         let (l, pl) = (has("locked", &id), has("lock_place", &id));
@@ -102,7 +105,8 @@ mod tests {
         c.picks = vec![a, b];
         c.states = vec!["near".into()];
         c.state = Some("near".into());
-        c.mc_order = vec![(None, "comment:0".into()), (None, "stop".into())];
+        c.mc_rank = [("stop".to_string(), 0), ("comment:0".to_string(), 1)].into();
+        c.picks[1].mc_rank = [("air".to_string(), 2)].into();
         let v = project_file(&c);
         assert!(v.pointer("/gui/combo").is_none());
         // GUI が書くプロジェクトファイルにも形式の印と版が付く
@@ -126,7 +130,8 @@ mod tests {
         );
         assert_eq!(d.state.as_deref(), Some("near"));
         // 多重構成の表で入れ替えた行の並びも戻る
-        assert_eq!(d.mc_order, c.mc_order);
+        assert_eq!(d.mc_rank, c.mc_rank);
+        assert_eq!(d.picks[1].mc_rank, c.picks[1].mc_rank);
     }
 
     /// 要素の種類ごとに、保存の形に書いて開き直すと元の組合せに戻る（id は付く）

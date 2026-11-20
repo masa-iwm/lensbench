@@ -19,9 +19,14 @@ fn panning(ui: &Ui, resp: &egui::Response) -> bool {
 /// 2D の図の拡大縮小・移動・全体表示。操作はほかの図と同じ [`crate::widgets::pan_zoom`]:
 /// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、右上の
 /// ＋・－・囲んで拡大（Ctrl＋左ドラッグでも）、Home キー・何も無い所のダブルクリック（[`interact`]）・「全体」で
-/// 全体表示。fit_center は全体表示のときの図の中心（画面）
-fn navigate(ui: &mut Ui, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
-    let pz = crate::widgets::pan_zoom(ui, resp, false);
+/// 全体表示。inner は図を描く所（画面。全体表示のときの中心はその中心）
+fn navigate(ui: &mut Ui, inner: Rect, resp: &egui::Response, view: &mut View) {
+    let fit_center = inner.center();
+    let mut pz = crate::widgets::pan_zoom(ui, resp, false);
+    // 囲んで拡大は、余白を除いた描く所いっぱいに広げる（図の場所全体で決めると囲んだ所の端が切れる）
+    if let Some(z) = pz.area.and_then(|b| crate::widgets::zoom_to_box(inner, b)) {
+        pz = z;
+    }
     view.pan += pz.pan;
     if let Some(c) = pz.at {
         view.zoom_about(fit_center, c, pz.zoom);
@@ -167,7 +172,7 @@ fn xform(
     let h = (hi[1] - lo[1]).max(1e-6);
     let fit = (inner.width() as f64 / w).min(inner.height() as f64 / h);
     if view.nav {
-        navigate(ui, inner.center(), resp, view);
+        navigate(ui, inner, resp, view);
     }
     let xf = Xform {
         center: inner.center() + view.pan,

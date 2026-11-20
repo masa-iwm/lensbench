@@ -704,5 +704,20 @@ fn recorded_operations_replay_to_the_same_combination() {
     assert!(app.c.status.text.contains('1'), "{}", app.c.status.text);
     assert_eq!(app.c.doc.combo, end);
     assert_eq!(app.c.doc.combo.state, state);
+    // 何も変えない書き換え（当たっていない）でも止まる
+    let mut moved = end.clone();
+    moved.picks[0].air += 1.0;
+    let e = edit::Edit::between(&end, &moved).expect("changed");
+    let mut noop = record::Record::new(&moved);
+    noop.ops = vec![
+        record::Rec::Edit { ops: e.ops },
+        record::Rec::CycleConfig { back: false },
+    ];
+    h.state_mut().c.replay(noop);
+    h.state_mut().dispatch_queued(&ctx);
+    let app = h.state();
+    assert!(app.c.status.error, "{}", app.c.status.text);
+    assert_eq!(app.c.doc.combo, moved);
+    assert_eq!(app.c.doc.combo.state, state);
     settle(&mut h);
 }

@@ -744,11 +744,12 @@ fn remap_group_rows() {
         pk("shift:2", "shift:1"),
         pk("shift:1", "stop"),
     ];
-    c.mc_order = vec![
-        (None, "shift:2".into()),
-        (None, "shift:1".into()),
-        (None, "stop".into()),
-    ];
+    c.mc_rank = [
+        ("shift:2".to_string(), 0),
+        ("shift:1".to_string(), 1),
+        ("stop".to_string(), 2),
+    ]
+    .into();
     // 群 1 を消した（0→0、1→なし、2→1）
     let map = |i: usize| match i {
         0 => Some(0),
@@ -756,7 +757,7 @@ fn remap_group_rows() {
         n => Some(n - 1),
     };
     remap_index_picks(&mut c.mc_picks, "shift", &map);
-    remap_index_order(&mut c, "shift", &map);
+    remap_index_rank(&mut c.mc_rank, "shift", &map);
     let got: Vec<(&str, &str)> = c
         .mc_picks
         .iter()
@@ -764,8 +765,8 @@ fn remap_group_rows() {
         .collect();
     assert_eq!(got, [("shift:0", "shift:1")]);
     assert_eq!(
-        c.mc_order,
-        [(None, "shift:1".to_string()), (None, "stop".to_string())]
+        c.mc_rank,
+        [("shift:1".to_string(), 0), ("stop".to_string(), 2)].into()
     );
 }
 
@@ -788,7 +789,7 @@ fn row_order_is_kept_in_combo() {
         Item::Comment(k).set(&mut c, None, Val::Text(t.into()), &cx);
     }
     let rows: Vec<Item> = vec![Item::Comment(2), Item::Comment(0), Item::Comment(1)];
-    c.mc_order = picks::order_keys(&c, &rows);
+    picks::set_order(&mut c, &rows);
     let mut r: Vec<Item> = (0..3).map(Item::Comment).collect();
     picks::sort_rows(&c, &mut r);
     assert_eq!(r, rows);
@@ -866,4 +867,30 @@ fn infinite_only_for_radius() {
     for f in ["t", "k", "semi"] {
         assert!(sheet_view::check(&face(f), &inf, f).is_err(), "{f}");
     }
+}
+
+/// 要素の行の順位は要素が持ち、面を足す・消すと面の番号に付いていく
+#[test]
+fn row_rank_follows_face_numbers() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        picks: vec![Pick::new(ElemKind::Lens)],
+        ..Default::default()
+    };
+    let face = |surf: usize| {
+        Item::Face(Face {
+            loc: vec![0],
+            surf,
+            field: "r".into(),
+            idx: None,
+        })
+    };
+    picks::set_order(&mut c, &[face(1), Item::Stop, face(0)]);
+    c.picks[0].shift_faces(&|i| Some(i + 1));
+    let mut r = vec![Item::Stop, face(1), face(2)];
+    picks::sort_rows(&c, &mut r);
+    assert_eq!(r, [face(2), Item::Stop, face(1)]);
+    // 消した面の行の順位は外れる
+    c.picks[0].shift_faces(&|i| (i != 2).then_some(i));
+    assert_eq!(c.picks[0].mc_rank.len(), 1);
 }

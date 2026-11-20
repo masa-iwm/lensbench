@@ -464,7 +464,13 @@ impl App {
                     return;
                 }
                 let fails = self.c.fails;
+                // 記録した書き換えは記録を始めた組合せから順に当てるので、必ず何かを変える（変えなければ当たっていない）
+                let before = matches!(*m, Msg::Edit(_)).then(|| self.c.doc.combo.clone());
                 self.update_state(*m);
+                if self.c.fails == fails && before.is_some_and(|b| b == self.c.doc.combo) {
+                    self.c
+                        .fail(tr("The recorded change did not change the document"));
+                }
                 self.c.replayed(i, fails);
             }
         }
