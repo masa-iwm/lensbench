@@ -28,7 +28,8 @@ const MCE_HANDLED: &[&str] = &[
     "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC",
     "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY",
     "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR", "MIND", "MABB", "MDPG", "TCEX",
-    "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN",
+    "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN", "CSP1", "CSP2", "TSP1", "TSP2", "TSP3",
+    "PSP1", "PSP2", "PSP3",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
     "MCOM", "CWGT",
 ];
@@ -424,7 +425,9 @@ pub fn document(
         glasses.map,
     )?;
     // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）
-    let configs = (ncfg > 1).then(|| config_table(raw, &s, ncfg as usize, cfg as usize));
+    let solves = macros::solves(raw);
+    let configs =
+        (ncfg > 1).then(|| config_table(raw, &s, (&solves, &pickups), ncfg as usize, cfg as usize));
     let mut rx = s.into_prescription();
     rx.temperature = temp;
     rx.pressure = pres;
@@ -478,6 +481,7 @@ pub fn document(
         }
     }
     rx.pickups = pickups;
-    rx.solves = macros::solves(raw);
+    rx.solves = solves;
+    configs::apply_solve_values(&ops, &mut rx);
     Ok((rx, macros::requests(raw, opt, base)))
 }

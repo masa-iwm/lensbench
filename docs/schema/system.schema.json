@@ -1924,6 +1924,65 @@
           "type": "string"
         },
         {
+          "additionalProperties": false,
+          "description": "面の曲率・厚さのソルブ（ピックアップを含む）の条件の値 i（0 始まり、名前は csp1・tsp1 から）と、面タイプのパラメータ\nn のピックアップの値 i（名前は psp1_n から）。値の番号は OpticStudio のソルブの窓の順（[`set_solve_value`]）。\n多重構成の行（.zmx の CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3）。最適化の変数には使えない",
+          "properties": {
+            "CurvSolve": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "CurvSolve"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ThickSolve": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "ThickSolve"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ParmSolve": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "ParmSolve"
+          ],
+          "type": "object"
+        },
+        {
           "const": "Material",
           "description": "面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。\n最適化の変数には使えない",
           "type": "string"

@@ -9,6 +9,10 @@ use super::*;
 pub(super) fn config_table(
     raw: &Raw,
     s: &System,
+    links: (
+        &[lensbench_core::solves::Solve],
+        &[lensbench_core::pickup::Pickup],
+    ),
     n: usize,
     active: usize,
 ) -> lensbench_core::Result<lensbench_core::configs::Configs> {
@@ -16,7 +20,7 @@ pub(super) fn config_table(
     use lensbench_core::param::{Kind, Param};
     let mut rows: Vec<(String, i64, i64, Vec<Option<String>>)> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
-        let parm = if op == "PRAM" {
+        let parm = if op == "PRAM" || op.starts_with("PSP") {
             rest.get(1)
                 .and_then(|x| x.parse::<i64>().ok())
                 .unwrap_or(-1)
@@ -119,6 +123,24 @@ pub(super) fn config_table(
             ("SDIA", Some(_)) => Some(Kind::Semi),
             ("IGNR", Some(_)) => Some(Kind::Ignore),
             ("APMX", Some(_)) => Some(Kind::ApMax),
+            // ソルブ・ピックアップの条件の値。ソルブもピックアップも無い面の行は OpticStudio でも効かないので表に入れない
+            (o, Some(k)) if solve_kind(o, parm).is_some() => {
+                let kind = solve_kind(o, parm);
+                let p = Param::new(k, kind.expect("checked in the guard"));
+                let Ok(now) = lensbench_core::param::solve_value(links.0, links.1, p) else {
+                    continue;
+                };
+                if varies {
+                    out.retain(|r| r.param != p);
+                    out.push(ConfigRow {
+                        param: p,
+                        values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
+                        names: Vec::new(),
+                        picks: Vec::new(),
+                    });
+                }
+                continue;
+            }
             // モデルガラスでない面の行は OpticStudio も使わない（材料はカタログのまま）
             ("MIND" | "MABB" | "MDPG", Some(k))
                 if !matches!(
@@ -222,6 +244,35 @@ fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
     }
 }
 
+/// ソルブ・ピックアップの条件の値の演算子（CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、PSP は PARM の番号 parm）の種類
+fn solve_kind(op: &str, parm: i64) -> Option<lensbench_core::param::Kind> {
+    use lensbench_core::param::Kind;
+    let i = op.get(3..)?.parse::<u8>().ok()?.checked_sub(1)?;
+    match op.get(..3)? {
+        "CSP" if i < 2 => Some(Kind::CurvSolve(i)),
+        "TSP" if i < 3 => Some(Kind::ThickSolve(i)),
+        "PSP" if i < 3 => Some(Kind::ParmSolve(u8::try_from(parm).ok()?, i)),
+        _ => None,
+    }
+}
+
+/// 読む構成のソルブ・ピックアップの条件の値（CSP・TSP・PSP）を rx のソルブ・ピックアップに入れる（.zmx を今の構成でない
+/// 構成で読むとき。rx のソルブ・ピックアップを作った後に呼ぶ）
+pub(super) fn apply_solve_values(ops: &Ops, rx: &mut lensbench_core::system::Prescription) {
+    use lensbench_core::param::Param;
+    for ((op, p1), v) in ops {
+        // PSP の鍵は「PSPi:PARM の番号」（[`super::values::config_ops`]）
+        let (name, parm) = match op.split_once(':') {
+            Some((o, n)) => (o, n.parse::<i64>().unwrap_or(-1)),
+            None => (op.as_str(), 0),
+        };
+        let (Some(k), Ok(j), Ok(v)) = (solve_kind(name, parm), usize::try_from(*p1), fv(v)) else {
+            continue;
+        };
+        lensbench_core::param::set_solve_value(rx, Param::new(j, k), v);
+    }
+}
+
 /// 読む構成の多重構成の値のうち、面・系の値を作るときに見ない演算子（温度・気圧・アフォーカル・アポダイゼーション・光線
 /// エイミング・OPD の基準と、[`surface_table_kind`] の面の値）を rx に入れる（.zmx を今の構成でない構成で読むとき）
 pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Prescription) {
@@ -282,8 +333,8 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "FVDY" => Kind::FieldVig(i?, 1),
         "FVCX" => Kind::FieldVig(i?, 2),
         "FVCY" => Kind::FieldVig(i?, 3),
-        // FTAN（視野の Tangential Angle）と FVAN は同じ値（OpticStudio 26.1 で確認）
-        "FVAN" | "FTAN" => Kind::FieldVig(i?, 4),
+        // FTAN（視野の Tangential Angle）。FVAN（同じ値）は読むときに FTAN にしている
+        "FTAN" => Kind::FieldVig(i?, 4),
         "PRWV" => Kind::Primary,
         "APER" => Kind::Aper,
         "SATP" => Kind::ApertureType,

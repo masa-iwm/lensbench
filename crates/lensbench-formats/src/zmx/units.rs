@@ -198,6 +198,30 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
                 parm_scale(typ, i, f)
                     .map_err(|e| e.at(format!("multi-configuration PRAM {p1}: lens unit {unit}")))?
             }
+            // ソルブ・ピックアップの条件の値: 長さの値だけ（ソルブの種類で決まる）
+            "TSP1" | "TSP2" | "TSP3" | "CSP1" | "CSP2" | "PSP1" | "PSP2" | "PSP3" => {
+                let i = op[3..].parse::<usize>().unwrap_or(1) - 1;
+                let sf = usize::try_from(*p1).ok().and_then(|k| raw.surfs.get(k));
+                match (sf, &op[..3]) {
+                    (Some(sf), "TSP") => thick_solve_scale(sf, i, f),
+                    (Some(sf), "CSP") if sf.curv_pickup.is_none() => match sf.csolve {
+                        Some((SolveKind::ElementPower { .. }, _)) => 1.0 / f,
+                        _ => 1.0,
+                    },
+                    (Some(_), "PSP") if i == 2 => {
+                        let (Some(typ), Some(n)) = (
+                            usize::try_from(*p1).ok().and_then(|k| typs.get(k)),
+                            rest.get(1).and_then(|x| x.parse::<i64>().ok()),
+                        ) else {
+                            invalid!("multi-configuration {op} {p1}: bad surface or PARM number");
+                        };
+                        parm_scale(typ, n, f).map_err(|e| {
+                            e.at(format!("multi-configuration {op} {p1}: lens unit {unit}"))
+                        })?
+                    }
+                    _ => 1.0,
+                }
+            }
             "XFIE" | "YFIE" | "IGNR" | "STPS" | "WAVE" | "GLSS" | "MCOM" | "CWGT" | "CONN"
             | "SATP" | "TELE" | "MOFF" | "LTTL" => 1.0,
             // 扱わないオペランドは構成で変わらなければ使わない（build で確かめる）ので換算しない
@@ -208,6 +232,20 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         }
     }
     Ok(r)
+}
+
+/// 厚さのソルブ・ピックアップの条件の値 i（[`lensbench_core::param::set_solve_value`] の番号）の換算の倍率
+fn thick_solve_scale(sf: &RawSurf, i: usize, f: f64) -> f64 {
+    if sf.pzup.is_some() {
+        // 元の面・倍率・オフセット
+        return if i == 2 { f } else { 1.0 };
+    }
+    match (sf.tsolve.as_ref().map(|t| t.0), i) {
+        (Some(SolveKind::MarginalHeight { .. } | SolveKind::MarginalHeightZone { .. }), 0)
+        | (Some(SolveKind::ChiefHeight { .. } | SolveKind::Edge { .. }), _)
+        | (Some(SolveKind::Position { .. } | SolveKind::Compensator { .. }), 1) => f,
+        _ => 1.0,
+    }
 }
 
 /// 面タイプ typ の PARM i の、レンズ単位の長さ f [mm] 倍への換算の倍率

@@ -849,6 +849,9 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::ModelVd => ("MABB", p.index(), None, id),
         Kind::ModelDpgf => ("MDPG", p.index(), None, id),
         Kind::Tce => ("TCEX", p.index(), None, id),
+        Kind::CurvSolve(i) => (["CSP1", "CSP2"][i as usize], p.index(), None, id),
+        Kind::ThickSolve(i) => (["TSP1", "TSP2", "TSP3"][i as usize], p.index(), None, id),
+        Kind::ParmSolve(n, i) => (["PSP1", "PSP2", "PSP3"][i as usize], p.index(), Some(n), id),
         Kind::Before(i) => (
             ["CBDX", "CBDY", "CBTX", "CBTY", "CBTZ"][i as usize],
             p.index(),

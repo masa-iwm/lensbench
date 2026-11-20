@@ -665,6 +665,45 @@ fn configs_field_vignetting() {
         .is_err());
 }
 
+/// ソルブ・ピックアップの条件の値も多重構成の行にできる（名前は csp1・tsp1・psp1_n から）。ソルブもピックアップも無い面は断る
+#[test]
+fn configs_solve_values() {
+    for (n, k) in [
+        ("csp2", Kind::CurvSolve(1)),
+        ("tsp3", Kind::ThickSolve(2)),
+        ("psp2_4", Kind::ParmSolve(4, 1)),
+    ] {
+        assert_eq!(Kind::parse(n).unwrap(), k);
+        assert_eq!(k.name(), n);
+        assert!(k.is_table_only() && k.is_solve_value());
+    }
+    assert!(Kind::parse("tsp4").is_err() && Kind::parse("psp1_0").is_err());
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.set_config_count(2).unwrap();
+    let p = |k| Param::new(2, k);
+    assert!(s
+        .set_config_row(p(Kind::ThickSolve(0)), vec![0.0, 0.1])
+        .is_err());
+    // 面 2 の厚さを面 1 の厚さのピックアップに（倍率・オフセットを構成で変える）
+    s.add_pickup(Pickup::new(2, 1, Kind::Thick, 1.0, 0.0))
+        .unwrap();
+    let t1 = s.surfaces[1].t;
+    s.set_config_row(p(Kind::ThickSolve(1)), vec![1.0, 2.0])
+        .unwrap();
+    s.set_config_row(p(Kind::ThickSolve(2)), vec![0.0, 0.5])
+        .unwrap();
+    assert_eq!(s.config(2).unwrap().surfaces[2].t, 2.0 * t1 + 0.5);
+    assert_eq!(s.config(1).unwrap().surfaces[2].t, t1);
+    // 元の面は別の面の番号だけ
+    assert!(s
+        .set_config_row(p(Kind::ThickSolve(0)), vec![1.0, 2.0])
+        .is_err());
+    assert!(s
+        .set_config_row(p(Kind::ThickSolve(0)), vec![1.0, 1.5])
+        .is_err());
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

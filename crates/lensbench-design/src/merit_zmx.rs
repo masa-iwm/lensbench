@@ -802,6 +802,12 @@ fn kind_of(
                 "MABB" => (format!("{j}.vd"), 1.0),
                 "MDPG" => (format!("{j}.dpgf"), 1.0),
                 "TCEX" => (format!("{j}.tce"), 1.0),
+                "CSP1" | "CSP2" | "TSP1" | "TSP2" | "TSP3" => {
+                    (format!("{j}.{}", mop.to_ascii_lowercase()), 1.0)
+                }
+                "PSP1" | "PSP2" | "PSP3" => {
+                    (format!("{j}.{}_{parm}", mop.to_ascii_lowercase()), 1.0)
+                }
                 "CBDX" | "CBDY" | "CADX" | "CADY" => (
                     format!(
                         "{j}.{}{}",

@@ -34,8 +34,10 @@ use crate::surface::{After, Aperture, Tilt};
 use crate::system::{Aiming, ApertureKind, Keep, System};
 use crate::units::UnitKind;
 
+mod solve;
 mod table;
 use crate::{invalid, notimpl};
+pub use solve::{set_solve_value, solve_value};
 pub use table::set_surface_table_value;
 use table::{aperture_decenter, aperture_os_code};
 
@@ -142,6 +144,12 @@ pub enum Kind {
     ModelDpgf,
     /// 面の熱膨張係数 [1e-6/°C]（[`crate::surface::Surface::tce`]）。多重構成の行（.zmx の TCEX）。最適化の変数には使えない
     Tce,
+    /// 面の曲率・厚さのソルブ（ピックアップを含む）の条件の値 i（0 始まり、名前は csp1・tsp1 から）と、面タイプのパラメータ
+    /// n のピックアップの値 i（名前は psp1_n から）。値の番号は OpticStudio のソルブの窓の順（[`set_solve_value`]）。
+    /// 多重構成の行（.zmx の CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3）。最適化の変数には使えない
+    CurvSolve(u8),
+    ThickSolve(u8),
+    ParmSolve(u8, u8),
     /// 面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。
     /// 最適化の変数には使えない
     Material,
@@ -224,6 +232,20 @@ impl Kind {
                 }
                 if let Some(i) = num("parm").or_else(|| num("p")) {
                     return Ok(Kind::Parm(i));
+                }
+                if let Some(i) = num("csp").filter(|&i| (1..=2).contains(&i)) {
+                    return Ok(Kind::CurvSolve(i - 1));
+                }
+                if let Some(i) = num("tsp").filter(|&i| (1..=3).contains(&i)) {
+                    return Ok(Kind::ThickSolve(i - 1));
+                }
+                if let Some((i, n)) = l
+                    .strip_prefix("psp")
+                    .and_then(|r| r.split_once('_'))
+                    .and_then(|(i, n)| Some((i.parse::<u8>().ok()?, n.parse::<u8>().ok()?)))
+                    .filter(|&(i, n)| (1..=3).contains(&i) && n >= 1)
+                {
+                    return Ok(Kind::ParmSolve(n, i - 1));
                 }
                 for (j, pre) in VIG.iter().enumerate() {
                     if let Some(n) = l.strip_prefix(pre).and_then(|v| v.parse::<u16>().ok()) {
@@ -314,6 +336,9 @@ impl Kind {
             Kind::ModelVd => "vd".into(),
             Kind::ModelDpgf => "dpgf".into(),
             Kind::Tce => "tce".into(),
+            Kind::CurvSolve(i) => format!("csp{}", i + 1),
+            Kind::ThickSolve(i) => format!("tsp{}", i + 1),
+            Kind::ParmSolve(n, i) => format!("psp{}_{n}", i + 1),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -370,6 +395,14 @@ impl Kind {
                 | Kind::Tce
                 | Kind::Material
                 | Kind::Coating
+        ) || self.is_solve_value()
+    }
+
+    /// ソルブ・ピックアップの条件の値（[`Kind::CurvSolve`]・[`Kind::ThickSolve`]・[`Kind::ParmSolve`]）
+    pub fn is_solve_value(&self) -> bool {
+        matches!(
+            self,
+            Kind::CurvSolve(_) | Kind::ThickSolve(_) | Kind::ParmSolve(..)
         )
     }
 
@@ -751,6 +784,9 @@ impl System {
                 }
             });
         }
+        if p.kind.is_solve_value() {
+            return solve::get(self, p);
+        }
         let d = &self.surfaces[p.index()];
         Ok(match p.kind {
             Kind::Curv => d.c,
@@ -1061,6 +1097,9 @@ impl System {
                 }
                 continue;
             }
+            if p.kind.is_solve_value() {
+                solve::check(self, p, v)?;
+            }
             match p.kind {
                 Kind::Primary
                     if v.fract() != 0.0 || v < 1.0 || v > self.wavelengths.len() as f64 =>
@@ -1275,6 +1314,10 @@ impl System {
             if p.kind.is_system_value() {
                 continue;
             }
+            if p.kind.is_solve_value() {
+                solve::set_solve_value(self.rx_mut(), p, v);
+                continue;
+            }
             let d = &mut self.rx_mut().surfaces[p.index()];
             match p.kind {
                 Kind::Curv => d.c = v,
@@ -1403,7 +1446,11 @@ pub(crate) fn keep_for(changes: &[(Param, f64)]) -> Keep {
             )
     };
     let geom = changes.iter().any(|(p, _)| {
-        p.kind == Kind::Thick || p.kind == Kind::Unit(UnitKind::Shift) || tilt(p.kind)
+        // ソルブの条件は厚さ・曲率を解き直す
+        p.kind == Kind::Thick
+            || p.kind == Kind::Unit(UnitKind::Shift)
+            || p.kind.is_solve_value()
+            || tilt(p.kind)
     });
     let only_tilt = changes.iter().all(|(p, _)| tilt(p.kind));
     Keep {

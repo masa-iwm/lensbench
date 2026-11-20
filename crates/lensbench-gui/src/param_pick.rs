@@ -97,6 +97,12 @@ pub(crate) fn param_desc(name: &str) -> String {
         "dpgf" => tr("Model glass dPgF").into(),
         "tce" => tr("Thermal expansion coefficient").into(),
         "coating" => tr("Coating").into(),
+        "csp1" | "csp2" => trf("Curvature solve value {}", &[&&k[3..]]),
+        "tsp1" | "tsp2" | "tsp3" => trf("Thickness solve value {}", &[&&k[3..]]),
+        p if p.starts_with("psp") && p.contains('_') => {
+            let (i, n) = p[3..].split_once('_').unwrap_or_default();
+            trf("Parameter {} pickup value {}", &[&n, &i])
+        }
         b if tilt_slot(b).is_some() => {
             let (after, i) = tilt_slot(b).unwrap_or_default();
             let what = [

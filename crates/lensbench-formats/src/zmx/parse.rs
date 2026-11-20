@@ -92,6 +92,11 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             let Some(mut m) = mce_line(line) else {
                 invalid!("can't read the zmx multi-configuration line: {line}");
             };
+            // FVAN と FTAN は同じ量（OpticStudio 26.1 で確認）。同じ名前にして、表と構成を選んで読む経路のどちらでも
+            // 後の行を勝たせる
+            if m.0 == "FVAN" {
+                m.0 = "FTAN".into();
+            }
             // PAR1〜PAR8 は PRAM の PARM 1〜8 の古い名前（OpticStudio 26.1 は PRAM にして書く）
             if let Some(n) = m.0.strip_prefix("PAR").and_then(|n| n.parse::<u8>().ok()) {
                 if (1..=8).contains(&n) {
@@ -101,7 +106,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 }
             }
             if m.2 <= last_cfg {
-                let parm = if m.0 == "PRAM" {
+                let parm = if m.0 == "PRAM" || m.0.starts_with("PSP") {
                     m.4.get(1).and_then(|x| x.parse::<i64>().ok()).unwrap_or(-1)
                 } else {
                     0

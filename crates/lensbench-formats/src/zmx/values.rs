@@ -14,7 +14,12 @@ pub(super) fn config_ops(raw: &Raw, cfg: i64) -> Result<Ops> {
             .or_default()
             .insert(v.clone());
         if *c == cfg {
-            ops.insert((op.clone(), *p1), v.clone());
+            // PSP は面と PARM の番号で決まるので、鍵の名前に PARM の番号を付ける（configs::apply_solve_values）
+            let name = match rest.get(1) {
+                Some(n) if op.starts_with("PSP") => format!("{op}:{n}"),
+                _ => op.clone(),
+            };
+            ops.insert((name, *p1), v.clone());
         }
     }
     // 誤りはファイルの順で最初のオペランド（毎回同じものを出す）
@@ -203,12 +208,8 @@ pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
             vdy: fop(ops, "FVDY", i as i64 + 1, vd[1][i]),
             vcx: fop(ops, "FVCX", i as i64 + 1, vd[2][i]),
             vcy: fop(ops, "FVCY", i as i64 + 1, vd[3][i]),
-            van: fop(
-                ops,
-                "FTAN",
-                i as i64 + 1,
-                fop(ops, "FVAN", i as i64 + 1, vd[4][i]),
-            ),
+            // FVAN は読むときに FTAN にしている
+            van: fop(ops, "FTAN", i as i64 + 1, vd[4][i]),
         })
         .collect();
     let norm = if ftyp.get(4) == Some(&1) {
