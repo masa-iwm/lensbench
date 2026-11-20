@@ -997,7 +997,10 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
         let mut t = base.clone();
         settings(&mut t, &merged)?;
         if t.snap() != base.snap() {
-            c.state_sys.insert(n.clone(), t.snap());
+            c.state_sys.insert(
+                n.clone(),
+                crate::sysset::SysDiff::of(&base.snap(), &t.snap()),
+            );
         }
         for (id, set) in &st.set {
             if let Some(g) = c.groups.iter_mut().find(|g| g.name == *id) {

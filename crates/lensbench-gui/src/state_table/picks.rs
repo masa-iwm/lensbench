@@ -217,6 +217,107 @@ pub(super) fn remove_row_picks(c: &mut Combo, it: &Item) {
     }
 }
 
+/// 番号で指す行（群の移動 `shift:g`・`zshift:g`）の番号を map で付け替える（ピックアップの行と元の行の両方）。
+/// 消えた番号（map が None）を指すピックアップは外す
+pub(super) fn remap_index_picks(
+    v: &mut Vec<McPick>,
+    head: &str,
+    map: &dyn Fn(usize) -> Option<usize>,
+) {
+    let re = |k: &str| -> Option<Option<String>> {
+        let i = k
+            .strip_prefix(head)?
+            .strip_prefix(':')?
+            .parse::<usize>()
+            .ok()?;
+        Some(map(i).map(|j| format!("{head}:{j}")))
+    };
+    v.retain_mut(|m| {
+        for s in [&mut m.key, &mut m.row] {
+            match re(s) {
+                None => {}
+                Some(None) => return false,
+                Some(Some(n)) => *s = n,
+            }
+        }
+        true
+    });
+}
+
+/// 組合せの行で番号で指す行（`shift:g`）の並びの鍵を map で付け替える（消えた番号は並びから外す）
+pub(super) fn remap_index_order(c: &mut Combo, head: &str, map: &dyn Fn(usize) -> Option<usize>) {
+    c.mc_order.retain_mut(|(loc, key)| {
+        if loc.is_some() {
+            return true;
+        }
+        let Some(i) = key
+            .strip_prefix(head)
+            .and_then(|k| k.strip_prefix(':'))
+            .and_then(|k| k.parse::<usize>().ok())
+        else {
+            return true;
+        };
+        match map(i) {
+            None => false,
+            Some(j) => {
+                *key = format!("{head}:{j}");
+                true
+            }
+        }
+    });
+}
+
+/// 行の並びの鍵（要素の id（組合せの行は None）と、持ち主の中での行の名前）
+pub(super) fn order_keys(c: &Combo, rows: &[Item]) -> Vec<(Option<String>, String)> {
+    let ids: HashMap<Loc, String> = c.ids_all().into_iter().collect();
+    rows.iter()
+        .map(|it| {
+            let (loc, key) = key_of(it);
+            (loc.and_then(|l| ids.get(&l).cloned()), key)
+        })
+        .collect()
+}
+
+/// 行を並べ替えた順（[`Combo::mc_order`]）に並べる（順に無い行は元の順で後ろ）
+pub(super) fn sort_rows(c: &Combo, rows: &mut Vec<Item>) {
+    if c.mc_order.is_empty() {
+        return;
+    }
+    let keys = order_keys(c, rows);
+    let pos =
+        |k: &(Option<String>, String)| c.mc_order.iter().position(|x| x == k).unwrap_or(usize::MAX);
+    let mut v: Vec<(usize, Item)> = rows
+        .drain(..)
+        .zip(keys.iter())
+        .map(|(it, k)| (pos(k), it))
+        .collect();
+    v.sort_by_key(|x| x.0);
+    rows.extend(v.into_iter().map(|x| x.1));
+}
+
+/// コメント行 k を消したとき、後ろのコメント行の並びの番号を詰める
+pub(super) fn shift_comment_order(c: &mut Combo, k: usize) {
+    c.mc_order.retain_mut(|(loc, key)| {
+        let Some(j) = loc
+            .is_none()
+            .then(|| {
+                key.strip_prefix("comment:")
+                    .and_then(|j| j.parse::<usize>().ok())
+            })
+            .flatten()
+        else {
+            return true;
+        };
+        if j == k {
+            return false;
+        }
+        if j > k {
+            *key = format!("comment:{}", j - 1);
+        }
+        true
+    });
+}
+
 /// コメント行 k を消したとき、後ろのコメント行のピックアップの番号を詰める
 pub(super) fn shift_comment_picks(c: &mut Combo, k: usize) {
     for m in &mut c.mc_picks {
@@ -349,6 +450,40 @@ pub(crate) fn from_json(c: &mut Combo, v: Option<&Value>) {
     for (loc, id) in c.ids_all() {
         if let (Some(v), Some(p)) = (m.get(&id).and_then(read), c.get_mut(&loc)) {
             p.mc_picks = v;
+        }
+    }
+}
+
+/// 取り込みの群 i を消した後: 群の移動の行は群を番号で指すので、後ろの群の番号を詰める（消した群のピックアップは外す）
+pub(crate) fn zgroup_removed(p: &mut crate::combo::Pick, i: usize) {
+    let map = |j: usize| match j.cmp(&i) {
+        std::cmp::Ordering::Less => Some(j),
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Greater => Some(j - 1),
+    };
+    remap_index_picks(&mut p.mc_picks, "zshift", &map);
+}
+
+/// 使わなくなった既定のままの群（名前を打つ途中の群など）を消し、群の移動の行（群を番号で指す）を今の番号へ付け替える
+pub(crate) fn drop_unused_groups(combo: &mut Combo, names: &[String]) {
+    let before: Vec<String> = combo.groups.iter().map(|d| d.name.clone()).collect();
+    combo.groups.retain(|d| {
+        names.contains(&d.name) || !d.role.is_empty() || d.shift != 0.0 || !d.state_shift.is_empty()
+    });
+    if combo.groups.len() == before.len() {
+        return;
+    }
+    let after: Vec<String> = combo.groups.iter().map(|d| d.name.clone()).collect();
+    let map = |i: usize| {
+        before
+            .get(i)
+            .and_then(|n| after.iter().position(|x| x == n))
+    };
+    remap_index_picks(&mut combo.mc_picks, "shift", &map);
+    remap_index_order(combo, "shift", &map);
+    for l in combo.all() {
+        if let Some(p) = combo.get_mut(&l) {
+            remap_index_picks(&mut p.mc_picks, "shift", &map);
         }
     }
 }

@@ -13,8 +13,10 @@ use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::theme;
 
+mod diff;
 pub(crate) mod form;
 mod pts;
+pub(crate) use diff::SysDiff;
 pub(crate) use pts::{FieldPt, WavePt};
 
 /// 開口・視野の種類・エイミング（core の型。名前はプロジェクトファイルと同じ）
@@ -245,6 +247,17 @@ impl Combo {
         }
     }
 
+    /// 状態 n の系の値（状態で変えていない値は基本の値）。状態で系の値を持たなければ None
+    pub(crate) fn state_snap(&self, n: &str) -> Option<SysSnap> {
+        self.state_sys.get(n).map(|d| d.apply(&self.snap()))
+    }
+
+    /// 状態 n の系の値を s に（基本と違う値だけを持つ）
+    pub(crate) fn set_state_snap(&mut self, n: &str, s: &SysSnap) {
+        let d = SysDiff::of(&self.snap(), s);
+        self.state_sys.insert(n.to_string(), d);
+    }
+
     /// [`Self::snap`] の値を当てる
     pub(crate) fn apply_snap(&mut self, s: &SysSnap) {
         self.aperture = s.aperture;
@@ -264,11 +277,11 @@ impl Combo {
     /// 状態 n の系の値を基本と比べ、違う項目をプロジェクトの状態の `project` の形で返す
     pub(crate) fn state_project(&self, n: &str) -> serde_json::Map<String, Value> {
         let mut out = serde_json::Map::new();
-        if let Some(s) = self.state_sys.get(n) {
+        if let Some(s) = self.state_snap(n) {
             let mut a = json!({});
             self.put_settings(&mut a);
             let mut t = self.clone();
-            t.apply_snap(s);
+            t.apply_snap(&s);
             let mut b = json!({});
             t.put_settings(&mut b);
             for k in [
@@ -591,12 +604,12 @@ pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         ));
     if r.changed() {
         if own {
-            c.state_sys.insert(n.clone(), c.snap());
+            c.state_sys.insert(n.clone(), SysDiff::default());
         } else {
             c.state_sys.remove(&n);
         }
     }
-    let Some(snap) = c.state_sys.get(&n).cloned() else {
+    let Some(snap) = c.state_snap(&n) else {
         ui.label(
             RichText::new(trf("State {} uses the base values too", &[&n]))
                 .small()
@@ -613,7 +626,7 @@ pub(crate) fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     body(ui, &mut t, cats);
     let edited = t.snap();
     t.apply_snap(&base);
-    t.state_sys.insert(n, edited);
+    t.set_state_snap(&n, &edited);
     if t != *c {
         *c = t;
     }

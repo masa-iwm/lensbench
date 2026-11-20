@@ -921,8 +921,8 @@ pub(crate) struct Combo {
     pub states: Vec<String>,
     /// 今の状態（None は基本）
     pub state: Option<String>,
-    /// 状態ごとの系の値（開口・視野・波長・物体距離など。無ければ基本の値）
-    pub state_sys: BTreeMap<String, crate::sysset::SysSnap>,
+    /// 状態ごとの系の値（開口・視野・波長・物体距離など）。状態で変えた値だけを持ち、ほかは基本の値に従う
+    pub state_sys: BTreeMap<String, crate::sysset::SysDiff>,
     /// 状態ごとの BS の経路（無ければ path）
     pub state_path: BTreeMap<String, String>,
     /// 状態ごとの、欄の無い系の値（温度・気圧、GLRS、像面など。プロジェクトの状態の project の項目をそのまま）
@@ -934,6 +934,9 @@ pub(crate) struct Combo {
     /// 多重構成の表のコメント行（OpticStudio の MCOM。プロジェクトの `gui.view.mc_comments` に保存）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mc_comments: Vec<McComment>,
+    /// 多重構成の表で並べ替えた行の順（要素の id（組合せの行は None）と行の名前。`gui.view.mc_order` に保存）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mc_order: Vec<(Option<String>, String)>,
     /// 膜（フィルタ）の定義（プロジェクトの coatings）
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 膜ファイル（プロジェクトの `coating_file`。.zmx を分けたときはその膜ファイル）
@@ -996,6 +999,7 @@ impl Default for Combo {
             state_more: BTreeMap::new(),
             mc_picks: Vec::new(),
             mc_comments: Vec::new(),
+            mc_order: Vec::new(),
             coatings: BTreeMap::new(),
             coating_file: None,
             macros: Vec::new(),
@@ -2297,6 +2301,7 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
     }
     if let Some(i) = remove {
         p.zmx_mut().zgroups.remove(i);
+        crate::state_table::zgroup_removed(p, i);
     }
     if ui.small_button(tr("+ Group")).clicked() {
         let from = p
@@ -2323,10 +2328,7 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) 
             names.push(g.to_string());
         }
     }
-    // 使わなくなった既定のままの群は残さない（名前を打つ途中の群など）
-    combo.groups.retain(|d| {
-        names.contains(&d.name) || !d.role.is_empty() || d.shift != 0.0 || !d.state_shift.is_empty()
-    });
+    crate::state_table::drop_unused_groups(combo, &names);
     if let Some(o) = only {
         names.retain(|n| n == o);
     }

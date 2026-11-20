@@ -133,7 +133,7 @@ impl App {
         c.state = Some("参照".into());
         let mut s = c.snap();
         s.object_distance = Some(200.0);
-        c.state_sys.insert("参照".into(), s);
+        c.set_state_snap("参照", &s);
         c.state_path.insert("参照".into(), "RR".into());
         let p = c.project();
         self.c.build_combo(p);

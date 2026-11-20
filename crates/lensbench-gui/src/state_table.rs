@@ -18,7 +18,11 @@ use crate::theme;
 
 mod picks;
 mod sheet_view;
-pub(crate) use picks::{from_json as picks_from_json, to_json as picks_json};
+pub(crate) use picks::{
+    drop_unused_groups, from_json as picks_from_json, to_json as picks_json, zgroup_removed,
+};
+#[cfg(test)]
+use picks::{remap_index_order, remap_index_picks};
 
 /// 表の表示の設定
 #[derive(Debug, Clone, Default)]
@@ -39,8 +43,6 @@ pub(crate) struct View {
     pub picks_rebuilt: bool,
     /// 表の選択と書き換え中の文字
     pub sheet: crate::widgets::sheet::SheetState,
-    /// 入れ替えた行の順（表示だけ。保存しない）
-    pub order: Vec<Item>,
 }
 
 /// 要素の面の値（多重構成の面の行）。面は要素の面のうち座標ブレークを除いた番号、field は面の値の名前
@@ -134,8 +136,7 @@ const FT_KEYS: [&str; 5] = [
 ];
 
 fn snap_in(c: &Combo, st: Option<&str>) -> SysSnap {
-    st.and_then(|n| c.state_sys.get(n).cloned())
-        .unwrap_or_else(|| c.snap())
+    st.and_then(|n| c.state_snap(n)).unwrap_or_else(|| c.snap())
 }
 
 impl SysQ {
@@ -256,7 +257,7 @@ impl SysQ {
     /// 系の値の行の全部（波長・視野は基本と状態の最大の数まで）
     fn all(c: &Combo) -> Vec<SysQ> {
         let snaps: Vec<SysSnap> = std::iter::once(c.snap())
-            .chain(c.state_sys.values().cloned())
+            .chain(c.state_sys.keys().filter_map(|n| c.state_snap(n)))
             .collect();
         let nw = snaps.iter().map(|s| s.waves.len()).max().unwrap_or(0);
         let nf = snaps.iter().map(|s| s.fields.len()).max().unwrap_or(0);
@@ -539,9 +540,8 @@ impl Item {
     fn own(&self, c: &Combo, n: &str) -> bool {
         match self {
             Item::Sys(q) => c
-                .state_sys
-                .get(n)
-                .is_some_and(|s| q.get(s) != q.get(&c.snap())),
+                .state_snap(n)
+                .is_some_and(|s| q.get(&s) != q.get(&c.snap())),
             Item::Stop => c
                 .all()
                 .iter()
@@ -579,9 +579,7 @@ impl Item {
                 let mut s = snap_in(c, st);
                 q.set(&mut s, &v);
                 match key {
-                    Some(n) => {
-                        c.state_sys.insert(n, s);
-                    }
+                    Some(n) => c.set_state_snap(&n, &s),
                     None => c.apply_snap(&s),
                 }
             }
@@ -714,9 +712,10 @@ impl Item {
         match self {
             Item::Sys(q) => {
                 let base = c.snap();
-                if let (Some(s), Some(v)) = (c.state_sys.get_mut(n), q.get(&base)) {
-                    q.set(s, &v);
-                    if *s == base {
+                if let (Some(mut s), Some(v)) = (c.state_snap(n), q.get(&base)) {
+                    q.set(&mut s, &v);
+                    c.set_state_snap(n, &s);
+                    if c.state_sys.get(n).is_some_and(|d| d.is_empty()) {
                         c.state_sys.remove(n);
                     }
                 }
@@ -955,7 +954,7 @@ fn remove_row(c: &mut Combo, view: &mut View, it: &Item, now: FaceNow) {
         if *k < c.mc_comments.len() {
             c.mc_comments.remove(*k);
             picks::shift_comment_picks(c, *k);
-            view.order.clear();
+            picks::shift_comment_order(c, *k);
         }
         return;
     }
@@ -1227,9 +1226,9 @@ pub(crate) fn ui(
             }
         }
     }
-    // 行の並び（右クリック・Ctrl+Shift+↑↓ で入れ替えた順。表示だけ）
+    // 行の並び（右クリック・Ctrl+Shift+↑↓ で入れ替えた順。組合せに保存し、元に戻すの対象）
     let mut rows = rows;
-    sort_rows(&mut rows, &view.order);
+    picks::sort_rows(c, &mut rows);
     let mut srows: Vec<sheet_view::Row> = rows.iter().cloned().map(sheet_view::Row::It).collect();
     if c.states.iter().any(|n| c.state_more.contains_key(n)) {
         srows.push(sheet_view::Row::More);
@@ -1289,9 +1288,11 @@ pub(crate) fn ui(
                 changed = true;
             }
             sheet_view::Act::Swap(a) => {
+                // 並べた順は組合せに持つ（保存し、元に戻すの対象）
                 if a + 1 < rows.len() {
                     rows.swap(a, a + 1);
-                    view.order = rows.clone();
+                    c.mc_order = picks::order_keys(c, &rows);
+                    changed = true;
                 }
             }
         }
@@ -1323,15 +1324,6 @@ pub(crate) fn ui(
         apply_picks(c, &view.base_cache, now);
     }
     changed
-}
-
-/// 行を入れ替えた順（order）に並べる（order に無い行は元の順で後ろ）
-fn sort_rows(rows: &mut [Item], order: &[Item]) {
-    if order.is_empty() {
-        return;
-    }
-    let pos = |it: &Item| order.iter().position(|x| x == it).unwrap_or(usize::MAX);
-    rows.sort_by_key(pos);
 }
 
 /// 名前を変えている構成の欄（Enter で決める、Esc でやめる）

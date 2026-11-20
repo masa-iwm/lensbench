@@ -55,14 +55,14 @@ fn system_rows() {
     };
     let w2 = Item::Sys(SysQ::Wave(1));
     w2.set(&mut c, Some("A"), Val::Num(0.55), &cx);
-    assert_eq!(c.state_sys["A"].waves[1].um, 0.55);
+    assert_eq!(c.state_snap("A").unwrap().waves[1].um, 0.55);
     assert!(w2.own(&c, "A") && !w2.own(&c, "B"));
     assert!(items(&c, false, &[]).contains(&w2));
     assert_eq!(w2.get(&c, Some("B"), &cx), Some(Val::Num(c.waves[1].um)));
     // 開口の種類を F 値にすると初めの値
     let at = Item::Sys(SysQ::ApType);
     at.set(&mut c, Some("B"), Val::Choice(1, &AP_KEYS), &cx);
-    assert_eq!(c.state_sys["B"].aperture, ApertureKind::FNum);
+    assert_eq!(c.state_snap("B").unwrap().aperture, ApertureKind::FNum);
     assert_eq!(
         Item::Sys(SysQ::ApValue).get(&c, Some("B"), &cx),
         Some(Val::Num(5.0))
@@ -70,7 +70,7 @@ fn system_rows() {
     // 物体距離
     let od = Item::Sys(SysQ::ObjDist);
     od.set(&mut c, Some("A"), Val::Text("100".into()), &cx);
-    assert_eq!(c.state_sys["A"].object_distance, Some(100.0));
+    assert_eq!(c.state_snap("A").unwrap().object_distance, Some(100.0));
     w2.clear(&mut c, "A");
     od.clear(&mut c, "A");
     assert!(!c.state_sys.contains_key("A"));
@@ -220,7 +220,7 @@ fn stop_tele_rows() {
     assert!(!Item::Stop.own(&c, "A"));
     let tele = Item::Sys(SysQ::Telecentric);
     tele.set(&mut c, Some("A"), Val::Bool(true), &cx);
-    assert!(c.state_sys["A"].telecentric && !c.telecentric);
+    assert!(c.state_snap("A").unwrap().telecentric && !c.telecentric);
 }
 
 /// ピックアップ: 状態 B の値を A の値 × 倍率 ＋ オフセットに保ち、状態の名前を変える・消すと付いていく
@@ -409,7 +409,7 @@ fn sheet_cells_and_set() {
     // 受け付けない値は理由を返す（黙って捨てない）
     assert!(sh.set(1, 2, "maybe").is_err());
     sh.set(1, 2, "0").unwrap();
-    // inf は読めるが、無限大は面の値だけ（空気の厚みは誤り）
+    // inf は読めるが、無限大は面の曲率半径だけ（空気の厚みは誤り）
     assert!(sh.set(0, 2, "inf").is_err());
     assert!(sh.set(0, 2, "-1").is_err());
     // ピックアップのセルは書けない
@@ -419,7 +419,7 @@ fn sheet_cells_and_set() {
     assert!(!sh.cell(0, 2).mark);
     assert!(sh.swap(0));
     assert!(matches!(sh.acts.borrow()[0], sheet_view::Act::Swap(0)));
-    assert!(sh.c.state_sys["A"].aperture == ApertureKind::FNum);
+    assert!(sh.c.state_snap("A").unwrap().aperture == ApertureKind::FNum);
 }
 
 /// 構成の列だけを見出しのドラッグで動かせ、最後の空の行に書いた名前の行を足す（表にある行・知らない名前は足さない）
@@ -722,4 +722,148 @@ fn remove_several_comment_rows() {
         Item::Comment(0).get(&c, None, &cx),
         Some(Val::Text("c2".into()))
     );
+}
+
+/// 群の番号で指すピックアップと並びは、番号の付け替えで追い、消えた番号は外す
+#[test]
+fn remap_group_rows() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    let pk = |k: &str, r: &str| crate::combo::McPick {
+        key: k.into(),
+        to: "A".into(),
+        from: "A".into(),
+        row: r.into(),
+        scale: 1.0,
+        offset: 0.0,
+    };
+    c.mc_picks = vec![
+        pk("shift:0", "shift:2"),
+        pk("shift:2", "shift:1"),
+        pk("shift:1", "stop"),
+    ];
+    c.mc_order = vec![
+        (None, "shift:2".into()),
+        (None, "shift:1".into()),
+        (None, "stop".into()),
+    ];
+    // 群 1 を消した（0→0、1→なし、2→1）
+    let map = |i: usize| match i {
+        0 => Some(0),
+        1 => None,
+        n => Some(n - 1),
+    };
+    remap_index_picks(&mut c.mc_picks, "shift", &map);
+    remap_index_order(&mut c, "shift", &map);
+    let got: Vec<(&str, &str)> = c
+        .mc_picks
+        .iter()
+        .map(|m| (m.key.as_str(), m.row.as_str()))
+        .collect();
+    assert_eq!(got, [("shift:0", "shift:1")]);
+    assert_eq!(
+        c.mc_order,
+        [(None, "shift:1".to_string()), (None, "stop".to_string())]
+    );
+}
+
+/// 入れ替えた行の並びは組合せに残り、コメント行を消すと後ろの番号が詰まる
+#[test]
+fn row_order_is_kept_in_combo() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    let now = |_: &Face| None;
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &now,
+        cache: &cache,
+    };
+    for t in ["c0", "c1", "c2"] {
+        c.mc_comments.push(Default::default());
+        let k = c.mc_comments.len() - 1;
+        Item::Comment(k).set(&mut c, None, Val::Text(t.into()), &cx);
+    }
+    let rows: Vec<Item> = vec![Item::Comment(2), Item::Comment(0), Item::Comment(1)];
+    c.mc_order = picks::order_keys(&c, &rows);
+    let mut r: Vec<Item> = (0..3).map(Item::Comment).collect();
+    picks::sort_rows(&c, &mut r);
+    assert_eq!(r, rows);
+    let mut view = View::default();
+    remove_row(&mut c, &mut view, &Item::Comment(0), &now);
+    let mut r: Vec<Item> = (0..2).map(Item::Comment).collect();
+    picks::sort_rows(&c, &mut r);
+    assert_eq!(r, [Item::Comment(1), Item::Comment(0)]);
+}
+
+/// 状態は変えた系の値だけを持ち、あとから基本のほかの値を変えると状態にも届く
+#[test]
+fn state_keeps_only_changed_system_values() {
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    let none = |_: &Face| None;
+    let cache = HashMap::new();
+    let cx = Cx {
+        now: &none,
+        cache: &cache,
+    };
+    let w1 = Item::Sys(SysQ::Wave(0));
+    w1.set(&mut c, Some("A"), Val::Num(0.7), &cx);
+    // 基本の開口の値と 2 番目の波長を変える
+    Item::Sys(SysQ::ApValue).set(&mut c, None, Val::Num(3.0), &cx);
+    Item::Sys(SysQ::Wave(1)).set(&mut c, None, Val::Num(0.6), &cx);
+    let s = c.state_snap("A").unwrap();
+    assert_eq!((s.waves[0].um, s.waves[1].um, s.epd), (0.7, 0.6, 3.0));
+    // 状態で変えた値として出るのは波長 1 だけ
+    let own: Vec<Item> = items(&c, false, &[])
+        .into_iter()
+        .filter(|i| matches!(i, Item::Sys(_)) && i.own(&c, "A"))
+        .collect();
+    assert_eq!(own, std::slice::from_ref(&w1));
+    // 状態で波長を減らし、基本で足しても状態の数はそのまま
+    let mut s = c.state_snap("A").unwrap();
+    s.waves.truncate(1);
+    c.set_state_snap("A", &s);
+    c.waves.push(crate::sysset::WavePt::um(0.8));
+    assert_eq!(c.state_snap("A").unwrap().waves.len(), 1);
+    // 状態で足した波長は、基本で減らしても残る
+    let mut s = c.state_snap("A").unwrap();
+    s.waves = vec![
+        crate::sysset::WavePt::um(0.7),
+        crate::sysset::WavePt::um(0.9),
+    ];
+    c.set_state_snap("A", &s);
+    c.waves.truncate(1);
+    let w: Vec<f64> = c
+        .state_snap("A")
+        .unwrap()
+        .waves
+        .iter()
+        .map(|w| w.um)
+        .collect();
+    assert_eq!(w, [0.7, 0.9]);
+}
+
+/// 無限大を受けるのは面の曲率半径だけ（厚み・円錐係数などは誤り）
+#[test]
+fn infinite_only_for_radius() {
+    let face = |field: &str| {
+        Item::Face(Face {
+            loc: vec![0],
+            surf: 0,
+            field: field.into(),
+            idx: None,
+        })
+    };
+    let inf = Val::Num(f64::INFINITY);
+    assert!(sheet_view::check(&face("r"), &inf, "r").is_ok());
+    assert!(sheet_view::check(&face("r"), &Val::Num(f64::NEG_INFINITY), "r").is_ok());
+    for f in ["t", "k", "semi"] {
+        assert!(sheet_view::check(&face(f), &inf, f).is_err(), "{f}");
+    }
 }

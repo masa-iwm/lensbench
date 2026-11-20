@@ -194,7 +194,7 @@ fn parse_as(
 }
 
 /// 行が受け付けない値の理由（受け付けない値を黙って捨てない）
-fn check(it: &Item, v: &Val, what: &str) -> Result<(), String> {
+pub(super) fn check(it: &Item, v: &Val, what: &str) -> Result<(), String> {
     let range = |lo: f64, hi: f64| {
         trf(
             "{} must be from {} to {}",
@@ -206,8 +206,8 @@ fn check(it: &Item, v: &Val, what: &str) -> Result<(), String> {
         )
     };
     match (it, v) {
-        // 無限大は面の値（曲率半径など）だけ
-        (it, Val::Num(x)) if x.is_infinite() && !matches!(it, Item::Face(_)) => {
+        // 無限大は面の曲率半径（平面）だけ
+        (it, Val::Num(x)) if x.is_infinite() && !matches!(it, Item::Face(f) if f.field == "r") => {
             Err(trf("{} must be finite", &[&what]))
         }
         (Item::Sys(SysQ::Wave(_)), Val::Num(x)) if !(0.1..=30.0).contains(x) => {

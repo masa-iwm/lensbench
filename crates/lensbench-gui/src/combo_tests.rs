@@ -316,7 +316,7 @@ fn state_place_settings_and_path() {
     s.object_distance = Some(200.0);
     s.waves = vec![WavePt::um(0.55)];
     s.primary = 1;
-    c.state_sys.insert("S".into(), s);
+    c.set_state_snap("S", &s);
     c.state_path.insert("S".into(), "tr".into());
     let v = c.project();
     let ids = c.ids();
@@ -347,7 +347,7 @@ fn state_place_settings_and_path() {
     s2.object_distance = None;
     s2.telecentric = false;
     s2.aiming = Aiming::Off;
-    c2.state_sys.insert("S".into(), s2);
+    c2.set_state_snap("S", &s2);
     let pr = c2.state_project("S");
     assert_eq!(pr["object_distance"], Value::Null);
     assert_eq!(pr["telecentric"], json!(false));
