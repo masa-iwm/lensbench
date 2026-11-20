@@ -28,7 +28,7 @@ const MCE_HANDLED: &[&str] = &[
     "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC",
     "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY",
     "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR", "MIND", "MABB", "MDPG", "TCEX",
-    "COTN",
+    "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
     "MCOM", "CWGT",
 ];

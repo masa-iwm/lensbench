@@ -199,11 +199,16 @@ pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
             x: fop(ops, "XFIE", i as i64 + 1, xs[i]),
             y: fop(ops, "YFIE", i as i64 + 1, ys[i]),
             w: fop(ops, "FLWT", i as i64 + 1, fw[i]),
-            vdx: vd[0][i],
-            vdy: vd[1][i],
-            vcx: vd[2][i],
-            vcy: vd[3][i],
-            van: vd[4][i],
+            vdx: fop(ops, "FVDX", i as i64 + 1, vd[0][i]),
+            vdy: fop(ops, "FVDY", i as i64 + 1, vd[1][i]),
+            vcx: fop(ops, "FVCX", i as i64 + 1, vd[2][i]),
+            vcy: fop(ops, "FVCY", i as i64 + 1, vd[3][i]),
+            van: fop(
+                ops,
+                "FTAN",
+                i as i64 + 1,
+                fop(ops, "FVAN", i as i64 + 1, vd[4][i]),
+            ),
         })
         .collect();
     let norm = if ftyp.get(4) == Some(&1) {

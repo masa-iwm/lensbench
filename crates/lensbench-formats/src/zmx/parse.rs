@@ -89,9 +89,17 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 last_cfg = cfg;
                 continue;
             }
-            let Some(m) = mce_line(line) else {
+            let Some(mut m) = mce_line(line) else {
                 invalid!("can't read the zmx multi-configuration line: {line}");
             };
+            // PAR1〜PAR8 は PRAM の PARM 1〜8 の古い名前（OpticStudio 26.1 は PRAM にして書く）
+            if let Some(n) = m.0.strip_prefix("PAR").and_then(|n| n.parse::<u8>().ok()) {
+                if (1..=8).contains(&n) {
+                    m.0 = "PRAM".into();
+                    m.4.resize(m.4.len().max(2), "0".into());
+                    m.4[1] = n.to_string();
+                }
+            }
             if m.2 <= last_cfg {
                 let parm = if m.0 == "PRAM" {
                     m.4.get(1).and_then(|x| x.parse::<i64>().ok()).unwrap_or(-1)
@@ -101,6 +109,19 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 raw.mce_rows.push((m.0.clone(), m.1, parm));
             }
             last_cfg = m.2;
+            if m.0 == "IGNM" {
+                // 面の範囲の無視（番号 1 から 2 番目の番号の面まで）は面ごとの IGNR にする（同じ面の IGNR とは後の行が勝つ）
+                let end =
+                    m.4.get(1)
+                        .and_then(|x| x.parse::<i64>().ok())
+                        .unwrap_or(m.1)
+                        .min(m.1.saturating_add(100_000));
+                for k in m.1..=end {
+                    raw.mce
+                        .push(("IGNR".into(), k, m.2, m.3.clone(), m.4.clone()));
+                }
+                continue;
+            }
             raw.mce.push(m);
             continue;
         }

@@ -1838,6 +1838,35 @@
         },
         {
           "additionalProperties": false,
+          "description": "視野 i（0 始まり）のけられ係数 j（0〜4 = VDX・VDY・VCX・VCY・VAN、名前は vdx1・vdy1・vcx1・vcy1・van1 から）。\n多重構成の行（.zmx の FVDX・FVDY・FVCX・FVCY・FVAN・FTAN）。最適化の変数には使えない",
+          "properties": {
+            "FieldVig": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "FieldVig"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "玉・群のパラメータ（付く先は [`Target::Unit`]）",
           "properties": {
             "Unit": {

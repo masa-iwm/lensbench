@@ -811,6 +811,14 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::FieldX(i) => return Some(("XFIE", n(i), None, id)),
         Kind::FieldY(i) => return Some(("YFIE", n(i), None, id)),
         Kind::FieldW(i) => return Some(("FLWT", n(i), None, id)),
+        Kind::FieldVig(i, j) => {
+            return Some((
+                ["FVDX", "FVDY", "FVCX", "FVCY", "FTAN"][j as usize],
+                n(i),
+                None,
+                id,
+            ))
+        }
         Kind::Primary => return Some(("PRWV", 0, None, id)),
         Kind::Aper => return Some(("APER", 0, None, id)),
         Kind::ApertureType => return Some(("SATP", 0, None, id)),

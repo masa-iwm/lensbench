@@ -84,6 +84,10 @@
   `N.aptype`（OpticStudio の番号。表で変えられるのは 0 なし・1 円形の開口・2 円形の遮蔽の間）を多重構成の表の行にできる。.zmx の
   CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・APMN・APDX・APDY・APTP を表に読み、書き出す（前はこれらが構成で変わる .zmx は読めなかった）。
   傾き偏心の無い面に表で値を入れても、面の後は値 0 のまま（OpticStudio 26.1 と同じ）
+- **多重構成の表に視野のけられ係数**: 視野 i のけられ係数 `vdxi`・`vdyi`・`vcxi`・`vcyi`・`vani` を多重構成の表の行にできる。
+  .zmx の FVDX・FVDY・FVCX・FVCY・FVAN・FTAN（FTAN と FVAN は同じ値）を表に読み、書き出す（書くのは FTAN）。面の範囲の無視
+  IGNM は面ごとの無視の行に、古い名前の PAR1〜PAR8 は PRAM の PARM 1〜8 として読む（前はこれらが構成で変わる .zmx は読めなかった）。
+  評価関数の MCOV・MCOG・MCOL もけられ係数の行を読む
 - **多重構成の表にモデルガラスの値・熱膨張係数・膜**: モデルガラスの面の `N.nd`・`N.vd`・`N.dpgf`、面の熱膨張係数 `N.tce`、
   面の膜 `N.coating`（値は構成ごとの膜の名前、空は膜なし。`set_config_coatings`）を多重構成の表の行にできる。.zmx の
   MIND・MABB・MDPG・TCEX・COTN を表に読み、書き出す（前はこれらが構成で変わる .zmx は読めなかった）。モデルガラスでない面の

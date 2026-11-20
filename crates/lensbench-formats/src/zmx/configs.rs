@@ -4,7 +4,7 @@ use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
 /// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、膜の COTN、モデルガラスの MIND・MABB・MDPG（モデルガラスでない面の行は
-/// OpticStudio も使わないので表に入れない）、熱膨張係数の TCEX、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// OpticStudio も使わないので表に入れない）、熱膨張係数の TCEX、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FVAN・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -149,8 +149,9 @@ pub(super) fn config_table(
                 } else {
                     Param::new(surf.expect("surface number checked above"), kind)
                 };
-                // 書いていない構成の値は今の系の値
+                // 書いていない構成の値は今の系の値。同じパラメータの行（FVAN と FTAN）は後の行が勝つ
                 let now = s.get_param(p)?;
+                out.retain(|r| r.param != p);
                 out.push(ConfigRow {
                     param: p,
                     values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
@@ -277,6 +278,12 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "XFIE" => Kind::FieldX(i?),
         "YFIE" => Kind::FieldY(i?),
         "FLWT" => Kind::FieldW(i?),
+        "FVDX" => Kind::FieldVig(i?, 0),
+        "FVDY" => Kind::FieldVig(i?, 1),
+        "FVCX" => Kind::FieldVig(i?, 2),
+        "FVCY" => Kind::FieldVig(i?, 3),
+        // FTAN（視野の Tangential Angle）と FVAN は同じ値（OpticStudio 26.1 で確認）
+        "FVAN" | "FTAN" => Kind::FieldVig(i?, 4),
         "PRWV" => Kind::Primary,
         "APER" => Kind::Aper,
         "SATP" => Kind::ApertureType,

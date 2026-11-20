@@ -1542,6 +1542,7 @@ Model glass nd	モデルガラスの nd
 Model glass vd	モデルガラスの vd
 Model glass dPgF	モデルガラスの ΔPgF
 Thermal expansion coefficient	熱膨張係数
+Field {} vignetting {}	視野 {} のケラレ係数 {}
 {} before the surface	面の前の{}
 {} after the surface	面の後の{}
 Apodization type	アポダイゼーションの種類

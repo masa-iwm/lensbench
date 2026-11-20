@@ -639,6 +639,32 @@ fn configs_model_glass_tce_and_coating() {
     assert_eq!(r.name_at(2).unwrap(), "AR");
 }
 
+/// 視野のけられ係数も多重構成の行にできる（名前は vdx1・vdy1・vcx1・vcy1・van1 から）
+#[test]
+fn configs_field_vignetting() {
+    let mut s = empty();
+    s.set_config_count(2).unwrap();
+    for (j, n) in ["vdx1", "vdy1", "vcx1", "vcy1", "van1"].iter().enumerate() {
+        let k = Kind::parse(n).unwrap();
+        assert_eq!(k, Kind::FieldVig(0, j as u8));
+        assert_eq!(k.name(), *n);
+        assert!(k.is_system_value());
+        s.set_config_row(Param::system(k), vec![0.0, 0.1 * (j as f64 + 1.0)])
+            .unwrap();
+    }
+    let f = s.config(2).unwrap().fields[0];
+    assert_eq!(
+        [f.vdx, f.vdy, f.vcx, f.vcy, f.van],
+        [0.1, 0.2, 0.30000000000000004, 0.4, 0.5]
+    );
+    assert_eq!(s.config(1).unwrap().fields[0].van, 0.0);
+    assert!(Kind::parse("vdx0").is_err());
+    let nf = s.fields.len();
+    assert!(s
+        .set_config_row(Param::system(Kind::FieldVig(nf as u8, 0)), vec![0.0, 0.1])
+        .is_err());
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

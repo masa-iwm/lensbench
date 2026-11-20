@@ -64,6 +64,10 @@ pub(crate) fn param_desc(name: &str) -> String {
             _ if n.starts_with("fwt") => trf("Field {} weight", &[&&n[3..]]),
             _ if n.starts_with("fx") => trf("Field {} X", &[&&n[2..]]),
             _ if n.starts_with("fy") => trf("Field {} Y", &[&&n[2..]]),
+            _ if n.len() > 3 && ["vdx", "vdy", "vcx", "vcy", "van"].contains(&&n[..3]) => trf(
+                "Field {} vignetting {}",
+                &[&&n[3..], &n[..3].to_ascii_uppercase()],
+            ),
             _ => String::new(),
         };
     };
