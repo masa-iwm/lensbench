@@ -273,6 +273,11 @@ impl Core {
                 let Some(loc) = self.doc.combo.chain().get(k).map(|s| s.loc.clone()) else {
                     return;
                 };
+                // ロックした要素の面の値は構成で変えない（add_row も足さない）
+                if self.doc.combo.get(&loc).is_some_and(|p| p.locked) {
+                    self.fail(tr("A locked element cannot be changed"));
+                    return;
+                }
                 let faces = self.face_index();
                 let rows = self.sys.ld_rows.clone();
                 let now = |f: &crate::state_table::Face| -> Option<Value> {

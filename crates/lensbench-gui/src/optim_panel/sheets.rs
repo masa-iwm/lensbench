@@ -286,8 +286,16 @@ impl Sheet for TermSheet<'_> {
                 if !TERM_TYPES.contains(&v) {
                     return Err(trf("Unknown term type {}", &[&v]));
                 }
+                // 種類を変えると鍵を作り直す（ウェイト・構成と、新しい種類にもある target は残す）
                 if t.ty != v {
-                    *t = TermRow::new(v);
+                    let mut n = TermRow::new(v);
+                    n.weight = std::mem::take(&mut t.weight);
+                    n.config = std::mem::take(&mut t.config);
+                    let target = t.get("target").to_string();
+                    if !target.is_empty() && keys(v).iter().any(|(k, _)| *k == "target") {
+                        n.set("target", &target);
+                    }
+                    *t = n;
                 }
             }
             Col::Summary if t.ty == "comment" => t.set("text", text),

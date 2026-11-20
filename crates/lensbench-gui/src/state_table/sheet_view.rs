@@ -152,12 +152,28 @@ fn parse_as(
     stops: &[(String, Option<(Loc, usize)>)],
 ) -> Result<Val, String> {
     let num = |t: &str| -> Result<f64, String> {
+        // 平面の曲率半径などは inf と出るので、打つ・貼り戻すのも受ける
+        match t.trim().to_ascii_lowercase().as_str() {
+            "inf" | "+inf" | "∞" | "infinity" => return Ok(f64::INFINITY),
+            "-inf" | "-∞" | "-infinity" => return Ok(f64::NEG_INFINITY),
+            _ => {}
+        }
         crate::widgets::parse_num(t, what)?.ok_or_else(|| trf("Enter a value for {}", &[&what]))
     };
     Ok(match old {
-        Val::Bool(_) => Val::Bool(matches!(t, "true" | "1")),
+        Val::Bool(_) => match t.to_ascii_lowercase().as_str() {
+            "true" | "1" => Val::Bool(true),
+            "false" | "0" => Val::Bool(false),
+            _ => return Err(trf("{} is not one of {}", &[&t, &"true, false"])),
+        },
         Val::Num(_) => Val::Num(num(t)?),
-        Val::Int(_) => Val::Int(num(t)?.round().max(0.0) as usize),
+        Val::Int(_) => {
+            let x = num(t)?;
+            if x < 0.0 || x.fract() != 0.0 {
+                return Err(trf("{} must be a whole number 0 or more", &[&what]));
+            }
+            Val::Int(x as usize)
+        }
         Val::Text(_) => Val::Text(t.to_string()),
         Val::Choice(_, keys) => match keys.iter().position(|k| *k == t) {
             Some(k) => Val::Choice(k, keys),
@@ -175,6 +191,47 @@ fn parse_as(
             _ => Val::Text(t.to_string()),
         },
     })
+}
+
+/// 行が受け付けない値の理由（受け付けない値を黙って捨てない）
+fn check(it: &Item, v: &Val, what: &str) -> Result<(), String> {
+    let range = |lo: f64, hi: f64| {
+        trf(
+            "{} must be from {} to {}",
+            &[
+                &what,
+                &crate::json_view::fmt_num(lo),
+                &crate::json_view::fmt_num(hi),
+            ],
+        )
+    };
+    match (it, v) {
+        // 無限大は面の値（曲率半径など）だけ
+        (it, Val::Num(x)) if x.is_infinite() && !matches!(it, Item::Face(_)) => {
+            Err(trf("{} must be finite", &[&what]))
+        }
+        (Item::Sys(SysQ::Wave(_)), Val::Num(x)) if !(0.1..=30.0).contains(x) => {
+            Err(range(0.1, 30.0))
+        }
+        (Item::Sys(SysQ::WaveW(_) | SysQ::FieldW(_)), Val::Num(x)) if *x < 0.0 => {
+            Err(trf("{} must be 0 or more", &[&what]))
+        }
+        (Item::Sys(SysQ::ApValue), Val::Num(x)) if *x <= 0.0 => {
+            Err(trf("{} must be more than 0", &[&what]))
+        }
+        (Item::Sys(SysQ::ObjDist), Val::Text(t)) => {
+            let t = t.trim();
+            if t.is_empty() || t.eq_ignore_ascii_case("inf") || t == "∞" || t.parse::<f64>().is_ok()
+            {
+                Ok(())
+            } else {
+                Err(trf("Value of {} is not a number: {}", &[&what, &t]))
+            }
+        }
+        (Item::Air(_), Val::Num(x)) if *x < 0.0 => Err(trf("{} must be 0 or more", &[&what])),
+        (Item::Config(_), Val::Int(0)) => Err(trf("{} must be more than 0", &[&what])),
+        _ => Ok(()),
+    }
 }
 
 impl Sheet for McSheet<'_> {
@@ -303,7 +360,8 @@ impl Sheet for McSheet<'_> {
         if t.is_empty() {
             return match &st {
                 Some(n) => {
-                    it.clear(self.c, n);
+                    let (now, cache) = (self.now, self.cache);
+                    it.clear_cx(self.c, n, &Cx { now, cache });
                     Ok(())
                 }
                 None => Err(trf("Enter a value for {}", &[&it.label(self.c)])),
@@ -313,7 +371,9 @@ impl Sheet for McSheet<'_> {
             let cx = self.cx();
             it.get(self.c, st.as_deref(), &cx).unwrap_or(Val::Unknown)
         };
-        let v = parse_as(&old, t, &it.label(self.c), &self.stop_items(st.is_none()))?;
+        let what = it.label(self.c);
+        let v = parse_as(&old, t, &what, &self.stop_items(st.is_none()))?;
+        check(&it, &v, &what)?;
         let (now, cache) = (self.now, self.cache);
         it.set(self.c, st.as_deref(), v, &Cx { now, cache });
         Ok(())

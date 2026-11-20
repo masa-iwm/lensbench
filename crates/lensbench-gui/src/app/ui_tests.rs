@@ -687,5 +687,22 @@ fn recorded_operations_replay_to_the_same_combination() {
     let ctx = h.ctx.clone();
     h.state_mut().dispatch_queued(&ctx);
     assert_eq!(h.state().c.doc.combo, end);
+    // 記録を始めた所より前へ戻す操作で止まり、残りは当てない
+    let mut bad = record::Record::new(&Combo::default());
+    bad.ops = vec![
+        record::Rec::Undo {
+            back: true,
+            steps: 50,
+        },
+        record::Rec::CycleConfig { back: false },
+    ];
+    let state = h.state().c.doc.combo.state.clone();
+    h.state_mut().c.replay(bad);
+    h.state_mut().dispatch_queued(&ctx);
+    let app = h.state();
+    assert!(app.c.status.error, "{}", app.c.status.text);
+    assert!(app.c.status.text.contains('1'), "{}", app.c.status.text);
+    assert_eq!(app.c.doc.combo, end);
+    assert_eq!(app.c.doc.combo.state, state);
     settle(&mut h);
 }

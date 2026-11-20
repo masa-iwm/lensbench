@@ -67,6 +67,8 @@ pub(super) enum Msg {
     Record,
     /// 記録した操作のファイルを選んで流し直す
     Replay,
+    /// 流し直す操作（1 始まりの番号、操作）。当たらなかったら残りは当てない（[`super::record`]）
+    Replayed(usize, Box<Msg>),
 }
 
 /// 計算の順番待ち: 本体（serve の系）と下書き（レイアウト図・カタログ）
@@ -291,7 +293,8 @@ impl App {
     pub(super) fn update(&mut self, msg: Msg) -> Vec<Effect> {
         // 操作は元に戻す段の区切り: 前の入力・ドラッグと、この操作の変更をそれぞれ 1 段に。欄の値の書き換えは
         // 区切らない（欄を離れたときに [`ComboHist::track`] が区切る）
-        let step = !matches!(msg, Msg::Edit(_));
+        let step = !matches!(&msg, Msg::Edit(_))
+            && !matches!(&msg, Msg::Replayed(_, m) if matches!(**m, Msg::Edit(_)));
         if step {
             self.c.combo_hist.commit(&self.c.doc.combo);
         }
@@ -456,6 +459,14 @@ impl App {
             },
             Msg::Record => self.c.toggle_record(),
             Msg::Replay => self.c.pick_replay(),
+            Msg::Replayed(i, m) => {
+                if !self.c.replay_ok(i, &m) {
+                    return;
+                }
+                let fails = self.c.fails;
+                self.update_state(*m);
+                self.c.replayed(i, fails);
+            }
         }
     }
 }

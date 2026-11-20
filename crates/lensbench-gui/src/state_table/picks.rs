@@ -266,7 +266,8 @@ pub(super) fn apply(c: &mut Combo, cx: &Cx) -> bool {
         }
     }
     let mut changed = false;
-    for _ in 0..4 {
+    // 1 回りで連なりが 1 段は進むので、ピックアップの数 + 1 回りで端まで届く（並びの順に依らない）
+    for _ in 0..=all.len() {
         let mut any = false;
         for (loc, m) in &all {
             let Some(it) = item_of(loc.as_ref(), &m.key) else {

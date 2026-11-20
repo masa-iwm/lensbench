@@ -278,6 +278,7 @@ impl Core {
 
     /// 下の行に誤りを出す
     fn fail(&mut self, text: impl Into<String>) {
+        self.fails += 1;
         self.status = Status {
             text: lensbench_core::i18n::tr(&text.into()), // 計算側の英語の文を訳す
             error: true,
@@ -383,6 +384,10 @@ struct Core {
     msgs: Vec<msg::Msg>,
     /// 操作の記録（記録中だけ）
     rec: Option<record::Recording>,
+    /// 流し直している記録（[`record::Replaying`]）
+    replay: Option<record::Replaying>,
+    /// 誤りを出した数（流し直しで当たらなかった操作を見つける）
+    fails: u64,
     /// まだ当てていない外への作用（計算の要求など）
     fx: msg::Fx,
     /// Web 版（元のタブ）: 解析のパネルを出した別の窓に写す系
@@ -2687,6 +2692,8 @@ impl Core {
             next_id,
             msgs: Vec::new(),
             rec: None,
+            replay: None,
+            fails: 0,
             fx: Default::default(),
             popup_doc: Default::default(),
         }

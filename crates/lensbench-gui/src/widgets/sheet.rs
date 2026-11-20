@@ -523,7 +523,7 @@ fn table(
                                 .sense(Sense::click()),
                         )
                         .on_hover_text(tr("Select all (Ctrl+A)"));
-                    if r.clicked() && n > 0 {
+                    if r.clicked() && n > 0 && m > 0 {
                         out.clicked = true;
                         st.anchor = Some((n - 1, m - 1));
                         st.cur = Some((0, 0));
@@ -912,7 +912,10 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
         ui.close_menu();
     }
     if ui
-        .button(tr("Move down"))
+        .add_enabled(
+            *sel.end() + 1 < sh.rows(),
+            egui::Button::new(tr("Move down")),
+        )
         .on_hover_text("Ctrl+Shift+↓")
         .clicked()
     {
@@ -1234,8 +1237,9 @@ fn paste(st: &mut SheetState, sh: &dyn Sheet, out: &mut Out, text: &str) {
     }
 }
 
-/// rows の写しを rows の下に挿入する（空の行を足して、変えられるセルを順に書く。足せない表は false）
-fn duplicate(sh: &mut dyn Sheet, rows: RangeInclusive<usize>) -> bool {
+/// rows の写しを rows の下に挿入する（空の行を足して、変えられるセルを順に書く。足せない表は false）。
+/// 写せなかったセルの最初の理由を err に
+fn duplicate(sh: &mut dyn Sheet, rows: RangeInclusive<usize>, err: &mut Option<String>) -> bool {
     if *rows.end() >= sh.rows() {
         return false;
     }
@@ -1258,7 +1262,11 @@ fn duplicate(sh: &mut dyn Sheet, rows: RangeInclusive<usize>) -> bool {
         // 左の列から（種類の列を先に書くと、その種類の欄が後の列に出る）
         for (c, (t, editable)) in row.iter().enumerate() {
             if *editable && sh.cell(at + i, c).ro.is_none() {
-                let _ = sh.set(at + i, c, t);
+                if let Err(e) = sh.set(at + i, c, t) {
+                    if err.is_none() && !e.is_empty() {
+                        *err = Some(e);
+                    }
+                }
             }
         }
     }
@@ -1399,8 +1407,10 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
         }
     }
     if let Some(rows) = out.duplicate {
-        if duplicate(sh, rows.clone()) {
+        let mut err = None;
+        if duplicate(sh, rows.clone(), &mut err) {
             changed = true;
+            st.note = err;
             // 写しを選ぶ（列の範囲はそのまま）
             let n = rows.end() - rows.start() + 1;
             let (c, ac) = match (st.cur, st.anchor) {

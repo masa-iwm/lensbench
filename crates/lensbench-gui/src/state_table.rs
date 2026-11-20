@@ -683,6 +683,32 @@ impl Item {
         }
     }
 
+    /// 状態 n で変えた値をやめる。並びの値（非球面係数など）の 1 つの番号の行は、その番号だけ基本の値に戻す
+    /// （状態の上書きは並びごとなので、ほかの番号の状態の値は残す）
+    fn clear_cx(&self, c: &mut Combo, n: &str, cx: &Cx) {
+        if let Item::Face(f @ Face { idx: Some(i), .. }) = self {
+            let base = f.raw(c, None, cx.now, cx.cache);
+            let own = c
+                .get(&f.loc)
+                .and_then(|p| p.state_edit(n, f.surf, &f.field).cloned());
+            if let (Some(Value::Array(mut a)), Some(Value::Array(b))) = (own, base) {
+                let bi = b.get(*i).cloned().unwrap_or(json!(0.0));
+                if *i < a.len() {
+                    a[*i] = bi;
+                }
+                if let Some(p) = c.get_mut(&f.loc) {
+                    if a == b {
+                        p.clear_state_edit(n, f.surf, &f.field);
+                    } else {
+                        p.set_state_edit(n, f.surf, &f.field, Value::Array(a));
+                    }
+                }
+                return;
+            }
+        }
+        self.clear(c, n);
+    }
+
     /// 状態 n で変えた値をやめる（基本の値に戻す）
     fn clear(&self, c: &mut Combo, n: &str) {
         match self {
@@ -910,14 +936,20 @@ pub(crate) fn add_row(c: &mut Combo, view: &mut View, it: Item, now: FaceNow) {
 }
 
 /// 表の行 r（描いた時の rows の番号）を消す。後ろから消す（コメント行を消すと後ろのコメント行の番号が詰まる）
-fn remove_rows(c: &mut Combo, view: &mut View, rows: &[Item], r: std::ops::RangeInclusive<usize>) {
+fn remove_rows(
+    c: &mut Combo,
+    view: &mut View,
+    rows: &[Item],
+    r: std::ops::RangeInclusive<usize>,
+    now: FaceNow,
+) {
     for i in r.filter(|&i| i < rows.len()).rev() {
-        remove_row(c, view, &rows[i]);
+        remove_row(c, view, &rows[i], now);
     }
 }
 
 /// 行を消す: どの状態の値も基本の値に戻す（コメント行は行ごと消す）
-fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
+fn remove_row(c: &mut Combo, view: &mut View, it: &Item, now: FaceNow) {
     picks::remove_row_picks(c, it);
     if let Item::Comment(k) = it {
         if *k < c.mc_comments.len() {
@@ -927,8 +959,12 @@ fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
         }
         return;
     }
+    let cx = Cx {
+        now,
+        cache: &view.base_cache,
+    };
     for n in c.states.clone() {
-        it.clear(c, &n);
+        it.clear_cx(c, &n, &cx);
     }
     view.pinned.retain(|x| x != it);
 }
@@ -938,8 +974,9 @@ fn remove_row(c: &mut Combo, view: &mut View, it: &Item) {
 fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bool {
     let add: std::cell::RefCell<Option<Item>> = Default::default();
     let comment = std::cell::Cell::new(false);
-    let shown = items(c, false, &view.pinned);
     ui.menu_button(tr("+ Row"), |ui| {
+        // 表にある行（欄を開いているときだけ求める）
+        let shown = items(c, false, &view.pinned);
         // まだ表に無い行の欄（押すとその行を足す）
         let pick = |ui: &mut Ui, it: Item, label: String| {
             if !shown.contains(&it) && ui.button(label).clicked() {
@@ -1200,19 +1237,18 @@ pub(crate) fn ui(
     let cols: Vec<Option<String>> = std::iter::once(None)
         .chain(c.states.iter().cloned().map(Some))
         .collect();
-    let cache = view.base_cache.clone();
+    // 覚えた値は表を描く間だけ借りる（毎フレーム写さない）
     let mut sh = sheet_view::McSheet {
-        c,
+        c: &mut *c,
         rows: srows,
         cols,
         now,
-        cache: &cache,
+        cache: &view.base_cache,
         stops,
         acts: Default::default(),
     };
     changed |= crate::widgets::sheet::show(ui, "state_table", &mut view.sheet, &mut sh);
     let acts = sh.acts.take();
-    let c = sh.c;
     let mut head = None;
     for a in acts {
         match a {
@@ -1226,7 +1262,11 @@ pub(crate) fn ui(
                 view.rename_err = None;
             }
             sheet_view::Act::Clear(i, n) => {
-                rows[i].clear(c, &n);
+                let cx = Cx {
+                    now,
+                    cache: &view.base_cache,
+                };
+                rows[i].clear_cx(c, &n, &cx);
                 changed = true;
             }
             sheet_view::Act::Pick(i, n, a) => {
@@ -1237,7 +1277,7 @@ pub(crate) fn ui(
                 changed = true;
             }
             sheet_view::Act::Remove(r) => {
-                remove_rows(c, view, &rows, r);
+                remove_rows(c, view, &rows, r, now);
                 changed = true;
             }
             sheet_view::Act::Add(Some(it)) => {

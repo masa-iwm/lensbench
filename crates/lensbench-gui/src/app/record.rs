@@ -85,7 +85,44 @@ impl Rec {
                 | L::NeedData(_)
                 | L::NeedGlasses => return None,
             },
-            _ => return None,
+            // 組合せの変更（欄の書き換え・パネルの操作）は note が残す。ファイル・画面・計算の操作は文書を変えない。
+            // Msg を足したらここでどちらかを決める（黙って記録から漏らさない）
+            Msg::Edit(_)
+            | Msg::Combo(_)
+            | Msg::Opt(_)
+            | Msg::Tol(_)
+            | Msg::Swap(_)
+            | Msg::Zoom(_)
+            | Msg::Catalog(_)
+            | Msg::New
+            | Msg::Open
+            | Msg::OpenFile(_)
+            | Msg::Reload
+            | Msg::RunAll
+            | Msg::WriteZmx
+            | Msg::Save(_)
+            | Msg::Add(_)
+            | Msg::Focus(_)
+            | Msg::FocusKind(_)
+            | Msg::CyclePanes(_)
+            | Msg::ToWindow(_)
+            | Msg::Preset(_)
+            | Msg::Layout(_)
+            | Msg::SaveLayout
+            | Msg::Theme(_)
+            | Msg::Accent(_)
+            | Msg::Lang(_)
+            | Msg::Folders
+            | Msg::Help
+            | Msg::ToggleHelp
+            | Msg::TogglePalette
+            | Msg::RunOpt
+            | Msg::RunTol
+            | Msg::FocusImage
+            | Msg::Analyze(_)
+            | Msg::Record
+            | Msg::Replay => return None,
+            Msg::Replayed(_, m) => return Rec::from_msg(m),
         })
     }
 
@@ -148,6 +185,15 @@ impl Record {
     pub(super) fn text(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
+}
+
+/// 流し直している記録
+pub(super) struct Replaying {
+    total: usize,
+    /// 最初の操作の前の元に戻す段の数
+    base: Option<usize>,
+    /// 当たらなかった操作があって、残りを当てない
+    stopped: bool,
 }
 
 /// 記録中の様子: 書くファイルと、最後に残した時の組合せ
@@ -245,8 +291,66 @@ impl Core {
             }
         }
         let n = r.ops.len();
-        self.msgs.extend(r.ops.into_iter().map(Rec::into_msg));
+        self.replay = Some(Replaying {
+            total: n,
+            base: None,
+            stopped: false,
+        });
+        self.msgs.extend(
+            r.ops
+                .into_iter()
+                .enumerate()
+                .map(|(i, o)| Msg::Replayed(i + 1, Box::new(o.into_msg()))),
+        );
         self.info(trf("Replaying {} recorded operations", &[&n.to_string()]));
+    }
+
+    /// 流し直す操作 i を当ててよいか（前の操作が当たらなかったら当てない。元に戻すは記録を始めた所より前へは戻さない）
+    pub(super) fn replay_ok(&mut self, i: usize, m: &Msg) -> bool {
+        let depth = self.combo_hist.list(true).len();
+        let Some(r) = self.replay.as_mut() else {
+            return false;
+        };
+        if r.stopped {
+            return false;
+        }
+        // 記録を始めた所（最初の操作の前）の元に戻す段の数
+        let base = *r.base.get_or_insert(depth);
+        if let Msg::Undo(true, n) = m {
+            if depth < base + (*n).max(1) {
+                let total = r.total;
+                r.stopped = true;
+                self.fail(trf(
+                    "Replay stopped at operation {} of {}: it undoes changes made before the recording started",
+                    &[&i.to_string(), &total.to_string()],
+                ));
+                return false;
+            }
+        }
+        true
+    }
+
+    /// 流し直す操作 i を当てた後: 誤りが出ていたら（fails が増えた）残りを当てない
+    pub(super) fn replayed(&mut self, i: usize, fails: u64) {
+        let failed = self.fails > fails;
+        let Some(r) = self.replay.as_mut() else {
+            return;
+        };
+        let total = r.total;
+        if failed {
+            r.stopped = true;
+            let why = self.status.text.clone();
+            self.fail(trf(
+                "Replay stopped at operation {} of {}: {}",
+                &[&i.to_string(), &total.to_string(), &why],
+            ));
+        } else if i == total {
+            self.replay = None;
+            self.info(trf(
+                "Replayed {} recorded operations",
+                &[&total.to_string()],
+            ));
+        }
     }
 }
 

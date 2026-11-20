@@ -126,7 +126,21 @@ fn face_rows() {
         Some(&json!([0.0, -2e-5]))
     );
     assert!(items(&c, false, &[]).contains(&a));
-    remove_row(&mut c, &mut view, &it);
+    // 1 つの番号の行を基本に戻す・消すと、ほかの番号の状態の値は残る
+    let a2 = Item::Face(Face {
+        field: "asph".into(),
+        idx: Some(2),
+        ..f.clone()
+    });
+    a2.set(&mut c, Some("Config 1"), Val::Num(3e-7), &cx);
+    a2.clear_cx(&mut c, "Config 1", &cx);
+    assert_eq!(
+        c.picks[0].state_edit("Config 1", 0, "asph"),
+        Some(&json!([0.0, -2e-5, 0.0]))
+    );
+    remove_row(&mut c, &mut view, &a2, &now);
+    assert!(c.picks[0].state_edit("Config 1", 0, "asph").is_some());
+    remove_row(&mut c, &mut view, &it, &now);
     assert!(c.picks[0].state_edit("Config 2", 0, "t").is_none());
     assert!(!items(&c, false, &view.pinned).contains(&it));
     // 面の並びが変わると状態の上書きも外れる
@@ -392,6 +406,12 @@ fn sheet_cells_and_set() {
     assert!(sh.set(0, 2, "x").is_err());
     assert!(sh.set(2, 2, "nope").is_err());
     sh.set(2, 2, "fnum").unwrap();
+    // 受け付けない値は理由を返す（黙って捨てない）
+    assert!(sh.set(1, 2, "maybe").is_err());
+    sh.set(1, 2, "0").unwrap();
+    // inf は読めるが、無限大は面の値だけ（空気の厚みは誤り）
+    assert!(sh.set(0, 2, "inf").is_err());
+    assert!(sh.set(0, 2, "-1").is_err());
     // ピックアップのセルは書けない
     assert!(sh.cell(0, 3).ro.is_some());
     // 空にすると基本の値
@@ -668,7 +688,7 @@ fn comment_rows() {
     // 行を消すと詰まる（ピックアップも）
     picks::set_pick(&mut c, &b, "B", &picks::Src::conf("W"), 1.0, 0.0);
     let mut view = View::default();
-    remove_row(&mut c, &mut view, &a);
+    remove_row(&mut c, &mut view, &a, &now);
     assert_eq!(c.mc_comments.len(), 1);
     assert_eq!(c.mc_comments[0].values["W"], "wide");
     assert!(picks::pick_of(&c, &Item::Comment(0), "B").is_some());
@@ -696,7 +716,7 @@ fn remove_several_comment_rows() {
     }
     let rows: Vec<Item> = (0..3).map(Item::Comment).collect();
     let mut view = View::default();
-    remove_rows(&mut c, &mut view, &rows, 0..=1);
+    remove_rows(&mut c, &mut view, &rows, 0..=1, &now);
     assert_eq!(c.mc_comments.len(), 1);
     assert_eq!(
         Item::Comment(0).get(&c, None, &cx),

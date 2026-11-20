@@ -1671,3 +1671,10 @@ Empty last row	最後の空の行
 Type or pick a value in its first cell to add a row	左端のセルに値を打つか選ぶと行を足す
 {} must be from {} to {}	{} は {} から {} まで
 Tables (optimization, tolerance, swap, zoom, multi-configuration, fields, wavelengths, coating curves)	表（最適化・公差・差し替え探索・ズーム・多重構成・視野・波長・コーティングの曲線）
+{} must be 0 or more	{} は 0 以上
+{} must be more than 0	{} は 0 より大きく
+{} must be a whole number 0 or more	{} は 0 以上の整数
+Replay stopped at operation {} of {}: it undoes changes made before the recording started	{} / {} 番目の操作で流し直しを止めた: 記録を始める前の変更を元に戻す操作
+Replay stopped at operation {} of {}: {}	{} / {} 番目の操作で流し直しを止めた: {}
+Replayed {} recorded operations	記録した操作 {} 件を流し直した
+{} must be finite	{} は有限の値に
