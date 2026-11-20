@@ -383,7 +383,13 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // 面の無視（Ignore This Surface）: OpticStudio は HIDE の 6 番目の値を 1 にして書く（IGNR は多重構成の
             // 演算子の名前で、面の行にはない）
             "HIDE" => s.ignore = t.get(6).is_some_and(|v| *v != "0"),
-            "MEMA" => {}
+            // MEMA 機械半径 固定(1)・自動(0)、OEMA チップゾーン（OpticStudio 26.1 で実測）
+            "MEMA" => {
+                if t.get(2) == Some(&"1") {
+                    s.mema = Some(num(1)?);
+                }
+            }
+            "OEMA" => s.oema = num(1)?,
             k if HARMLESS.contains(&k) => {}
             k if legacy => raw.notes.push(format!(
                 "zmx surface {}: line {k} was skipped (an old .zmx without indentation)",

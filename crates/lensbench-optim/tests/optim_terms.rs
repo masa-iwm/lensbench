@@ -691,6 +691,7 @@ fn thickness_term() {
             to: 4,
             target: 1.0,
             edge: None,
+            clear: false,
             each: None,
         },
     );
@@ -702,6 +703,7 @@ fn thickness_term() {
             to: s.image(),
             target: 0.0,
             edge: None,
+            clear: false,
             each: None,
         },
     );

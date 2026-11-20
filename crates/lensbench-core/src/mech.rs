@@ -600,6 +600,43 @@ pub fn axis(frame: &(V3, M3)) -> V3 {
     col(&frame.1, 2)
 }
 
+impl System {
+    /// 面 j の玉の半径（OpticStudio の Mech Semi-Dia）: ガラスでつながる面（無視した面は飛ばしてつなぐ）の、縁の半径
+    /// （円形の開口の面は開口の最大の半径、ほかは半直径）+ チップゾーンと、固定した機械半径の最大（OpticStudio 26.1 で確認。
+    /// 固定した値が自動より小さければ自動のまま）
+    pub fn lens_radius(&self, j: usize) -> f64 {
+        let glass = |i: usize| {
+            let m = &self.surfaces[i].mat;
+            m.is_medium() && !m.is_air()
+        };
+        let ign = |i: usize| self.surfaces[i].ignore;
+        let (mut a, mut b) = (j, j);
+        while a > 1 && (glass(a - 1) || ign(a - 1)) {
+            a -= 1;
+        }
+        while b < self.image() && (glass(b) || ign(b)) {
+            b += 1;
+        }
+        (a..=b)
+            .filter(|&i| !ign(i))
+            .map(|i| {
+                let d = &self.surfaces[i];
+                let edge = match d.ap {
+                    crate::surface::Aperture::Circular { max, .. } => max,
+                    _ => d.semi,
+                };
+                (edge + d.chip_zone).max(d.mech_semi.unwrap_or(0.0))
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// 面 j の形が終わって平らになる半径（クリア半径 + チップゾーン）
+    pub fn flat_from(&self, j: usize) -> f64 {
+        let d = &self.surfaces[j];
+        d.semi + d.chip_zone
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

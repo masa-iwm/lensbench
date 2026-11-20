@@ -1093,6 +1093,13 @@
           "additionalProperties": false,
           "description": "thickness の項（中心の厚み。to を書くと surf から to までの和）",
           "properties": {
+            "clear": {
+              "description": "縁の厚みの矢高をクリア半径 × zone で測る（チップゾーンを入れない。既定 false）",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "config": {
               "description": "構成の番号（1 始まり、既定 1）",
               "type": [
@@ -1112,7 +1119,7 @@
               "description": "和でなく面ごとに min・max と比べ、はみ出しを足す（その媒質の面だけ。OpticStudio の MNCT・MNCA・MNEG など）"
             },
             "edge": {
-              "description": "縁の厚み（面とその次の面の矢高を、それぞれの半直径 × zone の高さで測る）",
+              "description": "縁の厚み（面とその次の面の矢高を、それぞれの面の形が終わる半径（クリア半径 + チップゾーン）× zone の高さで測る）",
               "type": [
                 "boolean",
                 "null"
@@ -1167,7 +1174,7 @@
               ]
             },
             "zone": {
-              "description": "縁の厚みを測る高さ（半直径に対する割合、既定 1）",
+              "description": "縁の厚みを測る高さ（面の形が終わる半径に対する割合、既定 1）",
               "format": "double",
               "type": [
                 "number",
@@ -1217,7 +1224,7 @@
               ]
             },
             "q": {
-              "description": "量（curv・conic・sag・sagx・sagy・thick・total・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・\ndpgf・cost・tce・semi・param）",
+              "description": "量（curv・conic・sag・sagx・sagy・thick・total・total_clear・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・\nindex・nd・vd・dpgf・cost・tce・semi・param）",
               "type": "string"
             },
             "surf": {
@@ -1264,7 +1271,7 @@
               ]
             },
             "x": {
-              "description": "sag・thick を測る点 [レンズ単位]（既定 0）。total は測る向き（既定 +y）",
+              "description": "sag・thick を測る点 [レンズ単位]（既定 0）。total・total_clear は測る向き（既定 +y）",
               "format": "double",
               "type": [
                 "number",

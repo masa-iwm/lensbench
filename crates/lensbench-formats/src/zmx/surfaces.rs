@@ -90,6 +90,8 @@ impl Ctx<'_> {
             semi_auto: !self.opt.fixed_semi
                 && s.diam_mode.unwrap_or(0) == 0
                 && !self.ops.contains_key(&("SDIA".to_string(), ki)),
+            mech_semi: s.mema,
+            chip_zone: s.oema,
             ..Default::default()
         };
         birefringent(&name, s, &p, k, &mut d)?;

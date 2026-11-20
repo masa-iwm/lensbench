@@ -193,6 +193,15 @@ pub struct Surface {
     /// 光線追跡には効かない。硝材の面の TCE はカタログの値）
     #[serde(default, skip_serializing_if = "is_zero")]
     pub tce: f64,
+    /// 固定した機械半径（OpticStudio の Mech Semi-Dia、.zmx の MEMA の固定）。None は自動。玉の半径
+    /// （[`System::lens_radius`](crate::system::System::lens_radius)）はガラスでつながる面の、これとクリア半径 + チップゾーンの最大
+    /// （自動より小さい値は使わない。OpticStudio 26.1 と同じ）。光線追跡には効かない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mech_semi: Option<f64>,
+    /// チップゾーン（OpticStudio の Chip Zone、.zmx の OEMA）: 面の形をクリア半径からこの幅だけ外へ延ばし、その外を平らにする。
+    /// 光線追跡には効かない
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub chip_zone: f64,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -428,6 +437,8 @@ impl Default for Surface {
             retarder: None,
             bire: None,
             tce: 0.0,
+            mech_semi: None,
+            chip_zone: 0.0,
         }
     }
 }

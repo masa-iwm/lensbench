@@ -1607,6 +1607,8 @@ n goes with quadrature grid	n は quadrature grid と使います
 quadrature grid needs n	quadrature grid には n が要ります
 axis goes with spot	axis は spot の項と使います
 zone goes with edge	zone は edge と使います
+clear goes with edge	clear は edge と使います
+edge thicknesses of each surface at the clear semi-diameter can't be written (MNET, MXET and the like)	面ごとのクリア半径での縁の厚みはエクスポートできません（MNET・MXET など）
 term {i}: {op} takes {lo} arguments ({n})	項 {i}: {op} の引数は {lo} 個です（{n} 個）
 term {i}: {op} takes {lo} or more arguments ({n})	項 {i}: {op} の引数は {lo} 個以上です（{n} 個）
 term {i}: an argument of a calc term must be a term with a single value	項 {i}: calc の項の引数は 1 つの値の項にしてください
@@ -2316,7 +2318,7 @@ surface quantity {q}	面の量 {q}
 surface {j} has no position (ignored, or the object at infinity)	面 {j} には位置がありません（無視する面か、無限遠の物体）
 {} of surface {j} is not finite	面 {j} の {} が有限ではありません
 {} of surface {j}: systems with mirrors are not supported yet	面 {j} の {}: ミラーのあるシステムにはまだ対応していません
-x and y go with sag, thick and total	x と y は sag・thick・total と使います
+x and y go with sag, thick, total and total_clear	x と y は sag・thick・total・total_clear と使います
 q param needs param (the parameter number)	q param には param（パラメータの番号）が要ります
 param goes with q param	param は q param と使います
 surface term with to has no min or max	to のある surface の項に min か max がありません
@@ -2420,6 +2422,7 @@ OPD reference {v} (0 to 3)	OPD の基準 {v}（0〜3）
 {}: surface has no aperture	{}: 面に開口がありません
 {}: the tilt and decenter after the surface reverses the one before	{}: 面の後のチルト・偏心は面の前のものを戻す設定です
 {}: aperture type {v} (0 to 2 can be set)	{}: 開口の種類 {v}（設定できるのは 0〜2）
+multi-configuration row {}: surface {j} has no aperture in the current configuration; add the row {j}.apmax to give its radius	多重構成の行 {}: 面 {j} は今の構成で開口がありません。半径を決める行 {j}.apmax を足してください
 {}: surface has no circular aperture or obscuration (its radii are kept)	{}: 面に円形の開口も遮蔽もありません（その半径を使います）
 {}: a coordinate break has no surface tilt or decenter	{}: 座標ブレークには面のチルト・偏心がありません
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません

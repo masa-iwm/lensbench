@@ -165,6 +165,8 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         dn: r.dn,
         disp: r.disp,
         tce: r.tce,
+        mech_semi: r.mech,
+        chip_zone: r.chip,
         before: r.before.as_ref().map(core_tilt),
         after: match &r.after {
             None => cs::After::None,

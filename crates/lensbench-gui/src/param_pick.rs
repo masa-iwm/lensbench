@@ -96,6 +96,8 @@ pub(crate) fn param_desc(name: &str) -> String {
         "vd" => tr("Model glass vd").into(),
         "dpgf" => tr("Model glass dPgF").into(),
         "tce" => tr("Thermal expansion coefficient").into(),
+        "mech" => tr("Mechanical semi-diameter").into(),
+        "chip" => tr("Chip zone").into(),
         "coating" => tr("Coating").into(),
         "csp1" | "csp2" => trf("Curvature solve value {}", &[&&k[3..]]),
         "tsp1" | "tsp2" | "tsp3" => trf("Thickness solve value {}", &[&&k[3..]]),

@@ -18,7 +18,7 @@ pub enum SurfQ {
     Thick,
     /// 直径（半直径の 2 倍、DMVA の Mode 1）
     Diam,
-    /// 玉の直径: ガラスでつながった面の半直径の最大の 2 倍（DMVA の Mode 0、OpticStudio の Mech Semi-Dia）
+    /// 玉の直径: [`System::lens_radius`] の 2 倍（DMVA の Mode 0、OpticStudio の Mech Semi-Dia）
     MechDiam,
     /// 頂点のグローバル座標（グローバル座標の基準の面から、GLCX・GLCY・GLCZ）
     Gx,
@@ -44,8 +44,11 @@ pub enum SurfQ {
     Cost,
     Tce,
     /// 点 (x, y) の向き（(0, 0) は +y）の、包む厚み: 中心の厚み + max(0, 次の面の矢高) − min(0, 面の矢高)。矢高は
-    /// それぞれのクリア半径の点（面はクリア半径の外で平らなので、玉の半径で測っても同じ。OpticStudio の TTVA・TTGT・TTLT）
+    /// それぞれの面の形が終わる半径（クリア半径 + チップゾーン、その外で面は平ら）の点（OpticStudio の TTVA・TTGT・TTLT の
+    /// Mode 0）
     Total,
+    /// Total の矢高をクリア半径の点で測る（チップゾーンを入れない。TTVA の Mode 1）
+    TotalClear,
     /// 面の熱膨張係数 [10⁻⁶/K]（レンズデータの TCE の列、.zmx の TCED。硝材の面でも面の値で、設定しなければ 0。
     /// OpticStudio の TCVA・TCGT・TCLT）
     SurfTce,
@@ -54,7 +57,7 @@ pub enum SurfQ {
 }
 
 impl SurfQ {
-    pub const ALL: [SurfQ; 26] = [
+    pub const ALL: [SurfQ; 27] = [
         SurfQ::Curv,
         SurfQ::Conic,
         SurfQ::Sag,
@@ -79,6 +82,7 @@ impl SurfQ {
         SurfQ::Cost,
         SurfQ::Tce,
         SurfQ::Total,
+        SurfQ::TotalClear,
         SurfQ::SurfTce,
         SurfQ::Parm(0),
     ];
@@ -108,6 +112,7 @@ impl SurfQ {
             SurfQ::Cost => "cost",
             SurfQ::Tce => "tce",
             SurfQ::Total => "total",
+            SurfQ::TotalClear => "total_clear",
             SurfQ::SurfTce => "surf_tce",
             SurfQ::Parm(_) => "param",
         }
@@ -169,7 +174,7 @@ pub(super) fn surface_value(
     // ミラーの面のパワー・ミラーの後の符号は OpticStudio で確かめていない
     if (q == SurfQ::Power && f.is_mirror())
         || (q == SurfQ::Ynip && super::mirror_in(s, 1, j))
-        || (q == SurfQ::Total && super::mirror_in(s, 1, j + 1))
+        || (matches!(q, SurfQ::Total | SurfQ::TotalClear) && super::mirror_in(s, 1, j + 1))
     {
         invalid!(
             "{} of surface {j}: systems with mirrors are not supported yet",
@@ -184,36 +189,28 @@ pub(super) fn surface_value(
         SurfQ::SagX => sag(f, f.semi, 0.0),
         SurfQ::SagY => sag(f, 0.0, f.semi),
         SurfQ::Thick => f.t - sag(f, x, y) + sag(&s.surfaces[j + 1], x, y),
-        SurfQ::Total => {
+        SurfQ::Total | SurfQ::TotalClear => {
             let (dx, dy) = if x == 0.0 && y == 0.0 {
                 (0.0, 1.0)
             } else {
                 (x / x.hypot(y), y / x.hypot(y))
             };
-            let edge = |f: &lensbench_core::surface::Surface| sag(f, dx * f.semi, dy * f.semi);
-            f.t + edge(&s.surfaces[j + 1]).max(0.0) - edge(f).min(0.0)
+            let edge = |i: usize| {
+                let f = &s.surfaces[i];
+                let r = if q == SurfQ::Total {
+                    s.flat_from(i)
+                } else {
+                    f.semi
+                };
+                sag(f, dx * r, dy * r)
+            };
+            f.t + edge(j + 1).max(0.0) - edge(j).min(0.0)
         }
         SurfQ::Parm(n) => lensbench_core::pickup::surf_parm(f, n).unwrap_or(0.0),
         SurfQ::Diam => 2.0 * f.semi,
-        SurfQ::MechDiam => {
-            // 無視した面は無いものとして玉をつなぐ（OpticStudio 26.1 の多重構成の IGNR で確かめた）
-            let ign = |i: usize| s.surfaces[i].ignore;
-            let (mut a, mut b) = (j, j);
-            while a > 1 && (glass(s, a - 1) || ign(a - 1)) {
-                a -= 1;
-            }
-            while b < s.image() && (glass(s, b) || ign(b)) {
-                b += 1;
-            }
-            // 円形の開口の面は開口の最大の半径を縁にする（OpticStudio 26.1 の多重構成の APMX で、半直径より大きくても
-            // 小さくても開口の半径を使った）
-            let edge = |i: usize| match s.surfaces[i].ap {
-                lensbench_core::surface::Aperture::Circular { max, .. } => max,
-                _ => s.surfaces[i].semi,
-            };
-            let semi = (a..=b).filter(|&i| !ign(i)).map(edge);
-            2.0 * semi.fold(0.0, f64::max)
-        }
+        // 無視した面は無いものとして玉をつなぐ（OpticStudio 26.1 の多重構成の IGNR で確かめた）。円形の開口の面は開口の
+        // 最大の半径を縁にする（APMX で、半直径より大きくても小さくても開口の半径を使った）
+        SurfQ::MechDiam => 2.0 * s.lens_radius(j),
         SurfQ::Gx | SurfQ::Gy | SurfQ::Gz => {
             let Some(fr) = s.frames().surf[j] else {
                 invalid!("surface {j} has no position (ignored, or the object at infinity)");
@@ -295,7 +292,7 @@ pub(super) fn check(
     wave: Option<usize>,
     s: &System,
 ) -> Result<()> {
-    let last = if matches!(q, SurfQ::Thick | SurfQ::Total) {
+    let last = if matches!(q, SurfQ::Thick | SurfQ::Total | SurfQ::TotalClear) {
         s.image() - 1
     } else {
         s.image()
@@ -356,6 +353,7 @@ pub(super) fn reads_semi(k: &TermKind) -> bool {
                     | SurfQ::SagY
                     | SurfQ::Semi
                     | SurfQ::Total
+                    | SurfQ::TotalClear
             )
         }
         TermKind::Thickness { edge, .. } => edge.is_some(),
@@ -425,16 +423,25 @@ pub(super) fn thickness_term(s: &System, k: &TermKind) -> Result<TermOut> {
         to,
         target,
         edge,
+        clear,
         each,
     } = k
     else {
         unreachable!("not a thickness term");
     };
     let x = |i: usize| match edge {
-        // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの半直径 × z の高さ、y の向き）
+        // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの面の形が終わる半径（clear ならクリア半径）× z
+        // の高さ、y の向き）
         Some(z) => {
-            let sag = |f: &lensbench_core::surface::Surface| f.shape().sag(0.0, z * f.semi).0;
-            s.surfaces[i].t - sag(&s.surfaces[i]) + sag(&s.surfaces[i + 1])
+            let sag = |i: usize| {
+                let r = if *clear {
+                    s.surfaces[i].semi
+                } else {
+                    s.flat_from(i)
+                };
+                s.surfaces[i].shape().sag(0.0, z * r).0
+            };
+            s.surfaces[i].t - sag(i) + sag(i + 1)
         }
         None => s.surfaces[i].t,
     };

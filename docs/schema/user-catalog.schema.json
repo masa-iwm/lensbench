@@ -2611,6 +2611,11 @@
           ],
           "description": "面の前の傾き・偏心"
         },
+        "chip": {
+          "description": "チップゾーン [mm]（OpticStudio の Chip Zone）: 面の形をクリア半径からこの幅だけ外へ延ばし、その外を平らにする",
+          "format": "double",
+          "type": "number"
+        },
         "coating": {
           "description": "膜の名前",
           "type": "string"
@@ -2646,6 +2651,14 @@
         "image": {
           "description": "像面の印（最後の行）",
           "type": "boolean"
+        },
+        "mech": {
+          "description": "固定した機械半径 [mm]（OpticStudio の Mech Semi-Dia。省略は自動: ガラスでつながる面の縁 + チップゾーンの最大。\n自動より小さければ自動のまま）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "medium": {
           "anyOf": [

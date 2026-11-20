@@ -508,6 +508,16 @@ impl System {
         }) {
             invalid!("user-defined shape (surface {j}) has no model (shape)");
         }
+        if let Some((j, d)) = sf.iter().enumerate().find(|(_, d)| {
+            !(d.chip_zone >= 0.0 && d.chip_zone.is_finite())
+                || d.mech_semi.is_some_and(|m| !(m >= 0.0 && m.is_finite()))
+        }) {
+            invalid!(
+                "surface {j}: mechanical semi-diameter {:?}, chip zone {}",
+                d.mech_semi,
+                d.chip_zone
+            );
+        }
         let st = self.stop();
         if st == 0 || st >= sf.len() - 1 {
             invalid!("stop surface {st}");

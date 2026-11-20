@@ -273,6 +273,13 @@ pub struct Row {
     /// 面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列。光線追跡には効かない）
     #[serde(default, skip_serializing_if = "zero")]
     pub tce: f64,
+    /// 固定した機械半径 [mm]（OpticStudio の Mech Semi-Dia。省略は自動: ガラスでつながる面の縁 + チップゾーンの最大。
+    /// 自動より小さければ自動のまま）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mech: Option<f64>,
+    /// チップゾーン [mm]（OpticStudio の Chip Zone）: 面の形をクリア半径からこの幅だけ外へ延ばし、その外を平らにする
+    #[serde(default, skip_serializing_if = "zero")]
+    pub chip: f64,
 }
 
 /// 傾き・偏心（座標ブレーク・面の前後）

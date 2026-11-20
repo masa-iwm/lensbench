@@ -244,10 +244,12 @@ pub struct ThickSpec {
     pub to: Option<usize>,
     /// 目標 [レンズ単位]
     pub target: Option<f64>,
-    /// 縁の厚み（面とその次の面の矢高を、それぞれの半直径 × zone の高さで測る）
+    /// 縁の厚み（面とその次の面の矢高を、それぞれの面の形が終わる半径（クリア半径 + チップゾーン）× zone の高さで測る）
     pub edge: Option<bool>,
-    /// 縁の厚みを測る高さ（半直径に対する割合、既定 1）
+    /// 縁の厚みを測る高さ（面の形が終わる半径に対する割合、既定 1）
     pub zone: Option<f64>,
+    /// 縁の厚みの矢高をクリア半径 × zone で測る（チップゾーンを入れない。既定 false）
+    pub clear: Option<bool>,
     /// 和でなく面ごとに min・max と比べ、はみ出しを足す（その媒質の面だけ。OpticStudio の MNCT・MNCA・MNEG など）
     pub each: Option<EachName>,
 }
@@ -258,15 +260,15 @@ pub struct ThickSpec {
 pub struct SurfSpec {
     /// 面の番号（物体面 0）
     pub surf: usize,
-    /// 量（curv・conic・sag・sagx・sagy・thick・total・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・index・nd・vd・
-    /// dpgf・cost・tce・semi・param）
+    /// 量（curv・conic・sag・sagx・sagy・thick・total・total_clear・diam・mech_diam・gx・gy・gz・ga・gb・gc・power・ynip・
+    /// index・nd・vd・dpgf・cost・tce・semi・param）
     pub q: String,
     /// 面タイプのパラメータの番号（.zmx の PARM の番号、param だけ）
     pub param: Option<u8>,
     /// 範囲の最後の面（semi・nd・vd・dpgf・cost・tce だけ）。書けば面 surf から to までを面ごとに min か max と比べ、
     /// はみ出しを足す（ガラスの量はガラスの面だけ）
     pub to: Option<usize>,
-    /// sag・thick を測る点 [レンズ単位]（既定 0）。total は測る向き（既定 +y）
+    /// sag・thick を測る点 [レンズ単位]（既定 0）。total・total_clear は測る向き（既定 +y）
     pub x: Option<f64>,
     pub y: Option<f64>,
     /// 波長の番号（power・ynip・index だけ）。null・省略は主波長

@@ -39,6 +39,10 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         if let Some(d) = sf.diam.as_mut() {
             len(d);
         }
+        if let Some(d) = sf.mema.as_mut() {
+            len(d);
+        }
+        len(&mut sf.oema);
         // PARM: 面タイプごとの単位
         let mut parm = BTreeMap::new();
         for (&i, &v) in &sf.parm {
@@ -180,7 +184,7 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
     for (op, p1, c, v, rest) in r.mce.iter_mut() {
         let k = match op.as_str() {
             "THIC" | "SDIA" | "APMX" | "APMN" | "APDX" | "APDY" | "CBDX" | "CBDY" | "CADX"
-            | "CADY" => f,
+            | "CADY" | "MCSD" | "CHZN" => f,
             "CRVT" => 1.0 / f,
             "XFIE" | "YFIE" if matches!(fltp_of(*c), 1..=3) => f,
             // 入射瞳径・浮動の絞りの半径は長さ、F 値・NA・コーン角はそのまま

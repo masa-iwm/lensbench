@@ -422,6 +422,7 @@ fn spread_term() {
                 to: 6,
                 target: 0.0,
                 edge: None,
+                clear: false,
                 each: None,
             }),
             target: 0.0,

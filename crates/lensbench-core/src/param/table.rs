@@ -60,7 +60,7 @@ fn set_aperture_os_code(a: &mut Aperture, n: i64) {
     };
 }
 
-/// 面の多重構成の表だけの値（開口の最小の半径・偏心・種類、面の前後の傾き偏心の値と順序、モデルガラスの値、熱膨張係数）を面 d に入れる（値は確かめない）。
+/// 面の多重構成の表だけの値（開口の最小の半径・偏心・種類、面の前後の傾き偏心の値と順序、モデルガラスの値、熱膨張係数、機械半径、チップゾーン）を面 d に入れる（値は確かめない）。
 /// 面の前後の傾き偏心を表の値で作るときは、面の後を変えない（OpticStudio と同じく、後は値 0 のまま）。無いものに 0 を入れるときは
 /// 作らない。モデルガラスでない面のモデルガラスの値は何もしない（OpticStudio と同じ）。ほかの種類は何もせず false
 pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64) -> bool {
@@ -73,6 +73,8 @@ pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64)
         Kind::ApDx | Kind::ApDy => set_aperture_decenter(&mut d.ap, k == Kind::ApDy, v),
         Kind::ApType => set_aperture_os_code(&mut d.ap, v as i64),
         Kind::Tce => d.tce = v,
+        Kind::MechSemi => d.mech_semi = Some(v),
+        Kind::ChipZone => d.chip_zone = v,
         Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf => {
             if let Material::Model { nd, vd, dpgf } = &mut d.mat {
                 *match k {

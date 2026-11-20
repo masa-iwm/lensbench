@@ -76,6 +76,7 @@ const SURF_Q: &[&str] = &[
     "cost",
     "tce",
     "total",
+    "total_clear",
     "surf_tce",
     "param",
     "semi",

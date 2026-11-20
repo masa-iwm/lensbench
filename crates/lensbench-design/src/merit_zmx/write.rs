@@ -572,7 +572,11 @@ fn row_of(
             let mut p = [s1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             let edge = t.get("edge") == Some(&Value::Bool(true));
             let zone = num("zone").unwrap_or(1.0);
+            let clear = t.get("clear") == Some(&Value::Bool(true));
             if let Some(e) = t.get("each").and_then(Value::as_str) {
+                if clear {
+                    return Err("edge thicknesses of each surface at the clear semi-diameter can't be written (MNET, MXET and the like)".into());
+                }
                 // 面ごとの境界: MN・MX ＋ C（中心）・E（縁）＋ T（すべて）・A（空気）・G（ガラス）。Zone 0 は半直径
                 p[1] = s2;
                 if edge {
@@ -601,6 +605,8 @@ fn row_of(
                 if s2 != s1 || zone != 1.0 {
                     return Err("only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)".into());
                 }
+                // Data2 の Mode 1 はクリア半径で測る
+                p[3] = f64::from(clear);
                 match bound(0.0) {
                     Bound::Side("OPGT", b) => ("ETGT", p, Bound::Target(b)),
                     Bound::Side(_, b) => ("ETLT", p, Bound::Target(b)),
@@ -691,8 +697,9 @@ fn row_of(
                     (p[2], p[3]) = (x, y);
                     ("STHI", "", "")
                 }
-                "total" => {
-                    // Code 0〜3 = +y・+x・−y・−x の向き
+                "total" | "total_clear" => {
+                    // Code 0〜3 = +y・+x・−y・−x の向き。Data2 の Mode 1 はクリア半径で測る
+                    p[3] = f64::from(q == "total_clear");
                     p[1] = match (x, y) {
                         (0.0, y) if y >= 0.0 => 0.0,
                         (x, 0.0) if x > 0.0 => 1.0,

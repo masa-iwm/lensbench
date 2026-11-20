@@ -66,6 +66,14 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
             Ok(surface_value(s, i, SurfQ::MechDiam, 0.0, 0.0, s.primary)? / 2.0)
         }
     };
+    // 面の形が終わる半径（玉の半径ではチップゾーンまで、クリア半径ではクリア半径まで。OpticStudio 26.1 で実測）
+    let flat = |i: usize| {
+        if *clear {
+            s.surfaces[i].semi
+        } else {
+            s.flat_from(i)
+        }
+    };
     if *cylinder {
         let mut r: f64 = 0.0;
         let mut len: f64 = 0.0;
@@ -100,7 +108,7 @@ pub(super) fn term(s: &System, k: &TermKind) -> Result<TermOut> {
         };
         let r = rad(j)?.max(rad(j + 1)?);
         // mm³ → cm³
-        v += rho * element(a, b, r) / 1000.0;
+        v += rho * element(a, b, r, [flat(j), flat(j + 1)]) / 1000.0;
     }
     if !v.is_finite() {
         invalid!("the volume of surfaces {surf} to {to} is not finite");
@@ -130,20 +138,16 @@ fn density(s: &System, j: usize) -> Result<Option<f64>> {
     }
 }
 
-/// 面 a・b の間の、半径 r の円柱の中の体積 [mm³]: ∫∫ (t + 矢高_b − 矢高_a) dA。面はクリア半径の外で縁の高さのまま
-fn element(a: &Surface, b: &Surface, r: f64) -> f64 {
-    let sag = |f: &Surface, x: f64, y: f64| {
+/// 面 a・b の間の、半径 r の円柱の中の体積 [mm³]: ∫∫ (t + 矢高_b − 矢高_a) dA。面 a・b は半径 flat の外で縁の高さのまま
+fn element(a: &Surface, b: &Surface, r: f64, flat: [f64; 2]) -> f64 {
+    let sag = |f: &Surface, e: f64, x: f64, y: f64| {
         let h = x.hypot(y);
-        let k = if h > f.semi && h > 0.0 {
-            f.semi / h
-        } else {
-            1.0
-        };
+        let k = if h > e && h > 0.0 { e / h } else { 1.0 };
         f.shape().sag(x * k, y * k).0
     };
-    // 半径の区間の境目（矢高はクリア半径で折れる）
+    // 半径の区間の境目（矢高は平らになる半径で折れる）
     let mut cuts = vec![0.0, r];
-    cuts.extend([a.semi, b.semi].into_iter().filter(|&h| h > 0.0 && h < r));
+    cuts.extend(flat.into_iter().filter(|&h| h > 0.0 && h < r));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup();
     let (gx, gw) = lensbench_core::opd::gauss_legendre(RADIAL);
@@ -157,7 +161,7 @@ fn element(a: &Surface, b: &Surface, r: f64) -> f64 {
             for i in 0..ANGULAR {
                 let (sn, cs) = (std::f64::consts::TAU * i as f64 / ANGULAR as f64).sin_cos();
                 let (px, py) = (h * cs, h * sn);
-                ring += a.t + sag(b, px, py) - sag(a, px, py);
+                ring += a.t + sag(b, flat[1], px, py) - sag(a, flat[0], px, py);
             }
             v += wx * d * h * ring * std::f64::consts::TAU / ANGULAR as f64;
         }

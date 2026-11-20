@@ -440,7 +440,8 @@ fn kind_of(
             };
             m.insert(key.into(), json!(target * unit));
         }
-        // ETGT・ETLT・ETVA: Int1 の面の縁の厚み（半直径の矢高）≥・≤・＝ 目標
+        // ETGT・ETLT・ETVA: Int1 の面の縁の厚み ≥・≤・＝ 目標。Data2 の Mode 0 は矢高を面の形が終わる半径（クリア半径 +
+        // チップゾーン）で、1 はクリア半径で測る（OpticStudio 26.1 で実測）
         "ETGT" | "ETLT" | "ETVA" => {
             let j = int(INT1)?;
             if j < 1 || j as usize >= image {
@@ -449,6 +450,13 @@ fn kind_of(
             m.insert("type".into(), json!("thickness"));
             m.insert("surf".into(), json!(j));
             m.insert("edge".into(), json!(true));
+            match int(data(2))? {
+                0 => {}
+                1 => {
+                    m.insert("clear".into(), json!(true));
+                }
+                k => return Err(format!("mode {k} (0 or 1)")),
+            }
             let key = match op {
                 "ETGT" => "min",
                 "ETLT" => "max",
@@ -818,6 +826,8 @@ fn kind_of(
                 "MABB" => (format!("{j}.vd"), 1.0),
                 "MDPG" => (format!("{j}.dpgf"), 1.0),
                 "TCEX" => (format!("{j}.tce"), 1.0),
+                "MCSD" => (format!("{j}.mech"), unit),
+                "CHZN" => (format!("{j}.chip"), unit),
                 "CSP1" | "CSP2" | "TSP1" | "TSP2" | "TSP3" => {
                     (format!("{j}.{}", mop.to_ascii_lowercase()), 1.0)
                 }

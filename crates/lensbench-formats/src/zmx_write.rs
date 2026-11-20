@@ -685,9 +685,15 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 ),
             },
         }
-        // 機械的な半直径（自動。OpticStudio の保存と同じく書く）。半直径を固定した玉の面で開口のない面は、MEMA の行が
-        // あっても OpticStudio・lensbench の読込で浮動開口になる
-        w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string());
+        // チップゾーン（0 なら書かない）と機械的な半直径（固定は 1、自動は値 0 で OpticStudio が計算し直す）。半直径を
+        // 固定した玉の面で開口のない面は、MEMA の行があっても OpticStudio・lensbench の読込で浮動開口になる
+        if d.chip_zone != 0.0 {
+            w(&mut o, format!("  OEMA {} 0 0 0 1 \"\"", f(d.chip_zone)));
+        }
+        match d.mech_semi {
+            Some(m) => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
+            None => w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string()),
+        }
         match d.ap {
             Aperture::None => {}
             Aperture::Circular { min, max, dx, dy } => {
@@ -861,6 +867,8 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::ModelVd => ("MABB", p.index(), None, id),
         Kind::ModelDpgf => ("MDPG", p.index(), None, id),
         Kind::Tce => ("TCEX", p.index(), None, id),
+        Kind::MechSemi => ("MCSD", p.index(), None, id),
+        Kind::ChipZone => ("CHZN", p.index(), None, id),
         Kind::CurvSolve(i) => (["CSP1", "CSP2"][i as usize], p.index(), None, id),
         Kind::ThickSolve(i) => (["TSP1", "TSP2", "TSP3"][i as usize], p.index(), None, id),
         Kind::ParmSolve(n, i) => (["PSP1", "PSP2", "PSP3"][i as usize], p.index(), Some(n), id),

@@ -4,7 +4,7 @@ use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
 /// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、膜の COTN、モデルガラスの MIND・MABB・MDPG（モデルガラスでない面の行は
-/// OpticStudio も使わないので表に入れない）、熱膨張係数の TCEX、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FVAN・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// OpticStudio も使わないので表に入れない）、熱膨張係数の TCEX、機械半径の MCSD・チップゾーンの CHZN、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FVAN・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -272,7 +272,7 @@ fn material_pickers(raw: &Raw, j: usize) -> Vec<usize> {
         .collect()
 }
 
-/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR・MIND・MABB・MDPG・TCEX、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
+/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
 /// 値の位置は dx dy tx ty tz の順）の種類（[`lensbench_core::param::set_surface_table_value`] で入れる種類）
 fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
     use lensbench_core::param::Kind;
@@ -285,6 +285,8 @@ fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
         "MABB" => return Some(Kind::ModelVd),
         "MDPG" => return Some(Kind::ModelDpgf),
         "TCEX" => return Some(Kind::Tce),
+        "MCSD" => return Some(Kind::MechSemi),
+        "CHZN" => return Some(Kind::ChipZone),
         "CBOR" => return Some(Kind::BeforeOrder),
         "CAOR" => return Some(Kind::AfterOrder),
         _ => {}

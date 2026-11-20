@@ -18,18 +18,18 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 const HARMLESS: &[&str] = &[
-    "HIDE", "MIRR", "SLAB", "POPS", "SSID", "FIMP", "MEMA", "VPAR", "VDSZ", "VCRV", "VCON", "OEMA",
-    "BLNK", "NAME", // 縁の描き方（光線追跡に効かない）
+    "HIDE", "MIRR", "SLAB", "POPS", "SSID", "FIMP", "VPAR", "VDSZ", "VCRV", "VCON", "BLNK",
+    "NAME", // 縁の描き方（光線追跡に効かない）
     "EDGE", // 面の色（表示用）
     "SCOL",
 ];
 const MCE_HANDLED: &[&str] = &[
-    "THIC", "IGNR", "APMX", "SDIA", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN", "WAVE", "GLSS",
-    "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC",
-    "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY",
-    "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR", "MIND", "MABB", "MDPG", "TCEX",
-    "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN", "CSP1", "CSP2", "TSP1", "TSP2", "TSP3",
-    "PSP1", "PSP2", "PSP3",
+    "THIC", "IGNR", "APMX", "SDIA", "MCSD", "CHZN", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN",
+    "WAVE", "GLSS", "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP",
+    "PRES", "AFOC", "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY",
+    "CBTX", "CBTY", "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR", "MIND", "MABB",
+    "MDPG", "TCEX", "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN", "CSP1", "CSP2", "TSP1",
+    "TSP2", "TSP3", "PSP1", "PSP2", "PSP3",
     // 構成のピックアップの一括の指定。OpticStudio は下の行のセルごとのピックアップに開いて書くので、それを読む
     "PUCN",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
@@ -58,6 +58,10 @@ pub struct RawSurf {
     pub diam_mode: Option<u8>,
     /// 半直径を固定（DIAM の 2 番目が 1）
     pub diam_fixed: bool,
+    /// 固定した機械半径（MEMA の 2 番目が 1 の値。自動は None）
+    pub mema: Option<f64>,
+    /// チップゾーン（OEMA）
+    pub oema: f64,
     pub comment: String,
     pub parm: BTreeMap<i64, f64>,
     /// ピックアップ（元の面, 倍率, オフセット, 元の列。None は同じ列）

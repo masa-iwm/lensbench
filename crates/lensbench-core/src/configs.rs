@@ -496,7 +496,13 @@ impl System {
             if v == 0.0 {
                 off.push(j);
             }
-            if none && (v == 1.0 || v == 2.0) && has_max {
+            if none && (v == 1.0 || v == 2.0) && !has_max {
+                invalid!(
+                    "multi-configuration row {}: surface {j} has no aperture in the current configuration; add the row {j}.apmax to give its radius",
+                    r.param.name()
+                );
+            }
+            if none && (v == 1.0 || v == 2.0) {
                 s.edit_raw(|rx| {
                     rx.surfaces[j].ap = crate::surface::Aperture::Circular {
                         min: 0.0,

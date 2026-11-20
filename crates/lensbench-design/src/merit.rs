@@ -468,6 +468,9 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             if t.zone.is_some() && t.edge != Some(true) {
                 return Err("zone goes with edge".to_string().into());
             }
+            if t.clear.is_some() && t.edge != Some(true) {
+                return Err("clear goes with edge".to_string().into());
+            }
             if !(zone > 0.0 && zone <= 1.0) {
                 return Err(format!("zone {zone} (more than 0, up to 1)").into());
             }
@@ -476,6 +479,7 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 to: t.to.unwrap_or(t.surf),
                 target: t.target.unwrap_or(0.0),
                 edge: (t.edge == Some(true)).then_some(zone),
+                clear: t.clear == Some(true),
                 each: t.each.map(|e| Each {
                     medium: match e {
                         EachName::All => Medium::All,
@@ -489,9 +493,14 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
         TermSpec::Surface(t) => {
             let mut q = SurfQ::parse(&t.q)?;
             if (t.x.is_some() || t.y.is_some())
-                && !matches!(q, SurfQ::Sag | SurfQ::Thick | SurfQ::Total)
+                && !matches!(
+                    q,
+                    SurfQ::Sag | SurfQ::Thick | SurfQ::Total | SurfQ::TotalClear
+                )
             {
-                return Err("x and y go with sag, thick and total".to_string().into());
+                return Err("x and y go with sag, thick, total and total_clear"
+                    .to_string()
+                    .into());
             }
             match (q, t.param) {
                 (SurfQ::Parm(_), Some(n)) => q = SurfQ::Parm(n),

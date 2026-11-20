@@ -1,7 +1,7 @@
 # .zmx の読込の約束（OpticStudio との違い）
 
 - レンズ単位が mm 以外（`UNIT` の IN・CM・METER）の .zmx は、読込で mm に直す（長さの値・偶数次非球面の係数・厚さのソルブの値・
-  入射瞳径・高さの視野、多重構成の長さの行: THIC・SDIA・CRVT・APMX・APMN・APDX・APDY・CBDX・CBDY・CADX・CADY・PRAM、
+  入射瞳径・高さの視野、多重構成の長さの行: THIC・SDIA・CRVT・APMX・APMN・APDX・APDY・CBDX・CBDY・CADX・CADY・MCSD・CHZN・PRAM、
   構成ごとの視野の種類で高さの XFIE・YFIE、構成ごとの開口の種類で入射瞳径・絞り径の APER、ソルブの条件の長さの値と構成のピックアップのオフセット）。結果も mm で出る。換算の決まっていない面タイプ・データは読込で止める
 - 浮動開口（`FLAP`）の外の光線をける（OpticStudio と同じ）。クリア半径を固定（`DIAM 値 1`）にした玉の面（前か後ろがガラス）で開口のない面は、
   浮動開口にする（OpticStudio 2026 R1 も読込で `FLAP` を足してける。機械的なクリア半径の行 `MEMA` があっても同じ。空気どうしの面には足さない）。
@@ -11,6 +11,8 @@
 - 視野がすべて 0（軸上だけ）のシステムでは、正規化視野 (hx, hy) を与えても軸上のまま追う（OpticStudio と同じ）
 - 面の色 `SCOL` は読み飛ばす。面の熱膨張係数 `TCED` は面の `tce` として読み書きする（光線追跡には効かない。プロジェクトファイルには残らない）。
   多重構成は下の「多重構成」
+- 固定した機械半径 `MEMA 値 1 …` とチップゾーン `OEMA` は面の `mech_semi`・`chip_zone`（システムファイルの `mech`・`chip`）として読み書きする
+  （光線追跡には効かない。玉の径・体積・縁の厚み・TSAG の項に効く）
 - Gradium（GRINSUR8）・Gradient 9 の近軸は、小さい実光線の極限（媒質の中の近軸の受け渡し）。OpticStudio の近軸（EFFL、曲率の F 値ソルブ）は
   これと 1% 程度違うシステムがある（付属のサンプルの Gradium のシステムで EFL 37.50 と 37.89）。実光線は面の形が同じなら一致する
 - 読まないもの: 非順次の部品（`NSOH`、非順次の物体には対応していないと断る）、Binary 2 のほかの回折の面・ホログラム・ユーザー定義（DLL）の面タイプ。
@@ -64,7 +66,7 @@
 構成で変わる行は、多重構成の表（[パラメータの名前](params.md) の「多重構成」の列）に読み、書き出しも同じオペランドに書く。
 
 - 表に読むオペランド: THIC・CRVT・CONN・PRAM（偶数次非球面の係数・Zernike の係数・座標ブレークの値など）・SDIA・IGNR・APMX・APMN・APDX・APDY・APTP・
-  CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
+  CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
   システムの値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR
 - 名前を読み替えるもの: FVAN は FTAN（同じ値）、古い名前の PAR1〜PAR8 は PRAM の PARM 1〜8、面の範囲の無視 IGNM は面ごとの IGNR
 - モデルガラスでない面の MIND・MABB・MDPG、ソルブもピックアップも無い面の CSP・TSP・PSP は OpticStudio でも効かないので表に入れない
@@ -87,7 +89,8 @@
 | `GLRS 面 0` | #2 は 0 | #2 F/# の求め方（0 光線で求める） |
 | `CURV 曲率 種類 値 0 0 ""` | | #2 0 固定・1 変数・2〜11 ソルブ・4 ピックアップ・12 マクロ |
 | `DIAM クリア半径 種類 0 0 1 ""` | 自動は 0、固定は 1 | #2 0 自動・1 固定・2 ピックアップ（#3 元の面、#4 列、#5 倍率）・3 Maximum（多重構成だけ）・4 マクロ |
-| `MEMA 0 0 0 0 1 ""` | 自動 | 機械的なクリア半径（DIAM と同じ形） |
+| `MEMA 0 0 0 0 1 ""` | 自動（固定した機械半径は `MEMA 値 1 0 0 1 ""`） | 機械的なクリア半径（DIAM と同じ形） |
+| `OEMA 値 0 0 0 1 ""` | チップゾーンが 0 でない面だけ | チップゾーン |
 | `GLAS 名前 0 0 1.5 40 0 0 0 0 0 0` | カタログの材料 | #2 0 固定・1 モデル（#4 nd #5 vd #6 ΔPgF）・2 ピックアップ（#3 元の面）・3 Substitute・4 Offset（#10 Δnd #11 Δvd） |
 | `XDAT 番号 値 0 0 1 0 0 ""` | | OpticStudio の保存と同じ形 |
 | `CLAP`・`SQAP`・`ELAP`・`OBSC`・`SPID` の 3 番目、`FLAP 0 半径 0` の 3 番目 | 0 | 開口のピックアップの元の面（0 はなし）。ピックアップした面にも元の面の値と偏心が書かれるので、読込はその値を使う |

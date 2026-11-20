@@ -35,8 +35,8 @@ pub(super) fn kind(r: &MeritRow, unit: f64, image: usize) -> Result<Map<String, 
     let target = num(TARGET)?;
     let op = r.op.as_str();
     match op {
-        // TTGT・TTLT・TTVA: Int1 の面の包む厚み（Int2 の Code 0〜3 = +y・+x・−y・−x の向き。Data2 の Mode は玉の半径か
-        // クリア半径だが、面はクリア半径の外で平らなのでどちらも同じ値。OpticStudio 26.1 で実測）
+        // TTGT・TTLT・TTVA: Int1 の面の包む厚み（Int2 の Code 0〜3 = +y・+x・−y・−x の向き。Data2 の Mode 0 は矢高を面の形
+        // が終わる半径（クリア半径 + チップゾーン）で、1 はクリア半径で測る。OpticStudio 26.1 で実測）
         "TTGT" | "TTLT" | "TTVA" => {
             let j = int(INT1)?;
             if j < 1 || j as usize >= image {
@@ -49,9 +49,14 @@ pub(super) fn kind(r: &MeritRow, unit: f64, image: usize) -> Result<Map<String, 
                 3 => (-1.0, 0.0),
                 c => return Err(format!("code {c} (0 to 3)")),
             };
+            let q = match int(data(2))? {
+                0 => "total",
+                1 => "total_clear",
+                k => return Err(format!("mode {k} (0 or 1)")),
+            };
             m.insert("type".into(), json!("surface"));
             m.insert("surf".into(), json!(j));
-            m.insert("q".into(), json!("total"));
+            m.insert("q".into(), json!(q));
             if (x, y) != (0.0, 1.0) {
                 m.insert("x".into(), json!(x));
                 m.insert("y".into(), json!(y));
@@ -134,8 +139,8 @@ pub(super) fn kind(r: &MeritRow, unit: f64, image: usize) -> Result<Map<String, 
             m.insert("target".into(), json!(target * unit.powi(3) * 1e-3));
         }
         // TSAG: Int1 の面の、点 (Data1, Data2, Data3) から傾き (Data4, Data5, Data6) [deg] の向きに面まで測った距離。Int2 の
-        // Mode 0 は面をクリア半径の外で平らにする（玉の半径がクリア半径より大きい面だけ。OpticStudio 26.1 で実測、チップゾーンは
-        // 読まない）、1 は面の式のまま
+        // Mode 0 は面をクリア半径 + チップゾーンの外で平らにする（玉の半径がクリア半径より大きい面だけ。OpticStudio 26.1 で
+        // 実測）、1 は面の式のまま
         "TSAG" => {
             let j = int(INT1)?;
             if j < 1 || j as usize >= image {

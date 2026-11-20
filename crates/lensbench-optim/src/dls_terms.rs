@@ -358,13 +358,15 @@ pub enum TermKind {
         target: f64,
     },
     /// 面 surf から to までの中心の厚みの和 [レンズ単位] − target（surf == to なら 1 面の厚み。OpticStudio の CTVA・TTHI）。
-    /// edge が Some(z) なら縁の厚み（面 i と i + 1 の矢高を、それぞれの半直径 × z の高さで。OpticStudio の ETVA）。
+    /// edge が Some(z) なら縁の厚み（面 i と i + 1 の矢高を、それぞれの面の形が終わる半径（クリア半径 + チップゾーン）× z
+    /// の高さで。OpticStudio の ETVA の Mode 0）。clear なら矢高をクリア半径 × z で測る（ETVA の Mode 1）。
     /// each なら面ごとの厚みを target と比べたはみ出しの和（[`Each`]）。面の番号は System の面の番号（物体面 0）
     Thickness {
         surf: usize,
         to: usize,
         target: f64,
         edge: Option<f64>,
+        clear: bool,
         each: Option<Each>,
     },
     /// 面 surf の量 − target（[`SurfQ`]。(x, y) は矢高・厚みを測る点 [レンズ単位]）。微分は差分

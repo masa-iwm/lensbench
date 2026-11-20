@@ -1632,7 +1632,8 @@
             "ApDy",
             "AfterOrder",
             "ModelVd",
-            "ModelDpgf"
+            "ModelDpgf",
+            "ChipZone"
           ],
           "type": "string"
         },
@@ -1921,6 +1922,11 @@
         {
           "const": "Tce",
           "description": "面の熱膨張係数 [1e-6/°C]（[`crate::surface::Surface::tce`]）。多重構成の行（.zmx の TCEX）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "MechSemi",
+          "description": "面の機械半径（[`System::lens_radius`]、設定すると固定）・チップゾーン（[`crate::surface::Surface::chip_zone`]）。\n多重構成の行（.zmx の MCSD・CHZN）。最適化の変数には使えない",
           "type": "string"
         },
         {
@@ -2808,6 +2814,18 @@
           ],
           "description": "面の前の傾き・偏心"
         },
+        "chip": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "チップゾーン [mm]（OpticStudio の Chip Zone）: 面の形をクリア半径からこの幅だけ外へ延ばし、その外を平らにする"
+        },
         "coating": {
           "description": "膜の名前",
           "type": "string"
@@ -2857,6 +2875,21 @@
         "image": {
           "description": "像面の印（最後の行）",
           "type": "boolean"
+        },
+        "mech": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "固定した機械半径 [mm]（OpticStudio の Mech Semi-Dia。省略は自動: ガラスでつながる面の縁 + チップゾーンの最大。\n自動より小さければ自動のまま）"
         },
         "medium": {
           "anyOf": [

@@ -144,6 +144,10 @@ pub enum Kind {
     ModelDpgf,
     /// 面の熱膨張係数 [1e-6/°C]（[`crate::surface::Surface::tce`]）。多重構成の行（.zmx の TCEX）。最適化の変数には使えない
     Tce,
+    /// 面の機械半径（[`System::lens_radius`]、設定すると固定）・チップゾーン（[`crate::surface::Surface::chip_zone`]）。
+    /// 多重構成の行（.zmx の MCSD・CHZN）。最適化の変数には使えない
+    MechSemi,
+    ChipZone,
     /// 面の曲率・厚さのソルブ（ピックアップを含む）の条件の値 i（0 始まり、名前は csp1・tsp1 から）と、面タイプのパラメータ
     /// n のピックアップの値 i（名前は psp1_n から）。値の番号は OpticStudio のソルブの窓の順（[`set_solve_value`]）。
     /// 多重構成の行（.zmx の CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3）。最適化の変数には使えない
@@ -209,6 +213,8 @@ impl Kind {
             "vd" => Kind::ModelVd,
             "dpgf" => Kind::ModelDpgf,
             "tce" => Kind::Tce,
+            "mech" => Kind::MechSemi,
+            "chip" => Kind::ChipZone,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -336,6 +342,8 @@ impl Kind {
             Kind::ModelVd => "vd".into(),
             Kind::ModelDpgf => "dpgf".into(),
             Kind::Tce => "tce".into(),
+            Kind::MechSemi => "mech".into(),
+            Kind::ChipZone => "chip".into(),
             Kind::CurvSolve(i) => format!("csp{}", i + 1),
             Kind::ThickSolve(i) => format!("tsp{}", i + 1),
             Kind::ParmSolve(n, i) => format!("psp{}_{n}", i + 1),
@@ -393,6 +401,8 @@ impl Kind {
                 | Kind::ModelVd
                 | Kind::ModelDpgf
                 | Kind::Tce
+                | Kind::MechSemi
+                | Kind::ChipZone
                 | Kind::Material
                 | Kind::Coating
         ) || self.is_solve_value()
@@ -822,6 +832,8 @@ impl System {
                 _ => invalid!("{}: surface material is not a model glass", p.name()),
             },
             Kind::Tce => d.tce,
+            Kind::MechSemi => self.lens_radius(p.index()),
+            Kind::ChipZone => d.chip_zone,
             Kind::ApMax => match d.ap {
                 Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } => max,
                 _ => invalid!(
@@ -1124,7 +1136,9 @@ impl System {
                     invalid!("{}: surface material is not a model glass", p.name())
                 }
                 Kind::ModelNd if !(v > 0.0) => invalid!("{} = {v}", p.name()),
-                Kind::ApMin if v < 0.0 => invalid!("{} = {v}", p.name()),
+                Kind::ApMin | Kind::MechSemi | Kind::ChipZone if !(v >= 0.0) => {
+                    invalid!("{} = {v}", p.name())
+                }
                 Kind::BeforeOrder | Kind::AfterOrder if v != 0.0 && v != 1.0 => {
                     invalid!("{} = {v} (0 or 1)", p.name())
                 }
@@ -1378,7 +1392,9 @@ impl System {
                 | Kind::BeforeOrder
                 | Kind::After(_)
                 | Kind::AfterOrder
-                | Kind::Tce => {
+                | Kind::Tce
+                | Kind::MechSemi
+                | Kind::ChipZone => {
                     set_surface_table_value(d, p.kind, v);
                 }
                 Kind::Dn => {

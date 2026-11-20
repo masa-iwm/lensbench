@@ -1,6 +1,5 @@
 //! 面の形の項（[`TermKind::Shape`]）: 傾けた向きの矢高と、削る体積が最小の最適球
 
-use super::super::surf::{surface_value, SurfQ};
 use super::*;
 use lensbench_core::math::rot;
 
@@ -44,11 +43,9 @@ fn tsag(s: &System, j: usize, p: [f64; 3], tilt: [f64; 3], flat: bool) -> Result
     let mm = lensbench_core::math::mm;
     let m = mm(&mm(&rot(2, -tilt[2]), &rot(1, -tilt[1])), &rot(0, -tilt[0]));
     let d = [m[0][2], m[1][2], m[2][2]];
-    // 平らにする半径（玉の縁がクリア半径より外の面だけ）
-    let edge = if flat
-        && surface_value(s, j, SurfQ::MechDiam, 0.0, 0.0, s.primary)? / 2.0 > f.semi * (1.0 + 1e-12)
-    {
-        f.semi
+    // 平らにする半径（玉の縁がクリア半径より外の面だけ、面の形はチップゾーンまで。OpticStudio 26.1 で実測）
+    let edge = if flat && s.lens_radius(j) > f.semi * (1.0 + 1e-12) {
+        s.flat_from(j)
     } else {
         f64::INFINITY
     };
