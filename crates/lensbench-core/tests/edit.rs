@@ -589,6 +589,56 @@ fn configs_surface_tilt_and_aperture() {
         .is_err());
 }
 
+/// モデルガラスの値・熱膨張係数・膜も多重構成の行にできる（モデルガラスの値はモデルガラスの面だけ、膜は名前の行）
+#[test]
+fn configs_model_glass_tce_and_coating() {
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.set_config_count(2).unwrap();
+    let p = |k| Param::new(2, k);
+    assert!(s.set_config_row(p(Kind::ModelNd), vec![1.5, 1.6]).is_err());
+    s.set_material(2, "1.5,60,0.001").unwrap();
+    s.set_config_row(p(Kind::ModelNd), vec![1.5, 1.6]).unwrap();
+    s.set_config_row(p(Kind::ModelVd), vec![60.0, 40.0])
+        .unwrap();
+    s.set_config_row(p(Kind::ModelDpgf), vec![0.001, -0.002])
+        .unwrap();
+    s.set_config_row(p(Kind::Tce), vec![0.0, 7.5]).unwrap();
+    assert!(s.set_config_row(p(Kind::ModelNd), vec![1.5, 0.0]).is_err());
+    let c2 = s.config(2).unwrap();
+    assert_eq!(c2.surfaces[2].mat.name(), "1.6,40,-0.002");
+    assert_eq!(c2.surfaces[2].tce, 7.5);
+    assert!(c2.n(2)[0] > s.config(1).unwrap().n(2)[0]);
+    assert_eq!(s.config(1).unwrap().surfaces[2].mat.name(), "1.5,60,0.001");
+    for k in [
+        Kind::ModelNd,
+        Kind::ModelVd,
+        Kind::ModelDpgf,
+        Kind::Tce,
+        Kind::Coating,
+    ] {
+        assert!(k.is_table_only(), "{k:?}");
+        assert_eq!(Kind::parse(&k.name()).unwrap(), k);
+    }
+    // 膜は名前で（空は膜なし）。数の行にはできない
+    assert!(s.set_config_row(p(Kind::Coating), vec![0.0, 1.0]).is_err());
+    s.set_config_coatings(2, &["".into(), "AR".into()]).unwrap();
+    assert_eq!(s.config(2).unwrap().surfaces[2].coat, "AR");
+    assert_eq!(s.config(1).unwrap().surfaces[2].coat, "");
+    // 面の表で膜を変えると今の構成の列に入る
+    s.set_coating(2, "HEAR1").unwrap();
+    s.sync_active_config();
+    let r = s
+        .configs()
+        .unwrap()
+        .rows
+        .iter()
+        .find(|r| r.is_coating())
+        .unwrap();
+    assert_eq!(r.name_at(1).unwrap(), "HEAR1");
+    assert_eq!(r.name_at(2).unwrap(), "AR");
+}
+
 /// 開口の種類（OpticStudio の番号）と絞りの面も多重構成の行にできる
 #[test]
 fn configs_aperture_type_and_stop() {

@@ -84,6 +84,11 @@
   `N.aptype`（OpticStudio の番号。表で変えられるのは 0 なし・1 円形の開口・2 円形の遮蔽の間）を多重構成の表の行にできる。.zmx の
   CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・APMN・APDX・APDY・APTP を表に読み、書き出す（前はこれらが構成で変わる .zmx は読めなかった）。
   傾き偏心の無い面に表で値を入れても、面の後は値 0 のまま（OpticStudio 26.1 と同じ）
+- **多重構成の表にモデルガラスの値・熱膨張係数・膜**: モデルガラスの面の `N.nd`・`N.vd`・`N.dpgf`、面の熱膨張係数 `N.tce`、
+  面の膜 `N.coating`（値は構成ごとの膜の名前、空は膜なし。`set_config_coatings`）を多重構成の表の行にできる。.zmx の
+  MIND・MABB・MDPG・TCEX・COTN を表に読み、書き出す（前はこれらが構成で変わる .zmx は読めなかった）。モデルガラスでない面の
+  MIND・MABB・MDPG は OpticStudio 26.1 と同じく使わない（表に入れない）。評価関数の MCOV・MCOG・MCOL も MIND・MABB・MDPG・TCEX の
+  行を読む
 - **多重構成の表に温度・気圧・アフォーカル・アポダイゼーション・光線エイミング・OPD の基準**: `temp`・`pres`・`afocal`（0・1）・
   `apodtype`（0〜2: 一様・ガウス・cos³）・`apod`（ガウスの係数）・`aiming`（0〜2: なし・近軸・実光線）・`ropd`（0〜3、.zmx の ROPD と
   同じ）を多重構成の表の行にできる。.zmx の TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR を表に読み、書き出す（前はこれらが構成で
@@ -238,6 +243,8 @@
 
 ### 直した所
 
+- **システムファイルの面の熱膨張係数**: システムファイル（.json）に面の熱膨張係数（.zmx の TCED、レンズデータの TCE の列）を
+  書き、読む。前は書かなかったので、.zmx を .json に保存して開き直すと面の値が 0 になった
 - **.zmx を構成を選んで読むときの多重構成の行**: 今の構成でない構成を選んで .zmx を読むとき（CLI の `--cfg` など）、TEMP・PRES・
   AFOC・APDT・APDF・RAAM・OPDR と面の前後の傾き偏心・開口の行の値も、選んだ構成の値にする（0.6.0 の開発中に足した行。前は
   今の構成の値のままだった）。レンズ単位が mm でない .zmx の APMN・APDX・APDY・CBDX・CBDY・CADX・CADY の行も mm に換算する

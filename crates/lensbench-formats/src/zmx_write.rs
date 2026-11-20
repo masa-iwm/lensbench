@@ -767,6 +767,17 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 }
                 continue;
             }
+            if r.is_coating() {
+                for k in 1..=c.n {
+                    let name = r.name_at(k).map_err(|e| e.to_string())?;
+                    let p1 = r.param.index();
+                    w(
+                        &mut o,
+                        format!("COTN {p1} {k} \"{name}\" 0 0 0 1 1 0 0.0 \"\" 0"),
+                    );
+                }
+                continue;
+            }
             let Some((op, p1, parm, conv)) = config_op(s, r.param) else {
                 continue;
             };
@@ -826,6 +837,10 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
         Kind::ApType => ("APTP", p.index(), None, id),
         Kind::BeforeOrder => ("CBOR", p.index(), None, id),
         Kind::AfterOrder => ("CAOR", p.index(), None, id),
+        Kind::ModelNd => ("MIND", p.index(), None, id),
+        Kind::ModelVd => ("MABB", p.index(), None, id),
+        Kind::ModelDpgf => ("MDPG", p.index(), None, id),
+        Kind::Tce => ("TCEX", p.index(), None, id),
         Kind::Before(i) => (
             ["CBDX", "CBDY", "CBTX", "CBTY", "CBTZ"][i as usize],
             p.index(),

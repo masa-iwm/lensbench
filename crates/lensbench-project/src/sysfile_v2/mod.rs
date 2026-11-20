@@ -270,6 +270,9 @@ pub struct Row {
     /// 媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))
     #[serde(default, skip_serializing_if = "zero")]
     pub disp: f64,
+    /// 面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列。光線追跡には効かない）
+    #[serde(default, skip_serializing_if = "zero")]
+    pub tce: f64,
 }
 
 /// 傾き・偏心（座標ブレーク・面の前後）

@@ -26,6 +26,7 @@
 //! 名前が面の名前（コメント）と玉・群の名前の両方にあるときは、`unit:名前.種類` `surf:名前.種類` で区別する。
 
 use crate::error::Result;
+use crate::material::Material;
 use crate::pickup::pick_kind;
 use crate::pupil::Apodization;
 use crate::solves::solve_kind_info;
@@ -127,6 +128,13 @@ pub enum Kind {
     /// 面の前・後の傾き偏心の順序（0 偏心から、1 傾きから）。多重構成の行（.zmx の CBOR・CAOR）。最適化の変数には使えない
     BeforeOrder,
     AfterOrder,
+    /// モデルガラスの nd・vd・ΔPgF（面の材料がモデルガラスのときだけ）。多重構成の行（.zmx の MIND・MABB・MDPG）。
+    /// 最適化の変数には使えない
+    ModelNd,
+    ModelVd,
+    ModelDpgf,
+    /// 面の熱膨張係数 [1e-6/°C]（[`crate::surface::Surface::tce`]）。多重構成の行（.zmx の TCEX）。最適化の変数には使えない
+    Tce,
     /// 面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。
     /// 最適化の変数には使えない
     Material,
@@ -138,7 +146,8 @@ pub enum Kind {
     Before(u8),
     /// 面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`Kind::Before`]、反転は倍率 −1）
     After(u8),
-    /// 膜の名前（ピックアップだけ。倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）
+    /// 膜の名前。ピックアップ（倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）と、多重構成の行
+    /// （.zmx の COTN。値は行の膜の名前の番号（[`crate::configs::ConfigRow::names`]）、空の名前は膜なし）。最適化の変数には使えない
     Coating,
     /// 利用者定義の形の面の設定の数の項目（名前、[`crate::usershape`]）。名前は `u_<項目>`（面の番号と `.` で区切るので、項目の名前に `.` は使えない）
     User(crate::usershape::UserKey),
@@ -181,6 +190,10 @@ impl Kind {
             "aptype" => Kind::ApType,
             "beforeorder" => Kind::BeforeOrder,
             "afterorder" => Kind::AfterOrder,
+            "nd" => Kind::ModelNd,
+            "vd" => Kind::ModelVd,
+            "dpgf" => Kind::ModelDpgf,
+            "tce" => Kind::Tce,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -282,6 +295,10 @@ impl Kind {
             Kind::ApType => "aptype".into(),
             Kind::BeforeOrder => "beforeorder".into(),
             Kind::AfterOrder => "afterorder".into(),
+            Kind::ModelNd => "nd".into(),
+            Kind::ModelVd => "vd".into(),
+            Kind::ModelDpgf => "dpgf".into(),
+            Kind::Tce => "tce".into(),
             Kind::Parm(i) => format!("p{i}"),
             Kind::Before(i) => format!("before{i}"),
             Kind::After(i) => format!("after{i}"),
@@ -332,7 +349,12 @@ impl Kind {
                 | Kind::After(_)
                 | Kind::BeforeOrder
                 | Kind::AfterOrder
+                | Kind::ModelNd
+                | Kind::ModelVd
+                | Kind::ModelDpgf
+                | Kind::Tce
                 | Kind::Material
+                | Kind::Coating
         )
     }
 
@@ -737,6 +759,16 @@ impl System {
             Kind::Semi => d.semi,
             Kind::Ignore => f64::from(u8::from(d.ignore)),
             Kind::Material => invalid!("{}: a material is a name, not a number", p.name()),
+            Kind::Coating => invalid!("{}: a coating is a name, not a number", p.name()),
+            Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf => match d.mat {
+                Material::Model { nd, vd, dpgf } => match p.kind {
+                    Kind::ModelNd => nd,
+                    Kind::ModelVd => vd,
+                    _ => dpgf,
+                },
+                _ => invalid!("{}: surface material is not a model glass", p.name()),
+            },
+            Kind::Tce => d.tce,
             Kind::ApMax => match d.ap {
                 Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } => max,
                 _ => invalid!(
@@ -1029,6 +1061,13 @@ impl System {
                 Kind::Ignore if v != 0.0 && v != 1.0 => invalid!("{} = {v} (0 or 1)", p.name()),
                 Kind::ApMax if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::Material => invalid!("{}: a material is a name, not a number", p.name()),
+                Kind::Coating => invalid!("{}: a coating is a name, not a number", p.name()),
+                Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf
+                    if !matches!(self.surfaces[p.index()].mat, Material::Model { .. }) =>
+                {
+                    invalid!("{}: surface material is not a model glass", p.name())
+                }
+                Kind::ModelNd if !(v > 0.0) => invalid!("{} = {v}", p.name()),
                 Kind::ApMin if v < 0.0 => invalid!("{} = {v}", p.name()),
                 Kind::BeforeOrder | Kind::AfterOrder if v != 0.0 && v != 1.0 => {
                     invalid!("{} = {v} (0 or 1)", p.name())
@@ -1260,7 +1299,11 @@ impl System {
                 }
                 Kind::Ignore => d.ignore = v != 0.0,
                 // 上で断った
-                Kind::Material => {}
+                Kind::Material | Kind::Coating => {}
+                Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf => {
+                    set_surface_table_value(d, p.kind, v);
+                    index = true;
+                }
                 Kind::ApMax => {
                     if let Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } = &mut d.ap {
                         *max = v;
@@ -1273,7 +1316,8 @@ impl System {
                 | Kind::Before(_)
                 | Kind::BeforeOrder
                 | Kind::After(_)
-                | Kind::AfterOrder => {
+                | Kind::AfterOrder
+                | Kind::Tce => {
                     set_surface_table_value(d, p.kind, v);
                 }
                 Kind::Dn => {
@@ -1392,9 +1436,9 @@ fn set_aperture_os_code(a: &mut Aperture, n: i64) {
     };
 }
 
-/// 面の多重構成の表だけの値（開口の最小の半径・偏心・種類、面の前後の傾き偏心の値と順序）を面 d に入れる（値は確かめない）。
+/// 面の多重構成の表だけの値（開口の最小の半径・偏心・種類、面の前後の傾き偏心の値と順序、モデルガラスの値、熱膨張係数）を面 d に入れる（値は確かめない）。
 /// 面の前後の傾き偏心を表の値で作るときは、面の後を変えない（OpticStudio と同じく、後は値 0 のまま）。無いものに 0 を入れるときは
-/// 作らない。ほかの種類は何もせず false
+/// 作らない。モデルガラスでない面のモデルガラスの値は何もしない（OpticStudio と同じ）。ほかの種類は何もせず false
 pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64) -> bool {
     match k {
         Kind::ApMin => {
@@ -1404,6 +1448,16 @@ pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64)
         }
         Kind::ApDx | Kind::ApDy => set_aperture_decenter(&mut d.ap, k == Kind::ApDy, v),
         Kind::ApType => set_aperture_os_code(&mut d.ap, v as i64),
+        Kind::Tce => d.tce = v,
+        Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf => {
+            if let Material::Model { nd, vd, dpgf } = &mut d.mat {
+                *match k {
+                    Kind::ModelNd => nd,
+                    Kind::ModelVd => vd,
+                    _ => dpgf,
+                } = v;
+            }
+        }
         Kind::Before(_) | Kind::BeforeOrder if d.before.is_none() && v == 0.0 => {}
         Kind::After(_) | Kind::AfterOrder if d.after == After::None && v == 0.0 => {}
         Kind::Before(i) => {

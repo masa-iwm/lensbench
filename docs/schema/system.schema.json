@@ -948,7 +948,7 @@
       "description": "多重構成の表の 1 行",
       "properties": {
         "names": {
-          "description": "材料の行の材料の名前（面の表の材料と同じ書き方）。ほかの行は空で、省く",
+          "description": "材料の行の材料の名前（面の表の材料と同じ書き方）、膜の行の膜の名前（空は膜なし）。ほかの行は空で、省く",
           "items": {
             "type": "string"
           },
@@ -965,7 +965,7 @@
           "type": "array"
         },
         "values": {
-          "description": "構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値。\n材料の行（[`Kind::Material`]）は `names` の番号（0 始まり）",
+          "description": "構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値。\n材料・膜の行（[`Kind::Material`]・[`Kind::Coating`]）は `names` の番号（0 始まり）",
           "items": {
             "anyOf": [
               {
@@ -1630,7 +1630,9 @@
             "Pres",
             "Apod",
             "ApDy",
-            "AfterOrder"
+            "AfterOrder",
+            "ModelVd",
+            "ModelDpgf"
           ],
           "type": "string"
         },
@@ -1883,6 +1885,16 @@
           "type": "string"
         },
         {
+          "const": "ModelNd",
+          "description": "モデルガラスの nd・vd・ΔPgF（面の材料がモデルガラスのときだけ）。多重構成の行（.zmx の MIND・MABB・MDPG）。\n最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "Tce",
+          "description": "面の熱膨張係数 [1e-6/°C]（[`crate::surface::Surface::tce`]）。多重構成の行（.zmx の TCEX）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
           "const": "Material",
           "description": "面の材料。多重構成の行（.zmx の GLSS）だけで、値は行の材料の名前の番号（[`crate::configs::ConfigRow::names`]）。\n最適化の変数には使えない",
           "type": "string"
@@ -1937,7 +1949,7 @@
         },
         {
           "const": "Coating",
-          "description": "膜の名前（ピックアップだけ。倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）",
+          "description": "膜の名前。ピックアップ（倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）と、多重構成の行\n（.zmx の COTN。値は行の膜の名前の番号（[`crate::configs::ConfigRow::names`]）、空の名前は膜なし）。最適化の変数には使えない",
           "type": "string"
         },
         {
@@ -2810,6 +2822,18 @@
             }
           ],
           "description": "次の面までの厚さ [mm]"
+        },
+        "tce": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列。光線追跡には効かない）"
         }
       },
       "type": "object"

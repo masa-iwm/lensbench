@@ -23,9 +23,9 @@ pub struct Configs {
 pub struct ConfigRow {
     pub param: Param,
     /// 構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値。
-    /// 材料の行（[`Kind::Material`]）は `names` の番号（0 始まり）
+    /// 材料・膜の行（[`Kind::Material`]・[`Kind::Coating`]）は `names` の番号（0 始まり）
     pub values: Vec<f64>,
-    /// 材料の行の材料の名前（面の表の材料と同じ書き方）。ほかの行は空で、省く
+    /// 材料の行の材料の名前（面の表の材料と同じ書き方）、膜の行の膜の名前（空は膜なし）。ほかの行は空で、省く
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
     /// 構成のピックアップ（OpticStudio の多重構成の pickup）。無ければ省く
@@ -88,7 +88,17 @@ impl ConfigRow {
         self.param.kind == Kind::Material
     }
 
-    /// 材料の行の構成 k（1 始まり）の材料の名前
+    /// 膜の行か
+    pub fn is_coating(&self) -> bool {
+        self.param.kind == Kind::Coating
+    }
+
+    /// 値が名前の番号の行（材料・膜の行）か
+    pub fn has_names(&self) -> bool {
+        self.is_material() || self.is_coating()
+    }
+
+    /// 材料・膜の行の構成 k（1 始まり）の名前
     pub fn name_at(&self, k: usize) -> Result<&str> {
         let i = self.values.get(k - 1).copied().unwrap_or(f64::NAN);
         match (i >= 0.0 && i.fract() == 0.0)
@@ -97,13 +107,13 @@ impl ConfigRow {
         {
             Some(n) => Ok(n),
             None => invalid!(
-                "multi-configuration row {} configuration {k}: no material {i}",
+                "multi-configuration row {} configuration {k}: no name {i}",
                 self.param.name()
             ),
         }
     }
 
-    /// 材料の行の名前 name の番号（無ければ足す）
+    /// 材料・膜の行の名前 name の番号（無ければ足す）
     fn name_index(&mut self, name: &str) -> f64 {
         match self.names.iter().position(|n| n == name) {
             Some(i) => i as f64,
@@ -157,10 +167,10 @@ impl System {
     }
 
     /// 表に行を足す（同じパラメータの行は置き換える）。values の長さは構成の数。今の構成の値を系に入れる。
-    /// 材料の行は [`System::set_config_materials`] で
+    /// 材料・膜の行は [`System::set_config_materials`]・[`System::set_config_coatings`] で
     pub fn set_config_row(&mut self, p: Param, values: Vec<f64>) -> Result<()> {
-        if p.kind == Kind::Material {
-            invalid!("{}: set a material row by names", p.name());
+        if p.kind == Kind::Material || p.kind == Kind::Coating {
+            invalid!("{}: set a material or coating row by names", p.name());
         }
         self.put_config_row(p, values, Vec::new())
     }
@@ -178,6 +188,21 @@ impl System {
             // 名前の書き方を先に確かめる（座標ブレークの面のガラスなどは構成の系を作るときに断る）
             self.clone().set_material(j, n)?;
         }
+        self.put_config_row(row.param, row.values, row.names)
+    }
+
+    /// 面 j の膜の行を足す（同じ面の膜の行は置き換える）。names は構成ごとの膜の名前（空は膜なし）
+    pub fn set_config_coatings(&mut self, j: usize, names: &[String]) -> Result<()> {
+        if j > self.image() {
+            invalid!("surface {j}");
+        }
+        let mut row = ConfigRow {
+            param: Param::new(j, Kind::Coating),
+            values: Vec::new(),
+            names: Vec::new(),
+            picks: Vec::new(),
+        };
+        row.values = names.iter().map(|n| row.name_index(n.trim())).collect();
         self.put_config_row(row.param, row.values, row.names)
     }
 
@@ -201,7 +226,7 @@ impl System {
         }
         c.rows.retain(|r| r.param != p);
         if !names.is_empty() {
-            // 材料の番号は行ごとに付け直すので、ピックアップは番号ではなく名前で比べられない。外す
+            // 材料・膜の番号は行ごとに付け直すので、ピックアップは番号ではなく名前で比べられない。外す
             picks.clear();
         }
         let mut row = ConfigRow {
@@ -422,11 +447,11 @@ impl System {
         Ok(s)
     }
 
-    /// 表の行 rows の構成 k（1 始まり）の値を入れた系。材料の行は名前で面の材料にする
+    /// 表の行 rows の構成 k（1 始まり）の値を入れた系。材料・膜の行は名前で面の材料・膜にする
     fn with_config_values(&self, rows: &[ConfigRow], k: usize) -> Result<System> {
         let ch: Vec<(Param, f64)> = rows
             .iter()
-            .filter(|r| !r.is_material())
+            .filter(|r| !r.has_names())
             .map(|r| (r.param, r.values[k - 1]))
             .collect();
         let mut s = self.with_params(&ch)?;
@@ -436,16 +461,27 @@ impl System {
                 s.set_material(r.param.index(), name)?;
             }
         }
+        for r in rows.iter().filter(|r| r.is_coating()) {
+            let name = r.name_at(k)?;
+            if s.surfaces[r.param.index()].coat != name {
+                s.set_coating(r.param.index(), name)?;
+            }
+        }
         Ok(s)
     }
 
-    /// 行 r の今の系の値。材料の行は今の材料の名前の番号（無ければ名前を足す）
+    /// 行 r の今の系の値。材料・膜の行は今の材料・膜の名前の番号（無ければ名前を足す）
     fn row_value(&self, r: &mut ConfigRow) -> Result<f64> {
-        if r.is_material() {
+        if r.has_names() {
             let Some(d) = self.surfaces.get(r.param.index()) else {
                 invalid!("multi-configuration row {}", r.param.name());
             };
-            return Ok(r.name_index(&d.mat.name()));
+            let name = if r.is_material() {
+                d.mat.name()
+            } else {
+                d.coat.clone()
+            };
+            return Ok(r.name_index(&name));
         }
         self.get_param(r.param)
     }
@@ -470,13 +506,13 @@ impl System {
                 );
             }
             self.check_param(r.param)?;
-            if r.is_material() {
+            if r.has_names() {
                 for k in 1..=c.n {
                     r.name_at(k)?;
                 }
             } else if !r.names.is_empty() {
                 invalid!(
-                    "multi-configuration row {} has names (only material rows do)",
+                    "multi-configuration row {} has names (only material and coating rows do)",
                     r.param.name()
                 );
             }

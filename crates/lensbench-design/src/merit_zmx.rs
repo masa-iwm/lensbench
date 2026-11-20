@@ -793,6 +793,10 @@ fn kind_of(
                 "APTP" => (format!("{j}.aptype"), 1.0),
                 "CBOR" => (format!("{j}.beforeorder"), 1.0),
                 "CAOR" => (format!("{j}.afterorder"), 1.0),
+                "MIND" => (format!("{j}.nd"), 1.0),
+                "MABB" => (format!("{j}.vd"), 1.0),
+                "MDPG" => (format!("{j}.dpgf"), 1.0),
+                "TCEX" => (format!("{j}.tce"), 1.0),
                 "CBDX" | "CBDY" | "CADX" | "CADY" => (
                     format!(
                         "{j}.{}{}",

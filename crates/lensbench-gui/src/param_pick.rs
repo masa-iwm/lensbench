@@ -88,6 +88,11 @@ pub(crate) fn param_desc(name: &str) -> String {
         "aptype" => tr("Aperture type").into(),
         "beforeorder" => tr("Order before the surface").into(),
         "afterorder" => tr("Order after the surface").into(),
+        "nd" => tr("Model glass nd").into(),
+        "vd" => tr("Model glass vd").into(),
+        "dpgf" => tr("Model glass dPgF").into(),
+        "tce" => tr("Thermal expansion coefficient").into(),
+        "coating" => tr("Coating").into(),
         b if tilt_slot(b).is_some() => {
             let (after, i) = tilt_slot(b).unwrap_or_default();
             let what = [

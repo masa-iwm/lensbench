@@ -125,6 +125,7 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
         t: d.t,
         dn: d.dn,
         disp: d.disp,
+        tce: d.tce,
         ..Default::default()
     };
     r.semi = if d.semi_auto && !float_stop {

@@ -322,12 +322,19 @@ fn params_carry_their_target() {
         kind: Kind::Thick,
     };
     assert!(s.check_param(bad).is_err());
-    // ピックアップ・マクロのソルブだけの量（PARM の番号・膜）はパラメータにならない
-    for n in ["2.p1", "2.coating"] {
-        assert!(s.param(n).is_err(), "{n}");
-    }
-    // 半直径・面の無視・開口の最大の半径・面の前後の傾き偏心の値は多重構成の表の行だけ（最適化の変数・微分には使えない）
-    for n in ["2.semi", "2.ignore", "2.apmax", "2.before0", "2.after3"] {
+    // ピックアップ・マクロのソルブだけの量（PARM の番号）はパラメータにならない
+    assert!(s.param("2.p1").is_err());
+    // 半直径・面の無視・開口の最大の半径・面の前後の傾き偏心の値・膜・熱膨張係数は多重構成の表の行だけ（最適化の変数・微分には
+    // 使えない）
+    for n in [
+        "2.semi",
+        "2.ignore",
+        "2.apmax",
+        "2.before0",
+        "2.after3",
+        "2.coating",
+        "2.tce",
+    ] {
         assert!(s.param(n).unwrap().kind.is_table_only(), "{n}");
     }
 }

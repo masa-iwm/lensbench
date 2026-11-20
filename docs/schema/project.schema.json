@@ -2998,6 +2998,11 @@
           "description": "次の面までの厚さ [mm]",
           "format": "double",
           "type": "number"
+        },
+        "tce": {
+          "description": "面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列。光線追跡には効かない）",
+          "format": "double",
+          "type": "number"
         }
       },
       "type": "object"

@@ -2419,10 +2419,12 @@ OPD reference {v} (0 to 3)	OPD の基準 {v}（0〜3）
 {}: a coordinate break has no surface tilt or decenter	{}: 座標ブレークには面のチルト・偏心がありません
 a solved field type has no field type number	条件で定める視野には視野の種類の番号がありません
 {}: surface has no circular aperture or obscuration	{}: 面に円形の開口も遮蔽もありません
-{}: set a material row by names	{}: 材料の行は名前で設定してください
-multi-configuration row {} configuration {k}: no material {i}	多重構成の行 {} の構成 {k}: 材料 {i} がありません
+{}: set a material or coating row by names	{}: 材料・コーティングの行は名前で設定してください
+multi-configuration row {} configuration {k}: no name {i}	多重構成の行 {} の構成 {k}: 名前 {i} がありません
 {}: a material is a name, not a number	{}: 材料は名前で、数ではありません
-multi-configuration row {} has names (only material rows do)	多重構成の行 {} に名前があります（名前を持つのは材料の行だけです）
+{}: a coating is a name, not a number	{}: コーティングは名前で、数ではありません
+{}: surface material is not a model glass	{}: 面の材料がモデルガラスではありません
+multi-configuration row {} has names (only material and coating rows do)	多重構成の行 {} に名前があります（名前を持つのは材料・コーティングの行だけです）
 {param} is not a material row	{param} は材料の行ではありません
 multi-configuration row {}	多重構成の行 {}
 a semi term or a surface term with to needs min or max	semi の項と to のある surface の項には min か max が要ります

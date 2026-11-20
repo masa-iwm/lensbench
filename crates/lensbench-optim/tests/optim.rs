@@ -222,7 +222,7 @@ fn analytic_jacobian_matches_fd() {
 }
 
 /// OPD の基準「無限遠」（半径が無限大の参照球）の OPD・波面の項と、アフォーカル像空間（角度）のスポット・重心の項の
-/// 解析的な微分も差分と合う
+/// 解析的な微分も差分と合う。アフォーカルの OPD の項は基準 0〜3 のどれでも合う
 #[test]
 fn analytic_jacobian_far_reference_and_afocal() {
     for name in ["A0", "A3"] {
@@ -284,6 +284,26 @@ fn analytic_jacobian_far_reference_and_afocal() {
                 target: 0.0,
             },
         );
+        // アフォーカルの OPD の基準: 0 は主光線の像点を通る平面、1・2 は射出瞳の平面、3 は像面の光路長そのまま
+        for ropd in 0..=3 {
+            let mut a = afocal.clone();
+            a.edit_raw(|rx| {
+                rx.ropd = ropd;
+                Ok(())
+            })
+            .unwrap();
+            check_jac(
+                name,
+                &a,
+                TermKind::Opd {
+                    field,
+                    wave: None,
+                    px: 0.3,
+                    py: 0.7,
+                    target: 0.0,
+                },
+            );
+        }
     }
 }
 

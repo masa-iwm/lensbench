@@ -3,7 +3,8 @@
 use super::*;
 
 /// .zmx の多重構成（MCE）を多重構成の表（[`lensbench_core::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
-/// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// 偶数次非球面・座標ブレークの PRAM、材料の GLSS、膜の COTN、モデルガラスの MIND・MABB・MDPG（モデルガラスでない面の行は
+/// OpticStudio も使わないので表に入れない）、熱膨張係数の TCEX、系の値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 pub(super) fn config_table(
     raw: &Raw,
@@ -55,6 +56,31 @@ pub(super) fn config_table(
             raw_vals.iter().cloned().zip(vals.iter().copied()).collect();
         let varies = both.iter().any(|v| !same(v, &both[0]));
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
+        if let ("COTN", Some(j), true) = (op.as_str(), surf, varies) {
+            // 膜の行: 書いていない構成は今の膜
+            let now = s.surfaces[j].coat.clone();
+            let mut row = ConfigRow {
+                param: Param::new(j, Kind::Coating),
+                values: Vec::new(),
+                names: Vec::new(),
+                picks: Vec::new(),
+            };
+            for v in &raw_vals {
+                let n = v
+                    .as_deref()
+                    .map_or(now.clone(), |x| x.trim_matches('"').trim().to_string());
+                let i = match row.names.iter().position(|x| *x == n) {
+                    Some(i) => i,
+                    None => {
+                        row.names.push(n);
+                        row.names.len() - 1
+                    }
+                };
+                row.values.push(i as f64);
+            }
+            out.push(row);
+            continue;
+        }
         if let ("GLSS", Some(j), true) = (op.as_str(), surf, varies) {
             // 材料の行: 書いていない構成は今の材料。材料をピックアップする面（GLSS の無い面）も同じ行を持つ
             let now = s.surfaces[j].mat.name();
@@ -93,6 +119,15 @@ pub(super) fn config_table(
             ("SDIA", Some(_)) => Some(Kind::Semi),
             ("IGNR", Some(_)) => Some(Kind::Ignore),
             ("APMX", Some(_)) => Some(Kind::ApMax),
+            // モデルガラスでない面の行は OpticStudio も使わない（材料はカタログのまま）
+            ("MIND" | "MABB" | "MDPG", Some(k))
+                if !matches!(
+                    s.surfaces[k].mat,
+                    lensbench_core::material::Material::Model { .. }
+                ) =>
+            {
+                continue
+            }
             // 開口の最小の半径・偏心・種類、面の前・後の傾き偏心の値と順序
             (o, Some(_)) if surface_table_kind(o).is_some() => surface_table_kind(o),
             // 面タイプのパラメータの番号からパラメータの種類（係数・座標ブレークの値）はピックアップと同じ表で
@@ -159,7 +194,7 @@ fn material_pickers(raw: &Raw, j: usize) -> Vec<usize> {
         .collect()
 }
 
-/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
+/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR・MIND・MABB・MDPG・TCEX、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
 /// 値の位置は dx dy tx ty tz の順）の種類（[`lensbench_core::param::set_surface_table_value`] で入れる種類）
 fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
     use lensbench_core::param::Kind;
@@ -168,6 +203,10 @@ fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
         "APDX" => return Some(Kind::ApDx),
         "APDY" => return Some(Kind::ApDy),
         "APTP" => return Some(Kind::ApType),
+        "MIND" => return Some(Kind::ModelNd),
+        "MABB" => return Some(Kind::ModelVd),
+        "MDPG" => return Some(Kind::ModelDpgf),
+        "TCEX" => return Some(Kind::Tce),
         "CBOR" => return Some(Kind::BeforeOrder),
         "CAOR" => return Some(Kind::AfterOrder),
         _ => {}
@@ -214,6 +253,16 @@ pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Pr
         };
         if let Some(d) = rx.surfaces.get_mut(j) {
             lensbench_core::param::set_surface_table_value(d, k, v);
+        }
+    }
+    for ((op, p1), v) in ops {
+        if let (true, Some(d)) = (
+            op == "COTN",
+            usize::try_from(*p1)
+                .ok()
+                .and_then(|j| rx.surfaces.get_mut(j)),
+        ) {
+            d.coat = v.trim_matches('"').trim().to_string();
         }
     }
 }

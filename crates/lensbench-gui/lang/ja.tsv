@@ -1538,6 +1538,10 @@ Aperture decenter X	開口の偏心 X
 Aperture decenter Y	開口の偏心 Y
 Order before the surface	面の前の順序
 Order after the surface	面の後の順序
+Model glass nd	モデルガラスの nd
+Model glass vd	モデルガラスの vd
+Model glass dPgF	モデルガラスの ΔPgF
+Thermal expansion coefficient	熱膨張係数
 {} before the surface	面の前の{}
 {} after the surface	面の後の{}
 Apodization type	アポダイゼーションの種類
