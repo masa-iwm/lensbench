@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.6/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.7/project.schema.json",
  "name": "P5 the A0 triplet from lens blocks, second lens reversed and tilted",
  "glass_catalogs": [
   "SCHOTT"

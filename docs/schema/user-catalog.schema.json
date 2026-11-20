@@ -4272,7 +4272,7 @@
       "type": "object"
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.6/user-catalog.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.7/user-catalog.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "ユーザーカタログ（JSON）: 名前 → 保存した玉・ブロックの並び",
   "properties": {
