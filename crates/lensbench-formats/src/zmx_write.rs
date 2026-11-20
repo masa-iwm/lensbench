@@ -755,7 +755,10 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     // 多重構成の表（MCE）。書ける行だけ（[`config_op`]）
     if let Some(c) = &s.configs {
         w(&mut o, format!("MNUM {} {}", c.n, c.active));
+        // 行の番号（1 始まり、構成のピックアップの元の行の欄）
+        let mut row = 0;
         for r in &c.rows {
+            row += 1;
             if r.is_material() {
                 for k in 1..=c.n {
                     let name = r.name_at(k).map_err(|e| e.to_string())?;
@@ -779,20 +782,29 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 continue;
             }
             let Some((op, p1, parm, conv)) = config_op(s, r.param) else {
+                row -= 1;
                 continue;
             };
+            let p = parm.unwrap_or(0);
             for (k, &v) in r.values.iter().enumerate() {
                 let v = conv(v);
-                match parm {
-                    Some(p) => w(
-                        &mut o,
-                        format!("{op} {p1} {} {} 0 {p} 0 1 1 1 0 0 \"\" 0", k + 1, f(v)),
+                // 構成のピックアップ: 種類（元の構成 + 1）・元の構成・元の行・倍率・オフセット（半径の行は曲率で書けないので値だけ）
+                let (t, from, src, sc, off) = match r.pick(k + 1) {
+                    Some(q) if !config_pick_unwritable(r) => {
+                        (q.from + 1, q.from, row, q.scale, conv(q.offset))
+                    }
+                    _ => (0, 1, 1, 1.0, 0.0),
+                };
+                w(
+                    &mut o,
+                    format!(
+                        "{op} {p1} {} {} {t} {p} 0 {from} {src} {} {} 0 \"\" 0",
+                        k + 1,
+                        f(v),
+                        f(sc),
+                        f(off)
                     ),
-                    None => w(
-                        &mut o,
-                        format!("{op} {p1} {} {} 0 0 0 1 1 1 0 0 \"\" 0", k + 1, f(v)),
-                    ),
-                }
+                );
             }
         }
     }
@@ -882,6 +894,11 @@ fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
     })
 }
 
+/// 構成のピックアップを .zmx に書けない行（材料・膜の名前の行、半径の行は曲率の行になるので倍率・オフセットが違う）
+fn config_pick_unwritable(r: &lensbench_core::configs::ConfigRow) -> bool {
+    r.is_material() || r.is_coating() || r.param.kind == lensbench_core::param::Kind::Radius
+}
+
 /// 多重構成の表のうち .zmx に書けない行の注意
 fn config_notes(s: &System) -> Vec<String> {
     let Some(c) = &s.configs else {
@@ -900,7 +917,7 @@ fn config_notes(s: &System) -> Vec<String> {
                 r.param.name()
             ));
         }
-        if !r.picks.is_empty() {
+        if !r.picks.is_empty() && config_pick_unwritable(r) {
             out.push(format!(
                 "only the values of the configuration pickups of multi-configuration row {} were written",
                 r.param.name()

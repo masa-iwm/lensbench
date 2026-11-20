@@ -34,6 +34,28 @@ fn mce_line(line: &str) -> Option<(String, i64, i64, String, Vec<String>)> {
     ))
 }
 
+/// 多重構成の行の値の後の欄: 種類（0 固定・1 変数・2 以上は構成のピックアップで元の構成 + 1）・番号 2・番号 3・
+/// 元の構成・元の行・倍率・オフセット（OpticStudio 26.1 で確認。同じ演算子の別の行からも拾える）。表のピックアップは
+/// 同じ行からだけなので、別の行からのもの（その行の番号を返す）・種類と元の構成が合わないものは固定（種類 0）にして値を使う
+fn config_pickup_columns(rest: &mut [String], row: usize) -> Option<i64> {
+    let num = |i: usize| rest.get(i).and_then(|x| x.parse::<i64>().ok());
+    let (t, from, src) = (num(0)?, num(3), num(4));
+    if t < 2 {
+        return None;
+    }
+    if from != Some(t - 1) {
+        rest[0] = "0".into();
+        return None;
+    }
+    match src {
+        Some(r) if r == i64::try_from(row).ok()? => None,
+        _ => {
+            rest[0] = "0".into();
+            src
+        }
+    }
+}
+
 pub fn parse_text(txt: &str) -> Result<Raw> {
     let mut raw = Raw::default();
     let mut cur: Option<usize> = None;
@@ -114,6 +136,14 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 raw.mce_rows.push((m.0.clone(), m.1, parm));
             }
             last_cfg = m.2;
+            if let Some(src) = config_pickup_columns(&mut m.4, raw.mce_rows.len()) {
+                raw.notes.push(format!(
+                    "multi-configuration row {} configuration {}: the configuration pickup from row {} was read as its value",
+                    raw.mce_rows.len(),
+                    m.2,
+                    src
+                ));
+            }
             if m.0 == "IGNM" {
                 // 面の範囲の無視（番号 1 から 2 番目の番号の面まで）は面ごとの IGNR にする（同じ面の IGNR とは後の行が勝つ）
                 let end =

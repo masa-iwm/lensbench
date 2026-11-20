@@ -229,6 +229,11 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         };
         if k != 1.0 {
             *v = format!("{:e}", fv(v)? * k);
+            // 構成のピックアップのオフセット（値の後の 7 番目の欄）も値と同じ換算
+            let pick = rest.first().and_then(|t| t.parse::<i64>().ok()) >= Some(2);
+            if let (true, Some(off)) = (pick, rest.get_mut(6)) {
+                *off = format!("{:e}", fv(off)? * k);
+            }
         }
     }
     Ok(r)

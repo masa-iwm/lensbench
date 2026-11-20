@@ -16,9 +16,10 @@ pub(super) fn config_table(
     n: usize,
     active: usize,
 ) -> lensbench_core::Result<lensbench_core::configs::Configs> {
-    use lensbench_core::configs::{ConfigRow, Configs};
+    use lensbench_core::configs::{ConfigPick, ConfigRow, Configs};
     use lensbench_core::param::{Kind, Param};
-    let mut rows: Vec<(String, i64, i64, Vec<Option<String>>)> = Vec::new();
+    type Row = (String, i64, i64, Vec<Option<String>>, Vec<ConfigPick>);
+    let mut rows: Vec<Row> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
         let parm = if op == "PRAM" || op.starts_with("PSP") {
             rest.get(1)
@@ -33,16 +34,20 @@ pub(super) fn config_table(
         {
             Some(i) => i,
             None => {
-                rows.push((op.clone(), *p1, parm, vec![None; n]));
+                rows.push((op.clone(), *p1, parm, vec![None; n], Vec::new()));
                 rows.len() - 1
             }
         };
         if (1..=n as i64).contains(c) {
             rows[i].3[*c as usize - 1] = Some(v.clone());
+            rows[i].4.retain(|q| q.k != *c as usize);
+            if let Some(q) = config_pick(rest, *c, n)? {
+                rows[i].4.push(q);
+            }
         }
     }
     let mut out = Vec::new();
-    for (op, p1, parm, raw_vals) in rows {
+    for (op, p1, parm, raw_vals, picks) in rows {
         let vals: Vec<Option<f64>> = raw_vals
             .iter()
             .map(|v| v.as_deref().and_then(|x| fv(x).ok()))
@@ -58,7 +63,9 @@ pub(super) fn config_table(
             };
         let both: Vec<(Option<String>, Option<f64>)> =
             raw_vals.iter().cloned().zip(vals.iter().copied()).collect();
-        let varies = both.iter().any(|v| !same(v, &both[0]));
+        // 構成のピックアップのある行は、値が同じでもつながりを残す
+        let changes = both.iter().any(|v| !same(v, &both[0]));
+        let varies = changes || !picks.is_empty();
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
         if let ("COTN", Some(j), true) = (op.as_str(), surf, varies) {
             // 膜の行: 書いていない構成は今の膜
@@ -132,12 +139,7 @@ pub(super) fn config_table(
                 };
                 if varies {
                     out.retain(|r| r.param != p);
-                    out.push(ConfigRow {
-                        param: p,
-                        values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
-                        names: Vec::new(),
-                        picks: Vec::new(),
-                    });
+                    out.push(numeric_row(p, &vals, now, picks));
                 }
                 continue;
             }
@@ -174,14 +176,11 @@ pub(super) fn config_table(
                 // 書いていない構成の値は今の系の値。同じパラメータの行（FVAN と FTAN）は後の行が勝つ
                 let now = s.get_param(p)?;
                 out.retain(|r| r.param != p);
-                out.push(ConfigRow {
-                    param: p,
-                    values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
-                    names: Vec::new(),
-                    picks: Vec::new(),
-                });
+                out.push(numeric_row(p, &vals, now, picks));
             }
-            None if varies && !matches!(op.as_str(), "MCOM" | "CWGT" | "MOFF" | "LTTL") => {
+            None if changes
+                && !matches!(op.as_str(), "MCOM" | "CWGT" | "MOFF" | "LTTL" | "PUCN") =>
+            {
                 return Err(format!("{op} {p1}").into());
             }
             None => {}
@@ -192,6 +191,52 @@ pub(super) fn config_table(
         active,
         rows: out,
     })
+}
+
+/// 数の行。書いていない構成の値は今の系の値 now。構成のピックアップの値は元の構成から求め直す
+/// （ファイルの値は OpticStudio が求めた値で、同じになる）
+fn numeric_row(
+    p: lensbench_core::param::Param,
+    vals: &[Option<f64>],
+    now: f64,
+    picks: Vec<lensbench_core::configs::ConfigPick>,
+) -> lensbench_core::configs::ConfigRow {
+    let mut r = lensbench_core::configs::ConfigRow {
+        param: p,
+        values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
+        names: Vec::new(),
+        picks,
+    };
+    r.resolve_picks();
+    r
+}
+
+/// 多重構成の行の構成 c のセルの構成のピックアップ（[`super::parse`] で自分の行からのものだけにした欄）
+fn config_pick(
+    rest: &[String],
+    c: i64,
+    n: usize,
+) -> lensbench_core::Result<Option<lensbench_core::configs::ConfigPick>> {
+    let Some(t) = rest
+        .first()
+        .and_then(|t| t.parse::<i64>().ok())
+        .filter(|&t| t >= 2)
+    else {
+        return Ok(None);
+    };
+    let from = usize::try_from(t - 1).unwrap_or(0);
+    if from == 0 || from > n || from as i64 == c {
+        invalid!(
+            "configuration {c}: configuration pickup from {from} (1 to {n}, another configuration)"
+        );
+    }
+    let num = |i: usize| rest.get(i).map_or(Ok(0.0), |x| fv(x));
+    Ok(Some(lensbench_core::configs::ConfigPick {
+        k: c as usize,
+        from,
+        scale: num(5)?,
+        offset: num(6)?,
+    }))
 }
 
 /// 面 j の材料をピックアップする面（連なっていても。途中に多重構成の GLSS がある面は除く）
