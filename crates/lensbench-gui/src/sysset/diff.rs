@@ -39,7 +39,6 @@ impl<T: Clone + PartialEq> ListDiff<T> {
         }
     }
 
-    /// 基本の並び base に当てる。基本より長くした分で点の無い番号は、すぐ前の点を写す
     /// 基本の並びの番号が map（前の番号 → 今の番号）で変わった（old 個から new 個へ）。状態の点を付いていかせる
     fn remap(&mut self, map: &[Option<usize>], old: usize, new: usize) {
         let at = std::mem::take(&mut self.at);
@@ -56,6 +55,7 @@ impl<T: Clone + PartialEq> ListDiff<T> {
         }
     }
 
+    /// 基本の並び base に当てる。基本より長くした分で点の無い番号は、すぐ前の点を写す
     fn apply(&self, base: &[T]) -> Vec<T> {
         let n = self.len.unwrap_or(base.len());
         let mut out: Vec<T> = Vec::with_capacity(n);
