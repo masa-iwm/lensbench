@@ -157,6 +157,22 @@ impl DocHist {
 }
 
 impl Core {
+    /// 組合せの面の上書きの印を今の面の並びに合わせ、並びが変わった要素の上書きを外す（外した数）。
+    /// 操作の中（[`App::update`] の段を積む前）と画面ごと（[`ComboHist::track`] の前）に呼ぶ。操作の段を積んだ後に
+    /// 印だけが変わると、1 回の操作で段が 2 つ積まれ、1 段戻しても印を付け直して戻らなかった
+    pub(super) fn tidy_combo(&mut self) -> usize {
+        let dropped = self.doc.combo.drop_stale_edits();
+        if dropped > 0 {
+            self.info(trf(
+                "The element's surfaces changed, so the values changed in Lens Data ({}) were dropped (Ctrl+Z to undo)",
+                &[&dropped],
+            ));
+            // 外した数は上の文で伝えた（画面ごとの「外した」の文で重ねて出さない）
+            self.combo_census = Some(self.doc.combo.census());
+        }
+        dropped
+    }
+
     /// 文書が空（組合せも開いた系も無い）
     fn doc_empty(&self) -> bool {
         self.sys.summary.is_none() && self.doc.combo.picks.is_empty()

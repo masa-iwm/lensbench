@@ -306,6 +306,8 @@ impl App {
             .and_then(|_| super::record::Rec::from_msg(&msg));
         self.update_state(msg);
         if step {
+            // 面の上書きの印も、この操作の段に含める（後の画面で付けると別の段になる）
+            self.c.tidy_combo();
             self.c.combo_hist.commit(&self.c.doc.combo);
         }
         self.record(rec);

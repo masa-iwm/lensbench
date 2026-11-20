@@ -99,13 +99,7 @@ impl App {
         self.c.flush_set();
         let focus = ctx.memory(|m| m.focused());
         let busy = ctx.input(|i| i.pointer.any_down()) || focus.is_some();
-        let dropped = self.c.doc.combo.drop_stale_edits();
-        if dropped > 0 {
-            self.c.info(trf(
-                "The element's surfaces changed, so the values changed in Lens Data ({}) were dropped (Ctrl+Z to undo)",
-                &[&dropped],
-            ));
-        }
+        let dropped = self.c.tidy_combo();
         // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない）
         let census = self.c.doc.combo.census();
         if let Some(prev) = self.c.combo_census.replace(census) {

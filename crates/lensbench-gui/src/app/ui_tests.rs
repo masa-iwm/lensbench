@@ -721,3 +721,38 @@ fn recorded_operations_replay_to_the_same_combination() {
     assert_eq!(app.c.doc.combo.state, state);
     settle(&mut h);
 }
+
+/// 面のタイプを変える操作は元に戻す段を 1 つだけ積み、1 回で戻り、やり直せる（11/20 masa の報告: 面の上書きの印を
+/// 後の画面で付けて段が 2 つ積まれ、1 段戻しても印を付け直して戻らなかった）
+#[test]
+fn surface_type_change_undoes_in_one_step() {
+    let _g = serial();
+    let mut h = harness(a0());
+    let j = 3;
+    let typ0 = h.state().c.sys.ld_rows[j].typ.clone();
+    assert_ne!(typ0, "EVENASPH");
+    let c0 = h.state().c.doc.combo.clone();
+    let depth0 = h.state().c.combo_hist.list(true).len();
+    h.state_mut().update(Msg::LensData(lens_data::Act::Edit {
+        j,
+        col: lens_data::Col::Type,
+        value: json!("EVENASPH"),
+    }));
+    settle(&mut h);
+    assert_eq!(h.state().c.sys.ld_rows[j].typ, "EVENASPH");
+    let c1 = h.state().c.doc.combo.clone();
+    assert_eq!(
+        h.state().c.combo_hist.list(true).len(),
+        depth0 + 1,
+        "{:?}",
+        h.state().c.combo_hist.list(true)
+    );
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    settle(&mut h);
+    assert_eq!(h.state().c.doc.combo, c0, "{}", h.state().test_state());
+    assert_eq!(h.state().c.sys.ld_rows[j].typ, typ0);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Y);
+    settle(&mut h);
+    assert_eq!(h.state().c.doc.combo, c1, "{}", h.state().test_state());
+    assert_eq!(h.state().c.sys.ld_rows[j].typ, "EVENASPH");
+}
