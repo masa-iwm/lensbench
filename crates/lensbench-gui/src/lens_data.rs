@@ -16,6 +16,7 @@ mod strip;
 mod table;
 use cell_menu::{cell_menu, override_item};
 pub(crate) use names::TYPE_NAMES;
+use names::{IRR_LABELS, ODD_LABELS, TILT_LABELS};
 
 use std::collections::BTreeSet;
 
@@ -327,6 +328,9 @@ pub(crate) fn labels() -> Vec<&'static str> {
     v.extend(TOR_LABELS);
     v.extend(CB_LABELS);
     v.extend(JONES_LABELS);
+    v.extend(ODD_LABELS);
+    v.extend(TILT_LABELS);
+    v.extend(IRR_LABELS);
     v.extend(["Radius of rotation", "Focal length"]);
     v
 }
@@ -341,6 +345,9 @@ pub(crate) fn par_label(typ: &str, i: u8) -> Option<&'static str> {
         "COORDBRK" => CB_LABELS.get(i.checked_sub(1)?)?,
         "PARAXIAL" if i == 1 => "Focal length",
         "JONESMAT" => JONES_LABELS.get(i.checked_sub(1)?)?,
+        "ODDASPHE" => ODD_LABELS.get(i.checked_sub(1)?)?,
+        "TILTSURF" => TILT_LABELS.get(i.checked_sub(1)?)?,
+        "IRREGULA" => IRR_LABELS.get(i.checked_sub(1)?)?,
         _ => return None,
     };
     Some(tr(l))

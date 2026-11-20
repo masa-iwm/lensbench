@@ -15,9 +15,12 @@ use crate::json_view::fmt_num;
 use crate::optim_panel::{self as op, section, small_edit, text_of, OptPanel};
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
-use crate::widgets::sheet::{self, Cell, Sheet, SheetState};
+use crate::widgets::sheet::{self, SheetState};
+
+mod sheets;
 use lensbench_design::tol_report::StatsInfo;
 use lensbench_design::tolerance::ToleranceReport;
+use sheets::{GroupSheet, LensSheet, TolSheet};
 
 /// 公差の組の選択肢（"" は既定 = 全体の組）
 const PRESETS: [(&str, &str); 5] = [
@@ -61,11 +64,21 @@ pub(crate) struct GroupRow {
 /// 個別の公差
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TolRow {
+    /// パラメータ（カンマ区切りで複数: 同じずれを与える）
     pub param: String,
+    /// 1 つでも params（並び）で書く
+    pub multi: bool,
     pub pm: String,
+    /// ± の代わりの範囲
+    pub lo: String,
+    pub hi: String,
     /// "" は既定の分布
     pub dist: String,
     pub relative: bool,
+    /// パラメータごとにずれに掛ける数（カンマ区切り）
+    pub scale: String,
+    /// 結果での名前（空はパラメータの名前）
+    pub label: String,
 }
 
 /// パネルの操作（app が serve に送る）
@@ -270,20 +283,7 @@ impl TolPanel {
             .cloned()
             .unwrap_or_default();
         for t in &self.tols {
-            let p = t.param.trim();
-            if p.is_empty() {
-                continue;
-            }
-            let pm =
-                crate::widgets::parse_num(&t.pm, p)?.ok_or_else(|| trf("{} has no ±", &[&p]))?;
-            let mut o = json!({ "param": p, "pm": pm });
-            if !t.dist.is_empty() {
-                o["dist"] = json!(t.dist);
-            }
-            if t.relative {
-                o["relative"] = json!(true);
-            }
-            tols.push(o);
+            tols.extend(t.to_json()?);
         }
         if !tols.is_empty() {
             m.insert("tols".into(), json!(tols));
@@ -442,16 +442,9 @@ impl TolPanel {
                 }
                 "tols" => {
                     for t in x.as_array().into_iter().flatten() {
-                        // 1 つのパラメータの ± だけ欄に出す。ほかはそのまま残す
-                        match (t["param"].as_str(), t["pm"].as_f64()) {
-                            (Some(p), Some(pm)) if t.get("params").is_none() => {
-                                n.tols.push(TolRow {
-                                    param: p.into(),
-                                    pm: fmt_num(pm),
-                                    dist: t["dist"].as_str().unwrap_or("").into(),
-                                    relative: t["relative"].as_bool().unwrap_or(false),
-                                })
-                            }
+                        // 欄で表せない書き方はそのまま残す
+                        match TolRow::from_json(t) {
+                            Some(r) => n.tols.push(r),
                             _ => {
                                 if let Some(a) = n
                                     .extra
@@ -1156,211 +1149,6 @@ fn term_unit(label: &str) -> &'static str {
     }
 }
 
-/// 玉ごとの組の表
-struct LensSheet<'a> {
-    lenses: &'a mut Vec<LensRow>,
-    units: Vec<(String, String)>,
-}
-
-impl Sheet for LensSheet<'_> {
-    fn rows(&self) -> usize {
-        self.lenses.len()
-    }
-    fn cols(&self) -> usize {
-        2
-    }
-    fn header(&self, col: usize, _cur: Option<usize>) -> String {
-        [tr("Lens"), tr("Set")][col].into()
-    }
-    fn width(&self, col: usize) -> f32 {
-        [100.0, 100.0][col]
-    }
-    fn cell(&self, row: usize, col: usize) -> Cell {
-        let l = &self.lenses[row];
-        if col == 0 {
-            return Cell::list(l.name.clone(), self.units.clone(), true).hint("lens1");
-        }
-        let items = PRESETS
-            .iter()
-            .filter(|x| !x.0.is_empty())
-            .map(|x| (x.0.to_string(), tr(x.1).to_string()))
-            .collect();
-        Cell::list(l.preset.clone(), items, false)
-            .shown(preset_label(&l.preset))
-            .hint(tr("Default"))
-    }
-    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
-        let t = text.trim();
-        let l = &mut self.lenses[row];
-        if col == 0 {
-            l.name = t.into();
-        } else if PRESETS.iter().any(|x| x.0 == t) {
-            l.preset = t.into();
-        } else {
-            return Err(trf("No set {}", &[&t]));
-        }
-        Ok(())
-    }
-    fn new_row(&self, full: bool) -> Option<Cell> {
-        Some(Cell::list(
-            "",
-            if full { self.units.clone() } else { Vec::new() },
-            true,
-        ))
-    }
-    fn insert(&mut self, at: usize) -> bool {
-        self.lenses.insert(
-            at,
-            LensRow {
-                name: String::new(),
-                preset: "none".into(),
-            },
-        );
-        true
-    }
-    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
-        self.lenses.drain(rows);
-    }
-    fn swap(&mut self, a: usize) -> bool {
-        self.lenses.swap(a, a + 1);
-        true
-    }
-}
-
-/// 群・ブロックの公差の表
-struct GroupSheet<'a> {
-    groups: &'a mut Vec<GroupRow>,
-    units: Vec<(String, String)>,
-}
-
-impl Sheet for GroupSheet<'_> {
-    fn rows(&self) -> usize {
-        self.groups.len()
-    }
-    fn cols(&self) -> usize {
-        4
-    }
-    fn header(&self, col: usize, _cur: Option<usize>) -> String {
-        [tr("Name"), tr("Decenter"), tr("Tilt"), tr("Shift")][col].into()
-    }
-    fn width(&self, col: usize) -> f32 {
-        [80.0, 64.0, 64.0, 64.0][col]
-    }
-    fn cell(&self, row: usize, col: usize) -> Cell {
-        let g = &self.groups[row];
-        match col {
-            0 => Cell::list(g.name.clone(), self.units.clone(), true).hint("G1"),
-            1 => Cell::num(g.decenter.clone()).tip(tr("Decenter [mm]")),
-            2 => Cell::num(g.tilt.clone()).tip(tr("Tilt [deg]")),
-            _ => Cell::num(g.shift.clone()).tip(tr("Shift [mm]")),
-        }
-    }
-    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
-        let t = text.trim();
-        if col > 0 {
-            crate::widgets::parse_num(t, &self.header(col, None))?;
-        }
-        let g = &mut self.groups[row];
-        match col {
-            0 => g.name = t.into(),
-            1 => g.decenter = t.into(),
-            2 => g.tilt = t.into(),
-            _ => g.shift = t.into(),
-        }
-        Ok(())
-    }
-    fn insert(&mut self, at: usize) -> bool {
-        self.groups.insert(at, GroupRow::default());
-        true
-    }
-    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
-        self.groups.drain(rows);
-    }
-    fn swap(&mut self, a: usize) -> bool {
-        self.groups.swap(a, a + 1);
-        true
-    }
-}
-
-/// 個別の公差の表
-struct TolSheet<'a> {
-    tols: &'a mut Vec<TolRow>,
-    names: Vec<(String, String)>,
-}
-
-impl Sheet for TolSheet<'_> {
-    fn rows(&self) -> usize {
-        self.tols.len()
-    }
-    fn cols(&self) -> usize {
-        4
-    }
-    fn header(&self, col: usize, _cur: Option<usize>) -> String {
-        [tr("Parameter"), "±", tr("Distribution"), tr("Ratio")][col].into()
-    }
-    fn width(&self, col: usize) -> f32 {
-        [90.0, 64.0, 100.0, 50.0][col]
-    }
-    fn cell(&self, row: usize, col: usize) -> Cell {
-        let t = &self.tols[row];
-        match col {
-            0 => Cell::list(t.param.clone(), self.names.clone(), true)
-                .hint("3.t")
-                .tip(pp::param_desc(&t.param)),
-            1 => Cell::num(t.pm.clone()),
-            2 => Cell::list(
-                t.dist.clone(),
-                DISTS
-                    .iter()
-                    .map(|x| (x.0.to_string(), tr(x.1).to_string()))
-                    .collect(),
-                false,
-            )
-            .shown(dist_label(&t.dist))
-            .hint(tr("Default")),
-            _ => Cell::boolean(t.relative)
-                .tip(tr("Make ± a ratio of the current value (0.01 = ±1%)")),
-        }
-    }
-    fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
-        let v = text.trim();
-        let t = &mut self.tols[row];
-        match col {
-            0 => t.param = v.into(),
-            1 => {
-                crate::widgets::parse_num(v, &t.param)?;
-                t.pm = v.into();
-            }
-            2 => {
-                if !v.is_empty() && !DISTS.iter().any(|x| x.0 == v) {
-                    return Err(trf("No distribution {}", &[&v]));
-                }
-                t.dist = v.into();
-            }
-            _ => t.relative = v == "true",
-        }
-        Ok(())
-    }
-    fn new_row(&self, full: bool) -> Option<Cell> {
-        Some(Cell::list(
-            "",
-            if full { self.names.clone() } else { Vec::new() },
-            true,
-        ))
-    }
-    fn insert(&mut self, at: usize) -> bool {
-        self.tols.insert(at, TolRow::default());
-        true
-    }
-    fn remove(&mut self, rows: std::ops::RangeInclusive<usize>) {
-        self.tols.drain(rows);
-    }
-    fn swap(&mut self, a: usize) -> bool {
-        self.tols.swap(a, a + 1);
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1397,7 +1185,7 @@ mod tests {
             param: "3.t".into(),
             pm: "0.02".into(),
             dist: "end".into(),
-            relative: false,
+            ..Default::default()
         });
         p.radial = true;
         p.opt.vars.push(op::VarRow {
@@ -1445,10 +1233,9 @@ mod tests {
         q.set_spec(&w).unwrap();
         let back = q.spec().unwrap();
         assert_eq!(back["percentiles"], json!([50, 99]));
-        // 欄のない公差（複数のパラメータ）が前、欄の分が後
-        assert_eq!(back["tols"].as_array().unwrap().len(), 2);
-        assert_eq!(back["tols"][1]["param"], json!("3.t"));
-        assert!(q.extra.contains_key("tols"));
+        // 複数のパラメータの公差も欄に出す（並びの順のまま）
+        assert_eq!(back["tols"], w["tols"]);
+        assert!(!q.extra.contains_key("tols"));
         assert_eq!(q.percentiles, "50, 99");
         // catalog_tols・samples・threads は欄に。欄で書けない catalog_tols はそのまま残す
         let mut w = v.clone();
@@ -1464,6 +1251,32 @@ mod tests {
         q.set_spec(&w).unwrap();
         assert!(q.catalog_tols.is_empty());
         assert_eq!(q.spec().unwrap()["catalog_tols"], w["catalog_tols"]);
+    }
+
+    #[test]
+    fn tol_rows_cover_items() {
+        // 個別の公差の項目（lo・hi・params・scale・label・分布の書き方）は欄で読み書きして元に戻る
+        let items = [
+            json!({"param": "3.t", "lo": -0.01, "hi": 0.03}),
+            json!({"params": ["1.r", "2.r"], "pm": 0.01, "relative": true, "scale": [1.0, -1.0], "label": "R pair"}),
+            json!({"params": ["5.t"], "pm": 0.02, "dist": "normal:3"}),
+            json!({"param": "4.tx", "pm": 0.1, "dist": "disc_x"}),
+        ];
+        for t in &items {
+            let r = TolRow::from_json(t).unwrap();
+            assert_eq!(r.to_json().unwrap().as_ref(), Some(t), "{t}");
+        }
+        // 欄で表せない書き方は None（そのまま残す）
+        assert!(TolRow::from_json(&json!({"param": "3.t", "pm": "x"})).is_none());
+        assert!(TolRow::from_json(&json!({"param": "3.t", "pm": 1, "other": 1})).is_none());
+        // ± と範囲の両方、範囲の片方だけは誤り
+        let mut r = TolRow::from_json(&items[0]).unwrap();
+        r.pm = "0.1".into();
+        assert!(r.to_json().is_err());
+        r.pm.clear();
+        r.hi.clear();
+        assert!(r.to_json().is_err());
+        assert_eq!(TolRow::default().to_json(), Ok(None));
     }
 
     #[test]

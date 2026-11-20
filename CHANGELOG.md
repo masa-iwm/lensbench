@@ -262,6 +262,10 @@
   ことがある: params の誤りを、システムを読んでいない誤りや `--allow-remote` の検査より先に返す）
 - **挟むホルダー**: ユーザーカタログの機構部品の `holds` に `max_diameter`（入る径の上限）。上下から挟むホルダー（バー型・ジョー型）の
   ように径を選ばない部品は `diameter`〜`max_diameter` の素子が入る（`catalog-search --fits`・GUI の「入る機構部品」・「入る光学素子」）
+- **GUI の欄の無かった設定**: 評価関数の項の表に thickness の `axis`・`clear`、distortion の `coef`・`abcd`・`component`、coupling の
+  `na_source`・`na_receiver`・`na_max`・`clip_stop`、zplm の `default_dirs` の列。レンズデータの表の面タイプに ODDASPHE・TILTSURF・IRREGULA
+  （パラメータの列つき）。公差の面ごとの表に最小・最大（非対称の `lo`・`hi`）・倍率（`scale`）・ラベル（`label`）の列、パラメータをカンマで
+  並べると同じずれ（`params`）。システムの設定の視野に「OpticStudio と同じ補間」（プロジェクトの新しい項目 `vig_interp`、システムファイルと同じ）
 
 ### 速さ
 
@@ -280,6 +284,7 @@
 
 ### 直した所
 
+- **GUI の評価関数の表で列の無いキーの項**: 表に列の無いキー（文字・true/false・並びの値）を持つ項を読むと、保存・最適化で「値が数でない」の誤りになっていたのを直した。列の無いキーは読んだときの値のまま書く
 - **ドキュメントを今のコードに合わせた**: パラメータの名前の一覧のページ（多重構成の行の名前と .zmx のオペランドの対応）と、
   MTF・PSF・RMS の解析のページ（`--axes`・`--polarization`・`--exact`）を足した。.zmx の読込の約束に読む面タイプ（Binary 2 を含む）と
   多重構成のオペランドの一覧、GUI のページに図の縮尺・拡大縮小の道具・スポット図の枠の幅と多重構成の表の図、README に Releases の exe を書いた

@@ -841,6 +841,9 @@ pub struct Project {
     /// OPD の基準（.zmx の ROPD。省略は 2: 出射瞳の参照球）
     #[serde(default = "two_i64", skip_serializing_if = "is_two_i64")]
     pub ropd: i64,
+    /// 定義した視野以外の点のケラレ係数の求め方（`"continuous"`・`"opticstudio"`。省略は連続）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vig_interp: Option<lensbench_core::system::VigInterp>,
     pub blocks: Vec<Block>,
     #[serde(default)]
     pub states: Vec<State>,

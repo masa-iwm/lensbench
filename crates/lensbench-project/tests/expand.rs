@@ -75,6 +75,17 @@ fn a_whole_zmx_block_is_the_system() {
 }
 
 #[test]
+fn vig_interp_sets_the_system() {
+    use lensbench_core::system::VigInterp;
+    let blocks = r#"[{"type": "zmx", "path": "A0/system.zmx"}]"#;
+    assert_eq!(project(blocks).vig_interp, VigInterp::Continuous);
+    let txt = format!("{{ {HEAD} \"vig_interp\": \"opticstudio\", \"blocks\": {blocks} }}");
+    let p = Project::from_json(&txt).unwrap();
+    let s = expand(&p, &env(), &ExpandOpts::default()).unwrap().system;
+    assert_eq!(s.vig_interp, VigInterp::OpticStudio);
+}
+
+#[test]
 fn a_zmx_range_keeps_only_the_air_right_after_it() {
     // A0 の面 1〜2（1 枚目の玉）: 玉の後ろの空気 5.8 だけが付き、範囲の外の空気は足さない
     let a = a0();

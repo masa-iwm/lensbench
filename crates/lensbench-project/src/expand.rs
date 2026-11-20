@@ -870,6 +870,9 @@ fn expand_body(
     s.floating_clip = p.floating_clip;
     s.apodization = p.apodization;
     s.ropd = p.ropd;
+    if let Some(v) = p.vig_interp {
+        s.vig_interp = v;
+    }
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {

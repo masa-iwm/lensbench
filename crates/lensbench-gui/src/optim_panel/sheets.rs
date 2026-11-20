@@ -426,4 +426,31 @@ mod tests {
         }));
         assert_eq!(p.term_vals(), vec![None, Some((49.0, 100.0))]);
     }
+
+    #[test]
+    fn term_keys_survive_round_trip() {
+        // 欄のある鍵と、欄の無い鍵（将来の鍵）が、表を通して読み書きしても元の JSON に戻る
+        let terms = json!([
+            {"type": "thickness", "surf": 2, "edge": true, "axis": "-x", "clear": true, "min": 1.0},
+            {"type": "distortion", "wave": 2, "reference": 1, "field": 3, "abcd": [99.0, 0.0, 0.0, 99.0], "component": "y", "target": 0.0, "weight": 1.0},
+            {"type": "distortion", "wave": 2, "reference": 2, "coef": "d", "target": 98.0},
+            {"type": "coupling", "wave": 1, "na_source": 0.1, "na_receiver": 0.12, "na_max": 0.3, "clip_stop": true, "target": 1.0},
+            {"type": "zplm", "macro": 7, "data": 0, "default_dirs": false},
+            {"type": "paraxial", "q": "efl", "target": 50.0, "x_int": 3, "x_flag": true, "x_list": [1, 2], "x_obj": {"a": 1}, "x_text": "abc"}
+        ]);
+        let rows = super::super::term_rows(&terms).unwrap();
+        for r in &rows[..5] {
+            for (k, _) in &r.vals {
+                assert!(
+                    super::super::keys(&r.ty).iter().any(|(a, _)| a == k),
+                    "{} {k}",
+                    r.ty
+                );
+            }
+        }
+        assert_eq!(
+            Value::Array(super::super::terms_json(&rows).unwrap()),
+            terms
+        );
+    }
 }

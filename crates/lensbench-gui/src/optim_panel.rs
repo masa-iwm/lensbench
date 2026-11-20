@@ -256,6 +256,8 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("edge", Bool),
             ("zone", Num),
             ("each", Choice(&["all", "air", "glass"])),
+            ("axis", Choice(&["+y", "+x", "-y", "-x"])),
+            ("clear", Bool),
         ],
         "zplm" => &[
             ("macro", Macro),
@@ -267,6 +269,7 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("target", Num),
             ("file", Text),
             ("macro_dirs", Dirs),
+            ("default_dirs", Bool),
         ],
         "calc" => &[
             (
@@ -333,6 +336,9 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("absolute", Bool),
             ("peak", Bool),
             ("ftheta", Bool),
+            ("coef", Choice(&["a", "b", "c", "d"])),
+            ("abcd", JsonList),
+            ("component", Choice(&["radial", "x", "y"])),
             ("target", Num),
         ],
         "longitudinal" => &[
@@ -372,6 +378,10 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
             ("source", Pair),
             ("receiver", Pair),
             ("grid", Int),
+            ("na_source", Num),
+            ("na_receiver", Num),
+            ("na_max", Num),
+            ("clip_stop", Bool),
             ("target", Num),
         ],
         _ => &[],
@@ -690,6 +700,19 @@ fn pair(t: &str) -> Option<Value> {
     (v.len() == 2).then(|| json!(v))
 }
 
+/// 欄の無い鍵の文字列を JSON の値に（`text_of` の逆）
+fn loose(v: &str) -> Value {
+    if let Ok(x) = serde_json::from_str::<Value>(v) {
+        if !x.is_string() {
+            return x;
+        }
+    }
+    match serde_json::from_str::<Value>(&format!("[{v}]")) {
+        Ok(x) if x.as_array().is_some_and(|a| a.len() > 1) => x,
+        _ => json!(v),
+    }
+}
+
 /// 項の行を JSON に（`lensbench_design::merit` の形）
 fn term_json(t: &TermRow) -> Result<Value, String> {
     let mut o = Map::new();
@@ -700,12 +723,12 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
         if v.is_empty() {
             continue;
         }
-        let kind = ks
-            .iter()
-            .find(|(a, _)| a == k)
-            .map(|x| x.1)
-            .unwrap_or(KeyKind::Num);
         let bad = || trf("Value of {}: {}", &[k, &v]);
+        // 欄の無い鍵は、読んだときの JSON の形に戻す（数・true/false・並び・オブジェクト、ほかは文字列）
+        let Some(kind) = ks.iter().find(|(a, _)| a == k).map(|x| x.1) else {
+            o.insert(k.clone(), loose(v));
+            continue;
+        };
         let x = match kind {
             KeyKind::Num => json!(v.parse::<f64>().map_err(|_| bad())?),
             KeyKind::Int => json!(v.parse::<u64>().map_err(|_| bad())?),

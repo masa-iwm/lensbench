@@ -1233,6 +1233,26 @@ Surfaces of a locked block (and its inner blocks) cannot be changed (Ctrl+L also
 Decenter X	偏心 X
 Decenter Y	偏心 Y
 Even asphere	偶数次非球面
+Odd asphere	奇数次非球面
+Tilted	チルト面
+Irregular	不規則面
+r¹ coeff	r¹ の係数
+r³ coeff	r³ の係数
+r⁵ coeff	r⁵ の係数
+r⁷ coeff	r⁷ の係数
+X tangent	X の tan
+Y tangent	Y の tan
+Z spherical	Z 球面収差
+Z astigmatism	Z 非点収差
+Z coma	Z コマ収差
+Label	ラベル
+Parameters (comma-separated) get the same error	パラメータ（カンマ区切り）に同じずれを与えます
+± (or Min and Max)	±（または最小と最大）
+Lower limit (with Max, instead of ±)	下限（最大と組で、± の代わり）
+Upper limit (with Min, instead of ±)	上限（最小と組で、± の代わり）
+Factor per parameter on the error (comma-separated, as many as the parameters)	パラメータごとにずれに掛ける数（カンマ区切り、パラメータと同じ数）
+Name in the results (empty = the parameters)	結果での名前（空はパラメータの名前）
+{}: give ± or both lo and hi	{}: ± か、最小と最大の両方を書いてください
 Tilt X	チルト X
 Tilt Y	チルト Y
 Tilt Z	チルト Z
@@ -1484,6 +1504,8 @@ Check the catalog and part number (add lens catalogs in File > Catalog folders�
 The project may have been changed elsewhere; reopen it	プロジェクトがほかで変えられたかもしれません。開き直してください
 Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)	まだ対応していません。対応する面・項目はマニュアル（.zmx の読み込み）にあります
 Vignetting factors	ケラレ係数
+OpticStudio-compatible interpolation	OpticStudio と同じ補間
+Vignetting factors at points between the defined fields: as OpticStudio (steps between fields) instead of continuous. Use it to compare with OpticStudio	定義した視野の間の点のケラレ係数を、連続でなく OpticStudio と同じ求め方にします（視野の間で段差になる）。OpticStudio と照合するときに
 Computing ({})	計算中（{}）
 {}…	{}…
 Radius, conic, thickness and semi-diameter are edited in the Lens Data table (surfaces in air only)	曲率半径・コーニック・厚み・クリア半径はレンズデータの表で編集（面は空気中だけ）

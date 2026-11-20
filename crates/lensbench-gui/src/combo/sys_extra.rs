@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use lensbench_core::system::VigInterp;
 use lensbench_project::Environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -29,6 +30,9 @@ pub(crate) struct SysExtra {
     pub apodization: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ropd: Option<Value>,
+    /// 定義した視野以外の点のケラレ係数の求め方（プロジェクトの vig_interp。既定の連続は書かない）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vig_interp: Option<VigInterp>,
 }
 
 impl SysExtra {
@@ -43,6 +47,11 @@ impl SysExtra {
             None => None,
         }
         .filter(|e| *e != Environment::default());
+        let vig_interp = match v.get("vig_interp").filter(|g| !g.is_null()) {
+            Some(x) => Some(serde_json::from_value(x.clone()).map_err(|e| e.to_string())?),
+            None => None,
+        }
+        .filter(|x| *x != VigInterp::Continuous);
         Ok(SysExtra {
             field_rect: v.pointer("/fields/norm").and_then(Value::as_str) == Some("rect"),
             glrs: v.get("glrs").filter(|g| !g.is_null()).cloned(),
@@ -57,6 +66,7 @@ impl SysExtra {
                 .get("ropd")
                 .filter(|g| !g.is_null() && **g != json!(2))
                 .cloned(),
+            vig_interp,
         })
     }
 
@@ -82,6 +92,9 @@ impl SysExtra {
         }
         if let Some(g) = &self.ropd {
             v["ropd"] = g.clone();
+        }
+        if let Some(g) = self.vig_interp {
+            v["vig_interp"] = json!(g);
         }
     }
 }

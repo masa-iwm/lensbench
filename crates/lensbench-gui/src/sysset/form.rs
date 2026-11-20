@@ -6,7 +6,7 @@
 //! ケラレ係数）・波長（重み・主波長・既定の組）・環境（温度・気圧・屈折率の補正）。
 
 use egui::{RichText, Ui};
-use lensbench_core::system::AfocalUnit;
+use lensbench_core::system::{AfocalUnit, VigInterp};
 use lensbench_project::Environment;
 
 use super::{
@@ -41,6 +41,8 @@ pub(crate) struct SysForm {
     pub afocal: Option<AfocalUnit>,
     pub floating_clip: bool,
     pub env: Environment,
+    /// 定義した視野以外の点のケラレ係数を OpticStudio と同じ求め方にする（既定は連続）
+    pub vig_os: bool,
 }
 
 /// 片方にしかない項目を共通の欄の間に差し込む
@@ -75,6 +77,7 @@ impl SysForm {
             afocal: c.afocal.as_deref().and_then(AfocalUnit::from_code),
             floating_clip: c.floating_clip,
             env: c.extra.environment.unwrap_or_default(),
+            vig_os: c.extra.vig_interp == Some(VigInterp::OpticStudio),
         }
     }
 
@@ -94,6 +97,7 @@ impl SysForm {
         c.afocal = self.afocal.map(|u| u.code().to_ascii_lowercase());
         c.floating_clip = self.floating_clip;
         c.extra.environment = (self.env != Environment::default()).then_some(self.env);
+        c.extra.vig_interp = self.vig_os.then_some(VigInterp::OpticStudio);
     }
 }
 
@@ -297,6 +301,12 @@ fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
     {
         ui.data_mut(|d| d.insert_temp(vid, show_vig));
     }
+    if show_vig || f.vig_os {
+        ui.checkbox(&mut f.vig_os, tr("OpticStudio-compatible interpolation"))
+            .on_hover_text(tr(
+                "Vignetting factors at points between the defined fields: as OpticStudio (steps between fields) instead of continuous. Use it to compare with OpticStudio",
+            ));
+    }
     let unit = super::field_unit(f.field_kind);
     let mut sh = sheets::FieldSheet {
         fields: &mut f.fields,
@@ -354,5 +364,17 @@ mod tests {
         f.aperture = ApertureKind::Epd;
         f.apply_to(&mut c);
         assert_eq!((c.epd, c.ap_value), (10.0, 5.0));
+        // ケラレ係数の求め方はプロジェクトの vig_interp（既定の連続は書かない）
+        let mut f = SysForm::of_combo(&c);
+        f.vig_os = true;
+        f.apply_to(&mut c);
+        let mut v = serde_json::json!({});
+        c.extra.put(&mut v);
+        assert_eq!(v["vig_interp"], "opticstudio");
+        let e = crate::combo::SysExtra::read(&v).unwrap();
+        assert_eq!(e.vig_interp, Some(VigInterp::OpticStudio));
+        let e =
+            crate::combo::SysExtra::read(&serde_json::json!({"vig_interp": "continuous"})).unwrap();
+        assert!(e.is_empty());
     }
 }

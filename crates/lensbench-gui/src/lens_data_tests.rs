@@ -335,6 +335,20 @@ fn parameters_follow_opticstudio_numbers() {
     assert_eq!(par_count("STANDARD"), 0);
     assert_eq!(par_count("PARAXIAL"), 1);
     assert_eq!(par_count("JONESMAT"), 8);
+    // Odd Asphere・Tilted・Irregular はパラメータ i が asph[i - 1]
+    assert_eq!(par_count("ODDASPHE"), 8);
+    assert_eq!(par_count("TILTSURF"), 2);
+    assert_eq!(par_count("IRREGULA"), 8);
+    let tilt = Row {
+        typ: "TILTSURF".into(),
+        asph: vec![0.1],
+        ..Default::default()
+    };
+    assert_eq!(par_value(&tilt, 1), Some(0.1));
+    assert_eq!(
+        par_fields(&tilt, 2, 0.2).unwrap()["asph"],
+        json!([0.1, 0.2])
+    );
 }
 
 #[test]
