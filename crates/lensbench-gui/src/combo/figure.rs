@@ -271,6 +271,8 @@ fn scene(
 ) -> Scene {
     let to = |p: [f64; 2]| xf.to(p);
     let s = xf.s;
+    // 名前・寸法を寄せる、図の見える範囲
+    let view_area = rect.shrink(6.0);
     // 要素（今の経路に沿った並び）と玉の対応
     let ids = combo.span_ids();
     let crate::combo_tree::ChainView {
@@ -430,14 +432,15 @@ fn scene(
         } else {
             Vec::new()
         };
-        let (label_pos, align) = if n.y.abs() >= n.x.abs() {
+        let across_y = n.y.abs() >= n.x.abs();
+        let (label_pos, align) = if across_y {
             let y = if n.y < 0.0 {
                 pos.y - r - 10.0
             } else {
                 pos.y + r + 10.0
             };
             (
-                Pos2::new(pos.x, y.min(rect.bottom() - 10.0).max(rect.top() + 10.0)),
+                Pos2::new(pos.x, y),
                 if n.y < 0.0 {
                     Align2::CENTER_BOTTOM
                 } else {
@@ -459,7 +462,14 @@ fn scene(
             FontId::proportional(11.0),
             if sel { accent } else { weak },
         );
+        // 要素が少しでも見えていれば、光軸に垂直な向きに図の中へ寄せる（要素がはみ出ても名前は見える。
+        // 光軸の向きは寄せない）。要素が全部図の外なら寄せない
         let label = align.anchor_size(label_pos, galley.size());
+        let label = if Rect::from_center_size(pos, Vec2::splat(2.0 * r)).intersects(rect) {
+            keep_in(label, view_area, if across_y { 1 } else { 0 })
+        } else {
+            label
+        };
         marks.push(Mark {
             k,
             kind: p.kind,
@@ -502,8 +512,10 @@ fn scene(
     let dim_y = inner.bottom() + 26.0;
     // 縦の寸法線を光軸からどれだけ離すか（要素の半径の最大 + 余白）
     let vr = (els.iter().map(|p| p.semi).fold(combo.epd / 2.0, f64::max) * s) as f32 + 24.0;
+    // 寸法線は、間隔の両側の要素（光軸の区間を要素の半径の最大だけ広げた所）が少しでも見えている間だけ描く
     let dims = gaps
         .iter()
+        .filter(|&&(_, a, b)| Rect::from_two_pos(a, b).expand(vr).intersects(rect))
         .map(|&(g, a, b)| {
             let val = gap_get(combo, g).unwrap_or(0.0);
             let sel = view.dim == Some(g);
@@ -525,19 +537,28 @@ fn scene(
                     [Pos2::new(x0, dim_y), Pos2::new(x1, dim_y)],
                     Vec2::X,
                     x1 - x0 > 12.0,
-                    Pos2::new((x0 + x1) / 2.0, dim_y - 3.0),
+                    Pos2::new(
+                        along_in(x0, x1, view_area.x_range(), galley.size().x),
+                        dim_y - 3.0,
+                    ),
                     Align2::CENTER_BOTTOM,
                 )
             } else if dx < 1.0 || dx / dy < 0.02 {
                 // 縦の間隔（折り曲げの後）: 光軸の右に
-                let x = a.x.max(b.x) + vr;
+                // 横の寸法線を図の下にそろえるのと同じく、光軸がはみ出ても寸法線は図の中へ寄せる
+                let x = (a.x.max(b.x) + vr)
+                    .min(view_area.right() - galley.size().x - 5.0)
+                    .max(view_area.left());
                 let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
                 (
                     [[a, Pos2::new(x + 4.0, a.y)], [b, Pos2::new(x + 4.0, b.y)]],
                     [Pos2::new(x, y0), Pos2::new(x, y1)],
                     Vec2::Y,
                     y1 - y0 > 12.0,
-                    Pos2::new(x + 5.0, (y0 + y1) / 2.0),
+                    Pos2::new(
+                        x + 5.0,
+                        along_in(y0, y1, view_area.y_range(), galley.size().y),
+                    ),
                     Align2::LEFT_CENTER,
                 )
             } else {
@@ -547,7 +568,11 @@ fn scene(
                 if n.x < 0.0 {
                     n = -n;
                 }
-                let (a2, b2) = (a + n * vr, b + n * vr);
+                // 縦の間隔と同じく、ずらす量を図の中に入るよう詰める（文字の分は右を空ける）
+                let mut area = view_area;
+                area.max.x -= galley.size().x + 5.0;
+                let t = fit_along(a + (b - a) / 2.0, n, vr, area);
+                let (a2, b2) = (a + n * t, b + n * t);
                 (
                     [[a, a2 + n * 4.0], [b, b2 + n * 4.0]],
                     [a2, b2],
@@ -583,6 +608,55 @@ fn scene(
         sel: view.sel,
         axes,
         mids,
+    }
+}
+
+/// 矩形 r を、軸 axis（0 = 横、1 = 縦）の向きだけ area の中へずらす（area より大きければ area の始まりにそろえる）
+pub(super) fn keep_in(r: Rect, area: Rect, axis: usize) -> Rect {
+    let d = (area.max[axis] - r.max[axis]).min(0.0) + (area.min[axis] - r.min[axis]).max(0.0);
+    let d = if r.max[axis] - r.min[axis] > area.max[axis] - area.min[axis] {
+        area.min[axis] - r.min[axis]
+    } else {
+        d
+    };
+    let mut v = Vec2::ZERO;
+    v[axis] = d;
+    r.translate(v)
+}
+
+/// 寸法の数字の位置（区間 [lo, hi] の真ん中）を、見える範囲 vis に入る区間の部分へ寄せる。
+/// w は数字のその向きの大きさ。区間が見えなければ真ん中のまま
+pub(super) fn along_in(lo: f32, hi: f32, vis: egui::Rangef, w: f32) -> f32 {
+    let c = (lo + hi) / 2.0;
+    let (a, b) = (lo.max(vis.min + w / 2.0), hi.min(vis.max - w / 2.0));
+    if a <= b {
+        c.clamp(a, b)
+    } else {
+        c
+    }
+}
+
+/// 点 m から向き n へ t だけ離した所が area に入るよう t を詰める。入る t が無ければそのまま
+pub(super) fn fit_along(m: Pos2, n: Vec2, t: f32, area: Rect) -> f32 {
+    let (mut lo, mut hi) = (f32::NEG_INFINITY, f32::INFINITY);
+    for ax in 0..2 {
+        if n[ax].abs() < 1e-6 {
+            if m[ax] < area.min[ax] || m[ax] > area.max[ax] {
+                return t;
+            }
+            continue;
+        }
+        let (p, q) = (
+            (area.min[ax] - m[ax]) / n[ax],
+            (area.max[ax] - m[ax]) / n[ax],
+        );
+        lo = lo.max(p.min(q));
+        hi = hi.min(p.max(q));
+    }
+    if lo <= hi {
+        t.clamp(lo, hi)
+    } else {
+        t
     }
 }
 

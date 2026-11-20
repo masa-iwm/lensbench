@@ -146,6 +146,10 @@ impl Fig {
             l.air = air;
             c.picks.push(l);
         }
+        Fig::of(c)
+    }
+
+    fn of(c: Combo) -> Fig {
         let mut proj = c.project();
         proj["glass_catalogs"] = json!(["SCHOTT"]);
         // 試験はスレッドで並べて回るので、ファイルは呼ぶたびに別の名前
@@ -427,4 +431,91 @@ fn figure_keys() {
     f.key(Key::CloseBracket, none);
     f.key(Key::Delete, none);
     assert_eq!((f.combo.len(), f.view.sel), (1, None));
+}
+
+/// 名前・寸法を図の中へ寄せる計算（光軸がどの向きでも同じ: 横・縦・斜め）
+#[test]
+fn labels_and_dims_stay_in_view() {
+    let area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(100.0, 50.0));
+    // 名前: 寄せる軸だけずらす（もう一方の軸ははみ出たまま）
+    let r = Rect::from_min_size(Pos2::new(120.0, 70.0), egui::vec2(20.0, 10.0));
+    let x = keep_in(r, area, 0);
+    assert_eq!((x.min.x, x.min.y), (80.0, 70.0));
+    let y = keep_in(r, area, 1);
+    assert_eq!((y.min.x, y.min.y), (120.0, 40.0));
+    let l = keep_in(r.translate(egui::vec2(-150.0, 0.0)), area, 0);
+    assert_eq!(l.min.x, 0.0);
+    // 寸法の数字: 見える部分の中へ。区間が見えなければそのまま
+    assert_eq!(along_in(-200.0, 100.0, area.x_range(), 10.0), 5.0);
+    assert_eq!(along_in(-400.0, -200.0, area.x_range(), 10.0), -300.0);
+    // 斜めの寸法線: ずらす量を詰める
+    let n = egui::vec2(1.0, 1.0).normalized();
+    let t = fit_along(Pos2::new(10.0, 10.0), n, 200.0, area);
+    let p = Pos2::new(10.0, 10.0) + n * t;
+    assert!(area.contains(p) && (p.y - 50.0).abs() < 1e-3);
+    // 横向きの n で、点が縦に外れていればそのまま
+    assert_eq!(
+        fit_along(Pos2::new(10.0, 80.0), egui::Vec2::X, 200.0, area),
+        200.0
+    );
+    assert_eq!(
+        fit_along(Pos2::new(10.0, 10.0), egui::Vec2::X, 200.0, area),
+        90.0
+    );
+}
+
+/// 鏡で光軸を縦へ折った後の要素も、図を横へ動かして要素が少しはみ出たとき名前と寸法線が図の中に残る
+/// （光軸が横の要素で、図を縦へ動かしたときと同じ）。全部図の外へ出たら寄せない
+#[test]
+fn folded_labels_follow_view() {
+    let mut c = Combo {
+        epd: 4.0,
+        stop_gap: 5.0,
+        ..Default::default()
+    };
+    let mut l = Pick::new(ElemKind::Lens);
+    l.air = 10.0;
+    c.picks.push(l);
+    let mut m = Pick::new(ElemKind::Mirror);
+    m.air = 15.0;
+    c.picks.push(m);
+    let mut l = Pick::new(ElemKind::Lens);
+    l.air = 20.0;
+    c.picks.push(l);
+    let mut f = Fig::of(c);
+    let sh = f.frame(Vec::new());
+    // 折った後の玉の光軸は縦
+    assert!(sh.sc.axes[2].y.abs() > 0.9, "{:?}", sh.sc.axes);
+    let area = f.ctx.screen_rect();
+    let m = sh.sc.marks.iter().find(|m| m.k == 2).unwrap();
+    let (x, r) = (m.pos.x, m.r);
+    let xs = area.x_range();
+    // 玉の真ん中が図の左・右の端の少し外（玉の縁は見えている）
+    for dx in [area.left() - r / 2.0 - x, area.right() + r / 2.0 - x] {
+        f.view.pan = egui::vec2(dx, 0.0);
+        let sh = f.frame(Vec::new());
+        let m = sh.sc.marks.iter().find(|m| m.k == 2).unwrap();
+        assert!(
+            xs.contains(m.label.min.x) && xs.contains(m.label.max.x),
+            "{dx}: {:?}",
+            m.label
+        );
+        // 縦の寸法線（鏡から玉まで）も図の中
+        let d = sh.sc.dims.iter().find(|d| d.g == 1).unwrap();
+        assert!(xs.contains(d.seg[0].x), "{dx}: {:?}", d.seg);
+        assert!(xs.contains(d.text.max.x), "{dx}: {:?}", d.text);
+    }
+    // 全部図の外: 名前は寄せず、寸法線は描かない
+    for dx in [-3000.0, 3000.0] {
+        f.view.pan = egui::vec2(dx, 0.0);
+        let sh = f.frame(Vec::new());
+        let m = sh.sc.marks.iter().find(|m| m.k == 2).unwrap();
+        assert!(!m.label.intersects(area), "{dx}: {:?}", m.label);
+        assert!(sh.sc.dims.iter().all(|d| d.g != 1), "{dx}");
+    }
+    // 光軸が横の要素も同じ: 図を縦へ大きく動かすと先頭の玉の名前は寄せない
+    f.view.pan = egui::vec2(0.0, 3000.0);
+    let sh = f.frame(Vec::new());
+    let m = sh.sc.marks.iter().find(|m| m.k == 0).unwrap();
+    assert!(!m.label.intersects(area), "{:?}", m.label);
 }
