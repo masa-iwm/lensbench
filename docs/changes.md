@@ -3,7 +3,7 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.5.0 の後）
+## v0.5.0 の後・v0.6.0 まで
 
 ### 結果の型と設定の型
 - 結果の型に `#[non_exhaustive]` を付けた: `analysis::{Mtf, MtfWaves, Spot, Zernike, Wavefront}`・`psf::Psf`・`pop::{Prop, RayBeam}`・
@@ -21,6 +21,11 @@
   `lensbench_analysis::prelude` を置いた。
 - 視野の掃引のために `System::without_vignetting`（ケラレ係数を 0 にした複製）を足した。
 
+### 解析の口
+- `lensbench_analysis::registry::Analysis` の結果の型 `Output` は `Send + Sync + 'static` であること（同じプロセスの呼び手へ結果を型のまま
+  渡す `DynAnalysis::run_typed`・`Typed`）。外のクレートの解析の結果の型が `Rc`・`RefCell` などを持っていたら書き換える。
+- `lensbench_engine::session::Answer::into_json` は `lensbench_core::Result<Value>` を返す（前は `Value`）。呼び手は `?` などで誤りを受ける。
+
 ### .zmx の読込の場所
 - `lensbench_core::zmx`（`load`・`load_with`・`LoadOptions`・`parse_text`・`build` など）を `lensbench_formats::zmx` に移した。
   `lensbench_core::prelude` から `zmx`・`LoadOptions` を外し、それを足した `lensbench_formats::prelude` を置いた。
@@ -34,6 +39,7 @@
   `Arms(n)`・`Grid(n)` が増えたので、`Quad` を網羅する `match` は書き足す。
 - `TermKind` に計算の項 `Calc { op, args, target }` が増えた（`TermKind` を網羅する `match` は書き足す）。`TermKind::target()` は外から使える。
 - `TermKind::Thickness` に `edge: Option<f64>`（縁の厚みの高さ）と `each: Option<Each>`（面ごとの境界）を足した（どちらも `None` が前と同じ）。
+- `TermKind::Thickness` に `clear: bool`（`false` が前と同じ）と `axis: EdgeAxis`（縁の厚みを測る向き、`EdgeAxis::PosY` が前と同じ）を足した。構造体の式で作るときは書き足す。
 - `TermKind::Paraxial` に `wave: Option<usize>`（efl・pimh の波長、`None` が前と同じ主波長）を足した。
 - `CalcOp` に `Max`・`Min`・`Qsum`・`Sin`〜`Atan` が増えた（`CalcOp` を網羅する `match` は書き足す）。
 - `TermKind::Surface` に `wave: Option<usize>`、`SurfQ` に `Power`・`Ynip`・`Index` が増えた。

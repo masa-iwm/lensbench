@@ -1,7 +1,7 @@
 # 外のクレートから lensbench に解析・プラグインを足す雛形。別のリポジトリでは、これを写して始める。
 # 公開のリポジトリの中では lensbench-sdk を path で参照し、公開 CI が組む（SDK を壊す変更を止める）。
 # 写したら下の lensbench-sdk を git のタグ（または rev）に替える:
-#   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.5.0", features = [...] }
+#   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.6.0", features = [...] }
 [package]
 name = "lensbench-extension-example"
 version = "0.1.0"
