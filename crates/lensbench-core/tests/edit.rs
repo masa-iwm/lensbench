@@ -812,6 +812,21 @@ fn surface_fields_by_name() {
     assert!((s.n(2)[0] - 1.51).abs() < 1e-15);
     let f = s.surface_fields(2).unwrap();
     assert!(f.contains(&("material", Text("1.5,0".into()))));
+    // 機械半径（数で固定、auto で自動。読む値は玉の半径）とチップゾーン
+    s.set_surface_fields(2, &[("mech".into(), Num(100.0)), ("chip".into(), Num(0.5))])
+        .unwrap();
+    let f = s.surface_fields(2).unwrap();
+    assert!(f.contains(&("mech", Num(100.0))));
+    assert!(f.contains(&("mech_auto", Bool(false))));
+    assert!(f.contains(&("chip", Num(0.5))));
+    s.set_surface_fields(2, &[("mech".into(), Text("auto".into()))])
+        .unwrap();
+    assert_eq!(s.surfaces[2].mech_semi, None);
+    assert!(s
+        .set_surface_fields(2, &[("chip".into(), Num(-1.0))])
+        .is_err());
+    s.set_surface_fields(2, &[("chip".into(), Num(0.0))])
+        .unwrap();
     assert!(s
         .set_surface_fields(2, &[("nope".into(), Num(1.0))])
         .is_err());

@@ -28,7 +28,8 @@
 //! - `add_mech` part（機構部品、系ファイルの mechanics の要素と同じ形） ／ `set_mech` mech（名前か番号）, part（書いた項目
 //!   だけ変える） ／ `remove_mech` mech
 //! - `set_config_count` n ／ `set_config_row` param, values ／ `set_config_materials` param（`N.material`）, names
-//!   （構成ごとの材料の名前） ／ `add_config_row` param（どの構成も今の値）／
+//!   （構成ごとの材料の名前） ／ `set_config_coatings` param（`N.coating`）, names（構成ごとの膜の名前、空は膜なし） ／
+//!   `add_config_row` param（どの構成も今の値）／
 //!   `remove_config_row` param ／ `set_config` k
 //!
 //! 値: 数・数の並び・文字列・真偽。aperture は {"type": "circular", "max": 3, …} か null。
@@ -823,6 +824,13 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
             }
             t.set_config_materials(p.index(), names).map_err(e)?;
         }
+        O::SetConfigCoatings { param, names } => {
+            let p = t.param(param).map_err(e)?;
+            if p.kind != lensbench_core::param::Kind::Coating {
+                return Err(format!("{param} is not a coating row").into());
+            }
+            t.set_config_coatings(p.index(), names).map_err(e)?;
+        }
         O::AddConfigRow { param } => {
             let p = t.param(param).map_err(e)?;
             let n = t.configs().map_or(1, |c| c.n);
@@ -830,6 +838,9 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
                 let now = t.surfaces[p.index()].mat.name();
                 t.set_config_materials(p.index(), &vec![now; n])
                     .map_err(e)?;
+            } else if p.kind == lensbench_core::param::Kind::Coating {
+                let now = t.surfaces[p.index()].coat.clone();
+                t.set_config_coatings(p.index(), &vec![now; n]).map_err(e)?;
             } else {
                 let v = t.get_param(p).map_err(e)?;
                 t.set_config_row(p, vec![v; n]).map_err(e)?;

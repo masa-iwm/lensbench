@@ -153,6 +153,10 @@ fn config_set(
                 || matches!(name.as_str(), "n" | "c" | "stop")
                 || (name == "t" && in_air.contains(&j))
                 || (name == "semi" && s0.surfaces[j].semi_auto && sk.surfaces[j].semi_auto)
+                // 自動の機械半径（玉の半径）は半直径から決まる
+                || (name == "mech"
+                    && s0.surfaces[j].mech_semi.is_none()
+                    && sk.surfaces[j].mech_semi.is_none())
                 || derived(s0, j, name);
             if skip {
                 continue;

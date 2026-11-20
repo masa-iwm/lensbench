@@ -222,6 +222,9 @@ class _Surface(TypedDict):
     coating: str
     semi: float
     semi_auto: bool
+    mech: float
+    mech_auto: bool
+    chip: float
     stop: bool
     ignore: bool
     aperture: dict[str, Any] | None
@@ -578,8 +581,13 @@ class System:
     def config_count(self) -> int:
         """Number of configurations (1 without a table)"""
 
+    def config_names(self, spec: str) -> list[str]:
+        """The names per configuration of a material or coating row of the table (configs() gives their indices)"""
+
     def configs(self) -> list[tuple[str, list[float]]]:
-        """The multi-configuration table: a list of (parameter name, values per configuration)"""
+        """The multi-configuration table: a list of (parameter name, values per configuration). Material and coating rows hold
+        indices into their names (config_names)
+        """
 
     def define_unit(self, name: str, spans: Sequence[tuple[int, int]], pivot: tuple[float, float, float] = ...) -> None:
         """Define a lens or group. spans is a list of surface ranges (first, last) (two when the same lens is passed twice, such as the way out
@@ -835,6 +843,11 @@ class System:
 
     def set_config_count(self, n: int) -> None:
         """Set the number of configurations to n (added configurations take the current values; 1 removes the table)"""
+
+    def set_config_names(self, spec: str, names: Sequence[str]) -> None:
+        """Add a material or coating row to the table (replaces the same parameter): spec is `N.material` or `N.coating`,
+        names the name per configuration (an empty coating name is no coating)
+        """
 
     def set_config_row(self, spec: str, values: Sequence[float]) -> None:
         """Add a row to the table (replaces the same parameter): spec is the same name as in set_param, values the values per configuration"""

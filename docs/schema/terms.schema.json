@@ -96,6 +96,16 @@
         }
       ]
     },
+    "EdgeAxisName": {
+      "description": "縁の厚みを測る向き",
+      "enum": [
+        "+y",
+        "+x",
+        "-y",
+        "-x"
+      ],
+      "type": "string"
+    },
     "FieldRef": {
       "anyOf": [
         {
@@ -1093,6 +1103,17 @@
           "additionalProperties": false,
           "description": "thickness の項（中心の厚み。to を書くと surf から to までの和）",
           "properties": {
+            "axis": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EdgeAxisName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "縁の厚みを測る向き（面の局所座標の \"+y\"（既定）・\"+x\"・\"-y\"・\"-x\"。OpticStudio の ETVA の Code 0〜3）"
+            },
             "clear": {
               "description": "縁の厚みの矢高をクリア半径 × zone で測る（チップゾーンを入れない。既定 false）",
               "type": [

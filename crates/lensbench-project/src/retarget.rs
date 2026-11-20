@@ -176,6 +176,7 @@ impl Retarget {
             SetParam { param, .. }
             | SetConfigRow { param, .. }
             | SetConfigMaterials { param, .. }
+            | SetConfigCoatings { param, .. }
             | AddConfigRow { param }
             | RemoveConfigRow { param }
             | SetConfigPickup { param, .. }

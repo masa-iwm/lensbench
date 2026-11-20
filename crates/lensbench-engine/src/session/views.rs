@@ -221,6 +221,12 @@ pub struct SurfaceView {
     #[serde(with = "fnum")]
     pub semi: f64,
     pub semi_auto: bool,
+    /// 玉の半径（自動なら求めた値）と、自動か・チップゾーン
+    #[serde(with = "fnum")]
+    pub mech: f64,
+    pub mech_auto: bool,
+    #[serde(with = "fnum")]
+    pub chip: f64,
     pub stop: bool,
     pub ignore: bool,
     /// 開口（無ければ null、ある時は {"type": "circular", ...}）

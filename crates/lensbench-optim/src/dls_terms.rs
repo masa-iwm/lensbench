@@ -67,6 +67,32 @@ pub enum Medium {
     Glass,
 }
 
+/// 縁の厚みを測る向き（面の局所座標。OpticStudio の ETVA・ETGT・ETLT の Code 0〜3）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EdgeAxis {
+    /// +y（Code 0）
+    #[default]
+    PosY,
+    /// +x（Code 1）
+    PosX,
+    /// −y（Code 2）
+    NegY,
+    /// −x（Code 3）
+    NegX,
+}
+
+impl EdgeAxis {
+    /// 向きの単位ベクトル (x, y)
+    pub fn unit(self) -> (f64, f64) {
+        match self {
+            Self::PosY => (0.0, 1.0),
+            Self::PosX => (1.0, 0.0),
+            Self::NegY => (0.0, -1.0),
+            Self::NegX => (-1.0, 0.0),
+        }
+    }
+}
+
 /// 計算の項の演算
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalcOp {
@@ -359,14 +385,15 @@ pub enum TermKind {
     },
     /// 面 surf から to までの中心の厚みの和 [レンズ単位] − target（surf == to なら 1 面の厚み。OpticStudio の CTVA・TTHI）。
     /// edge が Some(z) なら縁の厚み（面 i と i + 1 の矢高を、それぞれの面の形が終わる半径（クリア半径 + チップゾーン）× z
-    /// の高さで。OpticStudio の ETVA の Mode 0）。clear なら矢高をクリア半径 × z で測る（ETVA の Mode 1）。
-    /// each なら面ごとの厚みを target と比べたはみ出しの和（[`Each`]）。面の番号は System の面の番号（物体面 0）
+    /// の高さで。OpticStudio の ETVA の Mode 0）。clear なら矢高をクリア半径 × z で測る（ETVA の Mode 1）。axis は矢高を
+    /// 測る向き（面の局所座標、ETVA の Code）。each なら面ごとの厚みを target と比べたはみ出しの和（[`Each`]）。面の番号は System の面の番号（物体面 0）
     Thickness {
         surf: usize,
         to: usize,
         target: f64,
         edge: Option<f64>,
         clear: bool,
+        axis: EdgeAxis,
         each: Option<Each>,
     },
     /// 面 surf の量 − target（[`SurfQ`]。(x, y) は矢高・厚みを測る点 [レンズ単位]）。微分は差分

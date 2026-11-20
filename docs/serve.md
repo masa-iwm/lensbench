@@ -222,7 +222,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 | op | 引数 |
 | --- | --- |
-| `insert_surface` | at・surface（面の値: type comment t c r k asph cx material coating semi ignore aperture cb cb_order focal jones dn disp） |
+| `insert_surface` | at・surface（面の値: type comment t c r k asph cx material coating semi mech chip ignore aperture cb cb_order focal jones dn disp） |
 | `delete_surface` | surface |
 | `set_surface` | surface・fields |
 | `set_surface_type` | surface・type、 `set_material` surface・material |
@@ -235,7 +235,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `set_config_count` | n |
 | `set_config_row` | param・values |
 | `set_config_materials` | param（`N.material`）・names（構成ごとの材料の名前） |
-| `add_config_row` | param（どの構成も今の値）、 `remove_config_row` param |
+| `set_config_coatings` | param（`N.coating`）・names（構成ごとの膜の名前、空は膜なし） |
+| `add_config_row` | param（どの構成も今の値。材料・膜の行は今の名前）、 `remove_config_row` param |
 | `insert_config` | at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups） |
 | `remove_config` | k（構成が 1 つになると表を消す） |
 | `set_config_pickup` | param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる） |

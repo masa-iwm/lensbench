@@ -861,7 +861,8 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         if da.action().is_ideal() || db.action().is_ideal() {
             continue;
         }
-        let (sa, sb) = (semi_of(a), semi_of(b));
+        // 面の形はクリア半径 + チップゾーンまで（その外は平ら）
+        let (sa, sb) = (semi_of(a) + da.chip_zone, semi_of(b) + db.chip_zone);
         // ガラスの立体は前の面から出る区間で描く（BS の斜面で反射した後のキューブなど）
         let fa = Face::from_surface(da, f_out(a).expect("frame of an active surface"), sa, a);
         let fb = Face::from_surface(db, f_in(b).expect("frame of an active surface"), sb, b);
@@ -875,7 +876,8 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
             continue;
         }
         keys.push(ka);
-        let rim = sa.max(sb);
+        // 外径は 2 面の半径と、玉の固定した機械半径（OpticStudio の Mech Semi-Dia）の大きい方
+        let rim = sa.max(sb).max(s.fixed_mech(a));
         if rim <= 0.0 {
             continue;
         }

@@ -1,4 +1,4 @@
-//! 多重構成の表: serve の config_table・config_diff と edit の add_config_row
+//! 多重構成の表: serve の config_table・config_diff と edit の add_config_row・set_config_coatings
 
 use lensbench_engine::Session;
 use serde_json::{json, Value};
@@ -181,6 +181,43 @@ fn config_table_from_zmx_and_edit() {
     );
     let t = ok(&sv, "config_table", json!({}));
     assert_eq!(t["n"], 3);
+    // 膜の行: 足すとどの構成も今の膜（なし）、名前で書き換える。材料の行の操作は膜の行を断る
+    let row = |p: &str| {
+        ok(&sv, "config_table", json!({}))["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["param"] == p)
+            .cloned()
+            .unwrap_or_else(|| panic!("no row {p}"))
+    };
+    ok(
+        &sv,
+        "edit",
+        json!({ "ops": [{ "op": "add_config_row", "param": "1.coating" }] }),
+    );
+    assert_eq!(row("1.coating")["names"], json!([""]));
+    ok(
+        &sv,
+        "edit",
+        json!({ "ops": [{ "op": "set_config_coatings", "param": "1.coating", "names": ["", "AR", "AR"] }] }),
+    );
+    let r = row("1.coating");
+    assert_eq!(r["names"], json!(["", "AR"]));
+    assert_eq!(r["values"], json!([0.0, 1.0, 1.0]));
+    for (op, param) in [
+        ("set_config_coatings", "1.material"),
+        ("set_config_materials", "1.coating"),
+    ] {
+        let e = sv
+            .call(
+                "edit",
+                &json!({ "ops": [{ "op": op, "param": param, "names": ["", "", ""] }] }),
+                Some(1),
+            )
+            .unwrap_err();
+        assert!(e.message.contains("is not a"), "{op}: {}", e.message);
+    }
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -205,5 +242,36 @@ fn config_table_uses_the_loaded_file() {
     assert_eq!(t["zmx_cfgs"].as_u64(), Some(2), "{t}");
     let d2 = ok(&sv, "config_diff", json!({}));
     assert_eq!(d2["rows"], 2, "{d2}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 構成で膜が変わる .zmx（COTN）から作る表は膜の行を set_config_coatings で書く
+#[test]
+fn config_diff_writes_coating_rows() {
+    let sv = Session::new();
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let d = std::env::temp_dir().join(format!("lb-config-coat-{}", std::process::id()));
+    std::fs::create_dir_all(&d).unwrap();
+    let f = d.join("coat.zmx");
+    let zmx = ZMX.replace(
+        "MNUM 2 1\n",
+        "MNUM 2 1\nCOTN 1 1 \"\" 0 0 0 1 1 0 0.0 \"\" 0\nCOTN 1 2 \"AR\" 0 0 0 1 1 0 0.0 \"\" 0\n",
+    );
+    std::fs::write(&f, zmx).unwrap();
+    ok(
+        &sv,
+        "load",
+        json!({ "file": f, "glass_dirs": [format!("{root}/tests/glass")], "cfg": 1 }),
+    );
+    let d2 = ok(&sv, "config_diff", json!({}));
+    let op = d2["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["op"] == "set_config_coatings")
+        .unwrap_or_else(|| panic!("{d2}"))
+        .clone();
+    assert_eq!(op["param"], "1.coating");
+    assert_eq!(op["names"], json!(["", "AR"]));
     let _ = std::fs::remove_dir_all(&d);
 }

@@ -24,6 +24,8 @@
 
 ### 変更履歴
 
+- **2.3**: 多重構成の表の材料・膜の行を名前で書く `System.set_config_names(spec, names)`（spec は `N.material` か `N.coating`、
+  膜の名前の空は膜なし）と、構成ごとの名前を読む `System.config_names(spec)` を追加。`configs()` の材料・膜の行の値は名前の番号。
 - **2.2**: `huygens_psf`・`huygens_mtf` の既定の計算を速い近似（像のグリッドの区画ごとに位相と振幅を 2 次式で）にした。強度は前と
   1e-7 程度で合う。前と同じ厳密な和は、足した引数 `exact=True` で。
 - **2.1**: MTF の `mtf`・`mtf_focus`・`mtf_field`・`geo_mtf`・`huygens_mtf` に子午・球欠の向き `axes`（`"field"` が既定で子午が視野の向き、

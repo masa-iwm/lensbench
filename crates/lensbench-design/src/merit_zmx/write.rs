@@ -573,7 +573,18 @@ fn row_of(
             let edge = t.get("edge") == Some(&Value::Bool(true));
             let zone = num("zone").unwrap_or(1.0);
             let clear = t.get("clear") == Some(&Value::Bool(true));
+            // 縁の厚みを測る向き（ETVA の Code）
+            let code = match t.get("axis").and_then(Value::as_str) {
+                None | Some("+y") => 0.0,
+                Some("+x") => 1.0,
+                Some("-y") => 2.0,
+                Some("-x") => 3.0,
+                Some(a) => return Err(format!("axis {a}")),
+            };
             if let Some(e) = t.get("each").and_then(Value::as_str) {
+                if code != 0.0 {
+                    return Err("edge thicknesses of each surface along other than +y can't be written (MNET, MXET and the like)".into());
+                }
                 if clear {
                     return Err("edge thicknesses of each surface at the clear semi-diameter can't be written (MNET, MXET and the like)".into());
                 }
@@ -605,7 +616,8 @@ fn row_of(
                 if s2 != s1 || zone != 1.0 {
                     return Err("only the edge thickness of one surface at its semi-diameter can be written (ETGT, ETLT, ETVA)".into());
                 }
-                // Data2 の Mode 1 はクリア半径で測る
+                // Int2 の Code は向き、Data2 の Mode 1 はクリア半径で測る
+                p[1] = code;
                 p[3] = f64::from(clear);
                 match bound(0.0) {
                     Bound::Side("OPGT", b) => ("ETGT", p, Bound::Target(b)),

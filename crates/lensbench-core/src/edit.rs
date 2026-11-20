@@ -124,6 +124,9 @@ pub const SURF_FIELDS: &[&str] = &[
     "coating",
     "semi",
     "semi_auto",
+    "mech",
+    "mech_auto",
+    "chip",
     "ignore",
     "aperture",
     "cb",
@@ -436,6 +439,19 @@ impl System {
                         }
                     },
                     "semi_auto" => d.semi_auto = v.flag(name)?,
+                    // 機械半径: 数なら固定、"auto" なら自動（読む値は玉の半径 [`System::lens_radius`]）
+                    "mech" => match v {
+                        SurfValue::Text(t) if t.trim().eq_ignore_ascii_case("auto") => {
+                            d.mech_semi = None
+                        }
+                        _ => d.mech_semi = Some(v.num(name)?),
+                    },
+                    "mech_auto" => {
+                        if v.flag(name)? {
+                            d.mech_semi = None
+                        }
+                    }
+                    "chip" => d.chip_zone = v.num(name)?,
                     "ignore" => {
                         if j == 0 || j == last {
                             invalid!("the object and image surfaces can't be ignored");
@@ -521,6 +537,9 @@ impl System {
             ("coating", Text(d.coat.clone())),
             ("semi", Num(d.semi)),
             ("semi_auto", Bool(d.semi_auto)),
+            ("mech", Num(self.lens_radius(j))),
+            ("mech_auto", Bool(d.mech_semi.is_none())),
+            ("chip", Num(d.chip_zone)),
             ("stop", Bool(d.stop)),
             ("ignore", Bool(d.ignore)),
             ("aperture", Aperture(d.ap)),

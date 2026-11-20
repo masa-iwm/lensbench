@@ -117,8 +117,7 @@ fn sag(r: f64, c: f64, k: f64, a: &[f64]) -> f64 {
 }
 
 /// 非球面の玉（E0 の面 1–2）の体積を、断面の積分で
-fn e0_volume(semi1: f64, semi2: f64) -> f64 {
-    let rim = semi1.max(semi2);
+fn e0_volume(semi1: f64, semi2: f64, rim: f64) -> f64 {
     let n = 200_000;
     let mut v = 0.0;
     for i in 0..n {
@@ -135,7 +134,7 @@ fn meshes_are_closed_with_the_right_volume() {
     let s = zmx("E0");
     let sc = scene::build(&s, &Options::default()).unwrap();
     let sd = &sc.solids[0];
-    let exact = e0_volume(sd.front.semi, sd.back.semi);
+    let exact = e0_volume(sd.front.semi, sd.back.semi, sd.rim);
     let o = Options3D {
         segments: 256,
         rings: 64,
@@ -154,6 +153,32 @@ fn meshes_are_closed_with_the_right_volume() {
             }
         }
     }
+}
+
+/// チップゾーンの分だけ面の形が外へ延び、固定した機械半径が外径になる
+#[test]
+fn chip_zone_and_mech_semi_shape_the_solid() {
+    let mut s = zmx("E0");
+    let base = scene::build(&s, &Options::default()).unwrap().solids[0].clone();
+    s.edit(|p| {
+        p.surfaces[1].chip_zone = 0.5;
+        p.surfaces[2].mech_semi = Some(base.rim + 2.0);
+        Ok(())
+    })
+    .unwrap();
+    let sc = scene::build(&s, &Options::default()).unwrap();
+    let sd = &sc.solids[0];
+    assert_eq!(sd.front.semi, base.front.semi + 0.5);
+    assert_eq!(sd.back.semi, base.back.semi);
+    assert_eq!(sd.rim, base.rim + 2.0);
+    let o = Options3D {
+        segments: 256,
+        rings: 64,
+        ..Default::default()
+    };
+    let v = closed_volume(&mesh::meshes(&sc, &o, None)[0]);
+    let exact = e0_volume(sd.front.semi, sd.back.semi, sd.rim);
+    assert!((v / exact - 1.0).abs() < 3e-4, "{v} {exact}");
 }
 
 #[test]

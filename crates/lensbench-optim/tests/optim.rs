@@ -423,6 +423,7 @@ fn spread_term() {
                 target: 0.0,
                 edge: None,
                 clear: false,
+                axis: Default::default(),
                 each: None,
             }),
             target: 0.0,

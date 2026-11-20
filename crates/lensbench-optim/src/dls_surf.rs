@@ -424,6 +424,7 @@ pub(super) fn thickness_term(s: &System, k: &TermKind) -> Result<TermOut> {
         target,
         edge,
         clear,
+        axis,
         each,
     } = k
     else {
@@ -431,15 +432,16 @@ pub(super) fn thickness_term(s: &System, k: &TermKind) -> Result<TermOut> {
     };
     let x = |i: usize| match edge {
         // 縁の厚み: 中心の厚み − 面 i の矢高 + 面 i + 1 の矢高（それぞれの面の形が終わる半径（clear ならクリア半径）× z
-        // の高さ、y の向き）
+        // の高さ、面の局所座標の axis の向き）
         Some(z) => {
+            let (ux, uy) = axis.unit();
             let sag = |i: usize| {
                 let r = if *clear {
                     s.surfaces[i].semi
                 } else {
                     s.flat_from(i)
                 };
-                s.surfaces[i].shape().sag(0.0, z * r).0
+                s.surfaces[i].shape().sag(ux * z * r, uy * z * r).0
             };
             s.surfaces[i].t - sag(i) + sag(i + 1)
         }

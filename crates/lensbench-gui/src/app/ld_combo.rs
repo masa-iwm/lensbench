@@ -57,6 +57,8 @@ pub(super) fn override_fields(col: lens_data::Col) -> &'static [&'static str] {
         Col::Material => &["material"],
         Col::Coating => &["coating"],
         Col::Semi => &["semi", "semi_auto"],
+        Col::Chip => &["chip"],
+        Col::Mech => &["mech", "mech_auto"],
         Col::Conic => &["k"],
         Col::Par(_) => &["asph", "cx", "focal", "jones", "cb", "cb_order"],
     }

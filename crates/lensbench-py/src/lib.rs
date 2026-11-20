@@ -29,7 +29,7 @@ mod pyjson;
 mod runs;
 mod search;
 mod soa;
-use soa::{Soa, Traced};
+use soa::{a2, to_dict, Soa, Traced};
 mod userterm;
 
 use std::path::PathBuf;
@@ -776,89 +776,6 @@ fn compute(
         Traced::Cols(b) => Soa::from_bufs(b, n, o.globals),
     };
     Ok((soa, jones, g, gl))
-}
-
-/// Make the dict of a trace result
-fn to_dict<'py>(
-    gil: Python<'py>,
-    s: &System,
-    o: &TraceOpts,
-    out: TraceOut,
-) -> PyResult<Bound<'py, PyDict>> {
-    let (soa, jones, g, gl) = out;
-    let d = PyDict::new(gil);
-    let (nw, n) = (soa.nw, soa.n);
-    for (name, v, k) in soa.f {
-        if k == 1 {
-            d.set_item(name, a2(gil, v, (nw, n)))?;
-        } else {
-            d.set_item(name, a3(gil, v, (nw, n, k)))?;
-        }
-    }
-    d.set_item("err", a2(gil, soa.err, (nw, n)))?;
-    d.set_item("vig", a2(gil, soa.vig, (nw, n)))?;
-    d.set_item("ok", a2(gil, soa.ok, (nw, n)))?;
-    d.set_item(
-        "waves",
-        o.ws.iter()
-            .map(|&w| w as i64 + 1)
-            .collect::<Vec<_>>()
-            .into_pyarray(gil),
-    )?;
-    d.set_item("last", o.last.unwrap_or(s.image()))?;
-    if let Some(z) = o.dz {
-        d.set_item("dz", z)?;
-    }
-    if o.record {
-        let ns = soa.rec_surf.len();
-        d.set_item("rec_surfaces", soa.rec_surf.into_pyarray(gil))?;
-        for (name, v) in soa.rec {
-            d.set_item(name, a3(gil, v, (nw, ns, n)))?;
-        }
-    }
-    if let Some((j, z, g)) = jones {
-        d.set_item("jones", a3(gil, j, (n, 2, 2)))?;
-        d.set_item("jones_z", a2(gil, z, (n, 2)))?;
-        d.set_item("jones_wavelength", o.pw.unwrap() + 1)?;
-        if let (Some((miss, bad)), Some(g)) = (g, o.pol_grid) {
-            d.set_item("pol_grid", g)?;
-            let m = miss.len();
-            let a = Array::from_shape_vec((m, 2), miss.into_iter().flatten().collect())
-                .expect("shape")
-                .into_pyarray(gil);
-            d.set_item("pol_grid_missing", a)?;
-            d.set_item("pol_grid_bad", bad.into_pyarray(gil))?;
-        }
-    }
-    if let Some(ps) = &o.params {
-        let np = ps.len();
-        d.set_item("grad", a3(gil, g, (nw, n, np)))?;
-        if o.land {
-            let a = Array::from_shape_vec((nw, n, np, 4), gl)
-                .expect("shape")
-                .into_pyarray(gil);
-            d.set_item("grad_land", a)?;
-        }
-        d.set_item(
-            "grad_params",
-            ps.iter().map(|p| p.name()).collect::<Vec<_>>(),
-        )?;
-    }
-    Ok(d)
-}
-
-fn a2<T: numpy::Element>(py: Python<'_>, v: Vec<T>, s: (usize, usize)) -> Bound<'_, PyAny> {
-    Array::from_shape_vec(s, v)
-        .expect("shape")
-        .into_pyarray(py)
-        .into_any()
-}
-
-fn a3<T: numpy::Element>(py: Python<'_>, v: Vec<T>, s: (usize, usize, usize)) -> Bound<'_, PyAny> {
-    Array::from_shape_vec(s, v)
-        .expect("shape")
-        .into_pyarray(py)
-        .into_any()
 }
 
 /// For each surface of the expanded system, the original surface and the number of the reflection
@@ -1739,7 +1656,8 @@ impl PySystem {
         self.mutate(|s| s.set_config_count(n))
     }
 
-    /// The multi-configuration table: a list of (parameter name, values per configuration)
+    /// The multi-configuration table: a list of (parameter name, values per configuration). Material and coating rows hold
+    /// indices into their names (config_names)
     fn configs(&self) -> Vec<(String, Vec<f64>)> {
         let s = self.sys();
         s.configs()
@@ -1758,6 +1676,41 @@ impl PySystem {
             let p = s.param(spec)?;
             s.set_config_row(p, values)
         })
+    }
+
+    /// Add a material or coating row to the table (replaces the same parameter): spec is `N.material` or `N.coating`,
+    /// names the name per configuration (an empty coating name is no coating)
+    fn set_config_names(&self, spec: &str, names: Vec<String>) -> PyResult<()> {
+        use lensbench_core::param::Kind;
+        self.mutate(|s| {
+            let p = s.param(spec)?;
+            match p.kind {
+                Kind::Material => s.set_config_materials(p.index(), &names),
+                Kind::Coating => s.set_config_coatings(p.index(), &names),
+                _ => Err(lensbench_core::Error::Invalid(format!(
+                    "{spec}: not a material or coating row (set_config_row for numbers)"
+                ))),
+            }
+        })
+    }
+
+    /// The names per configuration of a material or coating row of the table (configs() gives their indices)
+    fn config_names(&self, spec: &str) -> PyResult<Vec<String>> {
+        let s = self.sys();
+        let p = s.param(spec).map_err(err)?;
+        let row = s
+            .configs()
+            .and_then(|c| c.rows.iter().find(|r| r.param == p))
+            .ok_or_else(|| value_err(format!("{spec}: no row in the table")))?;
+        use lensbench_core::param::Kind;
+        if !matches!(p.kind, Kind::Material | Kind::Coating) {
+            return Err(value_err(format!("{spec}: not a material or coating row")));
+        }
+        Ok(row
+            .values
+            .iter()
+            .map(|&v| row.names.get(v as usize).cloned().unwrap_or_default())
+            .collect())
     }
 
     /// Remove a row of the table (the system's value stays as it is)
@@ -2797,7 +2750,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 2);
+pub const API_VERSION: (u32, u32) = (2, 3);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

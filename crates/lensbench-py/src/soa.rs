@@ -1,6 +1,12 @@
-//! 追跡の結果を (波長, 光線) の列に並べる（lib.rs から分けた）
+//! 追跡の結果を (波長, 光線) の列に並べ、Python の dict にする（lib.rs から分けた）
 
+use crate::{TraceOpts, TraceOut};
 use lensbench_core::system::{RayBuf, Trace};
+use lensbench_core::System;
+use numpy::ndarray::Array;
+use numpy::IntoPyArray;
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 /// Arrange the traces per wavelength into (wavelength, ray) arrays (each column copied once)
 pub(crate) struct Soa {
@@ -208,4 +214,95 @@ impl Traced {
             Traced::Cols(b) => (b[k].ok(i), b[k].opl[i]),
         }
     }
+}
+
+/// Make the dict of a trace result
+pub(crate) fn to_dict<'py>(
+    gil: Python<'py>,
+    s: &System,
+    o: &TraceOpts,
+    out: TraceOut,
+) -> PyResult<Bound<'py, PyDict>> {
+    let (soa, jones, g, gl) = out;
+    let d = PyDict::new(gil);
+    let (nw, n) = (soa.nw, soa.n);
+    for (name, v, k) in soa.f {
+        if k == 1 {
+            d.set_item(name, a2(gil, v, (nw, n)))?;
+        } else {
+            d.set_item(name, a3(gil, v, (nw, n, k)))?;
+        }
+    }
+    d.set_item("err", a2(gil, soa.err, (nw, n)))?;
+    d.set_item("vig", a2(gil, soa.vig, (nw, n)))?;
+    d.set_item("ok", a2(gil, soa.ok, (nw, n)))?;
+    d.set_item(
+        "waves",
+        o.ws.iter()
+            .map(|&w| w as i64 + 1)
+            .collect::<Vec<_>>()
+            .into_pyarray(gil),
+    )?;
+    d.set_item("last", o.last.unwrap_or(s.image()))?;
+    if let Some(z) = o.dz {
+        d.set_item("dz", z)?;
+    }
+    if o.record {
+        let ns = soa.rec_surf.len();
+        d.set_item("rec_surfaces", soa.rec_surf.into_pyarray(gil))?;
+        for (name, v) in soa.rec {
+            d.set_item(name, a3(gil, v, (nw, ns, n)))?;
+        }
+    }
+    if let Some((j, z, g)) = jones {
+        d.set_item("jones", a3(gil, j, (n, 2, 2)))?;
+        d.set_item("jones_z", a2(gil, z, (n, 2)))?;
+        d.set_item("jones_wavelength", o.pw.unwrap() + 1)?;
+        if let (Some((miss, bad)), Some(g)) = (g, o.pol_grid) {
+            d.set_item("pol_grid", g)?;
+            let m = miss.len();
+            let a = Array::from_shape_vec((m, 2), miss.into_iter().flatten().collect())
+                .expect("shape")
+                .into_pyarray(gil);
+            d.set_item("pol_grid_missing", a)?;
+            d.set_item("pol_grid_bad", bad.into_pyarray(gil))?;
+        }
+    }
+    if let Some(ps) = &o.params {
+        let np = ps.len();
+        d.set_item("grad", a3(gil, g, (nw, n, np)))?;
+        if o.land {
+            let a = Array::from_shape_vec((nw, n, np, 4), gl)
+                .expect("shape")
+                .into_pyarray(gil);
+            d.set_item("grad_land", a)?;
+        }
+        d.set_item(
+            "grad_params",
+            ps.iter().map(|p| p.name()).collect::<Vec<_>>(),
+        )?;
+    }
+    Ok(d)
+}
+
+pub(crate) fn a2<T: numpy::Element>(
+    py: Python<'_>,
+    v: Vec<T>,
+    s: (usize, usize),
+) -> Bound<'_, PyAny> {
+    Array::from_shape_vec(s, v)
+        .expect("shape")
+        .into_pyarray(py)
+        .into_any()
+}
+
+pub(crate) fn a3<T: numpy::Element>(
+    py: Python<'_>,
+    v: Vec<T>,
+    s: (usize, usize, usize),
+) -> Bound<'_, PyAny> {
+    Array::from_shape_vec(s, v)
+        .expect("shape")
+        .into_pyarray(py)
+        .into_any()
 }

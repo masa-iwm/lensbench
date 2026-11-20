@@ -392,6 +392,8 @@ pub enum EditOp {
     SetConfigRow { param: String, values: Vec<Num> },
     /// 多重構成の表の材料の行（param は `N.material`、構成ごとの材料の名前）
     SetConfigMaterials { param: String, names: Vec<String> },
+    /// 多重構成の表の膜の行（param は `N.coating`、構成ごとの膜の名前。空は膜なし）
+    SetConfigCoatings { param: String, names: Vec<String> },
     /// 多重構成の表に行を足す（どの構成も今の値）
     AddConfigRow { param: String },
     /// 多重構成の表の行を外す
@@ -431,6 +433,7 @@ impl EditOp {
             SetConfigCount { .. }
                 | SetConfigRow { .. }
                 | SetConfigMaterials { .. }
+                | SetConfigCoatings { .. }
                 | AddConfigRow { .. }
                 | RemoveConfigRow { .. }
                 | SetConfig { .. }

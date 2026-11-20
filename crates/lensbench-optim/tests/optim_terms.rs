@@ -692,6 +692,7 @@ fn thickness_term() {
             target: 1.0,
             edge: None,
             clear: false,
+            axis: Default::default(),
             each: None,
         },
     );
@@ -704,6 +705,7 @@ fn thickness_term() {
             target: 0.0,
             edge: None,
             clear: false,
+            axis: Default::default(),
             each: None,
         },
     );

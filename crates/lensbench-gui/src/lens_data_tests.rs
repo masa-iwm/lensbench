@@ -190,6 +190,46 @@ fn parse_input() {
     assert_eq!(Col::Material.parse(" F2 ").unwrap(), json!("F2"));
 }
 
+/// 機械半径の列: 自動は値の後に印、auto で自動に戻す・数で固定。チップゾーンは数
+#[test]
+fn mech_and_chip_columns() {
+    let auto = Row {
+        mech: 12.5,
+        mech_auto: true,
+        chip: 0.5,
+        ..Default::default()
+    };
+    assert!(Col::Mech.text(&auto).starts_with("12.5 ("));
+    assert_eq!(Col::Mech.edit_text(&auto), "auto");
+    assert_eq!(Col::Chip.text(&auto), "0.5");
+    assert_eq!(Col::Mech.parse("Auto").unwrap(), json!("auto"));
+    assert!(Col::Chip.parse("auto").is_err());
+    // 自動の面に同じ数を書けば固定にする、auto は変えない
+    assert_eq!(
+        commit_act(&auto, 1, Col::Mech, "12.5"),
+        Some(Act::Edit {
+            j: 1,
+            col: Col::Mech,
+            value: json!(12.5)
+        })
+    );
+    assert_eq!(commit_act(&auto, 1, Col::Mech, "auto"), None);
+    assert_eq!(commit_act(&auto, 1, Col::Chip, "0.5"), None);
+    let fixed = Row {
+        mech_auto: false,
+        ..auto
+    };
+    assert_eq!(
+        commit_act(&fixed, 1, Col::Mech, "auto"),
+        Some(Act::Edit {
+            j: 1,
+            col: Col::Mech,
+            value: json!("auto")
+        })
+    );
+    assert_eq!(Col::Mech.field(), "mech");
+}
+
 /// 要素の行の範囲はブロックの id で引く（名前の無い BS も id を持つ。推定はしない）
 #[test]
 fn element_spans_from_block_ids() {

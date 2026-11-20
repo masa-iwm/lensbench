@@ -440,8 +440,8 @@ fn kind_of(
             };
             m.insert(key.into(), json!(target * unit));
         }
-        // ETGT・ETLT・ETVA: Int1 の面の縁の厚み ≥・≤・＝ 目標。Data2 の Mode 0 は矢高を面の形が終わる半径（クリア半径 +
-        // チップゾーン）で、1 はクリア半径で測る（OpticStudio 26.1 で実測）
+        // ETGT・ETLT・ETVA: Int1 の面の縁の厚み ≥・≤・＝ 目標。Int2 の Code は測る向き（0 +y・1 +x・2 −y・3 −x、面の局所座標）。
+        // Data2 の Mode 0 は矢高を面の形が終わる半径（クリア半径 + チップゾーン）で、1 はクリア半径で測る（OpticStudio 26.1 で実測）
         "ETGT" | "ETLT" | "ETVA" => {
             let j = int(INT1)?;
             if j < 1 || j as usize >= image {
@@ -450,6 +450,19 @@ fn kind_of(
             m.insert("type".into(), json!("thickness"));
             m.insert("surf".into(), json!(j));
             m.insert("edge".into(), json!(true));
+            match int(INT2)? {
+                0 => {}
+                1 => {
+                    m.insert("axis".into(), json!("+x"));
+                }
+                2 => {
+                    m.insert("axis".into(), json!("-y"));
+                }
+                3 => {
+                    m.insert("axis".into(), json!("-x"));
+                }
+                c => return Err(format!("code {c} (0 to 3)")),
+            }
             match int(data(2))? {
                 0 => {}
                 1 => {

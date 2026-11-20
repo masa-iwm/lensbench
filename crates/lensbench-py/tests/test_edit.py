@@ -162,6 +162,24 @@ def test_configs_and_original_unchanged():
     assert t.configs() == []
 
 
+def test_config_material_and_coating_rows():
+    s = lb.System.load(str(REFS / "A0" / "system.zmx"), glass_dirs=GLASS)
+    j = next(i for i in range(1, s.image) if s.surface(i)["material"])
+    m = s.surface(j)["material"]
+    s.set_config_count(3)
+    s.set_config_names(f"{j}.material", [m, "N-BK7", m])
+    s.set_config_names(f"{j}.coating", ["", "AR", "AR"])
+    assert s.config_names(f"{j}.material") == [m, "N-BK7", m]
+    assert s.config_names(f"{j}.coating") == ["", "AR", "AR"]
+    # configs() は名前の番号
+    assert dict(s.configs())[f"{j}.coating"] == [0.0, 1.0, 1.0]
+    assert s.config(2).surface(j)["material"] == "N-BK7"
+    with pytest.raises(ValueError):
+        s.set_config_names(f"{j}.t", ["1", "2", "3"])
+    with pytest.raises(ValueError):
+        s.config_names(f"{j}.t")
+
+
 def test_curvature_solve():
     s = empty()
     st = s.stop

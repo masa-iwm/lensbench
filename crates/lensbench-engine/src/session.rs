@@ -1110,6 +1110,14 @@ fn config_diff(spec: &LoadSpec, src: &Source) -> Result<Value, RpcErr> {
                 "names": names,
             }));
         }
+        if differs(&|s| s.surfaces[j].coat.clone()) {
+            let names: Vec<String> = systems.iter().map(|s| s.surfaces[j].coat.clone()).collect();
+            ops.push(json!({
+                "op": "set_config_coatings",
+                "param": systems[0].param_name(Param::new(j, Kind::Coating)),
+                "names": names,
+            }));
+        }
         let checks: [(&str, Get); 3] = [
             ("ignore", |d| d.ignore.to_string()),
             ("semi-diameter", |d| format!("{:?}", d.semi)),

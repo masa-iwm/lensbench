@@ -1608,7 +1608,9 @@ quadrature grid needs n	quadrature grid には n が要ります
 axis goes with spot	axis は spot の項と使います
 zone goes with edge	zone は edge と使います
 clear goes with edge	clear は edge と使います
+axis goes with edge	axis は edge と使います
 edge thicknesses of each surface at the clear semi-diameter can't be written (MNET, MXET and the like)	面ごとのクリア半径での縁の厚みはエクスポートできません（MNET・MXET など）
+edge thicknesses of each surface along other than +y can't be written (MNET, MXET and the like)	面ごとの +y 以外の向きの縁の厚みはエクスポートできません（MNET・MXET など）
 term {i}: {op} takes {lo} arguments ({n})	項 {i}: {op} の引数は {lo} 個です（{n} 個）
 term {i}: {op} takes {lo} or more arguments ({n})	項 {i}: {op} の引数は {lo} 個以上です（{n} 個）
 term {i}: an argument of a calc term must be a term with a single value	項 {i}: calc の項の引数は 1 つの値の項にしてください
@@ -2326,6 +2328,7 @@ volume term has no target (or min and max)	volume の項に target（か min・m
 code {c} (0 to 3)	コード {c}（0〜3）
 parameter {n}	パラメータ {n}
 mode {k} (0 or 1)	モード {k}（0 か 1）
+axis {a}	向き {a}
 only the total thickness along +y, +x, −y or −x can be written (TTVA)	書けるのは +y・+x・−y・−x の向きの包む厚みだけです（TTVA）
 term {i}: volume of surfaces {surf} to {to} (1 to {})	項 {i}: 面 {surf}〜{to} の体積（1〜{}）
 volume of surfaces {surf} to {to}: systems with mirrors are not supported yet	面 {surf}〜{to} の体積: ミラーのあるシステムにはまだ対応していません
@@ -2434,6 +2437,10 @@ multi-configuration row {} configuration {k}: no name {i}	多重構成の行 {} 
 {}: surface material is not a model glass	{}: 面の材料がモデルガラスではありません
 multi-configuration row {} has names (only material and coating rows do)	多重構成の行 {} に名前があります（名前を持つのは材料・コーティングの行だけです）
 {param} is not a material row	{param} は材料の行ではありません
+{param} is not a coating row	{param} はコーティングの行ではありません
+{spec}: not a material or coating row (set_config_row for numbers)	{spec}: 材料・コーティングの行ではありません（数の行は set_config_row で）
+{spec}: not a material or coating row	{spec}: 材料・コーティングの行ではありません
+{spec}: no row in the table	{spec}: 表に行がありません
 multi-configuration row {}	多重構成の行 {}
 a semi term or a surface term with to needs min or max	semi の項と to のある surface の項には min か max が要ります
 a surface term with to has no wave, x or y	to のある surface の項に wave・x・y は書けません

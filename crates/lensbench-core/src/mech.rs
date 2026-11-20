@@ -605,6 +605,27 @@ impl System {
     /// （円形の開口の面は開口の最大の半径、ほかは半直径）+ チップゾーンと、固定した機械半径の最大（OpticStudio 26.1 で確認。
     /// 固定した値が自動より小さければ自動のまま）
     pub fn lens_radius(&self, j: usize) -> f64 {
+        self.lens_surfaces(j)
+            .map(|i| {
+                let d = &self.surfaces[i];
+                let edge = match d.ap {
+                    crate::surface::Aperture::Circular { max, .. } => max,
+                    _ => d.semi,
+                };
+                (edge + d.chip_zone).max(d.mech_semi.unwrap_or(0.0))
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// 面 j の玉の、固定した機械半径の最大（無ければ 0）
+    pub fn fixed_mech(&self, j: usize) -> f64 {
+        self.lens_surfaces(j)
+            .filter_map(|i| self.surfaces[i].mech_semi)
+            .fold(0.0, f64::max)
+    }
+
+    /// 面 j とガラスでつながる面（無視した面は飛ばしてつなぎ、返さない）
+    fn lens_surfaces(&self, j: usize) -> impl Iterator<Item = usize> + '_ {
         let glass = |i: usize| {
             let m = &self.surfaces[i].mat;
             m.is_medium() && !m.is_air()
@@ -617,17 +638,7 @@ impl System {
         while b < self.image() && (glass(b) || ign(b)) {
             b += 1;
         }
-        (a..=b)
-            .filter(|&i| !ign(i))
-            .map(|i| {
-                let d = &self.surfaces[i];
-                let edge = match d.ap {
-                    crate::surface::Aperture::Circular { max, .. } => max,
-                    _ => d.semi,
-                };
-                (edge + d.chip_zone).max(d.mech_semi.unwrap_or(0.0))
-            })
-            .fold(0.0, f64::max)
+        (a..=b).filter(move |&i| !self.surfaces[i].ignore)
     }
 
     /// 面 j の形が終わって平らになる半径（クリア半径 + チップゾーン）

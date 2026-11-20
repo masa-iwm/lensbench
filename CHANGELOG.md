@@ -99,6 +99,15 @@
   延ばし、玉の半径は固定した機械半径も入れる（OpticStudio 26.1 と 366 行が 1e-14 で一致）。クリア半径で測る `total_clear`（TTVA の
   Mode 1）と縁の厚みの `clear`（ETVA の Mode 1）を足した。今の構成で開口の無い面を表で円形にするのに APMX の行が無いときの誤りの文
   を分かりやすくした
+  GUI のレンズデータの表にチップゾーン・機械半径（玉の半径、`auto` で自動）の欄、serve の面の項目に `mech`・`mech_auto`・`chip`。
+  レイアウト・STEP・メッシュの玉の形もチップゾーンまで面を延ばし、外径に固定した機械半径を入れる。面ごとの縁の厚み MNET・MXET・
+  MNEG・MXEG・MNEA・MXEA もチップゾーンを含めて OpticStudio 26.1 と 270 行が一致
+- **縁の厚みを測る向き**: 最適化の `thickness` の項（`edge: true`）に `axis`（`"+y"`・`"+x"`・`"-y"`・`"-x"`、面の局所座標）を足した。
+  .zmx の評価関数の ETVA・ETGT・ETLT の Code 0〜3 を読み書きする（前は Code を見ずに +y で測った）。回転対称でない面で
+  OpticStudio 26.1 と 240 行が一致
+- **多重構成の表の膜の行を編集で**: 編集の操作 `set_config_coatings`（param・names）を足し、`add_config_row` も膜の行を足せる。
+  .zmx から多重構成の表を作る（serve の `config_diff`）ときも構成で変わる膜を行にする。Python に材料・膜の行を名前で書く
+  `System.set_config_names`・読む `System.config_names`（API 2.3）
 - **多重構成の表にソルブ・ピックアップの条件の値**: 面の曲率・厚さのソルブ（ピックアップを含む）の値 `N.csp1`・`N.csp2`・
   `N.tsp1`〜`N.tsp3` と、面タイプのパラメータ n のピックアップの値 `N.psp1_n`〜`N.psp3_n` を多重構成の表の行にできる。値の番号は
   OpticStudio のソルブの窓の順（周辺光線の高さは高さ・瞳の帯、F ナンバーは F ナンバー、ピックアップは元の面・倍率・オフセット）。

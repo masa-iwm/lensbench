@@ -449,6 +449,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "thickness", "surf": 2, "to": 5, "target": 20.0, "weight": 0.5}),
         json!({"type": "thickness", "surf": 4, "target": 2.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "edge": true, "max": 3.0, "weight": 1.0}),
+        json!({"type": "thickness", "surf": 2, "edge": true, "axis": "-x", "clear": true, "target": 4.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 5, "each": "air", "edge": true, "zone": 0.5, "min": 0.5, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 5, "each": "glass", "max": 10.0, "weight": 1.0}),
         json!({"type": "thickness", "surf": 1, "to": 5, "each": "all", "edge": true, "max": 10.0, "weight": 1.0}),
@@ -504,6 +505,7 @@ fn terms_to_rows_and_back() {
         json!({"type": "mtf", "field": [0.0, 1.0], "freq": 30.0}),
         json!({"type": "coupling"}),
         json!({"type": "thickness", "surf": 1, "to": 3, "edge": true, "target": 3.0}),
+        json!({"type": "thickness", "surf": 1, "to": 3, "each": "air", "edge": true, "axis": "+x", "min": 1.0}),
         json!({"type": "ray", "surf": 3, "field": 1, "q": "trax"}),
         json!({"type": "ray", "surf": 1, "to": 3, "wave": 3, "field": 1, "q": "opth"}),
         json!({"type": "ray", "surf": 1, "to": 3, "field": 1, "q": "x"}),
@@ -519,7 +521,7 @@ fn terms_to_rows_and_back() {
     let systems = [s.clone(), s.clone()];
     let before = [MeritRow::blank("from the zmx")];
     let (rows, notes) = rows_from_terms(&all, &systems, &before);
-    assert_eq!(notes.len(), 14, "{notes:?}");
+    assert_eq!(notes.len(), 15, "{notes:?}");
     // 行を .zmx に書いて読み直す
     let mut txt = String::new();
     for r in before.iter().chain(&rows) {

@@ -39,7 +39,7 @@
 | `beforeorder`・`afterorder` | 面の前・後の傾き偏心の順序（0 偏心から、1 傾きから） | | `CBOR`・`CAOR` | |
 | `nd`・`vd`・`dpgf` | モデルガラスの nd・vd・ΔPgF（面の材料がモデルガラスのときだけ） | | `MIND`・`MABB`・`MDPG` | |
 | `tce` | 面の熱膨張係数 [1e-6/°C] | | `TCEX` | |
-| `mech` | 面の玉の半径 [mm]（読むと自動の値も、設定すると固定の機械半径。自動より小さい値は使わない） | | `MCSD` | |
+| `mech` | 面の玉の半径 [mm]（読むと自動の値も、設定すると固定の機械半径。自動より小さい値は使わない。多重構成の行を置くと全部の構成で固定になり、値を書いていない構成は今の玉の半径の値） | | `MCSD` | |
 | `chip` | 面のチップゾーン [mm] | | `CHZN` | |
 | `material` | 面の材料（値は構成ごとの材料の名前） | | `GLSS` | |
 | `coating`（`coat`） | 面の膜（値は構成ごとの膜の名前、空は膜なし） | | `COTN` | ○ |
@@ -51,7 +51,8 @@
 - ソルブの条件の値の番号は OpticStudio のソルブの窓の順（周辺光線の高さは高さ・瞳の帯、F ナンバーは F ナンバー、ピックアップは元の面・倍率・オフセット）。
   ソルブもピックアップも無い面の行は効かない。
 - `p1`〜 はピックアップ・マクロのソルブだけの量で、パラメータとしては `a4`・`dx` など意味のある名前で指す。
-- 材料・膜の行は数でなく名前を持つ（Rust の `set_config_materials`・`set_config_coatings`、編集の操作の `set_config_materials`）。
+- 材料・膜の行は数でなく名前を持つ（Rust の `set_config_materials`・`set_config_coatings`、編集の操作の `set_config_materials`・
+  `set_config_coatings`、Python の `set_config_names`・`config_names`）。膜の名前の空は膜なし。
 
 ## システムの値
 

@@ -39,14 +39,14 @@ use lensbench_core::seidel::DistComp;
 use lensbench_core::{FieldSel, System};
 use lensbench_optim::zplm::ZplmTerm;
 use lensbench_optim::{
-    CalcArg, CalcOp, CardQ, DistMode, Each, EnergyMethod, EnergyQ, Medium, MtfDir, MtfKind, ParaxQ,
-    Quad, RayQ, SeidelQ, Side, SpotAxis, SurfQ, Term, TermKind,
+    CalcArg, CalcOp, CardQ, DistMode, Each, EdgeAxis, EnergyMethod, EnergyQ, Medium, MtfDir,
+    MtfKind, ParaxQ, Quad, RayQ, SeidelQ, Side, SpotAxis, SurfQ, Term, TermKind,
 };
 use serde_json::Value;
 
 use crate::term_spec::{
-    AxisName, CalcArgSpec, CalcName, DirName, EachName, FieldRef, MacroRef, MtfKindName, Nums,
-    QuadName, RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
+    AxisName, CalcArgSpec, CalcName, DirName, EachName, EdgeAxisName, FieldRef, MacroRef,
+    MtfKindName, Nums, QuadName, RefName, RmsSpec, TermSpec, Xy, ZernName, ZplmSpec,
 };
 
 /// コメントの行（`{"type": "comment", "text": ...}`）か。項の並びを読むときに飛ばす（番号は飛ばさずに数える）
@@ -471,6 +471,9 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
             if t.clear.is_some() && t.edge != Some(true) {
                 return Err("clear goes with edge".to_string().into());
             }
+            if t.axis.is_some() && t.edge != Some(true) {
+                return Err("axis goes with edge".to_string().into());
+            }
             if !(zone > 0.0 && zone <= 1.0) {
                 return Err(format!("zone {zone} (more than 0, up to 1)").into());
             }
@@ -480,6 +483,12 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 target: t.target.unwrap_or(0.0),
                 edge: (t.edge == Some(true)).then_some(zone),
                 clear: t.clear == Some(true),
+                axis: match t.axis {
+                    None | Some(EdgeAxisName::PosY) => EdgeAxis::PosY,
+                    Some(EdgeAxisName::PosX) => EdgeAxis::PosX,
+                    Some(EdgeAxisName::NegY) => EdgeAxis::NegY,
+                    Some(EdgeAxisName::NegX) => EdgeAxis::NegX,
+                },
                 each: t.each.map(|e| Each {
                     medium: match e {
                         EachName::All => Medium::All,

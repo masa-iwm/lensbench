@@ -250,6 +250,8 @@ pub struct ThickSpec {
     pub zone: Option<f64>,
     /// 縁の厚みの矢高をクリア半径 × zone で測る（チップゾーンを入れない。既定 false）
     pub clear: Option<bool>,
+    /// 縁の厚みを測る向き（面の局所座標の "+y"（既定）・"+x"・"-y"・"-x"。OpticStudio の ETVA の Code 0〜3）
+    pub axis: Option<EdgeAxisName>,
     /// 和でなく面ごとに min・max と比べ、はみ出しを足す（その媒質の面だけ。OpticStudio の MNCT・MNCA・MNEG など）
     pub each: Option<EachName>,
 }
@@ -496,6 +498,19 @@ pub struct SemiSpec {
     pub to: Option<usize>,
     /// 目標（min か max が要る。面ごとに半直径と比べてはみ出しを足す）
     pub target: Option<f64>,
+}
+
+/// 縁の厚みを測る向き
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
+pub enum EdgeAxisName {
+    #[serde(rename = "+y")]
+    PosY,
+    #[serde(rename = "+x")]
+    PosX,
+    #[serde(rename = "-y")]
+    NegY,
+    #[serde(rename = "-x")]
+    NegX,
 }
 
 /// 厚みの項で面ごとに比べる面の媒質

@@ -44,6 +44,10 @@ pub(crate) struct Row {
     pub semi: f64,
     /// 半径を光線から求める（自動）
     pub semi_auto: bool,
+    /// 玉の半径（機械半径、自動なら求めた値）・自動か・チップゾーン
+    pub mech: f64,
+    pub mech_auto: bool,
+    pub chip: f64,
     pub k: f64,
     pub stop: bool,
     /// 光線が通らない面（無視）
@@ -123,6 +127,9 @@ pub(crate) fn parse_view(r: views::SurfacesView) -> (Vec<Row>, Vec<Unit>) {
             coating: f.coating,
             semi: f.semi,
             semi_auto: f.semi_auto,
+            mech: f.mech,
+            mech_auto: f.mech_auto,
+            chip: f.chip,
             k: f.k,
             stop: f.stop,
             ignore: f.ignore,
@@ -213,6 +220,9 @@ pub(crate) enum Col {
     Material,
     Coating,
     Semi,
+    /// チップゾーン・機械半径（OpticStudio と同じく半直径と円錐係数の間）
+    Chip,
+    Mech,
     Conic,
     Par(u8),
 }
@@ -422,6 +432,8 @@ impl Col {
             Col::Material,
             Col::Coating,
             Col::Semi,
+            Col::Chip,
+            Col::Mech,
             Col::Conic,
         ];
         v.extend((1..=npar.min(MAX_PAR)).map(Col::Par));
@@ -438,6 +450,8 @@ impl Col {
             Col::Material => "material",
             Col::Coating => "coating",
             Col::Semi => "semi",
+            Col::Chip => "chip",
+            Col::Mech => "mech",
             Col::Conic => "k",
             Col::Par(_) => "par",
         }
@@ -453,6 +467,8 @@ impl Col {
             Col::Material => tr("Material").into(),
             Col::Coating => tr("Coating").into(),
             Col::Semi => tr("Semi-diameter").into(),
+            Col::Chip => tr("Chip zone").into(),
+            Col::Mech => tr("Mechanical semi-diameter").into(),
             Col::Conic => tr("Conic").into(),
             Col::Par(i) => typ
                 .and_then(|t| par_label(t, i))
@@ -532,6 +548,9 @@ impl Col {
             // 自動は値の後ろに印（入力欄に auto と書くと自動、数を書くと固定）
             Col::Semi if r.semi_auto => format!("{} ({})", n(r.semi), tr("Auto")),
             Col::Semi => n(r.semi),
+            Col::Chip => n(r.chip),
+            Col::Mech if r.mech_auto => format!("{} ({})", n(r.mech), tr("Auto")),
+            Col::Mech => n(r.mech),
             Col::Conic => n(r.k),
             Col::Par(i) => par_value(r, i).map(n).unwrap_or_default(),
         }
@@ -546,6 +565,9 @@ impl Col {
             Col::T => full(r.t),
             Col::Semi if r.semi_auto => "auto".into(),
             Col::Semi => full(r.semi),
+            Col::Chip => full(r.chip),
+            Col::Mech if r.mech_auto => "auto".into(),
+            Col::Mech => full(r.mech),
             Col::Conic => full(r.k),
             Col::Par(i) => match par_value(r, i) {
                 Some(x) if x.is_infinite() => String::new(),
@@ -570,7 +592,9 @@ impl Col {
                 .first()
                 .map(|t| json!(t))
                 .ok_or_else(|| trf("No surface type named {}", &[&s])),
-            Col::Semi if s.eq_ignore_ascii_case("auto") || s == "Auto" || s == tr("Auto") => {
+            Col::Semi | Col::Mech
+                if s.eq_ignore_ascii_case("auto") || s == "Auto" || s == tr("Auto") =>
+            {
                 Ok(json!("auto"))
             }
             Col::R | Col::Par(_)
@@ -854,6 +878,10 @@ fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
         // 自動の面に数を書けば固定にする（値が同じでも）
         Col::Semi if r.semi_auto => false,
         Col::Semi => same_num(r.semi),
+        Col::Mech if v == json!("auto") => r.mech_auto,
+        Col::Mech if r.mech_auto => false,
+        Col::Mech => same_num(r.mech),
+        Col::Chip => same_num(r.chip),
         Col::Type => v.as_str() == Some(r.typ.as_str()),
         Col::R => same_num(r.r),
         Col::T => same_num(r.t),

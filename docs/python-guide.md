@@ -41,7 +41,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   `s.set_material(j, "MIRROR")`、`s.set_stop(j)`、`s.add_glass_catalogs(["SCHOTT"], dirs=[...])`。
   ピックアップ `s.add_pickup(dst, src, "c", scale=-1)`（面の前・後の傾き偏心も `"before0"`〜`"before4"`・`"after0"`〜`"after4"` で。
   面の後を元の面の前から引くなら `src_what="before0"`）・`remove_pickup`・`pickups()`、厚さのソルブ `s.add_solve(j, height=0)`・
-  `remove_solve`・`solves()`。多重構成の表 `s.set_config_count(3)`・`s.set_config_row("5.t", [10, 12, 14])`・`s.config(2)`（新しいシステム）・
+  `remove_solve`・`solves()`。多重構成の表 `s.set_config_count(3)`・`s.set_config_row("5.t", [10, 12, 14])`・材料・膜の行 `s.set_config_names("3.material", ["N-BK7", "N-SF6", "N-BK7"])`・`s.config_names("3.material")`・`s.config(2)`（新しいシステム）・
   `s.set_config(2)`・`s.configs()`。どの編集も失敗すればシステムは元のまま。編集の後はピックアップとソルブを解き直し、面番号は付け替える
 - 光路長の微分: `trace(..., grad=["3.t", "objx"])` で `grad`（(波長, 光線, パラメータ)）
 - 多数のシステムをまとめて: `lb.trace_many([s1, s2, ...], 1, px, py, grad=[...])` → システムごとの dict の list。
