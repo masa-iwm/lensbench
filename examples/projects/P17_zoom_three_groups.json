@@ -18,8 +18,8 @@
   {"type": "air", "id": "d2", "t": 20},
   {"type": "group", "id": "G3", "role": "zoom", "blocks": [
    {"type": "lens", "source": {"surfaces": [
-    {"radius": 31.0, "t": 4, "glass": "1.5168", "semi": 9},
-    {"radius": -31.0, "semi": 9}]}}]},
+    {"radius": 31.0, "t": 4, "glass": "1.5168", "semi": 10.5},
+    {"radius": -31.0, "semi": 10.5}]}}]},
   {"type": "air", "id": "bfl", "t": 27}
  ],
  "states": [

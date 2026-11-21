@@ -1022,6 +1022,7 @@ fn expand_body(
             }
         }
     }
+    crate::lens_edge::lens_edge_apertures(&mut s)?;
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
     let mut mw = Vec::new();

@@ -311,3 +311,28 @@ fn negative_zero_is_the_same_surface() {
     let surfs = |t: &str| t.lines().filter(|l| l.starts_with("SURF ")).count();
     assert_eq!(surfs(&one), surfs(&two), "同じ面の並びのまま");
 }
+
+/// 半直径を固定した玉の面の縁の外の光線は、プロジェクトでも .zmx に書いて読み直しても同じようにけられる
+/// （P19 の視野 3。.zmx の読込・OpticStudio は固定の半直径の玉の面に浮動開口を足す）
+#[test]
+fn lens_edge_vignetting_survives_a_zmx_round_trip() {
+    let p = project("P19_tube_cage.json");
+    let s = expand(&p, &env(), &ExpandOpts::default()).unwrap().system;
+    let dir = std::env::temp_dir().join(format!("lb_p19zmx_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("p19.zmx");
+    zmx_write::save(&f, &s).unwrap();
+    let opt = zmx::LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    let back = zmx::load_with(&f, &opt).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    same_trace(&s, &back, 1e-9, "P19");
+    // 視野 3 の瞳の縁の光線は玉の縁でけられる
+    let t = s
+        .try_trace(FieldSel::Index(2), &[0.0], &[1.0], Some(0), None, false)
+        .unwrap();
+    assert!(t.rays[0].vig != 0);
+}

@@ -66,6 +66,7 @@ mod catalog;
 mod expand;
 mod expand_error;
 mod faces;
+mod lens_edge;
 mod model;
 mod zmx_links;
 mod zmx_wrap;

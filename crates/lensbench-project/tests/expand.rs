@@ -382,7 +382,7 @@ fn a_tilted_flat_return_mirror_sends_the_ray_back_at_twice_the_angle() {
 
 #[test]
 fn example_projects_expand_and_all_rays_pass() {
-    // 全部の例を、既定の状態と全部の状態で展開し、7×7 の瞳の光線が通ることを見る
+    // 全部の例を、既定の状態と全部の状態で展開し、7×7 の瞳の光線が通る（玉の縁でけられるほかは）ことを見る
     let cat = lb_catalog();
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let dir = root().join("examples/projects");
@@ -430,8 +430,15 @@ fn example_projects_expand_and_all_rays_pass() {
                         .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
                         .unwrap();
                     for i in 0..px.len() {
+                        // 玉の縁（半直径を固定した玉の面の浮動開口）でけられるのは物理的に正しい（P19 の視野 3）
+                        let r = &t.rays[i];
+                        let edge = r.status.is_ok()
+                            && matches!(
+                                s.surfaces.get(r.vig).map(|d| d.ap),
+                                Some(lensbench_core::surface::Aperture::Floating { .. })
+                            );
                         assert!(
-                            t.ok(i),
+                            t.ok(i) || edge,
                             "{} {st:?} 視野 {f} 波長 {w} 瞳 ({}, {})",
                             p.display(),
                             px[i],

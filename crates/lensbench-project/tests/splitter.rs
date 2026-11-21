@@ -26,7 +26,7 @@ const HEAD: &str = r#""glass_catalogs": ["SCHOTT"],
   "object_distance": 50,"#;
 
 const LENS: &str = r#"{"type": "lens", "id": "L", "source": {"surfaces": [
-   {"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}}"#;
+   {"radius": 40, "t": 4, "glass": "N-BK7", "semi": 15}, {"radius": -60, "semi": 15}]}}"#;
 
 fn proj(blocks: &str) -> Project {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
