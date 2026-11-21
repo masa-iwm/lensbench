@@ -1040,17 +1040,27 @@ Crystal axis	結晶軸
 Birefringence	複屈折
 Length	長さ
 The material after surface {} is the ordinary ray and material-E the extraordinary ray (must be in the catalog). Use with an Out surface.	面 {} の後の材料が常光、材料名-E が異常光（カタログに必要です）。出口の面と組で使います
-The value of start {} is not a number	出発点 {} の値が数ではありません
-Start {} must be name=value	出発点 {} は 名前=値
+Starting points: {}	出発点: {}
 Starts and states	出発点・状態
-Starting points (one per line)	出発点（1 行に 1 つ）
+Starting points	出発点
+Add variables to set starting points.	変数を追加すると、出発点を設定できます。
+project	プロジェクト
+Add start	出発点を追加
+Add project values	プロジェクトの値を追加
+Add a start filled with the project values of the variables	変数のプロジェクトの値を入れた出発点を追加します
+Starting points have values for names that are not variables: {}	出発点に、変数でない名前の値があります: {}
+Clear the columns that are not variables	変数でない列を消去
+Not a variable of the search (running fails). Add it to the variables or clear the column.	探索の変数ではありません（実行するとエラーになります）。変数に追加するか、列を消去してください。
+Not among the names of this system: {}	このシステムに無い名前: {}
+Both a shared and a per-state variable: {}	共通の変数と状態ごとの変数の両方にあります: {}
+Add per-state variable	状態ごとの変数を追加
 States evaluated together	同時に評価する状態
 Require the pupil-edge rays of every field to stay inside the radius on each surface of the swapped lenses	差し替えるレンズの各面で、各視野の瞳の縁の光線がレンズの半径の内側にあることを条件にします
 Clear aperture condition	有効径の条件
 Per-state variables	状態ごとに解く変数
 In a project with states, several states can be evaluated together.	状態のあるプロジェクトでは、複数の状態で同時に評価できます。
 With states selected, each combination is optimized over all of them together (the merit is the image terms of every state; term configs are indices in this list). Space variables are shared; per-state variables get a value for each state.	状態を選択すると、組ごとに選択した状態を同時に最適化します（メリットファンクションは全状態の像の項。項の構成はこの並びの番号）。間隔の変数は全状態で共通、状態ごとに解く変数は状態ごとの値。
-Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).	組ごとにすべての出発点から最適化し、メリットファンクションの最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。
+Each combination is optimized from every starting point and the best solution is kept (empty cells use the project values; no rows means one run).	組ごとにすべての出発点から最適化し、メリットファンクションの最も小さい解を採ります（空のセルはプロジェクトの値、行が無ければ 1 回）。
 Extra merit terms	メリットファンクションに追加する項
 If the STEP of a mounted item does not separate the glass from the mount, the thickness and diameter are those of the outer shape including the mount, not of the glass. Check them against the spec table or the drawing on the product page.	マウント付きの製品で STEP が硝材とマウントを分けていないと、厚み・径はマウントを含む外形になり、硝材の厚み・径になりません。仕様表の値か、製品ページの図面で確認してください。
 Measured as a mounted item, with the glass and the mount separated (the thickness and diameter are those of the glass).	マウント付きの製品として、硝材とマウントを分けて測りました（厚み・径は硝材の値）。

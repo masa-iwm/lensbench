@@ -198,6 +198,17 @@ fn tol_save_and_running() {
 use crate::swap_panel as sp;
 
 fn swap(p: sp::SwapPanel, blocks: &[&str]) -> Harness<'static, St<sp::SwapPanel, sp::Action>> {
+    swap_in(p, blocks, Vec::new(), Vec::new(), Vec::new())
+}
+
+/// 間隔 (id, 説明)・状態・変数のプロジェクトの値のある系の差し替え探索のパネル
+fn swap_in(
+    p: sp::SwapPanel,
+    blocks: &[&str],
+    gaps: Vec<(String, String)>,
+    states: Vec<String>,
+    base: Vec<(String, f64)>,
+) -> Harness<'static, St<sp::SwapPanel, sp::Action>> {
     let s = sys();
     let blocks: Vec<(String, String)> = blocks
         .iter()
@@ -209,9 +220,10 @@ fn swap(p: sp::SwapPanel, blocks: &[&str]) -> Harness<'static, St<sp::SwapPanel,
             move |ui, st: &mut St<sp::SwapPanel, sp::Action>| {
                 let c = sp::Cands {
                     blocks: blocks.clone(),
-                    gaps: Vec::new(),
-                    states: Vec::new(),
+                    gaps: gaps.clone(),
+                    states: states.clone(),
                     sys: s.clone(),
+                    base: base.clone(),
                 };
                 let a = sp::ui(ui, &mut st.p, &c, None);
                 st.acts.extend(a);
@@ -262,4 +274,47 @@ fn swap_add_lens_until_full() {
     let names: Vec<&str> = h.state().p.slots.iter().map(|s| s.block.as_str()).collect();
     assert_eq!(names, ["L1", "L2"]);
     assert!(is_disabled(&h, "Add lens"));
+}
+
+/// 出発点の表: 「Add project values」で変数のプロジェクトの値の行を足す。状態ごとの変数は補完の欄から足し、
+/// 表の列に加わる。変数でない名前の列は表の下に出し、ボタンで消せる
+#[test]
+fn swap_starts_table_and_state_vars() {
+    let _g = serial();
+    let mut p = sp::SwapPanel::default();
+    p.vars.push(sp::VarRow {
+        name: "d1.t".into(),
+        lo: "0".into(),
+        hi: String::new(),
+    });
+    p.states = vec!["wide".into()];
+    p.new_state_var = "L1.shift".into();
+    p.starts
+        .push([("zz.t".to_string(), 1.0)].into_iter().collect());
+    let mut h = swap_in(
+        p,
+        &["L1"],
+        vec![("d1".into(), "after L1".into())],
+        vec!["wide".into(), "tele".into()],
+        vec![("d1.t".into(), 5.0)],
+    );
+    let warn = "Starting points have values for names that are not variables: zz.t";
+    assert!(h.query_by_label_contains(warn).is_some());
+    h.get_by_label("Clear the columns that are not variables")
+        .click();
+    h.run_steps(4);
+    assert!(h.query_by_label_contains(warn).is_none());
+    assert!(h.state().p.starts[0].is_empty());
+    h.get_by_label("Add project values").click();
+    h.run_steps(4);
+    assert_eq!(h.state().p.starts[1].get("d1.t"), Some(&5.0));
+    h.get_by_label("Add per-state variable").click();
+    h.run_steps(4);
+    assert_eq!(h.state().p.state_vars[0].name, "L1.shift");
+    assert!(h.state().p.new_state_var.is_empty());
+    // 下限は付けない（群の移動は負にもなる）
+    assert_eq!(h.state().p.state_vars[0].lo, "");
+    let s = h.state().p.spec().unwrap();
+    assert_eq!(s["state_vars"], serde_json::json!(["L1.shift"]));
+    assert_eq!(s["starts"], serde_json::json!([{}, {"d1.t": 5.0}]));
 }

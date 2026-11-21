@@ -21,6 +21,9 @@ use crate::param_pick::{self as pp, Set};
 use crate::theme;
 use crate::widgets::sheet::{self, Cell, Sheet, SheetState};
 
+mod starts;
+pub(crate) use starts::Start;
+
 /// 差し替える所の行
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct SlotRow {
@@ -102,6 +105,8 @@ pub(crate) struct Cands {
     pub states: Vec<String>,
     /// 名前の欄の補完の候補
     pub sys: std::rc::Rc<crate::param_pick::Sys>,
+    /// 変数のプロジェクトの値（出発点の表の空のセルに薄く出す。間隔 `dk.t` の厚さ）
+    pub base: Vec<(String, f64)>,
 }
 
 pub(crate) struct SwapPanel {
@@ -128,11 +133,12 @@ pub(crate) struct SwapPanel {
     /// 評価関数に足す項（optimize と同じ）
     pub terms: Vec<TermRow>,
     pub new_term: String,
-    /// 出発点（1 行に 1 つ、「d1.t=10, d2.t=5」）
-    pub starts: String,
-    /// 同時に評価する状態（空は今の状態だけ）と、状態ごとに解く変数（カンマ区切り）
+    /// 出発点（変数の名前 → 初期値。書かない変数はプロジェクトの値）
+    pub starts: Vec<Start>,
+    /// 同時に評価する状態（空は今の状態だけ）と、状態ごとに解く変数
     pub states: Vec<String>,
-    pub state_vars: String,
+    pub state_vars: Vec<VarRow>,
+    pub new_state_var: String,
     /// 有効径の条件
     pub clear_aperture: bool,
     /// ヤコビアン（fd・auto）
@@ -151,6 +157,8 @@ pub(crate) struct SwapPanel {
     /// レンズ・変数・項の表の選択と書き換え中の文字
     pub slots_sheet: SheetState,
     pub vars_sheet: SheetState,
+    pub starts_sheet: SheetState,
+    pub state_vars_sheet: SheetState,
     pub terms_sheet: crate::optim_panel::TermsState,
 }
 
@@ -175,9 +183,10 @@ impl Default for SwapPanel {
             efl_tol: String::new(),
             terms: Vec::new(),
             new_term: "paraxial".into(),
-            starts: String::new(),
+            starts: Vec::new(),
             states: Vec::new(),
-            state_vars: String::new(),
+            state_vars: Vec::new(),
+            new_state_var: String::new(),
             clear_aperture: false,
             jac: "forward".into(),
             top: 50,
@@ -189,6 +198,8 @@ impl Default for SwapPanel {
             undo: None,
             slots_sheet: SheetState::default(),
             vars_sheet: SheetState::default(),
+            starts_sheet: SheetState::default(),
+            state_vars_sheet: SheetState::default(),
             terms_sheet: Default::default(),
         }
     }
@@ -226,24 +237,9 @@ impl SwapPanel {
             }
             slots.push(o);
         }
-        let mut vars = Vec::new();
-        for v in &self.vars {
-            let n = v.name.trim();
-            if n.is_empty() {
-                continue;
-            }
-            let lo = crate::widgets::parse_num(&v.lo, n)?;
-            let hi = crate::widgets::parse_num(&v.hi, n)?;
-            vars.push(json!(if lo.is_none() && hi.is_none() {
-                n.to_string()
-            } else {
-                let s = |x: Option<f64>| x.map(|x| x.to_string()).unwrap_or_default();
-                format!("{n}={}:{}", s(lo), s(hi))
-            }));
-        }
         let mut p = json!({
             "slots": slots,
-            "vars": vars,
+            "vars": vars_json(&self.vars)?,
             "merit": self.merit,
             "reference": self.reference,
             "rings": self.rings,
@@ -270,18 +266,12 @@ impl SwapPanel {
         if !terms.is_empty() {
             p["terms"] = json!(terms);
         }
-        let starts = parse_starts(&self.starts)?;
-        if !starts.is_empty() {
-            p["starts"] = json!(starts);
+        if !self.starts.is_empty() {
+            p["starts"] = json!(self.starts);
         }
         if !self.states.is_empty() {
             p["states"] = json!(self.states);
-            let sv: Vec<&str> = self
-                .state_vars
-                .split(',')
-                .map(str::trim)
-                .filter(|x| !x.is_empty())
-                .collect();
+            let sv = vars_json(&self.state_vars)?;
             if !sv.is_empty() {
                 p["state_vars"] = json!(sv);
             }
@@ -322,27 +312,7 @@ impl SwapPanel {
                         });
                     }
                 }
-                "vars" => {
-                    for x in v.as_array().into_iter().flatten() {
-                        // オブジェクトの形 {name, min, max} も読む
-                        if x.is_object() {
-                            n.vars.push(VarRow {
-                                name: x["name"].as_str().unwrap_or_default().trim().into(),
-                                lo: num_text(&x["min"]),
-                                hi: num_text(&x["max"]),
-                            });
-                            continue;
-                        }
-                        let s = x.as_str().unwrap_or_default();
-                        let (name, r) = s.split_once('=').unwrap_or((s, ""));
-                        let (lo, hi) = r.split_once(':').unwrap_or(("", ""));
-                        n.vars.push(VarRow {
-                            name: name.trim().into(),
-                            lo: lo.trim().into(),
-                            hi: hi.trim().into(),
-                        });
-                    }
-                }
+                "vars" => n.vars = var_rows(v),
                 "merit" => n.merit = text_of(v),
                 "reference" => n.reference = text_of(v),
                 "rings" => n.rings = v.as_u64().unwrap_or(3) as usize,
@@ -364,7 +334,10 @@ impl SwapPanel {
                     n.efl_tol = v.get("efl_tol").map(num_text).unwrap_or_default();
                 }
                 "terms" => n.terms = term_rows(v)?,
-                "starts" => n.starts = starts_text(v),
+                "starts" => {
+                    n.starts = serde_json::from_value(v.clone())
+                        .map_err(|e| trf("Starting points: {}", &[&e]))?
+                }
                 "states" => {
                     n.states = v
                         .as_array()
@@ -373,28 +346,7 @@ impl SwapPanel {
                         .filter_map(|x| x.as_str().map(String::from))
                         .collect()
                 }
-                "state_vars" => {
-                    n.state_vars = v
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|x| match x {
-                            Value::String(s) => Some(s.clone()),
-                            // オブジェクトの形は短い形 "名前=下限:上限" にして欄に出す
-                            Value::Object(_) => {
-                                let name = x["name"].as_str()?.trim();
-                                let (lo, hi) = (num_text(&x["min"]), num_text(&x["max"]));
-                                Some(if lo.is_empty() && hi.is_empty() {
-                                    name.to_string()
-                                } else {
-                                    format!("{name}={lo}:{hi}")
-                                })
-                            }
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }
+                "state_vars" => n.state_vars = var_rows(v),
                 "clear_aperture" => n.clear_aperture = v.as_bool().unwrap_or(false),
                 "jac" => n.jac = v.as_str().unwrap_or("forward").into(),
                 // GUI では今の系の状態を使う
@@ -407,42 +359,48 @@ impl SwapPanel {
     }
 }
 
-/// 出発点の欄（1 行に 1 つ、「d1.t=10, d2.t=5」）から {名前: 値} の並びへ
-pub(crate) fn parse_starts(s: &str) -> Result<Vec<serde_json::Map<String, Value>>, String> {
+/// 変数の行を spec の形（「名前」か「名前=下限:上限」）に。名前の空の行は飛ばす
+fn vars_json(rows: &[VarRow]) -> Result<Vec<Value>, String> {
     let mut out = Vec::new();
-    for line in s.lines().flat_map(|l| l.split(';')).map(str::trim) {
-        if line.is_empty() {
+    for v in rows {
+        let n = v.name.trim();
+        if n.is_empty() {
             continue;
         }
-        let mut o = serde_json::Map::new();
-        for kv in line.split(',').map(str::trim).filter(|x| !x.is_empty()) {
-            let (k, v) = kv
-                .split_once('=')
-                .ok_or_else(|| trf("Start {} must be name=value", &[&kv]))?;
-            let x: f64 = v
-                .trim()
-                .parse()
-                .map_err(|_| trf("The value of start {} is not a number", &[&kv]))?;
-            o.insert(k.trim().to_string(), json!(x));
-        }
-        out.push(o);
+        let lo = crate::widgets::parse_num(&v.lo, n)?;
+        let hi = crate::widgets::parse_num(&v.hi, n)?;
+        out.push(json!(if lo.is_none() && hi.is_none() {
+            n.to_string()
+        } else {
+            let s = |x: Option<f64>| x.map(|x| x.to_string()).unwrap_or_default();
+            format!("{n}={}:{}", s(lo), s(hi))
+        }));
     }
     Ok(out)
 }
 
-fn starts_text(v: &Value) -> String {
-    v.as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_object)
-        .map(|o| {
-            o.iter()
-                .map(|(k, x)| format!("{k}={}", num_text(x)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+/// spec の変数の並び（「名前=下限:上限」の文字か、オブジェクトの形 {name, min, max}）を行に
+fn var_rows(v: &Value) -> Vec<VarRow> {
+    let mut out = Vec::new();
+    for x in v.as_array().into_iter().flatten() {
+        if x.is_object() {
+            out.push(VarRow {
+                name: x["name"].as_str().unwrap_or_default().trim().into(),
+                lo: num_text(&x["min"]),
+                hi: num_text(&x["max"]),
+            });
+            continue;
+        }
+        let s = x.as_str().unwrap_or_default();
+        let (name, r) = s.split_once('=').unwrap_or((s, ""));
+        let (lo, hi) = r.split_once(':').unwrap_or(("", ""));
+        out.push(VarRow {
+            name: name.trim().into(),
+            lo: lo.trim().into(),
+            hi: hi.trim().into(),
+        });
+    }
+    out
 }
 
 /// 組合せのプロジェクトの空気に id（d0・d1…）を付けたもの、玉の候補、間隔の候補
@@ -468,6 +426,9 @@ pub(crate) fn combo_project(c: &Combo) -> (Value, Cands) {
             };
             let id = format!("d{k}");
             b["id"] = json!(id);
+            if let Some(t) = b["t"].as_f64() {
+                cands.base.push((format!("{id}.t"), t));
+            }
             let desc = if k == 0 {
                 tr("Stop → first element").to_string()
             } else if k == n {
@@ -624,7 +585,7 @@ pub(crate) fn ui(
                     );
                 });
                 section(ui, "swap_states_sec", tr("Starts and states"), |ui| {
-                    starts_states_ui(ui, p, c, weak)
+                    starts::ui(ui, p, c, weak)
                 });
                 section(ui, "swap_settings_sec", tr("Settings"), |ui| {
                     settings_ui(ui, p, weak)
@@ -790,6 +751,8 @@ impl Sheet for SlotSheet<'_> {
 struct VarSheet<'a> {
     vars: &'a mut Vec<VarRow>,
     names: Vec<(String, String)>,
+    /// 足した行の下限（間隔は 0、群の移動などは空）
+    lo0: &'static str,
 }
 
 impl Sheet for VarSheet<'_> {
@@ -851,7 +814,7 @@ impl Sheet for VarSheet<'_> {
         self.vars.insert(
             at,
             VarRow {
-                lo: "0".into(),
+                lo: self.lo0.into(),
                 ..Default::default()
             },
         );
@@ -868,12 +831,15 @@ impl Sheet for VarSheet<'_> {
 
 fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     let set = Set::Swap { gaps: &c.gaps };
+    let names = pp::names(&c.sys, set);
     if !p.vars.is_empty() {
         let mut vs = VarSheet {
             vars: &mut p.vars,
-            names: pp::names(&c.sys, set),
+            names: names.clone(),
+            lo0: "0",
         };
         sheet::show(ui, "swap_vars", &mut p.vars_sheet, &mut vs);
+        starts::unknown_note(ui, &p.vars, &names);
     }
     ui.horizontal_wrapped(|ui| {
         let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t, G2.shift"), &c.sys, set);
@@ -906,63 +872,6 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     ui.label(
         RichText::new(tr(
             "Combination gaps are d0 (after the stop), d1 (after the first element), ... Only gaps can be put back into the combination.",
-        ))
-        .small()
-        .color(weak),
-    );
-}
-
-fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
-    ui.label(tr("Starting points (one per line)"));
-    ui.add(
-        egui::TextEdit::multiline(&mut p.starts)
-            .desired_rows(2)
-            .desired_width(260.0)
-            .hint_text("d1.t=10, d2.t=5"),
-    );
-    ui.label(
-        RichText::new(tr(
-            "Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).",
-        ))
-        .small()
-        .color(weak),
-    );
-    ui.separator();
-    if c.states.is_empty() {
-        ui.label(
-            RichText::new(tr(
-                "In a project with states, several states can be evaluated together.",
-            ))
-            .small()
-            .color(weak),
-        );
-        return;
-    }
-    ui.horizontal_wrapped(|ui| {
-        ui.label(tr("States evaluated together"));
-        for s in &c.states {
-            let mut on = p.states.contains(s);
-            if ui.checkbox(&mut on, s).changed() {
-                if on {
-                    p.states.push(s.clone());
-                    // 状態の並びの順にそろえる
-                    p.states
-                        .sort_by_key(|x| c.states.iter().position(|y| y == x));
-                } else {
-                    p.states.retain(|x| x != s);
-                }
-            }
-        }
-    });
-    ui.add_enabled_ui(!p.states.is_empty(), |ui| {
-        ui.horizontal(|ui| {
-            ui.label(tr("Per-state variables"));
-            small_edit(ui, &mut p.state_vars, 160.0, "G2.shift, d3.t");
-        });
-    });
-    ui.label(
-        RichText::new(tr(
-            "With states selected, each combination is optimized over all of them together (the merit is the image terms of every state; term configs are indices in this list). Space variables are shared; per-state variables get a value for each state.",
         ))
         .small()
         .color(weak),
@@ -1312,14 +1221,33 @@ mod tests {
         });
         let mut p = SwapPanel::default();
         p.set_spec(&v).unwrap();
-        assert_eq!(p.starts, "d1.t=10, d2.t=5\nd1.t=20");
+        assert_eq!(p.starts.len(), 2);
+        assert_eq!(p.starts[0]["d2.t"], 5.0);
+        assert_eq!(p.state_vars[0].name, "G2.shift");
         assert_eq!(p.spec().unwrap(), v);
-        // 状態を選ばなければ state_vars は送らない、出発点の書き間違いは誤り
+        // 出発点の表の列: 変数、状態ごとの変数、どちらでもない名前（d2.t は変数でない）
+        assert_eq!(
+            starts::columns(&p),
+            [
+                ("d1.t".into(), true),
+                ("G2.shift".into(), true),
+                ("d2.t".into(), false)
+            ]
+        );
+        // 状態を選ばなければ state_vars は送らず、表の列にも出さない
         p.states.clear();
         assert!(p.spec().unwrap().get("state_vars").is_none());
-        p.starts = "d1.t".into();
-        assert!(p.spec().is_err());
-        assert!(parse_starts("d1.t=1; d2.t=2").unwrap().len() == 2);
+        assert!(!starts::columns(&p).iter().any(|c| c.0 == "G2.shift"));
+        // 範囲つき・オブジェクトの形の状態ごとの変数も読む
+        p.set_spec(&json!({"states": ["a"], "state_vars": [{"name": "G2.shift", "min": -1}]}))
+            .unwrap();
+        assert_eq!(
+            (p.state_vars[0].lo.as_str(), p.state_vars[0].hi.as_str()),
+            ("-1", "")
+        );
+        assert_eq!(p.spec().unwrap()["state_vars"], json!(["G2.shift=-1:"]));
+        // 出発点の値が数でなければ読めない
+        assert!(p.set_spec(&json!({"starts": [{"d1.t": "x"}]})).is_err());
     }
 
     #[test]
