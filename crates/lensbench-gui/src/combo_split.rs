@@ -18,7 +18,12 @@ use crate::combo::{Combo, ElemKind};
 /// 系 s（.zmx を構成 1 で読んだもの）を、p（[`lensbench_project::zmx_project`] の設定）の blocks を要素に分けた
 /// 組合せにする。同じ系にならなければ None
 pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) -> Option<Combo> {
-    finish(split_project(s, p)?, s, &[], base, glass_dirs)
+    // 鏡で折り返して同じ面を戻る系（ダブルパス）は、往きの要素と「往路を戻る」鏡にまとめてみる。
+    // 同じ系にならなければ、今までどおり戻りも別の要素にする
+    [true, false].into_iter().find_map(|dp| {
+        let a = split_parts(s, p, dp)?;
+        finish(a.v.clone(), &a.compared(s), &[], base, glass_dirs)
+    })
 }
 
 /// 多重構成の .zmx（構成ごとの系 cfgs、p は [`lensbench_project::zmx_project`] の設定と状態「Config k」）を、
@@ -30,8 +35,21 @@ pub(crate) fn split_configs(
     base: &Path,
     glass_dirs: &[PathBuf],
 ) -> Option<Combo> {
+    // ダブルパスは往きの要素と「往路を戻る」鏡にまとめてみる（[`split`] と同じ）
+    [true, false]
+        .into_iter()
+        .find_map(|dp| split_configs_with(cfgs, p, base, glass_dirs, dp))
+}
+
+fn split_configs_with(
+    cfgs: &[System],
+    p: &Value,
+    base: &Path,
+    glass_dirs: &[PathBuf],
+    dp: bool,
+) -> Option<Combo> {
     let s0 = cfgs.first()?;
-    let a = split_parts(s0, p)?;
+    let a = split_parts(s0, p, dp)?;
     let sts = p["states"].as_array()?;
     if sts.len() != cfgs.len() {
         return None;
@@ -51,7 +69,8 @@ pub(crate) fn split_configs(
         }
     }
     v["states"] = json!(states);
-    finish(v, s0, cfgs, base, glass_dirs)
+    let cfgs: Vec<System> = cfgs.iter().map(|x| a.compared(x)).collect();
+    finish(v, &cfgs[0], &cfgs, base, glass_dirs)
 }
 
 /// 分けたプロジェクト v を組合せにする。系 s（状態があれば状態ごとの系 cfgs）と同じにならなければ None
@@ -115,7 +134,7 @@ fn config_set(
         return None;
     }
     // 構成 k も同じ要素に分かれ、絞りのほかの操作が同じこと
-    let b = split_parts(sk, p)?;
+    let b = split_parts(sk, p, a.dp)?;
     let (ba, bb) = (a.v["blocks"].as_array()?, b.v["blocks"].as_array()?);
     let no_stop = |x: &Value| -> Vec<Value> {
         let ops = x["surface_ops"].as_array().into_iter().flatten();
@@ -158,7 +177,9 @@ fn config_set(
                     && s0.surfaces[j].mech_semi.is_none()
                     && sk.surfaces[j].mech_semi.is_none())
                 || derived(s0, j, name);
-            if skip {
+            // 往路を戻る鏡にまとめた戻りの面は往きの面から決まる（往きと違う値なら、状態ごとの系の確かめで落ちる）
+            // 往路を戻る鏡の厚さも戻りの空気（往きの空気）が受け持つ
+            if skip || a.folded.contains(&j) || (name == "t" && Some(j) == a.back_mirror) {
                 continue;
             }
             let is_cb = s0.surfaces[j].typ() == SurfType::CoordBrk;
@@ -261,11 +282,6 @@ fn mirror_block(a: &lensbench_core::surface::Surface, id: &str) -> Option<Value>
     Some(json!({ "type": "mirror", "id": id, "row": r }))
 }
 
-/// blocks（面の絞り・ソルブ・ピックアップはブロックの surface_ops）・glrs を要素で書いたプロジェクト
-fn split_project(s: &System, p: &Value) -> Option<Value> {
-    split_parts(s, p).map(|x| x.v)
-}
-
 /// 分けたプロジェクトと、系の面とブロックの対応
 struct Parts {
     v: Value,
@@ -275,14 +291,56 @@ struct Parts {
     cb: Vec<Option<(String, usize)>>,
     /// 空気のブロックの blocks の位置・その前のブロックの id・厚さを持つ系の面
     airs: Vec<(usize, String, usize)>,
+    /// ダブルパスを往路を戻る鏡にまとめたか
+    dp: bool,
+    /// 往路を戻る鏡にまとめて、要素に書かなくなった系の面（戻りの面と、鏡の傾きの座標ブレーク）
+    folded: BTreeSet<usize>,
+    /// 往路を戻る鏡の面
+    back_mirror: Option<usize>,
 }
 
-fn split_parts(s: &System, p: &Value) -> Option<Parts> {
+impl Parts {
+    /// 往路を戻る鏡が受け持つピックアップ（戻りの面へのもの、鏡の厚さへのもの）か
+    fn drops(&self, q: &lensbench_core::pickup::Pickup) -> bool {
+        self.folded.contains(&q.dst)
+            || (Some(q.dst) == self.back_mirror && q.what == lensbench_core::param::Kind::Thick)
+    }
+
+    /// 組合せの系と比べる元の系: 往路を戻る鏡が受け持つピックアップを除いたもの（値はそのまま）
+    fn compared(&self, s: &System) -> System {
+        let mut t = s.clone();
+        let cbs: Vec<usize> = self
+            .folded
+            .iter()
+            .copied()
+            .filter(|&j| s.surfaces[j].typ() == SurfType::CoordBrk)
+            .collect();
+        if s.pickups.iter().any(|q| self.drops(q)) || !cbs.is_empty() {
+            // 値はピックアップを解いたまま。鏡の傾きにした座標ブレークの半直径は追跡に効かない（鏡の傾きの座標ブレークは 0）。
+            // 除く・半直径を変えるだけなので失敗しない（失敗したら元のまま比べ、違うと出る）
+            let _ = t.edit(|rx| {
+                rx.pickups.retain(|q| !self.drops(q));
+                for &j in &cbs {
+                    rx.surfaces[j].semi = 0.0;
+                    rx.surfaces[j].semi_auto = false;
+                }
+                Ok(())
+            });
+        }
+        t
+    }
+}
+
+/// 面を要素に分ける。`dp` なら、ダブルパス（鏡の後の要素が、鏡の前の要素を逆の順にたどる）を、往きの要素と
+/// 往路を戻る鏡（`back`）にまとめる。ダブルパスの形でなければ None
+fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
     if s.surfaces.len() < 3 {
         return None;
     }
     let img = s.surfaces.len() - 1;
     let mut blocks = Vec::new();
+    // ブロックの系の面の範囲（空気は None）
+    let mut ranges: Vec<Option<(usize, usize)>> = Vec::new();
     // 系の面 → (ブロック id, ブロックの面)
     let mut face: Vec<Option<(String, usize)>> = vec![None; img + 1];
     let mut cb: Vec<Option<(String, usize)>> = vec![None; img + 1];
@@ -415,12 +473,29 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
         } else {
             dirs[k].t
         };
+        ranges.push(Some((j, k)));
+        ranges.push(None);
         airs.push((blocks.len(), id.clone(), k));
         match fill.take() {
             Some(m) => blocks.push(json!({ "type": "air", "t": t, "medium": m })),
             None => blocks.push(json!({ "type": "air", "t": t })),
         }
         j = k + 1;
+    }
+    let mut folded = BTreeSet::new();
+    // 往路を戻る鏡の面（その厚さは戻りの空気が受け持つ）
+    let mut back_mirror = None;
+    if dp {
+        let (f, m) = fold_double_pass(s, &mut blocks, &ranges, &mut airs)?;
+        back_mirror = Some(m);
+        for &x in &f {
+            face[x] = None;
+            cb[x] = None;
+        }
+        if f.iter().any(|&x| s.surfaces[x].stop) || f.contains(&s.glrs) {
+            return None;
+        }
+        folded = f;
     }
     let at = |j: usize| -> Option<Value> {
         let (b, i) = face.get(j)?.as_ref()?;
@@ -440,6 +515,12 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
             == 1)
             .then(|| n.clone())
     };
+    // 戻りの面のソルブ・マクロは往路を戻る鏡では書けない（まとめない）。戻りの面へのピックアップは要らなくなる
+    if s.solves.iter().any(|q| folded.contains(&q.surf))
+        || s.macro_parms.iter().any(|q| folded.contains(&q.surf))
+    {
+        return None;
+    }
     for q in &s.solves {
         let (kind, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
         let mut o = json!({ "op": "add_solve", "surface": at(q.surf)?, "kind": kind,
@@ -462,7 +543,14 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
             "what": q.what.name() }),
         );
     }
+    let drop = |q: &lensbench_core::pickup::Pickup| {
+        folded.contains(&q.dst)
+            || (Some(q.dst) == back_mirror && q.what == lensbench_core::param::Kind::Thick)
+    };
     for q in &s.pickups {
+        if drop(q) {
+            continue;
+        }
         let name = lensbench_core::pickup::pick_kind_name;
         // 座標ブレークの値のピックアップは座標ブレークの番号で指す
         let any = |j: usize| -> Option<Value> {
@@ -507,7 +595,110 @@ fn split_parts(s: &System, p: &Value) -> Option<Parts> {
     if !s.macros.is_empty() {
         v["macros"] = serde_json::to_value(&s.macros).ok()?;
     }
-    Some(Parts { v, face, cb, airs })
+    Some(Parts {
+        v,
+        face,
+        cb,
+        airs,
+        dp,
+        folded,
+        back_mirror,
+    })
+}
+
+/// ダブルパスの blocks（`ranges` はブロックの系の面の範囲、空気は None）を、往きの要素と往路を戻る鏡（`back`）に書き換える。
+/// 形: 往きの要素と空気 E₀ A₀ … Eₙ₋₁ Aₙ₋₁、鏡の核（鏡 M、または傾きの座標ブレーク C₁ 空気(0) M 空気(0) C₂）、
+/// 鏡の後の空気、戻りの要素 Eₙ₋₁′ … E₀′（往きと同じ種類・面の数で逆の順、間に空気）、その後ろ。
+/// 戻りの要素と鏡の後の空気を除き、E₀′ の後の空気からを鏡の後に続ける。要素に書かなくなった系の面と、鏡の面を返す。
+/// 値まで同じかは、呼び手が組合せの系と元の系を比べて確かめる
+fn fold_double_pass(
+    s: &System,
+    blocks: &mut Vec<Value>,
+    ranges: &[Option<(usize, usize)>],
+    airs: &mut Vec<(usize, String, usize)>,
+) -> Option<(BTreeSet<usize>, usize)> {
+    let bm = blocks.iter().position(|b| b["type"] == "mirror")?;
+    let is_air = |i: usize| blocks.get(i).is_some_and(|b| b["type"] == "air");
+    let air_t = |i: usize| blocks.get(i).and_then(|b| b["t"].as_f64());
+    // 鏡の傾き: 鏡の前後の、傾きだけの座標ブレーク（前は順序 0 で (tx, ty)、後は順序 1 で (−tx, −ty)）
+    let cb_of = |i: usize| -> Option<([f64; 5], u8, f64)> {
+        let (j, k) = ranges.get(i).copied().flatten()?;
+        let d = &s.surfaces[j];
+        (j == k && blocks[i]["type"] == "surfaces" && d.typ() == SurfType::CoordBrk)
+            .then(|| (d.cb(), d.cb_order(), d.t))
+    };
+    let (bf, bc, tilt) = match (bm.checked_sub(2).and_then(cb_of), cb_of(bm + 2)) {
+        (Some((c1, 0, _)), Some((c2, 1, _)))
+            if c1[0] == 0.0
+                && c1[1] == 0.0
+                && c1[4] == 0.0
+                && c2[0] == 0.0
+                && c2[1] == 0.0
+                && c2[4] == 0.0
+                && c2[2] == -c1[2]
+                && c2[3] == -c1[3]
+                && air_t(bm - 1) == Some(0.0)
+                && air_t(bm + 1) == Some(0.0) =>
+        {
+            (bm - 2, bm + 2, Some([c1[2], c1[3]]))
+        }
+        _ => (bm, bm, None),
+    };
+    // 往きの要素（空気でないブロック）。間は空気が 1 つずつ
+    let fwd: Vec<usize> = (0..bf).filter(|&i| !is_air(i)).collect();
+    let n = fwd.len();
+    if n == 0
+        || bf != 2 * n
+        || fwd
+            .iter()
+            .any(|&i| !is_air(i + 1) || blocks[i]["type"] == "mirror")
+        || !is_air(bc + 1)
+    {
+        return None;
+    }
+    // 戻りの要素: 往きと逆の順で、同じ種類・同じ面の数
+    let nsurf = |i: usize| ranges[i].map(|(j, k)| k - j);
+    for (q, &e) in fwd.iter().rev().enumerate() {
+        let r = bc + 2 + 2 * q;
+        if !is_air(r + 1) || blocks[r]["type"] != blocks[e]["type"] || nsurf(r) != nsurf(e) {
+            return None;
+        }
+    }
+    let tail = bc + 2 * n + 1;
+    // 要素に書かなくなる系の面: 戻りの要素の面と、鏡の傾きの座標ブレーク
+    let mut folded = BTreeSet::new();
+    for i in (bf..=bc).chain(bc + 2..tail) {
+        if i == bm {
+            continue;
+        }
+        if let Some((j, k)) = ranges[i] {
+            folded.extend(j..=k);
+        }
+    }
+    let mut m = blocks[bm].clone();
+    m["back"] = json!(true);
+    if let Some(t) = tilt {
+        m["tilt"] = json!(t);
+    }
+    let mid = m["id"].as_str()?.to_string();
+    let mut out: Vec<Value> = blocks[..bf].to_vec();
+    out.push(m);
+    out.extend(blocks[tail..].iter().cloned());
+    // 空気の位置: 往きの空気はそのまま、E₀′ の後の空気からは鏡の後へ詰める（E₀′ の後の空気の前の要素は鏡）
+    let shift = tail - bf - 1;
+    let mut na = Vec::new();
+    for (ai, id, k) in airs.drain(..) {
+        if ai < bf {
+            na.push((ai, id, k));
+        } else if ai == tail {
+            na.push((ai - shift, mid.clone(), k));
+        } else if ai > tail {
+            na.push((ai - shift, id, k));
+        }
+    }
+    *airs = na;
+    *blocks = out;
+    Some((folded, ranges[bm]?.0))
 }
 
 #[cfg(test)]
@@ -925,5 +1116,90 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             s.surfaces[5].ap,
             lensbench_core::surface::Aperture::Floating { .. }
         ));
+    }
+
+    /// ダブルパスの .zmx（鏡で折り返して同じ玉を戻る）は、往きの玉と「往路を戻る」鏡の組合せになる（split の中で元の系と
+    /// 同じことも確かめる）。鏡の傾き（前後の座標ブレーク）は鏡の傾きに、戻りの面へのピックアップは消える。
+    /// 戻りが往きと違う系・玉を偏心した系（座標ブレークで挟んだ玉は戻りの面の並びで書けない）は今までどおり別の要素
+    #[test]
+    fn a_double_pass_zmx_splits_into_the_forward_lens_and_a_returning_mirror() {
+        let glass = vec![root().join("tests/glass")];
+        let open = |f: &str| {
+            Combo::from_zmx(&root().join("tests/double_pass").join(f), &glass, &[]).unwrap()
+        };
+        let kinds = |c: &Combo| c.picks.iter().map(|p| p.kind).collect::<Vec<_>>();
+        let mirror = |c: &Combo| {
+            c.picks
+                .iter()
+                .find(|p| p.kind == ElemKind::Mirror)
+                .cloned()
+                .unwrap()
+        };
+        for (f, tilt) in [
+            ("P11_flat_double_pass.zmx", [0.0, 0.0]),
+            ("pickups.zmx", [0.0, 0.0]),
+            ("P12_tilted_flat_double_pass.zmx", [0.5, -0.3]),
+            ("P14_tilted_spherical_double_pass.zmx", [-0.4, 0.6]),
+        ] {
+            let c = open(f);
+            assert_eq!(kinds(&c), [ElemKind::Lens, ElemKind::Mirror], "{f}");
+            let m = mirror(&c);
+            assert!(m.mirror().back, "{f}");
+            assert_eq!([m.tilt[0], m.tilt[1]], tilt, "{f}");
+            // 戻りの面へのピックアップは往路を戻る鏡が受け持つので、操作に残らない
+            assert!(
+                !c.picks
+                    .iter()
+                    .any(|p| p.ops.iter().any(|o| matches!(o, SurfaceOp::AddPickup(_)))),
+                "{f}"
+            );
+        }
+        // 戻りの玉の曲率が往きと違う: まとめず、戻りの玉も別の要素
+        let c = open("return_differs.zmx");
+        assert_eq!(
+            kinds(&c),
+            [ElemKind::Lens, ElemKind::Mirror, ElemKind::Lens],
+            "{:?}",
+            kinds(&c)
+        );
+        assert!(!mirror(&c).mirror().back);
+        // 偏心・傾けた玉（座標ブレークで挟む）: 今までどおり要素に分かれる（往路を戻る鏡にはしない）
+        let c = open("P4_double_pass.zmx");
+        assert!(
+            !c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange),
+            "{:?}",
+            kinds(&c)
+        );
+        assert!(!mirror(&c).mirror().back);
+    }
+
+    /// 多重構成のダブルパス: 鏡までの空気を構成で変えると、往きの空気の状態の値になり（戻りは往路を戻る鏡が受け持つ）、
+    /// 戻りの面の値・鏡の厚さは状態の値にしない
+    #[test]
+    fn a_multi_config_double_pass_zmx_splits_with_a_returning_mirror() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_mce_dp_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("dp.zmx");
+        let src =
+            std::fs::read_to_string(root().join("tests/double_pass/P11_flat_double_pass.zmx"))
+                .unwrap();
+        std::fs::write(
+            &f,
+            format!(
+                "{src}\nMNUM 2 1\n\
+THIC 3 1 20 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 3 2 25 0 0 0 1 1 1 0 0 \"\" 0\n\
+THIC 4 1 -20 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 4 2 -25 0 0 0 1 1 1 0 0 \"\" 0\n"
+            ),
+        )
+        .unwrap();
+        let glass = vec![root().join("tests/glass")];
+        let r = Combo::from_zmx(&f, &glass, &[]);
+        std::fs::remove_dir_all(&tmp).ok();
+        let c = r.unwrap();
+        let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+        assert_eq!(kinds, [ElemKind::Lens, ElemKind::Mirror], "{kinds:?}");
+        assert!(c.picks[1].mirror().back);
+        assert_eq!(c.picks[0].state_air.get("Config 2"), Some(&25.0));
+        assert_eq!(c.picks[1].state_air.get("Config 2"), None);
     }
 }
