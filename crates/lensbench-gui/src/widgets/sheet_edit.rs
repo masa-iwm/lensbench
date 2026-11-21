@@ -61,7 +61,7 @@ pub(super) fn ghost_ui(
         return;
     }
     let rect = ui.max_rect();
-    let resp = ui.interact(rect, ui.id().with("sheet_new"), Sense::click());
+    let resp = ui.interact(rect, out.tid().with("sheet_new"), Sense::click());
     let name = tr("New row").to_string();
     resp.widget_info(move || {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())

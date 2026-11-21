@@ -760,3 +760,63 @@ fn surface_type_change_undoes_in_one_step() {
     assert_eq!(h.state().c.doc.combo, c1, "{}", h.state().test_state());
     assert_eq!(h.state().c.sys.ld_rows[j].typ, "EVENASPH");
 }
+
+/// システムの設定の波長・視野の表: 主の波長のチェックを押した後でも、セルをクリックして打ち、Enter で値が変わる
+/// （チェックにフォーカスが残ると表のキーが効かなかった）
+#[test]
+fn sysset_wave_and_field_cells_edit() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P6_states_focus_group.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    // 表が全部見える高さ（パネルの外に出たセルは下のパネルの部品と重なる）
+    h.set_size(egui::vec2(1280.0, 2000.0));
+    h.state_mut().update(Msg::FocusKind(Kind::SysSettings));
+    settle(&mut h);
+    let center = |h: &Harness<'static, App>, row: usize, col: &'static str| {
+        let b = h
+            .get(egui_kittest::kittest::by().predicate(move |n| {
+                n.label()
+                    .is_some_and(|l| l.starts_with(&format!("Row {row} ")) && l.contains(col))
+            }))
+            .bounding_box()
+            .unwrap();
+        egui::pos2(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32)
+    };
+    let press = |h: &mut Harness<'static, App>, p: egui::Pos2| {
+        h.input_mut().events.push(egui::Event::PointerMoved(p));
+        h.run_steps(1);
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: p,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+            h.run_steps(1);
+        }
+        h.run_steps(2);
+    };
+    let edit = |h: &mut Harness<'static, App>, p: egui::Pos2, text: &str| {
+        press(h, p);
+        h.input_mut().events.push(egui::Event::Text(text.into()));
+        h.run_steps(3);
+        h.press_key(Key::Enter);
+        settle(h);
+    };
+    // 主の波長のチェック（1 行目）を押してから、1 行目の波長を書き換える
+    let p = center(&h, 1, "Primary");
+    press(&mut h, p);
+    let p = center(&h, 1, "Wavelength");
+    edit(&mut h, p, "0.5");
+    let w = h.state().c.doc.combo.waves.clone();
+    assert!((w[0].um - 0.5).abs() < 1e-9, "{w:?}");
+    // 視野の表（2 行目の y）
+    let p = center(&h, 2, "y [");
+    edit(&mut h, p, "3");
+    let f = h.state().c.doc.combo.fields.clone();
+    assert!(format!("{f:?}").contains("3.0"), "{f:?}");
+}

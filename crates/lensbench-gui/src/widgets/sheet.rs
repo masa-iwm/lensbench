@@ -316,6 +316,8 @@ impl SheetState {
 /// このフレームで決めたこと（描き終えてから当てる）
 #[derive(Default)]
 struct Out {
+    /// 表の id（セルの id の元。セルの Ui の id は表ごとに分かれないので、同じ画面の 2 つの表のセルがぶつかる）
+    id: Option<egui::Id>,
     clicked: bool,
     start: Option<(usize, usize, Option<String>)>,
     commit: Option<(usize, usize, String)>,
@@ -379,7 +381,10 @@ pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn
     {
         st.edit = None;
     }
-    let mut out = Out::default();
+    let mut out = Out {
+        id: Some(id),
+        ..Default::default()
+    };
     if !ui.input(|i| i.pointer.primary_down()) {
         st.drag = None;
         st.drag_sel = false;
@@ -415,9 +420,18 @@ pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn
     if let Some((x, y0)) = out.drop_v {
         lp.vline(x, y0..=rect.bottom(), line);
     }
+    let mut free = free;
     if out.clicked {
         st.active = true;
         st.note = None;
+        // 表をクリックしたら、前にフォーカスを取った部品（表の中のチェック・ほかの欄）から外す。残すと表のキー・
+        // 打ち込みが効かない
+        if st.edit.is_none() {
+            if let Some(f) = ui.memory(|mm| mm.focused()) {
+                ui.memory_mut(|mm| mm.surrender_focus(f));
+            }
+            free = true;
+        }
     } else if ui.input(|i| i.pointer.any_click())
         && !ui
             .input(|i| i.pointer.interact_pos())
@@ -466,6 +480,12 @@ pub(crate) fn keep_range(n: usize, rows: RangeInclusive<usize>) -> Option<(usize
         lo => lo,
     };
     (lo <= hi).then_some((lo, hi))
+}
+
+impl Out {
+    fn tid(&self) -> egui::Id {
+        self.id.unwrap_or(egui::Id::NULL)
+    }
 }
 
 /// 表の状態を egui の一時の記憶に置いて描く（状態を持つ所の無いフォームの表）。(書き換えたか, 数をドラッグ中か)
@@ -535,7 +555,7 @@ fn table(
                         let t = sh.header(c, cur_row);
                         let r = ui.interact(
                             ui.max_rect(),
-                            ui.id().with("sheet_head"),
+                            out.tid().with(("sheet_head", c)),
                             Sense::click_and_drag(),
                         );
                         ui.add(
@@ -588,7 +608,7 @@ fn table(
                     row.col(|ui| {
                         let resp = ui.interact(
                             ui.max_rect(),
-                            ui.id().with("sheet_num"),
+                            out.tid().with(("sheet_num", r)),
                             Sense::click_and_drag(),
                         );
                         ui.label(RichText::new(format!("{}", r + 1)).monospace().color(weak));
@@ -680,7 +700,11 @@ fn cell_ui(
     }
     let drag_ok = cell.numeric() && cell.ro.is_none();
     // ドラッグは数の増減（Alt・右端のつまみ）か範囲の選択
-    let resp = ui.interact(rect, ui.id().with("sheet_cell"), Sense::click_and_drag());
+    let resp = ui.interact(
+        rect,
+        out.tid().with(("sheet_cell", r, c)),
+        Sense::click_and_drag(),
+    );
     // 名前は外で作る（widget_info の関数は Context を握ったまま呼ばれる）
     let name = trf("Row {} {}", &[&(r + 1), &sh.header(c, Some(r))]);
     let (enabled, value) = (cell.ro.is_none(), cell.text.clone());
