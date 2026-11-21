@@ -499,22 +499,22 @@ fn result_ui(ui: &mut Ui, r: &ZoomView, weak: egui::Color32) {
             crate::widgets::scroll_gap(ui);
         });
     // 変数の軌跡（横軸は位置: 状態 k は k）
-    Plot::new("zoom_plot")
+    let plot = Plot::new("zoom_plot")
         .height(180.0)
         .legend(Legend::default())
-        .x_axis_label(tr("Position (state index, from 0)"))
-        .show(ui, |pu| {
-            for (i, v) in r.vars.iter().enumerate() {
-                let pts: Vec<[f64; 2]> = r
-                    .path
-                    .iter()
-                    .filter_map(|pt| Some([pt.pos, key(pt, v)?]))
-                    .collect();
-                let c = theme::series(i);
-                pu.line(Line::new(pts.clone()).name(v).color(c));
-                pu.points(Points::new(pts).radius(3.0_f32).color(c));
-            }
-        });
+        .x_axis_label(tr("Position (state index, from 0)"));
+    crate::plot_tools::nav(ui, plot, true, |pu| {
+        for (i, v) in r.vars.iter().enumerate() {
+            let pts: Vec<[f64; 2]> = r
+                .path
+                .iter()
+                .filter_map(|pt| Some([pt.pos, key(pt, v)?]))
+                .collect();
+            let c = theme::series(i);
+            pu.line(Line::new(pts.clone()).name(v).color(c));
+            pu.points(Points::new(pts).radius(3.0_f32).color(c));
+        }
+    });
     for w in r.warnings.iter().chain(&r.notes) {
         ui.label(
             RichText::new(lensbench_core::i18n::tr(w))

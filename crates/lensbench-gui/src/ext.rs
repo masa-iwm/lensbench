@@ -307,6 +307,7 @@ pub mod fig {
         Cmap, Grid,
     };
     pub use crate::i18n::{tr, trf};
+    pub use crate::plot_tools::nav as plot_nav;
     pub use crate::plots::fmt_sig;
     pub use crate::theme::series;
     pub use egui;

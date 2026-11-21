@@ -1079,7 +1079,7 @@ impl Core {
                             "Sections after mirror/BS folds laid out along the original axis (moves along the axis only)",
                         )),
                         ViewPlane::D3 => r.on_hover_text(tr(
-                            "Drag to rotate, Shift- or right-drag to pan, wheel to zoom, double-click to reset",
+                            "Drag to rotate, Shift- or right-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset",
                         )),
                         _ => r,
                     };

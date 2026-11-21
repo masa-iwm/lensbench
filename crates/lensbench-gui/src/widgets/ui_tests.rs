@@ -143,7 +143,7 @@ fn float_menu_closes() {
     assert!(close);
 }
 
-/// 図の操作: ホイールはポインタの所で拡大して外のスクロールに渡さない、中・右ドラッグは移動、左は left_pans のときだけ
+/// 図の操作: Ctrl（⌘）＋ホイールはポインタの所で拡大して外のスクロールに渡さない（素のホイールは渡す）、中・右ドラッグは移動、左は left_pans のときだけ
 #[test]
 fn pan_zoom_reads_input() {
     let mut b = Bench::new();
@@ -157,7 +157,7 @@ fn pan_zoom_reads_input() {
     };
     let at = Pos2::new(100.0, 100.0);
     b.frame(vec![Event::PointerMoved(at)], &body);
-    // ホイール（なめらかなスクロールは数フレームに分かれて届く）
+    // 素のホイールは拡大せず外のスクロールに残す
     b.frame(
         vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
@@ -166,6 +166,24 @@ fn pan_zoom_reads_input() {
         }],
         &body,
     );
+    let mut passed = false;
+    for _ in 0..10 {
+        assert_eq!(pz.get().unwrap().zoom, 1.0);
+        passed |= rest.get() != Vec2::ZERO;
+        b.frame(Vec::new(), &body);
+    }
+    assert!(passed, "素のホイールは外へ渡す");
+    // Ctrl（⌘）＋ホイール
+    b.mods = Modifiers::COMMAND;
+    b.frame(
+        vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, 120.0),
+            modifiers: Modifiers::COMMAND,
+        }],
+        &body,
+    );
+    b.mods = Modifiers::NONE;
     let mut zoomed = false;
     for _ in 0..10 {
         let z = pz.get().unwrap();
@@ -304,8 +322,8 @@ fn pan_zoom_box_and_buttons() {
     let frames = left_drag(&mut b, from, to, &pz, &body);
     assert!(frames.iter().map(|f| f.pan.x).sum::<f32>() > 0.0);
     assert!(frames.iter().all(|f| f.zoom == 1.0));
-    // 右上の道具: ＋・－・囲んで拡大・全体（右上から 8 px 内側に、幅 22・22・22・44、間 2）
-    let y = r.top() + 8.0 + 11.0;
+    // 右下の道具: ＋・－・囲んで拡大・全体（右下から 8 px 内側に、幅 22・22・22・44、間 2）
+    let y = r.bottom() - 8.0 - 11.0;
     let x0 = r.right() - 8.0 - (22.0 * 3.0 + 44.0 + 6.0);
     let at = |i: usize| Pos2::new(x0 + 24.0 * i as f32 + 11.0, y);
     let clicked = |b: &mut Bench, p: Pos2| {
@@ -378,4 +396,198 @@ fn pan_zoom_box_and_buttons() {
         "{rest:?}"
     );
     assert!(!boxing.get());
+}
+
+/// 解析のグラフ（plot_tools::nav）: 枠の中のホイールは両方の軸、横軸・縦軸の目盛りの上のホイールはその軸だけ拡大し、
+/// 右ドラッグは移動（囲んで拡大ではない）、ダブルクリックで全体に戻る
+#[test]
+fn plot_nav_axis_wheel_and_drag() {
+    use egui_plot::{Line, Plot, PlotBounds};
+    let mut b = Bench::new();
+    let bounds = Cell::new(None::<PlotBounds>);
+    let frame = Cell::new(Rect::NOTHING);
+    let body = |ui: &mut Ui| {
+        let plot = Plot::new("nav_test")
+            .width(400.0)
+            .height(300.0)
+            .x_axis_label("x")
+            .y_axis_label("y");
+        let r = crate::plot_tools::nav(ui, plot, true, |p| {
+            p.line(Line::new(vec![[0.0, 0.0], [10.0, 5.0]]));
+        });
+        bounds.set(Some(*r.transform.bounds()));
+        frame.set(*r.transform.frame());
+    };
+    b.frame(vec![], &body);
+    b.frame(vec![], &body);
+    let start = bounds.get().unwrap();
+    let fr = frame.get();
+    // Ctrl（⌘）＋ホイール（素のホイールはパネルのスクロールに残す）
+    let wheel_with = |b: &mut Bench, at: Pos2, mods: Modifiers| {
+        b.t += 1.0;
+        b.mods = mods;
+        b.frame(vec![Event::PointerMoved(at)], &body);
+        b.frame(
+            vec![Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0.0, 120.0),
+                modifiers: mods,
+            }],
+            &body,
+        );
+        for _ in 0..12 {
+            b.frame(vec![], &body);
+        }
+        b.mods = Modifiers::NONE;
+        bounds.get().unwrap()
+    };
+    let plain = wheel_with(&mut b, fr.center(), Modifiers::NONE);
+    assert_eq!(plain, start, "素のホイールでは拡大しない");
+    let wheel = |b: &mut Bench, at: Pos2| wheel_with(b, at, Modifiers::COMMAND);
+    // 横軸の目盛りの上: 横だけ
+    let x_only = wheel(&mut b, egui::pos2(fr.center().x, fr.bottom() + 8.0));
+    assert!(x_only.width() < start.width() * 0.95, "{x_only:?}");
+    assert!((x_only.height() - start.height()).abs() < 1e-9);
+    // 縦軸の目盛りの上: 縦だけ
+    let y_only = wheel(&mut b, egui::pos2(fr.left() - 8.0, fr.center().y));
+    assert!((y_only.width() - x_only.width()).abs() < 1e-9);
+    assert!(y_only.height() < x_only.height() * 0.95);
+    // 枠の中: 両方
+    let both = wheel(&mut b, fr.center());
+    assert!(both.width() < y_only.width() * 0.95 && both.height() < y_only.height() * 0.95);
+    // 右ドラッグは移動（範囲の幅は変わらない）
+    let at = fr.center();
+    b.t += 1.0;
+    b.frame(vec![Event::PointerMoved(at)], &body);
+    for (pressed, p) in [(true, at), (false, at + Vec2::new(60.0, 0.0))] {
+        if !pressed {
+            for k in 1..=4 {
+                b.frame(
+                    vec![Event::PointerMoved(at + Vec2::new(15.0 * k as f32, 0.0))],
+                    &body,
+                );
+            }
+        }
+        b.frame(
+            vec![Event::PointerButton {
+                pos: p,
+                button: PointerButton::Secondary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            }],
+            &body,
+        );
+    }
+    b.frame(vec![], &body);
+    let moved = bounds.get().unwrap();
+    assert!((moved.width() - both.width()).abs() < 1e-6 * both.width());
+    assert!(
+        moved.min()[0] < both.min()[0],
+        "右へドラッグすると左の値が見える"
+    );
+    // ダブルクリックで全体
+    b.t += 1.0;
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            b.frame(
+                vec![Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: Modifiers::NONE,
+                }],
+                &body,
+            );
+        }
+    }
+    b.frame(vec![], &body);
+    b.frame(vec![], &body);
+    let fit = bounds.get().unwrap();
+    assert!(
+        (fit.width() - start.width()).abs() < 1e-6 * start.width(),
+        "{fit:?} {start:?}"
+    );
+
+    // 横軸の目盛りの帯の上のドラッグ: 横だけ動く
+    let band = egui::pos2(fr.center().x, fr.bottom() + 8.0);
+    b.t += 1.0;
+    b.frame(vec![Event::PointerMoved(band)], &body);
+    b.frame(
+        vec![Event::PointerButton {
+            pos: band,
+            button: PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        }],
+        &body,
+    );
+    for k in 1..=4 {
+        b.frame(
+            vec![Event::PointerMoved(
+                band + Vec2::new(10.0 * k as f32, -5.0 * k as f32),
+            )],
+            &body,
+        );
+    }
+    b.frame(
+        vec![Event::PointerButton {
+            pos: band + Vec2::new(40.0, -20.0),
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        }],
+        &body,
+    );
+    b.frame(vec![], &body);
+    let dragged = bounds.get().unwrap();
+    assert!(dragged.min()[0] < fit.min()[0], "{dragged:?} {fit:?}");
+    assert!(
+        (dragged.min()[1] - fit.min()[1]).abs() < 1e-9,
+        "縦は動かない"
+    );
+    assert!((dragged.width() - fit.width()).abs() < 1e-6 * fit.width());
+
+    // Ctrl+左ドラッグで囲んだ所が範囲になる（縦横は別）
+    let before = bounds.get().unwrap();
+    b.mods = Modifiers::COMMAND;
+    let (p0, p1) = (
+        fr.center() - Vec2::new(80.0, 20.0),
+        fr.center() + Vec2::new(40.0, 60.0),
+    );
+    let pz = Cell::new(None);
+    let body2 = |ui: &mut Ui| {
+        body(ui);
+        pz.set(Some(super::PanZoom {
+            zoom: 1.0,
+            at: None,
+            pan: Vec2::ZERO,
+            reset: false,
+            area: None,
+        }));
+    };
+    left_drag(&mut b, p0, p1, &pz, &body2);
+    b.mods = Modifiers::NONE;
+    b.frame(vec![], &body);
+    let boxed = bounds.get().unwrap();
+    let rx = (p1.x - p0.x) as f64 / fr.width() as f64;
+    let ry = (p1.y - p0.y) as f64 / fr.height() as f64;
+    assert!(
+        (boxed.width() / before.width() - rx).abs() < 0.02,
+        "{boxed:?}"
+    );
+    assert!(
+        (boxed.height() / before.height() - ry).abs() < 0.02,
+        "{boxed:?}"
+    );
+}
+
+/// 図・グラフの道具は右下（右上は egui_plot の凡例）
+#[test]
+fn zoom_tools_sit_bottom_right() {
+    let r = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+    let t = super::tool_rects(r);
+    assert!(!t.is_empty());
+    assert!(t
+        .iter()
+        .all(|(_, b)| b.bottom() > 280.0 && b.right() <= r.right()));
 }

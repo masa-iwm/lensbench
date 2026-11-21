@@ -416,7 +416,7 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
             .filter(|q| q[0] >= lo - m && q[0] <= hi + m)
             .collect()
     };
-    Plot::new(id)
+    let plot = Plot::new(id)
         .height(140.0)
         .legend(Legend::default())
         .include_y(0.0)
@@ -424,23 +424,22 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
         .include_x(lo)
         .include_x(hi)
         .x_axis_label(tr("Wavelength [nm]"))
-        .y_axis_label(tr("Transmission"))
-        .allow_scroll(false)
-        .show(ui, |pl| {
+        .y_axis_label(tr("Transmission"));
+    crate::plot_tools::nav(ui, plot, true, |pl| {
+        pl.line(
+            Line::new(clip(p0))
+                .color(theme::series(0))
+                .name(trf("{}°", &[&0])),
+        );
+        if !p45.is_empty() {
             pl.line(
-                Line::new(clip(p0))
-                    .color(theme::series(0))
-                    .name(trf("{}°", &[&0])),
+                Line::new(clip(p45))
+                    .color(theme::series(1))
+                    .style(LineStyle::Dashed { length: 6.0 })
+                    .name(trf("{}°", &[&45])),
             );
-            if !p45.is_empty() {
-                pl.line(
-                    Line::new(clip(p45))
-                        .color(theme::series(1))
-                        .style(LineStyle::Dashed { length: 6.0 })
-                        .name(trf("{}°", &[&45])),
-                );
-            }
-        });
+        }
+    });
 }
 
 /// 膜の名前の欄（鏡・BS の分ける面）

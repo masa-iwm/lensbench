@@ -937,8 +937,7 @@ fn comps_ui(
     let nom = d.nominal;
     let plot = Plot::new("tol_comp_plot")
         .height(180.0)
-        .x_axis_label(d.name.clone())
-        .allow_scroll(false);
+        .x_axis_label(d.name.clone());
     if *cdf {
         let mut v = d.values.clone();
         v.sort_by(|a, b| a.total_cmp(b));
@@ -948,7 +947,7 @@ fn comps_ui(
             .enumerate()
             .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
             .collect();
-        plot.y_axis_label(tr("Cumulative [%]")).show(ui, |pu| {
+        crate::plot_tools::nav(ui, plot.y_axis_label(tr("Cumulative [%]")), true, |pu| {
             pu.line(Line::new(pts).name(tr("Cumulative distribution")));
             if let Some(x) = nom {
                 pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
@@ -959,7 +958,7 @@ fn comps_ui(
             .into_iter()
             .map(|(x0, w, c)| egui_plot::Bar::new(x0 + w / 2.0, c as f64).width(w))
             .collect();
-        plot.y_axis_label(tr("Trials")).show(ui, |pu| {
+        crate::plot_tools::nav(ui, plot.y_axis_label(tr("Trials")), true, |pu| {
             pu.bar_chart(egui_plot::BarChart::new(bars).name(tr("Histogram")));
             if let Some(x) = nom {
                 pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
@@ -1057,17 +1056,16 @@ fn result_ui(
             .enumerate()
             .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
             .collect();
-        Plot::new("tol_cdf")
+        let plot = Plot::new("tol_cdf")
             .height(180.0)
             .x_axis_label(tr("Merit function"))
-            .y_axis_label(tr("Cumulative [%]"))
-            .allow_scroll(false)
-            .show(ui, |pu| {
-                pu.line(Line::new(pts).name(tr("Cumulative distribution")));
-                if let Some(x) = nom_merit {
-                    pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
-                }
-            });
+            .y_axis_label(tr("Cumulative [%]"));
+        crate::plot_tools::nav(ui, plot, true, |pu| {
+            pu.line(Line::new(pts).name(tr("Cumulative distribution")));
+            if let Some(x) = nom_merit {
+                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
+            }
+        });
     }
     comps_ui(ui, r, sel, as_cdf, weak);
     // 感度（悪い順）

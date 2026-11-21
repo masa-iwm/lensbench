@@ -408,7 +408,7 @@ no coating	コーティングなし
 View plane	表示面
 Unfolded	展開
 Sections after mirror/BS folds laid out along the original axis (moves along the axis only)	ミラー・BS で折れた後の区間を、折れる前の光軸の延長に並べ直した図（光軸に沿う操作だけ）
-Drag to rotate, Shift- or right-drag to pan, wheel to zoom, double-click to reset	ドラッグで回す・Shift か右ドラッグで動かす・ホイールで拡大・ダブルクリックで戻す
+Drag to rotate, Shift- or right-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset	ドラッグで回す・Shift か右ドラッグで動かす・Ctrl（Mac は ⌘）＋ホイールかピンチで拡大・ダブルクリックで戻す
 The CLI arguments as JSON (_ in keys becomes -; see analyze in docs/serve.md). Overrides the fields	CLI と同じ引数を JSON で（キーの _ は -。docs/serve.md の analyze）。欄の値より優先
 Save JSON…	JSON に保存…
 Load JSON…	JSON を読み込む…
@@ -1107,10 +1107,8 @@ When off, the top bar acts as the title bar (drag to move, double-click to maxim
 Position too	位置も
 Also lock the position (drag, keys, decenter, tilt) and the air after	位置（図のドラッグ・キー・偏心・チルト）と後の空気も変えられないようにする
 The gap after an element locked with its position cannot change	位置もロックした要素の後の間隔は変えられません
-Drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, right-drag a box to zoom in, double-click to fit	ドラッグで移動、Ctrl（Mac は ⌘）＋ホイールかピンチで拡大縮小、右ドラッグで囲んだ所を拡大、ダブルクリックで全体
 Fit	全体
 Fit all (also Home, or double-click an empty spot)	全体を表示（Home・何も無い所のダブルクリックでも）
-Fit all (also double-click)	全体を表示（ダブルクリックでも）
 Zoom in	拡大
 Zoom out	縮小
 Zoom to area: drag a box (also Ctrl+drag, ⌘+drag on Mac)	囲んで拡大: 枠をドラッグ（Ctrl＋ドラッグでも。Mac は ⌘＋ドラッグ）

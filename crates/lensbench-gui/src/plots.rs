@@ -595,10 +595,10 @@ fn mtf_curves(
     let mut fields: Vec<usize> = now.iter().map(|x| x.0).collect();
     fields.dedup();
     let has_prev = prev.is_some();
-    // 凡例は図の外（下）に、線の見本と視野の値で。順は視野 → 子午・球欠に固定。グラフの上の道具の行の分も引く
+    // 凡例は図の外（下）に、線の見本と視野の値で。順は視野 → 子午・球欠に固定。凡例の行の分を引く
     // （引かないと凡例がパネルの下に押し出されて見えない）
     let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
-    let legend_h = crate::plot_tools::bar_height(ui) + row * if has_prev { 2.0 } else { 1.0 };
+    let legend_h = row * if has_prev { 2.0 } else { 1.0 };
     let plot = Plot::new((key, id))
         .include_y(0.0)
         .include_y(1.0)

@@ -91,9 +91,10 @@ pub(crate) fn json_num(v: &Value) -> Option<f64> {
     }
 }
 
-/// 図の上の拡大・移動の操作（1 フレーム分）。図ごとに同じ操作にそろえる: ホイール（ピンチ）＝ポインタの所で
-/// 拡大縮小、中・右ドラッグと Space+左ドラッグ＝移動、ダブルクリック・Home＝全体。右上の道具（ポインタが図の上に
-/// あるとき）＝＋・－（押すたびに [`ZOOM_STEP`] 倍）・囲んで拡大・全体。囲んで拡大は Ctrl（Mac は ⌘）＋左ドラッグでも
+/// 図・グラフの上の拡大・移動の操作（1 フレーム分）。図（レイアウト・スポット・ガラスマップ）も解析のグラフも同じ操作:
+/// Ctrl（Mac は ⌘）＋ホイールかピンチ＝ポインタの所で拡大縮小（素のホイールはパネルのスクロール）、中・右ドラッグと
+/// Space+左ドラッグ＝移動、ダブルクリック・Home＝全体。右下の道具（ポインタが図の上にあるとき。右上はグラフの凡例）＝
+/// ＋・－（押すたびに [`ZOOM_STEP`] 倍）・囲んで拡大・全体。囲んで拡大は Ctrl（⌘）＋左ドラッグでも
 ///
 /// 図は `pan` を先に足し、それから `at` を中心に `zoom` 倍する（囲んで拡大は、囲んだ所の中心を図の中心へ動かして拡大する）
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -141,7 +142,7 @@ fn box_state(ui: &Ui, resp: &Response) -> BoxZoom {
     ui.data(|d| d.get_temp(box_id(resp)).unwrap_or_default())
 }
 
-/// 道具のボタンの場所（右上から左へ）。図が狭すぎるときは出さない
+/// 道具のボタンの場所（右下から左へ。右上はグラフの凡例）。図が狭すぎるときは出さない
 fn tool_rects(rect: egui::Rect) -> Vec<(Tool, egui::Rect)> {
     const H: f32 = 22.0;
     const GAP: f32 = 2.0;
@@ -159,7 +160,8 @@ fn tool_rects(rect: egui::Rect) -> Vec<(Tool, egui::Rect)> {
     widths
         .iter()
         .map(|&(t, w)| {
-            let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + 8.0), egui::vec2(w, H));
+            let r =
+                egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - 8.0 - H), egui::vec2(w, H));
             x += w + GAP;
             (t, r)
         })
@@ -201,8 +203,8 @@ pub(crate) fn zoom_to_box(rect: egui::Rect, b: egui::Rect) -> Option<PanZoom> {
 }
 
 /// `resp`（click_and_drag で取った図の場所）の上の操作を読む。`left_pans` は左ドラッグでも移動する図
-/// （ガラスマップなど、左ドラッグにほかの役が無いもの）。ホイールを使ったら外のスクロールに渡さない。
-/// 右上の道具と囲んだ枠は、図を描いた後に [`paint_zoom_tools`] で描く
+/// （ガラスマップ・グラフなど、左ドラッグにほかの役が無いもの）。素のホイールは外のスクロールに残し、Ctrl（⌘）＋ホイール・
+/// ピンチで拡大したら外に渡さない。右下の道具と囲んだ枠は、図を描いた後に [`paint_zoom_tools`] で描く
 pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
     let mut out = PanZoom {
         zoom: 1.0,
@@ -268,21 +270,29 @@ pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
     out.reset |=
         resp.double_clicked() || (resp.hovered() && ui.input(|i| i.key_pressed(egui::Key::Home)));
     if let Some(p) = resp.hover_pos() {
-        let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-        let f = (scroll * 0.003).exp() * pinch;
-        if (f - 1.0).abs() > 1e-6 {
+        if let Some(f) = take_wheel_zoom(ui) {
             out.zoom = f;
             out.at = Some(p);
-            ui.ctx().input_mut(|i| {
-                i.smooth_scroll_delta = Vec2::ZERO;
-                i.raw_scroll_delta = Vec2::ZERO;
-            });
         }
     }
     if (st.armed || st.drag.is_some()) && ui.rect_contains_pointer(rect) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     out
+}
+
+/// このフレームの Ctrl（⌘）＋ホイールとピンチの拡大の倍率（素のホイールは読まず外のスクロールに残す）。拡大したら外に渡さない
+pub(crate) fn take_wheel_zoom(ui: &Ui) -> Option<f32> {
+    // Ctrl（⌘）＋ホイールとピンチは egui が zoom_delta にする（そのときスクロールの量は 0）
+    let f = ui.input(|i| i.zoom_delta());
+    if (f - 1.0).abs() <= 1e-6 {
+        return None;
+    }
+    ui.ctx().input_mut(|i| {
+        i.smooth_scroll_delta = Vec2::ZERO;
+        i.raw_scroll_delta = Vec2::ZERO;
+    });
+    Some(f)
 }
 
 fn tool_tip(t: Tool) -> &'static str {

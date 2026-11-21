@@ -1243,11 +1243,10 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
         .collect();
     // 縦軸の名前は図の上に書く（縦書きの名前は図の高さより長く、上の行に重なる）
     ui.label(RichText::new(tr("Merit (log10)")).small().weak());
-    Plot::new("opt_history")
+    let plot = Plot::new("opt_history")
         .height(140.0)
-        .x_axis_label(tr("Iteration"))
-        .allow_scroll(false)
-        .show(ui, |pu| pu.line(Line::new(pts)));
+        .x_axis_label(tr("Iteration"));
+    crate::plot_tools::nav(ui, plot, true, |pu| pu.line(Line::new(pts)));
 }
 
 /// 評価関数の値の倍率と単位。項がスポット（と重心）だけなら µm、波面・OPD・Zernike だけなら波、ほかは単位なし

@@ -1,12 +1,7 @@
-//! 解析グラフの操作: 拡大・縮小・全体表示のボタンと、カーソルの横軸の値での各曲線の値。
-//!
-//! グラフ（egui_plot）は、ドラッグで移動、Ctrl（Mac は ⌘）＋ホイールかピンチで拡大縮小、
-//! 右ドラッグで囲んだ所を拡大、ダブルクリックで全体表示。ホイールだけはパネルのスクロールに使う。
+//! 解析グラフの操作（図と同じ拡大・移動・囲んで拡大・全体、目盛りの上でその軸だけ）と、カーソルの横軸の値での各曲線の値。
 
-use egui::{Color32, RichText, Ui};
-use egui_plot::{Plot, PlotPoint, PlotUi};
-
-use crate::i18n::tr;
+use egui::{Color32, Ui};
+use egui_plot::{Plot, PlotBounds, PlotPoint, PlotResponse, PlotTransform, PlotUi};
 
 /// カーソルの値を出す曲線
 pub(crate) struct Series {
@@ -43,15 +38,140 @@ pub(crate) fn interp(pts: &[[f64; 2]], x: f64) -> Option<f64> {
     })
 }
 
+/// 次のフレームのグラフに当てる範囲の変更（egui_plot の範囲は描く関数の中でしか変えられないので、
+/// 描いた後に読んだ操作を次のフレームで当てる）
 #[derive(Clone, Copy)]
-enum Cmd {
-    Zoom(f32),
-    Reset,
+enum Pending {
+    Bounds(PlotBounds),
+    Fit,
 }
 
-/// [`show`] がグラフの上に置く道具の行の高さ（グラフの高さをパネルの残りから決めるときに引く）
-pub(crate) fn bar_height(ui: &Ui) -> f32 {
-    ui.spacing().interact_size.y + ui.spacing().item_spacing.y
+fn pending_id(resp: &egui::Response) -> egui::Id {
+    resp.id.with("plot_nav")
+}
+
+/// グラフ（egui_plot）を図（[`crate::widgets::pan_zoom`]）と同じ操作で描く: Ctrl（⌘）＋ホイールかピンチ＝ポインタの所で
+/// 拡大縮小（素のホイールはパネルのスクロール）、左・中・右ドラッグと Space+左ドラッグ＝移動、
+/// 右下の道具（＋・－・囲んで拡大・全体。右上は凡例）、Ctrl（⌘）+左ドラッグ＝囲んで拡大、ダブルクリック・Home＝全体。
+/// `free_axes` なら横軸・縦軸の目盛りの上の Ctrl（⌘）＋ホイールでその軸だけ拡大縮小し、
+/// 目盛りの上のドラッグでその軸だけ動かす（縦横比を固定した図は false）。egui_plot の既定の操作は切る
+pub fn nav<R>(
+    ui: &mut Ui,
+    plot: Plot,
+    free_axes: bool,
+    body: impl FnOnce(&mut PlotUi) -> R,
+) -> PlotResponse<R> {
+    let plot = plot
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_scroll(false)
+        .allow_boxed_zoom(false)
+        .allow_double_click_reset(false);
+    let scope = ui.scope(|ui| {
+        plot.show(ui, |p| {
+            let id = pending_id(p.response());
+            let pending = p.ctx().data_mut(|d| {
+                let v = d.get_temp::<Pending>(id);
+                d.remove::<Pending>(id);
+                v
+            });
+            match pending {
+                Some(Pending::Bounds(b)) => p.set_plot_bounds(b),
+                Some(Pending::Fit) => p.set_auto_bounds(true),
+                None => {}
+            }
+            body(p)
+        })
+    });
+    let (outer, r) = (scope.response.rect, scope.inner);
+    // 道具は右下に（egui_plot の凡例は右上、カーソルの値は左上に出る）。拡大縮小は Ctrl（⌘）＋ホイールかピンチ
+    let pz = crate::widgets::pan_zoom(ui, &r.response, true);
+    let mut t = r.transform;
+    let before = *t.bounds();
+    let mut pending = if pz.reset { Some(Pending::Fit) } else { None };
+    if pending.is_none() {
+        if let Some(a) = pz.area {
+            // 囲んだ枠をそのまま範囲に（縦横を別に決める。縦横比を固定した図は egui_plot が広げて合わせる）
+            let p0 = t.value_from_position(a.left_bottom());
+            let p1 = t.value_from_position(a.right_top());
+            t.set_bounds(PlotBounds::from_min_max(
+                [p0.x.min(p1.x), p0.y.min(p1.y)],
+                [p0.x.max(p1.x), p0.y.max(p1.y)],
+            ));
+        } else {
+            if pz.pan != egui::Vec2::ZERO {
+                t.translate_bounds((-pz.pan.x as f64, -pz.pan.y as f64));
+            }
+            if let Some(at) = pz.at {
+                t.zoom(egui::Vec2::splat(pz.zoom), at);
+            }
+        }
+        if free_axes {
+            axis_nav(ui, &r.response, outer, &mut t);
+        }
+        if *t.bounds() != before && t.bounds().is_valid() {
+            pending = Some(Pending::Bounds(*t.bounds()));
+        }
+    }
+    if let Some(pd) = pending {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(pending_id(&r.response), pd));
+        ui.ctx().request_repaint();
+    }
+    crate::widgets::paint_zoom_tools(ui, &r.response);
+    r
+}
+
+/// 目盛りの帯（グラフの枠の下＝横軸、左＝縦軸）の上のホイールとドラッグ: その軸だけ拡大縮小・移動
+fn axis_nav(ui: &Ui, resp: &egui::Response, outer: egui::Rect, t: &mut PlotTransform) {
+    let fr = resp.rect;
+    let bands = [
+        (
+            0usize,
+            egui::Rect::from_min_max(
+                egui::pos2(fr.left(), fr.bottom()),
+                egui::pos2(fr.right(), outer.bottom()),
+            ),
+        ),
+        (
+            1usize,
+            egui::Rect::from_min_max(
+                egui::pos2(outer.left(), fr.top()),
+                egui::pos2(fr.left(), fr.bottom()),
+            ),
+        ),
+    ];
+    for (axis, band) in bands {
+        if band.width() < 1.0 || band.height() < 1.0 {
+            continue;
+        }
+        let r = ui.interact(band, resp.id.with(("axis_nav", axis)), egui::Sense::drag());
+        let r = r.on_hover_cursor(if axis == 0 {
+            egui::CursorIcon::ResizeHorizontal
+        } else {
+            egui::CursorIcon::ResizeVertical
+        });
+        if r.dragged() {
+            let d = r.drag_delta();
+            let d = if axis == 0 {
+                (-d.x as f64, 0.0)
+            } else {
+                (0.0, -d.y as f64)
+            };
+            t.translate_bounds(d);
+        }
+        if let Some(p) = r.hover_pos() {
+            if let Some(f) = crate::widgets::take_wheel_zoom(ui) {
+                let z = if axis == 0 {
+                    egui::vec2(f, 1.0)
+                } else {
+                    egui::vec2(1.0, f)
+                };
+                // ポインタの位置の値を中心に（帯の外の座標は枠の端に寄せて読む）
+                t.zoom(z, fr.clamp(p));
+            }
+        }
+    }
 }
 
 /// グラフを描く。body で線を描き、カーソルの値を出す曲線を series に足す。x_unit はカーソルの値の横軸の単位
@@ -62,48 +182,17 @@ pub(crate) fn show(
     body: impl FnOnce(&mut PlotUi, &mut Vec<Series>),
 ) {
     let weak = crate::theme::weak_text(ui.visuals());
-    let mut cmd = None;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        if ui.small_button("＋").on_hover_text(tr("Zoom in")).clicked() {
-            cmd = Some(Cmd::Zoom(1.25));
-        }
-        if ui.small_button("－").on_hover_text(tr("Zoom out")).clicked() {
-            cmd = Some(Cmd::Zoom(0.8));
-        }
-        if ui
-            .small_button(tr("Fit"))
-            .on_hover_text(tr("Fit all (also double-click)"))
-            .clicked()
-        {
-            cmd = Some(Cmd::Reset);
-        }
-        ui.label(RichText::new("ⓘ").small().color(weak)).on_hover_text(tr(
-            "Drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, right-drag a box to zoom in, double-click to fit",
-        ));
-    });
     let mut series = Vec::new();
     // 既定の近くの点の座標の札は出さない（カーソルの値の一覧と重なる）
-    let r = plot
-        .allow_scroll(false)
-        .label_formatter(|_, _| String::new())
-        .show(ui, |p| {
-            body(p, &mut series);
-            match cmd {
-                Some(Cmd::Zoom(f)) => {
-                    let c = p.plot_bounds().center();
-                    p.zoom_bounds(egui::Vec2::splat(f), c);
-                }
-                Some(Cmd::Reset) => p.set_auto_bounds(true),
-                None => {}
-            }
-            // 縦線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
-            p.response()
-                .hovered()
-                .then(|| p.pointer_coordinate())
-                .flatten()
-                .map(|q: PlotPoint| q.x)
-        });
+    let r = nav(ui, plot.label_formatter(|_, _| String::new()), true, |p| {
+        body(p, &mut series);
+        // 縦線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
+        p.response()
+            .hovered()
+            .then(|| p.pointer_coordinate())
+            .flatten()
+            .map(|q: PlotPoint| q.x)
+    });
     if let Some(x) = r.inner.filter(|_| !series.is_empty()) {
         let sx = r.transform.position_from_point_x(x);
         let fr = *r.transform.frame();

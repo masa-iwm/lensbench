@@ -388,13 +388,12 @@ pub fn heatmap(
     let (xl, yl, vl) = labels;
     let vl = vl.to_string();
     ui.horizontal(|ui| {
-        Plot::new(("heat", id))
+        let plot = Plot::new(("heat", id))
             .data_aspect(1.0)
             .height(height)
             .width((ui.available_width() - 72.0).max(80.0))
             .x_axis_label(xl)
             .y_axis_label(yl)
-            .allow_scroll(false)
             .show_grid(false)
             .label_formatter(|_, p| match g.at(p.x, p.y) {
                 Some(z) => format!(
@@ -405,14 +404,15 @@ pub fn heatmap(
                     fmt_sig(z, 4)
                 ),
                 None => format!("x {}\ny {}", fmt_sig(p.x, 4), fmt_sig(p.y, 4)),
-            })
-            .show(ui, |p| {
-                p.image(PlotImage::new(
-                    tex.id(),
-                    PlotPoint::new((x0 + x1) / 2.0, (y0 + y1) / 2.0),
-                    [(x1 - x0) as f32, (y1 - y0) as f32],
-                ));
             });
+        // 縦横比を固定した図なので、目盛りの上でその軸だけの拡大はしない
+        crate::plot_tools::nav(ui, plot, false, |p| {
+            p.image(PlotImage::new(
+                tex.id(),
+                PlotPoint::new((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+                [(x1 - x0) as f32, (y1 - y0) as f32],
+            ));
+        });
         colorbar(ui, c, lo, hi, height);
     });
 }
@@ -921,16 +921,15 @@ fn zernike(ui: &mut Ui, id: u64, v: &ZernikeOut) -> bool {
                 .name(fname(f as usize))
         })
         .collect();
-    Plot::new(("zern", id))
+    let plot = Plot::new(("zern", id))
         .legend(Legend::default())
         .x_axis_label(tr("Term (Noll / Fringe index)"))
-        .y_axis_label(tr("Coefficient [waves]"))
-        .allow_scroll(false)
-        .show(ui, |p| {
-            for c in charts {
-                p.bar_chart(c);
-            }
-        });
+        .y_axis_label(tr("Coefficient [waves]"));
+    crate::plot_tools::nav(ui, plot, true, |p| {
+        for c in charts {
+            p.bar_chart(c);
+        }
+    });
     true
 }
 
