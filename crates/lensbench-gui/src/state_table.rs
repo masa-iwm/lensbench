@@ -107,7 +107,7 @@ pub(crate) enum Item {
     Comment(usize),
 }
 
-const PLACE: [&str; 5] = ["dx", "dy", "tx", "ty", "tz"];
+pub(crate) const PLACE: [&str; 5] = ["dx", "dy", "tx", "ty", "tz"];
 
 /// 状態 st（None は基本）での行の値
 #[derive(Debug, Clone, PartialEq)]
@@ -155,7 +155,7 @@ impl SysQ {
         }
     }
 
-    fn label(self) -> String {
+    pub(crate) fn label(self) -> String {
         match self {
             SysQ::Wave(i) => trf("Wavelength {} [µm]", &[&(i + 1)]),
             SysQ::WaveW(i) => trf("Wavelength {} weight", &[&(i + 1)]),
@@ -417,7 +417,7 @@ struct Cx<'a> {
 }
 
 /// 面の値の名前の表示（idx は並びの値の何番目か）
-fn field_label(field: &str, idx: Option<usize>) -> String {
+pub(crate) fn field_label(field: &str, idx: Option<usize>) -> String {
     let field = field.strip_prefix(CB_FIELD).unwrap_or(field);
     match (field, idx) {
         ("cb", Some(i)) => PLACE.get(i).copied().unwrap_or_default().to_string(),

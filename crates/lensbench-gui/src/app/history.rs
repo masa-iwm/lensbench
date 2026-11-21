@@ -4,10 +4,16 @@
 use super::*;
 use lensbench_core::history::History;
 
+#[path = "hist_names.rs"]
+pub(super) mod hist_names;
+pub(crate) use hist_names::Step;
+
 /// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前
 #[derive(Default)]
 pub(super) struct ComboHist {
-    hist: History<Combo>,
+    hist: History<Combo, Step>,
+    /// 次に積む段の操作の種類（[`App::update`] が操作の前に決める。積んだら・変わらなければ消す）
+    pub(super) kind: Option<&'static str>,
     /// 最後に段に積んだ（落ち着いた）組合せ
     last: Option<Combo>,
     /// last が今の組合せと同じと確かめた版（版が同じ間は比べない）
@@ -84,12 +90,13 @@ impl ComboHist {
 
     /// 前の落ち着いた組合せを積む（変わっていなければ何もしない）
     pub(super) fn commit(&mut self, cur: &Combo) {
+        let kind = self.kind.take();
         if self.last.as_ref() == Some(cur) {
             return;
         }
         self.last_at.set(None);
         if let Some(last) = self.last.replace(cur.clone()) {
-            let what = combo_change(&last, cur);
+            let what = hist_names::describe(&last, cur, kind);
             self.hist.record(last, what);
         }
     }
@@ -113,7 +120,7 @@ impl ComboHist {
     }
 
     /// 段の名前（元に戻す段は新しい順、やり直す段は次の順）
-    pub(super) fn list(&self, back: bool) -> Vec<String> {
+    pub(super) fn list(&self, back: bool) -> Vec<Step> {
         self.hist.labels(back).cloned().collect()
     }
 
@@ -331,14 +338,14 @@ impl Core {
     }
 
     /// 元に戻す・やり直す段の名前（元に戻す段は新しい順、やり直す段は次の順）。文書の中の段の後に、文書を替えた段
-    pub(super) fn undo_list(&self, back: bool) -> Vec<String> {
+    pub(super) fn undo_list(&self, back: bool) -> Vec<Step> {
         let mut out = self.combo_hist.list(back);
         let doc = if back || self.doc_redo_ok() {
             self.docs.hist.top(back)
         } else {
             None
         };
-        out.extend(doc.map(|d| d.1.clone()));
+        out.extend(doc.map(|d| Step::doc(&d.1)));
         out
     }
 
@@ -403,7 +410,11 @@ mod tests {
         let r = at(&c);
         h.track(&c, r, false, None);
         assert_eq!(h.list(true).len(), 2);
-        assert_eq!(h.list(true)[0], "Combination settings");
+        assert!(
+            h.list(true)[0].title.contains("name"),
+            "{:?}",
+            h.list(true)[0]
+        );
         let b = h.step(&c, true, 1).unwrap();
         assert_eq!(b.name, "ab");
         let b = h.step(&b, true, 1).unwrap();

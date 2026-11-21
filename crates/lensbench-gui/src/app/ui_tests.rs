@@ -747,6 +747,10 @@ fn surface_type_change_undoes_in_one_step() {
         "{:?}",
         h.state().c.combo_hist.list(true)
     );
+    // 段の名前: 操作の種類と、どの面の何がどの値からどの値へ
+    let top = h.state().c.combo_hist.list(true)[0].clone();
+    assert!(top.title.starts_with("Lens Data: "), "{top:?}");
+    assert!(top.tip().contains("EVENASPH"), "{top:?}");
     h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert_eq!(h.state().c.doc.combo, c0, "{}", h.state().test_state());

@@ -1703,6 +1703,16 @@ Replay stopped at operation {} of {}: {}	{} / {} 番目の操作で流し直し�
 The recorded change did not change the document	記録した書き換えで文書が変わらなかった
 Replayed {} recorded operations	記録した操作 {} 件を流し直した
 {} must be finite	{} は有限の値に
+{} s ago	{} 秒前
+{} min ago	{} 分前
+{} h ago	{} 時間前
+{} and {} more	{} ほか {} か所
+{} more	ほか {} か所
+Element {} ({})	要素 {}（{}）
+surface {} {}	面 {} {}
+Current state	今の状態
+States	状態の一覧
+{} items	{} 個
 Aberrations	収差
 Ray fan	光線収差図
 OPD fan	OPD ファン

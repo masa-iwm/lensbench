@@ -240,8 +240,8 @@ impl App {
                 {
                     let next = self.c.undo_list(back).into_iter().next();
                     let tip = match (&next, back) {
-                        (Some(n), true) => trf("Undo ({}): {}", &[&key, n]),
-                        (Some(n), false) => trf("Redo ({}): {}", &[&key, n]),
+                        (Some(n), true) => trf("Undo ({}): {}", &[&key, &n.tip()]),
+                        (Some(n), false) => trf("Redo ({}): {}", &[&key, &n.tip()]),
                         (None, true) => tr("Nothing to undo").to_string(),
                         (None, false) => tr("Nothing to redo").to_string(),
                     };
@@ -477,7 +477,18 @@ impl App {
                     ui.menu_button(title, |ui| {
                         egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                             for (i, l) in list.iter().enumerate() {
-                                if ui.button(format!("{}. {l}", i + 1)).clicked() {
+                                // 文書を替えた段（新規・開く）の前で区切る（その先は前の文書）
+                                if l.doc && i > 0 {
+                                    ui.separator();
+                                }
+                                let label = format!("{}. {}   {}", i + 1, l.title, l.age());
+                                let r = ui.button(label);
+                                let r = if l.details.len() > 1 {
+                                    r.on_hover_text(l.tip())
+                                } else {
+                                    r
+                                };
+                                if r.clicked() {
                                     ui.close_menu();
                                     *cmd = Some(Msg::Undo(back, i + 1));
                                 }

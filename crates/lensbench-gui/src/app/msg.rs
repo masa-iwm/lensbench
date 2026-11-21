@@ -297,6 +297,8 @@ impl App {
             && !matches!(&msg, Msg::Replayed(_, m) if matches!(**m, Msg::Edit(_)));
         if step {
             self.c.combo_hist.commit(&self.c.doc.combo);
+            // この操作の段の名前の頭（最適化の反映・差し替えなど）
+            self.c.combo_hist.kind = super::history::hist_names::msg_kind(&msg);
         }
         self.record_before();
         let rec = self
