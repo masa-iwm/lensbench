@@ -443,6 +443,35 @@ impl Default for Surface {
     }
 }
 
+/// 面ごとに、前後で媒質が変わる面か（玉の縁でける浮動開口を付ける面。.zmx の読込・プロジェクトの展開で同じ規則）。
+/// ガラスと空気・別のガラスの境（ガラスの名前は大文字小文字を区別しない）は true、空気どうし・同じガラスどうしは false。
+/// 座標ブレーク（媒質を持たない面）は false で、後ろの媒質は前のまま（OpticStudio 2026 R1.01 の読込の実測と同じ）。
+/// 鏡は前の媒質がガラスなら true（裏面鏡）
+pub fn medium_edges(surfaces: &[Surface]) -> Vec<bool> {
+    let same = |a: &Material, b: &Material| match (a, b) {
+        (Material::Glass(x), Material::Glass(y)) => x.eq_ignore_ascii_case(y),
+        _ => a == b,
+    };
+    let mut before = Material::Air;
+    let mut out = Vec::with_capacity(surfaces.len());
+    for (k, d) in surfaces.iter().enumerate() {
+        let after = match &d.mat {
+            Material::Mirror | Material::Inherit => before.clone(),
+            m => m.clone(),
+        };
+        out.push(
+            k > 0
+                && match &d.mat {
+                    Material::Mirror => !before.is_air(),
+                    Material::Inherit => false,
+                    _ => !same(&before, &after),
+                },
+        );
+        before = after;
+    }
+    out
+}
+
 impl Surface {
     /// 鏡（材料が [`Material::Mirror`]）
     pub fn is_mirror(&self) -> bool {

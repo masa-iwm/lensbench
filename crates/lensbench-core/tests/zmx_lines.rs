@@ -515,6 +515,74 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     assert_eq!(vig(&s), 0);
 }
 
+/// 浮動開口は前後で媒質が変わる面だけ（OpticStudio 2026 R1.01 の実測）: 座標ブレークは半直径・材料を読込で捨てるので
+/// 付かない（ガラスの中で DIAM 0 1 でも光線をけらない）。同じガラスどうしの面にも付かず、別のガラスの境には付く
+#[test]
+fn floating_aperture_only_where_the_medium_changes() {
+    use lensbench_core::surface::Aperture;
+    let g1 = "  GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0 0\n";
+    let g2 = "  GLAS ___BLANK 1 0 1.62 36.4 0 0 0 0 0 0\n";
+    let txt = |s2: &str| {
+        format!(
+            "{HEAD}SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.01\n  DISZ 2\n{g1}  DIAM 12 1 0 0 1 \"\"\n\
+SURF 2\n{s2}  DISZ 3\n\
+SURF 3\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 40\n  DIAM 12 1 0 0 1 \"\"\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        )
+    };
+    let py: Vec<f64> = (0..=20).map(|i| i as f64 / 20.0).collect();
+    let px = vec![0.0; py.len()];
+    let vig = |s: &System| -> usize {
+        let t = s
+            .try_trace(FieldSel::Index(0), &px, &py, None, None, false)
+            .unwrap();
+        t.rays.iter().filter(|r| r.vig != 0).count()
+    };
+    for (what, s2, flap) in [
+        (
+            "CB in glass, fixed 0",
+            format!("  TYPE COORDBRK\n{g1}  DIAM 0 1 0 0 1 \"\"\n"),
+            false,
+        ),
+        (
+            "CB in glass, fixed 1",
+            format!("  TYPE COORDBRK\n{g1}  DIAM 1 1 0 0 1 \"\"\n"),
+            false,
+        ),
+        (
+            "CB without glass",
+            "  TYPE COORDBRK\n  DIAM 0 1 0 0 1 \"\"\n".to_string(),
+            false,
+        ),
+        (
+            "same glass",
+            format!("  TYPE STANDARD\n  CURV 0.0\n{g1}  DIAM 1 1 0 0 1 \"\"\n"),
+            false,
+        ),
+        (
+            "another glass",
+            format!("  TYPE STANDARD\n  CURV 0.0\n{g2}  DIAM 1 1 0 0 1 \"\"\n"),
+            true,
+        ),
+    ] {
+        let s = build(&txt(&s2));
+        assert!(
+            matches!(s.surfaces[1].ap, Aperture::Floating { .. }),
+            "{what}"
+        );
+        assert!(
+            matches!(s.surfaces[3].ap, Aperture::Floating { .. }),
+            "{what}"
+        );
+        assert_eq!(
+            matches!(s.surfaces[2].ap, Aperture::Floating { .. }),
+            flap,
+            "{what}"
+        );
+        assert_eq!(vig(&s) > 0, flap, "{what}");
+    }
+}
+
 /// Odd Asphere の面のコバ厚のソルブ（アキシコン: 平面 → β1 の円錐、EDGE で中心厚を決める）
 #[test]
 fn edge_solve_on_odd_asphere() {

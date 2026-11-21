@@ -134,7 +134,7 @@ pub(super) fn glasses(raw: &Raw, opt: &LoadOptions, dirs: &[PathBuf]) -> Glasses
     Glasses { cats, map, why }
 }
 
-/// 系の開口の種類と値。OpticStudio に合わせて、玉の面に浮動開口を足す（sf を直す）
+/// 系の開口の種類と値。OpticStudio に合わせて、媒質の境の面に浮動開口を足す（sf を直す）
 pub(super) fn aperture_kind(
     raw: &Raw,
     ops: &Ops,
@@ -144,21 +144,17 @@ pub(super) fn aperture_kind(
     let Some(kind) = ApertureKind::from_os_code(satp) else {
         notimpl!("system aperture type {satp}");
     };
-    // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
-    // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。
-    // 以前は MEMA のない .zmx だけとしていた）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
-    let glass = |m: &Option<String>| {
-        m.as_deref()
-            .is_some_and(|g| !g.is_empty() && !g.eq_ignore_ascii_case("MIRROR"))
-    };
-    for k in 1..raw.surfs.len().saturating_sub(1) {
+    // OpticStudio 2026 R1 は読込で、半直径を固定した面のうち、前後で媒質が変わる面（ガラスと空気・別のガラスの境）で開口のない
+    // 面に浮動開口（FLAP）を足してける（空気どうし・同じガラスどうしの面には足さない。MEMA の行があっても足す）。座標ブレークは
+    // 半直径・材料を読込で捨てる（自動の 0、後ろの媒質は前のまま）ので足さない（2026-11-21 に 2026 R1.01 で確かめた）。
+    // 鏡は前の媒質がガラスなら足す（裏面鏡。実測していないので前からの規則のまま）。絞りの大きさで決める開口（Float By Stop
+    // Size）の絞りは瞳そのものなので除く
+    let edge = lensbench_core::surface::medium_edges(sf);
+    for k in 1..sf.len().min(raw.surfs.len()).saturating_sub(1) {
         let r = &raw.surfs[k];
-        let lens = glass(&r.glas)
-            || glass(&raw.surfs[k - 1].glas)
-            || r.model_glass.is_some()
-            || raw.surfs[k - 1].model_glass.is_some();
+        let cb = sf[k].typ() == SurfType::CoordBrk;
         let float_stop = kind == ApertureKind::Float && r.stop;
-        if r.diam_fixed && lens && !float_stop && sf[k].ap == Aperture::None {
+        if r.diam_fixed && edge[k] && !cb && !float_stop && sf[k].ap == Aperture::None {
             sf[k].ap = Aperture::Floating { semi: sf[k].semi };
         }
     }
