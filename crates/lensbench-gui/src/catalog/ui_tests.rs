@@ -53,8 +53,13 @@ fn name(a: &Action) -> &'static str {
 }
 
 fn harness(b: Browser, dirs: (usize, usize)) -> Harness<'static, St> {
+    harness_w(b, dirs, 1100.0)
+}
+
+/// 幅 w の画面のブラウザ
+fn harness_w(b: Browser, dirs: (usize, usize), w: f32) -> Harness<'static, St> {
     let mut h = Harness::builder()
-        .with_size(egui::vec2(1100.0, 900.0))
+        .with_size(egui::vec2(w, 900.0))
         .build_ui_state(
             |ui, st: &mut St| {
                 if let Some(a) = st.b.ui(ui, &mut st.doc, st.dirs.0, st.dirs.1) {
@@ -172,4 +177,25 @@ fn catalog_glass_map_is_named() {
         by().role(egui::accesskit::Role::Image)
             .label("Glass map (2 glasses)"),
     );
+}
+
+/// 狭いパネルでも硝材の表の行は 1 行の高さのまま（残りの波長の列が細くなって文字が折り返し、行が高くなっていた）
+#[test]
+fn catalog_glass_rows_stay_short_in_a_narrow_panel() {
+    let _g = serial();
+    let mut b = loaded();
+    let mut g = vec![glass("SCHOTT", "N-BK7"), glass("OHARA", "S-BSL7")];
+    for x in &mut g {
+        x.range = Some([0.31, 2.5]);
+    }
+    b.set_glasses(g);
+    let mut h = harness_w(b, (1, 1), 280.0);
+    h.get_by_label("Glasses (2)").click();
+    h.run_steps(4);
+    let y = |h: &Harness<'static, St>, n: &str| {
+        let r = h.get_by_label(n).bounding_box().unwrap();
+        (r.y0 + r.y1) / 2.0
+    };
+    let gap = y(&h, "S-BSL7") - y(&h, "N-BK7");
+    assert!(gap > 0.0 && gap < 24.0, "{gap}");
 }

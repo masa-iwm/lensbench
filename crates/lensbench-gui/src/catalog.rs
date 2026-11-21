@@ -1820,6 +1820,8 @@ impl Browser {
         let sel = self.glass_sel;
         let mut clicked = None;
         ui.style_mut().interaction.selectable_labels = false;
+        // 狭いパネルで残りの列（波長）が細くなっても折り返さない（折り返すと行が高くなり、表が間延びした）
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
         TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
