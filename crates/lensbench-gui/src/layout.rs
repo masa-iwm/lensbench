@@ -224,6 +224,8 @@ pub(crate) enum Kind {
     Tolerance,
     /// ズーム軌跡
     Zoom,
+    /// 操作の履歴（元に戻す・やり直す段の一覧）
+    History,
 }
 
 impl Kind {
@@ -310,6 +312,12 @@ pub(crate) const TOOLS: &[Tool] = &[
         title: n_("Zoom track"),
         keywords: "zoom cam track states focal length",
         name: "zoom",
+    },
+    Tool {
+        kind: Kind::History,
+        title: n_("History"),
+        keywords: "history undo redo steps",
+        name: "history",
     },
 ];
 

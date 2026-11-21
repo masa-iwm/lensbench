@@ -6,6 +6,8 @@ use lensbench_core::history::History;
 
 #[path = "hist_names.rs"]
 pub(super) mod hist_names;
+#[path = "history_ui.rs"]
+mod history_ui;
 pub(crate) use hist_names::Step;
 
 /// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前

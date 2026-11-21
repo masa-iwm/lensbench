@@ -997,7 +997,6 @@ impl Core {
     }
 
     // ---- パネル ----
-
     fn pane_ui(&mut self, ui: &mut Ui, pane: &mut Pane) {
         let id = pane.id;
         match &mut pane.kind {
@@ -1010,6 +1009,7 @@ impl Core {
             Kind::Swap => self.swap_ui(ui),
             Kind::Tolerance => self.tolerance_ui(ui),
             Kind::Zoom => self.zoom_ui(ui),
+            Kind::History => self.history_ui(ui),
             Kind::SysSettings => self.sysset_ui(ui),
             Kind::Analysis(cfg) => self.analysis_ui(ui, id, cfg),
         }

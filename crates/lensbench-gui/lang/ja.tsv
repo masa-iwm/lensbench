@@ -1811,6 +1811,10 @@ Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野�
 Rim points	縁の点の数
 Ignore vignetting factors	ケラレ係数を使わない
 Replace vignetting factors with apertures	ケラレ係数を開口に置き換える
+History	操作の履歴
+Click a step to go back (or forward) to just before it. Newest at the top; redo steps above Now	段を押すと、その段の前まで一度に戻る（やり直す段は進む）。新しい段が上、やり直す段は「今」の上
+▶ Now	▶ 今
+No steps yet	まだ段は無い
 Paraxial Gaussian beam	近軸ガウスビーム
 Paraxial Gaussian beam: beam size, waist, divergence and Rayleigh range after each surface	近軸ガウスビーム: 各面の後のビーム径・ウエスト・広がり角・レイリー長
 Waist radius	ウエストの半径

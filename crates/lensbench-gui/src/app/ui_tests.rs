@@ -1018,3 +1018,60 @@ fn doc_step_keeps_its_time() {
     settle(&mut h);
     assert_eq!(doc_at(&h), t0);
 }
+
+/// 操作の履歴のパネル: 段が新しい順に並び、行を押すとその段の前まで一度に戻る。戻した段は「今」の上にやり直す段として
+/// 残り、押すとそこまで進む
+#[test]
+fn history_panel_jumps_to_a_step() {
+    let _g = serial();
+    let mut h = harness(a0());
+    h.state_mut().c.msgs.push(Msg::FocusKind(Kind::History));
+    settle(&mut h);
+    let epd0 = h.state().c.doc.combo.epd;
+    for d in [1.0, 2.0, 3.0] {
+        let app = h.state_mut();
+        let mut want = app.c.doc.combo.clone();
+        want.epd = epd0 + d;
+        let e = edit::Edit::between(&app.c.doc.combo, &want).expect("changed");
+        app.c.msgs.push(Msg::Edit(e));
+        settle(&mut h);
+    }
+    let list = h.state().c.undo_list(true);
+    assert!(list.len() >= 3, "{list:?}");
+    let row = |h: &Harness<'static, App>, title: String| {
+        h.get(egui_kittest::kittest::by().predicate(move |n| {
+            n.label()
+                .is_some_and(|l| l.starts_with(&format!("{title}   ")))
+        }))
+        .bounding_box()
+        .is_some()
+    };
+    assert!(h.query_by_label("▶ Now").is_some());
+    // 3 番目の段（最初の書き換え）を押すと、3 段戻って元の値
+    let title = list[2].title.clone();
+    assert!(row(&h, title.clone()));
+    let t2 = title.clone();
+    h.get(egui_kittest::kittest::by().predicate(move |n| {
+        n.label()
+            .is_some_and(|l| l.starts_with(&format!("{t2}   ")))
+    }))
+    .click();
+    settle(&mut h);
+    assert_eq!(
+        h.state().c.doc.combo.epd,
+        epd0,
+        "{}",
+        h.state().test_state()
+    );
+    let redo = h.state().c.undo_list(false);
+    assert_eq!(redo.len(), 3, "{redo:?}");
+    // やり直す段の 2 番目を押すと 2 段進む
+    let t = redo[1].title.clone();
+    h.get(
+        egui_kittest::kittest::by()
+            .predicate(move |n| n.label().is_some_and(|l| l.starts_with(&format!("{t}   ")))),
+    )
+    .click();
+    settle(&mut h);
+    assert_eq!(h.state().c.doc.combo.epd, epd0 + 2.0);
+}
