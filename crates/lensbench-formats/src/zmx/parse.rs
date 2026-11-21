@@ -383,12 +383,24 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // 面の無視（Ignore This Surface）: OpticStudio は HIDE の 6 番目の値を 1 にして書く（IGNR は多重構成の
             // 演算子の名前で、面の行にはない）
             "HIDE" => s.ignore = t.get(6).is_some_and(|v| *v != "0"),
-            // MEMA 機械半径 固定(1)・自動(0)、OEMA チップゾーン（OpticStudio 26.1 で実測）
-            "MEMA" => {
-                if t.get(2) == Some(&"1") {
+            // MEMA 機械半径 固定(1)・自動(0)・ピックアップ(2)、OEMA チップゾーン（OpticStudio 26.1 で実測）。ピックアップは
+            // DIAM と同じ形 MEMA 値 2 元の面 列 倍率 "マクロ"（列は 0 だけ、オフセットなし。OpticStudio 2026 R1.01 で実測）
+            "MEMA" => match t.get(2).copied().unwrap_or("0") {
+                "0" => {}
+                "1" => s.mema = Some(num(1)?),
+                "2" => {
+                    let (n, col, key) = (s.n, num(4)?, "MEMA");
+                    if col != 0.0 {
+                        notimpl!("zmx surface {n}: pickup column {col} of {key}");
+                    }
                     s.mema = Some(num(1)?);
+                    s.mema_pickup = Some((surf_no(num(3)?)?, num(5)?));
                 }
-            }
+                m => {
+                    let n = s.n;
+                    notimpl!("zmx surface {n}: mechanical semi-diameter solve {m}")
+                }
+            },
             "OEMA" => s.oema = num(1)?,
             k if HARMLESS.contains(&k) => {}
             k if legacy => raw.notes.push(format!(

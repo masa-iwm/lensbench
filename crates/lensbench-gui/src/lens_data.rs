@@ -491,6 +491,7 @@ impl Col {
             Col::R => "r".into(),
             Col::T => "t".into(),
             Col::Semi => "semi".into(),
+            Col::Mech => "mech".into(),
             Col::Conic => "k".into(),
             Col::Par(i) => format!("p{i}"),
             Col::Material => "dn".into(),

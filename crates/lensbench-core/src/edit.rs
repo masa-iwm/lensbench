@@ -677,7 +677,7 @@ impl System {
                 );
             }
         }
-        if let Some(v) = p.value(&self.surfaces[p.src]) {
+        if let Some(v) = p.value_in(self) {
             if !v.is_finite() {
                 invalid!(
                     "the pickup value is not finite (from surface {} {v})",

@@ -695,9 +695,28 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         if d.chip_zone != 0.0 {
             w(&mut o, format!("  OEMA {} 0 0 0 1 \"\"", f(d.chip_zone)));
         }
-        match d.mech_semi {
-            Some(m) => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
-            None => w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string()),
+        match (
+            s.pickups
+                .iter()
+                .find(|q| q.dst == k && q.what == Kind::MechSemi),
+            d.mech_semi,
+        ) {
+            // MEMA 値 2 元の面 0 倍率（OpticStudio 2026 R1.01 の書き方。オフセットは書けない）
+            (Some(q), _) if q.offset != 0.0 => notimpl!(
+                "surface {k}: the mechanical semi-diameter pickup has an offset ({}), which can't be written to .zmx",
+                q.offset
+            ),
+            (Some(q), m) => w(
+                &mut o,
+                format!(
+                    "  MEMA {} 2 {} 0 {} \"\"",
+                    f(m.unwrap_or(0.0)),
+                    q.src,
+                    f(q.scale)
+                ),
+            ),
+            (None, Some(m)) => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
+            (None, None) => w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string()),
         }
         match d.ap {
             Aperture::None => {}

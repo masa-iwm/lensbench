@@ -85,6 +85,8 @@ pub struct RawSurf {
     pub pkup: Option<(usize, f64, f64, Option<Kind>)>,
     /// 半直径のピックアップ（元の面, 倍率, 元の列）
     pub diam_pickup: Option<(usize, f64, Option<Kind>)>,
+    /// 機械半径のピックアップ（元の面, 倍率）。MEMA 値 2 元の面 0 倍率
+    pub mema_pickup: Option<(usize, f64)>,
     /// 拡張データ（番号 → 値）
     pub xdat: BTreeMap<i64, f64>,
     /// Grid Sag の格子の頭（GDAT nx ny dx dy xdec ydec unit …）と点（GARR 番号 z zx zy zxy nodata）、.DAT の名前（FIMP）

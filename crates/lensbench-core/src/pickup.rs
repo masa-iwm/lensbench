@@ -110,12 +110,24 @@ impl Pickup {
         self.scale
     }
 
+    /// 系 s の元の面から求めた、先の量の値。機械半径は元の面の玉の半径（[`System::lens_radius`]、自動の値も。
+    /// OpticStudio 2026 R1.01 で、機械半径のピックアップは元の面の表示の値 × 倍率）。先が元と同じ玉にあるときは、先の面の
+    /// 固定した値（このピックアップで決まる値）を元の玉の半径に数えない（数えると倍率 1 で元を下げても追従せず、倍率が 1 を
+    /// 超えると収まらない）
+    pub fn value_in(&self, s: &System) -> Option<f64> {
+        if self.source() == Kind::MechSemi {
+            return (self.src < s.surfaces.len() && self.dst < s.surfaces.len())
+                .then(|| self.scale * s.lens_radius_but(self.src, Some(self.dst)) + self.offset);
+        }
+        self.value(s.surfaces.get(self.src)?)
+    }
+
     /// 系 s でこのピックアップの関係がいまの値で成り立っているか（相対 1e-12。面がないか量がなければ false）
     pub fn holds(&self, s: &System) -> bool {
-        let (Some(a), Some(b)) = (s.surfaces.get(self.src), s.surfaces.get(self.dst)) else {
+        let Some(b) = s.surfaces.get(self.dst) else {
             return false;
         };
-        match (self.value(a), pick_get(b, self.what)) {
+        match (self.value_in(s), pick_get(b, self.what)) {
             (Some(v), Some(y)) => v == y || (v - y).abs() <= 1e-12 * (1.0 + v.abs().max(y.abs())),
             _ => false,
         }
@@ -146,6 +158,8 @@ pub(crate) fn pick_get(d: &Surface, what: Kind) -> Option<f64> {
         // パラメータ r（[`System::get_param`]）は書くときと同じく 0 が平面
         Kind::Radius => Some(if d.c == 0.0 { 1e10 } else { 1.0 / d.c }),
         Kind::Semi => Some(d.semi),
+        // 機械半径は固定の値（自動なら None）。元の面の値は玉の半径（[`Pickup::value_in`]）
+        Kind::MechSemi => d.mech_semi,
         // 膜は名前を写すだけ（[`System::pick_names`]）。数の値は無いので一定の 0
         Kind::Coating => Some(0.0),
         Kind::Before(i) => Some(d.before.map(|t| t.d[i as usize]).unwrap_or(0.0)),
@@ -174,6 +188,7 @@ pub(crate) fn pick_set(d: &mut Surface, what: Kind, v: f64) -> bool {
                 *semi = v;
             }
         }
+        Kind::MechSemi => d.mech_semi = Some(v),
         Kind::After(i) => match &mut d.after {
             After::Tilt(t) => t.d[i as usize] = v,
             // 元の面に前の傾き偏心がない（値 0）。後で元に値が入ったら作る（反転なら順序も逆。前の傾き偏心を
@@ -321,7 +336,7 @@ impl System {
             let mut changed = false;
             for i in 0..self.pickups.len() {
                 let q = self.pickups[i];
-                let Some(v) = q.value(&self.surfaces[q.src]) else {
+                let Some(v) = q.value_in(self) else {
                     invalid!("surface {} {:?} can't be picked up", q.src, q.source());
                 };
                 let d = &mut self.rx_mut().surfaces[q.dst];
@@ -422,13 +437,15 @@ impl System {
 }
 
 /// ピックアップの量の名前: c（曲率）・r（半径）・t（厚さ）・k（円錐係数）・p1〜（面タイプのパラメータ）・
-/// dn・disp（材料も一緒に追従）・semi・coating（膜の名前）・before0〜4・after0〜4（傾き偏心の値 dx dy tx ty tz）
+/// dn・disp（材料も一緒に追従）・semi・mech（機械半径）・coating（膜の名前）・before0〜4・after0〜4（傾き偏心の値 dx dy tx ty tz）
 pub fn pick_kind_parse(s: &str) -> Result<Kind> {
     match Kind::parse(s) {
         Ok(k) if k.is_pick() => Ok(k),
         _ => {
             let s = s.trim();
-            invalid!("pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)")
+            invalid!(
+                "pickup quantity {s} (c r t k p1.. dn disp semi mech coating before0..4 after0..4)"
+            )
         }
     }
 }

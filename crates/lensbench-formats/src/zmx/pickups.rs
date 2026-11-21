@@ -18,6 +18,7 @@ pub(super) fn thicknesses(raw: &Raw, ops: &Ops) -> Result<Vec<f64>> {
             r.pkup.map(|p| p.0),
             r.curv_pickup.map(|p| p.0),
             r.diam_pickup.map(|p| p.0),
+            r.mema_pickup.map(|p| p.0),
         ]
         .into_iter()
         .flatten()
@@ -153,6 +154,9 @@ pub(super) fn links(raw: &Raw, sf: &[Surface], after: &[AfterPick]) -> Vec<Picku
         }
         if let Some((src, sc, from)) = r.diam_pickup {
             add(src, Kind::Semi, sc, 0.0, from);
+        }
+        if let Some((src, sc)) = r.mema_pickup {
+            add(src, Kind::MechSemi, sc, 0.0, None);
         }
         if let Some(src) = r.glas_pickup {
             // 材料は読込で元の面のものにした。屈折率のずれ（dn・disp）も元の面に追従させる

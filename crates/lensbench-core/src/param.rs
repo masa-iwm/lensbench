@@ -366,6 +366,7 @@ impl Kind {
                 | Kind::Dn
                 | Kind::Disp
                 | Kind::Semi
+                | Kind::MechSemi
                 | Kind::Parm(_)
                 | Kind::Before(_)
                 | Kind::After(_)

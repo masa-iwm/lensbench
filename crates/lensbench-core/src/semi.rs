@@ -125,11 +125,13 @@ impl System {
                 *semi = v;
             }
         }
-        if self
-            .pickups
-            .iter()
-            .any(|p| p.what == crate::param::Kind::Semi)
-        {
+        // 機械半径のピックアップの元の玉の半径も半直径で変わる
+        if self.pickups.iter().any(|p| {
+            matches!(
+                p.what,
+                crate::param::Kind::Semi | crate::param::Kind::MechSemi
+            )
+        }) {
             let _ = self.resolve_pickups();
         }
         // 浮動開口の半径が変わると追跡の準備も変わる

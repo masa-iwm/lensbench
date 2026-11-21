@@ -605,6 +605,12 @@ impl System {
     /// （円形の開口の面は開口の最大の半径、ほかは半直径）+ チップゾーンと、固定した機械半径の最大（OpticStudio 26.1 で確認。
     /// 固定した値が自動より小さければ自動のまま）
     pub fn lens_radius(&self, j: usize) -> f64 {
+        self.lens_radius_but(j, None)
+    }
+
+    /// [`System::lens_radius`] で、面 skip の固定した機械半径だけは数えないもの（機械半径のピックアップの先が元と同じ玉に
+    /// あるとき、先の値が元に戻ってこないように）
+    pub(crate) fn lens_radius_but(&self, j: usize, skip: Option<usize>) -> f64 {
         self.lens_surfaces(j)
             .map(|i| {
                 let d = &self.surfaces[i];
@@ -612,7 +618,8 @@ impl System {
                     crate::surface::Aperture::Circular { max, .. } => max,
                     _ => d.semi,
                 };
-                (edge + d.chip_zone).max(d.mech_semi.unwrap_or(0.0))
+                let fixed = if Some(i) == skip { None } else { d.mech_semi };
+                (edge + d.chip_zone).max(fixed.unwrap_or(0.0))
             })
             .fold(0.0, f64::max)
     }

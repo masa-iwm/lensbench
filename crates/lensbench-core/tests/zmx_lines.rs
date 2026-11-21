@@ -515,6 +515,62 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     assert_eq!(vig(&s), 0);
 }
 
+/// 機械半径のピックアップ（OpticStudio 2026 R1.01 の実測: MEMA 値 2 元の面 0 倍率、値は元の面の機械半径の表示の値 × 倍率）。
+/// 読み書きで保たれ、元の面の機械半径に追従する。機械半径の自動・固定・ピックアップ以外のソルブは止める
+#[test]
+fn mechanical_semi_diameter_pickup() {
+    use lensbench_core::edit::SurfValue;
+    let g = "  GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0 0\n";
+    let txt = |mema3: &str| {
+        format!(
+            "{HEAD}SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.01\n  DISZ 3\n{g}  DIAM 6 1 0 0 1 \"\"\n  MEMA 12 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 5\n  DIAM 6 1 0 0 1 \"\"\n  MEMA 0 0 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.01\n  DISZ 3\n{g}  DIAM 6 1 0 0 1 \"\"\n{mema3}\
+SURF 4\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 40\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        )
+    };
+    let mut s = build(&txt("  MEMA 24 2 1 0 2 \"\"\n"));
+    assert_eq!(s.surfaces[3].mech_semi, Some(24.0));
+    assert_eq!(s.lens_radius(3), 24.0);
+    let q = s.pickups.iter().find(|q| q.dst == 3).unwrap();
+    assert_eq!(
+        (q.src, q.what, q.scale),
+        (1, lensbench_core::param::Kind::MechSemi, 2.0)
+    );
+    // 書いて読み直しても同じ
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("  MEMA 24 2 1 0 2 \"\""), "{w}");
+    let b = build(&w);
+    assert_eq!(b.pickups, s.pickups);
+    assert_eq!(b.surfaces[3].mech_semi, Some(24.0));
+    // 元の面の機械半径に追従する（先の面は値を直接変えられない）
+    s.set_surface_fields(1, &[("mech".into(), SurfValue::Num(15.0))])
+        .unwrap();
+    assert_eq!(s.surfaces[3].mech_semi, Some(30.0));
+    assert!(s
+        .set_surface_fields(3, &[("mech".into(), SurfValue::Num(5.0))])
+        .is_err());
+    // 元の面が自動なら、自動の玉の半径（半直径 6 + チップゾーン 0）× 倍率
+    s.set_surface_fields(1, &[("mech".into(), SurfValue::Text("auto".into()))])
+        .unwrap();
+    assert_eq!(s.surfaces[3].mech_semi, Some(12.0));
+    // 先が元と同じ玉の面（面 2 ← 面 1）: 先の固定の値は元の玉の半径に数えない。倍率 1 は元を下げても追従し、倍率 2 も収まる
+    for (sc, want12, want8) in [(1.0, 12.0, 8.0), (2.0, 24.0, 16.0)] {
+        let t = txt("").replace(
+            "  MEMA 0 0 0 0 1 \"\"\n",
+            &format!("  MEMA 0 2 1 0 {sc} \"\"\n"),
+        );
+        let mut s = build(&t);
+        assert_eq!(s.surfaces[2].mech_semi, Some(want12), "scale {sc}");
+        s.set_surface_fields(1, &[("mech".into(), SurfValue::Num(8.0))])
+            .unwrap();
+        assert_eq!(s.surfaces[2].mech_semi, Some(want8), "scale {sc}");
+    }
+    // 前は MEMA の 2 を黙って自動として読んでいた。知らないソルブは止める
+    assert!(zmx::parse_text(&txt("  MEMA 24 3 0 0 1 \"\"\n")).is_err());
+}
+
 /// 浮動開口は前後で媒質が変わる面だけ（OpticStudio 2026 R1.01 の実測）: 座標ブレークは半直径・材料を読込で捨てるので
 /// 付かない（ガラスの中で DIAM 0 1 でも光線をけらない）。同じガラスどうしの面にも付かず、別のガラスの境には付く
 #[test]
