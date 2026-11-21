@@ -181,31 +181,63 @@ pub(crate) fn show(
     x_unit: &str,
     body: impl FnOnce(&mut PlotUi, &mut Vec<Series>),
 ) {
+    show_on(ui, plot, 0, x_unit, body);
+}
+
+/// [`show`] の縦軸版: 縦軸が元の値（視野・瞳の高さなど）のグラフ。カーソルは横線で、各曲線の縦軸 y での
+/// 横軸の値を出す。y_unit はカーソルの値の縦軸の単位
+pub(crate) fn show_by_y(
+    ui: &mut Ui,
+    plot: Plot,
+    y_unit: &str,
+    body: impl FnOnce(&mut PlotUi, &mut Vec<Series>),
+) {
+    show_on(ui, plot, 1, y_unit, body);
+}
+
+/// axis はカーソルの値の軸（0: 横、1: 縦）
+fn show_on(
+    ui: &mut Ui,
+    plot: Plot,
+    axis: usize,
+    unit: &str,
+    body: impl FnOnce(&mut PlotUi, &mut Vec<Series>),
+) {
     let weak = crate::theme::weak_text(ui.visuals());
     let mut series = Vec::new();
     // 既定の近くの点の座標の札は出さない（カーソルの値の一覧と重なる）
     let r = nav(ui, plot.label_formatter(|_, _| String::new()), true, |p| {
         body(p, &mut series);
-        // 縦線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
+        // カーソルの線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
         p.response()
             .hovered()
             .then(|| p.pointer_coordinate())
             .flatten()
-            .map(|q: PlotPoint| q.x)
+            .map(|q: PlotPoint| if axis == 0 { q.x } else { q.y })
     });
-    if let Some(x) = r.inner.filter(|_| !series.is_empty()) {
-        let sx = r.transform.position_from_point_x(x);
+    if let Some(v) = r.inner.filter(|_| !series.is_empty()) {
         let fr = *r.transform.frame();
-        ui.painter_at(fr).line_segment(
-            [egui::pos2(sx, fr.top()), egui::pos2(sx, fr.bottom())],
-            egui::Stroke::new(1.0_f32, weak),
-        );
-        readout(ui, fr, x, x_unit, &series);
+        let seg = if axis == 0 {
+            let sx = r.transform.position_from_point_x(v);
+            [egui::pos2(sx, fr.top()), egui::pos2(sx, fr.bottom())]
+        } else {
+            let sy = r.transform.position_from_point_y(v);
+            [egui::pos2(fr.left(), sy), egui::pos2(fr.right(), sy)]
+        };
+        ui.painter_at(fr)
+            .line_segment(seg, egui::Stroke::new(1.0_f32, weak));
+        if axis == 1 {
+            // 縦軸で引くので、点の横と縦を入れ替えた曲線で読む
+            for s in &mut series {
+                s.pts.iter_mut().for_each(|p| p.swap(0, 1));
+            }
+        }
+        readout(ui, fr, if axis == 0 { "x" } else { "y" }, v, unit, &series);
     }
 }
 
-/// カーソルの横軸の値と、各曲線の値をグラフの左上に出す
-fn readout(ui: &Ui, rect: egui::Rect, x: f64, x_unit: &str, series: &[Series]) {
+/// カーソルの軸の値と、各曲線の値をグラフの左上に出す
+fn readout(ui: &Ui, rect: egui::Rect, axis: &str, x: f64, x_unit: &str, series: &[Series]) {
     let vals: Vec<(&Series, f64)> = series
         .iter()
         .filter_map(|s| interp(&s.pts, x).map(|y| (s, y)))
@@ -216,7 +248,7 @@ fn readout(ui: &Ui, rect: egui::Rect, x: f64, x_unit: &str, series: &[Series]) {
     let painter = ui.painter_at(rect);
     let font = egui::FontId::monospace(11.0);
     let text = ui.visuals().text_color();
-    let mut lines = vec![(format!("x = {} {x_unit}", fmt(x)), text)];
+    let mut lines = vec![(format!("{axis} = {} {x_unit}", fmt(x)), text)];
     for (s, y) in vals {
         lines.push((format!("{}  {}", fmt(y), s.name), s.color));
     }

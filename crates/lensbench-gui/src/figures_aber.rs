@@ -107,6 +107,11 @@ fn segments(x: &[f64], y: &[f64]) -> Vec<Vec<[f64; 2]>> {
     out
 }
 
+/// 切れた線をつないだ点（カーソルの値を読む曲線）
+fn flat(segs: &[Vec<[f64; 2]>]) -> Vec<[f64; 2]> {
+    segs.iter().flatten().copied().collect()
+}
+
 /// 折れ線を描く（NaN で切れた線は同じ名前の続き）
 fn draw(
     p: &mut egui_plot::PlotUi,
@@ -242,11 +247,13 @@ fn field_curv(ui: &mut Ui, id: u64, v: &FieldCurvOut) -> bool {
             .include_y(0.0)
             .x_axis_label(trf("Focus from the image surface [{}]", &[&unit]))
             .y_axis_label(tr("Field"));
-        plot_tools::show(&mut cols[0], plot, "", |p, _| {
+        plot_tools::show_by_y(&mut cols[0], plot, "", |p, reg| {
             for w in &v.waves {
                 let (col, name) = ws.style(w.wave);
                 let t = segments(&w.tangential, &v.field_value);
                 let s = segments(&w.sagittal, &v.field_value);
+                reg.push(Series::new(format!("{name} T"), col, &flat(&t)));
+                reg.push(Series::new(format!("{name} S"), col, &flat(&s)));
                 draw(p, t, col, false, &format!("{name} T"));
                 draw(p, s, col, true, &format!("{name} S"));
             }
@@ -257,16 +264,12 @@ fn field_curv(ui: &mut Ui, id: u64, v: &FieldCurvOut) -> bool {
             .include_y(0.0)
             .x_axis_label(tr("Distortion [%]"))
             .y_axis_label(tr("Field"));
-        plot_tools::show(&mut cols[1], plot, "", |p, _| {
+        plot_tools::show_by_y(&mut cols[1], plot, "", |p, reg| {
             for w in &v.waves {
                 let (col, name) = ws.style(w.wave);
-                draw(
-                    p,
-                    segments(&w.distortion, &v.field_value),
-                    col,
-                    false,
-                    &name,
-                );
+                let segs = segments(&w.distortion, &v.field_value);
+                reg.push(Series::new(name.clone(), col, &flat(&segs)));
+                draw(p, segs, col, false, &name);
             }
         });
     });
@@ -291,10 +294,12 @@ fn longitudinal(ui: &mut Ui, id: u64, v: &LongOut) -> bool {
         .include_y(1.0)
         .x_axis_label(trf("Longitudinal aberration [{}]", &[&v.unit]))
         .y_axis_label(tr("Pupil height (normalized)"));
-    plot_tools::show(ui, plot, "", |p, _| {
+    plot_tools::show_by_y(ui, plot, "", |p, reg| {
         for w in &v.waves {
             let (col, name) = ws.style(w.wave);
-            draw(p, segments(&w.z, &v.zones), col, false, &name);
+            let segs = segments(&w.z, &v.zones);
+            reg.push(Series::new(name.clone(), col, &flat(&segs)));
+            draw(p, segs, col, false, &name);
         }
     });
     true
@@ -494,15 +499,41 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
                         .name(format!("{label} {name}"))
                 })
                 .collect();
-            BarChart::new(bars).color(theme::series(k)).name(*name)
+            // 選んだ棒の札は面と係数の名前つき（縦の範囲に札の分の余白を取る）
+            BarChart::new(bars)
+                .color(theme::series(k))
+                .name(*name)
+                .element_formatter(Box::new(|b, _| {
+                    format!("{}  {}", b.name, fmt_sig(b.value, 4))
+                }))
         })
         .collect();
+    // 凡例はグラフの外（中に置くと右の面・和の棒に重なる）
+    ui.horizontal_wrapped(|ui| {
+        for (k, name) in NAMES.iter().enumerate() {
+            ui.label(
+                egui::RichText::new(format!("■ {name}"))
+                    .small()
+                    .color(theme::series(k)),
+            );
+        }
+    });
     let h = row_height(ui, 1, 220.0);
     let surfs: Vec<String> = v.surfaces.iter().map(|r| r.surf.to_string()).collect();
     let sum = tr("Sum").to_string();
+    let all: Vec<f64> = rows
+        .iter()
+        .flat_map(|r| vals(r))
+        .filter(|x| x.is_finite())
+        .collect();
+    let (lo, hi) = all
+        .iter()
+        .fold((0.0_f64, 0.0_f64), |(a, b), &x| (a.min(x), b.max(x)));
+    let pad = (hi - lo).max(1e-12) * 0.12;
     let plot = Plot::new(("seidel", id))
         .height(h)
-        .legend(Legend::default().follow_insertion_order(true))
+        .include_y(hi + pad)
+        .include_y(lo - pad)
         .x_axis_formatter(move |m, _| {
             let i = m.value.round();
             if (m.value - i).abs() > 1e-6 || i < 1.0 {
