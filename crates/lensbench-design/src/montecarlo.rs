@@ -1113,6 +1113,18 @@ struct LensLink {
 }
 
 fn lens_links(s: &System) -> Vec<LensLink> {
+    // 置き方（偏心・傾き）つきのブロックの範囲は前後の座標ブレークを含むので、玉の面だけの範囲にする
+    let trim = |sp: &[usize; 2]| {
+        let cb = |j: usize| s.surfaces[j].typ() == lensbench_core::surface::SurfType::CoordBrk;
+        let [mut a, mut b] = *sp;
+        while a < b && cb(a) {
+            a += 1;
+        }
+        while b > a && cb(b) {
+            b -= 1;
+        }
+        [a, b]
+    };
     let auto_of = |sp: &[usize; 2]| {
         s.units
             .iter()
@@ -1123,15 +1135,16 @@ fn lens_links(s: &System) -> Vec<LensLink> {
         if u.auto || u.spans.len() < 2 {
             continue;
         }
-        let Some(autos) = u.spans.iter().map(auto_of).collect::<Option<Vec<usize>>>() else {
+        let spans: Vec<[usize; 2]> = u.spans.iter().map(trim).collect();
+        let Some(autos) = spans.iter().map(auto_of).collect::<Option<Vec<usize>>>() else {
             continue;
         };
-        let [a, b] = u.spans[0];
+        let [a, b] = spans[0];
         let n = b - a;
         let dir = |sp: &[usize; 2]| s.surfaces[sp[0]].t.signum();
         let mut others = Vec::new();
         let mut fine = true;
-        for (k, sp) in u.spans.iter().enumerate().skip(1) {
+        for (k, sp) in spans.iter().enumerate().skip(1) {
             if sp[1] - sp[0] != n {
                 fine = false;
                 break;
@@ -1139,7 +1152,7 @@ fn lens_links(s: &System) -> Vec<LensLink> {
             others.push(LinkSpan {
                 auto: autos[k],
                 span: *sp,
-                reversed: dir(sp) != dir(&u.spans[0]),
+                reversed: dir(sp) != dir(&spans[0]),
                 before: sp[0].checked_sub(1),
             });
         }

@@ -22,7 +22,14 @@ pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) 
     // 同じ系にならなければ、今までどおり戻りも別の要素にする
     [true, false].into_iter().find_map(|dp| {
         let a = split_parts(s, p, dp)?;
-        finish(a.v.clone(), &a.compared(s), &[], base, glass_dirs)
+        finish(
+            a.v.clone(),
+            &a.compared(s),
+            &[],
+            &a.folded,
+            base,
+            glass_dirs,
+        )
     })
 }
 
@@ -70,7 +77,7 @@ fn split_configs_with(
     }
     v["states"] = json!(states);
     let cfgs: Vec<System> = cfgs.iter().map(|x| a.compared(x)).collect();
-    finish(v, &cfgs[0], &cfgs, base, glass_dirs)
+    finish(v, &cfgs[0], &cfgs, &a.folded, base, glass_dirs)
 }
 
 /// 分けたプロジェクト v を組合せにする。系 s（状態があれば状態ごとの系 cfgs）と同じにならなければ None
@@ -78,6 +85,7 @@ fn finish(
     mut v: Value,
     s: &System,
     cfgs: &[System],
+    loose: &BTreeSet<usize>,
     base: &Path,
     glass_dirs: &[PathBuf],
 ) -> Option<Combo> {
@@ -100,7 +108,20 @@ fn finish(
         let t = lensbench_project::expand(q, &env, &Default::default())
             .ok()?
             .system;
-        lensbench_project::same_system(s, &t).ok()
+        // 往路を戻る鏡にまとめた戻りの面の名前（コメント）は展開が付ける（.zmx の名前は比べない）
+        let mut s = s.clone();
+        if !loose.is_empty() {
+            s.edit_raw(|rx| {
+                for &j in loose {
+                    if let (Some(a), Some(b)) = (rx.surfaces.get_mut(j), t.surfaces.get(j)) {
+                        a.comment.clone_from(&b.comment);
+                    }
+                }
+                Ok(())
+            })
+            .ok()?;
+        }
+        lensbench_project::same_system(&s, &t).ok()
     };
     // 半径で書いた曲率は最後の桁が変わりうるので、元の系もそうしてから比べる
     if cfgs.is_empty() {
@@ -326,6 +347,8 @@ struct Parts {
     folded: BTreeSet<usize>,
     /// 往路を戻る鏡の面
     back_mirror: Option<usize>,
+    /// 玉の置き方にした座標ブレークの面（[`collapse_placed`]）
+    placed: Vec<usize>,
 }
 
 impl Parts {
@@ -341,6 +364,7 @@ impl Parts {
         let cbs: Vec<usize> = self
             .folded
             .iter()
+            .chain(&self.placed)
             .copied()
             .filter(|&j| s.surfaces[j].typ() == SurfType::CoordBrk)
             .collect();
@@ -514,7 +538,13 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
     let mut folded = BTreeSet::new();
     // 往路を戻る鏡の面（その厚さは戻りの空気が受け持つ）
     let mut back_mirror = None;
+    let mut placed = Vec::new();
     if dp {
+        // 座標ブレークで挟んだ玉は玉の置き方に（往路を戻る鏡は置き方ごと戻る）
+        placed = collapse_placed(s, &mut blocks, &mut ranges, &mut airs)?;
+        for &x in &placed {
+            cb[x] = None;
+        }
         let (f, m) = fold_double_pass(s, &mut blocks, &ranges, &mut airs)?;
         back_mirror = Some(m);
         for &x in &f {
@@ -653,7 +683,82 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
         dp,
         folded,
         back_mirror,
+        placed,
     })
+}
+
+/// 座標ブレークで挟んだ玉（偏心・傾きの座標ブレーク（順序 0、厚さ 0）・空気 0・玉・空気 0・戻しの座標ブレーク（順序 1）・空気）を、
+/// 置き方（`decenter`・`tilt`）つきの玉と空気にする（展開の置き方と同じ形）。鏡の前の玉は置き方を座標ブレークから読み、
+/// 戻しの座標ブレークの厚さから戻りの分を引いた空気にする。鏡の後の玉（戻り）は形だけ玉にする（往路を戻る鏡にまとめれば
+/// 消え、まとめられなければ None）。値まで同じかは、呼び手が組合せの系と元の系を比べて確かめる。玉にした座標ブレークの面を返す
+fn collapse_placed(
+    s: &System,
+    blocks: &mut Vec<Value>,
+    ranges: &mut Vec<Option<(usize, usize)>>,
+    airs: &mut Vec<(usize, String, usize)>,
+) -> Option<Vec<usize>> {
+    let air_t = |b: &[Value], i: usize| b.get(i).filter(|x| x["type"] == "air")?["t"].as_f64();
+    let mut done = Vec::new();
+    let mut i = 0;
+    while i + 5 < blocks.len() {
+        let cb_at = |i: usize| -> Option<usize> {
+            let (j, k) = ranges.get(i).copied().flatten()?;
+            (j == k && blocks[i]["type"] == "surfaces" && s.surfaces[j].typ() == SurfType::CoordBrk)
+                .then_some(j)
+        };
+        let (Some(c1), Some(c2)) = (cb_at(i), cb_at(i + 4)) else {
+            i += 1;
+            continue;
+        };
+        let (a, b) = (&s.surfaces[c1], &s.surfaces[c2]);
+        if blocks[i + 2]["type"] != "lens"
+            || a.cb_order() != 0
+            || b.cb_order() != 1
+            || air_t(blocks, i + 1) != Some(0.0)
+            || air_t(blocks, i + 3) != Some(0.0)
+        {
+            i += 1;
+            continue;
+        }
+        let (lj, lk) = ranges[i + 2]?;
+        let mut t = air_t(blocks, i + 5)?;
+        let mut lens = blocks[i + 2].clone();
+        if blocks
+            .iter()
+            .position(|b| b["type"] == "mirror")
+            .is_none_or(|m| i < m)
+        {
+            // 往き: 置き方を読む。戻しの座標ブレークは傾きを戻し、偏心は玉の長さ l の分（置き方の展開と同じ）
+            let [dx, dy, tx, ty, tz] = a.cb();
+            let [dx2, dy2, ux, uy, uz] = b.cb();
+            if [ux, uy, uz] != [-tx, -ty, -tz] {
+                return None;
+            }
+            let l: f64 = (lj..lk).map(|x| s.surfaces[x].t).sum();
+            let (rx, ry) = (-dx - dx2, -dy - dy2);
+            let rz = (l * l - rx * rx - ry * ry).max(0.0).sqrt() * l.signum();
+            t -= l - rz;
+            lens["decenter"] = json!([dx, dy]);
+            lens["tilt"] = json!([tx, ty, tz]);
+        }
+        let id = lens["id"].clone();
+        blocks.splice(i..i + 6, [lens, json!({ "type": "air", "t": t })]);
+        ranges.splice(i..i + 6, [Some((c1, c2)), None]);
+        // 空気の位置: 座標ブレークの後・玉の後の空気は消え、戻しの後の空気が玉の後の空気になる
+        let mut na = Vec::new();
+        for (ai, aid, k) in airs.drain(..) {
+            match ai {
+                x if x < i => na.push((x, aid, k)),
+                x if x == i + 5 => na.push((i + 1, id.as_str()?.to_string(), k)),
+                x if x > i + 5 => na.push((x - 4, aid, k)),
+                _ => {}
+            }
+        }
+        *airs = na;
+        done.extend([c1, c2]);
+        i += 2;
+    }
+    Some(done)
 }
 
 /// ダブルパスの blocks（`ranges` はブロックの系の面の範囲、空気は None）を、往きの要素と往路を戻る鏡（`back`）に書き換える。
@@ -1218,7 +1323,7 @@ CHZN 3 1 0 0 0 0 1 1 1 0 0 \"\" 0\nCHZN 3 2 0.5 0 0 0 1 1 1 0 0 \"\" 0\n",
 
     /// ダブルパスの .zmx（鏡で折り返して同じ玉を戻る）は、往きの玉と「往路を戻る」鏡の組合せになる（split の中で元の系と
     /// 同じことも確かめる）。鏡の傾き（前後の座標ブレーク）は鏡の傾きに、戻りの面へのピックアップは消える。
-    /// 戻りが往きと違う系・玉を偏心した系（座標ブレークで挟んだ玉は戻りの面の並びで書けない）は今までどおり別の要素
+    /// 座標ブレークで挟んだ玉は置き方つきの玉に。戻りが往きと違う系は今までどおり別の要素
     #[test]
     fn a_double_pass_zmx_splits_into_the_forward_lens_and_a_returning_mirror() {
         let glass = vec![root().join("tests/glass")];
@@ -1261,14 +1366,62 @@ CHZN 3 1 0 0 0 0 1 1 1 0 0 \"\" 0\nCHZN 3 2 0.5 0 0 0 1 1 1 0 0 \"\" 0\n",
             kinds(&c)
         );
         assert!(!mirror(&c).mirror().back);
-        // 偏心・傾けた玉（座標ブレークで挟む）: 今までどおり要素に分かれる（往路を戻る鏡にはしない）
+        // 偏心・傾けた玉（座標ブレークで挟む）: 置き方つきの往きの玉と往路を戻る鏡（戻りは置き方ごと戻る）
         let c = open("P4_double_pass.zmx");
-        assert!(
-            !c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange),
-            "{:?}",
-            kinds(&c)
+        // 絞りは空気中の面（面の並び）
+        assert_eq!(
+            kinds(&c),
+            [ElemKind::Surfaces, ElemKind::Lens, ElemKind::Mirror]
         );
-        assert!(!mirror(&c).mirror().back);
+        assert!(mirror(&c).mirror().back);
+        assert_eq!(c.picks[1].tilt, [1.5, -0.7, 3.0]);
+        assert_eq!(c.picks[1].decenter, [0.2, -0.1]);
+    }
+
+    /// 公差: 往路を戻る鏡にまとめた系では玉は往復で 1 つで、玉の公差の組が往きと戻りに同じ誤差を入れる（曲率・厚さ・
+    /// 偏心・傾き。中身は lensbench-design の double_pass_lens_errors_on_both_passes）。別の要素＋ピックアップで開くと戻りの
+    /// 玉が別の玉になり、偏心・傾き・くさびは往きと別の誤差になる（ピックアップは面の値しか戻りへ写さない）
+    #[test]
+    fn a_folded_double_pass_tolerances_both_passes_as_one_lens() {
+        let glass = vec![root().join("tests/glass")];
+        let labels = |v: &Value| -> Vec<String> {
+            let q = lensbench_project::Project::from_json(&v.to_string()).unwrap();
+            let env =
+                lensbench_project::Env::in_dir(&root().join("tests/double_pass"), &glass, None);
+            let sys = lensbench_project::expand(&q, &env, &Default::default())
+                .unwrap()
+                .system;
+            let m = lensbench_design::tolerance::spec_from_json(
+                &json!({}),
+                vec![sys],
+                &Default::default(),
+            )
+            .unwrap();
+            m.tols.into_iter().map(|t| t.label).collect()
+        };
+        for f in ["pickups.zmx", "P4_double_pass.zmx"] {
+            let path = root().join("tests/double_pass").join(f);
+            let s = lensbench_formats::zmx::load_with(
+                &path,
+                &lensbench_formats::zmx::LoadOptions {
+                    catalog_dirs: glass.clone(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let p = lensbench_project::zmx_project(std::slice::from_ref(&s), f).unwrap();
+            let lenses = |dp: bool| -> BTreeSet<String> {
+                let a = split_parts(&s, &p, dp).unwrap();
+                labels(&a.v)
+                    .iter()
+                    .filter_map(|l| l.split(' ').next().map(str::to_string))
+                    .collect()
+            };
+            // まとめた系: 往きの玉 L1 だけ。戻りの面にも同じ誤差が入る
+            assert_eq!(lenses(true), BTreeSet::from(["L1".to_string()]), "{f}");
+            // 別の要素で開いた系: 戻りの玉が別の玉になる（往きと別に引く）
+            assert_eq!(lenses(false).len(), 2, "{f}: {:?}", lenses(false));
+        }
     }
 
     /// 多重構成のダブルパス: 鏡までの空気を構成で変えると、往きの空気の状態の値になり（戻りは往路を戻る鏡が受け持つ）、

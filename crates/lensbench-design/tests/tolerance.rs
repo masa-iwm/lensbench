@@ -698,3 +698,54 @@ fn results_are_written_and_resumed_with_more_trials() {
     assert!(e.to_string().contains("header differs"), "{e}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 置き方（偏心・傾き）つきの玉を鏡の back で往復する系も、玉は往復で 1 つで、往きと戻りに同じ誤差が入る
+/// （ブロックの範囲は前後の座標ブレークを含むが、玉の面の範囲で往復を結ぶ）
+#[test]
+fn a_placed_double_pass_lens_errors_on_both_passes() {
+    let mut v: serde_json::Value = serde_json::from_str(DP).unwrap();
+    v["blocks"][3]["decenter"] = json!([0.2, -0.1]);
+    v["blocks"][3]["tilt"] = json!([1.5, -0.7, 3.0]);
+    let p = Project::from_json(&v.to_string()).unwrap();
+    let env = Env {
+        step_files: None,
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let s = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
+    let m = spec_from_json(&json!({"seed": 3}), vec![s.clone()], &HashMap::new()).unwrap();
+    let names: Vec<&str> = m.tols.iter().map(|t| t.label.as_str()).collect();
+    assert!(
+        names
+            .iter()
+            .all(|l| l.starts_with("L1 ") || l.starts_with("L2 ")),
+        "{names:?}"
+    );
+    let u = m.tols.iter().find(|t| t.label == "L2 decenter x").unwrap();
+    assert_eq!(s.param_name(u.params[0]), "L2.dx");
+    let changed = |label: &str| {
+        let i = m.tols.iter().position(|t| t.label == label).unwrap();
+        let mut d = vec![0.0; m.tols.len()];
+        d[i] = m.tols[i].hi;
+        let q = lensbench_design::montecarlo::perturbed(&m, &d)
+            .unwrap()
+            .remove(0);
+        (0..s.surfaces.len())
+            .filter_map(|j| {
+                let (a, b) = (&s.surfaces[j], &q.surfaces[j]);
+                (a.c != b.c || a.t != b.t).then_some((j, b.c / a.c, b.t - a.t))
+            })
+            .collect::<Vec<_>>()
+    };
+    // 曲率: 往きと戻りの 2 面が同じ比で
+    let r = changed("L2 R1");
+    assert_eq!(r.len(), 2, "{r:?}");
+    assert!((r[0].1 - r[1].1).abs() < 1e-12, "{r:?}");
+    // 厚さ: 往きと戻りの 2 面が逆の符号で同じだけ
+    let t = changed("L2 thickness 1");
+    assert_eq!(t.len(), 2, "{t:?}");
+    assert!((t[0].2 + t[1].2).abs() < 1e-12 && t[0].2 != 0.0, "{t:?}");
+}
