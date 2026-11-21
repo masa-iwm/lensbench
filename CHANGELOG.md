@@ -31,6 +31,9 @@
   `lateral-color`（倍率色収差）・`focal-shift`（色焦点シフト）・`grid-distortion`（グリッド歪曲）・`seidel`（ザイデル係数、面ごとの
   S_I〜S_V と 1 次の色収差）。CLI・serve・Python（`System.analyze`）・GUI の図（解析の一覧の「収差」）で使える。値は同じ量の評価関数の
   演算子（TRAY・TRAX・OPDC・FCGT・FCGS・LONA・AXCL・DISG・SPHA ほか）と同じ
+- **GUI の多重構成の表の面のパラメータの行**: EVENASPH のほか、ODDASPHE・TILTSURF・IRREGULA・TOROIDAL などの面のパラメータも
+  構成ごとの行にできる（`PRAM`）
+- **GUI のカタログの機構部品の説明**: ケージのロッドの間隔と、両端のねじ（名前・オス/メス・長さ・引っ込み）を出す
 - **フットプリント図・相対照度・けられの図**: 解析 `footprint`（面の上の各視野の光束の範囲と開口、最大の半径・クリア半径に対する割合・
   通る割合・その面でけられる割合）・`relative-illumination`（相対照度と実効 F 値、RELI・EFNO と同じ。`--polarization` でコーティングの透過も）・
   `vignetting`（けられずに通る光線の割合）。CLI・serve・Python・GUI の図で使える

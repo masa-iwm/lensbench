@@ -263,6 +263,32 @@ fn type_column_matches_by_prefix_then_description() {
     assert!(Col::Type.parse("xyz").is_err());
 }
 
+/// 組合せの多重構成の行にできるパラメータの列: 係数の並びで持つ面タイプ（偶数次・奇数次非球面・傾けた面・Irregular・
+/// トロイダルの係数など）は面の値 asph の番号、座標ブレーク・近軸面・トロイダルの回転半径は行にしない
+#[test]
+fn multi_config_rows_of_surface_parameters() {
+    let row = |t: &str| Row {
+        typ: t.into(),
+        ..Default::default()
+    };
+    let cases = [
+        ("EVENASPH", 1, Some(("asph", Some(0)))),
+        ("EVENASPH", 8, Some(("asph", Some(7)))),
+        ("ODDASPHE", 3, Some(("asph", Some(2)))),
+        ("TILTSURF", 2, Some(("asph", Some(1)))),
+        ("IRREGULA", 1, Some(("asph", Some(0)))),
+        ("TOROIDAL", 1, None),
+        ("TOROIDAL", 2, Some(("asph", Some(0)))),
+        ("COORDBRK", 1, None),
+        ("PARAXIAL", 1, None),
+        ("JONESMAT", 1, None),
+        ("STANDARD", 1, None),
+    ];
+    for (t, i, want) in cases {
+        assert_eq!(mc_field(&row(t), Col::Par(i)), want, "{t} {i}");
+    }
+}
+
 /// セルの「多重構成の行にする」の名前は core の多重構成の名前として読める
 #[test]
 fn config_param_names() {

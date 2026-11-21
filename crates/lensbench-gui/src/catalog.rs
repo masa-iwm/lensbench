@@ -8,8 +8,10 @@ use crate::theme;
 use egui::{vec2, RichText, Sense, Ui};
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use serde_json::{json, Value};
+mod detail;
 mod filter;
 mod map_view;
+use detail::row_detail;
 pub(crate) use filter::CATEGORIES;
 pub(crate) use map_view::MapView;
 
@@ -426,69 +428,6 @@ impl KindChoices {
             has_mech: rows.iter().any(|l| l.kind == RowKind::Mech),
         }
     }
-}
-
-/// 選んだ品の 1 行の説明（誤り・未完の品は 2 行目に出すので空）
-fn row_detail(r: &LensRow) -> String {
-    if r.error.is_some() || r.is_incomplete() {
-        return String::new();
-    }
-    if r.kind == RowKind::Splitter {
-        return splitter_detail(r);
-    }
-    if r.kind == RowKind::Mech {
-        // 簡易外形（丸は外径、角は一辺）と保持径
-        let m = &r.raw["mech"];
-        let od = fmt_num(m["outer_diameter"].as_f64().unwrap_or(0.0));
-        let mut t = if m["outline"] == "square" {
-            trf(
-                "Mechanical part: length {} mm, square (side {} mm)",
-                &[&fmt_num(r.thickness), &od],
-            )
-        } else {
-            trf(
-                "Mechanical part: length {} mm, round (outer diameter {} mm)",
-                &[&fmt_num(r.thickness), &od],
-            )
-        };
-        if let Some(h) = hold_diameter(r) {
-            let max = hold_max(r);
-            if max > 0.0 {
-                t.push_str(&trf(
-                    ", clamps optics of diameter {}–{} mm",
-                    &[&fmt_num(h), &fmt_num(max)],
-                ));
-            } else {
-                t.push_str(&trf(", holding diameter {} mm", &[&fmt_num(h)]));
-            }
-        }
-        return t;
-    }
-    if let Some((radius, _)) = r.mirror {
-        let mut t = if radius == 0.0 {
-            trf("Flat mirror: dia. {} mm", &[&fmt_num(r.diameter)])
-        } else {
-            trf(
-                "Mirror: R = {} mm, f = {} mm, diameter {} mm",
-                &[&fmt_num(radius), &fmt_num(r.efl), &fmt_num(r.diameter)],
-            )
-        };
-        if !r.coat.is_empty() {
-            t.push_str("  ");
-            t.push_str(&trf("coating {}", &[&r.coat]));
-        }
-        return t;
-    }
-    trf(
-        "f = {} mm, diameter {} mm, thickness {} mm, {} element(s), glass {}",
-        &[
-            &fmt_num(r.efl),
-            &fmt_num(r.diameter),
-            &fmt_num(r.thickness),
-            &r.pieces,
-            &r.glasses.join(" / "),
-        ],
-    )
 }
 
 /// 仕様の条件を読む（読めない条件は誤りの文に）
@@ -1994,37 +1933,6 @@ pub(crate) fn pick_from(r: &LensRow) -> Pick {
     }
 }
 
-/// BS の詳細の行
-fn splitter_detail(r: &LensRow) -> String {
-    let sp = r.splitter.clone().unwrap_or_default();
-    let form = sp["form"].as_str().unwrap_or("cube");
-    let size = if form == "cube" {
-        trf("cube, side {} mm", &[&fmt_num(r.diameter)])
-    } else if form == "plate" {
-        trf(
-            "plate, thickness {} mm, dia. {} mm",
-            &[&fmt_num(r.thickness), &fmt_num(r.diameter)],
-        )
-    } else {
-        tr("ideal surface").to_string()
-    };
-    let split = if !r.coat.is_empty() {
-        trf("coating {}", &[&r.coat])
-    } else if sp["pbs"].is_object() {
-        "PBS".to_string()
-    } else {
-        trf("T {}", &[&fmt_num(sp["ratio"].as_f64().unwrap_or(0.5))])
-    };
-    let mut v = vec![size, split];
-    if !r.glasses.is_empty() {
-        v.push(trf("glass {}", &[&r.glasses.join(" / ")]));
-    }
-    if let Some(ar) = sp["ar"].as_str().filter(|a| !a.is_empty()) {
-        v.push(trf("AR {}", &[&ar]));
-    }
-    format!("BS: {}", v.join(tr(", ")))
-}
-
 /// 目盛り（lo..=hi の中の、1・2・5 × 10^k 刻みの値と小数の桁数）。おおよそ n 本
 fn ticks(lo: f64, hi: f64, n: usize) -> (Vec<f64>, usize) {
     let (lo, hi) = (lo.min(hi), lo.max(hi));
@@ -2393,6 +2301,19 @@ mod tests {
         });
         assert_eq!(f(&q), vec![1]);
         assert!(row_detail(&rows[2]).contains("25.4"));
+        let mut threaded = rows[2].clone();
+        threaded.raw["mech"]["rod_spacing"] = json!(30.0);
+        threaded.raw["mech"]["front_thread"] =
+            json!({ "thread": "SM1", "male": true, "length": 3.0 });
+        threaded.raw["mech"]["back_thread"] =
+            json!({ "thread": "SM1", "male": false, "length": 4.0, "recess": 1.5 });
+        let d = row_detail(&threaded);
+        assert!(d.contains("cage rods 30 mm apart"), "{d}");
+        assert!(d.contains("front end: SM1 male thread (3 mm long)"), "{d}");
+        assert!(
+            d.contains("back end: SM1 female thread (4 mm long), recessed 1.5 mm"),
+            "{d}"
+        );
         // 選んだ品と対応する品（キャッシュ）: 素子なら入る機構部品、機構部品なら入る素子
         let mut c = Browser::default();
         c.set_lenses(rows.clone());

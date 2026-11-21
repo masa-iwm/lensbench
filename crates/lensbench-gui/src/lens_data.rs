@@ -917,9 +917,14 @@ pub(crate) fn mc_field(r: &Row, col: Col) -> Option<(&'static str, Option<usize>
         Col::Semi => ("semi", None),
         Col::Material => ("material", None),
         Col::Coating => ("coating", None),
-        Col::Par(i) if r.typ == "EVENASPH" && (1..=8).contains(&i) => {
-            ("asph", Some(i as usize - 1))
-        }
+        // 係数の並び（面の値 asph）で持つパラメータ（[`par_value`] の既定の枝と、トロイダルの 2 番目から）。
+        // 座標ブレーク（要素の設定で変える）・トロイダルの回転半径・近軸面・Jones 行列は行にしない
+        Col::Par(i) if par_label(&r.typ, i).is_some() => match r.typ.as_str() {
+            "COORDBRK" | "PARAXIAL" | "JONESMAT" => return None,
+            "TOROIDAL" if i == 1 => return None,
+            "TOROIDAL" => ("asph", Some(i as usize - 2)),
+            _ => ("asph", Some(i as usize - 1)),
+        },
         _ => return None,
     })
 }

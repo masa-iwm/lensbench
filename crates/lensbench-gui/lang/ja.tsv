@@ -1760,6 +1760,12 @@ Sum	和
 Sum: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]	和: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]
 Wavelength [µm]	波長 [µm]
 Wavelength {}	波長 {}
+, cage rods {} mm apart	、ケージのロッドの間隔 {} mm
+male thread	オスねじ
+female thread	メスねじ
+, front end: {} {} ({} mm long)	、前の端: {} の{}（長さ {} mm）
+, back end: {} {} ({} mm long)	、後ろの端: {} の{}（長さ {} mm）
+, recessed {} mm	、引っ込み {} mm
 Footprint diagram	フットプリント図
 Includes the coating and Fresnel transmission relative to the axis	コーティングとフレネルの透過率（軸上との比）を含みます
 Per field (hover)	視野ごと（ポインタを重ねて表示）
