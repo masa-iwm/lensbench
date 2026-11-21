@@ -45,6 +45,7 @@ static D2: std::sync::LazyLock<d2::Options2D> = std::sync::LazyLock::new(d2::Opt
 static D3: std::sync::LazyLock<mesh::Options3D> =
     std::sync::LazyLock::new(mesh::Options3D::default);
 mod clap_ja;
+mod glass_dirs;
 mod search_cmd;
 
 #[derive(Parser)]
@@ -1494,17 +1495,9 @@ pub fn main() -> ExitCode {
     coat_remote::install();
     // run はスレッド数を自分では使わず、起動する Python に渡す
     if let Cmd::Run(a) = &cli.cmd {
-        return match run::run(a, cli.threads) {
-            // 0〜255 の外（Windows の異常終了の NTSTATUS は負など）は 1 にする（0 に丸めると成功に見える）
-            Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-            // 設定の誤りは 2（ファイルが無いなども設定の誤りとして 2、Python の終了コードと分ける）
-            Err(m) => {
-                error::report("lensbench run", &AppError::usage(m));
-                ExitCode::from(2)
-            }
-        };
+        return run::finish(a, cli.threads);
     }
-    lensbench_core::init_from_env();
+    glass_dirs::init_from_env();
     match lensbench_core::with_threads(cli.threads, || run(cli)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

@@ -2,6 +2,8 @@
 
 視野・波長・コンフィグの番号は 1 始まり。`--json` で JSON 出力。`--threads N` で追跡・解析のスレッド数（1 で逐次。
 外側でプロセス並列にするとき用。結果はスレッド数によらず同じビット。Rust からは `lensbench_core::with_threads`）。
+ガラスカタログは `--glass-dir`・環境変数 `LENSBENCH_GLASSCAT` の後に、exe の隣の `catalogs/glass` があればそこも探す
+（GUI の既定のカタログと同じ配置）。どこにも無いカタログは同梱の SCHOTT・OHARA（屈折率だけ）を使い、注意を出す。
 
 ```
 lensbench info     system.zmx --glass-dir <AGF のフォルダ>

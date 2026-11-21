@@ -113,4 +113,4 @@ lensbench coat-design curve.csv --name X --materials MGF2,TA2O5 --substrate N-BK
 - 同じ曲線を出す設計は一つではない。合わせた曲線の外（位相、別の角度、別の基板、硝材の側から入るとき）は元のコーティングと違いうる。
   斜めの曲線（45° の s・p など）があれば足すと外れが減る。
 
-ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。
+ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、exe の隣の `catalogs/glass`（あれば）、.zmx と同じフォルダの順に探す。

@@ -1145,3 +1145,36 @@ fn flags_on_by_default_help_is_translated() {
         assert!(!line.contains("Replace the vignetting"), "{name}: {line}");
     }
 }
+
+/// exe の隣に catalogs/glass がある配置なら、--glass-dir なしでもそこのカタログを使う（同梱の屈折率だけのカタログの注意が出ない）
+#[test]
+fn glass_catalogs_next_to_the_exe_are_used() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let exe = std::path::Path::new(env!("CARGO_BIN_EXE_lensbench"));
+    let dir = std::env::temp_dir().join(format!("lb_exe_glass_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let copy = dir.join(exe.file_name().unwrap());
+    std::fs::copy(exe, &copy).unwrap();
+    let info = || {
+        let o = Command::new(&copy)
+            .current_dir(root)
+            .args(["info", ZMX])
+            .env_remove("LENSBENCH_GLASSCAT")
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        String::from_utf8_lossy(&o.stderr).into_owned()
+    };
+    // catalogs/glass が無ければ同梱のカタログを使ったと知らせる
+    let err = info();
+    assert!(err.contains("built-in catalog"), "{err}");
+    let g = dir.join("catalogs").join("glass");
+    std::fs::create_dir_all(&g).unwrap();
+    for f in ["SCHOTT.AGF", "OHARA.AGF"] {
+        std::fs::copy(format!("{root}/tests/glass/{f}"), g.join(f)).unwrap();
+    }
+    let err = info();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(!err.contains("built-in catalog"), "{err}");
+}

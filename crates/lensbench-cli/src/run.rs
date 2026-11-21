@@ -447,6 +447,20 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
     }
 }
 
+/// [`run`] を動かし、終了コードにする
+pub fn finish(a: &RunArgs, threads: Option<usize>) -> std::process::ExitCode {
+    use std::process::ExitCode;
+    match run(a, threads) {
+        // 0〜255 の外（Windows の異常終了の NTSTATUS は負など）は 1 にする（0 に丸めると成功に見える）
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        // 設定の誤りは 2（ファイルが無いなども設定の誤りとして 2、Python の終了コードと分ける）
+        Err(m) => {
+            crate::error::report("lensbench run", &crate::AppError::usage(m));
+            ExitCode::from(2)
+        }
+    }
+}
+
 /// コマンドの入口: 画面とログのファイルに出し、終了コードを返す
 pub fn run(a: &RunArgs, threads: Option<usize>) -> lensbench_core::Result<i32> {
     let r = resolve(a, threads)?;
