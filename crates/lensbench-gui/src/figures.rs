@@ -21,6 +21,9 @@ pub(crate) fn has_figure(cmd: &str) -> bool {
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some();
     }
+    if crate::figures_aber::CMDS.contains(&cmd) {
+        return true;
+    }
     matches!(
         cmd,
         "spot"
@@ -143,6 +146,9 @@ pub(crate) fn show(
     let v = out.v;
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some_and(|f| f(ui, id, v));
+    }
+    if let Some(shown) = crate::figures_aber::show(ui, id, gen, cmd, out) {
+        return shown;
     }
     // 前の結果は今の結果と同じ世代で読み直す（前の結果は今の結果が届いたときに決まる）
     macro_rules! typed {

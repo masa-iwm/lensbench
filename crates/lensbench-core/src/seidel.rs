@@ -143,6 +143,46 @@ pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
     })
 }
 
+/// 面ごとの 1 次の色収差の和 C_L（軸上色）・C_T（倍率色）[レンズ単位]（Welford の C_I = A y Δ(δn/n)、C_II = Ā y Δ(δn/n)。
+/// A・Ā・y は波長 w の近軸周辺光線と最大の視野へ合わせた近軸主光線（[`seidel`] と同じ）、δn は波長 short と long の屈折率の差）。
+/// `[j]` は面 j の寄与（物体面・像面・無視する面・座標ブレークは 0）
+pub fn chromatic(s: &System, w: usize, short: usize, long: usize) -> Result<Vec<[f64; 2]>> {
+    if !s.symmetric() {
+        invalid!("Seidel coefficients need a rotationally symmetric system");
+    }
+    let sf = &s.surfaces;
+    let img = s.image();
+    let p = s.paraxial();
+    let k = chief_scale(s);
+    let (ym, um) = s.ptrace(p.marginal.0[1], p.marginal.1[0], w, None);
+    let (yc, uc) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
+    let mut out = vec![[0.0; 2]; sf.len()];
+    for j in 1..img {
+        let f = &sf[j];
+        if f.ignore || f.is_coord_break() {
+            continue;
+        }
+        if f.is_mirror() {
+            invalid!(
+                "Seidel coefficients of systems with mirrors are not supported yet (surface {j})"
+            );
+        }
+        let c = f.shape().paraxial_curv();
+        let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
+        let dn1 = s.index_before(j, short) - s.index_before(j, long);
+        let dn2 = s.n(j)[short] - s.n(j)[long];
+        let a = n1 * (um[j - 1] + ym[j] * c);
+        let ab = n1 * (uc[j - 1] + yc[j] * c);
+        let d = dn2 / n2 - dn1 / n1;
+        let v = [a * ym[j] * d, ab * ym[j] * d];
+        if v.iter().any(|x| !x.is_finite()) {
+            invalid!("Seidel coefficients of surface {j} are not finite");
+        }
+        out[j] = v;
+    }
+    Ok(out)
+}
+
 /// 軸上の光線が光軸を横切る点の、像面の頂点からの距離 [レンズ単位]（波長 w）。zone 0 は近軸周辺光線（主波長の入射瞳の縁を
 /// 通す）、zone > 0 は正規化瞳座標 (0, zone) の実光線。OpticStudio の LONA（26.1 で実測）
 pub fn longitudinal(s: &System, w: usize, zone: f64) -> Result<f64> {
@@ -340,6 +380,23 @@ pub fn distortion_against(
         invalid!("the distortion is not finite");
     }
     Ok((v, pct))
+}
+
+/// 視野 h の主光線の像面の点 p と、基準 r からの線形の予測 p_r + J (t − t_r)（グリッド歪曲の実際の点と理想の点）
+pub fn distortion_points(
+    s: &System,
+    w: usize,
+    h: (f64, f64),
+    r: &DistRef,
+) -> Result<([f64; 2], [f64; 2])> {
+    let t = field_t(s, h.0, h.1)?;
+    let p = chief_xy(s, h, w)?;
+    let (j, dt) = (r.j, [t[0] - r.t[0], t[1] - r.t[1]]);
+    let q = [
+        r.p[0] + j[0][0] * dt[0] + j[0][1] * dt[1],
+        r.p[1] + j[1][0] * dt[0] + j[1][1] * dt[1],
+    ];
+    Ok((p, q))
 }
 
 /// 一般の歪曲（OpticStudio の DISG）: 基準の視野 reference（None は軸上）からの [`distortion_against`] の動径。

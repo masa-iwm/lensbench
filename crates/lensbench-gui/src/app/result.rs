@@ -166,6 +166,9 @@ impl Core {
             })
             .collect();
         ui.data_mut(|d| d.insert_temp(egui::Id::new(plots::FIELD_LABELS), coords));
+        // 収差図の波長の色
+        let waves = self.waves_um();
+        ui.data_mut(|d| d.insert_temp(egui::Id::new(crate::figures_aber::WAVES_UM), waves));
         // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
         let out = figures::Out::new(v, r.typed.as_ref());
         let prev = r

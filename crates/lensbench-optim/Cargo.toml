@@ -19,6 +19,7 @@ web-time = "1"
 
 [dev-dependencies]
 lensbench-formats = { path = "../lensbench-formats" }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 # ズーム軌跡の試験はプロジェクトの例題（3 群ズーム）から状態の系を作る
 lensbench-project = { path = "../lensbench-project" }
 

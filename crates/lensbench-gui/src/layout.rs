@@ -30,6 +30,14 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("elements", n_("Element mode"), false),
     ("ghost", n_("Ghosts"), false),
     ("mech-check", n_("Mechanical vignetting"), false),
+    ("ray-fan", n_("Ray fan"), true),
+    ("opd-fan", n_("OPD fan"), true),
+    ("field-curvature", n_("Field curvature / distortion"), false),
+    ("longitudinal", n_("Longitudinal aberration"), false),
+    ("lateral-color", n_("Lateral color"), false),
+    ("focal-shift", n_("Chromatic focal shift"), false),
+    ("grid-distortion", n_("Grid distortion"), false),
+    ("seidel", n_("Seidel coefficients"), false),
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
@@ -64,6 +72,14 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "elements" => "Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps",
         "ghost" => "Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces",
         "mech-check" => "Mechanical vignetting: share of rays outside the mechanical apertures",
+        "ray-fan" => "Ray fan: transverse ray error versus pupil coordinate (tangential and sagittal) per field and wavelength",
+        "opd-fan" => "OPD fan: optical path difference [waves] versus pupil coordinate (tangential and sagittal)",
+        "field-curvature" => "Field curvature and distortion: tangential and sagittal focus and distortion % versus field",
+        "longitudinal" => "Longitudinal aberration: where on-axis rays cross the axis versus pupil height",
+        "lateral-color" => "Lateral color: chief ray height of each wavelength minus the primary wavelength versus field",
+        "focal-shift" => "Chromatic focal shift: paraxial focus versus wavelength relative to the primary wavelength",
+        "grid-distortion" => "Grid distortion: real chief ray points of a field grid against the paraxial ideal grid",
+        "seidel" => "Seidel coefficients: third-order aberration sums and first-order color per surface",
         _ => return None,
     })
 }
@@ -72,6 +88,7 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
 pub(crate) const ANALYSIS_GROUPS: &[&str] = &[
     n_("Image quality"),
     n_("MTF / PSF"),
+    n_("Aberrations"),
     n_("Interference / propagation"),
     n_("Tables / system"),
     n_("Extra analyses"),
@@ -83,6 +100,8 @@ pub(crate) fn analysis_group(cmd: &str) -> &'static str {
         "spot" | "wavefront" | "zernike" | "rms" => "Image quality",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
         "interference" | "pop" => "Interference / propagation",
+        "ray-fan" | "opd-fan" | "field-curvature" | "longitudinal" | "lateral-color"
+        | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",
         "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "Tables / system",
         _ => "Extra analyses",
     }

@@ -13,6 +13,7 @@ lensbench mtf      system.zmx --max-freq 200 --freq-steps 40     # 周波数を�
 lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --points 11
 lensbench mtf-field system.zmx --freqs 30,60 --points 11
 lensbench rms      system.zmx --vs field --points 11 --reference centroid
+lensbench ray-fan  system.zmx --field 3 --rays 20                # 収差図（ほかに opd-fan・field-curvature・longitudinal・lateral-color・focal-shift・grid-distortion・seidel）
 lensbench optimize system.zmx --var 8.t --var "6.c=0:0.05" --merit wavefront --out opt.zmx
 lensbench tolerance project.json --set '{"preset":"precision","compensators":["9.t"]}' --trials 500
 lensbench zoom     zoom.json --var G2.shift --var G3.shift --efl 95,110,130 --steps 3

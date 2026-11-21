@@ -26,6 +26,7 @@ mod crash;
 mod export_table;
 pub mod ext;
 mod figures;
+mod figures_aber;
 mod files;
 mod fill;
 mod fonts;

@@ -222,35 +222,10 @@ fn pupil_slope(
     Ok((t.rays[1].xyz[ax] - t.rays[0].xyz[ax]) / (2.0 * H))
 }
 
-/// 主光線の近くの光線の焦点の、面 j からの z の距離（[`RayQ::FcgT`]・[`RayQ::FcgS`]）。正規化瞳座標を y（FcgT）か
-/// x（FcgS）の向きに ±0.001 ずらした 2 本の光線が最も近づく z（横の位置の差 Δp と傾きの差 Δs から −Δp·Δs / |Δs|²。
-/// 回転対称でない系でも決まる）。OpticStudio 26.1 は主光線と +0.001 の光線の片側の差分で求め、ずらす向きが視野の向きと
-/// 垂直なら中心差分と 1e-10 で合い、そうでなければ 1e-4 ほど違う（刻みを 0 に近づけた値は中心差分の側）
+/// 主光線の近くの光線の焦点の、面 j からの z の距離（[`RayQ::FcgT`]・[`RayQ::FcgS`]。計算は像面湾曲の図と同じ
+/// [`lensbench_analysis::aber::field_focus`]）
 fn field_curvature(s: &System, field: FieldSel, w: usize, j: usize, q: RayQ) -> Result<f64> {
-    const H: f64 = 1e-3;
-    let (px, py) = if q == RayQ::FcgT {
-        ([0.0, 0.0], [-H, H])
-    } else {
-        ([-H, H], [0.0, 0.0])
-    };
-    let t = s.try_trace(field, &px, &py, Some(w), Some(j), false)?;
-    if let Some(r) = t.rays.iter().find(|r| r.status.surf().is_some()) {
-        invalid!(
-            "the ray near the chief ray stopped (wavelength {w}, surface {})",
-            r.status.code()
-        );
-    }
-    let (a, b) = (&t.rays[0], &t.rays[1]);
-    let dp = [b.xyz[0] - a.xyz[0], b.xyz[1] - a.xyz[1]];
-    let ds = [
-        b.lmn[0] / b.lmn[2] - a.lmn[0] / a.lmn[2],
-        b.lmn[1] / b.lmn[2] - a.lmn[1] / a.lmn[2],
-    ];
-    let z = -(dp[0] * ds[0] + dp[1] * ds[1]) / (ds[0] * ds[0] + ds[1] * ds[1]);
-    if !z.is_finite() {
-        invalid!("the field curvature is not finite (wavelength {w})");
-    }
-    Ok(z)
+    lensbench_analysis::aber::field_focus(s, field, w, j, q == RayQ::FcgT)
 }
 
 pub(super) fn check_path(

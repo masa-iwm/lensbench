@@ -85,6 +85,13 @@ fn every_builtin_runs_with_defaults() {
             "mtf-focus" => back::<MtfFocusOut>(&t, &v),
             "mtf-field" => back::<MtfFieldOut>(&t, &v),
             "geo-mtf" => back::<GeoMtfOut>(&t, &v),
+            "ray-fan" | "opd-fan" => back::<FanOut>(&t, &v),
+            "field-curvature" => back::<FieldCurvOut>(&t, &v),
+            "longitudinal" => back::<LongOut>(&t, &v),
+            "lateral-color" => back::<LatOut>(&t, &v),
+            "focal-shift" => back::<ShiftOut>(&t, &v),
+            "grid-distortion" => back::<GridOut>(&t, &v),
+            "seidel" => back::<SeidelOut>(&t, &v),
             n => panic!("no result type listed for {n}"),
         }
     }

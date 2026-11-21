@@ -2,11 +2,16 @@
 //!
 //! 結果の JSON の形は GUI・Python のクライアントが鍵で読む約束（変えるときは壊れる変更として docs/changes.md に書く）。
 
+mod aber;
 mod basic;
 mod image;
 mod mtfs;
 
 /// 同梱の解析の結果の型（同じプロセスの呼び手は [`crate::Typed::get`] で引く。JSON は同じ形）
+pub use aber::{
+    CurvWave, DistKind, FanOut, FanRow, FieldCurvOut, GridOut, GridPoint, LatOut, LatWave, LongOut,
+    LongWave, SeidelOut, SeidelRow, SeidelWaves, ShiftOut,
+};
 pub use basic::{
     GhostOut, GhostRow, RayCountsOut, SpotOut, SpotRow, WavefrontOut, WavefrontRow, ZKind,
     ZernikeOut, ZernikeRow,
@@ -36,6 +41,14 @@ pub fn register(a: &mut Analyses) {
     a.add(mtfs::HuygensMtf);
     a.add(image::Rms);
     a.add(image::Psf);
+    a.add(aber::RayFan);
+    a.add(aber::OpdFan);
+    a.add(aber::FieldCurv);
+    a.add(aber::Longitudinal);
+    a.add(aber::LateralColor);
+    a.add(aber::FocalShift);
+    a.add(aber::GridDistortion);
+    a.add(aber::SeidelCoef);
 }
 
 /// 視野の番号（1 始まり、None で全視野）を 0 始まりの並びにする

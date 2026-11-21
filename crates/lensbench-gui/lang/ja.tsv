@@ -1703,3 +1703,50 @@ Replay stopped at operation {} of {}: {}	{} / {} 番目の操作で流し直し�
 The recorded change did not change the document	記録した書き換えで文書が変わらなかった
 Replayed {} recorded operations	記録した操作 {} 件を流し直した
 {} must be finite	{} は有限の値に
+Aberrations	収差
+Ray fan	光線収差図
+OPD fan	OPD ファン
+Field curvature / distortion	像面湾曲 / 歪曲
+Longitudinal aberration	縦収差
+Lateral color	倍率色収差
+Chromatic focal shift	色焦点シフト
+Grid distortion	グリッド歪曲
+Seidel coefficients	ザイデル係数
+Ray fan: transverse ray error versus pupil coordinate (tangential and sagittal) per field and wavelength	光線収差図: 瞳座標に対する横収差（タンジェンシャル・サジタル）、視野・波長ごと
+OPD fan: optical path difference [waves] versus pupil coordinate (tangential and sagittal)	OPD ファン: 瞳座標に対する光路差 [波]（タンジェンシャル・サジタル）
+Field curvature and distortion: tangential and sagittal focus and distortion % versus field	像面湾曲と歪曲: 視野に対するタンジェンシャル・サジタルの焦点と歪曲 %
+Longitudinal aberration: where on-axis rays cross the axis versus pupil height	縦収差: 瞳の高さに対する、軸上の光線が光軸を横切る位置
+Lateral color: chief ray height of each wavelength minus the primary wavelength versus field	倍率色収差: 視野に対する、各波長の主光線の像高と主波長の像高の差
+Chromatic focal shift: paraxial focus versus wavelength relative to the primary wavelength	色焦点シフト: 波長に対する近軸焦点の、主波長の近軸焦点からのずれ
+Grid distortion: real chief ray points of a field grid against the paraxial ideal grid	グリッド歪曲: 視野のグリッドの実主光線の点と近軸の理想のグリッド
+Seidel coefficients: third-order aberration sums and first-order color per surface	ザイデル係数: 面ごとの 3 次収差の和と 1 次の色収差
+Rays per side	片側の光線の数
+Pupil zones	瞳の帯の数
+Wavelength points	波長の点の数
+Min wavelength	最短波長
+Max wavelength	最長波長
+Distortion	歪曲
+Dashed lines: Airy radius ±{} {}	破線は Airy 半径 ±{} {}
+Distortion [%]	歪曲 [%]
+Field	視野
+Focal shift	焦点シフト
+Focal shift [{}]	焦点シフト [{}]
+Focus from the image surface [{}]	像面からの焦点の位置 [{}]
+Ideal (paraxial)	理想（近軸）
+Lateral color [{}]	倍率色収差 [{}]
+Longitudinal aberration [{}]	縦収差 [{}]
+Maximum distortion {} % ({})	最大歪曲 {} %（{}）
+Maximum distortion {} % at field ({}, {})	最大歪曲 {} %（視野 ({}, {})）
+Maximum focal shift range {} {} · diffraction-limited depth {} {}	焦点シフトの最大幅 {} {} · 回折限界の焦点深度 {} {}
+OPD [{}]	OPD [{}]
+Pupil height (normalized)	瞳の高さ（正規化）
+Px (sagittal)	Px（サジタル）
+Py (tangential)	Py（タンジェンシャル）
+Ray error [{}]	横収差 [{}]
+Real chief rays	実主光線
+Seidel sum [{}]	ザイデル和 [{}]
+Solid: tangential, dashed: sagittal	実線はタンジェンシャル、破線はサジタル
+Sum	和
+Sum: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]	和: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]
+Wavelength [µm]	波長 [µm]
+Wavelength {}	波長 {}

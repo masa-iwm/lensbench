@@ -1,6 +1,6 @@
-# 解析（MTF・PSF・RMS）
+# 解析（MTF・PSF・RMS・収差図）
 
-CLI の MTF・PSF・RMS のまわりの解析（GUI の解析のパネル・Python・serve の `analyze` も同じ計算と引数）。
+CLI の MTF・PSF・RMS のまわりの解析と収差図（GUI の解析のパネル・Python・serve の `analyze` も同じ計算と引数）。
 スポット・波面・Zernike などほかの解析の引数は [CLI のリファレンス](reference/cli.md)。
 
 ## 回折 MTF
@@ -47,3 +47,29 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
 - OpticStudio 26.1 との照合は `tests/refs/<システム>/mtf_family.json`・`psf_os.npz`（24 本、許容差と理由は `crates/lensbench-verify/src/mtf_refs.rs`）。
 - Python は `System.mtf`（`method="fft"`・`each_wave=True`・`axes=`・`polarization=`）・`mtf_focus`・`mtf_field`・`rms`（`vs=`）・`psf`・`geo_mtf`・`huygens_psf`・`huygens_mtf`。
+
+## 収差図
+
+OpticStudio の収差図に当たる解析。どれも評価関数の演算子と同じ計算から作るので、図の値は演算子の値と同じ
+（`crates/lensbench-optim/tests/aber_figs.rs`）。`--wave` を省くと波長ごとに全波長（重み付きの多色ではない）。
+
+- `ray-fan`（Ray Fan 相当）: 視野・波長ごとに、瞳の y 軸に沿った光線の像面の y（子午 ey 対 Py）と x 軸に沿った光線の x（球欠 ex 対 Px）の、
+  主波長の主光線との差（TRAY・TRAX）。`--rays n` で瞳の片側 n 本（-1〜1 の 2n+1 点、既定 20）。けられた光線は null（図では線を切る）。
+  アフォーカル像空間では向きの角度の差。
+- `opd-fan`（OPD Fan 相当）: 同じ並びの光路差 [波]。参照球の中心は主波長の主光線、光路の基準は各波長の主光線（OPDC、波面図の基準と同じ）。
+- `field-curvature`（Field Curvature/Distortion 相当）: 正規化視野 0〜1 を `--points` 点（`--axis y`・`x`）で、主光線の近くの光線の子午・球欠の焦点の
+  像面からの z（FCGT・FCGS: 瞳を ±0.001 ずらした 2 本の光線が最も近づく z）と、実主光線の歪曲 %。歪曲の理想の像高は `--distortion f-tan`
+  （既定、近軸の倍率で f tan θ。軸上を基準にした DISG と同じ）か `f-theta`（f θ、角度の視野だけ）。
+- `longitudinal`（Longitudinal Aberration 相当）: 正規化瞳の高さ 0〜1 を `--points` 帯で、軸上の光線が光軸を横切る点の像面の頂点からの距離（LONA。
+  帯 0 は近軸周辺光線）。
+- `lateral-color`（Lateral Color 相当）: 正規化視野 0〜1 を `--points` 点で、各波長の実主光線の像高（視野の向きの成分）の主波長からの差と、
+  主波長の Airy 半径 1.22 λ F/#（作動 F 値）。視野の端での値は近軸の LACL に近い（LACL は近軸主光線）。
+- `focal-shift`（Chromatic Focal Shift 相当）: `--min`〜`--max` [µm]（省くとシステムの最短・最長の波長）の `--points` 個の波長で、近軸焦点の
+  主波長の近軸焦点からのずれ（帯 0 の LONA の差、AXCL と同じ）。ずれの最大の幅 `range` と回折限界の焦点深度 4 λ (F/#)² も出す。
+- `grid-distortion`（Grid Distortion 相当）: 正規化視野 -1〜1 の `--grid`×`--grid` の正方形（既定 9）の各点で、実主光線の像面の点と、
+  近軸の倍率からの理想の点（角度の視野は tan θ に線形）、歪曲 %（DISG）。最大の歪曲とその視野も。回転対称のシステムだけ。
+- `seidel`（Seidel Coefficients・Seidel Diagram 相当）: 面ごとの 3 次収差の和 S_I〜S_V [レンズ単位]（Welford の定義）、1 次の色収差 C_L（軸上）・
+  C_T（倍率、最短と最長の波長の屈折率の差から）、波面収差の係数 W040・W131・W222・W220・W311 [波]（SPHA・COMA・ASTI・FCUR・DIST）。
+  ミラーの無い回転対称のシステムだけ。
+- GUI では解析の一覧の「収差」の群。扇は視野ごとに子午・球欠の 2 枚（縦軸は全部の視野でそろえる）、像面湾曲は焦点（実線が子午・破線が球欠）と
+  歪曲の 2 枚、ザイデル係数は面ごとの棒（最後の組が和）。Python は `System.analyze("ray-fan", field=1)` など。
