@@ -1703,6 +1703,24 @@ Replay stopped at operation {} of {}: {}	{} / {} 番目の操作で流し直し�
 The recorded change did not change the document	記録した書き換えで文書が変わらなかった
 Replayed {} recorded operations	記録した操作 {} 件を流し直した
 {} must be finite	{} は有限の値に
+Solve steps by QR	一歩を QR で解く
+Solve each step by QR instead of the normal equations (no squaring of the condition number; the path can differ by rounding on ill-conditioned problems)	一歩を正規方程式でなく QR で解きます（条件数が 2 乗になりません。悪条件の問題では丸めで経路が変わることがあります）
+Hold variables at their bounds	範囲を外れる変数を境界に止める
+Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)	範囲: 一歩で範囲を出る変数を境界に止め、残りの変数で解き直します（成分ごとに切りません）
+Drop stopped rays	止まった光線を除く
+Drop stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation	止まった光線（全反射・面に届かない）を、評価のエラーにせず、ケラレの光線と同じく除きます
+Gradient stop	勾配で止める値
+Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)	残差と変数の列の余弦の最大がこれより小さければ止めます（0 は判定しません）
+{}: write candidate parts as Vendor:Part separated by commas: {}	{}: 候補の型番は「メーカー:型番」をカンマで区切って書いてください: {}
+Candidate parts	候補の型番
+Filtered	絞り込み
+Candidate part numbers as Vendor:Part separated by commas (empty uses the filter)	候補の型番を「メーカー:型番」のカンマ区切りで（空なら絞り込みで選びます）
+Focal length tolerance	焦点距離の許し
+Beam search per lens	レンズごとのビーム探索
+Instead of all sets, advance one lens at a time, trying all its candidates and keeping the best choices (much fewer sets; may miss the best of the full search)	全部の組の代わりに、レンズを 1 つずつ進め、その候補を全部試して良い選び方を残します（組の数がずっと少なくなります。総当たりの最良を見落とすことがあります）
+Passes	巡回
+Paraxial prescreen	近軸の前ふるい
+Drop sets that cannot reach the target focal length anywhere in the gap ranges, without tracing rays (needs a target focal length)	間隔の範囲のどこでも焦点距離の目標に届かない組を、光線を追わずに落とします（焦点距離の目標が要ります）
 {} s ago	{} 秒前
 {} min ago	{} 分前
 {} h ago	{} 時間前

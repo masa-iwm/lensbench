@@ -1153,6 +1153,18 @@ fn term_unit(label: &str) -> &'static str {
 mod tests {
     use super::*;
 
+    /// 個別の公差の数は丸めずに欄に出す（表を通して保存しても細かい値が変わらない）
+    #[test]
+    fn tolerance_numbers_are_not_rounded() {
+        let t = json!({"param": "3.t", "lo": -0.0123456789, "hi": 1.000000001, "pm": 0.1,
+            "scale": [1.23456789e-7, 2.0]});
+        let r = TolRow::from_json(&t).unwrap();
+        assert_eq!(r.lo, "-0.0123456789");
+        assert_eq!(r.hi, "1.000000001");
+        assert_eq!(r.pm, "0.1");
+        assert_eq!(r.scale, "0.000000123456789, 2");
+    }
+
     #[test]
     fn term_units() {
         assert_eq!(term_unit("spot #1"), "mm");

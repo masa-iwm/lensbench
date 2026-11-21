@@ -30,6 +30,41 @@ pub(crate) struct SlotRow {
     pub efl: [String; 2],
     pub dia: [String; 2],
     pub flip: bool,
+    /// 候補の型番（「メーカー:型番」をカンマ区切り。空なら絞り込みで選ぶ）
+    pub parts: String,
+}
+
+/// 候補の型番の欄（「メーカー:型番, …」）を spec の parts に
+fn parts_json(t: &str, block: &str) -> Result<Vec<Value>, String> {
+    t.split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(|x| match x.split_once(':') {
+            Some((v, q)) if !v.trim().is_empty() && !q.trim().is_empty() => {
+                Ok(json!({ "vendor": v.trim(), "part": q.trim() }))
+            }
+            _ => Err(trf(
+                "{}: write candidate parts as Vendor:Part separated by commas: {}",
+                &[&block, &x],
+            )),
+        })
+        .collect()
+}
+
+/// spec の parts を欄の文字に
+fn parts_text(v: &Value) -> String {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .map(|x| {
+            format!(
+                "{}:{}",
+                x["vendor"].as_str().unwrap_or_default(),
+                x["part"].as_str().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// 組ごとに最適化する変数の行
@@ -83,6 +118,13 @@ pub(crate) struct SwapPanel {
     pub pre: bool,
     pub pre_rings: usize,
     pub pre_keep: usize,
+    /// 所ごとのビーム探索（beam）を使う、その 残す選び方の数・巡回の上限
+    pub beam: bool,
+    pub beam_width: usize,
+    pub beam_passes: usize,
+    /// 近軸の前ふるい（paraxial）を使う、その焦点距離の許し [mm]（空は目標の 1 %）
+    pub paraxial: bool,
+    pub efl_tol: String,
     /// 評価関数に足す項（optimize と同じ）
     pub terms: Vec<TermRow>,
     pub new_term: String,
@@ -126,6 +168,11 @@ impl Default for SwapPanel {
             pre: false,
             pre_rings: 2,
             pre_keep: 1000,
+            beam: false,
+            beam_width: 20,
+            beam_passes: 2,
+            paraxial: false,
+            efl_tol: String::new(),
             terms: Vec::new(),
             new_term: "paraxial".into(),
             starts: String::new(),
@@ -172,7 +219,12 @@ impl SwapPanel {
             if !s.vendor.trim().is_empty() {
                 f["vendor"] = json!(s.vendor.trim());
             }
-            slots.push(json!({ "block": b, "filter": f, "flip": s.flip }));
+            let mut o = json!({ "block": b, "filter": f, "flip": s.flip });
+            let parts = parts_json(&s.parts, b)?;
+            if !parts.is_empty() {
+                o["parts"] = json!(parts);
+            }
+            slots.push(o);
         }
         let mut vars = Vec::new();
         for v in &self.vars {
@@ -200,6 +252,16 @@ impl SwapPanel {
         });
         if self.pre {
             p["prescreen"] = json!({ "rings": self.pre_rings, "keep": self.pre_keep });
+        }
+        if self.beam {
+            p["beam"] = json!({ "width": self.beam_width, "passes": self.beam_passes });
+        }
+        if self.paraxial {
+            p["paraxial"] =
+                match crate::widgets::parse_num(&self.efl_tol, tr("Focal length tolerance"))? {
+                    Some(t) => json!({ "efl_tol": t }),
+                    None => json!({}),
+                };
         }
         if let Some(e) = crate::widgets::parse_num(&self.efl, tr("Target focal length"))? {
             p["efl"] = json!(e);
@@ -256,6 +318,7 @@ impl SwapPanel {
                             efl: pair(&f["efl"]),
                             dia: pair(&f["diameter"]),
                             flip: s["flip"].as_bool().unwrap_or(false),
+                            parts: parts_text(&s["parts"]),
                         });
                     }
                 }
@@ -290,6 +353,15 @@ impl SwapPanel {
                     n.pre = !v.is_null();
                     n.pre_rings = v["rings"].as_u64().unwrap_or(2) as usize;
                     n.pre_keep = v["keep"].as_u64().unwrap_or(1000) as usize;
+                }
+                "beam" => {
+                    n.beam = !v.is_null();
+                    n.beam_width = v["width"].as_u64().unwrap_or(20) as usize;
+                    n.beam_passes = v["passes"].as_u64().unwrap_or(2) as usize;
+                }
+                "paraxial" => {
+                    n.paraxial = !v.is_null();
+                    n.efl_tol = v.get("efl_tol").map(num_text).unwrap_or_default();
                 }
                 "terms" => n.terms = term_rows(v)?,
                 "starts" => n.starts = starts_text(v),
@@ -613,7 +685,7 @@ impl Sheet for SlotSheet<'_> {
         self.slots.len()
     }
     fn cols(&self) -> usize {
-        7
+        8
     }
     fn header(&self, col: usize, _cur: Option<usize>) -> String {
         match col {
@@ -623,11 +695,12 @@ impl Sheet for SlotSheet<'_> {
             3 => trf("{} max", &[&tr("Focal length [mm]")]),
             4 => trf("{} min", &[&tr("Diameter [mm]")]),
             5 => trf("{} max", &[&tr("Diameter [mm]")]),
-            _ => tr("Flip too").into(),
+            6 => tr("Flip too").into(),
+            _ => tr("Candidate parts").into(),
         }
     }
     fn width(&self, col: usize) -> f32 {
-        [140.0, 70.0, 64.0, 64.0, 56.0, 56.0, 56.0][col]
+        [140.0, 70.0, 64.0, 64.0, 56.0, 56.0, 56.0, 160.0][col]
     }
     fn cell(&self, row: usize, col: usize) -> Cell {
         let s = &self.slots[row];
@@ -644,9 +717,12 @@ impl Sheet for SlotSheet<'_> {
             3 => Cell::num(s.efl[1].clone()).hint("∞"),
             4 => Cell::num(s.dia[0].clone()).hint("0"),
             5 => Cell::num(s.dia[1].clone()).hint("∞"),
-            _ => {
+            6 => {
                 Cell::boolean(s.flip).tip(tr("Try both orientations (doubles the number of sets)"))
             }
+            _ => Cell::text(s.parts.clone()).hint(tr("Filtered")).tip(tr(
+                "Candidate part numbers as Vendor:Part separated by commas (empty uses the filter)",
+            )),
         }
     }
     fn set(&mut self, row: usize, col: usize, text: &str) -> Result<(), String> {
@@ -657,13 +733,17 @@ impl Sheet for SlotSheet<'_> {
         if (2..=5).contains(&col) {
             crate::widgets::parse_num(t, &self.header(col, None))?;
         }
+        if col == 7 {
+            parts_json(t, &self.slots[row].block)?;
+        }
         let s = &mut self.slots[row];
         match col {
             0 => s.block = t.into(),
             1 => s.vendor = t.into(),
             2 | 3 => s.efl[col - 2] = t.into(),
             4 | 5 => s.dia[col - 4] = t.into(),
-            _ => s.flip = t == "true",
+            6 => s.flip = t == "true",
+            _ => s.parts = t.into(),
         }
         Ok(())
     }
@@ -942,6 +1022,38 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
             ui.add(egui::DragValue::new(&mut p.pre_keep).range(1..=10_000_000));
         });
     });
+    // ビーム探索と粗いふるいは同時に使えない（片方を入れたらもう片方を外す）
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .checkbox(&mut p.beam, tr("Beam search per lens"))
+            .on_hover_text(tr(
+                "Instead of all sets, advance one lens at a time, trying all its candidates and keeping the best choices (much fewer sets; may miss the best of the full search)",
+            ))
+            .changed()
+            && p.beam
+        {
+            p.pre = false;
+        }
+        ui.add_enabled_ui(p.beam, |ui| {
+            ui.label(tr("Keep"));
+            ui.add(egui::DragValue::new(&mut p.beam_width).range(1..=100_000));
+            ui.label(tr("Passes"));
+            ui.add(egui::DragValue::new(&mut p.beam_passes).range(1..=100));
+        });
+    });
+    if p.pre {
+        p.beam = false;
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut p.paraxial, tr("Paraxial prescreen"))
+            .on_hover_text(tr(
+                "Drop sets that cannot reach the target focal length anywhere in the gap ranges, without tracing rays (needs a target focal length)",
+            ));
+        ui.add_enabled_ui(p.paraxial, |ui| {
+            ui.label(tr("Focal length tolerance"));
+            small_edit(ui, &mut p.efl_tol, 60.0, "1 %");
+        });
+    });
     ui.label(
         RichText::new(tr(
             "Gaps are optimized per set by damped least squares and the sets are sorted by merit. A target focal length is added to the merit function.",
@@ -1109,6 +1221,7 @@ mod tests {
             efl: ["50.5".into(), "".into()],
             dia: ["".into(), "25.4".into()],
             flip: true,
+            parts: "LB:LA1131, LB : LA1433".into(),
         });
         p.vars.push(VarRow {
             name: "d1.t".into(),
@@ -1138,14 +1251,53 @@ mod tests {
         let mut q = SwapPanel::default();
         q.set_spec(&file).unwrap();
         assert_eq!(q.spec().unwrap(), s);
+        assert_eq!(
+            s["slots"][0]["parts"],
+            json!([{"vendor": "LB", "part": "LA1131"}, {"vendor": "LB", "part": "LA1433"}])
+        );
         let mut q = SwapPanel::default();
         q.set_spec(&s).unwrap();
+        assert_eq!(q.slots[0].parts, "LB:LA1131, LB:LA1433");
+        q.slots[0].parts = p.slots[0].parts.clone();
         assert_eq!(q.slots, p.slots);
         assert_eq!(q.vars, p.vars);
         assert_eq!(q.efl, "100");
         assert!(q.pre);
         assert_eq!((q.pre_rings, q.pre_keep), (2, 500));
         assert!(q.set_spec(&json!({"bad": 1})).is_err());
+        // 型番の欄の誤り
+        let mut r = SwapPanel::default();
+        r.slots.push(SlotRow {
+            block: "A".into(),
+            parts: "LA1131".into(),
+            ..Default::default()
+        });
+        assert!(r.spec().is_err());
+    }
+
+    /// ビーム探索・近軸の前ふるいの設定も保存して読み戻せる（spec の beam・paraxial）
+    #[test]
+    fn spec_beam_and_paraxial() {
+        let mut p = SwapPanel::default();
+        let s = p.spec().unwrap();
+        assert!(s.get("beam").is_none() && s.get("paraxial").is_none());
+        p.beam = true;
+        p.beam_width = 8;
+        p.paraxial = true;
+        let s = p.spec().unwrap();
+        assert_eq!(s["beam"], json!({"width": 8, "passes": 2}));
+        assert_eq!(s["paraxial"], json!({}));
+        p.efl_tol = "0.5".into();
+        let s = p.spec().unwrap();
+        assert_eq!(s["paraxial"], json!({"efl_tol": 0.5}));
+        // 設定の型（CLI の --spec と同じ）で読める
+        serde_json::from_value::<lensbench_design::swap::SwapSpec>(s.clone()).unwrap();
+        let mut q = SwapPanel::default();
+        q.set_spec(&s).unwrap();
+        assert!(q.beam && q.paraxial);
+        assert_eq!((q.beam_width, q.beam_passes), (8, 2));
+        assert_eq!(q.efl_tol, "0.5");
+        assert_eq!(q.spec().unwrap(), s);
     }
 
     #[test]

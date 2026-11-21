@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 
 use super::{dist_label, preset_label, GroupRow, LensRow, TolRow, DISTS, PRESETS};
 use crate::i18n::{tr, trf};
-use crate::json_view::fmt_num;
 use crate::param_pick as pp;
 use crate::widgets::sheet::{Cell, Sheet};
 
@@ -69,12 +68,12 @@ impl TolRow {
         Ok(Some(o))
     }
 
-    /// 個別の公差の JSON から。欄で表せない書き方なら None（そのまま残す）
+    /// 個別の公差の JSON から（数は丸めずに欄の文字に。表を通して保存しても値が変わらない）。欄で表せない書き方なら None（そのまま残す）
     pub(crate) fn from_json(t: &Value) -> Option<TolRow> {
         let o = t.as_object()?;
         let f = |k: &str| {
             o.get(k)
-                .map(|x| x.as_f64().map(fmt_num))
+                .map(|x| x.as_f64().map(exact))
                 .unwrap_or(Some(String::new()))
         };
         let s = |k: &str| {
@@ -96,7 +95,7 @@ impl TolRow {
             Some(Value::Array(a)) if a.iter().all(Value::is_number) => a
                 .iter()
                 .filter_map(Value::as_f64)
-                .map(fmt_num)
+                .map(exact)
                 .collect::<Vec<_>>()
                 .join(", "),
             _ => return None,
@@ -357,5 +356,14 @@ impl Sheet for TolSheet<'_> {
     fn swap(&mut self, a: usize) -> bool {
         self.tols.swap(a, a + 1);
         true
+    }
+}
+
+/// 数を欄の文字に（整数は小数点なし、ほかは読み直すと同じ値になる最短の文字）
+fn exact(x: f64) -> String {
+    if x == x.trunc() && x.abs() < 1e15 {
+        format!("{}", x as i64)
+    } else {
+        format!("{x}")
     }
 }

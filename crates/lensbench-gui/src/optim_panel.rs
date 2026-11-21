@@ -457,6 +457,12 @@ pub(crate) struct OptPanel {
     pub reference: String,
     pub iters: usize,
     pub jac: String,
+    /// DLS の一歩を QR で解く・勾配で止める値（0 は判定しない）・境界を外れる変数を止めて解き直す・止まった光線を
+    /// けられた光線と同じく除く（CLI の --qr・--gtol・--active-set・--stopped-as-vignetted）
+    pub qr: bool,
+    pub gtol: f64,
+    pub active_set: bool,
+    pub stopped_as_vignetted: bool,
     /// 構成（.zmx の構成番号か状態の名前、カンマ区切り。空は開いている系だけ）
     pub configs: String,
     pub new_var: String,
@@ -488,6 +494,10 @@ impl OptPanel {
             reference: d.reference.to_string(),
             iters: d.iters,
             jac: d.jac.to_string(),
+            qr: d.qr,
+            gtol: d.gtol,
+            active_set: d.active_set,
+            stopped_as_vignetted: d.stopped_as_vignetted,
             new_term: "paraxial".into(),
             ..Default::default()
         }
@@ -573,6 +583,24 @@ impl OptPanel {
         if !cfgs.is_empty() {
             p["configs"] = json!(cfgs);
         }
+        // DLS の設定は既定と違うときだけ書く（保存するファイルを短く）
+        let d = lensbench_design::dls_spec::OptimizeParams::default();
+        for (k, v, dv) in [
+            ("qr", self.qr, d.qr),
+            ("active_set", self.active_set, d.active_set),
+            (
+                "stopped_as_vignetted",
+                self.stopped_as_vignetted,
+                d.stopped_as_vignetted,
+            ),
+        ] {
+            if v != dv {
+                p[k] = json!(v);
+            }
+        }
+        if self.gtol != d.gtol {
+            p["gtol"] = json!(self.gtol);
+        }
         Ok(p)
     }
 
@@ -595,6 +623,18 @@ impl OptPanel {
         }
         if let Some(x) = p["jac"].as_str() {
             n.jac = x.into();
+        }
+        for (k, v) in [
+            ("qr", &mut n.qr),
+            ("active_set", &mut n.active_set),
+            ("stopped_as_vignetted", &mut n.stopped_as_vignetted),
+        ] {
+            if let Some(x) = p[k].as_bool() {
+                *v = x;
+            }
+        }
+        if let Some(x) = p["gtol"].as_f64() {
+            n.gtol = x;
         }
         if let Some(a) = p["configs"].as_array() {
             n.configs = a.iter().map(text_of).collect::<Vec<_>>().join(", ");
@@ -651,6 +691,10 @@ pub(crate) fn term_rows(v: &Value) -> Result<Vec<TermRow>, String> {
                             .map(|a| a.iter().map(text_of).collect::<Vec<_>>().join("; "))
                             .unwrap_or_else(|| text_of(v)),
                     )),
+                    // 欄の無い鍵は、保存で読んだ形に戻る文字に（数に見える文字列は引用符つき）
+                    _ if !keys(ty).iter().any(|(a, _)| a == k) => {
+                        r.vals.push((k.clone(), loose_text(v)))
+                    }
                     _ => r.vals.push((k.clone(), text_of(v))),
                 }
             }
@@ -700,16 +744,22 @@ fn pair(t: &str) -> Option<Value> {
     (v.len() == 2).then(|| json!(v))
 }
 
-/// 欄の無い鍵の文字列を JSON の値に（`text_of` の逆）
+/// 欄の無い鍵の文字列を JSON の値に（[`loose_text`] の逆）。引用符で囲んだ文字は文字列
 fn loose(v: &str) -> Value {
     if let Ok(x) = serde_json::from_str::<Value>(v) {
-        if !x.is_string() {
-            return x;
-        }
+        return x;
     }
     match serde_json::from_str::<Value>(&format!("[{v}]")) {
         Ok(x) if x.as_array().is_some_and(|a| a.len() > 1) => x,
         _ => json!(v),
+    }
+}
+
+/// 欄の無い鍵の JSON の値を欄の文字に（[`loose`] で同じ値に戻る）。数・true などに見える文字列は引用符で囲む
+fn loose_text(v: &Value) -> String {
+    match v {
+        Value::String(s) if loose(s) != *v => Value::String(s.clone()).to_string(),
+        _ => text_of(v),
     }
 }
 
@@ -1154,6 +1204,24 @@ fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
         }
     });
     ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut p.qr, tr("Solve steps by QR"))
+            .on_hover_text(tr("Solve each step by QR instead of the normal equations (no squaring of the condition number; the path can differ by rounding on ill-conditioned problems)"));
+        ui.checkbox(&mut p.active_set, tr("Hold variables at their bounds"))
+            .on_hover_text(tr("Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)"));
+        ui.checkbox(&mut p.stopped_as_vignetted, tr("Drop stopped rays"))
+            .on_hover_text(tr("Drop stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation"));
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("Gradient stop"))
+            .on_hover_text(tr("Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)"));
+        ui.add(
+            egui::DragValue::new(&mut p.gtol)
+                .range(0.0..=1.0)
+                .speed(1e-4)
+                .max_decimals(8),
+        );
+    });
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Config"));
         small_edit(ui, &mut p.configs, 160.0, tr("Open system only"));
     });
@@ -1342,141 +1410,4 @@ pub(crate) fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Val
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 範囲の境界だけの項（semi・each の thickness）も欄から min・max を書ける
-    #[test]
-    fn bound_fields() {
-        let mut t = TermRow::new("semi");
-        t.set("max", "5");
-        assert_eq!(
-            term_json(&t).unwrap(),
-            json!({"type": "semi", "surf": 1, "max": 5.0})
-        );
-        let mut t = TermRow::new("thickness");
-        t.set("each", "air");
-        t.set("min", "0.5");
-        assert_eq!(
-            term_json(&t).unwrap(),
-            json!({"type": "thickness", "surf": 1, "each": "air", "min": 0.5})
-        );
-    }
-
-    /// 評価関数の単位は項が同じ単位のときだけ（スポットは µm、波面は波、混ざると無し）
-    #[test]
-    fn gux20_merit_unit() {
-        let mut p = OptPanel {
-            merit: "spot".into(),
-            ..Default::default()
-        };
-        assert_eq!(merit_unit(&p), (1000.0, "µm"));
-        p.terms.push(TermRow::new("centroid"));
-        assert_eq!(merit_unit(&p).1, "µm");
-        p.terms.push(TermRow::new("wavefront"));
-        assert_eq!(merit_unit(&p).1, "");
-        p.merit = "none".into();
-        p.terms.retain(|t| t.ty == "wavefront");
-        assert_eq!(merit_unit(&p).1, tr("waves"));
-        p.terms.clear();
-        assert_eq!(merit_unit(&p).1, "");
-    }
-
-    /// 変数の行に面の値（t・r・c・k）の今の値を出す
-    #[test]
-    fn gux21_var_value_reads_surface_rows() {
-        let row = |r: f64, t: f64| crate::lens_data::Row {
-            r,
-            t,
-            k: -1.0,
-            ..Default::default()
-        };
-        let rows = vec![row(f64::INFINITY, 0.0), row(50.0, 4.0)];
-        assert_eq!(var_value(&rows, "1.t"), Some(4.0));
-        assert_eq!(var_value(&rows, " 1.r"), Some(50.0));
-        assert_eq!(var_value(&rows, "1.c"), Some(0.02));
-        assert_eq!(var_value(&rows, "1.k"), Some(-1.0));
-        assert_eq!(var_value(&rows, "0.r"), Some(f64::INFINITY));
-        assert_eq!(var_value(&rows, "0.c"), Some(0.0));
-        assert_eq!(var_value(&rows, "5.t"), None);
-        assert_eq!(var_value(&rows, "G1.shift"), None);
-    }
-
-    #[test]
-    fn params_round_trip() {
-        let mut p = OptPanel::new();
-        p.vars.push(VarRow {
-            name: "7.t".into(),
-            lo: "0.5".into(),
-            hi: "".into(),
-            configs: "1, 2".into(),
-        });
-        let mut t = TermRow::new("ray");
-        t.set("field", "0, 0.5");
-        t.weight = "2".into();
-        p.terms.push(t);
-        let mut q = TermRow::new("paraxial");
-        q.set("target", "50");
-        p.terms.push(q);
-        let mut z = TermRow::new("zplm");
-        z.set("macro", "lbEval");
-        z.set("data", "3");
-        z.set("macro_dirs", "C:\\a, b; /c");
-        p.terms.push(z);
-        let mut z = TermRow::new("zplm");
-        z.set("macro", "7");
-        p.terms.push(z);
-        let mut g = TermRow::new("plugin");
-        g.set("args", r#"{"f": 60, "passes": 1}"#);
-        g.set("target", "0.001");
-        p.terms.push(g);
-        p.configs = "1, 2".into();
-        p.merit = "none".into();
-        let v = p.params().unwrap();
-        assert_eq!(
-            v["vars"][0],
-            json!({"name": "7.t", "lo": 0.5, "configs": [1, 2]})
-        );
-        assert_eq!(
-            v["terms"][0],
-            json!({"type": "ray", "field": [0.0, 0.5], "py": 1.0, "q": "y", "target": 0.0, "weight": 2.0})
-        );
-        assert_eq!(
-            v["terms"][1],
-            json!({"type": "paraxial", "q": "efl", "target": 50.0})
-        );
-        assert_eq!(
-            v["terms"][2],
-            json!({"type": "zplm", "macro": "lbEval", "data": 3, "macro_dirs": ["C:\\a, b", "/c"]})
-        );
-        assert_eq!(
-            v["terms"][3],
-            json!({"type": "zplm", "macro": 7, "data": 0})
-        );
-        assert_eq!(v["configs"], json!([1, 2]));
-        // 項の JSON は CLI と同じ読み方で読める
-        let mut back = OptPanel::new();
-        back.set_params(&v).unwrap();
-        assert_eq!(back.params().unwrap(), v);
-        // 間違い
-        let mut bad = OptPanel::new();
-        let mut t = TermRow::new("paraxial");
-        t.set("target", "abc");
-        bad.terms.push(t);
-        assert!(bad.params().is_err());
-        let mut bad = OptPanel::new();
-        let mut t = TermRow::new("plugin");
-        t.set("args", "[1, 2]");
-        bad.terms.push(t);
-        assert!(bad.params().is_err());
-    }
-
-    #[test]
-    fn combo_edits() {
-        assert_eq!(combo_edit("7.t", 2.0).unwrap(), (7, "t", json!(2.0)));
-        assert_eq!(combo_edit("3.c", 0.02).unwrap(), (3, "r", json!(50.0)));
-        assert_eq!(combo_edit("3.c", 0.0).unwrap(), (3, "r", json!(0.0)));
-        assert!(combo_edit("lens1.tx", 1.0).is_err());
-        assert!(combo_edit("3.dx", 1.0).is_err());
-    }
-}
+mod tests;
