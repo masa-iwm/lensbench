@@ -64,6 +64,54 @@ pub(super) fn override_fields(col: lens_data::Col) -> &'static [&'static str] {
     }
 }
 
+/// レイアウト図の寸法のうち、系の厚みがソルブ・ピックアップで決まるもの（要素 g の後の空気は要素の最後の面の厚み、
+/// 先頭に自動で置く絞りから最初の要素までは絞りの面の厚み。レンズデータの表で変えられないのと同じ）
+pub(super) fn solved_gaps(
+    rows: &[lens_data::Row],
+    spans: &[Option<[usize; 2]>],
+    picks: &[&combo::Pick],
+    lead: bool,
+) -> Vec<combo::SolvedGap> {
+    let at = |gap: usize, j: usize| {
+        let r = rows.get(j)?;
+        let (mark, what) = lens_data::Col::T.solved(r)?;
+        Some(combo::SolvedGap {
+            gap,
+            value: r.t,
+            mark,
+            what,
+        })
+    };
+    let mut out: Vec<combo::SolvedGap> = spans
+        .iter()
+        .enumerate()
+        .filter(|(k, _)| {
+            picks
+                .get(*k)
+                .is_some_and(|p| p.kind != combo::ElemKind::Splitter)
+        })
+        .filter_map(|(k, sp)| at(k, (*sp)?[1]))
+        .collect();
+    if lead {
+        let inside = |j: usize| spans.iter().flatten().any(|s| s[0] <= j && j <= s[1]);
+        if let Some(j) = rows.iter().position(|r| r.stop).filter(|&j| !inside(j)) {
+            out.extend(at(combo::STOP_GAP, j));
+        }
+    }
+    out
+}
+
+impl Core {
+    /// 今の組合せの系で、ソルブ・ピックアップで厚みが決まる寸法（[`solved_gaps`]）
+    pub(super) fn solved_gaps(&self) -> Vec<combo::SolvedGap> {
+        let lead = self.doc.combo.lead_stop();
+        let live = self.doc.combo.span_ids();
+        let spans = lens_data::elem_spans(&live, &self.sys.elem_blocks, lead, &self.sys.ld_rows);
+        let picks = self.doc.combo.chain_view().picks;
+        solved_gaps(&self.sys.ld_rows, &spans, &picks, lead)
+    }
+}
+
 /// 面の値 key がソルブ・ピックアップで決まっていれば、変えられない理由（開いた系で serve が断るのと同じ。
 /// 組合せでは上書きを入れると系の作り直しが誤りで止まるか、ソルブが値を戻してしまう）
 pub(super) fn solved_reason(row: &lens_data::Row, key: &str) -> Option<String> {

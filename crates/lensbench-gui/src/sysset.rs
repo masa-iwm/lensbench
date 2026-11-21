@@ -673,12 +673,18 @@ impl form::Extra for ComboExtra<'_> {
             match c.stop_at() {
                 StopAt::Lead => {
                     ui.label(tr("Before the first element (automatic)"));
-                    ui.label(tr("Gap"));
-                    ui.add(
-                        crate::widgets::Num::new(&mut c.stop_gap)
-                            .range(0.0..=1e5)
-                            .suffix(" mm"),
-                    );
+                    // ソルブ・ピックアップで決まる間隔は今の値だけ（レイアウトの寸法と同じ）
+                    match crate::combo::SolvedGap::current(ui.ctx(), crate::combo::STOP_GAP) {
+                        Some(sv) => sv.show(ui, tr("Gap")),
+                        None => {
+                            ui.label(tr("Gap"));
+                            ui.add(
+                                crate::widgets::Num::new(&mut c.stop_gap)
+                                    .range(0.0..=1e5)
+                                    .suffix(" mm"),
+                            );
+                        }
+                    }
                     if ui
                         .button(tr("Make the stop an element"))
                         .on_hover_text(tr(

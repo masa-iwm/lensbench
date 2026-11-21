@@ -776,11 +776,11 @@ mod lock_tests {
         c.picks.push(Pick::new(ElemKind::Lens));
         c.picks.push(Pick::new(ElemKind::Lens));
         c.picks[0].locked = true;
-        assert!(gap_mut(&mut c, 0).is_some());
+        assert!(gap_mut(&mut c, &[], 0).is_some());
         c.picks[0].lock_place = true;
         assert!(c.picks[0].fixed());
-        assert!(gap_mut(&mut c, 0).is_none());
-        assert!(gap_mut(&mut c, 1).is_some());
+        assert!(gap_mut(&mut c, &[], 0).is_none());
+        assert!(gap_mut(&mut c, &[], 1).is_some());
     }
 }
 
@@ -887,4 +887,37 @@ fn image_space_glass_zmx_fills_the_last_gap() {
         egui::CentralPanel::default().show(ctx, |ui| keys(ui, &mut c, &mut view));
     });
     assert!(!c.picks[0].reversed);
+}
+
+/// ソルブ・ピックアップで決まる寸法は変えない（欄・キー・ドラッグとも gap_mut を通る）。前の間隔が決まる要素は
+/// 光軸に沿って動かさない
+#[test]
+fn solved_gaps_are_not_edited() {
+    let mut c = Combo {
+        picks: vec![Pick::new(ElemKind::Lens), Pick::new(ElemKind::Lens)],
+        ..Default::default()
+    };
+    let solved = vec![SolvedGap {
+        gap: 0,
+        value: 45.6,
+        mark: 'S',
+        what: "Solve: marginal_height 0".into(),
+    }];
+    assert!(gap_mut(&mut c, &solved, 0).is_none());
+    assert!(gap_mut(&mut c, &solved, 1).is_some());
+    assert!(gap_mut(&mut c, &[], 0).is_some());
+    let mut v = View {
+        solved,
+        ..Default::default()
+    };
+    assert!(v.before_solved(1) && !v.before_solved(0));
+    // 数字のクリックでも書き換えの欄を出さない（選ぶだけ）
+    v.start_edit(&mut c, 0);
+    assert_eq!((v.dim, v.edit.is_none()), (Some(0), true));
+    v.start_edit(&mut c, 1);
+    assert!(v.edit.is_some());
+    assert!(SolvedGap::find(&v.solved, 0)
+        .unwrap()
+        .reason()
+        .contains("Solve: marginal_height 0"));
 }

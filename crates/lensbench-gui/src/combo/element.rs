@@ -146,9 +146,14 @@ pub(super) fn element_settings(
                 } else {
                     tr("Air after")
                 };
-                num(ui, label, &mut air, " mm");
-                if air != p.air_in(st) {
-                    *p.air_mut(st) = air;
+                if let Some(sv) = super::SolvedGap::current(ui.ctx(), k) {
+                    // ソルブ・ピックアップで決まる間隔は今の値だけ（図の寸法と同じ）
+                    sv.show(ui, label);
+                } else {
+                    num(ui, label, &mut air, " mm");
+                    if air != p.air_in(st) {
+                        *p.air_mut(st) = air;
+                    }
                 }
                 // 間隔を満たす媒質（液浸）。鏡の後には書けないので、鏡では書いてあるときだけ出す（外せるように）
                 if p.kind != ElemKind::Mirror || !p.air_medium.is_empty() {

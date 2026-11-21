@@ -517,11 +517,17 @@ fn scene(
         .iter()
         .filter(|&&(_, a, b)| Rect::from_two_pos(a, b).expand(vr).intersects(rect))
         .map(|&(g, a, b)| {
-            let val = gap_get(combo, g).unwrap_or(0.0);
+            // ソルブ・ピックアップで決まる寸法は系の今の値に「S」・「P」（レンズデータの表の印と同じ）
+            let solved = super::SolvedGap::find(&view.solved, g);
+            let val = solved.map_or_else(|| gap_get(combo, g).unwrap_or(0.0), |x| x.value);
             let sel = view.dim == Some(g);
             let col = if sel { accent } else { weak };
+            let num = fmt_num((val * 1e3).round() / 1e3);
             let galley = painter.layout_no_wrap(
-                fmt_num((val * 1e3).round() / 1e3),
+                match solved {
+                    Some(x) => format!("{num} {}", x.mark),
+                    None => num,
+                },
                 FontId::monospace(11.0),
                 col,
             );
@@ -1037,7 +1043,11 @@ fn interact(
         dim_hit,
         combo.as_deref(),
     ) {
-        if let Some(v) = super::gap_get(c, g) {
+        if super::SolvedGap::find(&view.solved, g).is_some() {
+            // ソルブで決まる寸法はドラッグで変えない（選んで理由を出す）
+            view.dim = Some(g);
+            view.set_sel(None);
+        } else if let Some(v) = super::gap_get(c, g) {
             ui.data_mut(|d| d.insert_temp(dd, (g, v, 0.0_f32)));
             view.dim = Some(g);
             view.set_sel(None);
@@ -1060,7 +1070,7 @@ fn interact(
                         1.0
                     };
             ui.data_mut(|d| d.insert_temp(dd, (g, v0, dx)));
-            if let Some(x) = super::gap_mut(c, g) {
+            if let Some(x) = super::gap_mut(c, &view.solved, g) {
                 *x = crate::widgets::num::drag_value(v0, dx, false).max(0.0);
             }
         }
@@ -1099,7 +1109,7 @@ fn interact(
                 {
                     view.nudge(p, st.as_deref(), dy, 0.0);
                 }
-            } else {
+            } else if !view.before_solved(k) {
                 c.shift(k, dz);
             }
             *combo = c;
@@ -1173,7 +1183,7 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
     if let Some((g, v)) = done {
         view.edit = None;
         if let Some(v) = v.filter(|v| v.is_finite() && *v >= 0.0) {
-            if let Some(x) = gap_mut(combo, g) {
+            if let Some(x) = gap_mut(combo, &view.solved, g) {
                 *x = v;
             }
         }

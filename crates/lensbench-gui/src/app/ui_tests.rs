@@ -234,6 +234,48 @@ fn remove_thickness_solve() {
     assert!(solved(&h).contains(&j), "{}", h.state().test_state());
 }
 
+/// ソルブで決まる厚み（A0 の最後の厚み）は、レイアウト図の寸法でもソルブの今の値として扱い、図では変えない
+/// （11/21 masa の報告: 図で変えられるのに系に反映されなかった）
+#[test]
+fn layout_solved_gap_is_read_only() {
+    let _g = serial();
+    let mut h = harness(a0());
+    settle(&mut h);
+    let c = &h.state().c;
+    let j = c
+        .sys
+        .ld_rows
+        .iter()
+        .rposition(|r| r.solves.iter().any(|s| s.0 == "t"))
+        .expect("A0 has a thickness solve");
+    let sv = c.p.combo_view.solved.clone();
+    let g = sv
+        .iter()
+        .find(|x| (x.value - c.sys.ld_rows[j].t).abs() < 1e-12)
+        .map(|x| x.gap)
+        .unwrap_or_else(|| panic!("{sv:?}"));
+    assert_eq!(sv.iter().find(|x| x.gap == g).unwrap().mark, 'S');
+    // 選ぶと欄は今の値と理由だけ（数の欄・スライダーは出さない）
+    h.state_mut().c.p.combo_view.dim = Some(g);
+    h.run_steps(2);
+    let why = sv.iter().find(|x| x.gap == g).unwrap().reason();
+    h.get_by_label(&why);
+    // 要素を選んだときの欄の「後の空気」（最後の要素は「像まで」）も、数の欄ではなく今の値（S 付き）だけ
+    let x = sv.iter().find(|x| x.gap == g).unwrap().clone();
+    let chain = h.state().c.doc.combo.chain_view().picks.len();
+    h.state_mut().c.p.combo_view.select(g);
+    h.run_steps(2);
+    h.get_by_label(if g + 1 == chain {
+        "To image"
+    } else {
+        "Air after"
+    });
+    h.get_by_label(&format!(
+        "{} mm S",
+        crate::json_view::fmt_num((x.value * 1e4).round() / 1e4)
+    ));
+}
+
 /// ソルブの種類を選んでも [...] の欄は開いたままで、種類の一覧は閉じる（一覧を別の小窓にしていたときは、選ぶと
 /// 欄が閉じて一覧だけが残った）
 #[test]

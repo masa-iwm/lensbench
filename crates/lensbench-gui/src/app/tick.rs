@@ -7,6 +7,10 @@ impl App {
     /// 毎フレームの描かない処理。画面を描く前に呼ぶ（[`eframe::App::update`]）。Web 版で元のタブが裏に
     /// 回っている間は [`App::background`] からも呼ぶ
     pub(super) fn logic(&mut self, ctx: &egui::Context) {
+        // ソルブ・ピックアップで厚みが決まる間隔は、図・要素の欄・システムの設定で変えない（レンズデータの表と同じ）
+        let solved = self.c.solved_gaps();
+        combo::SolvedGap::store(ctx, solved.clone());
+        self.c.p.combo_view.solved = solved;
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.poll_open();
         self.c.poll_replay();

@@ -20,6 +20,7 @@ use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 pub(crate) use layout_json::block_spans;
 use layout_json::pts;
+pub(crate) use solved_gap::SolvedGap;
 mod ap_shape;
 mod bs;
 mod custom_lens;
@@ -31,6 +32,7 @@ mod layout_json;
 mod mech;
 mod mirror;
 mod raw;
+mod solved_gap;
 mod states;
 mod sys_extra;
 mod write_face;
@@ -1524,6 +1526,8 @@ pub(crate) struct View {
     pub surf_pos: Vec<Option<Pos2>>,
     /// 図の矩形（図を画像でコピー・保存するときに切り出す）
     pub fig_rect: Option<egui::Rect>,
+    /// ソルブ・ピックアップで決まる寸法。図・欄・キーでは変えず、系の今の値を出す
+    pub solved: Vec<SolvedGap>,
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
@@ -1639,6 +1643,11 @@ impl View {
         let v = gap_get(combo, g).unwrap_or(0.0);
         self.dim = Some(g);
         self.set_sel(None);
+        // ソルブで決まる寸法は選ぶだけ（欄に理由を出す）
+        if SolvedGap::find(&self.solved, g).is_some() {
+            self.edit = None;
+            return;
+        }
         self.edit = Some((g, fmt_num((v * 1e4).round() / 1e4), false));
     }
 }
@@ -1658,7 +1667,7 @@ pub(crate) enum Act {
     SaveToCatalog(usize),
 }
 
-const STOP_GAP: usize = usize::MAX;
+pub(crate) const STOP_GAP: usize = usize::MAX;
 
 /// 要素を足すボタンの並び・図・選んだ要素の設定
 #[allow(clippy::too_many_arguments)]
@@ -1877,13 +1886,17 @@ fn lead_stop_settings(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("Aperture stop")).strong());
         ui.label(tr("Before the first element (automatic)"));
-        ui.label(tr("Gap"));
-        ui.add(
-            crate::widgets::Num::new(&mut combo.stop_gap)
-                .range(0.0..=1e5)
-                .suffix(" mm")
-                .max_decimals(4),
-        );
+        if let Some(sv) = SolvedGap::find(&view.solved, STOP_GAP) {
+            sv.show(ui, tr("Gap"));
+        } else {
+            ui.label(tr("Gap"));
+            ui.add(
+                crate::widgets::Num::new(&mut combo.stop_gap)
+                    .range(0.0..=1e5)
+                    .suffix(" mm")
+                    .max_decimals(4),
+            );
+        }
         if ui
             .button(tr("Make the stop an element"))
             .on_hover_text(tr(
@@ -2120,7 +2133,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
             // PageUp/PageDown は選んだ寸法を矢印の 10 倍で増減する（表と同じ）
             Key::PageUp | Key::PageDown if view.dim.is_some() => {
                 let d = crate::widgets::num::PAGE * if key == Key::PageUp { step } else { -step };
-                if let Some(v) = view.dim.and_then(|g| gap_mut(combo, g)) {
+                if let Some(v) = view.dim.and_then(|g| gap_mut(combo, &view.solved, g)) {
                     *v = (*v + d).max(0.0);
                 }
             }
@@ -2140,7 +2153,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     } else {
                         -step
                     };
-                    if let Some(v) = gap_mut(combo, g) {
+                    if let Some(v) = gap_mut(combo, &view.solved, g) {
                         *v = (*v + d).max(0.0);
                     }
                 } else if let Some(k) = view
@@ -2151,7 +2164,9 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     // 動かし、もう一方で偏心（Shift で傾き）
                     let (a, n) = view.along_key(k, dv);
                     if a != 0.0 {
-                        combo.shift(k, step * a.signum() as f64);
+                        if !view.before_solved(k) {
+                            combo.shift(k, step * a.signum() as f64);
+                        }
                     } else {
                         let d = fine * n.signum() as f64;
                         let st = combo.active_state().map(str::to_string);
@@ -2214,9 +2229,12 @@ fn gap_get(combo: &Combo, g: usize) -> Option<f64> {
     }
 }
 
-/// 寸法 g（経路に沿った要素 g の後の空気、[`STOP_GAP`] は絞りから最初の要素）
-fn gap_mut(combo: &mut Combo, g: usize) -> Option<&mut f64> {
-    if g == STOP_GAP {
+/// 寸法 g（経路に沿った要素 g の後の空気、[`STOP_GAP`] は絞りから最初の要素）。ソルブで決まる寸法（solved）は
+/// 変えない（組合せの値を変えても系ではソルブが値を決め直すので、変えたように見えて図が変わらない）
+fn gap_mut<'a>(combo: &'a mut Combo, solved: &[SolvedGap], g: usize) -> Option<&'a mut f64> {
+    if SolvedGap::find(solved, g).is_some() {
+        None
+    } else if g == STOP_GAP {
         Some(&mut combo.stop_gap)
     } else if combo.el(g).is_some_and(|p| p.fixed()) {
         // 位置もロックした要素の後の間隔は変えない
@@ -2830,6 +2848,16 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             view.dim = None;
             return None;
         };
+        if let Some(sv) = SolvedGap::find(&view.solved, g) {
+            // ソルブで決まる寸法: 系の今の値と、変え方を出す（欄・スライダーは出さない）
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(tr("Gap")).color(weak));
+                ui.label(RichText::new(name).strong());
+                ui.label(format!("{} mm", fmt_num((sv.value * 1e4).round() / 1e4)));
+            });
+            ui.label(RichText::new(sv.reason()).small().color(weak));
+            return None;
+        }
         let mut x = v0;
         let v = &mut x;
         ui.horizontal(|ui| {
@@ -2845,7 +2873,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             ui.add(egui::Slider::new(v, 0.0..=top).show_value(false));
         });
         if x != v0 {
-            if let Some(v) = gap_mut(combo, g) {
+            if let Some(v) = gap_mut(combo, &view.solved, g) {
                 *v = x;
             }
         }

@@ -1234,6 +1234,7 @@ Par {}	パラメータ {}
 Par {}: {}	パラメータ {}: {}
 Pickup: {}	ピックアップ: {}
 {} decides this value. Remove it first (right-click the cell)	{} で決まる値です。先に外してください（セルを右クリック）
+{} decides this gap. To change it, remove it in the Lens Data table (right-click the thickness cell)	{} で決まる間隔です。変えるにはレンズデータの表で外してください（厚みのセルを右クリック）
 A pickup needs the source surface number	ピックアップには元の面の番号が要る
 Fresnel	フレネル
 Block: {} (click to select, lock, enter)	ブロック: {}（クリックで選択・ロック・中へ）
