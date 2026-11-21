@@ -700,6 +700,8 @@ impl Analysis for GridDistortion {
             ));
         }
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
+        // 軸外の視野が無い系は、歪曲の基準を求める前に格子の視野の文で止める
+        seidel::grid_field(s, 1.0, 1.0)?;
         let r = seidel::distortion_ref(s, w, None)?;
         let n = p.grid.max(3);
         let mut points = Vec::with_capacity(n * n);

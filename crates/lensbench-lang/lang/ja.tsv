@@ -513,7 +513,8 @@ unit conversion of the parameters of surface type {t}	面タイプ {t} のパラ
 zmx surface {n}: no macro solve name	zmx の面 {n}: マクロのソルブの名前がありません
 surface number {v}	面の番号 {v}
 zmx surface {n}: pickup column {col} of {key}	zmx の面 {n}: {key} のピックアップの列 {col}
-zmx surface {n}: mechanical semi-diameter solve {m}	zmx の面 {n}: 機械半径のソルブ {m}
+zmx surface {n}: mechanical semi-diameter solve {m} is not supported; it was read as automatic	zmx の面 {n}: 機械半径のソルブ {m} は未対応なので自動にして読みました
+zmx surface {n}: the mechanical semi-diameter picks up column {col}, which is not supported; it was read as automatic	zmx の面 {n}: 機械半径の列 {col} のピックアップは未対応なので自動にして読みました
 the zmx FTYP has no value	zmx の FTYP に値がありません
 configurations start at 1 (0)	構成は 1 始まり（0）
 mode {mode} (sequential only)	モード {mode}（順次のみ）
@@ -2363,6 +2364,8 @@ a peak distortion term is against the axis (no reference)	peak の歪曲の項�
 an f-theta distortion term has no field, reference or peak	f-θ の歪曲の項には field・reference・peak を書けません
 the distortion of field ({hx}, {hy}) needs field angles below 90 degrees	視野 ({hx}, {hy}) の歪曲には 90 度より小さい視野の角が要ります
 the grid distortion needs a field off the axis	グリッド歪曲には軸外の視野が要ります
+the relative illumination needs a field off the axis (in the field direction)	相対照度には（視野を振る向きに）軸外の視野が要ります
+the vignetting plot needs a field off the axis (in the field direction)	ケラレ図には（視野を振る向きに）軸外の視野が要ります
 the grid distortion needs field angles below 90 degrees	グリッド歪曲には 90 度より小さい視野の角が要ります
 the chief ray of field ({}, {}) stopped (surface {j})	視野 ({}, {}) の主光線が止まりました（面 {j}）
 the distortion against the axis needs a rotationally symmetric system	軸上を基準にした歪曲には回転対称なシステムが要ります

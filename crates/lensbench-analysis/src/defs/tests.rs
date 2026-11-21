@@ -161,3 +161,51 @@ fn polarization_option_changes_the_pupil_amplitude() {
         );
     }
 }
+
+/// 視野が軸上だけの系: 相対照度・ケラレ図・グリッド歪曲は「軸外の視野が要る」と返す（横軸の視野の値に意味が無い）。
+/// 長方形の正規化で振る向きに視野が無いときも同じ
+#[test]
+fn field_sweeps_need_a_field_off_the_axis() {
+    let mut s = a0();
+    s.edit(|p| {
+        for f in p.fields.iter_mut() {
+            f.x = 0.0;
+            f.y = 0.0;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let cx = crate::registry::Cx::new(&s);
+    for name in ["relative-illumination", "vignetting", "grid-distortion"] {
+        let a = Analyses::builtin().get(name).unwrap();
+        let e = a.run_json(&cx, &json!({})).unwrap_err().to_string();
+        assert!(e.contains("needs a field off the axis"), "{name}: {e}");
+    }
+    // 視野が y だけ: 長方形の正規化で x に振ると視野が無い。半径の正規化なら x にも振れる
+    let mut s = a0();
+    s.edit(|p| {
+        p.field_norm = lensbench_core::system::FieldNorm::Rect;
+        for f in p.fields.iter_mut() {
+            f.x = 0.0;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let cx = crate::registry::Cx::new(&s);
+    let a = Analyses::builtin().get("relative-illumination").unwrap();
+    assert!(a
+        .run_json(&cx, &json!({ "axis": "x", "points": 3 }))
+        .is_err());
+    assert!(a
+        .run_json(&cx, &json!({ "axis": "y", "points": 3 }))
+        .is_ok());
+    s.edit(|p| {
+        p.field_norm = lensbench_core::system::FieldNorm::Radial;
+        Ok(())
+    })
+    .unwrap();
+    let cx = crate::registry::Cx::new(&s);
+    assert!(a
+        .run_json(&cx, &json!({ "axis": "x", "points": 3 }))
+        .is_ok());
+}

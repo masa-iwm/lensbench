@@ -516,7 +516,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
 }
 
 /// 機械半径のピックアップ（OpticStudio 2026 R1.01 の実測: MEMA 値 2 元の面 0 倍率、値は元の面の機械半径の表示の値 × 倍率）。
-/// 読み書きで保たれ、元の面の機械半径に追従する。機械半径の自動・固定・ピックアップ以外のソルブは止める
+/// 読み書きで保たれ、元の面の機械半径に追従する。機械半径の自動・固定・ピックアップ以外のソルブは自動にして注意を出す
 #[test]
 fn mechanical_semi_diameter_pickup() {
     use lensbench_core::edit::SurfValue;
@@ -567,8 +567,22 @@ SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
             .unwrap();
         assert_eq!(s.surfaces[2].mech_semi, Some(want8), "scale {sc}");
     }
-    // 前は MEMA の 2 を黙って自動として読んでいた。知らないソルブは止める
-    assert!(zmx::parse_text(&txt("  MEMA 24 3 0 0 1 \"\"\n")).is_err());
+    // 知らないソルブ・0 でない列は読込を止めず、自動にして注意を出す（機械半径は追跡に効かない）
+    for (line, want) in [
+        ("  MEMA 24 3 0 0 1 \"\"\n", "solve 3 is not supported"),
+        ("  MEMA 24 2 1 1 1 \"\"\n", "picks up column 1"),
+    ] {
+        let s = build(&txt(line));
+        assert_eq!(s.surfaces[3].mech_semi, None, "{line}");
+        assert!(!s.pickups.iter().any(|q| q.dst == 3), "{line}");
+        assert!(
+            s.import_notes
+                .iter()
+                .any(|n| n.contains(want) && n.contains("surface 3")),
+            "{:?}",
+            s.import_notes
+        );
+    }
 }
 
 /// 浮動開口は前後で媒質が変わる面だけ（OpticStudio 2026 R1.01 の実測）: 座標ブレークは半直径・材料を読込で捨てるので

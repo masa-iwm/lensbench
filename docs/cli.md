@@ -43,6 +43,9 @@ lensbench ghost    system.zmx --coatings coat_models.lbcm --out ghosts
 lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 ```
 
+**既定が真の旗**: 既定で入っている真偽の設定（`relative-illumination`・`vignetting` の `--remove-vignetting-factors`）は、
+`--remove-vignetting-factors=false` で切る（`=` で付ける。値なしと `=true` は既定と同じ）。ほかの真偽の旗は値を取らず、付けると入る。
+
 **負の数**: `--dist -5`・`--pmag -0.5` のように値として渡せる（`--center -1,2` のような数の並びも）。
 
 **設定のファイル**: 解析のサブコマンド（spot・mtf・zernike など、設定を旗で受けるもの）は `--params-file settings.json` で

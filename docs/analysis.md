@@ -89,8 +89,10 @@ OpticStudio の収差図に当たる解析。どれも評価関数の演算子�
   係数を使った今の半直径（自動の値も）を全部の面で固定にし、前後で媒質が変わる面に浮動開口を付けて、係数を 0 にした系で計算する（係数の無い系はそのまま。半直径を書いていない面には付けない。OpticStudio 2026 R1.01 の
   A6 で、OpticStudio の道具 Replace Vignetting With Apertures と同じ開口）。けられる視野では、OpticStudio の相対照度は瞳の標本が粗く、自分の Vignetting Plot
   とも合わない（A6 の 18° で 4 % 違う）。lensbench の値は、けられない系の相対照度にけられずに通る割合を掛けたものと 0.5 % 以内で合う。
-  `remove_vignetting_factors` を切ると、相対照度はケラレ係数を使わず、けられの図は `footprint` と同じ扱い（係数を使う、`no_vignetting_factors` で使わない）。
+  `remove_vignetting_factors` を切ると（CLI は `--remove-vignetting-factors=false`）、相対照度はケラレ係数を使わず、けられの図は `footprint` と同じ扱い（係数を使う、`no_vignetting_factors` で使わない）。
 - `vignetting`（Vignetting Plot 相当）: 正規化視野 0〜1 を `--points` 点で、瞳のグリッド（直径 `--rays` 本、既定 64）の光線のうち像面までけられずに
   届く割合。OpticStudio の図は瞳の約 300 本の光線で数える（1 % ほどの刻み）。
+- 相対照度・ケラレ図・グリッド歪曲は、視野を振る向きに軸外の視野が無い系（視野が軸上だけ、長方形の正規化で振る向きの視野が 0）では
+  「軸外の視野が要る」と返す（正規化視野に大きさが無く、横軸の視野の値が決まらない）。
 - GUI では解析の一覧の「像の質」の群。フットプリントは開口の輪郭（薄い線）と視野ごとの色の点・瞳の縁の線。
 

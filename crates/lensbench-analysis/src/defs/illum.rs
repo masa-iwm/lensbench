@@ -309,6 +309,12 @@ impl Analysis for RelIllum {
         let s = replaced.as_ref().unwrap_or(cx.system);
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
         let ax = p.axis.core();
+        if !has_off_axis(s, ax) {
+            return Err(Error::Invalid(
+                "the relative illumination needs a field off the axis (in the field direction)"
+                    .into(),
+            ));
+        }
         let h = steps01(p.points.max(2));
         let mut warnings = Vec::new();
         let a0 = crate::illum::exit_cone(s, FieldSel::Norm(0.0, 0.0), w, p.rim)?;
@@ -356,6 +362,16 @@ impl Analysis for RelIllum {
             warnings,
         })
     }
+}
+
+/// 視野を振る向きに軸外の視野があるか（無ければ正規化視野に大きさが無く、横軸の視野の値が意味を持たない）
+fn has_off_axis(s: &System, ax: crate::sweep::FieldAxis) -> bool {
+    let along = |f: &lensbench_core::system::Field| match (s.field_norm, ax) {
+        (lensbench_core::system::FieldNorm::Radial, _) => f.x.hypot(f.y),
+        (_, crate::sweep::FieldAxis::X) => f.x.abs(),
+        (_, crate::sweep::FieldAxis::Y) => f.y.abs(),
+    };
+    s.fields.iter().map(along).fold(0.0, f64::max) > 0.0
 }
 
 /// 注意の文の視野の値（小数 3 桁）
@@ -434,6 +450,11 @@ impl Analysis for Vignetting {
         let s = replaced.as_ref().unwrap_or(cx.system);
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
         let ax = p.axis.core();
+        if !has_off_axis(s, ax) {
+            return Err(Error::Invalid(
+                "the vignetting plot needs a field off the axis (in the field direction)".into(),
+            ));
+        }
         let h = steps01(p.points.max(2));
         let mut warnings = Vec::new();
         let unvignetted = h

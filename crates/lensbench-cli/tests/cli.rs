@@ -1084,3 +1084,64 @@ fn params_file_and_flags() {
     assert!(!ok && err.contains("JSON object"), "{err}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 既定が真の旗は `=false` で切れ、設定のファイルの false と同じになる（値を取らない旗では既定の真を切れなかった）
+#[test]
+fn flags_on_by_default_turn_off_with_false() {
+    let dir = std::env::temp_dir().join(format!("lb-flag-false-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("keep.json");
+    std::fs::write(&f, r#"{"remove_vignetting_factors": false, "points": 5}"#).unwrap();
+    let base = [
+        "relative-illumination",
+        "tests/refs/A6/system.zmx",
+        "--glass-dir",
+        "tests/glass",
+        "--json",
+    ];
+    let ri = |args: &[&str]| -> serde_json::Value {
+        let (ok, out, err) = run(&[&base[..], args].concat());
+        assert!(ok, "{err}");
+        serde_json::from_str(&out).unwrap()
+    };
+    let replaced = ri(&["--points", "5"]);
+    assert_eq!(
+        ri(&["--points", "5", "--remove-vignetting-factors"]),
+        replaced
+    );
+    assert_eq!(
+        ri(&["--points", "5", "--remove-vignetting-factors=true"]),
+        replaced
+    );
+    let kept = ri(&["--points", "5", "--remove-vignetting-factors=false"]);
+    assert_ne!(kept, replaced);
+    assert_eq!(ri(&["--params-file", f.to_str().unwrap()]), kept);
+    // 値は = で付ける（後ろの位置引数を値と取り違えない）
+    let (ok, _, _) = run(&[&base[..], &["--remove-vignetting-factors", "false"]].concat());
+    assert!(!ok);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 既定が真の旗の --help: 使い方は `[=<true|false>]` で示し、説明は日本語の表示でも訳す（英語の説明に文を足さない）
+#[test]
+fn flags_on_by_default_help_is_translated() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    for name in ["relative-illumination", "vignetting"] {
+        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+            .current_dir(root)
+            .args([name, "--help"])
+            .env("LENSBENCH_LANG", "ja")
+            .output()
+            .unwrap();
+        let out = String::from_utf8_lossy(&o.stdout);
+        let line = out
+            .lines()
+            .skip_while(|l| !l.contains("--remove-vignetting-factors"))
+            .take(2)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(line.contains("[=<true|false>]"), "{name}: {line}");
+        assert!(line.contains("ケラレ係数"), "{name}: {line}");
+        assert!(!line.contains("Replace the vignetting"), "{name}: {line}");
+    }
+}

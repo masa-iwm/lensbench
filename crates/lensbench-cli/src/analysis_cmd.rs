@@ -43,6 +43,11 @@ fn default_text(p: &Param) -> Option<String> {
     }
 }
 
+/// 既定が真の真偽の項目
+fn on_by_default(p: &Param) -> bool {
+    p.ty == ParamTy::Flag && p.default == Value::Bool(true)
+}
+
 /// 設定の 1 項目の旗
 fn arg_of(p: &Param) -> Arg {
     let mut help = p.doc.clone();
@@ -57,6 +62,15 @@ fn arg_of(p: &Param) -> Arg {
         a = a.short('o');
     }
     a = match p.ty {
+        // 既定が真の旗は値なしで真、`=false` で切る（値を取らない旗では既定の真を切れない）。使い方は --help の
+        // `--旗[=<true|false>]` で示し、説明の文は訳せるよう p.doc のまま
+        ParamTy::Flag if on_by_default(p) => a
+            .value_parser(clap::value_parser!(bool))
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("true")
+            .value_name("true|false")
+            .action(ArgAction::Set),
         ParamTy::Flag => a.action(ArgAction::SetTrue),
         ParamTy::Count => a.value_parser(clap::value_parser!(u64)),
         ParamTy::Int => a.value_parser(clap::value_parser!(i64)),
@@ -198,6 +212,7 @@ pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> lensbench_core::Result<Anal
             continue;
         }
         let v = match p.ty {
+            ParamTy::Flag if on_by_default(&p) => m.get_one::<bool>(id).map(|x| Value::Bool(*x)),
             ParamTy::Flag => m.get_flag(id).then_some(Value::Bool(true)),
             ParamTy::Count => m.get_one::<u64>(id).map(|x| Value::from(*x)),
             ParamTy::Int => m.get_one::<i64>(id).map(|x| Value::from(*x)),
