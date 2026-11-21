@@ -1398,25 +1398,6 @@ struct CoatDesignArgs<'a> {
     out: Option<&'a std::path::Path>,
 }
 
-/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず黙って終える（終了コード 0。ほかの panic はいつもどおり）
-fn quiet_broken_pipe() {
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let msg = info
-            .payload()
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| info.payload().downcast_ref::<&str>().copied())
-            .unwrap_or("");
-        if msg.contains("failed printing to stdout") && msg.contains("Broken pipe")
-            || msg.contains("os error 32")
-        {
-            std::process::exit(0);
-        }
-        prev(info);
-    }));
-}
-
 /// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の `Extensions::analysis` で足した解析も）を足し、
 /// help（英語が元）を表示の言語に訳したもの
 fn cli_command() -> clap::Command {
@@ -1487,6 +1468,7 @@ where
 
 /// 拡張を入れてから CLI を動かす（外のクレートの exe の入口）
 pub fn main_with(ext: lensbench_engine::Extensions) -> ExitCode {
+    lensbench_lang::register();
     if let Err(e) = ext.install() {
         eprintln!(
             "lensbench: {}",
@@ -1498,7 +1480,9 @@ pub fn main_with(ext: lensbench_engine::Extensions) -> ExitCode {
 }
 
 pub fn main() -> ExitCode {
-    quiet_broken_pipe();
+    error::quiet_broken_pipe();
+    // 誤りの文・注意・help の訳の表（引数の誤りの訳にも使うので最初に）
+    lensbench_lang::register();
     // 隠し: clap の定義を JSON で（マニュアルの CLI のページの元）
     let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if help_json::wants(&argv[1.min(argv.len())..]) {

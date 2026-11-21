@@ -28,3 +28,7 @@ serde = { version = "1", features = ["derive"] }
 schemars = "1"
 # 時計（wasm の std::time::Instant は使えない）
 web-time = "1"
+
+[dev-dependencies]
+# 試験で誤りの文の和訳を確かめる（訳の表）
+lensbench-lang = { path = "../lensbench-lang" }

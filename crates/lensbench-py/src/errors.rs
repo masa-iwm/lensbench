@@ -94,6 +94,8 @@ pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // 誤りの文・注意の訳の表（例外の文を訳す）
+    lensbench_lang::register();
     let py = m.py();
     m.add("Error", py.get_type::<Error>())?;
     m.add("InvalidError", py.get_type::<InvalidError>())?;

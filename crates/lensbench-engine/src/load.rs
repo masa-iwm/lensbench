@@ -604,6 +604,7 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
         let e = load_file_notes(&c).unwrap_err().to_string();
         assert!(e.contains("strict macros") && e.contains("LBMID"), "{e}");
         // 和訳で外の文と中の注意の両方が訳される（中の注意は「: 」を跨ぐ {e}）
+        lensbench_lang::register();
         let ja = lensbench_core::i18n::translate(&e);
         assert!(
             ja.contains("厳密な読込") && ja.contains("面 2 の") && !ja.contains("macro solve"),

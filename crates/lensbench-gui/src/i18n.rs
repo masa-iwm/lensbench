@@ -51,7 +51,8 @@ pub(crate) fn set(l: Lang) {
         x => x,
     };
     CURRENT.store(if l == Lang::En { 1 } else { 0 }, Ordering::Relaxed);
-    // 計算側の誤りの文も同じ言語に
+    // 計算側の誤りの文も同じ言語に（訳の表は lensbench-lang）
+    lensbench_lang::register();
     lensbench_core::i18n::set_lang(if l == Lang::En {
         lensbench_core::i18n::Lang::En
     } else {

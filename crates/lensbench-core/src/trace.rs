@@ -50,7 +50,7 @@ impl RayStatus {
     pub fn code(self) -> usize {
         self.surf().unwrap_or(0)
     }
-    /// 誤りの文に入れる理由（英語、訳は lang/ja.tsv）
+    /// 誤りの文に入れる理由（英語、訳は lensbench-lang の lang/ja.tsv）
     pub fn why(self) -> &'static str {
         match self {
             RayStatus::Ok => "ok",

@@ -8,10 +8,10 @@
 - 識別子（型・関数・変数・JSON の鍵・CLI のオプション）は英語。略さずに書く（`object_distance`、`paraxial_image_height`）。
 - コメント・doc コメント・ドキュメント（`docs/`）は日本語。
 - 画面（GUI）・誤り・CLI の説明の文は英語を元にし、日本語の訳を表に付ける。GUI は `tr("…")` の英語が鍵で訳は
-  `crates/lensbench-gui/lang/ja.tsv`、誤りの文の訳は `crates/lensbench-core/lang/ja.tsv`。GUI の `trf` の英語は `{}` を順に書き、
+  `crates/lensbench-gui/lang/ja.tsv`、誤りの文の訳は `crates/lensbench-lang/lang/ja.tsv`（入口が起動時に `lensbench_lang::register()` で足す）。GUI の `trf` の英語は `{}` を順に書き、
   訳は `{}`（同じ順）か、語順を入れ替えるときは `{0}`・`{1}`…（引数の位置。`{}` と混ぜない）で書く。
 - 日本語の訳語は OpticStudio の日本語版などで広く使われる言い回し（カタカナ語を含む）に揃え、どの表でも同じ語にする。
-  用語集は `crates/lensbench-core/lang/glossary.tsv`（使わない語 → 使う語）。
+  用語集は `crates/lensbench-lang/lang/glossary.tsv`（使わない語 → 使う語）。
 - 文末: 誤り・注意・状態などのメッセージは敬体（「〜ません」「〜が必要です」「〜しました」。案内は「〜してください」）。
   ボタン・欄・CLI のオプションの説明のような一句のラベルは常体（「〜する」・体言止め）。GUI の説明の文（「。」で区切る文）は敬体。
 

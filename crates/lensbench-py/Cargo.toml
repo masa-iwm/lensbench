@@ -34,6 +34,7 @@ lensbench-formats = { path = "../lensbench-formats" }
 lensbench-runs = { path = "../lensbench-runs" }
 lensbench-optim = { path = "../lensbench-optim" }
 lensbench-core = { path = "../lensbench-core" }
+lensbench-lang = { path = "../lensbench-lang" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-design = { path = "../lensbench-design" }

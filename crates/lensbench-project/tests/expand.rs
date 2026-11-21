@@ -751,6 +751,7 @@ fn expand_errors_carry_the_block() {
         "{core}"
     );
     // 和訳はブロックの名前の前置きにも当たる（後ろの文が「パス: 文」でも）
+    lensbench_lang::register();
     let ja = lensbench_core::i18n::translate(core.message().unwrap_or_default());
     assert!(ja.starts_with("ブロック G1/#2: "), "{ja}");
     // ブロックの外の誤り（絞りが無い）は位置を持たない

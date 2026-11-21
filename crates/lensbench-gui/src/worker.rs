@@ -965,6 +965,8 @@ pub mod entry {
     /// 何を受けるか（[`Kind::code`]、上の位 [`LANG_JA`] は誤りの文の言語）
     pub fn init(code: u8) {
         crate::crash::install();
+        // 誤りの文の訳の表（この Web Worker の wasm は画面と別のメモリ）
+        lensbench_lang::register();
         lensbench_core::i18n::set_lang(if code & LANG_JA != 0 {
             lensbench_core::i18n::Lang::Ja
         } else {

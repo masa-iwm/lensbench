@@ -158,6 +158,25 @@ pub fn exit_code_help() -> String {
     s
 }
 
+/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず黙って終える（終了コード 0。ほかの panic はいつもどおり）
+pub(crate) fn quiet_broken_pipe() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if msg.contains("failed printing to stdout") && msg.contains("Broken pipe")
+            || msg.contains("os error 32")
+        {
+            std::process::exit(0);
+        }
+        prev(info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

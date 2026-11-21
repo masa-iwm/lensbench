@@ -2974,6 +2974,7 @@ dependencies = [
  "lensbench-engine",
  "lensbench-export",
  "lensbench-formats",
+ "lensbench-lang",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",
@@ -3037,6 +3038,7 @@ dependencies = [
  "lensbench-design",
  "lensbench-export",
  "lensbench-formats",
+ "lensbench-lang",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",
@@ -3086,6 +3088,7 @@ dependencies = [
  "lensbench-design",
  "lensbench-engine",
  "lensbench-formats",
+ "lensbench-lang",
  "lensbench-project",
  "mimalloc",
  "png 0.17.16",
@@ -3102,6 +3105,13 @@ dependencies = [
  "web-time",
  "winresource",
  "wry",
+]
+
+[[package]]
+name = "lensbench-lang"
+version = "0.7.0-dev"
+dependencies = [
+ "lensbench-core",
 ]
 
 [[package]]
@@ -3126,6 +3136,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-core",
  "lensbench-formats",
+ "lensbench-lang",
  "rayon",
  "schemars",
  "serde",
@@ -3142,6 +3153,7 @@ dependencies = [
  "lensbench-design",
  "lensbench-engine",
  "lensbench-formats",
+ "lensbench-lang",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",

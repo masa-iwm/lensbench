@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lensbench-core", "crates/lensbench-runs", "crates/lensbench-formats", "crates/lensbench-optim", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-step", "crates/lensbench-catalog", "crates/lensbench-design", "crates/lensbench-verify", "crates/lensbench-export", "crates/lensbench-cad", "crates/lensbench-engine", "crates/lensbench-cli", "crates/lensbench-gui", "crates/lensbench-web", "crates/lensbench-py", "crates/lensbench-sdk"]
+members = ["crates/lensbench-core", "crates/lensbench-lang", "crates/lensbench-runs", "crates/lensbench-formats", "crates/lensbench-optim", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-step", "crates/lensbench-catalog", "crates/lensbench-design", "crates/lensbench-verify", "crates/lensbench-export", "crates/lensbench-cad", "crates/lensbench-engine", "crates/lensbench-cli", "crates/lensbench-gui", "crates/lensbench-web", "crates/lensbench-py", "crates/lensbench-sdk"]
 exclude = ["third_party/winit", "third_party/branches"]
 
 [workspace.package]

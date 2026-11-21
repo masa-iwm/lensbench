@@ -33,6 +33,7 @@ lensbench-project = { path = "../lensbench-project" }
 lensbench-catalog = { path = "../lensbench-catalog" }
 lensbench-design = { path = "../lensbench-design" }
 lensbench-core = { path = "../lensbench-core" }
+lensbench-lang = { path = "../lensbench-lang" }
 # 計算は serve と同じ API（lensbench_engine::Session）をプロセス内で呼ぶ
 lensbench-engine = { path = "../lensbench-engine" }
 # 組み込みの解析の結果の型（図が読む）

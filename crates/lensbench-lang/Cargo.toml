@@ -1,0 +1,14 @@
+[package]
+name = "lensbench-lang"
+description = "Japanese translation table of lensbench's messages (the computing crates' errors, warnings and option help), registered by the entry points at start-up"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }

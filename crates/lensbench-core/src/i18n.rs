@@ -3,15 +3,17 @@
 //!
 //! - Language: [`set_lang`] (the GUI setting), otherwise `LENSBENCH_LANG` (`ja`・`en`), otherwise the OS language
 //!   (Japanese if it starts with `ja`, English otherwise).
-//! - Translation: `lang/ja.tsv` holds `English template<TAB>Japanese template`. A `{...}` in the English
+//! - Translation: a table (the computing crates' one is `lang/ja.tsv` of the `lensbench-lang` crate, which the entry
+//!   points add with [`add_table`] at start-up; it is kept out of this crate so that adding a line does not rebuild
+//!   every crate that depends on the core) holds `English template<TAB>Japanese template`. A `{...}` in the English
 //!   template matches any text, and the same `{...}` in the Japanese template is replaced by that text
 //!   (identical tokens such as `{}` are taken in order). Only the text slots `{e}` (a nested message),
 //!   `{why}`・`{hint}` (an added note) and `{what}` (a label) are translated again; other slot values (names,
 //!   numbers, file names) are kept as they are. Only `{e}` and `{why}` may hold `": "`. When several lines match, the one with the most
 //!   literal text wins. A message that is not in the table is split at
 //!   `": "` and each part is translated (the context added by [`crate::Error::at`]); text with no match stays as is.
-//! - New messages: write them in English and add the Japanese line to `lang/ja.tsv`. Crates outside this
-//!   repository's public part keep their own table and add it with [`add_table`].
+//! - New messages: write them in English and add the Japanese line to `lensbench-lang/lang/ja.tsv`. Crates outside
+//!   this repository's public part keep their own table and add it with [`add_table`].
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -22,7 +24,7 @@ use std::sync::{OnceLock, RwLock};
 pub enum Lang {
     /// English (the language the messages are written in)
     En,
-    /// Japanese (from `lang/ja.tsv`)
+    /// Japanese (from the tables added with [`add_table`])
     Ja,
 }
 
@@ -111,7 +113,20 @@ struct Entry {
     ja: Vec<Piece<'static>>,
 }
 
-const JA: &str = include_str!("../lang/ja.tsv");
+/// The computing crates' table, for the tests of this crate (the program adds it with `lensbench_lang::register`)
+#[cfg(test)]
+const JA: &str = include_str!("../../lensbench-lang/lang/ja.tsv");
+
+/// The tables before any [`add_table`]: none in the program, the computing crates' table in the tests of this crate
+#[cfg(test)]
+fn initial() -> Vec<&'static str> {
+    vec![JA]
+}
+
+#[cfg(not(test))]
+fn initial() -> Vec<&'static str> {
+    Vec::new()
+}
 
 /// The table lines with a tab: `(in an "# items" section, English, Japanese)`. Lines of an `# items` section are names
 /// (tolerance items such as `{name} decenter x`) that only [`translate_item`] uses: their templates
@@ -137,7 +152,7 @@ fn entries(text: &'static str, items: bool) -> impl Iterator<Item = Entry> {
         })
 }
 
-/// One kind of table built from `lang/ja.tsv` and the tables added with [`add_table`]. A text is read the
+/// One kind of table built from the tables added with [`add_table`]. A text is read the
 /// first time this kind is used (`pending` until then), so a start in English, or one that shows no
 /// message, does not parse the tables
 struct Lazy<T> {
@@ -151,7 +166,7 @@ impl<T> Lazy<T> {
     fn new(built: T, read: fn(&mut T, &'static str)) -> RwLock<Self> {
         RwLock::new(Lazy {
             built,
-            pending: vec![JA],
+            pending: initial(),
             read,
         })
     }
@@ -197,8 +212,8 @@ fn whole_lines() -> &'static Lines {
     T.get_or_init(|| Lazy::new(HashMap::new(), |m, t| m.extend(lines(t))))
 }
 
-/// Add a table of the same format as `lang/ja.tsv` (an exe that adds plugins adds the Japanese of their
-/// messages at start-up; the text is read when it is first needed). Check it with [`check_table`] in a test
+/// Add a table of the same format as `lensbench-lang/lang/ja.tsv` (the entry points add that table, and an exe
+/// that adds plugins adds the Japanese of their messages, at start-up; the text is read when it is first needed). Check it with [`check_table`] in a test
 pub fn add_table(text: &'static str) {
     fn add<T>(l: &RwLock<Lazy<T>>, text: &'static str) {
         l.write()

@@ -83,6 +83,7 @@ pub use worker::entry as web_worker;
 /// 拡張を入れてから GUI を起動する（外のクレートの exe の入口。見せ方は [`ext::GuiExtensions`] で同じ値に足す）
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main_with(ext: lensbench_engine::Extensions) -> std::process::ExitCode {
+    lensbench_lang::register();
     if let Err(e) = ext.install() {
         eprintln!(
             "lensbench-gui: {}",
@@ -106,6 +107,8 @@ pub fn main() -> std::process::ExitCode {
     }
     // 既定のスレッド数（LENSBENCH_THREADS）など、環境変数から決める既定
     lensbench_core::init_from_env();
+    // 計算側の誤りの文の訳の表
+    lensbench_lang::register();
     // 引数: 系のファイル（エクスプローラーで .zmx をこの exe に落としたときも）、--glass-dir・--lens-catalog、
     // 画面の通し確認 --tour DIR（tour.rs）
     let args = match tour::Args::parse(std::env::args().skip(1)) {
