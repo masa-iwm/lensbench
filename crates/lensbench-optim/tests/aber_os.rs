@@ -331,3 +331,75 @@ fn relative_illumination_and_vignetting() {
         }
     }
 }
+
+/// ケラレ係数のある A6 の全視野（Remove Vignetting Factors で係数を半直径の浮動開口に置き換える）。lensbench の A6 の自動の
+/// 半直径は OpticStudio と少し違う（semi.rs の注記）ので、OpticStudio の半直径（diam）に固定して比べる
+#[test]
+fn relative_illumination_and_vignetting_replace_vignetting_factors() {
+    let (mut s, o) = (load("A6"), os("A6"));
+    let d = arr(&o["diam"]);
+    s.edit_raw(|rx| {
+        for (k, x) in rx.surfaces.iter_mut().zip(&d) {
+            if *x > 0.0 {
+                k.semi = *x;
+                k.semi_auto = false;
+            }
+        }
+        Ok(())
+    })
+    .unwrap();
+    let ri = run(&s, "relative-illumination", json!({ "points": 21 }));
+    let keep = run(
+        &s,
+        "relative-illumination",
+        json!({ "points": 21, "remove_vignetting_factors": false }),
+    );
+    let fine = run(&s, "vignetting", json!({ "points": 21, "rays": 128 }));
+    let q0 = &o["relative_illumination_pol0"];
+    for i in 0..21 {
+        let what = format!("A6 relative illumination {i}");
+        let (a, b) = (f(&ri["relative"][i]), f(&q0[i][0]));
+        // けられの無い 15° まではいつもの 1e-3。けられる 15°〜20° は OpticStudio の標本（Ray Density 10）が粗く、OpticStudio の値は
+        // 自分の Vignetting Plot とも合わない（18° で RI は 1.8 % しか下がらないのに、けられの図は 5.5 % けられる）ので 4e-2
+        near(a, b, if i < 15 { 1e-3 } else { 4e-2 }, &what);
+        // 置き換えた系の相対照度は、置き換えない系の値に、細かい格子で数えたけられずに通る割合を掛けたものに近い（瞳の上の照度が
+        // ほぼ一様なので）
+        let r = f(&keep["relative"][i]) * f(&fine["unvignetted"][i]);
+        near(a, r, 5e-3, &format!("{what} vs unvignetted fraction"));
+        let (a, b) = (f(&ri["effective_fno"][i]), f(&q0[i][1]));
+        assert!(
+            a < b && b / a - 1.0 < 0.06 || i >= 15,
+            "{what} F/#: {a} vs {b}"
+        );
+    }
+    // OpticStudio の Vignetting Plot は瞳の上の約 309 本の光線で数える（値が 1/309 の刻み）ので、細かい格子（64 本）とは 1 % 以内
+    let vg = run(&s, "vignetting", json!({ "points": 21 }));
+    for (i, x) in arr(&vg["unvignetted"]).iter().enumerate() {
+        near(
+            *x,
+            f(&o["vignetting_plot"][i]),
+            1e-2,
+            &format!("A6 vignetting {i}"),
+        );
+    }
+}
+
+/// 置き換えは半直径を書いていない面（固定の 0）に浮動開口を付けない（付けると全部の光線がけられる）。ケラレ係数の無い系は
+/// 置き換えない（既定でも演算子 RELI と同じ値）
+#[test]
+fn replace_vignetting_skips_zero_semi_and_systems_without_factors() {
+    let mut s = load("A6");
+    s.edit_raw(|rx| {
+        rx.surfaces[1].semi = 0.0;
+        rx.surfaces[1].semi_auto = false;
+        Ok(())
+    })
+    .unwrap();
+    let t = lensbench_analysis::illum::replace_vignetting(&s).unwrap();
+    assert_eq!(t.surfaces[1].ap, lensbench_core::surface::Aperture::None);
+    let ri = run(&s, "relative-illumination", json!({ "points": 5 }));
+    assert!(arr(&ri["relative"]).iter().all(|x| x.is_finite()), "{ri}");
+    let a0 = load("A0");
+    let t = lensbench_analysis::illum::replace_vignetting(&a0).unwrap();
+    assert!(t.surfaces.iter().zip(&a0.surfaces).all(|(x, y)| x == y));
+}

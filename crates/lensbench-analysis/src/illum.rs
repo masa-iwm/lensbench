@@ -172,3 +172,46 @@ pub fn effective_fno(s: &System, field: FieldSel, w: usize, n: usize) -> Result<
     let a = exit_cone(s, field, w, n)?;
     Ok(1.0 / (2.0 * (a / std::f64::consts::PI).sqrt()))
 }
+
+/// ケラレ係数を面の開口に置き換えた系（OpticStudio の Relative Illumination・Vignetting Plot の既定 Remove Vignetting Factors、
+/// 道具 Replace Vignetting With Apertures と同じ）: ケラレ係数を使った今の半直径（自動の値も）を全部の面で先に読んで固定にし、
+/// 前後で媒質が変わる面（[`lensbench_core::surface::medium_edges`]）で開口の無い面に、その半直径の浮動開口を付けてから、
+/// 全部の視野のケラレ係数を 0 にする（係数の無い系はそのまま）。OpticStudio 2026 R1.01 の A6 で、既定の RI・Vignetting Plot と差 0。
+/// 1 面ずつ固定にすると、前の面の開口で後ろの面の自動の値が縮むので合わない
+pub fn replace_vignetting(s: &System) -> Result<System> {
+    use lensbench_core::surface::{Aperture, SurfType};
+    // ケラレ係数の無い系はそのまま（演算子 RELI と同じ値。自動の半直径を固定すると縁の光線がわずかにけられる）
+    let no_vig = s
+        .fields
+        .iter()
+        .all(|f| f.vdx == 0.0 && f.vdy == 0.0 && f.vcx == 0.0 && f.vcy == 0.0 && f.van == 0.0);
+    if no_vig {
+        return Ok(s.clone());
+    }
+    let semi: Vec<f64> = s.surfaces.iter().map(|d| d.semi).collect();
+    let edge = lensbench_core::surface::medium_edges(&s.surfaces);
+    // 絞りの大きさで決める系（Float By Stop Size）の絞りの半直径は瞳そのもの
+    let float_stop =
+        (s.aperture.0 == lensbench_core::system::ApertureKind::Float).then(|| s.stop());
+    let mut t = s.clone();
+    t.edit_raw(|rx| {
+        let n = rx.surfaces.len();
+        for (k, d) in rx.surfaces.iter_mut().enumerate() {
+            d.semi = semi[k];
+            d.semi_auto = false;
+            let inner = k > 0 && k + 1 < n;
+            let cb = d.typ() == SurfType::CoordBrk;
+            // 半直径を書いていない面（0）には付けない（プロジェクトの展開の浮動開口と同じ）
+            let has = semi[k] > 0.0;
+            if inner && has && edge[k] && !cb && Some(k) != float_stop && d.ap == Aperture::None {
+                d.ap = Aperture::Floating { semi: semi[k] };
+            }
+        }
+        for f in rx.fields.iter_mut() {
+            (f.vdx, f.vdy, f.vcx, f.vcy, f.van) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        }
+        rx.floating_clip = true;
+        Ok(())
+    })?;
+    Ok(t)
+}

@@ -196,6 +196,8 @@ pub(super) struct RelIllumParams {
     pub rim: usize,
     /// Include the coating transmission and Fresnel losses (unpolarized, the system coatings; the pupil-averaged transmission relative to the axis)
     pub polarization: bool,
+    /// Replace the vignetting factors with floating apertures at the current semi-diameters (OpticStudio's default Remove Vignetting Factors); off ignores the vignetting factors and keeps the surface apertures as they are
+    pub remove_vignetting_factors: bool,
 }
 
 impl Default for RelIllumParams {
@@ -206,6 +208,7 @@ impl Default for RelIllumParams {
             axis: Axis::Y,
             rim: crate::illum::RIM_POINTS,
             polarization: false,
+            remove_vignetting_factors: true,
         }
     }
 }
@@ -290,11 +293,16 @@ impl Analysis for RelIllum {
         Meta {
             name: "relative-illumination",
             about: "Relative illumination versus field (image irradiance relative to the axis) and effective F-number",
-            help: "Relative illumination (OpticStudio's Relative Illumination): for points steps of the normalized field 0 to 1, the irradiance at the image point of the chief ray relative to the axis, from the projected solid angle of the beam that reaches that image point (the RELI operand; vignetting factors are not used), and the effective F-number (EFNO). With polarization the ratio of the pupil-averaged coating and Fresnel transmission to the axis is multiplied in, and the effective F-number includes the transmission (F/√T)",
+            help: "Relative illumination (OpticStudio's Relative Illumination): for points steps of the normalized field 0 to 1, the irradiance at the image point of the chief ray relative to the axis, from the projected solid angle of the beam that reaches that image point (the RELI operand), and the effective F-number (EFNO). By default the vignetting factors are replaced with floating apertures at the current semi-diameters on the surfaces where the medium changes (OpticStudio's Remove Vignetting Factors); with remove_vignetting_factors off the vignetting factors are ignored and the surface apertures are kept as they are. With polarization the ratio of the pupil-averaged coating and Fresnel transmission to the axis is multiplied in, and the effective F-number includes the transmission (F/√T)",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &RelIllumParams) -> Result<RelIllumOut> {
-        let s = cx.system;
+        let replaced = if p.remove_vignetting_factors {
+            Some(crate::illum::replace_vignetting(cx.system)?)
+        } else {
+            None
+        };
+        let s = replaced.as_ref().unwrap_or(cx.system);
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
         let ax = p.axis.core();
         let h = steps01(p.points.max(2));
@@ -367,8 +375,10 @@ pub(super) struct VignettingParams {
     /// Pupil ray grid (rays across the pupil diameter)
     #[schemars(extend("x-min" = 2))]
     pub rays: usize,
-    /// Ignore the vignetting factors of the fields (only the surface apertures clip the full pupil)
+    /// Ignore the vignetting factors of the fields (only the surface apertures clip the full pupil; when remove_vignetting_factors is off)
     pub no_vignetting_factors: bool,
+    /// Replace the vignetting factors with floating apertures at the current semi-diameters (OpticStudio's default Remove Vignetting Factors)
+    pub remove_vignetting_factors: bool,
 }
 
 impl Default for VignettingParams {
@@ -379,6 +389,7 @@ impl Default for VignettingParams {
             axis: Axis::Y,
             rays: 64,
             no_vignetting_factors: false,
+            remove_vignetting_factors: true,
         }
     }
 }
@@ -407,11 +418,16 @@ impl Analysis for Vignetting {
         Meta {
             name: "vignetting",
             about: "Vignetting plot: fraction of unvignetted rays versus field",
-            help: "Vignetting plot (OpticStudio's Vignetting Plot): for points steps of the normalized field 0 to 1, the fraction of a grid of pupil rays (rays across the diameter) that reach the image unvignetted. The vignetting factors of the fields are used unless no_vignetting_factors (then the full pupil is clipped only by the surface apertures)",
+            help: "Vignetting plot (OpticStudio's Vignetting Plot): for points steps of the normalized field 0 to 1, the fraction of a grid of pupil rays (rays across the diameter) that reach the image unvignetted. By default the vignetting factors are replaced with floating apertures at the current semi-diameters on the surfaces where the medium changes (OpticStudio's Remove Vignetting Factors). With remove_vignetting_factors off, the vignetting factors of the fields are used unless no_vignetting_factors (then the full pupil is clipped only by the surface apertures)",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &VignettingParams) -> Result<VignettingOut> {
-        let s = cx.system;
+        let replaced = if p.remove_vignetting_factors {
+            Some(crate::illum::replace_vignetting(cx.system)?)
+        } else {
+            None
+        };
+        let s = replaced.as_ref().unwrap_or(cx.system);
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
         let ax = p.axis.core();
         let h = steps01(p.points.max(2));

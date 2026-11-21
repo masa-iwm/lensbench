@@ -1809,3 +1809,4 @@ Relative illumination: image irradiance versus field relative to the axis	相対
 Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野に対するケラレずに通る光線の割合
 Rim points	縁の点の数
 Ignore vignetting factors	ケラレ係数を使わない
+Replace vignetting factors with apertures	ケラレ係数を開口に置き換える

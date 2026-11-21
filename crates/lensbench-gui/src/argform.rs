@@ -244,6 +244,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         ("relative-illumination" | "vignetting", "points") => "Field points",
         ("relative-illumination", "rim") => "Rim points",
         (_, "no_vignetting_factors") => "Ignore vignetting factors",
+        (_, "remove_vignetting_factors") => "Replace vignetting factors with apertures",
         ("elements", "out") => "Write rebuilt system",
         ("ghost", "out") => "Output folder",
         (_, "field" | "fields") => "Fields",
