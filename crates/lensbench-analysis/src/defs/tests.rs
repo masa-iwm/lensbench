@@ -95,6 +95,7 @@ fn every_builtin_runs_with_defaults() {
             "footprint" => back::<FootprintOut>(&t, &v),
             "relative-illumination" => back::<RelIllumOut>(&t, &v),
             "vignetting" => back::<VignettingOut>(&t, &v),
+            "gaussian-beam" => back::<GaussOut>(&t, &v),
             n => panic!("no result type listed for {n}"),
         }
     }

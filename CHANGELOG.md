@@ -12,6 +12,12 @@
 - **CLI が exe の隣の catalogs/glass を探す**: `--glass-dir`・`LENSBENCH_GLASSCAT` の後に、exe の隣の `catalogs/glass` があればそこのガラスカタログも使う
   （GUI の既定のカタログと同じ配置）。exe の隣にカタログを置いた配置なら、`--glass-dir` なしで CLI も同梱の屈折率だけのカタログでなくそこのカタログを使う
 
+### 足したもの
+
+- **近軸ガウスビーム**（`gaussian-beam`、OpticStudio の Paraxial Gaussian Beam 相当）: ウエストの半径・面 1 からの距離・M² で与えたビームを近軸の
+  ABCD 行列で運び、各面の後のビーム半径・ウエスト・ウエストの位置・曲率半径・広がり角・レイリー長（基本モードと M² の混合モード）を出す。
+  CLI・serve・Python（`System.analyze("gaussian-beam", ...)`）・GUI（光軸に沿ったビーム半径の図）。OpticStudio 26.1 と表示の 6 桁で一致
+
 ### 直した所
 
 - **GUI: 入れ子の群でレンズデータの表が最後の行まで送れない**: 要素を群にまとめて表に群の中の玉のブロックが入ると、ブロックの列の字下げと印が 2 段に折れて

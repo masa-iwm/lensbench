@@ -41,6 +41,7 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("footprint", n_("Footprint diagram"), true),
     ("relative-illumination", n_("Relative illumination"), false),
     ("vignetting", n_("Vignetting plot"), false),
+    ("gaussian-beam", n_("Paraxial Gaussian beam"), false),
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
@@ -86,6 +87,7 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "footprint" => "Footprint diagram: where the beam of each field crosses a surface, against its aperture",
         "relative-illumination" => "Relative illumination: image irradiance versus field relative to the axis",
         "vignetting" => "Vignetting plot: fraction of unvignetted rays versus field",
+        "gaussian-beam" => "Paraxial Gaussian beam: beam size, waist, divergence and Rayleigh range after each surface",
         _ => return None,
     })
 }
@@ -111,7 +113,7 @@ pub(crate) fn analysis_group(cmd: &str) -> &'static str {
         | "relative-illumination"
         | "vignetting" => "Image quality",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
-        "interference" | "pop" => "Interference / propagation",
+        "interference" | "pop" | "gaussian-beam" => "Interference / propagation",
         "ray-fan" | "opd-fan" | "field-curvature" | "longitudinal" | "lateral-color"
         | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",
         "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "Tables / system",

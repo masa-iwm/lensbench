@@ -6,6 +6,7 @@
 mod apodization;
 mod common;
 mod consistency;
+mod gauss;
 mod ghost;
 mod huygens;
 mod huygens_refs;

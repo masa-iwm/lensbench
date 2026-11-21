@@ -1,14 +1,14 @@
 //! 収差図の図: 横収差・OPD の扇、像面湾曲と歪曲、縦収差、倍率色収差、色の焦点ずれ、グリッド歪曲、ザイデル係数。
-//! フットプリント・相対照度・けられの図も。
+//! フットプリント・相対照度・けられの図と、近軸ガウスビームの輪郭も。
 //!
 //! グラフはどれも [`crate::plot_tools::show`] を通す（解析グラフの操作をそろえる）。色は波長の色（[`theme::wave_color`]、
 //! 波長は結果の画面が [`WAVES_UM`] に置く）。
 
 use egui::{Color32, Ui};
 use egui_plot::{Bar, BarChart, HLine, Legend, Line, LineStyle, Plot, PlotPoints};
-use egui_plot::{MarkerShape, PlotBounds, PlotPoint, Points, Text};
+use egui_plot::{MarkerShape, PlotBounds, PlotPoint, Points, Text, VLine};
 use lensbench_analysis::defs::{
-    FanOut, FieldCurvOut, FootprintOut, GridOut, LatOut, LongOut, RelIllumOut, SeidelOut,
+    FanOut, FieldCurvOut, FootprintOut, GaussOut, GridOut, LatOut, LongOut, RelIllumOut, SeidelOut,
     SeidelRow, ShiftOut, VignettingOut,
 };
 
@@ -34,6 +34,7 @@ pub(crate) const CMDS: &[&str] = &[
     "footprint",
     "relative-illumination",
     "vignetting",
+    "gaussian-beam",
 ];
 
 /// 収差図を描く。cmd が収差図でなければ None、描けない結果なら Some(false)
@@ -54,6 +55,7 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, out: Out<'_>) -> O
         "footprint" => get!(FootprintOut).is_some_and(|v| footprint(ui, id, &v)),
         "relative-illumination" => get!(RelIllumOut).is_some_and(|v| rel_illum(ui, id, &v)),
         "vignetting" => get!(VignettingOut).is_some_and(|v| vignetting(ui, id, &v)),
+        "gaussian-beam" => get!(GaussOut).is_some_and(|v| gauss(ui, id, &v)),
         _ => return None,
     })
 }
@@ -723,6 +725,73 @@ fn vignetting(ui: &mut Ui, id: u64, v: &VignettingOut) -> bool {
         let name = tr("Unvignetted rays").to_string();
         reg.push(Series::new(name.clone(), col, &all));
         draw(p, segs, col, false, &name);
+    });
+    true
+}
+
+// ------------------------------------------------------------------------------ ガウスビーム
+
+/// 近軸ガウスビーム: 光軸に沿ったビームの半径（±）と、面の位置の縦線
+fn gauss(ui: &mut Ui, id: u64, v: &GaussOut) -> bool {
+    if let Some(last) = v.rows.last() {
+        ui.label(weak(
+            ui,
+            trf(
+                "Image: beam radius {} {} · waist {} {} · waist to image {} {} · divergence {} mrad",
+                &[
+                    &fmt_sig(last.size, 4),
+                    &v.unit,
+                    &fmt_sig(last.waist, 4),
+                    &v.unit,
+                    &fmt_sig(last.position, 4),
+                    &v.unit,
+                    &fmt_sig(last.divergence * 1e3, 4),
+                ],
+            ),
+        ));
+    }
+    if !v.warnings.is_empty() {
+        ui.label(weak(ui, v.warnings.join("\n")));
+    }
+    let h = row_height(ui, 1, 200.0);
+    let col = theme::series(0);
+    let plot = Plot::new(("gaussian-beam", id))
+        .height(h)
+        .include_y(0.0)
+        .x_axis_label(trf("Position along the axis [{}]", &[&v.unit]))
+        .y_axis_label(trf("Beam radius [{}]", &[&v.unit]));
+    let weak_col = ui.visuals().weak_text_color().gamma_multiply(0.5);
+    plot_tools::show(ui, plot, &v.unit, |p, reg| {
+        for r in &v.rows {
+            if r.z.is_finite() {
+                p.vline(VLine::new(r.z).color(weak_col).width(0.6_f32));
+            }
+        }
+        let up: Vec<Vec<[f64; 2]>> = v.profile.clone();
+        let down: Vec<Vec<[f64; 2]>> = v
+            .profile
+            .iter()
+            .map(|s| s.iter().map(|q| [q[0], -q[1]]).collect())
+            .collect();
+        // M² の混合モードは基本モードの √M² 倍（破線）
+        if v.m2 > 1.0 {
+            let m = v.m2.sqrt();
+            let mix = |sign: f64| -> Vec<Vec<[f64; 2]>> {
+                v.profile
+                    .iter()
+                    .map(|s| s.iter().map(|q| [q[0], sign * m * q[1]]).collect())
+                    .collect()
+            };
+            let name = tr("Mixed-mode beam radius").to_string();
+            let c2 = theme::series(1);
+            reg.push(Series::new(name.clone(), c2, &flat(&mix(1.0))));
+            draw(p, mix(1.0), c2, true, &name);
+            draw(p, mix(-1.0), c2, true, "");
+        }
+        let name = tr("Beam radius").to_string();
+        reg.push(Series::new(name.clone(), col, &flat(&up)));
+        draw(p, up, col, false, &name);
+        draw(p, down, col, false, "");
     });
     true
 }

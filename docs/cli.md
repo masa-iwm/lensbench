@@ -17,6 +17,7 @@ lensbench mtf-field system.zmx --freqs 30,60 --points 11
 lensbench rms      system.zmx --vs field --points 11 --reference centroid
 lensbench ray-fan  system.zmx --field 3 --rays 20                # 収差図（ほかに opd-fan・field-curvature・longitudinal・lateral-color・focal-shift・grid-distortion・seidel）
 lensbench footprint system.zmx --surface 5                       # 面の上の光束の範囲（ほかに relative-illumination・vignetting）
+lensbench gaussian-beam system.zmx --waist 0.5 --surf1-to-waist -20 --m2 1.2   # 近軸ガウスビーム（各面のビーム径・ウエスト・広がり角）
 lensbench optimize system.zmx --var 8.t --var "6.c=0:0.05" --merit wavefront --out opt.zmx
 lensbench tolerance project.json --set '{"preset":"precision","compensators":["9.t"]}' --trials 500
 lensbench zoom     zoom.json --var G2.shift --var G3.shift --efl 95,110,130 --steps 3

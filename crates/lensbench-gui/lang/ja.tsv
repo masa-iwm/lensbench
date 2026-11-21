@@ -1811,3 +1811,14 @@ Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野�
 Rim points	縁の点の数
 Ignore vignetting factors	ケラレ係数を使わない
 Replace vignetting factors with apertures	ケラレ係数を開口に置き換える
+Paraxial Gaussian beam	近軸ガウスビーム
+Paraxial Gaussian beam: beam size, waist, divergence and Rayleigh range after each surface	近軸ガウスビーム: 各面の後のビーム径・ウエスト・広がり角・レイリー長
+Waist radius	ウエストの半径
+Surface 1 to waist	面 1 からウエストまで
+Orientation	断面
+Image: beam radius {} {} · waist {} {} · waist to image {} {} · divergence {} mrad	像面: ビーム半径 {} {} · ウエスト {} {} · ウエストから像面まで {} {} · 広がり角 {} mrad
+Position along the axis [{}]	光軸に沿った位置 [{}]
+Beam radius [{}]	ビーム半径 [{}]
+Beam radius	ビーム半径
+M²	M²
+Mixed-mode beam radius	混合モードのビーム半径

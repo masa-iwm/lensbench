@@ -1,6 +1,7 @@
 //! lensbench の解析。
 //!
 //! - [`aber`] は 収差図の計算（横収差・OPD の扇、像面湾曲、倍率色収差、色の焦点ずれ）
+//! - [`gauss`] は 近軸ガウスビーム（各面のビーム径・ウエスト・広がり角）
 //! - [`footprint`] は フットプリント（面の上の光束の範囲）とけられずに通る光線の割合
 //! - [`analysis`]・[`psf`]・[`pop`]・[`sweep`]・[`fiber`]・[`raygrid`] は 実光線の解析（MTF・スポット・Zernike・波面・PSF・POP・
 //!   焦点の掃引・ファイバ結合・光線の格子。core から移した。OPD と瞳の標本は core の `opd`）
@@ -20,6 +21,7 @@ pub mod defs;
 pub mod energy;
 pub mod fiber;
 pub mod footprint;
+pub mod gauss;
 pub mod ghost;
 pub mod huygens;
 pub mod illum;
