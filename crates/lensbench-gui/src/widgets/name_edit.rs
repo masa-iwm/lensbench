@@ -45,6 +45,9 @@ struct Comp {
     /// ↑↓ で候補を選んだ（Enter で入れるのはこのときだけ。新しい名前も書ける欄で、打った名前を候補に置き換えない）
     moved: bool,
     refocus: bool,
+    /// 前のフレームでポインタが候補の一覧の上にあった。実際のマウスでは押したフレームで欄がフォーカスを失い、
+    /// 離したフレーム（クリックが立つ）では has_focus も lost_focus も立たないので、その間も一覧を出し続ける
+    over: bool,
 }
 
 /// 候補を打った文字で絞る（完全一致、前方一致、部分一致の順。説明にも当てる。大文字・小文字は区別しない）
@@ -89,8 +92,9 @@ pub(crate) fn name_edit<T: Named>(
         resp.request_focus();
     }
     let enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
-    // Tab・候補のクリックでは欄が先にフォーカスを失うので、失ったフレームも見る
-    if resp.has_focus() || resp.lost_focus() {
+    // Tab・候補のクリックでは欄が先にフォーカスを失うので、失ったフレームと、ポインタが一覧の上にある間も見る
+    let over = std::mem::take(&mut st.over);
+    if resp.has_focus() || resp.lost_focus() || over {
         let key = (s.clone(), items.len());
         if st.key.as_ref() != Some(&key) {
             st.list = Arc::new(filter(items, s));
@@ -122,6 +126,8 @@ pub(crate) fn name_edit<T: Named>(
                 ..crate::widgets::choices::Choices::new(&m, st.pick)
             }
             .show(ui, resp.id.with("comp"), resp.rect);
+            // クリックで入れたら一覧を閉じる（欄のフォーカスは戻さない）
+            st.over = shown.hovered && shown.clicked.is_none();
             let set = if let Some(k) = shown.clicked {
                 m.get(k)
             } else if tab || (enter && st.moved) {

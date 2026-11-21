@@ -578,6 +578,99 @@ fn last_row_of_the_table_is_above_the_details_bar() {
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
 }
 
+/// 入れ子の群（要素を群にまとめると表で群の中に玉のブロックが入る）があっても、ブロックの列が 1 行に収まって
+/// 行の高さがそろい、表の最後の行まで送れる
+#[test]
+fn nested_group_rows_keep_their_height() {
+    let _g = serial();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 820.0))
+        .with_max_steps(1000)
+        .build_eframe(move |cc| App::new(cc, a0()));
+    i18n::set(i18n::Lang::En);
+    settle(&mut h);
+    let app = h.state_mut();
+    let mut want = app.c.doc.combo.clone();
+    assert!(want.picks.len() >= 3, "{}", want.picks.len());
+    for p in want.picks.iter_mut().take(3) {
+        p.group = "G1".into();
+    }
+    let e = edit::Edit::between(&app.c.doc.combo, &want).expect("changed");
+    app.update(Msg::Edit(e));
+    settle(&mut h);
+    h.run_steps(4);
+    let blocks: Vec<String> = h
+        .state()
+        .c
+        .sys
+        .ld_blocks
+        .iter()
+        .map(|b| b.name.clone())
+        .collect();
+    assert!(blocks.iter().any(|n| n == "G1"), "{blocks:?}");
+    let n = h.state().c.sys.ld_rows.len() - 1;
+    // 見えている行の間隔はそろう（ブロックの列が 2 段に折れた行だけ高くならない）
+    let ys: Vec<f64> = (0..=n)
+        .filter_map(|k| {
+            h.query_by_label(&format!("Surface {k} Type"))
+                .and_then(|x| x.bounding_box())
+                .map(|b| b.y0)
+        })
+        .collect();
+    assert!(ys.len() >= 3, "{ys:?}");
+    let d0 = ys[1] - ys[0];
+    for w in ys.windows(2) {
+        assert!((w[1] - w[0] - d0).abs() < 0.5, "{ys:?}");
+    }
+    h.get_by_label("Surface 1 Thickness").click();
+    h.run_steps(2);
+    for _ in 0..n {
+        h.press_key(Key::ArrowDown);
+        h.run_steps(2);
+    }
+    h.run_steps(4);
+    let bar = h
+        .query_all(
+            egui_kittest::kittest::by()
+                .predicate(|n| n.value().is_some_and(|l| l.contains("Details —"))),
+        )
+        .next()
+        .and_then(|n| n.bounding_box())
+        .unwrap();
+    let last = h
+        .get_by_label(&format!("Surface {n} Type"))
+        .bounding_box()
+        .unwrap();
+    assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
+}
+
+/// ファイル > 最近のファイル: 長いパスでも 1 件 1 行（親のフォルダとファイルの名前）で、フルパスはホバーで
+#[test]
+fn recent_files_are_one_line() {
+    assert_eq!(
+        menus::recent_label(r"D:\work\optics\pkg\tests\refs\A0\system.zmx"),
+        r"…\A0\system.zmx"
+    );
+    assert_eq!(
+        menus::recent_label("/home/me/x/A0/system.zmx"),
+        "…/A0/system.zmx"
+    );
+    assert_eq!(menus::recent_label("A0/system.zmx"), "A0/system.zmx");
+    assert_eq!(menus::recent_label("system.zmx"), "system.zmx");
+    let _g = serial();
+    let mut h = harness(Args::default());
+    let long = r"D:\work\optics\a-rather-long-folder-name-for-the-test\another-long-folder-name-inside-it\tests\refs\A0\system.zmx";
+    h.state_mut().c.s.recent = vec![long.to_string()];
+    h.run_steps(2);
+    h.get_by_label("File").click();
+    h.run_steps(2);
+    // 「最近のファイル」は空の文書の案内にもある（メニューの方は後に描く）
+    h.get_all_by_label("Recent files").last().unwrap().hover();
+    h.run_steps(4);
+    let b = h.get_by_label(r"…\A0\system.zmx").bounding_box().unwrap();
+    assert!(b.y1 - b.y0 < 30.0, "{b:?}");
+}
+
 /// 図で選んだ BS・先頭に自動で置く絞り（表のブロックの名前を持たない）も、レンズデータの表でその面の行を選ぶ
 /// （BS は往路と、鏡で戻って口 D へ出る復路の両方）
 #[test]

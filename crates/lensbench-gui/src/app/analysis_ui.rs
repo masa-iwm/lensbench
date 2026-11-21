@@ -144,11 +144,12 @@ impl Core {
             ui.add_space(8.0);
             ui.label(RichText::new(tr("Recent files")).small().color(weak));
             for f in self.s.recent.clone().iter().take(6) {
-                let name = Path::new(f)
-                    .file_name()
-                    .map(|x| x.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| f.clone());
-                if ui.link(name).on_hover_text(f).clicked() {
+                // ファイル > 最近のファイルと同じ親のフォルダとファイルの名前（system.zmx だけでは見分けられない）
+                if ui
+                    .link(super::menus::recent_label(f))
+                    .on_hover_text(f)
+                    .clicked()
+                {
                     self.msgs.push(Msg::OpenFile(PathBuf::from(f)));
                 }
             }

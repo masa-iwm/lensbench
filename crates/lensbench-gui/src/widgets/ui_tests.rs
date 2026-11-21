@@ -708,6 +708,25 @@ fn name_edit_completes_and_checks_glass() {
         b.frame(Vec::new(), &body);
         assert_eq!(*s.borrow(), want, "{text}");
     }
+    // 候補のクリック: 押したフレームで欄がフォーカスを失い、離したフレームでクリックが立つ
+    s.borrow_mut().clear();
+    changed.set(false);
+    b.click(rect.get().center(), PointerButton::Primary, &body);
+    b.frame(vec![Event::Text("N-".into())], &body);
+    b.frame(Vec::new(), &body);
+    let row_h = b.ctx.style().spacing.interact_size.y;
+    let p = Pos2::new(
+        rect.get().left() + 30.0,
+        rect.get().bottom() + 8.0 + row_h * 1.5,
+    );
+    b.click(p, PointerButton::Primary, &body);
+    b.frame(Vec::new(), &body);
+    assert_eq!(*s.borrow(), "N-BK7");
+    assert!(changed.get());
+    // 入れたら一覧は閉じる（ポインタが同じ所にあっても、もう一度押しても変わらない）
+    b.click(p, PointerButton::Primary, &body);
+    b.frame(Vec::new(), &body);
+    assert_eq!(*s.borrow(), "N-BK7");
     // ガラスの欄: 出しただけでは頼まず、候補が無いまま欄に入ったら頼む
     let mut b = Bench::new();
     let t = std::cell::RefCell::new(String::from("N-BK7"));

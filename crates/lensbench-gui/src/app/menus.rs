@@ -339,8 +339,11 @@ impl App {
                 if self.c.s.recent.is_empty() {
                     ui.label(tr("(none)"));
                 }
+                // 親のフォルダとファイルの名前だけを 1 行で出し、フルパスはホバーで（フルパスはメニューの幅で
+                // 区切りごとに折れて縦に長くなる）
                 for f in &self.c.s.recent {
-                    if ui.button(f).clicked() {
+                    let b = egui::Button::new(recent_label(f)).wrap_mode(egui::TextWrapMode::Extend);
+                    if ui.add(b).on_hover_text(f).clicked() {
                         ui.close_menu();
                         *cmd = Some(Msg::OpenFile(PathBuf::from(f)));
                     }
@@ -764,4 +767,16 @@ fn record_label(on: bool) -> &'static str {
     } else {
         tr("Record operations")
     }
+}
+
+/// 最近のファイルの欄の文字: 親のフォルダとファイルの名前（`A0\system.zmx`）。区切りは `/` と `\` のどちらでも
+/// （Windows のパスを別の OS で読んでも）、元の区切りのまま出す。上にまだフォルダがあれば前に `…`
+pub(crate) fn recent_label(f: &str) -> String {
+    let parts: Vec<&str> = f.split(['/', '\\']).filter(|x| !x.is_empty()).collect();
+    if parts.len() <= 2 {
+        return f.to_string();
+    }
+    let n = parts.len();
+    let sep = if f.contains('\\') { '\\' } else { '/' };
+    format!("…{sep}{}{sep}{}", parts[n - 2], parts[n - 1])
 }

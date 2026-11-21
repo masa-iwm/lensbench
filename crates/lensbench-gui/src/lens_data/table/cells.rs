@@ -87,50 +87,55 @@ pub(super) fn block_cell(
     let (depth, heads) = v
         .line(j)
         .map_or((0, Vec::new()), |l| (l.depth, l.heads.clone()));
-    ui.spacing_mut().item_spacing.x = 2.0;
-    // 字下げ（開いたブロックの中）
-    for _ in 0..depth.saturating_sub(heads.len()) {
-        ui.label(RichText::new("│").color(v.weak));
-    }
-    // この行から始まる開いたブロック（▼）と、たたんだブロック（▶）
-    let mut marks: Vec<(usize, bool)> = heads.iter().map(|&i| (i, true)).collect();
-    if let (Some(_), Some(i)) = (fold, blk) {
-        marks.push((i, false));
-    }
-    for (i, opened) in marks {
-        let b = &c.blocks[i];
-        let lk = block_locked(c.blocks, c.locked, i);
-        let text = match (v.tree, opened, lk) {
-            (false, _, true) => format!("■ {}", b.name),
-            (false, _, false) => format!("▶ {}", b.name),
-            (true, o, l) => format!(
-                "{} {}{}",
-                if o { "▼" } else { "▶" },
-                b.name,
-                if l { " ■" } else { "" }
-            ),
-        };
-        let hint = match (v.tree, opened) {
-            (false, _) => tr("Double-click to enter"),
-            (true, true) => tr("Click to collapse"),
-            (true, false) => tr("Click to expand"),
-        };
-        let r = ui
-            .add(
-                egui::Label::new(RichText::new(text).color(v.accent).strong())
-                    .sense(Sense::click()),
-            )
-            .on_hover_text(hint);
-        if v.tree && r.clicked() {
-            out.toggle = Some(b.name.clone());
+    // 字下げと印は 1 行に並べる（セルは上から下の並びなので、そのまま足すと入れ子の行で 2 段に折れ、行が
+    // ROW_H より高くなって表が最後の行まで送れなかった）
+    // （horizontal は中身の高さに合わせて伸びるので、セルの高さの中で左から並べる）
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        // 字下げ（開いたブロックの中）
+        for _ in 0..depth.saturating_sub(heads.len()) {
+            ui.label(RichText::new("│").color(v.weak));
         }
-        if !v.tree && r.double_clicked() {
-            out.enter = Some(b.name.clone());
-        } else if r.clicked() {
-            st.sel = Some(b.name.clone());
-            out.acts.push(Act::Select(st.sel.clone()));
+        // この行から始まる開いたブロック（▼）と、たたんだブロック（▶）
+        let mut marks: Vec<(usize, bool)> = heads.iter().map(|&i| (i, true)).collect();
+        if let (Some(_), Some(i)) = (fold, blk) {
+            marks.push((i, false));
         }
-    }
+        for (i, opened) in marks {
+            let b = &c.blocks[i];
+            let lk = block_locked(c.blocks, c.locked, i);
+            let text = match (v.tree, opened, lk) {
+                (false, _, true) => format!("■ {}", b.name),
+                (false, _, false) => format!("▶ {}", b.name),
+                (true, o, l) => format!(
+                    "{} {}{}",
+                    if o { "▼" } else { "▶" },
+                    b.name,
+                    if l { " ■" } else { "" }
+                ),
+            };
+            let hint = match (v.tree, opened) {
+                (false, _) => tr("Double-click to enter"),
+                (true, true) => tr("Click to collapse"),
+                (true, false) => tr("Click to expand"),
+            };
+            let r = ui
+                .add(
+                    egui::Label::new(RichText::new(text).color(v.accent).strong())
+                        .sense(Sense::click()),
+                )
+                .on_hover_text(hint);
+            if v.tree && r.clicked() {
+                out.toggle = Some(b.name.clone());
+            }
+            if !v.tree && r.double_clicked() {
+                out.enter = Some(b.name.clone());
+            } else if r.clicked() {
+                st.sel = Some(b.name.clone());
+                out.acts.push(Act::Select(st.sel.clone()));
+            }
+        }
+    });
 }
 
 /// 値の列のセル: たたんだブロックの行・書き換え中・ふつうのセル

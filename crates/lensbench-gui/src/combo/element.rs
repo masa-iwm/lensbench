@@ -72,9 +72,14 @@ pub(super) fn element_settings(
     let st = st.as_deref();
     // 膜の欄で選べる、系の設定で定義した膜の名前
     let coats: Vec<String> = combo.coatings.keys().cloned().collect();
-    // 群の欄の補完の候補（組合せにある群の名前）
+    // 群の欄の補完の候補（組合せにある群の名前）。今の要素の群は除く（打っている途中の名前が候補に出ない）
     let mut groups: Vec<String> = Vec::new();
-    for q in combo.all().iter().filter_map(|l| combo.get(l)) {
+    for q in combo
+        .all()
+        .iter()
+        .filter(|l| **l != step.loc)
+        .filter_map(|l| combo.get(l))
+    {
         let g = q.group.trim();
         if !g.is_empty() && !groups.iter().any(|n| n == g) {
             groups.push(g.to_string());
