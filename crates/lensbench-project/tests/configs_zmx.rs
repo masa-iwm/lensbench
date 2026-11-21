@@ -70,24 +70,6 @@ fn same_trace(a: &System, b: &System, tol: f64, what: &str) {
     }
 }
 
-/// 半直径を固定した玉の面（前か後ろがガラス）で開口のない面を浮動開口にした系（.zmx の読込と同じ）。座標ブレークは
-/// 半直径を自動で書くので付かない
-fn with_floating(s: &System) -> System {
-    use lensbench_core::surface::Aperture;
-    let glass = |m: &lensbench_core::surface::Material| m.is_medium() && !m.is_air();
-    let mut t = s.prescription().clone();
-    for k in 1..t.surfaces.len().saturating_sub(1) {
-        let lens = (glass(&s.surfaces[k].mat) && !s.surfaces[k].is_mirror())
-            || (glass(&s.surfaces[k - 1].mat) && !s.surfaces[k - 1].is_mirror());
-        let d = &mut t.surfaces[k];
-        let cb = d.typ() == lensbench_core::surface::SurfType::CoordBrk;
-        if !d.semi_auto && lens && !cb && d.ap == Aperture::None {
-            d.ap = Aperture::Floating { semi: d.semi };
-        }
-    }
-    t.build_raw().unwrap()
-}
-
 fn round_trip(systems: &[System], names: &[String], tag: &str) {
     let dir = std::env::temp_dir().join(format!("lb_cfgzmx_{}_{tag}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -100,8 +82,8 @@ fn round_trip(systems: &[System], names: &[String], tag: &str) {
     let back = zmx::load_configs(&p, &opt, &[]).unwrap();
     assert_eq!(back.len(), systems.len());
     for (k, (a, b)) in systems.iter().zip(&back).enumerate() {
-        // 半直径を固定した玉の面で開口のない面は、読み直すと浮動開口でける（OpticStudio の読込と同じ）
-        same_trace(&with_floating(a), b, 1e-9, &names[k]);
+        // 展開した系は半直径を固定した玉の面に既に浮動開口を持つ（.zmx の読込と同じ）ので、そのまま比べる
+        same_trace(a, b, 1e-9, &names[k]);
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
