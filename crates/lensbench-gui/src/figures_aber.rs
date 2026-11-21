@@ -6,7 +6,7 @@
 
 use egui::{Color32, Ui};
 use egui_plot::{Bar, BarChart, HLine, Legend, Line, LineStyle, Plot, PlotPoints};
-use egui_plot::{MarkerShape, Points};
+use egui_plot::{MarkerShape, PlotBounds, PlotPoint, Points, Text};
 use lensbench_analysis::defs::{
     FanOut, FieldCurvOut, FootprintOut, GridOut, LatOut, LongOut, RelIllumOut, SeidelOut,
     SeidelRow, ShiftOut, VignettingOut,
@@ -480,6 +480,9 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
             ],
         ),
     ));
+    // 選んだ棒の札（x、半分の幅、値、文字）。egui_plot の札は棒の上端の右に付くので、上端が図の外（高い棒・
+    // 拡大した時）や右端の棒でははみ出る。自前で図の中に描く
+    let mut hits: Vec<(f64, f64, f64, String)> = Vec::new();
     let charts: Vec<BarChart> = NAMES
         .iter()
         .enumerate()
@@ -494,18 +497,18 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
                     } else {
                         trf("Surface {}", &[&r.surf])
                     };
-                    Bar::new((i + 1) as f64 + off, vals(r)[k])
+                    let (x, y) = ((i + 1) as f64 + off, vals(r)[k]);
+                    let text = format!("{label} {name}  {}", fmt_sig(y, 4));
+                    hits.push((x, wbar / 2.0, y, text));
+                    Bar::new(x, y)
                         .width(wbar * 0.95)
                         .name(format!("{label} {name}"))
                 })
                 .collect();
-            // 選んだ棒の札は面と係数の名前つき（縦の範囲に札の分の余白を取る）
             BarChart::new(bars)
                 .color(theme::series(k))
                 .name(*name)
-                .element_formatter(Box::new(|b, _| {
-                    format!("{}  {}", b.name, fmt_sig(b.value, 4))
-                }))
+                .element_formatter(Box::new(|_, _| String::new()))
         })
         .collect();
     // 凡例はグラフの外（中に置くと右の面・和の棒に重なる）
@@ -550,12 +553,42 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
         })
         .x_axis_label(tr("Surface"))
         .y_axis_label(trf("Seidel sum [{}]", &[&v.unit]));
+    let color = ui.visuals().text_color();
     plot_tools::show(ui, plot, "", |p, _| {
         for c in charts {
             p.bar_chart(c);
         }
+        let at = p.pointer_coordinate().filter(|_| p.response().hovered());
+        let hit = at.and_then(|m| hits.iter().find(|h| (m.x - h.0).abs() <= h.1));
+        if let Some((x, _, y, text)) = hit {
+            let (pos, anchor) = bar_label_at(*x, *y, &p.plot_bounds());
+            p.text(Text::new(pos, egui::RichText::new(text).color(color)).anchor(anchor));
+        }
     });
     true
+}
+
+/// 棒 (x, 値 y) の札の位置と向き。図の範囲 b の中に収める: 上向きの棒は上端の上（図の上端に近ければ
+/// 下）、下向きは逆。左半分の棒は右へ、右半分は左へ伸ばす。端から少し内側に置く（自動の範囲を広げない）
+fn bar_label_at(x: f64, y: f64, b: &PlotBounds) -> (PlotPoint, egui::Align2) {
+    use egui::Align2;
+    let ([x0, y0], [x1, y1]) = (b.min(), b.max());
+    let (rx, ry) = ((x1 - x0) * 0.08, (y1 - y0) * 0.08);
+    let yc = y.clamp(y0 + ry, (y1 - ry).max(y0 + ry));
+    let above = if y >= 0.0 {
+        y <= y1 - 2.0 * ry
+    } else {
+        y < y0 + 2.0 * ry
+    };
+    let right = x < (x0 + x1) / 2.0;
+    let xc = x.clamp(x0 + rx, (x1 - rx).max(x0 + rx));
+    let anchor = match (above, right) {
+        (true, true) => Align2::LEFT_BOTTOM,
+        (true, false) => Align2::RIGHT_BOTTOM,
+        (false, true) => Align2::LEFT_TOP,
+        (false, false) => Align2::RIGHT_TOP,
+    };
+    (PlotPoint::new(xc, yc), anchor)
 }
 
 // ------------------------------------------------------------------------------- フットプリント
@@ -696,6 +729,25 @@ fn vignetting(ui: &mut Ui, id: u64, v: &VignettingOut) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// 棒の札は図の中: 上端が図の上より高い棒は上端の内側で下向きに、右半分の棒は左へ伸ばす
+    #[test]
+    fn bar_label_stays_inside() {
+        use egui::Align2;
+        let b = super::PlotBounds::from_min_max([2.0, 0.0], [5.5, 0.4]);
+        let (p, a) = super::bar_label_at(3.1, 0.9, &b);
+        assert!(p.y < 0.4 && p.y > 0.0, "{p:?}");
+        assert_eq!(a, Align2::LEFT_TOP);
+        let (p, a) = super::bar_label_at(5.4, 0.05, &b);
+        assert!(p.x < 5.5, "{p:?}");
+        assert_eq!(a, Align2::RIGHT_BOTTOM);
+        let (p, a) = super::bar_label_at(2.5, -0.3, &b);
+        assert!(p.y >= 0.0, "{p:?}");
+        assert_eq!(a, Align2::LEFT_BOTTOM);
+        // 図の外の右の棒も内側へ
+        let (p, _) = super::bar_label_at(9.0, 0.1, &b);
+        assert!(p.x < 5.5);
+    }
+
     use super::*;
 
     #[test]
