@@ -1,7 +1,8 @@
 //! 膜の透過率・偏光による瞳の振幅。OpticStudio の解析の「Use Polarization」に当たる選択肢で、既定は使わない。
 //!
 //! 波長ごとに粗い瞳の格子で偏光追跡し（[`PolGrid`]、伝搬の位相なし）、格子の Jones 行列を補間して、入射の偏光の
-//! 強度の透過率 |E_出|² / |E_入|²（OpticStudio の偏光追跡と同じ約束で |E|² が強度）の平方根を瞳の振幅にする
+//! 強度の透過率 |E_出|² / |E_入|²（OpticStudio の偏光追跡と同じ約束で |E|² が強度。E_入 は光線に垂直な面の正規直交の
+//! 基底で入射の偏光を表したもので、OpticStudio の系の偏光と同じ。[`crate::polgrid::basis_coeffs`]）の平方根を瞳の振幅にする
 //! （[`PupilAmp`]）。偏光なし（既定）は x・y の偏光の透過率の平均。振幅だけで、偏光による位相・成分の違い
 //! （偏光ごとの PSF の重ね合わせ）は入れない。多色では、波長ごとに瞳の上で平均した光量の透過率を波長の重みに掛ける
 //! （[`lensbench_core::pupil::wave_weight`]。膜の透過率が波長で違えば、像面に届く光量の比で足す）。
@@ -10,7 +11,7 @@
 //! [`crate::analysis::mtf_amp`] に渡す。系のアポダイゼーション（[`lensbench_core::pupil::Apodization`]）は
 //! これとは別に常に入る。
 
-use crate::polgrid::PolGrid;
+use crate::polgrid::{basis_coeffs, PolGrid};
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::pupil::PupilAmp;
 use lensbench_core::system::{FieldSel, Launch, System};
@@ -71,11 +72,13 @@ impl PupilAmp for PolAmp {
         let Some(v) = g.eval(px, py) else {
             return f64::NAN;
         };
-        // v = [xx, xy, yx, yy, z_x, z_y]（行 = 出射の x・y、列 = 入射の x・y）
+        // v = [xx, xy, yx, yy, z_x, z_y, kx, ky]（行 = 出射の x・y、列 = 入射の x・y、k は物体空間の向き）
+        let (kx, ky) = (v[6].re, v[7].re);
         let t = |j: [C64; 2]| -> f64 {
-            let ex = v[0] * j[0] + v[1] * j[1];
-            let ey = v[2] * j[0] + v[3] * j[1];
-            let ez = v[4] * j[0] + v[5] * j[1];
+            let c = basis_coeffs(j, kx, ky);
+            let ex = v[0] * c[0] + v[1] * c[1];
+            let ey = v[2] * c[0] + v[3] * c[1];
+            let ez = v[4] * c[0] + v[5] * c[1];
             (ex.norm_sqr() + ey.norm_sqr() + ez.norm_sqr()) / (j[0].norm_sqr() + j[1].norm_sqr())
         };
         let one = C64::new(1.0, 0.0);

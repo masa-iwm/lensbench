@@ -10,9 +10,12 @@
 //! - 瞳の内側（px² + py² ≤ 1）で欠けた格子点は「欠け」として返す（[`PolGrid::missing`]）。欠けた点から
 //!   [`BAD_MARGIN`] 点の範囲のセルにある光線は NaN にする（黙って埋めない）。
 //!
-//! 値は格子点ごとに 6 つの複素数: Jones 行列 [xx, xy, yx, yy]（行 = 出射の x・y、列 = 入射の x・y）と
-//! z 成分 [z_x, z_y]（列 = 入射の x・y）。
-
+//! 値は格子点ごとに 8 つの複素数: Jones 行列 [xx, xy, yx, yy]（行 = 出射の x・y、列 = 入射の x・y）と
+//! z 成分 [z_x, z_y]（列 = 入射の x・y）、物体空間の光線の向きの単位ベクトルの、物体の座標系での x・y 成分 [kx, ky]
+//! （実部だけ）。
+//! 追跡の入射は物体の座標系の x・y の単位ベクトルを光線に垂直な面へ射影したもの（規格化しない）。入射の偏光 (Jx, Jy) は
+//! OpticStudio の系の偏光と同じく、光線に垂直な面の正規直交の基底 e_x' = x の射影を規格化したもの、e_y' = k × e_x' で
+//! E = Jx·e_x' + Jy·e_y' とし、追跡の線形性で 2 つの列の重ね合わせに直す（[`basis_coeffs`]）。
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
 use lensbench_core::interp::Spline;
@@ -20,8 +23,27 @@ use lensbench_core::pupil::{PupilGrid, Rim};
 use lensbench_core::system::{Launch, PolIn, RecSel, System};
 use lensbench_core::{invalid, Result};
 
-/// 格子点ごとの値の数（Jones 4 + z 成分 2）
-pub(crate) const NV: usize = 6;
+/// 格子点ごとの値の数（Jones 4 + z 成分 2 + 物体空間の向き 2）
+pub(crate) const NV: usize = 8;
+
+/// 大域座標の向き d（物体空間の光線）を、物体の座標系（面 1 の変換の前、入射の偏光 (Ex, Ey) を測る座標系）の単位ベクトルに
+/// したときの x・y 成分
+pub fn obj_dir(sys: &System, d: [f64; 3]) -> [f64; 2] {
+    let r = sys.frames().obj.r;
+    let n = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    [0, 1].map(|c| (r[0][c] * d[0] + r[1][c] * d[1] + r[2][c] * d[2]) / n)
+}
+
+/// 入射の偏光 j = (Jx, Jy) の場 E = Jx·e_x' + Jy·e_y'（e_x' = x の射影を規格化、e_y' = k × e_x'。OpticStudio の
+/// 系の偏光の基底、2026 R1.01 で実測）を、追跡の入射の x・y の射影 p_x = x − kx·k・p_y = y − ky·k の重ね合わせ
+/// a·p_x + b·p_y で表した (a, b)。(kx, ky) は物体の座標系の光線の単位ベクトルの x・y 成分（[`obj_dir`]、kz > 0）。
+/// |E|² = |Jx|² + |Jy|² なので、透過率は出射の |a·E_x + b·E_y|² を |j|² で割る
+pub fn basis_coeffs(j: [C64; 2], kx: f64, ky: f64) -> [C64; 2] {
+    let s = (1.0 - kx * kx).sqrt();
+    let kz = (1.0 - kx * kx - ky * ky).max(0.0).sqrt();
+    // e_y' = k × x / s = (kx·ky / (s·kz))·p_x + (s / kz)·p_y（グラム行列の行列式は kz²）
+    [j[0] / s + j[1] * (kx * ky / (s * kz)), j[1] * (s / kz)]
+}
 
 /// 欠けた格子点から何点の範囲のセルの光線を補間しないか（スプラインは大域なので、埋めた値の影響は
 /// 1 点離れるごとに約 0.27 倍に減る。2 点で 4×4 の近傍の外側にもう 1 点の余裕）
@@ -104,7 +126,8 @@ impl PolGrid {
         for k in 0..n {
             let e = &p.e[k];
             let (ex, ey) = (e[0], e[1]);
-            let v = [ex[0], ey[0], ex[1], ey[1], ex[2], ey[2]];
+            let [kx, ky] = obj_dir(sys, p.trace.k0[k]).map(|c| C64::new(c, 0.0));
+            let v = [ex[0], ey[0], ex[1], ey[1], ex[2], ey[2], kx, ky];
             if p.trace.ok(k) && v.iter().all(|c| c.re.is_finite() && c.im.is_finite()) {
                 vals[k] = v;
                 good[k] = true;
@@ -144,7 +167,7 @@ impl PolGrid {
         self.f.ny()
     }
 
-    /// 格子点の値（Jones 行列 [xx, xy, yx, yy] と z 成分 [z_x, z_y]。欠けた点は最も近い有効な点の値で埋めたもの）
+    /// 格子点の値（Jones 行列 [xx, xy, yx, yy]、z 成分 [z_x, z_y]、物体空間の向き [kx, ky]。欠けた点は最も近い有効な点の値で埋めたもの）
     pub fn values(&self) -> &Grid2<[C64; NV]> {
         &self.f
     }

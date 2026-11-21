@@ -740,7 +740,7 @@ fn compute(
                             v.iter_mut().for_each(|c| *c *= ph);
                         }
                         j.extend_from_slice(&v[..4]);
-                        z.extend_from_slice(&v[4..]);
+                        z.extend_from_slice(&v[4..6]);
                     }
                     None => {
                         j.extend([nan; 4]);

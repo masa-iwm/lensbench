@@ -266,6 +266,45 @@ fn coating_amplitude_of_an_ideal_lens_is_one() {
 }
 
 #[test]
+fn polarization_amplitude_of_a_lossless_finite_conjugate_system_is_one() {
+    // 有限物体では物体空間の光線が瞳の上で傾く。入射の偏光は光線に垂直な面へ射影してから追跡するので、損失のない系の
+    // 透過率は射影した後の強度で割って 1（射影の cos² の分だけ小さく出さない）。斜めの直線偏光は kx·Ex + ky·Ey の項も効く
+    // 面 1 を X 軸まわりに 20° 傾けた座標ブレークにした版（物体の座標系が大域座標から回る。入射の偏光は物体の座標系で測る）
+    let t = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\
+XFLN 0 0\nYFLN 0 1\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 15\n\
+SURF 1\n  TYPE COORDBRK\n  PARM 3 20\n  DISZ 10\n\
+SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 40\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    let tilted = zmx::build(&zmx::parse_text(t).unwrap(), &Default::default(), &[], None).unwrap();
+    for s in [ideal("", Some(15.0)), tilted] {
+        check_lossless(&s);
+    }
+}
+
+fn check_lossless(s: &System) {
+    use lensbench_core::coating::C64;
+    use lensbench_core::pupil::PupilAmp;
+    let co = Coatings::for_system(s).unwrap();
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let pols = [
+        None,
+        Some([C64::new(1.0, 0.0), C64::new(0.0, 0.0)]),
+        Some([C64::new(0.0, 0.0), C64::new(1.0, 0.0)]),
+        Some([C64::new(h, 0.0), C64::new(h, 0.0)]),
+        Some([C64::new(h, 0.0), C64::new(0.0, h)]),
+    ];
+    for f in [FieldSel::Index(0), FieldSel::Index(1)] {
+        for pol in pols {
+            let pa = PolAmp::new(s, f, &[0], &co, 9, pol).unwrap();
+            for &(x, y) in &[(0.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.6, 0.6)] {
+                let a = pa.amp(0, x, y);
+                assert!((a - 1.0).abs() < 1e-6, "{f:?} {pol:?} ({x}, {y}): {a}");
+            }
+        }
+    }
+}
+
+#[test]
 fn coating_amplitude_of_an_uncoated_singlet_drops_at_the_rim() {
     // 膜のないガラスの単レンズ: 境界の Fresnel の透過で振幅は 1 より小さく、縁（入射角が大きい）でさらに下がる。
     // 偏光なしの振幅は x・y の偏光の透過率の平均の平方根
@@ -469,4 +508,65 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     let mu = psf::geometric_mtf(&u, f, Waves::One(0), 64, &freqs, false).unwrap();
     let mz = psf::geometric_mtf(&z, f, Waves::One(0), 64, &freqs, false).unwrap();
     assert_eq!(mu.tan, mz.tan);
+}
+
+/// Use Polarization の強度の透過率を OpticStudio 2026 R1.01 の偏光の BatchRayTrace（系の偏光と同じ Jx/Jy の与え方）と比べる
+/// （tests/pol_finite: 物体 15 mm の膜なし N-BK7 両凸、軸上と物体高 3 mm、x・y・45°・円偏光・偏光なし、瞳の 5 点）。
+/// 同梱の N-BK7 には内部透過率が無いので、絶対値は内部の吸収の分（1e-3 以内）だけ高い。同じ光線の偏光どうしの比は吸収が
+/// 消えるので 1e-6 で比べる（斜めの光線の y 系の偏光が OpticStudio の正規直交の基底でないとここで 1e-3 ずれる）
+#[test]
+fn polarization_transmission_matches_opticstudio() {
+    use lensbench_core::coating::C64;
+    use lensbench_core::pupil::PupilAmp;
+    let root = crate::common::root();
+    let dir = root.join("tests/pol_finite");
+    let s = zmx::load_with(
+        &dir.join("system.zmx"),
+        &zmx::LoadOptions {
+            catalog_dirs: vec![root.join("tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let os: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("os.json")).unwrap()).unwrap();
+    let co = Coatings::for_system(&s).unwrap();
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let (one, zero) = (C64::new(1.0, 0.0), C64::new(0.0, 0.0));
+    let pol = |name: &str| match name {
+        "x" => Some([one, zero]),
+        "y" => Some([zero, one]),
+        "d45" => Some([C64::new(h, 0.0), C64::new(h, 0.0)]),
+        "rcp" => Some([C64::new(h, 0.0), C64::new(0.0, h)]),
+        "unpol" => None,
+        p => panic!("{p}"),
+    };
+    let pts = os["points"].as_array().unwrap();
+    let t = |p: &serde_json::Value| -> (f64, f64) {
+        let f = FieldSel::Index(p["field"].as_u64().unwrap() as usize);
+        let pa = PolAmp::new(&s, f, &[0], &co, 17, pol(p["pol"].as_str().unwrap())).unwrap();
+        let (px, py) = (p["px"].as_f64().unwrap(), p["py"].as_f64().unwrap());
+        (pa.amp(0, px, py).powi(2), p["T"].as_f64().unwrap())
+    };
+    for p in pts {
+        let (a, b) = t(p);
+        assert!((a - b).abs() < 1e-3, "{p}: {a} vs {b}");
+        // 同じ視野・瞳の点の x 偏光との比
+        let x = pts
+            .iter()
+            .find(|q| {
+                q["pol"] == "x"
+                    && q["field"] == p["field"]
+                    && q["px"] == p["px"]
+                    && q["py"] == p["py"]
+            })
+            .unwrap();
+        let (ax, bx) = t(x);
+        assert!(
+            (a / ax - b / bx).abs() < 1e-6,
+            "{p}: ratio {} vs {}",
+            a / ax,
+            b / bx
+        );
+    }
 }

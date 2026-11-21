@@ -235,9 +235,9 @@ pub struct RelIllumOut {
     pub warnings: Vec<String>,
 }
 
-/// 視野 f の瞳の上で平均した強度の透過率（膜・フレネル、偏光なし = x・y の偏光の平均）。入力の偏光は光線に垂直な面へ
-/// 射影した後の強度で割る（斜めの光線で射影の分だけ小さく出さない。OpticStudio の Relative Illumination の Use
-/// Polarization と同じく、軸外でも透過率だけの比になる）
+/// 視野 f の瞳の上で平均した強度の透過率（膜・フレネル、偏光なし = 光線に垂直な面の正規直交の基底の 2 つの偏光の平均、
+/// [`crate::polgrid::basis_coeffs`]）。入力の偏光の強度を 1 にそろえる（斜めの光線で射影の分だけ小さく出さない。
+/// OpticStudio の Relative Illumination の Use Polarization と同じく、軸外でも透過率だけの比になる）
 fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
     use lensbench_core::coating::C64;
     use lensbench_core::system::{Launch, PolIn, RecSel};
@@ -265,12 +265,16 @@ fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
         if !p.trace.ok(k) {
             continue;
         }
-        let d = p.trace.k0[k];
-        let r = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-        let (kx, ky) = (d[0] / r, d[1] / r);
+        let [kx, ky] = crate::polgrid::obj_dir(s, p.trace.k0[k]);
         let e = &p.e[k];
-        let i = |v: &[C64; 3]| v.iter().map(|c| c.norm_sqr()).sum::<f64>();
-        let t = 0.5 * (i(&e[0]) / (1.0 - kx * kx) + i(&e[1]) / (1.0 - ky * ky));
+        // 正規直交の基底 e_x'・e_y' の 2 つの偏光の平均（OpticStudio の系の偏光と同じ基底）
+        let i = |j: [C64; 2]| {
+            let c = crate::polgrid::basis_coeffs(j, kx, ky);
+            (0..3)
+                .map(|q| (e[0][q] * c[0] + e[1][q] * c[1]).norm_sqr())
+                .sum::<f64>()
+        };
+        let t = 0.5 * (i([one, zero]) + i([zero, one]));
         if t.is_finite() {
             sum += t;
             n += 1;
