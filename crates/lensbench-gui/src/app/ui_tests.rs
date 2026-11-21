@@ -761,6 +761,51 @@ fn surface_type_change_undoes_in_one_step() {
     assert_eq!(h.state().c.sys.ld_rows[j].typ, "EVENASPH");
 }
 
+/// レイアウト図にも解析のグラフと同じ「コピー ▼」: 図の元の layout の返事を表にでき（面の表を含む）、図の矩形を
+/// 画像の切り出しに覚える
+#[test]
+fn layout_copy_menu() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P16_twyman_green.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    settle(&mut h);
+    let id = h
+        .state()
+        .pane_of(|k| matches!(k, Kind::Layout))
+        .expect("layout pane");
+    let c = &h.state().c;
+    let v = c.layout_data.as_ref().expect("layout").json.clone();
+    assert!(
+        v["surfaces"].as_array().is_some_and(|a| !a.is_empty()),
+        "{v}"
+    );
+    let t = crate::export_table::tables(&v);
+    assert!(
+        t.iter().any(|t| t.name == "surfaces"),
+        "{:?}",
+        t.iter().map(|t| &t.name).collect::<Vec<_>>()
+    );
+    // 光線 1 本の点は 1 つの表の行（点ごとに別の表にしない）
+    let n_pts = v["rays"][0]["pts"].as_array().map_or(0, |a| a.len());
+    assert!(n_pts >= 2);
+    let ray = t
+        .iter()
+        .find(|t| t.name == "rays[1].pts")
+        .expect("rays[1].pts");
+    assert_eq!(ray.rows.len(), n_pts);
+    assert!(!t.iter().any(|t| t.name.contains(".pts[")));
+    assert!(c.fig_rects.get(&id).is_some_and(|r| r.area() > 0.0));
+    // 図があればレイアウトのパネルにも「コピー ▼」が出る（解析のパネルの分と数で見分ける）
+    let n = h.get_all_by_label("Copy ▼").count();
+    h.state_mut().c.layout_data = None;
+    h.run_steps(1);
+    assert_eq!(h.get_all_by_label("Copy ▼").count() + 1, n);
+}
+
 /// システムの設定の波長・視野の表: 主の波長のチェックを押した後でも、セルをクリックして打ち、Enter で値が変わる
 /// （チェックにフォーカスが残ると表のキーが効かなかった）
 #[test]

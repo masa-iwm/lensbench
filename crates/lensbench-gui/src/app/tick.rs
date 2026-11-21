@@ -43,7 +43,7 @@ impl App {
                 }
             }
         }
-        while let Some(d) = self.c.preview.poll() {
+        while let Some(mut d) = self.c.preview.poll() {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
             if matches!(
                 d.tag,
@@ -58,10 +58,16 @@ impl App {
                 self.c.take(d);
                 continue;
             }
-            // 失敗は系の読み込みの方で出す
+            // 失敗は系の読み込みの方で出す。組合せの図は返事を複製せずに受け取る（コピー用に持つ）
+            if d.tag == Tag::Preview {
+                if d.error().is_none() && !d.skipped && !d.replies.is_empty() {
+                    let (_, v) = d.take_first();
+                    self.c.layout_data = Some(combo::LayoutData::from_value(v));
+                }
+                continue;
+            }
             let (_, params, r) = d.first();
             match (&d.tag, r) {
-                (Tag::Preview, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
                 (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
                 (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r.map_err(|e| &**e)),
                 // 読めないファイルは系の読み込みの方で誤りを出す

@@ -18,6 +18,8 @@ use crate::sysset::{Aiming, ApertureKind, FieldKind, FieldPt, FieldSolve, WavePt
 use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
+pub(crate) use layout_json::block_spans;
+use layout_json::pts;
 mod ap_shape;
 mod bs;
 mod custom_lens;
@@ -25,6 +27,7 @@ mod detector;
 mod element;
 mod figure;
 mod kind_data;
+mod layout_json;
 mod mech;
 mod mirror;
 mod raw;
@@ -1287,6 +1290,8 @@ pub(crate) struct LayoutData {
     pub unfold: bool,
     /// 3D 表示の場面（`plane: "3d"`）。このときの solids・rays は空
     pub d3: Option<std::sync::Arc<crate::view3d::Scene3>>,
+    /// serve の返事そのもの（図のコピーメニューの JSON・表。[`LayoutData::from_value`] で入れる）
+    pub json: std::sync::Arc<Value>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1296,38 +1301,14 @@ pub(crate) struct Solid {
     pub pts: Vec<[f64; 2]>,
 }
 
-/// serve の `blocks`（load・layout の返事）: id のあるブロック・群と、その往路の面の範囲
-pub(crate) fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
-    let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
-    v["blocks"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|b| {
-                    (
-                        b["id"].as_str().unwrap_or_default().to_string(),
-                        b["forward"]
-                            .as_array()
-                            .map(|a| a.iter().map(|x| [us(&x[0]), us(&x[1])]).collect())
-                            .unwrap_or_default(),
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn pts(v: &Value) -> Vec<[f64; 2]> {
-    v.as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|p| Some([p[0].as_f64()?, p[1].as_f64()?]))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 impl LayoutData {
+    /// [`LayoutData::parse`] して、返事そのものもコピー用に持つ（複製しない）
+    pub(crate) fn from_value(v: Value) -> LayoutData {
+        let mut d = LayoutData::parse(&v);
+        d.json = std::sync::Arc::new(v);
+        d
+    }
+
     pub(crate) fn parse(v: &Value) -> LayoutData {
         let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
         let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
@@ -1412,6 +1393,7 @@ impl LayoutData {
             unfold: v["unfold"] == true,
             d3: (v["plane"] == "3d")
                 .then(|| std::sync::Arc::new(crate::view3d::Scene3::parse(v, by_cfg))),
+            json: Default::default(),
         }
     }
 
@@ -1540,6 +1522,8 @@ pub(crate) struct View {
     pub hover_surfs: Option<[usize; 2]>,
     /// 面の頂点の画面の位置（開いた系の図へカタログから落とすとき、差し込む間隔を決める）
     pub surf_pos: Vec<Option<Pos2>>,
+    /// 図の矩形（図を画像でコピー・保存するときに切り出す）
+    pub fig_rect: Option<egui::Rect>,
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
@@ -1810,6 +1794,7 @@ pub(crate) fn ui(
     );
     let ui = &mut top;
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+    view.fig_rect = Some(rect);
     crate::widgets::name_figure(&resp, || {
         fig_name(data.as_ref().is_some_and(|d| d.d3.is_some())).to_owned()
     });

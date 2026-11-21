@@ -37,6 +37,12 @@ fn is_nums(v: &Value) -> Option<usize> {
 /// 短い数の並び（座標など）は列に広げる長さの上限
 const SHORT: usize = 4;
 
+/// 点の並び: どれも同じ長さ（SHORT 以下）の数の並びなら、その長さ
+fn points(a: &[Value]) -> Option<usize> {
+    let m = is_nums(a.first()?)?;
+    (m <= SHORT && a.iter().all(|p| is_nums(p) == Some(m))).then_some(m)
+}
+
 /// オブジェクトを行に。返すのは（列、行、並びの番号ごとの行か、表にしなかった中身）。
 /// - 数・文字列の値 → 列
 /// - 長さ n > SHORT の数の並び（か、n > 2 で同じ長さが 3 つ以上: MTF の freqs・T・S）→ 番号ごとの行（一番数の多い長さ）
@@ -181,6 +187,23 @@ fn walk(name: &str, v: &Value, top: bool, out: &mut Vec<Table>) {
                         .map(|x| vec![cell(x).unwrap_or_default()])
                         .collect(),
                 });
+            } else if let Some(m) = points(a) {
+                // 点の並び（[x, y] など、同じ短い長さの数の並びの並び）は 1 つの表に、点ごとに 1 行
+                let last = name.rsplit('.').next().unwrap_or(name);
+                out.push(Table {
+                    name: name.to_string(),
+                    cols: (1..=m).map(|i| format!("{last}[{i}]")).collect(),
+                    rows: a
+                        .iter()
+                        .map(|p| {
+                            p.as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|x| cell(x).unwrap_or_default())
+                                .collect()
+                        })
+                        .collect(),
+                });
             } else {
                 for (i, x) in a.iter().enumerate() {
                     walk(&format!("{name}[{}]", i + 1), x, false, out);
@@ -239,6 +262,24 @@ pub(crate) fn delimited(ts: &[Table], sep: char) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 点の並び（レイアウトの光線・断面の pts）は点ごとに 1 行の表 1 つ（点ごとに別の表にしない）
+    #[test]
+    fn point_lists_are_one_table() {
+        let v = json!({"rays": [
+            {"field": 1, "pts": [[0.0, 1.0], [10.0, 0.5], [20.0, 0.0]]},
+            {"field": 2, "pts": [[0.0, -1.0], [10.0, -0.5]]}
+        ]});
+        let t = tables(&v);
+        let names: Vec<&str> = t.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["rays", "rays[1].pts", "rays[2].pts"]);
+        assert_eq!(t[1].cols, ["pts[1]", "pts[2]"]);
+        assert_eq!(
+            t[1].rows,
+            [["0.0", "1.0"], ["10.0", "0.5"], ["20.0", "0.0"]]
+        );
+        assert_eq!(t[2].rows.len(), 2);
+    }
 
     /// MTF: 周波数ごとの行に、視野と T・S が並ぶ
     #[test]

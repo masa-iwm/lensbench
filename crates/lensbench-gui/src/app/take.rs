@@ -261,7 +261,7 @@ impl Core {
                 );
             }
             Tag::Layout => {
-                self.layout_data = Some(combo::LayoutData::parse(&v));
+                self.layout_data = Some(combo::LayoutData::from_value(v));
                 // 前の図の誤り（別の系で残った重ねる経路など）は、図が描けたら消す
                 self.set_done_status(&d.tag, String::new());
                 return None;

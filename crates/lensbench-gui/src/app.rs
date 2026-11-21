@@ -5,9 +5,11 @@
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
 mod ask;
+use export_menu::{copy_menu, result_export_menu, ResOut};
 mod doc_file;
 mod doc_loc;
 mod edit;
+mod export_menu;
 mod folders;
 mod help;
 mod history;
@@ -1001,7 +1003,7 @@ impl Core {
         match &mut pane.kind {
             Kind::System => self.system_ui(ui),
             Kind::Catalog => self.catalog_ui(ui),
-            Kind::Layout => self.layout_ui(ui),
+            Kind::Layout => self.layout_ui(ui, id),
             Kind::LensData => self.lens_data_ui(ui),
             Kind::MultiConfig => self.config_ui(ui),
             Kind::Optimize => self.optimize_ui(ui),
@@ -1065,8 +1067,8 @@ impl Core {
         self.calc_refreshing(Tag::Refresh, Value::Null);
     }
 
-    /// 組合せのレイアウト図と要素の操作
-    fn layout_ui(&mut self, ui: &mut Ui) {
+    /// 組合せのレイアウト図と要素の操作（id はパネル。図を画像でコピーするときの切り出しに使う）
+    fn layout_ui(&mut self, ui: &mut Ui, id: u64) {
         let accent = theme::accent(&self.s.look);
         if self.loc.file.is_some() {
             let mut changed = false;
@@ -1094,6 +1096,14 @@ impl Core {
                     .clicked()
                 {
                     self.export_layout();
+                }
+                // 解析のグラフと同じコピーメニュー（図の画像と、図の元の数値）
+                if let Some(d) = &self.layout_data {
+                    if copy_menu(ui, &d.json, true) {
+                        self.shot = Some((id, true, "layout".into()));
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                    }
                 }
             });
             changed |= self.overlay.ui(ui, self.ses.view_plane.vert());
@@ -1136,6 +1146,9 @@ impl Core {
                 &paths,
             )
         });
+        if let Some(r) = self.p.combo_view.fig_rect {
+            self.fig_rects.insert(id, r);
+        }
         if let Some(a) = act {
             self.msgs.push(Msg::Combo(a));
         }
@@ -2430,66 +2443,6 @@ fn overlay_params() {
         serde_json::to_value(ViewPlane::Unfold).unwrap(),
         json!("unfold")
     );
-}
-
-/// 解析の結果のメニューから頼むこと
-enum ResOut {
-    /// 図を画像にする（true は写す、false は PNG で保存）
-    Shot(bool),
-    /// 保存先を選んで書く（書く中身はメニューを押したときの結果）
-    Save(crate::files::FileDialog, String),
-}
-
-/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV。図の画像）
-fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -> Option<ResOut> {
-    use crate::export_table::{delimited, tables};
-    let mut out = None;
-    ui.menu_button(tr("Copy ▼"), |ui| {
-        if fig && ui.button(tr("Figure as image")).clicked() {
-            out = Some(ResOut::Shot(true));
-            ui.close_menu();
-        }
-        if ui.button(tr("JSON")).clicked() {
-            ui.ctx()
-                .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
-            ui.close_menu();
-        }
-        if ui
-            .button(tr("Text (tab-separated)"))
-            .on_hover_text(tr(
-                "Pastes into a spreadsheet. Multiple tables are separated by \"# name\" lines",
-            ))
-            .clicked()
-        {
-            ui.ctx().copy_text(delimited(&tables(v), '\t'));
-            ui.close_menu();
-        }
-        if ui.button(tr("CSV")).clicked() {
-            ui.ctx().copy_text(delimited(&tables(v), ','));
-            ui.close_menu();
-        }
-    });
-    ui.menu_button(tr("Save ▼"), |ui| {
-        for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
-            if ui.button(label).clicked() {
-                ui.close_menu();
-                let text = if ext == "json" {
-                    serde_json::to_string_pretty(v).unwrap_or_default()
-                } else {
-                    delimited(&tables(v), ',')
-                };
-                let d = crate::files::FileDialog::new()
-                    .add_filter(ext.to_uppercase(), &[ext])
-                    .set_file_name(format!("{cmd}.{ext}"));
-                out = Some(ResOut::Save(d, text));
-            }
-        }
-        if fig && ui.button(tr("Figure as image (PNG)…")).clicked() {
-            ui.close_menu();
-            out = Some(ResOut::Shot(false));
-        }
-    });
-    out
 }
 
 /// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える

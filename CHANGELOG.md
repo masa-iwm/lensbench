@@ -37,6 +37,8 @@
 
 ### 足したもの
 
+- **GUI のレイアウト図にもコピーメニュー**: 書き出し… の隣に解析のグラフと同じ「コピー ▼」を足した（図の画像・JSON・テキスト（タブ区切り）・CSV。
+  数値は図の元の座標（面の頂点・玉の断面・光線の点など））。
 - **収差図**: 解析 `ray-fan`（光線収差図）・`opd-fan`（OPD ファン）・`field-curvature`（像面湾曲と歪曲）・`longitudinal`（縦収差）・
   `lateral-color`（倍率色収差）・`focal-shift`（色焦点シフト）・`grid-distortion`（グリッド歪曲）・`seidel`（ザイデル係数、面ごとの
   S_I〜S_V と 1 次の色収差）。CLI・serve・Python（`System.analyze`）・GUI の図（解析の一覧の「収差」）で使える。値は同じ量の評価関数の
