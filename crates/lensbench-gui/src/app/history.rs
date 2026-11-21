@@ -149,7 +149,7 @@ impl ComboHist {
 #[derive(Default)]
 pub(super) struct DocHist {
     /// 前の文書の写し。段の名前は新規・開くなど
-    hist: History<NewSnap>,
+    hist: History<NewSnap, Step>,
     /// 文書の段を戻した・やり直した直後の組合せ（組合せを変えたら、やり直す段は使わない）
     at: Option<Combo>,
     /// 開くの前に段を積み、まだ読めていない（読めなければ前の文書に戻す）
@@ -231,7 +231,8 @@ impl Core {
             return false;
         }
         let snap = self.take_snap();
-        self.docs.hist.record(snap, label);
+        // 段の時刻は積んだとき（一覧を開くたびに作ると、いつも「0 秒前」になる）
+        self.docs.hist.record(snap, Step::doc(&label));
         self.docs.at = None;
         true
     }
@@ -345,7 +346,7 @@ impl Core {
         } else {
             None
         };
-        out.extend(doc.map(|d| Step::doc(&d.1)));
+        out.extend(doc.map(|d| d.1.clone()));
         out
     }
 

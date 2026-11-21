@@ -865,3 +865,21 @@ fn sysset_wave_and_field_cells_edit() {
     let f = h.state().c.doc.combo.fields.clone();
     assert!(format!("{f:?}").contains("3.0"), "{f:?}");
 }
+
+/// 文書を替えた段（開く・新規）の時刻は積んだときのまま: 一覧を作り直しても「0 秒前」に戻らない
+/// （11/21 masa の報告: ファイルを開いた段がいつも 0 秒前と出ていた）
+#[test]
+fn doc_step_keeps_its_time() {
+    let _g = serial();
+    let mut h = harness(a0());
+    h.state_mut().update(Msg::New);
+    settle(&mut h);
+    let doc_at = |h: &Harness<'static, App>| {
+        let list = h.state().c.undo_list(true);
+        list.iter().find(|s| s.doc).map(|s| s.at).expect("doc step")
+    };
+    let t0 = doc_at(&h);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    settle(&mut h);
+    assert_eq!(doc_at(&h), t0);
+}
