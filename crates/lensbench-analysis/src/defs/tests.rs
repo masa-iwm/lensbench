@@ -92,6 +92,9 @@ fn every_builtin_runs_with_defaults() {
             "focal-shift" => back::<ShiftOut>(&t, &v),
             "grid-distortion" => back::<GridOut>(&t, &v),
             "seidel" => back::<SeidelOut>(&t, &v),
+            "footprint" => back::<FootprintOut>(&t, &v),
+            "relative-illumination" => back::<RelIllumOut>(&t, &v),
+            "vignetting" => back::<VignettingOut>(&t, &v),
             n => panic!("no result type listed for {n}"),
         }
     }

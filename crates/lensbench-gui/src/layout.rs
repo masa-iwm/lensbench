@@ -38,6 +38,9 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("focal-shift", n_("Chromatic focal shift"), false),
     ("grid-distortion", n_("Grid distortion"), false),
     ("seidel", n_("Seidel coefficients"), false),
+    ("footprint", n_("Footprint diagram"), true),
+    ("relative-illumination", n_("Relative illumination"), false),
+    ("vignetting", n_("Vignetting plot"), false),
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
@@ -80,6 +83,9 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "focal-shift" => "Chromatic focal shift: paraxial focus versus wavelength relative to the primary wavelength",
         "grid-distortion" => "Grid distortion: real chief ray points of a field grid against the paraxial ideal grid",
         "seidel" => "Seidel coefficients: third-order aberration sums and first-order color per surface",
+        "footprint" => "Footprint diagram: where the beam of each field crosses a surface, against its aperture",
+        "relative-illumination" => "Relative illumination: image irradiance versus field relative to the axis",
+        "vignetting" => "Vignetting plot: fraction of unvignetted rays versus field",
         _ => return None,
     })
 }
@@ -97,7 +103,13 @@ pub(crate) const ANALYSIS_GROUPS: &[&str] = &[
 /// 解析の群（一覧の見出し、日本語。表示は tr で）。拡張の解析は「追加の解析」
 pub(crate) fn analysis_group(cmd: &str) -> &'static str {
     match cmd {
-        "spot" | "wavefront" | "zernike" | "rms" => "Image quality",
+        "spot"
+        | "wavefront"
+        | "zernike"
+        | "rms"
+        | "footprint"
+        | "relative-illumination"
+        | "vignetting" => "Image quality",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
         "interference" | "pop" => "Interference / propagation",
         "ray-fan" | "opd-fan" | "field-curvature" | "longitudinal" | "lateral-color"

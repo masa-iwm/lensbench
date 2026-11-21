@@ -59,17 +59,34 @@ OpticStudio の収差図に当たる解析。どれも評価関数の演算子�
 - `opd-fan`（OPD Fan 相当）: 同じ並びの光路差 [波]。参照球の中心は主波長の主光線、光路の基準は各波長の主光線（OPDC、波面図の基準と同じ）。
 - `field-curvature`（Field Curvature/Distortion 相当）: 正規化視野 0〜1 を `--points` 点（`--axis y`・`x`）で、主光線の近くの光線の子午・球欠の焦点の
   像面からの z（FCGT・FCGS: 瞳を ±0.001 ずらした 2 本の光線が最も近づく z）と、実主光線の歪曲 %。歪曲の理想の像高は `--distortion f-tan`
-  （既定、近軸の倍率で f tan θ。軸上を基準にした DISG と同じ）か `f-theta`（f θ、角度の視野だけ）。
+  （既定、近軸の倍率で f tan θ。軸上を基準にした DISG と同じ）か `f-theta`（f θ、角度の視野だけ）。ケラレ係数は使わない（OpticStudio と同じ）。
+  OpticStudio の図の子午の焦点は主光線と +0.001 の片側の差分で、lensbench は ±0.001 の中心差分なので、軸外で 1e-4 mm ほど違う（球欠は一致）。
 - `longitudinal`（Longitudinal Aberration 相当）: 正規化瞳の高さ 0〜1 を `--points` 帯で、軸上の光線が光軸を横切る点の像面の頂点からの距離（LONA。
-  帯 0 は近軸周辺光線）。
+  帯 0 は近軸周辺光線。OpticStudio の図の瞳 0 の行は近軸ではなく瞳 0.005 ほどの実光線なので、そこだけ 1e-5 mm ほど違う）。
 - `lateral-color`（Lateral Color 相当）: 正規化視野 0〜1 を `--points` 点で、各波長の実主光線の像高（視野の向きの成分）の主波長からの差と、
-  主波長の Airy 半径 1.22 λ F/#（作動 F 値）。視野の端での値は近軸の LACL に近い（LACL は近軸主光線）。
+  主波長の Airy 半径 1.22 λ F/#（作動 F 値）。主光線はケラレ係数をかけた瞳の中心（OpticStudio と同じ）。視野の端での値は近軸の LACL に近い（LACL は近軸主光線）。
 - `focal-shift`（Chromatic Focal Shift 相当）: `--min`〜`--max` [µm]（省くとシステムの最短・最長の波長）の `--points` 個の波長で、近軸焦点の
   主波長の近軸焦点からのずれ（帯 0 の LONA の差、AXCL と同じ）。ずれの最大の幅 `range` と回折限界の焦点深度 4 λ (F/#)² も出す。
-- `grid-distortion`（Grid Distortion 相当）: 正規化視野 -1〜1 の `--grid`×`--grid` の正方形（既定 9）の各点で、実主光線の像面の点と、
-  近軸の倍率からの理想の点（角度の視野は tan θ に線形）、歪曲 %（DISG）。最大の歪曲とその視野も。回転対称のシステムだけ。
+- `grid-distortion`（Grid Distortion 相当）: 最大の視野の円に内接する `--grid`×`--grid` の正方形（既定 9。角度の視野は tan θ の等間隔）の各点で、
+  実主光線の像面の点と、近軸の倍率からの理想の点、歪曲 %（DISG）。OpticStudio の Grid Number n は格子 2n+3（9 は 3）。最大の歪曲とその視野も。回転対称のシステムだけ。
 - `seidel`（Seidel Coefficients・Seidel Diagram 相当）: 面ごとの 3 次収差の和 S_I〜S_V [レンズ単位]（Welford の定義）、1 次の色収差 C_L（軸上）・
-  C_T（倍率、最短と最長の波長の屈折率の差から）、波面収差の係数 W040・W131・W222・W220・W311 [波]（SPHA・COMA・ASTI・FCUR・DIST）。
+  C_T（倍率、最短と最長の波長の屈折率の差から。符号は OpticStudio の CLA・CTR と同じ）、波面収差の係数 W040・W131・W222・W220・W311 [波]（SPHA・COMA・ASTI・FCUR・DIST）。
   ミラーの無い回転対称のシステムだけ。
 - GUI では解析の一覧の「収差」の群。扇は視野ごとに子午・球欠の 2 枚（縦軸は全部の視野でそろえる）、像面湾曲は焦点（実線が子午・破線が球欠）と
   歪曲の 2 枚、ザイデル係数は面ごとの棒（最後の組が和）。Python は `System.analyze("ray-fan", field=1)` など。
+
+## フットプリント・相対照度・けられ
+
+- `footprint`（Footprint Diagram 相当）: `--surface`（省くと絞りの面）の上で、視野・波長ごとの瞳のグリッド（直径 `--rays` 本、既定 21）の光線の
+  ローカル座標の交点と瞳の縁の光線の交点、面の開口の輪郭（`aperture`）。最大の半径 `max_radius` とクリア半径に対する割合 `fill`、像面までけられずに
+  通る割合 `through`、この面でけられる割合 `clipped`。面より前でけられた光線は描かない。視野のケラレ係数を使う（OpticStudio と同じ。
+  `--no-vignetting-factors` で使わずに、瞳全体を面の開口だけでけらす）。自動の半直径では光線は切られない（開口・固定の半直径の面が切る）。
+- `relative-illumination`（Relative Illumination 相当）: 正規化視野 0〜1 を `--points` 点で、主光線の像点に届く光束の射影立体角から求めた軸上に対する
+  照度（RELI）と実効 F 値（EFNO）。ケラレ係数は使わず、面の開口でけられる向きは光束の縁を探して入れる。`--polarization` で瞳で平均したコーティング・
+  フレネルの透過率の軸上との比を掛け、実効 F 値は透過を含めた F/√T にする（OpticStudio の Use Polarization と同じ）。OpticStudio の図の実効 F 値は
+  瞳の標本（既定の Ray Density 10）で数 % 大きく出る（標本を増やすと lensbench の値に近づく）。ケラレ係数のある系では、OpticStudio の既定
+  （Remove Vignetting Factors）は係数を半直径の開口に置き換えて計算するので値が違う。
+- `vignetting`（Vignetting Plot 相当）: 正規化視野 0〜1 を `--points` 点で、瞳のグリッド（直径 `--rays` 本、既定 64）の光線のうち像面までけられずに
+  届く割合。ケラレ係数の扱いは `footprint` と同じ（OpticStudio の既定は係数を半直径の開口に置き換えるので、係数のある系では値が違う）。
+- GUI では解析の一覧の「像の質」の群。フットプリントは開口の輪郭（薄い線）と視野ごとの色の点・瞳の縁の線。
+

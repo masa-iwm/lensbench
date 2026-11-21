@@ -144,7 +144,8 @@ pub fn seidel(s: &System, w: usize) -> Result<Seidel> {
 }
 
 /// 面ごとの 1 次の色収差の和 C_L（軸上色）・C_T（倍率色）[レンズ単位]（Welford の C_I = A y Δ(δn/n)、C_II = Ā y Δ(δn/n)。
-/// A・Ā・y は波長 w の近軸周辺光線と最大の視野へ合わせた近軸主光線（[`seidel`] と同じ）、δn は波長 short と long の屈折率の差）。
+/// A・Ā・y は波長 w の近軸周辺光線と最大の視野へ合わせた近軸主光線（[`seidel`] と同じ）、δn は波長 long の屈折率 − short の屈折率。
+/// 符号は OpticStudio の Seidel Coefficients の CLA・CTR に合わせた（26.1 で実測、Welford の δn = n_F − n_C と逆）。
 /// `[j]` は面 j の寄与（物体面・像面・無視する面・座標ブレークは 0）
 pub fn chromatic(s: &System, w: usize, short: usize, long: usize) -> Result<Vec<[f64; 2]>> {
     if !s.symmetric() {
@@ -169,8 +170,8 @@ pub fn chromatic(s: &System, w: usize, short: usize, long: usize) -> Result<Vec<
         }
         let c = f.shape().paraxial_curv();
         let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
-        let dn1 = s.index_before(j, short) - s.index_before(j, long);
-        let dn2 = s.n(j)[short] - s.n(j)[long];
+        let dn1 = s.index_before(j, long) - s.index_before(j, short);
+        let dn2 = s.n(j)[long] - s.n(j)[short];
         let a = n1 * (um[j - 1] + ym[j] * c);
         let ab = n1 * (uc[j - 1] + yc[j] * c);
         let d = dn2 / n2 - dn1 / n1;
@@ -347,6 +348,24 @@ pub fn distortion_ref(s: &System, w: usize, reference: Option<(f64, f64)>) -> Re
         invalid!("the distortion is not finite");
     }
     Ok(r)
+}
+
+/// グリッド歪曲の格子の点 (u, v)（-1〜1）の正規化視野。格子は最大の視野（各視野の (x, y) の長さの最大）の円に内接する正方形で、
+/// 角度の視野は tan θ の、高さの視野は高さの等間隔（OpticStudio の Grid Distortion。26.1 で実測）
+pub fn grid_field(s: &System, u: f64, v: f64) -> Result<(f64, f64)> {
+    let r = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
+    if r == 0.0 {
+        invalid!("the grid distortion needs a field off the axis");
+    }
+    let a = if s.field_type == FieldType::Angle {
+        if r >= 90.0 {
+            invalid!("the grid distortion needs field angles below 90 degrees");
+        }
+        r.to_radians().tan()
+    } else {
+        r
+    } / std::f64::consts::SQRT_2;
+    Ok(field_of_t(s, [a * u, a * v]))
 }
 
 /// 視野 h の主光線の像面の点 p と、基準 r からの線形の予測 p_r + J (t − t_r) の差 d を、長さと予測の変位

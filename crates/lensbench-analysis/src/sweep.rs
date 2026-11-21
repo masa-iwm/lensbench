@@ -178,7 +178,7 @@ fn mtf_axes(
 
 /// 視野の掃引用: ケラレ係数を 0 にした系（OpticStudio の MTF vs Field・RMS vs Field は定義済みの視野の点でも
 /// ケラレ係数を使わない。A6 で確かめた）。係数があれば警告を返す
-fn without_vig(s: &System) -> (std::borrow::Cow<'_, System>, Option<String>) {
+pub(crate) fn without_vig(s: &System) -> (std::borrow::Cow<'_, System>, Option<String>) {
     let has = s
         .fields
         .iter()

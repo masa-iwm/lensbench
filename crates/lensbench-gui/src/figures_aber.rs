@@ -1,12 +1,15 @@
 //! 収差図の図: 横収差・OPD の扇、像面湾曲と歪曲、縦収差、倍率色収差、色の焦点ずれ、グリッド歪曲、ザイデル係数。
+//! フットプリント・相対照度・けられの図も。
 //!
 //! グラフはどれも [`crate::plot_tools::show`] を通す（解析グラフの操作をそろえる）。色は波長の色（[`theme::wave_color`]、
 //! 波長は結果の画面が [`WAVES_UM`] に置く）。
 
 use egui::{Color32, Ui};
 use egui_plot::{Bar, BarChart, HLine, Legend, Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{MarkerShape, Points};
 use lensbench_analysis::defs::{
-    FanOut, FieldCurvOut, GridOut, LatOut, LongOut, SeidelOut, SeidelRow, ShiftOut,
+    FanOut, FieldCurvOut, FootprintOut, GridOut, LatOut, LongOut, RelIllumOut, SeidelOut,
+    SeidelRow, ShiftOut, VignettingOut,
 };
 
 use crate::figures::{weak, Out};
@@ -28,6 +31,9 @@ pub(crate) const CMDS: &[&str] = &[
     "focal-shift",
     "grid-distortion",
     "seidel",
+    "footprint",
+    "relative-illumination",
+    "vignetting",
 ];
 
 /// 収差図を描く。cmd が収差図でなければ None、描けない結果なら Some(false)
@@ -45,6 +51,9 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, out: Out<'_>) -> O
         "focal-shift" => get!(ShiftOut).is_some_and(|v| focal_shift(ui, id, &v)),
         "grid-distortion" => get!(GridOut).is_some_and(|v| grid(ui, id, &v)),
         "seidel" => get!(SeidelOut).is_some_and(|v| seidel(ui, id, &v)),
+        "footprint" => get!(FootprintOut).is_some_and(|v| footprint(ui, id, &v)),
+        "relative-illumination" => get!(RelIllumOut).is_some_and(|v| rel_illum(ui, id, &v)),
+        "vignetting" => get!(VignettingOut).is_some_and(|v| vignetting(ui, id, &v)),
         _ => return None,
     })
 }
@@ -514,6 +523,142 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
         for c in charts {
             p.bar_chart(c);
         }
+    });
+    true
+}
+
+// ------------------------------------------------------------------------------- フットプリント
+
+/// フットプリント: 面の開口の輪郭（薄い線）と、視野ごとの色の光線の交点・瞳の縁
+fn footprint(ui: &mut Ui, id: u64, v: &FootprintOut) -> bool {
+    let fname = crate::plots::field_namer(ui);
+    ui.label(weak(
+        ui,
+        trf(
+            "Surface {} · semi-diameter {} {} · largest beam radius {} {} ({} % of the semi-diameter)",
+            &[
+                &v.surface,
+                &fmt_sig(v.semi, 4),
+                &v.unit,
+                &fmt_sig(v.max_radius, 4),
+                &v.unit,
+                &fmt_sig(100.0 * v.fill, 3),
+            ],
+        ),
+    ));
+    let detail: Vec<String> = v
+        .rows
+        .iter()
+        .map(|r| {
+            trf(
+                "{} · wavelength {}: radius {} · through {} % · clipped here {} %",
+                &[
+                    &fname(r.field),
+                    &r.wave,
+                    &fmt_sig(r.max_radius, 4),
+                    &fmt_sig(100.0 * r.through, 3),
+                    &fmt_sig(100.0 * r.clipped, 3),
+                ],
+            )
+        })
+        .collect();
+    ui.label(weak(ui, tr("Per field (hover)")))
+        .on_hover_text(detail.join("\n"));
+    if !v.warnings.is_empty() {
+        ui.label(weak(ui, v.warnings.join("\n")));
+    }
+    let h = row_height(ui, 1, 240.0);
+    let ap_col = theme::weak_text(ui.visuals());
+    let plot = Plot::new(("footprint", id))
+        .height(h)
+        .data_aspect(1.0)
+        .legend(Legend::default())
+        .x_axis_label(format!("x [{}]", v.unit))
+        .y_axis_label(format!("y [{}]", v.unit));
+    plot_tools::show(ui, plot, "", |p, _| {
+        for (k, a) in v.aperture.iter().enumerate() {
+            let mut l = Line::new(PlotPoints::from(a.clone()))
+                .color(ap_col)
+                .width(1.2_f32);
+            if k == 0 {
+                l = l.name(tr("Aperture").to_string());
+            }
+            p.line(l);
+        }
+        let mut named: Vec<usize> = Vec::new();
+        for r in &v.rows {
+            let col = theme::series(r.field.saturating_sub(1));
+            let mut pts = Points::new(PlotPoints::from(r.points.clone()))
+                .color(col.gamma_multiply(0.8))
+                .radius(1.5_f32)
+                .shape(MarkerShape::Circle);
+            if !named.contains(&r.field) {
+                pts = pts.name(fname(r.field));
+                named.push(r.field);
+            }
+            p.points(pts);
+            let ex: Vec<f64> = r.edge.iter().map(|q| q[0].unwrap_or(f64::NAN)).collect();
+            let ey: Vec<f64> = r.edge.iter().map(|q| q[1].unwrap_or(f64::NAN)).collect();
+            for s in segments(&ex, &ey) {
+                p.line(Line::new(PlotPoints::from(s)).color(col).width(1.2_f32));
+            }
+        }
+    });
+    true
+}
+
+// --------------------------------------------------------------------------- 相対照度・けられ
+
+/// 相対照度（と実効 F 値をカーソルの値に）
+fn rel_illum(ui: &mut Ui, id: u64, v: &RelIllumOut) -> bool {
+    if !v.warnings.is_empty() {
+        ui.label(weak(ui, v.warnings.join("\n")));
+    }
+    if v.transmission.is_some() {
+        ui.label(weak(
+            ui,
+            tr("Includes the coating and Fresnel transmission relative to the axis"),
+        ));
+    }
+    let h = row_height(ui, 1, 200.0);
+    let col = theme::series(0);
+    let plot = Plot::new(("relative-illumination", id))
+        .height(h)
+        .include_y(0.0)
+        .include_y(1.0)
+        .include_x(0.0)
+        .x_axis_label(tr("Field"))
+        .y_axis_label(tr("Relative illumination"));
+    plot_tools::show(ui, plot, "", |p, reg| {
+        let segs = segments(&v.field_value, &v.relative);
+        let all: Vec<[f64; 2]> = segs.iter().flatten().copied().collect();
+        let name = tr("Relative illumination").to_string();
+        reg.push(Series::new(name.clone(), col, &all));
+        draw(p, segs, col, false, &name);
+    });
+    true
+}
+
+/// けられずに通る光線の割合
+fn vignetting(ui: &mut Ui, id: u64, v: &VignettingOut) -> bool {
+    if !v.warnings.is_empty() {
+        ui.label(weak(ui, v.warnings.join("\n")));
+    }
+    let h = row_height(ui, 1, 200.0);
+    let col = theme::series(1);
+    let plot = Plot::new(("vignetting", id))
+        .height(h)
+        .include_y(0.0)
+        .include_y(1.0)
+        .include_x(0.0)
+        .x_axis_label(tr("Field"))
+        .y_axis_label(tr("Unvignetted rays"));
+    plot_tools::show(ui, plot, "", |p, reg| {
+        let segs = segments(&v.field_value, &v.unvignetted);
+        let all: Vec<[f64; 2]> = segs.iter().flatten().copied().collect();
+        let name = tr("Unvignetted rays").to_string();
+        reg.push(Series::new(name.clone(), col, &all));
+        draw(p, segs, col, false, &name);
     });
     true
 }

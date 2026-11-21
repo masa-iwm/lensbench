@@ -242,3 +242,82 @@ fn longitudinal_color_and_seidel_are_the_operands() {
         );
     }
 }
+
+/// 相対照度・実効 F 値の図は RELI・EFNO の項と同じ。フットプリントの最大の半径は光線の交点から、けられの割合は 0〜1
+#[test]
+fn illumination_and_footprint() {
+    let s = load("A0");
+    let v = run(&s, "relative-illumination", json!({ "points": 3 }));
+    for (i, hh) in v["h"].as_array().unwrap().iter().enumerate() {
+        let f = FieldSel::Norm(0.0, hh.as_f64().unwrap());
+        let term = |relative| {
+            op(
+                &s,
+                TermKind::Illum {
+                    field: f,
+                    wave: None,
+                    n: None,
+                    relative,
+                    target: 0.0,
+                },
+            )
+        };
+        same(v["relative"][i].as_f64().unwrap(), term(true), "RELI");
+        same(v["effective_fno"][i].as_f64().unwrap(), term(false), "EFNO");
+    }
+    let fp = run(&s, "footprint", json!({ "surface": 5, "rays": 7 }));
+    assert_eq!(fp["surface"], 5);
+    for r in fp["rows"].as_array().unwrap() {
+        let m = r["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p[0].as_f64().unwrap().hypot(p[1].as_f64().unwrap()))
+            .fold(0.0, f64::max);
+        same(r["max_radius"].as_f64().unwrap(), m, "footprint radius");
+        assert_eq!(r["through"], 1.0);
+    }
+    let vg = run(&s, "vignetting", json!({ "points": 3 }));
+    for u in vg["unvignetted"].as_array().unwrap() {
+        assert_eq!(u.as_f64().unwrap(), 1.0);
+    }
+}
+
+/// 面に小さい開口を付けると、その面でけられる光線が出て、フットプリントの割合・けられの図が下がる
+#[test]
+fn footprint_counts_rays_clipped_at_an_aperture() {
+    let mut s = load("A0");
+    s.edit_raw(|rx| {
+        rx.surfaces[7].ap = lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 5.0,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
+    let fp = run(
+        &s,
+        "footprint",
+        json!({ "surface": 7, "field": 3, "wave": 2, "rays": 15 }),
+    );
+    let r = &fp["rows"][0];
+    let (through, clipped) = (
+        r["through"].as_f64().unwrap(),
+        r["clipped"].as_f64().unwrap(),
+    );
+    assert!(clipped > 0.0 && through < 1.0, "{through} {clipped}");
+    // ほかの面でけられないので、通る割合とこの面でけられる割合の和は 1
+    assert!(
+        (through + clipped - 1.0).abs() < 1e-12,
+        "{through} {clipped}"
+    );
+    assert!(fp["aperture"][0].as_array().unwrap().len() > 10);
+    let vg = run(
+        &s,
+        "vignetting",
+        json!({ "points": 2, "rays": 15, "no_vignetting_factors": true }),
+    );
+    assert!(vg["unvignetted"][1].as_f64().unwrap() < 1.0);
+}

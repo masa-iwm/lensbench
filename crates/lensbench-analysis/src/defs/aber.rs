@@ -235,11 +235,12 @@ impl Analysis for FieldCurv {
         Meta {
             name: "field-curvature",
             about: "Field curvature and distortion versus field (tangential and sagittal focus, distortion %)",
-            help: "Field curvature and distortion (OpticStudio's Field Curvature/Distortion): for points steps of the normalized field 0 to 1, the z of the tangential and sagittal focus of the rays near the chief ray measured from the image surface (the FCGT and FCGS operands), and the distortion of the real chief ray against the paraxial ideal height f tan θ (or f θ). Every wavelength if wave is omitted",
+            help: "Field curvature and distortion (OpticStudio's Field Curvature/Distortion): for points steps of the normalized field 0 to 1, the z of the tangential and sagittal focus of the rays near the chief ray measured from the image surface (the FCGT and FCGS operands), and the distortion of the real chief ray against the paraxial ideal height f tan θ (or f θ). Every wavelength if wave is omitted. Vignetting factors are not used, as in OpticStudio",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &FieldCurvParams) -> Result<FieldCurvOut> {
-        let s = cx.system;
+        let (s, vig) = crate::sweep::without_vig(cx.system);
+        let s = &*s;
         if s.afocal {
             return Err(Error::Invalid(
                 "field curvature in afocal image space is not supported yet".into(),
@@ -253,7 +254,7 @@ impl Analysis for FieldCurv {
         let ax = p.axis.core();
         let h = steps01(p.points.max(2));
         let k = usize::from(p.axis == Axis::Y);
-        let mut warnings = Vec::new();
+        let mut warnings: Vec<String> = vig.into_iter().collect();
         let mut out = Vec::new();
         let mut max_distortion = f64::NAN;
         for w in waves(s, p.wave)? {
@@ -688,7 +689,7 @@ impl Analysis for GridDistortion {
         Meta {
             name: "grid-distortion",
             about: "Grid distortion: real chief ray image points of a square grid of fields against the paraxial ideal grid",
-            help: "Grid distortion (OpticStudio's Grid Distortion): for a grid × grid square of normalized fields -1 to 1, the real chief ray image point and the ideal point from the paraxial magnification (linear in tan θ for angle fields), with the distortion % (the DISG operand against the axis). Needs a rotationally symmetric system",
+            help: "Grid distortion (OpticStudio's Grid Distortion): for a grid × grid square inscribed in the circle of the largest field (evenly spaced in tan θ for angle fields), the real chief ray image point and the ideal point from the paraxial magnification, with the distortion % (the DISG operand against the axis). Needs a rotationally symmetric system",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &GridParams) -> Result<GridOut> {
@@ -706,10 +707,11 @@ impl Analysis for GridDistortion {
         let (mut max_distortion, mut max_at) = (0.0_f64, [0.0, 0.0]);
         for j in 0..n {
             for i in 0..n {
-                let hx = -1.0 + 2.0 * i as f64 / (n - 1) as f64;
-                let hy = 1.0 - 2.0 * j as f64 / (n - 1) as f64;
+                let u = -1.0 + 2.0 * i as f64 / (n - 1) as f64;
+                let v = 1.0 - 2.0 * j as f64 / (n - 1) as f64;
+                let (hx, hy) = seidel::grid_field(s, u, v)?;
                 let pt = seidel::distortion_points(s, w, (hx, hy), &r).and_then(|(re, id)| {
-                    let d = if hx == 0.0 && hy == 0.0 {
+                    let d = if u == 0.0 && v == 0.0 {
                         0.0
                     } else {
                         seidel::distortion_against(s, w, (hx, hy), &r, DistComp::Radial)?.1

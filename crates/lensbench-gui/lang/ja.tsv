@@ -1750,3 +1750,16 @@ Sum	和
 Sum: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]	和: SPHA {} · COMA {} · ASTI {} · FCUR {} · DIST {} · CLA {} · CTR {} [{}]
 Wavelength [µm]	波長 [µm]
 Wavelength {}	波長 {}
+Footprint diagram	フットプリント図
+Includes the coating and Fresnel transmission relative to the axis	コーティングとフレネルの透過率（軸上との比）を含みます
+Per field (hover)	視野ごと（ポインタを重ねて表示）
+Relative illumination	相対照度
+Surface {} · semi-diameter {} {} · largest beam radius {} {} ({} % of the semi-diameter)	面 {} · クリア半径 {} {} · 光束の最大半径 {} {}（クリア半径の {} %）
+Unvignetted rays	ケラレずに通る光線の割合
+Vignetting plot	ケラレ図
+{} · wavelength {}: radius {} · through {} % · clipped here {} %	{} · 波長 {}: 半径 {} · 通過 {} % · この面でケラレ {} %
+Footprint diagram: where the beam of each field crosses a surface, against its aperture	フットプリント図: 各視野の光束が面を通る範囲と面の開口
+Relative illumination: image irradiance versus field relative to the axis	相対照度: 視野に対する像面照度（軸上との比）
+Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野に対するケラレずに通る光線の割合
+Rim points	縁の点の数
+Ignore vignetting factors	ケラレ係数を使わない

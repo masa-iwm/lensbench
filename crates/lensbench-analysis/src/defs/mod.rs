@@ -4,6 +4,7 @@
 
 mod aber;
 mod basic;
+mod illum;
 mod image;
 mod mtfs;
 
@@ -16,6 +17,7 @@ pub use basic::{
     GhostOut, GhostRow, RayCountsOut, SpotOut, SpotRow, WavefrontOut, WavefrontRow, ZKind,
     ZernikeOut, ZernikeRow,
 };
+pub use illum::{FootprintOut, FootprintRow, RelIllumOut, VignettingOut};
 pub use image::{
     Plane as PsfPlane, PsfAxes, PsfOut, PsfPoint, PsfSampling, Reference as RmsReference, RmsOut,
     RmsRow, Vs as RmsVs,
@@ -49,6 +51,9 @@ pub fn register(a: &mut Analyses) {
     a.add(aber::FocalShift);
     a.add(aber::GridDistortion);
     a.add(aber::SeidelCoef);
+    a.add(illum::Footprint);
+    a.add(illum::RelIllum);
+    a.add(illum::Vignetting);
 }
 
 /// 視野の番号（1 始まり、None で全視野）を 0 始まりの並びにする
