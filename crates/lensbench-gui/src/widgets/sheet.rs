@@ -1453,9 +1453,11 @@ fn apply(ui: &Ui, st: &mut SheetState, sh: &mut dyn Sheet, out: Out) -> bool {
 
 #[path = "sheet_edit.rs"]
 mod edit;
-use edit::{col_target, edit_ui, ghost_ui, row_target};
 #[cfg(test)]
-use edit::{completion, filter_items};
+use edit::completion;
+#[cfg(test)]
+pub(crate) use edit::filter_items;
+use edit::{col_target, edit_ui, ghost_ui, row_target};
 
 #[cfg(test)]
 #[path = "sheet_tests.rs"]

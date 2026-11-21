@@ -127,6 +127,10 @@ enum Val {
 /// 面の値を読む: 今の系の面の値（基本の値。読めなければ None）
 pub(crate) type FaceNow<'a> = &'a dyn Fn(&Face) -> Option<Value>;
 
+/// 要素の面の、今の系の通しの面番号（OpticStudio の面番号、物体面が 0）。`cb` は座標ブレークだけを数えた要素の面の番号。
+/// 今の系に無い面（面の表がまだ無いときも）は None
+pub(crate) type SurfNo<'a> = &'a dyn Fn(&Loc, usize, bool) -> Option<usize>;
+
 const AP_KEYS: [&str; 6] = ["epd", "fnum", "na", "float", "pwfn", "cone"];
 const FT_KEYS: [&str; 5] = [
     "angle",
@@ -1172,6 +1176,7 @@ pub(crate) fn ui(
     view: &mut View,
     now: FaceNow,
     stops: &[(Loc, usize)],
+    surf_no: SurfNo,
 ) -> bool {
     let weak = theme::weak_text(ui.visuals());
     let mut changed = false;
@@ -1253,6 +1258,7 @@ pub(crate) fn ui(
         now,
         cache: &view.base_cache,
         stops,
+        surf_no,
         acts: Default::default(),
     };
     changed |= crate::widgets::sheet::show(ui, "state_table", &mut view.sheet, &mut sh);

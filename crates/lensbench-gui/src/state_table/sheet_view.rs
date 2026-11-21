@@ -40,6 +40,7 @@ pub(super) struct McSheet<'a> {
     pub now: FaceNow<'a>,
     pub cache: &'a HashMap<Face, Value>,
     pub stops: &'a [(Loc, usize)],
+    pub surf_no: SurfNo<'a>,
     pub acts: RefCell<Vec<Act>>,
 }
 
@@ -71,6 +72,19 @@ impl McSheet<'_> {
     }
     /// 最後の空の行に書いて足せる行（表示の名前, 行。None はコメントの行）。表にある行は除く。
     /// 「+ 行」の欄と同じ（面は今の系から読めた面）
+    /// [`Self::addable`] に OpticStudio の演算子（[`Item::zmx_op`]、無ければ空）を添えたもの
+    pub(super) fn addable_ops(&self) -> Vec<(String, String, Option<Item>)> {
+        self.addable()
+            .into_iter()
+            .map(|(l, it)| {
+                let op = it
+                    .as_ref()
+                    .and_then(|it| it.zmx_op(self.surf_no))
+                    .unwrap_or_default();
+                (l, op, it)
+            })
+            .collect()
+    }
     pub(super) fn addable(&self) -> Vec<(String, Option<Item>)> {
         let c = &*self.c;
         let mut v = vec![(tr("Comment row").to_string(), None)];
@@ -402,10 +416,11 @@ impl Sheet for McSheet<'_> {
         }
     }
     fn new_row(&self, full: bool) -> Option<Cell> {
+        // 候補の説明に OpticStudio の演算子（THIC 5 など）を添える（演算子名でも絞り込める）
         let items = if full {
-            self.addable()
+            self.addable_ops()
                 .into_iter()
-                .map(|(l, _)| (l, String::new()))
+                .map(|(l, op, _)| (l, op))
                 .collect()
         } else {
             Vec::new()
@@ -414,8 +429,34 @@ impl Sheet for McSheet<'_> {
     }
     fn add_row(&mut self, text: &str) -> Result<(), String> {
         let t = text.trim();
-        match self.addable().into_iter().find(|(l, _)| l == t) {
-            Some((_, it)) => {
+        let all = self.addable_ops();
+        // 名前の完全一致、無ければ演算子と番号の一致（大小を問わない。THIC 5 など）
+        let hit = all.iter().position(|(l, _, _)| l == t).or_else(|| {
+            let mut m = all
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, op, _))| !op.is_empty() && op.eq_ignore_ascii_case(t));
+            match (m.next(), m.next()) {
+                (Some((k, _)), None) => Some(k),
+                // 要素の後の空気と最後の面の厚さは同じ THIC j（同じ値を指す）: 空気の行にする
+                (Some(x), Some(y)) => {
+                    let mut all_hits = vec![x, y];
+                    all_hits.extend(m);
+                    let air: Vec<usize> = all_hits
+                        .iter()
+                        .filter(|(_, (_, _, it))| matches!(it, Some(Item::Air(_))))
+                        .map(|(k, _)| *k)
+                        .collect();
+                    match air.as_slice() {
+                        [k] => Some(*k),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        });
+        match hit.map(|k| all[k].2.clone()) {
+            Some(it) => {
                 self.act(Act::Add(it));
                 Ok(())
             }
@@ -495,5 +536,58 @@ impl Sheet for McSheet<'_> {
             });
         }
         ui.separator();
+    }
+}
+
+impl Item {
+    /// OpticStudio の多重構成の演算子と番号（`WAVE 1`・`THIC 5`・`PRAM 7 2`）。.zmx に書き出すときの演算子
+    /// （lensbench-formats の zmx_write の config_op）と同じ。面の番号は系の通しの面番号。対応の無い行・面番号の
+    /// 分からない行は None
+    pub(crate) fn zmx_op(&self, surf_no: SurfNo) -> Option<String> {
+        let n1 = |i: usize| i + 1;
+        Some(match self {
+            Item::Sys(q) => match *q {
+                SysQ::Wave(i) => format!("WAVE {}", n1(i)),
+                SysQ::WaveW(i) => format!("WLWT {}", n1(i)),
+                SysQ::Primary => "PRWV".into(),
+                SysQ::ApType => "SATP".into(),
+                SysQ::ApValue => "APER".into(),
+                SysQ::FieldType => "FLTP".into(),
+                SysQ::FieldX(i) => format!("XFIE {}", n1(i)),
+                SysQ::FieldY(i) => format!("YFIE {}", n1(i)),
+                SysQ::FieldW(i) => format!("FLWT {}", n1(i)),
+                SysQ::ObjDist => "THIC 0".into(),
+                SysQ::Telecentric => return None,
+            },
+            Item::Stop => "STPS".into(),
+            Item::Face(f) => {
+                let (cb, field) = match f.field.strip_prefix(CB_FIELD) {
+                    Some(k) => (true, k),
+                    None => (false, f.field.as_str()),
+                };
+                let j = surf_no(&f.loc, f.surf, cb)?;
+                match (cb, field, f.idx) {
+                    (true, "cb", Some(k)) if k < PLACE.len() => format!("PRAM {j} {}", k + 1),
+                    (true, "ignore", _) | (false, "ignore", _) => format!("IGNR {j}"),
+                    (false, "r", _) => format!("CRVT {j}"),
+                    (false, "t", _) => format!("THIC {j}"),
+                    (false, "k", _) => format!("CONN {j}"),
+                    (false, "asph", Some(i)) => format!("PRAM {j} {}", i + 1),
+                    (false, "semi", _) => format!("SDIA {j}"),
+                    (false, "material", _) => format!("GLSS {j}"),
+                    (false, "coating", _) => format!("COTN {j}"),
+                    (false, "aperture", _) => format!("APMX {j}"),
+                    _ => return None,
+                }
+            }
+            // 要素の後の空気は要素の最後の面の厚さ
+            Item::Air(l) => {
+                let last = (0..999)
+                    .take_while(|&i| surf_no(l, i, false).is_some())
+                    .last()?;
+                format!("THIC {}", surf_no(l, last, false)?)
+            }
+            _ => return None,
+        })
     }
 }

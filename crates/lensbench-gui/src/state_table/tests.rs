@@ -394,6 +394,7 @@ fn sheet_cells_and_set() {
         now: &none,
         cache: &cache,
         stops: &[],
+        surf_no: &|_, _, _| None,
         acts: Default::default(),
     };
     assert_eq!(sh.cols(), 4);
@@ -440,6 +441,7 @@ fn sheet_move_cols_and_add_rows() {
         now: &none,
         cache: &cache,
         stops: &[],
+        surf_no: &|_, _, _| None,
         acts: Default::default(),
     };
     assert!(!sh.can_move_col(0) && !sh.can_move_col(1));
@@ -495,7 +497,7 @@ fn sheet_keys_reach_state_values() {
             };
             let _ = ctx.run(raw, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    super::ui(ui, c, view, &none, &[]);
+                    super::ui(ui, c, view, &none, &[], &|_, _, _| None);
                 });
             });
         };
@@ -921,5 +923,135 @@ fn remove_reordered_comment_rows() {
     assert_eq!(
         Item::Comment(0).get(&c, None, &cx),
         Some(Val::Text("c2".into()))
+    );
+}
+
+/// 行の OpticStudio の演算子: 系の値は番号つき、面は系の通しの面番号、座標ブレークは PRAM 1〜5、対応の無い行・面番号の
+/// 分からない面は無し。最後の空の行は演算子名でも絞り込め、演算子と番号を打って足せる
+#[test]
+fn zmx_ops_filter_and_add() {
+    use crate::widgets::sheet::Sheet;
+    let l: Loc = vec![1];
+    // 要素 [1] の面 0・1 は系の面 3・4、座標ブレークの 0 番は系の面 2
+    let surf_no = |loc: &Loc, i: usize, cb: bool| -> Option<usize> {
+        (loc == &vec![1]).then_some(())?;
+        match (cb, i) {
+            (false, 0) => Some(3),
+            (false, 1) => Some(4),
+            (true, 0) => Some(2),
+            _ => None,
+        }
+    };
+    let face = |surf: usize, field: &str, idx: Option<usize>| {
+        Item::Face(Face {
+            loc: l.clone(),
+            surf,
+            field: field.into(),
+            idx,
+        })
+    };
+    let op = |it: &Item| it.zmx_op(&surf_no);
+    assert_eq!(op(&Item::Sys(SysQ::Wave(1))).as_deref(), Some("WAVE 2"));
+    assert_eq!(op(&Item::Sys(SysQ::FieldY(0))).as_deref(), Some("YFIE 1"));
+    assert_eq!(op(&Item::Sys(SysQ::ApValue)).as_deref(), Some("APER"));
+    assert_eq!(op(&Item::Sys(SysQ::ObjDist)).as_deref(), Some("THIC 0"));
+    assert_eq!(op(&Item::Sys(SysQ::Telecentric)), None);
+    assert_eq!(op(&Item::Stop).as_deref(), Some("STPS"));
+    assert_eq!(op(&face(0, "t", None)).as_deref(), Some("THIC 3"));
+    assert_eq!(op(&face(1, "r", None)).as_deref(), Some("CRVT 4"));
+    assert_eq!(op(&face(1, "material", None)).as_deref(), Some("GLSS 4"));
+    assert_eq!(op(&face(0, "asph", Some(1))).as_deref(), Some("PRAM 3 2"));
+    assert_eq!(op(&face(0, "aperture", None)).as_deref(), Some("APMX 3"));
+    let cb = format!("{CB_FIELD}cb");
+    assert_eq!(op(&face(0, &cb, Some(3))).as_deref(), Some("PRAM 2 4"));
+    assert_eq!(
+        op(&face(0, &format!("{CB_FIELD}ignore"), None)).as_deref(),
+        Some("IGNR 2")
+    );
+    assert_eq!(op(&face(5, "t", None)), None, "今の系に無い面");
+    assert_eq!(op(&Item::Air(l.clone())).as_deref(), Some("THIC 4"));
+    assert_eq!(op(&Item::Place(l.clone(), 0)), None);
+
+    // 最後の空の行: 演算子名（大小を問わない）で絞り、演算子と番号で足す
+    let mut c = Combo {
+        states: vec!["A".into(), "B".into()],
+        ..Default::default()
+    };
+    let none = |_: &Face| None;
+    let cache = HashMap::new();
+    let mut sh = sheet_view::McSheet {
+        c: &mut c,
+        rows: Vec::new(),
+        cols: vec![None, Some("A".into()), Some("B".into())],
+        now: &none,
+        cache: &cache,
+        stops: &[],
+        surf_no: &surf_no,
+        acts: Default::default(),
+    };
+    let Some(crate::widgets::sheet::Cell {
+        kind: crate::widgets::sheet::Kind::List { items, .. },
+        ..
+    }) = sh.new_row(true)
+    else {
+        panic!("候補の一覧");
+    };
+    let wave1 = Item::Sys(SysQ::Wave(0)).label(sh.c);
+    assert!(items.iter().any(|(l, d)| *l == wave1 && d == "WAVE 1"));
+    let f = crate::widgets::sheet::filter_items(&items, "wave");
+    assert_eq!(f.first().map(|x| x.1.as_str()), Some("WAVE 1"), "{f:?}");
+    let f = crate::widgets::sheet::filter_items(&items, "APER");
+    assert_eq!(f.first().map(|x| x.1.as_str()), Some("APER"), "{f:?}");
+    sh.add_row("wave 1").unwrap();
+    sh.add_row("STPS").unwrap();
+    assert!(sh.add_row("THIC 99").is_err());
+    let acts = sh.acts.borrow();
+    assert!(matches!(
+        &acts[0],
+        sheet_view::Act::Add(Some(Item::Sys(SysQ::Wave(0))))
+    ));
+    assert!(matches!(&acts[1], sheet_view::Act::Add(Some(Item::Stop))));
+}
+
+/// 要素を置いた表: 最後の面の厚さと要素の後の空気は同じ THIC j。打って足すと空気の行になり、途中の面の厚さはその面の行
+#[test]
+fn zmx_op_thic_of_last_surface_adds_air() {
+    use crate::widgets::sheet::Sheet;
+    let mut c = Combo {
+        states: vec!["A".into()],
+        ..Default::default()
+    };
+    c.insert_plane(0);
+    let l = c.all().into_iter().next().expect("要素");
+    // 要素の面 0・1 は系の面 1・2
+    let now = |f: &Face| (f.surf < 2 && !f.field.starts_with(CB_FIELD)).then(|| json!(1.0));
+    let l2 = l.clone();
+    let surf_no = move |loc: &Loc, i: usize, cb: bool| -> Option<usize> {
+        (loc == &l2 && !cb && i < 2).then_some(i + 1)
+    };
+    let cache = HashMap::new();
+    let mut sh = sheet_view::McSheet {
+        c: &mut c,
+        rows: Vec::new(),
+        cols: vec![None, Some("A".into())],
+        now: &now,
+        cache: &cache,
+        stops: &[],
+        surf_no: &surf_no,
+        acts: Default::default(),
+    };
+    let ops = sh.addable_ops();
+    let thic2 = ops.iter().filter(|(_, op, _)| op == "THIC 2").count();
+    assert!(thic2 >= 2, "{ops:?}");
+    sh.add_row("THIC 2").unwrap();
+    sh.add_row("thic 1").unwrap();
+    let acts = sh.acts.borrow();
+    assert!(
+        matches!(&acts[0], sheet_view::Act::Add(Some(Item::Air(x))) if *x == l),
+        "{acts:?}"
+    );
+    assert!(
+        matches!(&acts[1], sheet_view::Act::Add(Some(Item::Face(f))) if f.surf == 0 && f.field == "t"),
+        "{acts:?}"
     );
 }

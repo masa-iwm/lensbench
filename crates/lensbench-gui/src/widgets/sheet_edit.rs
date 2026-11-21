@@ -241,8 +241,8 @@ pub(super) fn completion(items: &[(String, String)], q: &str) -> Option<String> 
         .cloned()
 }
 
-/// 打った文字で絞った候補（前方一致を先に）
-pub(super) fn filter_items(items: &[(String, String)], q: &str) -> Vec<(String, String)> {
+/// 打った文字で絞った候補（説明と同じもの、名前か説明の前方一致を先に。説明は多重構成の表の OpticStudio の演算子名など）
+pub(crate) fn filter_items(items: &[(String, String)], q: &str) -> Vec<(String, String)> {
     let q = q.trim().to_lowercase();
     if q.is_empty() {
         return items.to_vec();
@@ -250,12 +250,16 @@ pub(super) fn filter_items(items: &[(String, String)], q: &str) -> Vec<(String, 
     let mut head = Vec::new();
     let mut rest = Vec::new();
     for it in items {
-        match crate::widgets::match_rank(&it.0.to_lowercase(), &it.1.to_lowercase(), &q) {
+        let desc = it.1.to_lowercase();
+        match crate::widgets::match_rank(&it.0.to_lowercase(), &desc, &q) {
             Some(true) => head.push(it.clone()),
+            Some(false) if desc.starts_with(&q) => head.push(it.clone()),
             Some(false) => rest.push(it.clone()),
             None => {}
         }
     }
+    // 説明（演算子名）と打った文字が同じ候補を一番前に（APER を打てば Aperture type より APER）
+    head.sort_by_key(|it| it.1.to_lowercase() != q);
     head.extend(rest);
     head
 }

@@ -164,8 +164,13 @@ impl Core {
         // 絞りにできる面: 今の系の要素の面（経路の順、面の順）
         let mut stops: Vec<(crate::combo_tree::Loc, usize)> = faces.keys().cloned().collect();
         stops.sort_by_key(|k| faces[k]);
+        // 面の表の行の番号が系の通しの面番号（物体面が 0）
+        let surf_no = |l: &crate::combo_tree::Loc, i: usize, cb: bool| -> Option<usize> {
+            let map = if cb { &cbs } else { &faces };
+            map.get(&(l.clone(), i)).copied()
+        };
         edit::stage(&mut self.doc.combo, &mut self.msgs, |c| {
-            crate::state_table::ui(ui, c, &mut self.p.states, &now, &stops)
+            crate::state_table::ui(ui, c, &mut self.p.states, &now, &stops, &surf_no)
         });
     }
 
