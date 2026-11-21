@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.7/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.8/project.schema.json",
  "name": "P14 a catalog lens in double pass to a tilted spherical mirror",
  "glass_catalogs": [
   "SCHOTT"
