@@ -3,7 +3,7 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.6.0 の後）
+## v0.6.0 の後・v0.7.0 まで
 
 ### 和訳の表の場所
 - 誤りの文・注意などの和訳の表を `lensbench-core` から新しいクレート `lensbench-lang` に移した。`lensbench_core::i18n` は
