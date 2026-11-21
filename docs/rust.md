@@ -9,6 +9,7 @@
 use lensbench_analysis::prelude::*;
 
 lensbench_core::init_from_env(); // LENSBENCH_GLASSCAT・LENSBENCH_THREADS など（使わないなら呼ばなくてよい）
+lensbench_lang::register(); // 誤りの文・注意の和訳の表（表示の言語が日本語のとき使う。呼ばなければ英語）
 let opt = LoadOptions { catalog_dirs: vec!["glass".into()], ..Default::default() };
 let sys = zmx::load_with("lens.zmx".as_ref(), &opt)?;
 // 視野 1 の瞳座標 (px, py) の光線（Trace.rays の各光線に像面の位置・光路長・けられ）
