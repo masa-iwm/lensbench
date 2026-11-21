@@ -838,7 +838,7 @@ impl RowMenu {
 
 /// 硝材の欄の文字を入れられるか: 空・AIR・MIRROR、nd,νd[,ΔPgF] のモデルガラス、カタログのガラス、表で使っている
 /// ガラス。カタログをまだ読んでいなければ serve に任せる
-fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), String> {
+pub(crate) fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), String> {
     let m = text.trim();
     if m.is_empty()
         || m.eq_ignore_ascii_case("AIR")

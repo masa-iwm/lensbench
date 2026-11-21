@@ -72,6 +72,14 @@ pub(super) fn element_settings(
     let st = st.as_deref();
     // 膜の欄で選べる、系の設定で定義した膜の名前
     let coats: Vec<String> = combo.coatings.keys().cloned().collect();
+    // 群の欄の補完の候補（組合せにある群の名前）
+    let mut groups: Vec<String> = Vec::new();
+    for q in combo.all().iter().filter_map(|l| combo.get(l)) {
+        let g = q.group.trim();
+        if !g.is_empty() && !groups.iter().any(|n| n == g) {
+            groups.push(g.to_string());
+        }
+    }
     let Some(p) = combo.get_mut(&step.loc) else {
         return;
     };
@@ -144,12 +152,8 @@ pub(super) fn element_settings(
                 }
                 // 間隔を満たす媒質（液浸）。鏡の後には書けないので、鏡では書いてあるときだけ出す（外せるように）
                 if p.kind != ElemKind::Mirror || !p.air_medium.is_empty() {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut p.air_medium)
-                            .hint_text(tr("Air"))
-                            .desired_width(60.0),
-                    )
-                    .on_hover_text(tr(
+                    let medium = &mut p.air_medium;
+                    crate::widgets::name_edit::glass_edit(ui, medium, 60.0, tr("Air"), true).on_hover_text(tr(
                         "Medium filling this gap (glass name or refractive index, e.g. for immersion); empty is air",
                     ));
                 }
@@ -157,7 +161,7 @@ pub(super) fn element_settings(
         });
     });
     // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
-    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, k, weak));
+    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, k, weak, &groups));
     // 面の並びの行を変えたら、ほかの要素の操作が指すこの要素の面・座標ブレークの番号も合わせる
     if let Some(m) = remap {
         let id = combo

@@ -3,6 +3,14 @@
 use super::*;
 
 impl Core {
+    /// ガラスの候補を要素の欄（ガラス・媒質の補完）へ渡す。欄が頼んだら、まだ読んでいなければカタログを読む
+    pub(super) fn share_glasses(&mut self, ctx: &egui::Context) {
+        if crate::widgets::name_edit::take_glass_request(ctx) && !self.browser.loaded {
+            self.refresh_catalog();
+        }
+        crate::widgets::name_edit::set_glasses(ctx, self.ld_glasses.clone());
+    }
+
     /// 面の表: 組合せ（要素の後の空気・面の上書き）を変えて作り直す
     pub(super) fn lens_data_ui(&mut self, ui: &mut Ui) {
         use lens_data::Col;

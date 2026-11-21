@@ -438,37 +438,13 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
 }
 
 /// 膜の名前の欄（鏡・BS の分ける面）
-pub(crate) fn coat_edit(
-    ui: &mut Ui,
-    coat: &mut String,
-    k: usize,
-    weak: egui::Color32,
-    coats: &[String],
-) {
+pub(crate) fn coat_edit(ui: &mut Ui, coat: &mut String, weak: egui::Color32, coats: &[String]) {
     ui.label(RichText::new(tr("Coating")).color(weak));
-    ui.add(
-        egui::TextEdit::singleline(coat)
-            .hint_text(tr("no coating"))
-            .desired_width(70.0),
-    )
-    .on_hover_text(tr(
-        "Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio",
-    ));
-    // 系の設定で定義した膜から選ぶ
-    if !coats.is_empty() {
-        egui::ComboBox::from_id_salt(("coat_pick", k))
-            .selected_text("▼")
-            .width(24.0)
-            .show_ui(ui, |ui| {
-                for n in coats {
-                    if ui.selectable_label(coat == n, n.as_str()).clicked() {
-                        *coat = n.clone();
-                    }
-                }
-            })
-            .response
-            .on_hover_text(tr("Choose a defined coating"));
-    }
+    // 系の設定で定義した膜を補完の候補に（膜のファイル・モデルの名前も書けるので、候補に無くても印は付けない）
+    crate::widgets::name_edit::name_edit(ui, coat, 70.0, tr("no coating"), coats, |_| true, "")
+        .on_hover_text(tr(
+            "Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio",
+        ));
 }
 
 #[cfg(test)]

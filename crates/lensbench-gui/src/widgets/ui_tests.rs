@@ -663,3 +663,74 @@ fn num_field_keys_and_drag() {
     b.frame(vec![press(false, at + Vec2::new(20.0, 0.0))], &body);
     assert!((v.get() - 5.2).abs() < 0.011, "{}", v.get());
 }
+
+/// 名前の欄の補完: 打った文字で候補を絞り（前方一致を先に）、Tab で選んだ候補を入れる。ガラスの欄は候補が
+/// 無ければ頼み、カタログに無い名前を見分ける（モデルガラス・媒質の屈折率は受ける）
+#[test]
+fn name_edit_completes_and_checks_glass() {
+    use super::name_edit as ne;
+    use crate::lens_data::GlassChoice;
+    let items: Vec<String> = ["BAK1", "N-SF11", "N-BK7"].map(String::from).to_vec();
+    let got: Vec<String> = ne::filter(&items, "n-").into_iter().map(|x| x.0).collect();
+    assert_eq!(got, ["N-SF11", "N-BK7"]);
+    let got: Vec<String> = ne::filter(&items, "bk").into_iter().map(|x| x.0).collect();
+    assert_eq!(got, ["N-BK7"]);
+    let mut b = Bench::new();
+    let s = std::cell::RefCell::new(String::new());
+    let rect = Cell::new(Rect::NOTHING);
+    let changed = Cell::new(false);
+    let body = |ui: &mut Ui| {
+        let r = ne::name_edit(ui, &mut s.borrow_mut(), 80.0, "", &items, |_| true, "");
+        rect.set(r.rect);
+        changed.set(changed.get() || r.changed());
+    };
+    b.frame(Vec::new(), &body);
+    b.click(rect.get().center(), PointerButton::Primary, &body);
+    b.frame(vec![Event::Text("SF".into())], &body);
+    b.frame(vec![key(Key::Tab)], &body);
+    b.frame(Vec::new(), &body);
+    assert_eq!(*s.borrow(), "N-SF11");
+    assert!(changed.get());
+    // Enter は打った名前のまま（候補に無い新しい名前も書ける）。↑↓ で選んだ後だけ候補を入れる
+    for (text, keys, want) in [
+        ("", vec![Key::Enter], ""),
+        ("N-", vec![Key::Enter], "N-"),
+        ("N-", vec![Key::ArrowDown, Key::Enter], "N-BK7"),
+    ] {
+        s.borrow_mut().clear();
+        b.click(rect.get().center(), PointerButton::Primary, &body);
+        if !text.is_empty() {
+            b.frame(vec![Event::Text(text.into())], &body);
+        }
+        for k in keys {
+            b.frame(vec![key(k)], &body);
+        }
+        b.frame(Vec::new(), &body);
+        assert_eq!(*s.borrow(), want, "{text}");
+    }
+    // ガラスの欄: 出しただけでは頼まず、候補が無いまま欄に入ったら頼む
+    let mut b = Bench::new();
+    let t = std::cell::RefCell::new(String::from("N-BK7"));
+    let glass = |ui: &mut Ui| {
+        rect.set(ne::glass_edit(ui, &mut t.borrow_mut(), 80.0, "", false).rect);
+    };
+    b.frame(Vec::new(), &glass);
+    assert!(!ne::take_glass_request(&b.ctx));
+    b.click(rect.get().center(), PointerButton::Primary, &glass);
+    assert!(ne::take_glass_request(&b.ctx));
+    assert!(!ne::take_glass_request(&b.ctx));
+    let g = vec![GlassChoice {
+        name: "N-BK7".into(),
+        desc: String::new(),
+    }];
+    // 読む前（候補が空）は何でも受ける
+    assert!(ne::glass_known("XX", &[], false));
+    assert!(ne::glass_known("n-bk7", &g, false));
+    assert!(ne::glass_known("1.5,60", &g, false));
+    assert!(!ne::glass_known("N-BK8", &g, false));
+    assert!(!ne::glass_known("1.33", &g, false));
+    assert!(ne::glass_known("1.33", &g, true));
+    ne::set_glasses(&b.ctx, std::sync::Arc::new(g));
+    b.frame(Vec::new(), &glass);
+    assert!(!ne::take_glass_request(&b.ctx));
+}

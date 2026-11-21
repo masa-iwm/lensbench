@@ -401,7 +401,7 @@ struct Core {
     /// 文書を替えた段（新規・開く）の元に戻す・やり直す
     docs: DocHist,
     /// レンズデータの硝材の候補（ガラスカタログを読んだときに作る）
-    ld_glasses: Vec<lens_data::GlassChoice>,
+    ld_glasses: std::sync::Arc<Vec<lens_data::GlassChoice>>,
     /// 閉じる前に「保存しますか」を聞いている
     close_ask: bool,
     /// 前の画面の組合せの要素・状態・面の上書きの数
@@ -2214,6 +2214,7 @@ impl eframe::App for App {
             return self.flush_fx(ctx);
         }
         self.logic(ctx);
+        self.c.share_glasses(ctx);
         self.handle_input(ctx);
         self.sync_window_chrome(ctx);
         self.show_panels(ctx);
@@ -2600,7 +2601,7 @@ impl Core {
             combo_edit: None,
             combo_hist: Default::default(),
             docs: Default::default(),
-            ld_glasses: Vec::new(),
+            ld_glasses: Default::default(),
             close_ask: false,
             combo_census: None,
             missing_glass: None,

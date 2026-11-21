@@ -397,15 +397,16 @@ impl Core {
         match d.tag {
             Tag::Glasses => {
                 self.browser.set_glasses(catalog::parse_glasses(&v));
-                self.ld_glasses = self
-                    .browser
-                    .glasses
-                    .iter()
-                    .map(|g| lens_data::GlassChoice {
-                        name: g.name.clone(),
-                        desc: format!("{}  nd {:.5}  νd {:.2}", g.catalog, g.nd, g.vd),
-                    })
-                    .collect();
+                self.ld_glasses = std::sync::Arc::new(
+                    self.browser
+                        .glasses
+                        .iter()
+                        .map(|g| lens_data::GlassChoice {
+                            name: g.name.clone(),
+                            desc: format!("{}  nd {:.5}  νd {:.2}", g.catalog, g.nd, g.vd),
+                        })
+                        .collect(),
+                );
                 text = trf("{} glasses", &[&self.browser.glasses.len()]);
             }
             Tag::Lenses => {

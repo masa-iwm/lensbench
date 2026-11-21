@@ -2430,7 +2430,15 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
 }
 
 /// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値。k は欄の id
-pub(crate) fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
+/// groups は組合せにある群の名前（群の欄の補完）
+pub(crate) fn onoff_ui(
+    ui: &mut Ui,
+    p: &mut Pick,
+    st: Option<&str>,
+    k: usize,
+    weak: Color32,
+    groups: &[String],
+) {
     if p.kind.has_on() {
         let mut on = p.on_in(st);
         let hint = match st {
@@ -2465,12 +2473,7 @@ pub(crate) fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, we
     }
     // 群
     ui.label(RichText::new(tr("Group")).color(weak));
-    ui.add(
-        egui::TextEdit::singleline(&mut p.group)
-            .hint_text(tr("Off"))
-            .desired_width(60.0),
-    )
-    .on_hover_text(tr(
+    crate::widgets::name_edit::name_edit(ui, &mut p.group, 60.0, tr("Off"), groups, |_| true, "").on_hover_text(tr(
         "Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)",
     ));
     if p.kind == ElemKind::ZmxRange {
@@ -2571,7 +2574,7 @@ fn kind_fields(
             num(ui, "R2", &mut p.custom_mut().r2, " mm");
             num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
-            ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
+            crate::widgets::name_edit::glass_edit(ui, &mut p.custom_mut().glass, 70.0, "", false);
             {
                 let mut auto = p.custom().semi_auto;
                 semi_edit(ui, &mut p.semi, &mut auto);
@@ -2629,7 +2632,7 @@ fn kind_fields(
         ElemKind::Plate => {
             num_in(ui, tr("Thickness"), &mut p.custom_mut().t, " mm", 0.0);
             ui.label(RichText::new(tr("Glass")).color(weak));
-            ui.add(egui::TextEdit::singleline(&mut p.custom_mut().glass).desired_width(70.0));
+            crate::widgets::name_edit::glass_edit(ui, &mut p.custom_mut().glass, 70.0, "", false);
             {
                 let mut auto = p.custom().semi_auto;
                 semi_edit(ui, &mut p.semi, &mut auto);
@@ -2646,7 +2649,7 @@ fn kind_fields(
             place_ui(ui, p, st, &[], &[0, 1]);
             if !row {
                 num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
-                crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
+                crate::coat_defs::coat_edit(ui, &mut p.coat, weak, coats);
             }
             ui.checkbox(&mut p.mirror_mut().back, tr("Return along the path")).on_hover_text(tr(
                 "Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS",
@@ -2730,7 +2733,7 @@ fn kind_fields(
             }
             if p.bs_mut().form != BsForm::Ideal {
                 ui.label(RichText::new(tr("Glass")).color(weak));
-                ui.add(egui::TextEdit::singleline(&mut p.bs_mut().glass).desired_width(70.0));
+                crate::widgets::name_edit::glass_edit(ui, &mut p.bs_mut().glass, 70.0, "", false);
             }
             if p.bs_mut().form != BsForm::Cube {
                 num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
@@ -2754,7 +2757,7 @@ fn kind_fields(
                             .prefix("T "),
                     );
                 }
-                BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats),
+                BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, weak, coats),
                 BsSplit::Pbs => {
                     ui.add(
                         crate::widgets::Num::new(&mut p.bs_mut().pbs[0])
@@ -2935,6 +2938,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
 
 /// BS の残りの項目（形ごとの欄・面ごとの膜）と、口 B・C・D の先の並び
 pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
+    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
     let Some(p) = combo.get_mut(loc) else {
         return;
     };
@@ -2950,12 +2954,8 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
         }
         if p.bs_mut().form != BsForm::Ideal {
             ui.label(RichText::new(tr("Other faces' coating")).color(weak));
-            ui.add(
-                egui::TextEdit::singleline(&mut p.bs_mut().ar)
-                    .hint_text(tr("no coating"))
-                    .desired_width(70.0),
-            )
-            .on_hover_text(tr("Default coating of faces other than the splitting face (faces without their own coating)"));
+            crate::widgets::name_edit::name_edit(ui, &mut p.bs_mut().ar, 70.0, tr("no coating"), &coats, |_| true, "")
+                .on_hover_text(tr("Default coating of faces other than the splitting face (faces without their own coating)"));
             for f in p.bs_mut().form.faces() {
                 let name = match *f {
                     "front" => tr("Table"),
@@ -2964,12 +2964,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
                 };
                 ui.label(RichText::new(trf("Surface {}", &[&name])).color(weak));
                 let mut v = p.bs_mut().faces.get(*f).cloned().unwrap_or_default();
-                if ui
-                    .add(
-                        egui::TextEdit::singleline(&mut v)
-                            .hint_text(tr("Default"))
-                            .desired_width(56.0),
-                    )
+                if crate::widgets::name_edit::name_edit(ui, &mut v, 56.0, tr("Default"), &coats, |_| true, "")
                     .on_hover_text(if p.bs_mut().form == BsForm::Cube {
                         tr("Coating of cube face a (port A), b (B), c (C), d (D). Empty uses the other faces' coating")
                     } else {

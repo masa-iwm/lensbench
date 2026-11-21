@@ -969,7 +969,8 @@ Reflection	反射
 Also give reflection	反射も書く
 Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs	名前をミラー・BS のコーティングの欄、面の表のコーティング（coating）に書いて使います。コーティングファイル・ユーザーカタログの同じ名前より優先
 Absorptive (no reflection)	吸収型（反射 0）
-Choose a defined coating	定義したコーティングから選択
+Not in the glass catalogs (write a model glass as nd,νd like 1.5,60; add catalogs in File > Catalog folders…)	硝材がカタログにありません（モデルガラスは 1.5,60 のように nd,νd で。カタログはファイル > カタログのフォルダ…）
+Not in the glass catalogs (write a glass name, a refractive index, or a model glass as nd,νd like 1.5,60)	硝材がカタログにありません（硝材の名前、屈折率、または 1.5,60 のように nd,νd のモデルガラスで）
 Effective index	実効屈折率
 In-band transmission	帯域内の透過
 Out-of-band OD	帯域外の OD
