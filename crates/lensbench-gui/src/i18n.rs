@@ -327,6 +327,13 @@ mod tests {
                 "lang/ja.tsv に衝突の印: {l}"
             );
         }
+        // 同じ英語の行が 2 つ無い（取り込みの merge=union で重なりやすい）
+        let mut seen = std::collections::HashSet::new();
+        for l in JA.lines().filter(|l| !l.starts_with('#')) {
+            if let Some((en, _)) = l.split_once('\t') {
+                assert!(seen.insert(en), "lang/ja.tsv に同じ英語の行が 2 つ: {en}");
+            }
+        }
         let keys = keys_in_source();
         assert!(keys.len() > 50, "{}", keys.len());
         let missing: Vec<&String> = keys

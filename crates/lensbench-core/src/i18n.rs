@@ -233,14 +233,18 @@ fn lines(text: &'static str) -> impl Iterator<Item = (&'static str, &'static str
 }
 
 /// Check a table: each line has a tab, the same `{…}` in English and Japanese, unnamed `{}` in the same
-/// order, and no two slots side by side. The errors name the line
+/// order, no two slots side by side, and no English twice. The errors name the line
 pub fn check_table(text: &str) -> Result<(), String> {
+    let mut seen = std::collections::HashMap::new();
     for (n, l) in text.lines().enumerate() {
         if l.trim().is_empty() || l.starts_with('#') {
             continue;
         }
         let at = |m: &str| format!("line {}: {m}: {l}", n + 1);
         let (en, ja) = l.split_once('\t').ok_or_else(|| at("no tab"))?;
+        if let Some(k) = seen.insert(en, n + 1) {
+            return Err(at(&format!("the same English as line {k}")));
+        }
         let slots = |t: &str, unnamed: bool| {
             let mut v: Vec<String> = pieces(t)
                 .into_iter()
@@ -509,6 +513,7 @@ mod tests {
         check_table(JA).unwrap_or_else(|e| panic!("lang/ja.tsv {e}"));
         assert!(check_table("a {} b {:.3}\tA {:.3} B {}").is_err());
         assert!(check_table("a {}{}\tA {}{}").is_err());
+        assert!(check_table("a\tA\nb\tB\na\tA").is_err());
     }
 
     #[test]

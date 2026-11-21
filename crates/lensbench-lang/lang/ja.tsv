@@ -300,7 +300,6 @@ position {at} to insert a surface (1 to {})	面を入れる位置 {at}（1〜{}�
 make the inserted surface the stop with set_stop	入れる面を絞りにするのは set_stop で
 surface {j} (surfaces are 0 to {})	面 {j}（面は 0〜{}）
 surface {j} (surfaces are 0 to {last})	面 {j}（面は 0〜{last}）
-surface {j} (surfaces are 0 to {last})	面 {j}（面は 0〜{last}）
 surface value name {name} ({})	面の値の名前 {name}（{}）
 surface {j} {name} is a pickup from surface {}	面 {j} の {name} は面 {} からのピックアップ
 surface {j} {name} is set by a solve	面 {j} の {name} はソルブで決まります
@@ -2237,11 +2236,9 @@ outer diameter	外径
 cosine cubed apodization: the chief ray can't be traced	Cosine Cubed のアポダイゼーション: 主光線を追跡できない
 cosine cubed apodization: the object or entrance pupil position is undefined	Cosine Cubed のアポダイゼーション: 物体か入射瞳の位置が決まらない
 the input polarization (Ex, Ey) must not be zero	入射の偏光 (Ex, Ey) は 0 以外に
-the range of variable {v} is min:max	変数 {v} の範囲は 下限:上限
 range {t} of variable {v} can't be read	変数 {v} の範囲 {t} が読めません
 configs of variable {name}: {k} (1 to {n_configs})	変数 {name} の configs: {k}（1〜{n_configs}）
 {s} (one of {})	{s}（{} のどれか）
-term {}: {e}	項 {}: {e}
 optimize: {e}	optimize: {e}
 zoom: {e}	zoom: {e}
 {what}: {e}	{what}: {e}
