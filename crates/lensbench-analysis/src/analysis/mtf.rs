@@ -615,16 +615,20 @@ pub fn mtf_amp(
     check_n(n)?;
     let fr = MtfFrame::new(s, field, w.unwrap_or(s.primary), axes)?;
     let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
-    let mut otfs = Vec::new();
+    let mut wts = Vec::new();
     for &wi in &ws {
         let wt = lensbench_core::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if wt > 0.0 {
-            otfs.push((
-                wt,
-                wave_otf(s, field, wi, n, freqs, method, only, extra, &fr)?,
-            ));
+            wts.push((wi, wt));
         }
     }
+    // 波長ごとに独立なので並列に（和は波長の順に取る）
+    let otfs = lensbench_core::par::try_map(&wts, |&(wi, wt)| -> Result<_> {
+        Ok((
+            wt,
+            wave_otf(s, field, wi, n, freqs, method, only, extra, &fr)?,
+        ))
+    })?;
     if otfs.is_empty() {
         lensbench_core::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない
     }
@@ -666,11 +670,16 @@ pub fn mtf_waves_amp(
 ) -> Result<MtfWaves> {
     check_n(n)?;
     let fr = MtfFrame::new(s, field, s.primary, axes)?;
-    let (mut otfs, mut cuts) = (Vec::new(), Vec::new());
-    for wi in 0..s.wavelengths.len() {
-        otfs.push(wave_otf(s, field, wi, n, freqs, method, None, extra, &fr)?);
-        cuts.push(mtf_cutoff_in(s, field, wi, &fr)?);
-    }
+    // 波長ごとに独立なので並列に（和は波長の順に取る）
+    let wis: Vec<usize> = (0..s.wavelengths.len()).collect();
+    let (otfs, cuts): (Vec<_>, Vec<_>) = lensbench_core::par::try_map(&wis, |&wi| -> Result<_> {
+        Ok((
+            wave_otf(s, field, wi, n, freqs, method, None, extra, &fr)?,
+            mtf_cutoff_in(s, field, wi, &fr)?,
+        ))
+    })?
+    .into_iter()
+    .unzip();
     let multi = otfs.len() > 1;
     let mut poly: Vec<(f64, &_)> = Vec::new();
     for (wi, o) in otfs.iter().enumerate() {

@@ -88,8 +88,10 @@ pub fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
     for &(ix, iy, v) in w {
         g[iy * np + ix] = v;
     }
-    let mut m: f64 = 0.0;
-    for iy in 0..np {
+    // 行ごとの最大の最大（有限の値の max なので順によらず同じ。大きい格子は行を並列に）
+    let row = |iy: &usize| -> f64 {
+        let iy = *iy;
+        let mut m: f64 = 0.0;
         for ix in 0..np {
             let v = g[iy * np + ix];
             if !v.is_finite() {
@@ -102,7 +104,15 @@ pub fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
                 m = m.max((g[(iy + 1) * np + ix] - v).abs());
             }
         }
-    }
+        m
+    };
+    let iys: Vec<usize> = (0..np).collect();
+    let rows: Vec<f64> = if np * np >= 1 << 16 {
+        lensbench_core::par::map(&iys, row)
+    } else {
+        iys.iter().map(row).collect()
+    };
+    let m = rows.into_iter().fold(0.0, f64::max);
     2.0 * std::f64::consts::PI * m
 }
 
@@ -386,15 +396,32 @@ fn psf_once(
         }
         let op = PupilFunction::trace_amp(s, field, Some(wi), grid, true, extra)?;
         // 瞳の格子の複素振幅（面積の割合 × 振幅を重みに）。s1 = Σ f A（収差なしの中心の振幅）、s2 = Σ f A²（光量）
+        // 位相の cos・sin は標本ごとに独立なので塊に分けて並列に、和は標本の順に（値はスレッド数によらず同じ）
+        let mut ph = vec![C64::new(0.0, 0.0); op.len()];
+        let phasor = |q: usize| match op.get(q) {
+            Some(o) => {
+                let ph = 2.0 * std::f64::consts::PI * o;
+                C64::new(ph.cos(), ph.sin()) * (op.samples.wt[q] * op.amp[q])
+            }
+            None => C64::new(0.0, 0.0),
+        };
+        if op.len() >= 1 << 14 {
+            lensbench_core::par::for_each_chunk_mut(&mut ph, 1 << 12, |c, v| {
+                for (k, z) in v.iter_mut().enumerate() {
+                    *z = phasor((c << 12) + k);
+                }
+            });
+        } else {
+            ph.iter_mut().enumerate().for_each(|(q, z)| *z = phasor(q));
+        }
         let mut p = vec![vec![C64::new(0.0, 0.0); np]; np];
         let (mut s1, mut s2) = (0.0, 0.0);
-        let mut w_ok: Vec<(usize, usize, f64)> = Vec::new();
+        let mut w_ok: Vec<(usize, usize, f64)> = Vec::with_capacity(op.len());
         for q in 0..op.len() {
             if let Some(o) = op.get(q) {
                 let ((ix, iy), f) = (op.samples.cell[q], op.samples.wt[q]);
                 let (fa, am) = (f * op.amp[q], op.amp[q]);
-                let ph = 2.0 * std::f64::consts::PI * o;
-                p[iy][ix] = C64::new(ph.cos(), ph.sin()) * fa;
+                p[iy][ix] = ph[q];
                 s1 += fa;
                 s2 += fa * am;
                 w_ok.push((ix, iy, o));

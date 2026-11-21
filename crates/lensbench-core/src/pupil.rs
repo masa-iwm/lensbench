@@ -161,19 +161,40 @@ impl PupilGrid {
             PupilGrid::Cells(n) | PupilGrid::Sheared { n, .. } => {
                 let h = 2.0 / n as f64;
                 let g = self.axis().unwrap_or_default();
-                for (iy, &cy) in g.iter().enumerate() {
+                // 行ごとに独立に求めて行の順につなぐ（大きい格子は並列に。値はスレッド数によらず同じ）
+                let row = |iy: &usize| -> PupilSamples {
+                    let (iy, cy) = (*iy, g[*iy]);
+                    let mut r = PupilSamples::default();
                     for (ix, &cx) in g.iter().enumerate() {
                         let (f, qx, qy) = match *self {
                             PupilGrid::Sheared { q, .. } => cell_frac_mapped(q, cx, cy, h),
                             _ => cell_frac(cx, cy, h),
                         };
                         if f > 0.0 {
-                            s.px.push(qx);
-                            s.py.push(qy);
-                            s.cell.push((ix, iy));
-                            s.wt.push(f);
+                            r.px.push(qx);
+                            r.py.push(qy);
+                            r.cell.push((ix, iy));
+                            r.wt.push(f);
                         }
                     }
+                    r
+                };
+                let iys: Vec<usize> = (0..n).collect();
+                let rows: Vec<PupilSamples> = if n * n >= 1 << 16 {
+                    crate::par::map(&iys, row)
+                } else {
+                    iys.iter().map(row).collect()
+                };
+                let m: usize = rows.iter().map(|r| r.len()).sum();
+                s.px.reserve_exact(m);
+                s.py.reserve_exact(m);
+                s.cell.reserve_exact(m);
+                s.wt.reserve_exact(m);
+                for r in rows {
+                    s.px.extend_from_slice(&r.px);
+                    s.py.extend_from_slice(&r.py);
+                    s.cell.extend_from_slice(&r.cell);
+                    s.wt.extend_from_slice(&r.wt);
                 }
             }
             PupilGrid::Gauss { rings, arms } => {

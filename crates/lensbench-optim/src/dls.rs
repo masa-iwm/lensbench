@@ -86,6 +86,8 @@ pub use surf::SurfQ;
 
 #[path = "dls_cross.rs"]
 mod cross;
+#[path = "dls_fd.rs"]
+mod fd;
 #[path = "dls_trace.rs"]
 mod trace;
 use trace::{launch_of, trace_ok, trace_pupil_cols, trace_pupil_rec};
@@ -590,76 +592,10 @@ impl Problem {
         let fd_vars: Vec<usize> = (0..nv)
             .filter(|q| parts.iter().any(|p| p.fd.contains(q)))
             .collect();
+        let fds: Vec<&[usize]> = parts.iter().map(|p| p.fd.as_slice()).collect();
+        let r0s: Vec<&[f64]> = parts.iter().map(|p| p.r.as_slice()).collect();
+        let cols = fd::columns(self, x, &sys, &steps, &fds, &r0s, &fd_vars)?;
         let forward = self.jac == JacMode::Forward;
-        let cols: Vec<Vec<(usize, Vec<f64>)>> =
-            map_maybe_par(&fd_vars, |&q| {
-                let mut out = Vec::new();
-                // (構成, 刻みの種類) ごとの +h と -h の系（前進差分では -h はなし）
-                let mut cache: Vec<[Option<FdSystems>; 2]> = vec![[None, None]; self.configs.len()];
-                for (ti, t) in self.terms.iter().enumerate() {
-                    if !parts[ti].fd.contains(&q)
-                        || matches!(t.kind, TermKind::User(_) | TermKind::Spread { .. })
-                    {
-                        continue;
-                    }
-                    let noisy = noisy_fd(&sys[t.config], &t.kind, self.vars[q].param.kind);
-                    let h = steps[q]
-                        * if noisy {
-                            self.fd_rel_noisy / self.fd_rel
-                        } else {
-                            1.0
-                        };
-                    let slot = &mut cache[t.config][noisy as usize];
-                    let (lo, hi) = (self.vars[q].lo, self.vars[q].hi);
-                    if slot.is_none() {
-                        // 境界の外へは出さない（厚さの下限 0 で x − h が負になるなど）。出る側・系が作れない側は片側差分に
-                        let up_ok = x[q] + h <= hi;
-                        let dn_ok = x[q] - h >= lo;
-                        let mk = |d: f64| {
-                            let mut xs = x.to_vec();
-                            xs[q] += d;
-                            self.system(t.config, &xs)
-                        };
-                        let sp = if up_ok { mk(h).ok() } else { None };
-                        // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
-                        let want_m = !(forward && !noisy && sp.is_some());
-                        let sm = if want_m && dn_ok { mk(-h).ok() } else { None };
-                        if sp.is_none() && sm.is_none() {
-                            // どちらの側も作れない: 元の誤りを返す
-                            mk(if up_ok { h } else { -h })?;
-                            lensbench_core::invalid!("no difference system (variable {})", q + 1);
-                        }
-                        *slot = Some((sp, sm));
-                    }
-                    let (sp, sm) = slot.as_ref().expect("filled just above");
-                    let rp = match sp {
-                        Some(sp) => eval_term(sp, &t.kind, None, None, self.stopped_as_vignetted)
-                            .map(|v| v.0),
-                        None => Err(lensbench_core::Error::Invalid(String::new())),
-                    };
-                    let rm = match sm {
-                        Some(sm) => eval_term(sm, &t.kind, None, None, self.stopped_as_vignetted)
-                            .map(|v| v.0),
-                        None => Err(lensbench_core::Error::Invalid(String::new())),
-                    };
-                    let r0 = &parts[ti].r;
-                    let d: Vec<f64> = match (rp, rm) {
-                        (Ok(rp), Ok(rm)) => rp
-                            .iter()
-                            .zip(&rm)
-                            .map(|(a, b)| (a - b) / (2.0 * h))
-                            .collect(),
-                        // 片側だけ: 元の系の残差（parts の r、重みを掛ける前）との差
-                        (Ok(rp), Err(_)) => rp.iter().zip(r0).map(|(a, b)| (a - b) / h).collect(),
-                        (Err(_), Ok(rm)) => r0.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
-                        (Err(e), Err(e2)) => {
-                            return Err(if sp.is_some() { e } else { e2 });
-                        }
-                    };
-                    out.push((ti, d));
-                }
-                Ok(out)
-            })?;
         let mut parts = parts;
         for (k, &q) in fd_vars.iter().enumerate() {
             for (ti, d) in &cols[k] {

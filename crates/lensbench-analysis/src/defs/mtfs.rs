@@ -107,8 +107,9 @@ impl Analysis for Mtf {
             MtfHow::Direct => MtfMethod::Direct,
             MtfHow::Fft => MtfMethod::Fft,
         };
-        let mut v = Vec::new();
-        for i in fields(s, p.field)? {
+        // 視野ごとに独立なので並列に（視野の中も波長・周波数ごとに並列。値はスレッド数によらず同じ）
+        let fl = fields(s, p.field)?;
+        let v = lensbench_core::par::try_map(&fl, |&i| -> Result<MtfRow> {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let f = FieldSel::Index(i);
             let pa = pol_amp(s, i, w, p.polarization)?;
@@ -144,8 +145,8 @@ impl Analysis for Mtf {
                     )?,
                 )
             };
-            v.push(row);
-        }
+            Ok(row)
+        })?;
         Ok(MtfOut {
             unit: freq_unit(s),
             method: None,
