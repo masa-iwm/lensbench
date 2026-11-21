@@ -147,9 +147,8 @@ impl RaySet {
             zero_auto(ui, &mut self.rings, 1..=256);
             ui.label(tr("Ray tube radius [mm]"));
             ui.add(
-                egui::DragValue::new(&mut self.tube)
+                crate::widgets::Num::new(&mut self.tube)
                     .range(0.0..=100.0)
-                    .speed(0.01)
                     .custom_formatter(|x, _| {
                         if x <= 0.0 {
                             tr("Default").to_string()
@@ -200,9 +199,8 @@ fn nums_ui(ui: &mut Ui, sel: &mut Vec<usize>, n: usize, label: &str) {
 fn zero_auto(ui: &mut Ui, x: &mut usize, range: std::ops::RangeInclusive<usize>) {
     let (lo, hi) = (*range.start(), *range.end());
     let mut r = ui.add(
-        egui::DragValue::new(x)
+        crate::widgets::Num::new(x)
             .range(0..=hi)
-            .speed(1.0)
             .custom_formatter(|v, _| {
                 if v < 0.5 {
                     tr("Default").to_string()

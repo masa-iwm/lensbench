@@ -2370,11 +2370,7 @@ impl Overlay {
                 for (i, l) in ["z", vert].into_iter().enumerate() {
                     ui.weak(l);
                     changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.offset[i])
-                                .speed(0.5)
-                                .suffix(" mm"),
-                        )
+                        .add(crate::widgets::Num::new(&mut self.offset[i]).suffix(" mm"))
                         .changed();
                 }
             }

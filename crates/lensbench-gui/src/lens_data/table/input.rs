@@ -34,6 +34,24 @@ pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: 
     out.fx.insert |= ins_k;
     out.fx.insert_before |= ins_shift;
     out.fx.delete |= del_k;
+    // Alt+↑↓・PageUp/PageDown: 今のセルの数を増減する（共通の表と同じ刻み、widgets::num）。矢印の移動より先に取る
+    if let (Some((n, m)), Some((j, col))) = (crate::widgets::num::take_alt_arrows(ui), st.cur) {
+        if let Some(r) = c
+            .rows
+            .get(j)
+            .filter(|_| col.numeric() && v.cell_ro(c, j, col).is_none())
+        {
+            if let Ok(x) = col.text(r).trim().parse::<f64>() {
+                let x = crate::widgets::num::nudge(
+                    x,
+                    crate::widgets::num::key_step(m, false) * n,
+                    false,
+                );
+                out.acts
+                    .extend(commit_act(r, j, col, &crate::json_view::fmt_num(x)));
+            }
+        }
+    }
     let (up, down, left, right, enter_k, f2, back, esc, ctrl, lkey) = ui.input(|i| {
         (
             i.key_pressed(Key::ArrowUp),

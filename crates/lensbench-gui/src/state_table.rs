@@ -1146,7 +1146,7 @@ fn face_menu(ui: &mut Ui, l: &Loc, now: FaceNow, view: &mut View, add: &mut dyn 
         ui.horizontal(|ui| {
             ui.label(tr("Surface"));
             let mut k = view.add_surf + 1;
-            ui.add(egui::DragValue::new(&mut k).range(1..=999))
+            ui.add(crate::widgets::Num::new(&mut k).range(1..=999))
                 .on_hover_text(tr(
                     "Surfaces are counted within the element from 1, without coordinate breaks. Every configuration starts with its current value",
                 ));
@@ -1439,9 +1439,9 @@ fn pick_menu(
         let (mut k, mut o) = (m.scale, m.offset);
         ui.horizontal(|ui| {
             ui.label("×");
-            let a = ui.add(egui::DragValue::new(&mut k).speed(0.01).max_decimals(6));
+            let a = ui.add(crate::widgets::Num::new(&mut k).max_decimals(6));
             ui.label("+");
-            let b = ui.add(egui::DragValue::new(&mut o).speed(0.01).max_decimals(6));
+            let b = ui.add(crate::widgets::Num::new(&mut o).max_decimals(6));
             if a.changed() || b.changed() {
                 let src = picks::Src {
                     from: m.from.clone(),

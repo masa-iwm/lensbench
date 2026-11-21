@@ -194,19 +194,14 @@ pub(crate) fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool
     *coatings != before
 }
 
-fn num(ui: &mut Ui, label: &str, v: &mut f64, range: std::ops::RangeInclusive<f64>, speed: f64) {
+fn num(ui: &mut Ui, label: &str, v: &mut f64, range: std::ops::RangeInclusive<f64>) {
     ui.label(label);
-    ui.add(
-        egui::DragValue::new(v)
-            .range(range)
-            .speed(speed)
-            .max_decimals(6),
-    );
+    ui.add(crate::widgets::Num::new(v).range(range).max_decimals(6));
 }
 
 fn ideal_fields(ui: &mut Ui, i: &mut Ideal) {
-    num(ui, tr("In-band transmission"), &mut i.t, 0.0..=1.0, 0.005);
-    num(ui, tr("Out-of-band OD"), &mut i.od, 0.0..=12.0, 0.05);
+    num(ui, tr("In-band transmission"), &mut i.t, 0.0..=1.0);
+    num(ui, tr("Out-of-band OD"), &mut i.od, 0.0..=12.0);
     let mut auto = i.width_nm.is_none();
     if ui
         .checkbox(&mut auto, tr("Automatic edge width"))
@@ -218,9 +213,9 @@ fn ideal_fields(ui: &mut Ui, i: &mut Ideal) {
         i.width_nm = if auto { None } else { Some(5.0) };
     }
     if let Some(w) = &mut i.width_nm {
-        num(ui, tr("Edge width [nm]"), w, 0.01..=1000.0, 0.1);
+        num(ui, tr("Edge width [nm]"), w, 0.01..=1000.0);
     }
-    num(ui, tr("Effective index"), &mut i.neff, 1.0..=5.0, 0.01);
+    num(ui, tr("Effective index"), &mut i.neff, 1.0..=5.0);
     ui.checkbox(&mut i.absorptive, tr("Absorptive (no reflection)"));
 }
 
@@ -228,7 +223,7 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
     match spec {
         CoatSpec::Longpass { edge_nm, ideal } | CoatSpec::Shortpass { edge_nm, ideal } => {
             ui.horizontal_wrapped(|ui| {
-                num(ui, tr("Edge [nm]"), edge_nm, 1.0..=5000.0, 1.0);
+                num(ui, tr("Edge [nm]"), edge_nm, 1.0..=5000.0);
                 ideal_fields(ui, ideal);
             });
         }
@@ -243,14 +238,14 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
             ideal,
         } => {
             ui.horizontal_wrapped(|ui| {
-                num(ui, tr("Center [nm]"), center_nm, 1.0..=5000.0, 1.0);
-                num(ui, tr("FWHM [nm]"), fwhm_nm, 0.01..=5000.0, 0.5);
+                num(ui, tr("Center [nm]"), center_nm, 1.0..=5000.0);
+                num(ui, tr("FWHM [nm]"), fwhm_nm, 0.01..=5000.0);
                 ideal_fields(ui, ideal);
             });
         }
         CoatSpec::Nd { od, absorptive } => {
             ui.horizontal_wrapped(|ui| {
-                num(ui, "OD", od, 0.0..=12.0, 0.05);
+                num(ui, "OD", od, 0.0..=12.0);
                 ui.checkbox(absorptive, tr("Absorptive (no reflection)"));
             });
         }

@@ -137,21 +137,21 @@ pub(crate) fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
 }
 
 /// 範囲の入力（チェックで有効にする）
-pub(super) fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64), speed: f64) {
+pub(super) fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64)) {
     ui.label(label);
     let mut on = r.min.is_some();
     if ui.checkbox(&mut on, tr("Min")).changed() {
         r.min = on.then_some(default.0);
     }
     if let Some(m) = r.min.as_mut() {
-        ui.add(egui::DragValue::new(m).speed(speed));
+        ui.add(crate::widgets::Num::new(m));
     }
     let mut on = r.max.is_some();
     if ui.checkbox(&mut on, tr("Max")).changed() {
         r.max = on.then_some(default.1);
     }
     if let Some(m) = r.max.as_mut() {
-        ui.add(egui::DragValue::new(m).speed(speed));
+        ui.add(crate::widgets::Num::new(m));
     }
 }
 

@@ -1894,8 +1894,7 @@ fn lead_stop_settings(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
         ui.label(tr("Before the first element (automatic)"));
         ui.label(tr("Gap"));
         ui.add(
-            egui::DragValue::new(&mut combo.stop_gap)
-                .speed(0.05)
+            crate::widgets::Num::new(&mut combo.stop_gap)
                 .range(0.0..=1e5)
                 .suffix(" mm")
                 .max_decimals(4),
@@ -2090,7 +2089,8 @@ fn insert(combo: &mut Combo, view: &mut View, p: Pick) {
 }
 
 /// キーボード: [ ] で要素を選ぶ、← → で光軸に沿って動かす（寸法を選んでいればその間隔）、↑ ↓ で偏心、
-/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Ctrl+L でロック（表と同じ）、Esc でやめる。Ctrl で 10 倍、Alt で 1/10
+/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Ctrl+L でロック（表と同じ）、Esc でやめる。刻みは表と同じ。
+/// 寸法を選んで数を打てば書き換えを始める（表のセルと同じ）
 fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
     let n = combo.len();
     // 経路に沿った要素（ロックしていない）。ロックは中身だけを止め、動かすのはできる
@@ -2109,14 +2109,11 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
             })
             .collect()
     });
+    figure::type_to_edit(ui, combo, view);
     for (key, m) in ev {
-        let step = if m.command {
-            1.0
-        } else if m.alt {
-            0.01
-        } else {
-            0.1
-        };
+        // 刻みは表と同じ（widgets::num::key_step）。Shift は傾きに使う所では刻みに数えない
+        let step = crate::widgets::num::key_step(m, false);
+        let fine = crate::widgets::num::key_step(Modifiers { shift: false, ..m }, false);
         match key {
             Key::OpenBracket if n > 0 => {
                 view.set_sel(Some(view.sel.map(|k| (k + n - 1) % n).unwrap_or(n - 1)));
@@ -2133,6 +2130,13 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
             Key::Enter | Key::F2 => {
                 if let Some(g) = view.dim {
                     view.start_edit(combo, g);
+                }
+            }
+            // PageUp/PageDown は選んだ寸法を矢印の 10 倍で増減する（表と同じ）
+            Key::PageUp | Key::PageDown if view.dim.is_some() => {
+                let d = crate::widgets::num::PAGE * if key == Key::PageUp { step } else { -step };
+                if let Some(v) = view.dim.and_then(|g| gap_mut(combo, g)) {
+                    *v = (*v + d).max(0.0);
                 }
             }
             // 3D 表示では矢印キーは図を回す（view3d）
@@ -2162,11 +2166,9 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     // 動かし、もう一方で偏心（Shift で傾き）
                     let (a, n) = view.along_key(k, dv);
                     if a != 0.0 {
-                        if !m.shift {
-                            combo.shift(k, step * a.signum() as f64);
-                        }
+                        combo.shift(k, step * a.signum() as f64);
                     } else {
-                        let d = step * n.signum() as f64;
+                        let d = fine * n.signum() as f64;
                         let st = combo.active_state().map(str::to_string);
                         let Some(p) = combo.el_mut(k) else { continue };
                         if m.shift {
@@ -2275,12 +2277,12 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
     let path = p.path.clone();
     for (i, g) in p.zmx_mut().zgroups.iter_mut().enumerate() {
         ui.add(
-            egui::DragValue::new(&mut g.from)
+            crate::widgets::Num::new(&mut g.from)
                 .range(1..=9999)
                 .prefix(tr("Surface ")),
         );
         ui.label("〜");
-        ui.add(egui::DragValue::new(&mut g.to).range(1..=9999));
+        ui.add(crate::widgets::Num::new(&mut g.to).range(1..=9999));
         ui.add(
             egui::TextEdit::singleline(&mut g.name)
                 .hint_text(tr("Name"))
@@ -2355,8 +2357,7 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) 
             .unwrap_or(d.shift);
         let mut x = cur;
         ui.add(
-            egui::DragValue::new(&mut x)
-                .speed(0.05)
+            crate::widgets::Num::new(&mut x)
                 .max_decimals(4)
                 .prefix(tr("Shift "))
                 .suffix(" mm"),
@@ -2554,8 +2555,7 @@ fn num_in(ui: &mut Ui, label: &str, v: &mut f64, unit: &str, min: f64) {
     let weak = theme::weak_text(ui.visuals());
     ui.label(RichText::new(label).color(weak));
     ui.add(
-        egui::DragValue::new(v)
-            .speed(0.05)
+        crate::widgets::Num::new(v)
             .max_decimals(4)
             .range(min..=f64::INFINITY)
             .suffix(unit),
@@ -2617,10 +2617,10 @@ fn kind_fields(
         }
         ElemKind::ZmxRange => {
             ui.label(RichText::new(tr("Surface")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.zmx_mut().range[0]).range(0..=9999))
+            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().range[0]).range(0..=9999))
                 .on_hover_text(tr("First surface to import (0 is surface 1)"));
             ui.label("〜");
-            ui.add(egui::DragValue::new(&mut p.zmx_mut().range[1]).range(0..=9999))
+            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().range[1]).range(0..=9999))
                 .on_hover_text(tr("Last surface to import (0 is the one before the image)"));
             ui.label(RichText::new(tr("Config")).color(weak));
             let mut cfg = p.config_in(st);
@@ -2629,7 +2629,7 @@ fn kind_fields(
                 None => tr("Multi-configuration number of the .zmx").to_string(),
             };
             if ui
-                .add(egui::DragValue::new(&mut cfg).range(1..=999))
+                .add(crate::widgets::Num::new(&mut cfg).range(1..=999))
                 .on_hover_text(hint)
                 .changed()
             {
@@ -2764,24 +2764,21 @@ fn kind_fields(
             match mode {
                 BsSplit::Ratio => {
                     ui.add(
-                        egui::DragValue::new(&mut p.bs_mut().ratio)
+                        crate::widgets::Num::new(&mut p.bs_mut().ratio)
                             .range(0.0..=1.0)
-                            .speed(0.01)
                             .prefix("T "),
                     );
                 }
                 BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats),
                 BsSplit::Pbs => {
                     ui.add(
-                        egui::DragValue::new(&mut p.bs_mut().pbs[0])
+                        crate::widgets::Num::new(&mut p.bs_mut().pbs[0])
                             .range(0.0..=1.0)
-                            .speed(0.01)
                             .prefix("Tp "),
                     );
                     ui.add(
-                        egui::DragValue::new(&mut p.bs_mut().pbs[1])
+                        crate::widgets::Num::new(&mut p.bs_mut().pbs[1])
                             .range(0.0..=1.0)
-                            .speed(0.01)
                             .prefix("Ts "),
                     );
                 }
@@ -2797,9 +2794,9 @@ fn kind_fields(
         }
         ElemKind::Zmx => {
             ui.label(RichText::new(tr("Element no.")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.zmx_mut().lens).range(1..=999));
+            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().lens).range(1..=999));
             ui.label(RichText::new(tr("Config")).color(weak));
-            ui.add(egui::DragValue::new(&mut p.zmx_mut().config).range(1..=999))
+            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().config).range(1..=999))
                 .on_hover_text(tr(
                     "Which multi-configuration of the .zmx to take the lens from",
                 ));
@@ -2851,8 +2848,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             ui.label(RichText::new(tr("Gap")).color(weak));
             ui.label(RichText::new(name).strong());
             ui.add(
-                egui::DragValue::new(v)
-                    .speed(0.05)
+                crate::widgets::Num::new(v)
                     .range(0.0..=1e5)
                     .suffix(" mm")
                     .max_decimals(4),
@@ -2866,7 +2862,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             }
         }
         ui.label(
-            RichText::new(tr("← → also move it (Ctrl: 1 mm, Alt: 0.01 mm)"))
+            RichText::new(tr("← → also move it (Shift: 1 mm, Ctrl: 0.01 mm, PageUp/PageDown ×10), or type or drag its number"))
                 .small()
                 .color(weak),
         );
@@ -3033,8 +3029,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(*name).color(weak));
             ui.add(
-                egui::DragValue::new(&mut b.air)
-                    .speed(0.05)
+                crate::widgets::Num::new(&mut b.air)
                     .range(0.0..=1e5)
                     .max_decimals(4)
                     .prefix(format!("{} ", tr("air")))
@@ -3144,8 +3139,8 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
     };
     let before = is_cb(p);
     let (mut del, mut add) = (None, None);
-    let drag = |ui: &mut Ui, v: &mut f64, speed: f64| {
-        ui.add(egui::DragValue::new(v).speed(speed).max_decimals(6));
+    let drag = |ui: &mut Ui, v: &mut f64| {
+        ui.add(crate::widgets::Num::new(v).max_decimals(6));
     };
     ui.label(
         RichText::new(tr(
@@ -3221,11 +3216,10 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                             for (j, l) in ["A", "B", "C", "D"].into_iter().enumerate() {
                                 label(ui, l);
                                 ui.horizontal(|ui| {
-                                    drag(ui, &mut r.jones[2 * j], 0.01);
+                                    drag(ui, &mut r.jones[2 * j]);
                                     ui.label("+");
                                     ui.add(
-                                        egui::DragValue::new(&mut r.jones[2 * j + 1])
-                                            .speed(0.01)
+                                        crate::widgets::Num::new(&mut r.jones[2 * j + 1])
                                             .max_decimals(6)
                                             .suffix("i"),
                                     );
@@ -3235,41 +3229,38 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                         }
                         SurfKind::Polarizer => {
                             label(ui, tr("Transmission axis"));
-                            ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
+                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°"));
                             ui.end_row();
                             label(ui, tr("Extinction"));
                             ui.add(
-                                egui::DragValue::new(&mut r.extinction_ratio)
-                                    .speed(10.0)
+                                crate::widgets::Num::new(&mut r.extinction_ratio)
                                     .range(0.0..=f64::MAX),
                             )
                             .on_hover_text(tr("0 means infinite (blocks the orthogonal direction)"));
                             ui.end_row();
                             label(ui, tr("Transmittance"));
                             ui.add(
-                                egui::DragValue::new(&mut r.transmittance)
-                                    .speed(0.01)
+                                crate::widgets::Num::new(&mut r.transmittance)
                                     .range(0.0..=1.0),
                             );
                             ui.end_row();
                         }
                         SurfKind::Waveplate => {
                             label(ui, tr("Retardance"));
-                            ui.add(egui::DragValue::new(&mut r.retardance).speed(0.01).suffix(" λ"));
+                            ui.add(crate::widgets::Num::new(&mut r.retardance).suffix(" λ"));
                             ui.end_row();
                             label(ui, tr("Design wavelength"));
                             ui.add(
-                                egui::DragValue::new(&mut r.wavelength_um)
-                                    .speed(0.001)
+                                crate::widgets::Num::new(&mut r.wavelength_um)
                                     .range(0.01..=100.0)
                                     .suffix(" µm"),
                             );
                             ui.end_row();
                             label(ui, tr("Fast axis"));
-                            ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
+                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°"));
                             ui.end_row();
                             label(ui, tr("Order"));
-                            ui.add(egui::DragValue::new(&mut r.wp_order).speed(0.1));
+                            ui.add(crate::widgets::Num::new(&mut r.wp_order));
                             ui.end_row();
                             ui.label(RichText::new(tr("Birefringent material")).small().color(weak))
                                 .on_hover_text(tr("Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes"));
@@ -3277,8 +3268,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                                 ui.horizontal(|ui| {
                                     ui.add(egui::TextEdit::singleline(m).desired_width(80.0));
                                     ui.add(
-                                        egui::DragValue::new(t)
-                                            .speed(0.001)
+                                        crate::widgets::Num::new(t)
                                             .range(0.0..=100.0)
                                             .suffix(" mm"),
                                     )
@@ -3294,11 +3284,11 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                         SurfKind::Coordbrk => {
                             for (j, l) in ["dx", "dy", "tx", "ty", "tz"].into_iter().enumerate() {
                                 label(ui, l);
-                                drag(ui, &mut r.cb[j], 0.05);
+                                drag(ui, &mut r.cb[j]);
                                 ui.end_row();
                             }
                             label(ui, tr("Thickness"));
-                            drag(ui, &mut r.t, 0.05);
+                            drag(ui, &mut r.t);
                             ui.end_row();
                             let mut tf = r.order == 1;
                             label(ui, "");

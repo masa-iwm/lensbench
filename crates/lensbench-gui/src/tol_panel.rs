@@ -751,13 +751,13 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
 fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Trials"));
-        ui.add(egui::DragValue::new(&mut p.trials).range(0..=1_000_000));
+        ui.add(crate::widgets::Num::new(&mut p.trials).range(0..=1_000_000));
         ui.label(tr("Random seed"));
-        ui.add(egui::DragValue::new(&mut p.seed));
+        ui.add(crate::widgets::Num::new(&mut p.seed));
     });
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Compensator iterations"));
-        ui.add(egui::DragValue::new(&mut p.comp_iters).range(1..=200));
+        ui.add(crate::widgets::Num::new(&mut p.comp_iters).range(1..=200));
         ui.checkbox(
             &mut p.sensitivity,
             tr("Also compute sensitivities (each tolerance at its limits)"),
@@ -768,7 +768,7 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
         small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
         ui.label(tr("Threads"));
         ui.add(
-            egui::DragValue::new(&mut p.threads)
+            crate::widgets::Num::new(&mut p.threads)
                 .range(0..=256)
                 .custom_formatter(|v, _| {
                     if v < 0.5 {

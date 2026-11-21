@@ -1028,6 +1028,44 @@ fn interact(
     }
     // 移動・囲んで拡大のドラッグは要素を選ぶ・動かす役をしない
     let pan_drag = view.nav && (panning(ui, resp) || crate::widgets::box_zooming(ui, resp));
+    // 寸法の数字（Alt なら寸法線も）のドラッグはその間隔を増減する（表のセルの Alt+ドラッグと同じ量）
+    let dd = egui::Id::new("lensbench-dim-drag");
+    let dim_hit = h.num.or(h.dim.filter(|_| ui.input(|i| i.modifiers.alt)));
+    if let (true, false, Some(g), Some(c)) = (
+        resp.drag_started_by(egui::PointerButton::Primary),
+        pan_drag,
+        dim_hit,
+        combo.as_deref(),
+    ) {
+        if let Some(v) = super::gap_get(c, g) {
+            ui.data_mut(|d| d.insert_temp(dd, (g, v, 0.0_f32)));
+            view.dim = Some(g);
+            view.set_sel(None);
+        }
+    }
+    if let (Some((g, v0, dx)), Some(c)) = (
+        ui.data(|d| d.get_temp::<(usize, f64, f32)>(dd)),
+        combo.as_deref_mut(),
+    ) {
+        if resp.drag_stopped() || !resp.dragged() {
+            ui.data_mut(|d| d.remove::<(usize, f64, f32)>(dd));
+        } else {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            let m = resp.drag_delta();
+            let dx = dx
+                + (m.x - m.y)
+                    * if ui.input(|i| i.modifiers.shift) {
+                        0.1
+                    } else {
+                        1.0
+                    };
+            ui.data_mut(|d| d.insert_temp(dd, (g, v0, dx)));
+            if let Some(x) = super::gap_mut(c, g) {
+                *x = crate::widgets::num::drag_value(v0, dx, false).max(0.0);
+            }
+        }
+        return;
+    }
     if resp.drag_started_by(egui::PointerButton::Primary) && !pan_drag {
         if let Some(k) = h.el {
             view.set_sel(Some(k));
@@ -1089,8 +1127,9 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
                     .margin(egui::Margin::symmetric(4, 2)),
             );
             if !*focused || te.gained_focus() {
-                // 全選択（打てば今の数字が置き換わる。表のセルと同じ）
-                crate::widgets::cell::start(ui, &te, text, true);
+                // 全選択（打てば今の数字が置き換わる。表のセルと同じ）。打ち込みで始めたら後ろにカーソル
+                let typed = ui.data_mut(|d| d.remove_temp::<bool>(te_id.with("typed")));
+                crate::widgets::cell::start(ui, &te, text, typed != Some(true));
                 *focused = true;
             } else if te.lost_focus() {
                 let (esc, enter) =
@@ -1195,3 +1234,26 @@ pub(super) fn inside(poly: &[Pos2], p: Pos2) -> bool {
 #[cfg(test)]
 #[path = "figure_tests.rs"]
 mod tests;
+
+/// 寸法を選んでいるときに数を打てば、その字から書き換えを始める（表のセルと同じ。後ろにカーソル）
+pub(super) fn type_to_edit(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
+    if let (Some(g), None) = (view.dim, view.edit.as_ref()) {
+        let t: String = ui.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Text(t) => Some(t.as_str()),
+                    _ => None,
+                })
+                .collect()
+        });
+        if !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || ".,".contains(c)) {
+            view.start_edit(combo, g);
+            if let Some(e) = view.edit.as_mut() {
+                e.1 = t;
+            }
+            let id = egui::Id::new(("lensbench-dim-edit", g)).with("typed");
+            ui.data_mut(|d| d.insert_temp(id, true));
+        }
+    }
+}

@@ -819,12 +819,11 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                     });
                 ui.horizontal(|ui| {
                     ui.label(tr("Surface"));
-                    ui.add(egui::DragValue::new(&mut m.face).range(0..=99))
+                    ui.add(crate::widgets::Num::new(&mut m.face).range(0..=99))
                         .on_hover_text(tr("Which surface of the element to place at (0-based)"));
                     ui.label("z");
                     ui.add(
-                        egui::DragValue::new(&mut m.offset[2])
-                            .speed(0.1)
+                        crate::widgets::Num::new(&mut m.offset[2])
                             .suffix(" mm"),
                     )
                     .on_hover_text(tr("Offset from the placement surface along the light direction"));
@@ -1236,9 +1235,9 @@ impl Browser {
             ui.selectable_value(&mut q.pieces, 3, "3+");
         });
         ui.horizontal_wrapped(|ui| {
-            range_ui(ui, tr("Focal length [mm]"), &mut q.efl, (10.0, 100.0), 1.0);
+            range_ui(ui, tr("Focal length [mm]"), &mut q.efl, (10.0, 100.0));
             ui.separator();
-            range_ui(ui, tr("Diameter [mm]"), &mut q.diameter, (5.0, 25.4), 0.5);
+            range_ui(ui, tr("Diameter [mm]"), &mut q.diameter, (5.0, 25.4));
             ui.separator();
             ui.label(tr("Specs"));
             let r = ui.add(
@@ -1666,8 +1665,7 @@ impl Browser {
                                     let air = p.air_mut(st);
                                     ui.add_enabled(
                                         !fixed,
-                                        egui::DragValue::new(air)
-                                            .speed(0.1)
+                                        crate::widgets::Num::new(air)
                                             .range(0.0..=f64::INFINITY)
                                             .suffix(" mm"),
                                     );
@@ -1752,9 +1750,9 @@ impl Browser {
                 });
         });
         ui.horizontal_wrapped(|ui| {
-            range_ui(ui, "nd", &mut q.nd, (1.5, 1.8), 0.001);
+            range_ui(ui, "nd", &mut q.nd, (1.5, 1.8));
             ui.separator();
-            range_ui(ui, "νd", &mut q.vd, (30.0, 60.0), 0.1);
+            range_ui(ui, "νd", &mut q.vd, (30.0, 60.0));
         });
         let idx = self.glass_idx();
         let picked = self.glass_sel.and_then(|i| self.glasses.get(i));

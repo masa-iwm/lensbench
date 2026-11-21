@@ -982,17 +982,17 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
     });
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Rings"));
-        ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
+        ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20));
         ui.label(tr("Iterations per set"));
-        ui.add(egui::DragValue::new(&mut p.iters).range(1..=1000));
+        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=1000));
     });
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Target focal length"));
         small_edit(ui, &mut p.efl, 60.0, tr("Off"));
         ui.label(tr("Max sets"));
-        ui.add(egui::DragValue::new(&mut p.max_count).range(1..=10_000_000));
+        ui.add(crate::widgets::Num::new(&mut p.max_count).range(1..=10_000_000));
         ui.label(tr("Table rows"));
-        ui.add(egui::DragValue::new(&mut p.top).range(0..=10_000))
+        ui.add(crate::widgets::Num::new(&mut p.top).range(0..=10_000))
             .on_hover_text(tr("0 = all"));
     });
     ui.horizontal_wrapped(|ui| {
@@ -1017,9 +1017,9 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
             ));
         ui.add_enabled_ui(p.pre, |ui| {
             ui.label(tr("Rings"));
-            ui.add(egui::DragValue::new(&mut p.pre_rings).range(1..=20));
+            ui.add(crate::widgets::Num::new(&mut p.pre_rings).range(1..=20));
             ui.label(tr("Keep"));
-            ui.add(egui::DragValue::new(&mut p.pre_keep).range(1..=10_000_000));
+            ui.add(crate::widgets::Num::new(&mut p.pre_keep).range(1..=10_000_000));
         });
     });
     // ビーム探索と粗いふるいは同時に使えない（片方を入れたらもう片方を外す）
@@ -1036,9 +1036,9 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         }
         ui.add_enabled_ui(p.beam, |ui| {
             ui.label(tr("Keep"));
-            ui.add(egui::DragValue::new(&mut p.beam_width).range(1..=100_000));
+            ui.add(crate::widgets::Num::new(&mut p.beam_width).range(1..=100_000));
             ui.label(tr("Passes"));
-            ui.add(egui::DragValue::new(&mut p.beam_passes).range(1..=100));
+            ui.add(crate::widgets::Num::new(&mut p.beam_passes).range(1..=100));
         });
     });
     if p.pre {

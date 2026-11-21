@@ -18,6 +18,7 @@ use std::ops::RangeInclusive;
 use egui::{Key, RichText, Sense, Ui};
 use egui_extras::{Column, TableBuilder};
 
+pub(crate) use super::num::{drag_value, nudge};
 use crate::i18n::{tr, trf};
 
 /// セルの値の種類（書き方・描き方・ドラッグ）
@@ -967,31 +968,6 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
     }
 }
 
-/// ドラッグした距離 dx [点] での値。1 点で今の値の桁の 1/100（0 は 0.01）、整数は 10 点で 1
-pub(crate) fn drag_value(start: f64, dx: f32, int: bool) -> f64 {
-    if int {
-        return (start + (dx as f64) * 0.1).round().max(0.0);
-    }
-    let a = start.abs();
-    let step = if a > 0.0 {
-        10f64.powf(a.log10().floor() - 2.0)
-    } else {
-        0.01
-    };
-    let v = start + dx as f64 * step;
-    // 刻みの桁で丸める（浮動小数の端数を残さない）
-    let d = (-step.log10().round()).max(0.0) as usize;
-    format!("{v:.d$}").parse().unwrap_or(v)
-}
-
-/// Alt+↑↓ の値（d を足し、浮動小数の端数を丸める。整数は 0 以上）
-pub(crate) fn nudge(x: f64, d: f64, int: bool) -> f64 {
-    if int {
-        return (x + d).round().max(0.0);
-    }
-    ((x + d) * 1e9).round() / 1e9
-}
-
 /// キー（表をクリックした後、書き換え中でないとき）。Tab を使ったら true
 fn keys(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -> bool {
     let tab = keys_inner(ui, st, sh, out);
@@ -1025,9 +1001,11 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
         let insert = i.events.iter().any(|e| {
             matches!(e, egui::Event::Key { key: Key::Insert, pressed: true, modifiers, .. } if !modifiers.shift)
         });
+        // PageUp/PageDown は Alt+↑↓ の 10 倍（数を増減する）
+        let (pg_up, pg_dn) = (i.key_pressed(Key::PageUp), i.key_pressed(Key::PageDown));
         Keys {
-            up: i.key_pressed(Key::ArrowUp),
-            down: i.key_pressed(Key::ArrowDown),
+            up: i.key_pressed(Key::ArrowUp) || pg_up,
+            down: i.key_pressed(Key::ArrowDown) || pg_dn,
             left: i.key_pressed(Key::ArrowLeft),
             right: i.key_pressed(Key::ArrowRight),
             tab: i.key_pressed(Key::Tab),
@@ -1042,7 +1020,8 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
             esc: i.key_pressed(Key::Escape),
             shift: mods.shift,
             command: mods.command,
-            alt: mods.alt,
+            alt: mods.alt || pg_up || pg_dn,
+            page: pg_up || pg_dn,
             ctrl: mods.ctrl,
             typed,
             copy,
@@ -1093,7 +1072,7 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
         return ev.tab;
     }
     // Ctrl+Shift+↑↓: 選んだ行を上下へ動かす
-    if ev.command && ev.shift && (ev.up || ev.down) {
+    if ev.command && ev.shift && !ev.page && (ev.up || ev.down) {
         out.shift = st.op_rows(n, m).map(|s| (s, if ev.up { -1 } else { 1 }));
         return ev.tab;
     }
@@ -1105,17 +1084,19 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
         out.remove = st.op_rows(n, m);
         return ev.tab;
     }
-    // Alt+↑↓: 数を 1 ずつ増減（Shift で 10、Ctrl で 0.1。多重構成の表と同じ）
+    // Alt+↑↓・PageUp/PageDown: 数を増減（刻みは widgets::num::key_step）
     if ev.alt && (ev.up || ev.down) {
         let cell = sh.cell(r, c);
         if let (Kind::Num { int }, None) = (&cell.kind, &cell.ro) {
-            let d = if ev.shift {
-                10.0
-            } else if ev.ctrl && !*int {
-                0.1
-            } else {
-                1.0
-            };
+            let d = super::num::key_step(
+                egui::Modifiers {
+                    shift: ev.shift,
+                    ctrl: ev.ctrl || ev.command,
+                    ..Default::default()
+                },
+                *int,
+            );
+            let d = if ev.page { d * super::num::PAGE } else { d };
             let x = cell.text.trim().parse::<f64>().unwrap_or(0.0);
             let v = nudge(x, if ev.up { d } else { -d }, *int);
             out.set.push((r, c, crate::json_view::fmt_num(v)));
@@ -1180,6 +1161,8 @@ fn keys_inner(ui: &mut Ui, st: &mut SheetState, sh: &dyn Sheet, out: &mut Out) -
 }
 
 struct Keys {
+    /// PageUp/PageDown（up・down・alt も立てる）
+    page: bool,
     up: bool,
     down: bool,
     left: bool,

@@ -1066,7 +1066,7 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, vals: bool, weak: egui::Co
     if p.merit != "none" {
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Rings"));
-            ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
+            ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20));
             ui.label(tr("Reference"));
             for (k, l) in [("centroid", tr("Centroid")), ("chief", tr("Chief ray"))] {
                 ui.selectable_value(&mut p.reference, k.to_string(), l);
@@ -1187,13 +1187,13 @@ pub(crate) fn terms_ui(
 
 /// 表の使い方（表の下の一言）
 pub(crate) const SHEET_KEYS: &str = n_(
-    "Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.",
+    "Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number, Alt+↑↓ or PageUp/PageDown changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.",
 );
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Max iterations"));
-        ui.add(egui::DragValue::new(&mut p.iters).range(1..=10000));
+        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=10000));
         ui.label(tr("Derivatives"));
         for (k, l) in [
             ("auto", tr("Analytic (where possible)")),
@@ -1215,9 +1215,8 @@ fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
         ui.label(tr("Gradient stop"))
             .on_hover_text(tr("Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)"));
         ui.add(
-            egui::DragValue::new(&mut p.gtol)
+            crate::widgets::Num::new(&mut p.gtol)
                 .range(0.0..=1.0)
-                .speed(1e-4)
                 .max_decimals(8),
         );
     });

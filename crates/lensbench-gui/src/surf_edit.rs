@@ -124,8 +124,7 @@ pub(crate) fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
                 for (i, a) in axis.iter_mut().enumerate() {
                     changed |= ui
                         .add(
-                            egui::DragValue::new(a)
-                                .speed(0.01)
+                            crate::widgets::Num::new(a)
                                 .max_decimals(6)
                                 .prefix(["x ", "y ", "z "][i]),
                         )

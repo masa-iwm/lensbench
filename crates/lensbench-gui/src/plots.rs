@@ -258,8 +258,7 @@ pub(crate) fn spot(
                 .color(theme::weak_text(&vis)),
         );
         ui.add(
-            egui::DragValue::new(&mut st.spot_bar)
-                .speed(1.0)
+            crate::widgets::Num::new(&mut st.spot_bar)
                 .range(0.0..=1e6)
                 .custom_formatter(|v, _| {
                     if v <= 0.0 {

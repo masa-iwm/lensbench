@@ -215,14 +215,14 @@ fn delete_insert_remove() {
     assert_eq!(b.rows.0[2][0], "v2");
 }
 
-/// Alt+↑↓ で数を 1 ずつ（Shift で 10）
+/// Alt+↑↓ で数を 0.1 ずつ（Shift で 1）、PageUp/PageDown はその 10 倍
 #[test]
 fn alt_arrows_nudge() {
     let mut b = Bench::new(2);
     b.frame(vec![]);
     b.click(b.cell_pos(0, "Value"));
     b.key_mods(Key::ArrowUp, Modifiers::ALT);
-    assert_eq!(b.rows.0[0][1], "1.5");
+    assert_eq!(b.rows.0[0][1], "0.6");
     b.key_mods(
         Key::ArrowDown,
         Modifiers {
@@ -231,7 +231,21 @@ fn alt_arrows_nudge() {
             ..Default::default()
         },
     );
-    assert_eq!(b.rows.0[0][1], "-8.5");
+    assert_eq!(b.rows.0[0][1], "-0.4");
+    b.key_mods(Key::PageUp, Modifiers::NONE);
+    assert_eq!(b.rows.0[0][1], "0.6");
+    b.key_mods(Key::PageDown, Modifiers::COMMAND);
+    assert_eq!(b.rows.0[0][1], "0.5");
+    // Ctrl+Shift+PageUp は行の移動にならず、Shift が勝って 10
+    b.key_mods(
+        Key::PageUp,
+        Modifiers {
+            command: true,
+            shift: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(b.rows.0[0][1], "10.5");
     assert_eq!(b.st.cur(), Some((0, 1)));
 }
 

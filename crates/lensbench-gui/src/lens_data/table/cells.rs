@@ -343,9 +343,15 @@ fn value_cell(
     let r = &c.rows[j];
     let fold = v.folded(j);
     let blk = v.child_of(j).filter(|&i| Some(i) != v.scope);
-    let text = col.text(r);
     let is_cur = st.cur == Some((j, col));
     let ro = v.cell_ro(c, j, col);
+    // Alt+ドラッグで数を増減（共通の表と同じ量、widgets::num::drag_value）。離したときに 1 回で決める
+    let dd = egui::Id::new(("ld_num_drag", j, format!("{col:?}")));
+    let drag = ui.data(|d| d.get_temp::<(f64, f32)>(dd));
+    let text = match drag {
+        Some((x0, dx)) => crate::json_view::fmt_num(crate::widgets::num::drag_value(x0, dx, false)),
+        None => col.text(r),
+    };
     let mut rt = RichText::new(&text);
     if col.numeric() {
         rt = rt.monospace();
@@ -365,7 +371,20 @@ fn value_cell(
     // セル全体でクリックを受ける（文字の外の空いたところでも、このセルを選ぶ）。文字のラベルは
     // クリックを取らない（取ると、文字の上と外で選ばれるセルが変わる）
     let cell_rect = ui.max_rect();
-    let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), Sense::click());
+    let draggable = col.numeric() && ro.is_none();
+    let sense = if draggable {
+        Sense::click_and_drag()
+    } else {
+        Sense::click()
+    };
+    let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), sense);
+    num_drag(ui, &resp, dd, draggable, &text, drag);
+    if let (true, Some((x0, dx))) = (resp.drag_stopped(), drag) {
+        let x = crate::widgets::num::drag_value(x0, dx, false);
+        out.acts
+            .extend(commit_act(r, j, col, &crate::json_view::fmt_num(x)));
+        ui.data_mut(|d| d.remove::<(f64, f32)>(dd));
+    }
     // AccessKit の木に名前（面の番号と列）と値を出す（読み上げ・画面の試験がセルを文言で探せる）
     resp.widget_info(|| {
         let mut w = egui::WidgetInfo::labeled(
@@ -567,5 +586,33 @@ pub(super) fn row_end(
         if let (true, Some((i, _))) = (rr.double_clicked(), fold) {
             out.open_or_enter(c, v.tree, i);
         }
+    }
+}
+
+/// 数のセルの Alt+ドラッグ: 始めた値と動かした量（点、Shift で 1/10）を egui の一時の記憶に置く
+fn num_drag(
+    ui: &Ui,
+    resp: &egui::Response,
+    dd: egui::Id,
+    on: bool,
+    text: &str,
+    drag: Option<(f64, f32)>,
+) {
+    let alt = ui.input(|i| i.modifiers.alt);
+    if on && (drag.is_some() || (alt && resp.hovered())) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if on && alt && resp.drag_started() {
+        if let Ok(x) = text.trim().parse::<f64>() {
+            ui.data_mut(|d| d.insert_temp(dd, (x, 0.0_f32)));
+        }
+    } else if let (Some((x0, dx)), true) = (drag, resp.dragged()) {
+        let k = if ui.input(|i| i.modifiers.shift) {
+            0.1
+        } else {
+            1.0
+        };
+        let dx = dx + resp.drag_delta().x * k;
+        ui.data_mut(|d| d.insert_temp(dd, (x0, dx)));
     }
 }

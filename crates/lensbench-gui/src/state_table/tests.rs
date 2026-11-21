@@ -519,7 +519,7 @@ fn sheet_keys_reach_state_values() {
         egui::Modifiers::ALT,
     );
     frame(&mut c, &mut view, vec![], Default::default());
-    assert_eq!(c.picks[0].air_in(Some("A")), 8.0);
+    assert_eq!(c.picks[0].air_in(Some("A")), 7.1);
 }
 
 /// 別の行からのピックアップ（OpticStudio の構成のピックアップの行）: 同じ構成の同じ要素の行・組合せの行（系の値）を元にでき、

@@ -102,7 +102,7 @@ impl SysForm {
 }
 
 /// 数の欄。ドラッグ中・入力中は busy に
-fn drag(ui: &mut Ui, dv: egui::DragValue, busy: &mut bool) {
+fn drag(ui: &mut Ui, dv: crate::widgets::Num, busy: &mut bool) {
     let r = ui.add(dv);
     *busy |= r.dragged() || r.has_focus();
 }
@@ -135,8 +135,7 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                 ui.label(f.aperture.label());
                 drag(
                     ui,
-                    egui::DragValue::new(&mut f.ap_value)
-                        .speed(0.01)
+                    crate::widgets::Num::new(&mut f.ap_value)
                         .range(1e-6..=1e6)
                         .max_decimals(6)
                         .suffix(f.aperture.unit()),
@@ -147,8 +146,7 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                 ui.label(tr("Entrance pupil diameter [mm]"));
                 drag(
                     ui,
-                    egui::DragValue::new(&mut f.epd)
-                        .speed(0.1)
+                    crate::widgets::Num::new(&mut f.epd)
                         .range(1e-3..=1e4)
                         .max_decimals(4),
                     &mut busy,
@@ -217,8 +215,7 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
         ui.label(RichText::new(tr("Temperature")).color(weak));
         drag(
             ui,
-            egui::DragValue::new(&mut f.env.temperature_c)
-                .speed(0.1)
+            crate::widgets::Num::new(&mut f.env.temperature_c)
                 .range(-273.15..=1e4)
                 .suffix(" °C"),
             &mut busy,
@@ -226,8 +223,7 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
         ui.label(RichText::new(tr("Pressure")).color(weak));
         drag(
             ui,
-            egui::DragValue::new(&mut f.env.pressure_atm)
-                .speed(0.01)
+            crate::widgets::Num::new(&mut f.env.pressure_atm)
                 .range(0.0..=1e3)
                 .suffix(" atm"),
             &mut busy,

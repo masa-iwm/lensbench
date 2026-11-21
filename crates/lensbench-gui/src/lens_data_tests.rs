@@ -1073,3 +1073,44 @@ fn ui_material_list_selects_the_current_glass_after_the_catalog_arrives() {
     let m = e.choices.as_ref().unwrap().4.clone();
     assert_eq!(m[e.pick].0, "F2", "{m:?}");
 }
+
+/// Alt+↑↓・PageUp/PageDown で今のセルの数を増減する（共通の表と同じ刻み: 0.1、Shift 1、Ctrl 0.01、
+/// PageUp/PageDown は 10 倍）。今のセルは動かない
+#[test]
+fn ui_alt_arrows_and_page_keys_nudge_a_number() {
+    let rows = sample_rows();
+    let t = |frames: Vec<Vec<egui::Event>>| {
+        let mut st = LensData {
+            active: true,
+            cur: Some((2, Col::T)),
+            ..Default::default()
+        };
+        let acts = drive(&mut st, &rows, frames);
+        let v = acts.iter().find_map(|a| match a {
+            Act::Edit {
+                j: 2,
+                col: Col::T,
+                value,
+            } => value.as_f64(),
+            _ => None,
+        });
+        (v, st.cur)
+    };
+    let alt = egui::Modifiers::ALT;
+    let shift = egui::Modifiers::SHIFT;
+    let at = Some((2, Col::T));
+    assert_eq!(
+        t(vec![vec![key_mod(egui::Key::ArrowUp, alt)]]),
+        (Some(3.1), at)
+    );
+    assert_eq!(
+        t(vec![vec![key_mod(egui::Key::ArrowDown, alt | shift)]]),
+        (Some(2.0), at)
+    );
+    assert_eq!(t(vec![vec![key(egui::Key::PageUp)]]), (Some(4.0), at));
+    let ctrl = egui::Modifiers::COMMAND;
+    assert_eq!(
+        t(vec![vec![key_mod(egui::Key::PageDown, ctrl)]]),
+        (Some(2.9), at)
+    );
+}

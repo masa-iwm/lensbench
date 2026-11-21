@@ -188,7 +188,7 @@ Ghosts	ゴースト
 Element from .zmx	.zmx のレンズ
 {} → {}	{} → {}
 {} → image	{} → 像面
-← → also move it (Ctrl: 1 mm, Alt: 0.01 mm)	← → でも動かせます（Ctrl で 1 mm、Alt で 0.01 mm）
+← → also move it (Shift: 1 mm, Ctrl: 0.01 mm, PageUp/PageDown ×10), or type or drag its number	← → でも動かせます（Shift で 1 mm、Ctrl で 0.01 mm、PageUp/PageDown は 10 倍）。数を打つか数字のドラッグでも変えられます
 ▶ Build system	▶ システムを作る
 Double-click a row in the catalog panel, or drag it onto the layout	カタログのパネルで行をダブルクリック、またはレイアウト図へドラッグ
 Catalog element	カタログのレンズ
@@ -1412,7 +1412,9 @@ Save and close	保存して閉じる
 Close without saving	保存しないで閉じる
 Decenter (Shift: tilt)	偏心（Shift でチルト）
 Undo ({}): {}	元に戻す（{}）: {}
-Move along the axis (the selected gap if a dimension is selected). Ctrl ×10, Alt ×1/10	光軸に沿って動かします（寸法を選択していればその間隔）。Ctrl で 10 倍、Alt で 1/10
+Move along the axis (the selected gap if a dimension is selected): 0.1, Shift 1, Ctrl 0.01	光軸に沿って動かします（寸法を選択していればその間隔）。0.1、Shift で 1、Ctrl で 0.01
+Type a number to edit the selected dimension, drag its number to change it (Alt+drag on the line too), PageUp/PageDown ×10	寸法を選んで数を打てば書き換え、数字のドラッグで増減（線の上は Alt+ドラッグ）、PageUp/PageDown は 10 倍
+Dimension	寸法
 Copy full text	全文をコピー
 Collapse all (blocks on one row)	全部折りたたむ（ブロックを 1 行に）
 Expand all (show every surface)	全部展開（面を全部見せる）
@@ -1594,7 +1596,8 @@ Parameter	パラメータ
 No distribution {}	分布 {} はありません
 This state is not used	この状態は使いません
 Tables (optimization, tolerance, swap, zoom)	表（最適化・公差・差し替え探索・ズーム）
-Change a number (also the grip at the right of the cell). Alt+↑ ↓: Shift ×10, Ctrl ×1/10	数を増減（セルの右端のつまみでも）。Alt+↑ ↓ は Shift で 10 倍、Ctrl で 1/10
+Change a number (also the grip at the right of the cell). Alt+↑ ↓: 0.1, Shift 1, Ctrl 0.01; PageUp/PageDown ×10	数を増減（セルの右端のつまみでも）。Alt+↑ ↓ は 0.1、Shift で 1、Ctrl で 0.01、PageUp/PageDown はその 10 倍
+Change a number (Alt+↑ ↓: 0.1, Shift 1, Ctrl 0.01; PageUp/PageDown ×10)	数を増減（Alt+↑ ↓ は 0.1、Shift で 1、Ctrl で 0.01、PageUp/PageDown はその 10 倍）
 Insert a row	行を挿入
 Delete the selected rows	選んだ行を削除
 Duplicate row	行を複製
@@ -1657,7 +1660,7 @@ Rename {}	{} の名前を変える
 The element is locked	要素はロックされています
 {} is not one of {}	{} は {} のどれでもありません
 Largest − smallest value of term (a term with a single value, e.g. {"type": "thickness", "surf": 1, "to": 5}) over all the configurations − target (with max like ZTHI)	term（1 つの値の項。例 {"type": "thickness", "surf": 1, "to": 5}）のすべての構成での値の最大 − 最小 − 目標（max で ZTHI 相当）
-Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number or Alt+↑↓ changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。ドラッグ・Shift+クリック・Shift+矢印で範囲を選び、行の番号・列の見出し・# で行全体・列全体・表全体を選ぶ。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓ で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
+Click a cell and type, or press Enter/F2 or double-click to edit; arrows and Tab move. Dragging, Shift+click or Shift+arrows select a range; the row numbers, column headings and # select whole rows, columns and the table. Alt+drag, the grip at the right of a number, Alt+↑↓ or PageUp/PageDown changes a number. Insert adds a row, Ctrl+D duplicates, Ctrl+Delete deletes; Ctrl+C/V copy and paste.	セルをクリックして打つか、Enter・F2・ダブルクリックで書き換え。矢印・Tab で移動。ドラッグ・Shift+クリック・Shift+矢印で範囲を選び、行の番号・列の見出し・# で行全体・列全体・表全体を選ぶ。数は Alt+ドラッグ、右端のつまみのドラッグ、Alt+↑↓・PageUp/PageDown で増減。Insert で行を挿入、Ctrl+D で複製、Ctrl+Delete で削除、Ctrl+C・V でコピー・貼り付け。
 Select all (Ctrl+A)	すべて選択（Ctrl+A）
 Comment row (like BLNK in OpticStudio); not part of the merit function	コメントの行（OpticStudio の BLNK）。メリットファンクションには入りません
 ▶ Show the parameter columns	▶ パラメータの列を表示

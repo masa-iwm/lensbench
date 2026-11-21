@@ -635,25 +635,13 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, w: &WavefrontOut, st: &mut FigState
             ));
         if f.on {
             ui.label(RichText::new(tr("Scale")).small());
-            ui.add(
-                egui::DragValue::new(&mut f.scale)
-                    .speed(0.05)
-                    .range(0.0..=10.0),
-            )
-            .on_hover_text(tr("Factor applied to the OPD (2 for double pass)"));
+            ui.add(crate::widgets::Num::new(&mut f.scale).range(0.0..=10.0))
+                .on_hover_text(tr("Factor applied to the OPD (2 for double pass)"));
             ui.label(RichText::new(tr("Tilt x")).small());
-            ui.add(
-                egui::DragValue::new(&mut f.xtilt)
-                    .speed(0.1)
-                    .range(-200.0..=200.0),
-            )
-            .on_hover_text(tr("Fringes across the pupil diameter"));
+            ui.add(crate::widgets::Num::new(&mut f.xtilt).range(-200.0..=200.0))
+                .on_hover_text(tr("Fringes across the pupil diameter"));
             ui.label(RichText::new(tr("Tilt y")).small());
-            ui.add(
-                egui::DragValue::new(&mut f.ytilt)
-                    .speed(0.1)
-                    .range(-200.0..=200.0),
-            );
+            ui.add(crate::widgets::Num::new(&mut f.ytilt).range(-200.0..=200.0));
         }
         ui.label(weak(
             ui,

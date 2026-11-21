@@ -375,7 +375,33 @@ fn drag_moves_along_axis() {
     assert!(f.view.drag0.is_none());
 }
 
-/// 図のキー: [ ] で選ぶ、矢印で動かす（Ctrl は 1、Alt は 0.01）、↑ で偏心・Shift+↑ で傾き、
+/// 寸法の数字のドラッグでその間隔だけ増減する（表のセルの Alt+ドラッグと同じ量）。要素は動かさない
+#[test]
+fn drag_dim_number_changes_gap() {
+    let mut f = Fig::new();
+    let v = gap_get(&f.combo, 0).unwrap();
+    let g = f.combo.stop_gap;
+    let p = f.dim_text(0);
+    f.frame(vec![egui::Event::PointerMoved(p)]);
+    f.frame(button(p, true));
+    for x in [10.0, 20.0, 30.0] {
+        f.frame(vec![egui::Event::PointerMoved(p + egui::vec2(x, 0.0))]);
+    }
+    f.frame(button(p + egui::vec2(30.0, 0.0), false));
+    let want = crate::widgets::num::drag_value(v, 30.0, false);
+    assert!(
+        close(gap_get(&f.combo, 0), want),
+        "{v} → {:?} ({want})",
+        gap_get(&f.combo, 0)
+    );
+    assert!(want > v);
+    assert_eq!(
+        (f.combo.stop_gap, f.view.dim, f.view.edit.is_none()),
+        (g, Some(0), true)
+    );
+}
+
+/// 図のキー: [ ] で選ぶ、矢印で動かす（刻みは表と同じ: 0.1、Shift 1、Ctrl 0.01）、↑ で偏心・Shift+↑ で傾き、
 /// 寸法は ← → で変える・Enter で書き換え、Ctrl+L・R・Delete
 #[test]
 fn figure_keys() {
@@ -395,10 +421,11 @@ fn figure_keys() {
     let g0 = gap_get(&f.combo, 0).unwrap();
     f.key(Key::ArrowRight, none);
     assert!(close(gap_get(&f.combo, 0), g0 + 0.1));
+    // 刻みは表と同じ: 素で 0.1、Shift で 1、Ctrl で 0.01
     f.key(Key::ArrowLeft, Modifiers::COMMAND);
-    assert!(close(gap_get(&f.combo, 0), g0 - 0.9));
-    f.key(Key::ArrowRight, Modifiers::ALT);
-    assert!(close(gap_get(&f.combo, 0), g0 - 0.89));
+    assert!(close(gap_get(&f.combo, 0), g0 + 0.09));
+    f.key(Key::ArrowRight, Modifiers::SHIFT);
+    assert!(close(gap_get(&f.combo, 0), g0 + 1.09));
     f.key(Key::ArrowUp, none);
     assert!((f.combo.picks[1].decenter[1] - 0.1).abs() < 1e-9);
     f.key(Key::ArrowUp, Modifiers::SHIFT);
@@ -420,8 +447,23 @@ fn figure_keys() {
     let v = gap_get(&f.combo, 1).unwrap();
     f.key(Key::ArrowRight, none);
     assert!(close(gap_get(&f.combo, 1), v + 0.1));
+    // PageUp/PageDown は矢印の 10 倍
+    f.key(Key::PageUp, Modifiers::SHIFT);
+    assert!(close(gap_get(&f.combo, 1), v + 10.1));
+    f.key(Key::PageDown, none);
+    assert!(close(gap_get(&f.combo, 1), v + 9.1));
     f.key(Key::Enter, none);
     assert_eq!(f.view.edit.as_ref().map(|e| e.0), Some(1));
+    f.frame(Vec::new());
+    f.key(Key::Escape, none);
+    f.frame(Vec::new());
+    assert!(f.view.edit.is_none());
+    // 寸法を選んで数を打てば、その字から書き換えが始まる（表のセルと同じ）
+    f.frame(vec![egui::Event::Text("7".into())]);
+    assert_eq!(
+        f.view.edit.as_ref().map(|e| (e.0, e.1.as_str())),
+        Some((1, "7"))
+    );
     f.frame(Vec::new());
     f.key(Key::Escape, none);
     f.frame(Vec::new());

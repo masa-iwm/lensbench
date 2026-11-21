@@ -656,8 +656,7 @@ impl form::Extra for ComboExtra<'_> {
             });
             // 欄の値（f）を変える。c を直接変えると後の apply_to で戻る
             ui.add(
-                egui::DragValue::new(&mut f.epd)
-                    .speed(0.1)
+                crate::widgets::Num::new(&mut f.epd)
                     .range(1e-3..=1e4)
                     .max_decimals(4),
             );
@@ -676,8 +675,7 @@ impl form::Extra for ComboExtra<'_> {
                     ui.label(tr("Before the first element (automatic)"));
                     ui.label(tr("Gap"));
                     ui.add(
-                        egui::DragValue::new(&mut c.stop_gap)
-                            .speed(0.1)
+                        crate::widgets::Num::new(&mut c.stop_gap)
                             .range(0.0..=1e5)
                             .suffix(" mm"),
                     );
@@ -739,8 +737,7 @@ impl form::Extra for ComboExtra<'_> {
             }
             if let Some(d) = c.object_distance.as_mut() {
                 ui.add(
-                    egui::DragValue::new(d)
-                        .speed(0.5)
+                    crate::widgets::Num::new(d)
                         .range(0.0..=1e9)
                         .max_decimals(4)
                         .suffix(" mm"),

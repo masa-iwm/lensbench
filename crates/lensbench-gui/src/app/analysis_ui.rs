@@ -171,8 +171,7 @@ impl Core {
                 ui.label(RichText::new(p).monospace());
                 match self.sys.param_vals.get(p).copied() {
                     Some(mut x) => {
-                        let step = (x.abs() * 1e-3).max(1e-3);
-                        let r = ui.add(egui::DragValue::new(&mut x).speed(step).max_decimals(8));
+                        let r = ui.add(crate::widgets::Num::new(&mut x).max_decimals(8));
                         if r.changed() {
                             self.msgs.push(Msg::SetParam(p.clone(), x));
                         }

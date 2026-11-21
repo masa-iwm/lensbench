@@ -591,3 +591,75 @@ fn zoom_tools_sit_bottom_right() {
         .iter()
         .all(|(_, b)| b.bottom() > 280.0 && b.right() <= r.right()));
 }
+
+/// パネルの数の欄（widgets::Num）: 書き換え中（フォーカスがある）だけ Alt+↑↓ で 0.1（Shift 1、Ctrl 0.01）、
+/// PageUp/PageDown は 10 倍。ポインタが上にあるだけでは取らない（キーの行き先は 1 つ）。ドラッグは今の値の桁の
+/// 1/100 ずつ（表のセルと同じ）
+#[test]
+fn num_field_keys_and_drag() {
+    let mut b = Bench::new();
+    let v = Cell::new(5.0_f64);
+    let other = Cell::new(1.0_f64);
+    let rect = Cell::new(Rect::NOTHING);
+    let rect_b = Cell::new(Rect::NOTHING);
+    let body = |ui: &mut Ui| {
+        // 先に描く欄 B（ポインタを載せるだけ）と、書き換える欄
+        let mut y = other.get();
+        rect_b.set(ui.add(super::Num::new(&mut y).range(0.0..=100.0)).rect);
+        other.set(y);
+        let mut x = v.get();
+        let r = ui.add(super::Num::new(&mut x).range(0.0..=100.0));
+        rect.set(r.rect);
+        v.set(x);
+    };
+    b.frame(Vec::new(), &body);
+    let at = rect.get().center();
+    let k = |key: Key, modifiers: Modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    // ポインタが上にあるだけでは取らない
+    b.frame(vec![Event::PointerMoved(at)], &body);
+    b.frame(vec![k(Key::ArrowUp, Modifiers::ALT)], &body);
+    b.frame(vec![k(Key::PageUp, Modifiers::NONE)], &body);
+    assert_eq!((v.get(), other.get()), (5.0, 1.0));
+    // クリックで書き換えを始める。ポインタは先に描く欄 B の上へ動かしても、変わるのは書き換え中の欄だけ
+    b.click(at, PointerButton::Primary, &body);
+    b.frame(vec![Event::PointerMoved(rect_b.get().center())], &body);
+    b.frame(vec![k(Key::ArrowUp, Modifiers::ALT)], &body);
+    assert!((v.get() - 5.1).abs() < 1e-9, "{}", v.get());
+    b.frame(
+        vec![k(Key::ArrowDown, Modifiers::ALT | Modifiers::SHIFT)],
+        &body,
+    );
+    assert!((v.get() - 4.1).abs() < 1e-9, "{}", v.get());
+    b.frame(vec![k(Key::PageUp, Modifiers::NONE)], &body);
+    assert!((v.get() - 5.1).abs() < 1e-9, "{}", v.get());
+    b.frame(vec![k(Key::PageDown, Modifiers::COMMAND)], &body);
+    assert!((v.get() - 5.0).abs() < 1e-9, "{}", v.get());
+    assert_eq!(other.get(), 1.0);
+    // 上限で止まる
+    v.set(99.95);
+    b.frame(vec![k(Key::PageUp, Modifiers::NONE)], &body);
+    assert_eq!(v.get(), 100.0);
+    b.frame(vec![k(Key::Escape, Modifiers::NONE)], &body);
+    // ドラッグ: 5 の桁は 1 なので 1 点で 0.01
+    v.set(5.0);
+    b.t += 1.0;
+    b.frame(vec![Event::PointerMoved(at)], &body);
+    let press = |pressed, pos| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    b.frame(vec![press(true, at)], &body);
+    for x in [10.0, 20.0] {
+        b.frame(vec![Event::PointerMoved(at + Vec2::new(x, 0.0))], &body);
+    }
+    b.frame(vec![press(false, at + Vec2::new(20.0, 0.0))], &body);
+    assert!((v.get() - 5.2).abs() < 0.011, "{}", v.get());
+}

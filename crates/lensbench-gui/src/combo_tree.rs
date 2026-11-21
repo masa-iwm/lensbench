@@ -610,7 +610,7 @@ pub(crate) fn lead_air_row(ui: &mut egui::Ui, c: &mut Combo) {
     };
     ui.label(tr("Air before the first element"));
     ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut t).speed(0.5).max_decimals(4).suffix(" mm"))
+        ui.add(crate::widgets::Num::new(&mut t).max_decimals(4).suffix(" mm"))
             .on_hover_text(tr(
                 "Air between the object and the first element (a returning mirror also passes it on the way back)",
             ));
