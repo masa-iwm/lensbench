@@ -507,7 +507,7 @@ impl Solid {
     }
 
     /// 後ろの面の周の向きの基準（大域の x・y の単位ベクトル）。軸を前の面の軸と同じ側へ向け、前の面の x を後ろの面に
-    /// 投げたものと軸 × x。前の面の局所 x・y の角度 t の縁の点と、後ろの面のこの基準の角度 t の縁の点を側面で結ぶ
+    /// 投げたものと軸 × x（前の面の座標系が左手系＝展開で鏡映したものなら −軸 × x）。前の面の局所 x・y の角度 t の縁の点と、後ろの面のこの基準の角度 t の縁の点を側面で結ぶ
     /// （面どうしが軸のまわりに回っていても側面がねじれない。STEP の側面・3D の網・2D の断面で同じ）
     pub fn back_basis(&self) -> (V3, V3) {
         let fx = col(&self.front.frame.r, 0);
@@ -516,7 +516,12 @@ impl Solid {
             ab = scale(ab, -1.0);
         }
         let bx = normalize(sub(fx, scale(ab, dot(ab, fx))));
-        (bx, cross(ab, bx))
+        // 展開の鏡映をかけた座標系は左手系（局所 y = −z × x）。前の面の局所 y と同じ側を向くよう、
+        // 手の向きを前の面の座標系に合わせる（合わせないと戻りの玉の断面が交差し、側面がねじれる）
+        let f = &self.front.frame.r;
+        let hand = dot(cross(col(f, 0), col(f, 1)), col(f, 2));
+        let by = cross(ab, bx);
+        (bx, if hand < 0.0 { scale(by, -1.0) } else { by })
     }
 
     /// 後ろの面の、[`Self::back_basis`] の向きの (c, s) の点（局所 x・y で c·bx + s·by）

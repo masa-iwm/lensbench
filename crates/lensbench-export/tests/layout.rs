@@ -24,12 +24,19 @@ fn zmx(name: &str) -> System {
 }
 
 fn project(name: &str) -> System {
-    lensbench_project::Project::load(format!("{ROOT}/examples/projects/{name}.json").as_ref())
+    project_with(name, |t| t)
+}
+
+/// 見本のプロジェクトの文を `edit` で書き換えてから組み立てる（相対パスは見本のフォルダから引く）
+fn project_with(name: &str, edit: impl FnOnce(String) -> String) -> System {
+    let path = format!("{ROOT}/examples/projects/{name}.json");
+    let txt = edit(std::fs::read_to_string(&path).unwrap());
+    lensbench_project::Project::from_json(&txt)
         .and_then(|q| {
             lensbench_project::expand(
                 &q,
                 &lensbench_project::Env::for_file(
-                    format!("{ROOT}/examples/projects/{name}.json").as_ref(),
+                    path.as_ref(),
                     &[format!("{ROOT}/tests/glass").into()],
                     None,
                 ),
@@ -796,4 +803,75 @@ fn solids_are_named_after_project_elements() {
     assert!(names[0].starts_with("front S"), "{names:?}");
     assert!(names[1].starts_with("L2 S"), "{names:?}");
     assert!(names[2].starts_with("fold S"), "{names:?}");
+}
+
+/// 折れ線を閉じた多角形（点の (z, y) へ投影）が自分自身と交差しないか（隣り合う辺どうしは見ない）
+fn simple_polygon(pts: &[V3]) -> bool {
+    let p: Vec<(f64, f64)> = pts.iter().map(|q| (q[2], q[1])).collect();
+    let n = p.len();
+    let cr = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| {
+        (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+    };
+    for i in 0..n {
+        let (a, b) = (p[i], p[(i + 1) % n]);
+        for j in i + 2..n {
+            if (j + 1) % n == i {
+                continue;
+            }
+            let (c, d) = (p[j], p[(j + 1) % n]);
+            let (d1, d2) = (cr(a, b, c), cr(a, b, d));
+            let (d3, d4) = (cr(c, d, a), cr(c, d, b));
+            if d1 * d2 < -1e-12 && d3 * d4 < -1e-12 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// ダブルパスの系の展開: 鏡で折り返した後（鏡映で左手系になった座標）の玉も、断面が交差しない玉の形になり、
+/// 往きの玉を鏡の面で鏡映した形になる
+#[test]
+fn unfolded_return_lens_keeps_its_shape() {
+    // P4 は球面の鏡、その鏡を傾けた平面鏡にしたもの（P12 と同じ形、P12 はカタログの玉なのでここでは組めない）、
+    // 折り曲げの鏡の後ろに玉がある P3
+    let tilted = |t: String| t.replace("\"radius\": -80,", "\"tilt\": [0.5, -0.3],");
+    let systems = [
+        ("P4_double_pass", project("P4_double_pass")),
+        ("P4 tilted flat", project_with("P4_double_pass", tilted)),
+        ("P3_fold", project("P3_fold")),
+    ];
+    for (name, s) in systems {
+        let opt = Options {
+            unfold: true,
+            ..Default::default()
+        };
+        let sc = scene::build(&s, &opt).unwrap();
+        let glass: Vec<_> = sc
+            .solids
+            .iter()
+            .filter(|x| x.kind == SolidKind::Glass)
+            .collect();
+        // ダブルパスは往きと戻りの 2 つ（展開では戻りの玉が鏡の後ろに別の場所に描かれる）
+        let want = if name.starts_with("P4") { 2 } else { 1 };
+        assert!(glass.len() >= want, "{name}: {} glass solids", glass.len());
+        for sd in &glass {
+            assert!(
+                simple_polygon(&scene::solid_section(sd, 24)),
+                "{name}: {} crosses itself",
+                sd.name
+            );
+            assert!(
+                simple_polygon(&scene::solid_section_xz(sd, 24)),
+                "{name}: {} (xz) crosses itself",
+                sd.name
+            );
+            // 前の面の縁 y = +r と、後ろの面の y = +r の点は同じ側（軸から同じ向き）
+            let r = sd.rim;
+            let (fp, bp) = (sd.front.point(0.0, r), sd.back_point(0.0, r));
+            let fy = col(&sd.front.frame.r, 1);
+            let side = |p: V3| dot(sub(p, sd.front.frame.o), fy);
+            assert!(side(fp) > 0.0 && side(bp) > 0.0, "{name}: {}", sd.name);
+        }
+    }
 }

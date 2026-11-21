@@ -147,6 +147,12 @@ pub(crate) struct Cam {
     pub zoom: f32,
     /// 画面の上でずらす量（場面の半径を 1 とした量）
     pub pan: Vec2,
+    /// 全体表示のときの向きで場面の箱を画面へ写した広がり（右・上の半分、場面の半径を 1 とした量）。
+    /// 全体表示（初め・ダブルクリック・Home）のときだけ決め、回す間は変えない（回しても縮尺が変わらないように）。
+    /// None なら次に描くときに今の向きで決める
+    pub fit: Option<[f32; 2]>,
+    /// `fit` を決めたときの場面の箱（系を直して箱が変わったら決め直す）
+    pub fit_half: [f32; 3],
 }
 
 impl Default for Cam {
@@ -157,6 +163,8 @@ impl Default for Cam {
             pitch: 0.35,
             zoom: 1.0,
             pan: Vec2::ZERO,
+            fit: None,
+            fit_half: [0.0; 3],
         }
     }
 }
@@ -171,6 +179,36 @@ impl Cam {
         let (sp, cp) = self.pitch.sin_cos();
         let (y2, z2) = (y * cp - z1 * sp, y * sp + z1 * cp);
         [x1, y2, z2]
+    }
+
+    /// 場面の箱（真ん中からの半分の大きさ `half`）を今の向きで画面へ写した広がり（右・上の半分）を、
+    /// 場面の半径 `radius` を 1 とした量で返す
+    pub(crate) fn extent(&self, half: [f32; 3], radius: f32) -> [f32; 2] {
+        let (mut ex, mut ey) = (1e-6f32, 1e-6f32);
+        for k in 0..8 {
+            let c = [0, 1, 2].map(|i| if k >> i & 1 == 1 { half[i] } else { -half[i] });
+            let v = self.view(c);
+            ex = ex.max(v[0].abs());
+            ey = ey.max(v[1].abs());
+        }
+        let r = radius.max(1e-6);
+        [ex / r, ey / r]
+    }
+
+    /// 全体表示の後（`fit` が無いとき）、今の向きで全体が入る広がりを決めて覚える
+    pub(crate) fn refit(&mut self, sc: &Scene3) {
+        if self.fit.is_none() {
+            self.fit = Some(self.extent(sc.half, sc.radius));
+            self.fit_half = sc.half;
+        }
+    }
+
+    /// 画面の 1 単位（場面の座標の 1）あたりの点の数。`fit` が無ければ今の向きで決める
+    pub(crate) fn scale(&self, inner: egui::Vec2, half: [f32; 3], radius: f32) -> f32 {
+        let [fx, fy] = self.fit.unwrap_or_else(|| self.extent(half, radius));
+        let r = radius.max(1e-6);
+        let base = (inner.x / 2.0 / (fx * r)).min(inner.y / 2.0 / (fy * r));
+        base * self.zoom
     }
 }
 
@@ -196,21 +234,13 @@ pub(crate) fn show(
         || resp.dragged_by(egui::PointerButton::Secondary)
         || resp.dragged_by(egui::PointerButton::Middle);
     let inner = rect.shrink(16.0);
-    // 全体が入る倍率: 箱の 8 つの角を今の向きで画面へ写した広がり（回すと少し変わる）
-    let (mut ex, mut ey) = (1e-6f32, 1e-6f32);
-    for k in 0..8 {
-        let c = [0, 1, 2].map(|i| {
-            if k >> i & 1 == 1 {
-                sc.half[i]
-            } else {
-                -sc.half[i]
-            }
-        });
-        let v = cam.view(c);
-        ex = ex.max(v[0].abs());
-        ey = ey.max(v[1].abs());
+    // 全体が入る倍率: 全体表示のときの向きで箱の 8 つの角を画面へ写した広がりで決め、回す間は変えない
+    // （系を直して場面の箱が変わったときも決め直す）
+    if cam.fit_half != sc.half {
+        cam.fit = None;
     }
-    let base = (inner.width() / 2.0 / ex).min(inner.height() / 2.0 / ey);
+    cam.refit(sc);
+    let base = cam.scale(inner.size(), sc.half, sc.radius) / cam.zoom;
     // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom）。左ドラッグは回す（Shift+左は移動）
     // 右上の＋・－・囲んで拡大（Ctrl＋左ドラッグでも）は図の中心で拡大する
     let pz = crate::widgets::pan_zoom(ui, resp, false);
@@ -258,9 +288,10 @@ pub(crate) fn show(
             }
         });
     }
+    cam.refit(sc);
     ui.data_mut(|d| d.insert_temp(id, cam));
 
-    let s = base * cam.zoom;
+    let s = cam.scale(inner.size(), sc.half, sc.radius);
     let c0 = inner.center() + cam.pan * s * sc.radius;
     let to_view = |p: [f32; 3]| {
         cam.view([
@@ -467,6 +498,8 @@ mod tests {
             pitch: 0.0,
             zoom: 1.0,
             pan: Vec2::ZERO,
+            fit: None,
+            fit_half: [0.0; 3],
         };
         assert_eq!(c.view([0.0, 0.0, 1.0]), [1.0, 0.0, 0.0]);
         assert_eq!(c.view([0.0, 1.0, 0.0]), [0.0, 1.0, 0.0]);
@@ -475,6 +508,32 @@ mod tests {
         let v = c.view([1.0, 2.0, 3.0]);
         let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
         assert!((n - 14f32.sqrt()).abs() < 1e-5);
+    }
+
+    #[test]
+    fn rotating_keeps_scale() {
+        // 細長い箱（光軸 z に長い）: 向きを変えても全体表示で決めた倍率は変わらない
+        let half = [5.0, 5.0, 100.0];
+        let radius = (25.0f32 + 25.0 + 10000.0).sqrt();
+        let inner = egui::vec2(800.0, 600.0);
+        let mut cam = Cam::default();
+        cam.fit = Some(cam.extent(half, radius));
+        let s0 = cam.scale(inner, half, radius);
+        for (yaw, pitch) in [(0.0, 0.0), (1.57, 0.0), (0.3, 1.2), (-2.0, -0.7)] {
+            cam.yaw = yaw;
+            cam.pitch = pitch;
+            assert_eq!(cam.scale(inner, half, radius), s0);
+        }
+        // 全体表示し直す（fit を捨てる）と今の向きでぴったり入る倍率になる（光軸の方向から見ると大きい）
+        cam.yaw = 1.57;
+        cam.pitch = 0.0;
+        cam.fit = None;
+        assert!(cam.scale(inner, half, radius) > 5.0 * s0);
+        // 拡大はそのまま掛かる
+        cam.fit = Some(cam.extent(half, radius));
+        let s1 = cam.scale(inner, half, radius);
+        cam.zoom = 2.0;
+        assert!((cam.scale(inner, half, radius) - 2.0 * s1).abs() < 1e-3);
     }
 
     #[test]
