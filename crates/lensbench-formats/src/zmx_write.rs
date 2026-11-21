@@ -675,13 +675,17 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     format!("  DIAM {} 4 0 0 1 \"{}\"", f(d.semi), macro_name(s, q.id)),
                 ),
                 // 自動は 0、固定は 1。座標ブレークは自動で（半直径は使わない。固定で書くとガラスの中の座標ブレークは
-                // 読込で半直径 0 の浮動開口になり、光線が全部けられる）
+                // 読込で半直径 0 の浮動開口になり、光線が全部けられる）。開口の無い半直径 0 の面（プロジェクトで径を
+                // 書かない玉）も同じ理由で自動で書く（半直径 0 の面は lensbench ではけない）
                 None => w(
                     &mut o,
                     format!(
                         "  DIAM {} {} 0 0 1 \"\"",
                         f(d.semi),
-                        if d.semi_auto || d.typ() == SurfType::CoordBrk {
+                        if d.semi_auto
+                            || d.typ() == SurfType::CoordBrk
+                            || (d.semi == 0.0 && d.ap == Aperture::None)
+                        {
                             0
                         } else {
                             1

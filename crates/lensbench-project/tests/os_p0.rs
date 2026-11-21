@@ -99,6 +99,34 @@ fn expanded_zmx_is_up_to_date() {
     }
 }
 
+/// 径を書かない玉（半直径 0）の面は、.zmx に書いて開き直してもけられない（固定の 0 で書くと読込で半直径 0 の浮動開口が付き、
+/// 光線が全部けられていた）
+#[test]
+fn expanded_zmx_does_not_vignette_the_lenses_without_a_diameter() {
+    let (s, _) = expanded();
+    let opt = lensbench_formats::zmx::LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![dir().join("../../glass")],
+        ..Default::default()
+    };
+    let back = lensbench_formats::zmx::load_with(&dir().join("expanded.zmx"), &opt).unwrap();
+    let (px, py) = pupil();
+    for f in 0..s.fields.len() {
+        for w in 0..s.wavelengths.len() {
+            let t0 = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
+            let t1 = back
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
+            for (i, (r0, r1)) in t0.rays.iter().zip(&t1.rays).enumerate() {
+                assert_eq!(r0.vig != 0, r1.vig != 0, "F{f} W{w} {i}");
+                assert_eq!(r1.vig, 0, "F{f} W{w} {i}");
+            }
+        }
+    }
+}
+
 #[test]
 fn matches_opticstudio_after_the_changes() {
     let path = dir().join("os_rays.json");
