@@ -1,7 +1,9 @@
 # 外のクレートから lensbench に解析・プラグインを足す雛形。別のリポジトリでは、これを写して始める。
 # 公開のリポジトリの中では lensbench-sdk を path で参照し、公開 CI が組む（SDK を壊す変更を止める）。
-# 写したら下の lensbench-sdk を git のタグ（または rev）に替える:
+# 写したら下の lensbench-sdk（3 か所）と末尾の [patch.crates-io] の 2 行を、同じ git のタグ（または rev）に替え、
+# 公開リポジトリの同じタグの rust-toolchain.toml を写す（README の「リポジトリの外へ写す」）:
 #   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.6.0", features = [...] }
+#   winit = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.6.0" }
 [package]
 name = "lensbench-extension-example"
 version = "0.1.0"
@@ -59,6 +61,8 @@ codegen-units = 16
 incremental = false
 overflow-checks = true
 
+# 直した winit・branches（公開リポジトリの third_party）。外では git のタグで引く（cargo がリポジトリの中から同じ名前の
+# クレートを探す）。相対パスのままだと写した先で見つからない
 [patch.crates-io]
 winit = { path = "../../third_party/winit" }
 branches = { path = "../../third_party/branches" }

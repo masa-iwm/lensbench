@@ -102,15 +102,16 @@ fn finish(
             .system;
         lensbench_project::same_system(s, &t).ok()
     };
+    // 半径で書いた曲率は最後の桁が変わりうるので、元の系もそうしてから比べる
     if cfgs.is_empty() {
-        same(&q, s)?;
+        same(&q, &as_written(s)?)?;
     } else {
         let names = q.state_names();
         if names.len() != cfgs.len() {
             return None;
         }
         for (n, sk) in names.iter().zip(cfgs) {
-            same(&q.with_state(n).ok()?, sk)?;
+            same(&q.with_state(n).ok()?, &as_written(sk)?)?;
         }
     }
     Some(c)
@@ -186,7 +187,7 @@ fn config_set(
             let (id, i) = if is_cb { &a.cb[j] } else { &a.face[j] }.as_ref()?;
             let val = match name.as_str() {
                 "mirror" => return None,
-                "r" => json!(radius_of(sk.surfaces[j].c)?),
+                "r" => json!(radius_of(sk.surfaces[j].c)),
                 _ => yv.clone(),
             };
             edits
@@ -242,16 +243,21 @@ fn derived(s: &System, j: usize, name: &str) -> bool {
         || (matches!(name, "k" | "semi" | "asph") && s.macro_parms.iter().any(|q| q.surf == j))
 }
 
-/// 曲率 c の面の半径（1/半径 が c に戻る値。平面は 0）
-fn radius_of(c: f64) -> Option<f64> {
+/// 曲率 c の面の半径（平面は 0）。1/半径 が c に戻る値があればそれ。どの f64 の逆数にもならない曲率もあるので
+/// （OpticStudio の CURV の 16 桁の値で 4 面に 1 つほど）、無ければ 1/半径 が c に最も近い値（曲率は最後の桁だけ違う）
+fn radius_of(c: f64) -> f64 {
     if c == 0.0 {
-        return Some(0.0);
+        return 0.0;
     }
     let mut r = 1.0 / c;
+    let mut best = r;
     // 1/(1/c) が c に戻らなければ、隣の値を少し探す
     for _ in 0..8 {
         if 1.0 / r == c {
-            return Some(r);
+            return r;
+        }
+        if (1.0 / r - c).abs() < (1.0 / best - c).abs() {
+            best = r;
         }
         r = if 1.0 / r > c {
             r.next_up()
@@ -259,7 +265,30 @@ fn radius_of(c: f64) -> Option<f64> {
             r.next_down()
         };
     }
-    None
+    best
+}
+
+/// 系 s の面の曲率を、半径で書いて読み直した値に（[`radius_of`] で最後の桁が変わる面だけ変わる）。座標ブレークと、
+/// ソルブ・ピックアップで決まる曲率はそのまま
+fn as_written(s: &System) -> Option<System> {
+    let snap: Vec<(usize, f64)> = (1..s.surfaces.len().saturating_sub(1))
+        .filter(|&j| s.surfaces[j].typ() != SurfType::CoordBrk && !derived(s, j, "r"))
+        .map(|j| (j, 1.0 / radius_of(s.surfaces[j].c)))
+        .filter(|&(j, c)| c != s.surfaces[j].c && s.surfaces[j].c != 0.0)
+        .collect();
+    let mut t = s.clone();
+    if snap.is_empty() {
+        return Some(t);
+    }
+    // ソルブ・ピックアップ・自動の半直径は直した曲率で求め直す（展開した系と同じ）
+    t.edit(|rx| {
+        for (j, c) in snap {
+            rx.surfaces[j].c = c;
+        }
+        Ok(())
+    })
+    .ok()?;
+    Some(t)
 }
 
 /// 鏡の面 a（光の進む向き）を鏡のブロックに。標準面で開口・膜・傾きが無ければ半径・コーニックで、ほかは行で
@@ -274,7 +303,7 @@ fn mirror_block(a: &lensbench_core::surface::Surface, id: &str) -> Option<Value>
         && a.after == lensbench_core::surface::After::None;
     if plain {
         return Some(
-            json!({ "type": "mirror", "id": id, "radius": radius_of(a.c)?,
+            json!({ "type": "mirror", "id": id, "radius": radius_of(a.c),
             "conic": a.k, "semi": a.semi }),
         );
     }
@@ -377,7 +406,7 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
         let mut x = serde_json::to_value(lensbench_project::surface_spec(a, last).ok()?).ok()?;
         // 半径は 1/半径 が曲率に戻る値に（系と同じ値にする）。行で書く面は行の曲率のまま
         if x.get("row").is_none_or(Value::is_null) {
-            x["radius"] = json!(radius_of(a.c)?);
+            x["radius"] = json!(radius_of(a.c));
         }
         if last {
             if let Some(o) = x.as_object_mut() {
@@ -582,6 +611,27 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
         match blk["surface_ops"].as_array_mut() {
             Some(a) => a.push(o),
             None => blk["surface_ops"] = json!([o]),
+        }
+    }
+    // 固定の機械半径（.zmx の MEMA の固定・多重構成の MCSD）とチップゾーン（CHZN）は面の欄に無いので、ブロックの面の
+    // 上書きに（GUI の表の機械半径・チップゾーンの列と同じ）
+    for (j, d) in s.surfaces.iter().enumerate().take(img).skip(1) {
+        let mut f = Map::new();
+        if let Some(m) = d.mech_semi {
+            f.insert("mech".into(), json!(m));
+        }
+        if d.chip_zone != 0.0 {
+            f.insert("chip".into(), json!(d.chip_zone));
+        }
+        if f.is_empty() {
+            continue;
+        }
+        let (b, i) = face.get(j)?.as_ref()?;
+        let blk = blocks.iter_mut().find(|x| x["id"] == b.as_str())?;
+        let e = json!({ "surface": i, "fields": f });
+        match blk["surface_edits"].as_array_mut() {
+            Some(a) => a.push(e),
+            None => blk["surface_edits"] = json!([e]),
         }
     }
     let mut v = p.clone();
@@ -1116,6 +1166,54 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             s.surfaces[5].ap,
             lensbench_core::surface::Aperture::Floating { .. }
         ));
+    }
+
+    /// どの f64 の逆数にもならない曲率（1/半径 で戻らない）は最も近い半径に。曲率は最後の桁だけ違う
+    #[test]
+    fn a_curvature_with_no_exact_radius_takes_the_nearest() {
+        let c = 6.5564346019e-3;
+        let r = radius_of(c);
+        assert!((1.0 / r - c).abs() <= c * f64::EPSILON, "{r}");
+        for r2 in [r.next_up(), r.next_down()] {
+            assert!((1.0 / r2 - c).abs() >= (1.0 / r - c).abs());
+        }
+        assert_eq!(1.0 / radius_of(0.02), 0.02);
+        assert_eq!(radius_of(0.0), 0.0);
+    }
+
+    /// 機械半径の行（MCSD）・チップゾーンの行（CHZN）のある多重構成の .zmx も要素に分かれ、構成 1 の値はブロックの
+    /// 面の上書き、構成 2 の違いは状態の値になる。1/半径 で戻らない曲率の面があっても分かれる
+    #[test]
+    fn a_multi_config_zmx_with_mech_and_chip_rows_splits() {
+        let tmp = std::env::temp_dir().join(format!("lb_gui_mcsd_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("mech.zmx");
+        std::fs::write(
+            &f,
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 5\n  DIAM 5 0 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 6.556434601900000200E-03\n  DISZ 4\n  GLAS N-BK7 0 0 1.5168 64.17 0 0 0 0 0\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 20\n  DIAM 8 0 0 0 1 \"\"\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n\
+MNUM 2 1\n\
+MCSD 2 1 9 0 0 0 1 1 1 0 0 \"\" 0\nMCSD 2 2 10 0 0 0 1 1 1 0 0 \"\" 0\n\
+CHZN 3 1 0 0 0 0 1 1 1 0 0 \"\" 0\nCHZN 3 2 0.5 0 0 0 1 1 1 0 0 \"\" 0\n",
+        )
+        .unwrap();
+        let glass = vec![root().join("tests/glass")];
+        let r = Combo::from_zmx(&f, &glass, &[]);
+        std::fs::remove_dir_all(&tmp).ok();
+        let c = r.unwrap();
+        let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+        assert_eq!(kinds, [ElemKind::Surfaces, ElemKind::Lens], "{kinds:?}");
+        let l = &c.picks[1];
+        assert_eq!(l.base_edit(0, "mech"), Some(&json!(9.0)));
+        assert_eq!(l.base_edit(1, "chip"), None);
+        let n = &c.states[1];
+        assert_eq!(l.state_edit(n, 0, "mech"), Some(&json!(10.0)));
+        assert_eq!(l.state_edit(n, 1, "chip"), Some(&json!(0.5)));
     }
 
     /// ダブルパスの .zmx（鏡で折り返して同じ玉を戻る）は、往きの玉と「往路を戻る」鏡の組合せになる（split の中で元の系と

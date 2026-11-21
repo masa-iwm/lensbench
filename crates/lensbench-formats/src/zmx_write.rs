@@ -674,13 +674,18 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     &mut o,
                     format!("  DIAM {} 4 0 0 1 \"{}\"", f(d.semi), macro_name(s, q.id)),
                 ),
-                // 自動は 0、固定は 1
+                // 自動は 0、固定は 1。座標ブレークは自動で（半直径は使わない。固定で書くとガラスの中の座標ブレークは
+                // 読込で半直径 0 の浮動開口になり、光線が全部けられる）
                 None => w(
                     &mut o,
                     format!(
                         "  DIAM {} {} 0 0 1 \"\"",
                         f(d.semi),
-                        if d.semi_auto { 0 } else { 1 }
+                        if d.semi_auto || d.typ() == SurfType::CoordBrk {
+                            0
+                        } else {
+                            1
+                        }
                     ),
                 ),
             },
