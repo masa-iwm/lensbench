@@ -330,4 +330,125 @@ mod tests {
             "{d:?}"
         );
     }
+
+    /// 入れ子の群（G1 の中に G2）を名前で引く: 最適化の変数・ズーム軌跡の解くパラメータ（`G1.shift`・`G2.shift`）と
+    /// 公差の群の公差（偏心・傾き）が内側・外側のどちらの群でも効き、役割は両方に付けて保存・読込で残る
+    #[test]
+    fn nested_groups_by_name_in_optimize_zoom_and_tolerance() {
+        let mut c = lenses(4);
+        for (i, p) in c.picks.iter_mut().enumerate() {
+            p.air = 5.0 + i as f64;
+        }
+        c.make_group(&locs(1..=3), "G1").unwrap();
+        c.make_group(&locs(2..=3), "G2").unwrap();
+        c.states = vec!["wide".into(), "tele".into()];
+        for (name, role) in [("G1", "zoom"), ("G2", "focus")] {
+            c.groups
+                .iter_mut()
+                .find(|g| g.name == name)
+                .expect("group def")
+                .role = role.into();
+        }
+        let v = c.project();
+        // 役割は入れ子の両方に付き、開き直しても残る
+        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let back = Combo::from_project(&v, &root).unwrap();
+        let role = |n: &str| {
+            back.groups
+                .iter()
+                .find(|g| g.name == n)
+                .map(|g| g.role.clone())
+        };
+        assert_eq!(role("G1").as_deref(), Some("zoom"));
+        assert_eq!(role("G2").as_deref(), Some("focus"));
+        let pr = lensbench_project::Project::from_json(&v.to_string()).unwrap();
+        let env = lensbench_project::Env {
+            step_files: None,
+            base: root.clone(),
+            glass_dirs: vec![root.join("tests/glass")],
+            catalog: None,
+        };
+        let sys = |state: Option<&str>| {
+            lensbench_project::expand(
+                &pr,
+                &env,
+                &lensbench_project::ExpandOpts {
+                    state,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .system
+        };
+        let s = sys(None);
+        // 系の群は入れ子の範囲（G2 は G1 の中）
+        let span = |n: &str| {
+            let u = s.find_unit(n).unwrap_or_else(|| panic!("unit {n}"));
+            s.units[u].spans.clone()
+        };
+        let (g1, g2) = (span("G1"), span("G2"));
+        assert_eq!(g1.len(), 1);
+        assert_eq!(g2.len(), 1);
+        assert!(g1[0][0] < g2[0][0] && g2[0][1] <= g1[0][1], "{g1:?} {g2:?}");
+        // 名前で引いた移動: 前の間隔（群の最初の面の前）に足し、後の間隔（群の最後の面）から引く
+        let moved = |name: &str| -> Vec<(usize, f64)> {
+            let p = s.param(name).unwrap();
+            let t = s.with_params(&[(p, 1.0)]).unwrap();
+            s.surfaces
+                .iter()
+                .zip(&t.surfaces)
+                .enumerate()
+                .map(|(j, (a, b))| (j, b.t - a.t))
+                .filter(|x| x.1.abs() > 1e-12)
+                .collect()
+        };
+        for (name, sp) in [("G1.shift", g1[0]), ("G2.shift", g2[0])] {
+            let d = moved(name);
+            assert_eq!(d.len(), 2, "{name} {d:?}");
+            assert_eq!(d[0].0, sp[0] - 1, "{name} {d:?}");
+            assert!((d[0].1 - 1.0).abs() < 1e-12, "{name} {d:?}");
+            assert_eq!(d[1].0, sp[1], "{name} {d:?}");
+            assert!((d[1].1 + 1.0).abs() < 1e-12, "{name} {d:?}");
+        }
+        // 最適化の変数・ズーム軌跡の解くパラメータとして読める
+        let o: lensbench_design::dls_spec::OptimizeParams = lensbench_design::dls_spec::read(
+            &serde_json::json!({"vars": ["G1.shift", "G2.shift=-2:2"], "merit": "none"}),
+        )
+        .unwrap();
+        let (prob, _) = o.problem(vec![s.clone()]).unwrap();
+        assert_eq!(prob.vars.len(), 2);
+        let z: lensbench_design::dls_spec::ZoomParams = lensbench_design::dls_spec::read(
+            &serde_json::json!({"vars": ["G1.shift", "G2.shift"]}),
+        )
+        .unwrap();
+        let states = [sys(Some("wide")), sys(Some("tele"))];
+        z.spec(&states, &["wide".into(), "tele".into()]).unwrap();
+        // 公差の群の公差は内側・外側の群の名前で引け、群ごとの偏心・傾きになる
+        let spec = lensbench_design::tolerance::spec_from_json(
+            &serde_json::json!({
+                "preset": "none",
+                "groups": {"G1": {"decenter": 0.1}, "G2": {"tilt": 0.2}},
+            }),
+            vec![s.clone()],
+            &Default::default(),
+        )
+        .unwrap();
+        let labels: Vec<&str> = spec.tols.iter().map(|t| t.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            ["G2 tilt x", "G2 tilt y", "G1 decenter x", "G1 decenter y"]
+        );
+        let unit_of = |label: &str| {
+            let t = spec.tols.iter().find(|t| t.label == label).unwrap();
+            t.params[0].unit_index().map(|u| s.units[u].name.clone())
+        };
+        assert_eq!(unit_of("G1 decenter x").as_deref(), Some("G1"));
+        assert_eq!(unit_of("G2 tilt x").as_deref(), Some("G2"));
+        // 外側の群の偏心は内側の群の面も一緒に動かす
+        let p = s.param("G1.dx").unwrap();
+        let t = s.with_params(&[(p, 0.1)]).unwrap();
+        let x = |sys: &lensbench_core::System, j: usize| sys.frames().surf[j].expect("frame").o[0];
+        let j = g2[0][0];
+        assert!((x(&t, j) - x(&s, j) - 0.1).abs() < 1e-9);
+    }
 }
