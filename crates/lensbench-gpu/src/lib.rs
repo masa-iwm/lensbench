@@ -58,16 +58,17 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// 使える GPU（初回に一度だけ探す）。software が false なら CPU で動くアダプタ（WARP・llvmpipe）は使わない。
-/// 環境変数 WGPU_BACKEND（vulkan・dx12・metal）でバックエンドを選べる
-pub fn gpu(software: bool) -> Option<&'static Gpu> {
+/// 使える GPU（初回に一度だけ探す）。forced が false（auto）なら CPU で動くアダプタ（WARP・llvmpipe）と
+/// macOS 以外の内蔵 GPU は使わない（[`Gpu::for_auto`]）。
+/// 環境変数 WGPU_BACKEND（vulkan・dx12・metal）でバックエンドを選べる。WGPU_POWER_PREF=low で内蔵 GPU を選ぶ（既定は外付け。内蔵は forced のときだけ使う）
+pub fn gpu(forced: bool) -> Option<&'static Gpu> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        native::get().filter(|g| software || !g.software())
+        native::get(forced)
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = software;
+        let _ = forced;
         None
     }
 }
@@ -83,6 +84,9 @@ impl Gpu {
     }
     pub fn software(&self) -> bool {
         true
+    }
+    pub fn for_auto(&self) -> bool {
+        false
     }
     pub fn huygens(
         &self,

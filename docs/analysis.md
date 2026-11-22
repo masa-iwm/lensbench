@@ -46,9 +46,9 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
   既定は速い近似（像の格子の区画ごとに瞳の各標本の位相と振幅を 2 次式で近似し、区画は位相の差が 1e-6 rad 以下になる大きさを自動で選ぶ。
   強度は厳密な和と収差のない中心の値の 1e-7 倍程度で合う）。厳密な和は `--exact`（数倍遅い）。
   GPU（Vulkan・DX12・Metal）があれば、近似の代わりに GPU で全部の点を単精度で足す（`--device auto`、既定。位相が大きくならない書き方で、
-  強度は厳密な和と 5e-7 倍程度で合う。RTX 3060 で CPU の既定の 10 倍以上速い）。CPU で動くアダプタ（WARP・llvmpipe）は使わない。
+  強度は厳密な和と 5e-7 倍程度で合う。RTX 3060 で CPU の既定の 10 倍以上速い）。CPU で動くアダプタ（WARP・llvmpipe）と、macOS 以外の内蔵 GPU（Intel UHD 630 で CPU の既定と同じかそれより遅い）は使わない（`--device gpu` なら使う）。
   `--device cpu` で CPU に固定、`--device gpu` は CPU で動くアダプタでも GPU の経路を使う（照合用。使えなければ CPU で計算して `warnings` に書く）。
-  `--exact` はいつも CPU。バックエンドは環境変数 `WGPU_BACKEND`（`vulkan`・`dx12`・`metal`）で選べる。Web 版は CPU だけ。
+  `--exact` はいつも CPU。バックエンドは環境変数 `WGPU_BACKEND`（`vulkan`・`dx12`・`metal`）で選べる（`WGPU_POWER_PREF=low` にすると外付けの GPU より内蔵の GPU を選ぶ。内蔵は `auto` では使わないので `--device gpu` と合わせる）。Web 版は CPU だけ。
   結果の `device` に和を計算した装置（`cpu` か `gpu: アダプタの名前`、Python の dict も同じ鍵、GUI は計算時間の横）を出す。
   `--device auto` で使う GPU は `lensbench devices` で確かめられる（`gpu` が null なら CPU で計算する）。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。

@@ -78,12 +78,12 @@ impl Default for HuygensOpts {
 )]
 #[serde(rename_all = "lowercase")]
 pub enum HuygensDevice {
-    /// GPU があれば GPU（CPU で動くアダプタ（WARP・llvmpipe）は使わない）、無ければ CPU の既定の展開
+    /// GPU があれば GPU（CPU で動くアダプタ（WARP・llvmpipe）と macOS 以外の内蔵 GPU は使わない）、無ければ CPU の既定の展開
     #[default]
     Auto,
     /// いつも CPU
     Cpu,
-    /// CPU で動くアダプタでも GPU の経路を使う（試験・照合用）。アダプタが無い・誤りなら CPU で計算して注意を出す
+    /// CPU で動くアダプタ・内蔵 GPU でも GPU の経路を使う（試験・照合用）。アダプタが無い・誤りなら CPU で計算して注意を出す
     Gpu,
 }
 

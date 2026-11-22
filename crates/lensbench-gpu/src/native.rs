@@ -73,7 +73,7 @@ fn plane(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups)
 }
 "#;
 
-/// 1 回の投入で足す (像の点, 光源) の組の数の目安。RTX 3060 で約 4 ms、遅い内蔵 GPU でも 2 s より十分短い
+/// 1 回の投入で足す (像の点, 光源) の組の数の目安。RTX 3060 で約 4 ms、Intel UHD 630 で約 56 ms（2 s より十分短い）
 const PAIRS_PER_SUBMIT: usize = 1 << 28;
 /// 1 次元の投入の作業グループの数の上限（WebGPU の既定の制限）
 const MAX_GROUPS: u32 = 65535;
@@ -87,27 +87,67 @@ pub struct Gpu {
     plane: ComputePipeline,
     name: String,
     software: bool,
+    /// 既定（auto）で使ってよいか（CPU で動くアダプタと、macOS 以外の内蔵 GPU は使わない）
+    auto: bool,
     /// 装置を失った・捕まえていない誤りが出た（以後は使わない）
     broken: Arc<AtomicBool>,
 }
 
+static ADAPTER: OnceLock<Option<Adapter>> = OnceLock::new();
 static GPU: OnceLock<Option<Gpu>> = OnceLock::new();
 
-pub(crate) fn get() -> Option<&'static Gpu> {
-    GPU.get_or_init(init)
+/// 使う装置。forced が false（auto）なら [`auto_ok`] でないアダプタでは装置を作らない
+/// （内蔵 GPU のドライバの中で落ちることがあるので、使わないアダプタには触らない）
+pub(crate) fn get(forced: bool) -> Option<&'static Gpu> {
+    let adapter = ADAPTER.get_or_init(pick_adapter).as_ref()?;
+    if !forced && !auto_ok(&adapter.get_info()) {
+        return None;
+    }
+    GPU.get_or_init(|| init(adapter))
         .as_ref()
         .filter(|g| !g.broken.load(Ordering::Relaxed))
 }
 
-fn init() -> Option<Gpu> {
+/// 既定（auto）で使ってよいアダプタか。CPU で動くもの（WARP・llvmpipe）と、macOS 以外の内蔵 GPU は使わない
+/// （Intel UHD 630 は 8 コアの CPU の既定の展開と同じかそれより遅い。Apple の GPU は内蔵の種別でも速い）
+fn auto_ok(info: &AdapterInfo) -> bool {
+    match info.device_type {
+        DeviceType::Cpu => false,
+        DeviceType::IntegratedGpu => info.backend == Backend::Metal,
+        _ => true,
+    }
+}
+
+fn pick_adapter() -> Option<Adapter> {
     let inst = Instance::new(InstanceDescriptor::new_without_display_handle().with_env());
     let adapter = pollster::block_on(inst.request_adapter(&RequestAdapterOptions {
-        power_preference: PowerPreference::HighPerformance,
+        // WGPU_POWER_PREF=low で内蔵 GPU を選べる（測るとき用、既定は外付け）
+        power_preference: PowerPreference::from_env().unwrap_or(PowerPreference::HighPerformance),
         force_fallback_adapter: false,
         compatible_surface: None,
         ..Default::default()
     }))
     .ok()?;
+    let info = adapter.get_info();
+    // Windows の内蔵 GPU は、バックエンドを指定していなければ Vulkan より DX12 で（Intel UHD 630 の Vulkan の
+    // ドライバは装置を作る所でアクセス違反で落ちた。DX12 では動いた）
+    if cfg!(windows)
+        && info.backend == Backend::Vulkan
+        && info.device_type == DeviceType::IntegratedGpu
+        && std::env::var_os("WGPU_BACKEND").is_none()
+    {
+        let dx = pollster::block_on(inst.enumerate_adapters(Backends::DX12));
+        if let Some(a) = dx.into_iter().find(|a| {
+            let i = a.get_info();
+            i.vendor == info.vendor && i.device == info.device
+        }) {
+            return Some(a);
+        }
+    }
+    Some(adapter)
+}
+
+fn init(adapter: &Adapter) -> Option<Gpu> {
     let info = adapter.get_info();
     let al = adapter.limits();
     let limits = Limits {
@@ -164,6 +204,7 @@ fn init() -> Option<Gpu> {
         plane,
         name: format!("{} ({:?}, {:?})", info.name, info.backend, info.device_type),
         software: info.device_type == DeviceType::Cpu,
+        auto: auto_ok(&info),
         broken,
     })
 }
@@ -183,6 +224,11 @@ impl Gpu {
     /// CPU で動くアダプタ（WARP・llvmpipe）か
     pub fn software(&self) -> bool {
         self.software
+    }
+
+    /// 既定（auto）で使ってよいか（CPU で動くアダプタと、macOS 以外の内蔵 GPU は false）
+    pub fn for_auto(&self) -> bool {
+        self.auto
     }
 
     /// 像の点 pts（球: d = P − C、平面: d = P − P₀。有限でない点は NaN を返す）ごとの |Σ amp exp(i 位相)|²。
@@ -226,6 +272,15 @@ impl Gpu {
         let (dev, queue) = (&self.device, &self.queue);
         let ns = s.amp.len();
         let npts = pts.len();
+        // LENSBENCH_GPU_TRACE があれば段ごとの時間を標準エラーに出す（休んでいた GPU の 1 回目の遅さの切り分け用）
+        let trace = std::env::var_os("LENSBENCH_GPU_TRACE").is_some();
+        let t0 = std::time::Instant::now();
+        let mut marks: Vec<(&str, f64)> = Vec::new();
+        let mut mark = |what: &'static str| {
+            if trace {
+                marks.push((what, t0.elapsed().as_secs_f64()));
+            }
+        };
         let mut src = Vec::with_capacity(ns * 8);
         for j in 0..ns {
             let d = s.dir[j];
@@ -324,6 +379,10 @@ impl Gpu {
         let mut enc = dev.create_command_encoder(&CommandEncoderDescriptor::default());
         enc.clear_buffer(&out, 0, None);
         queue.submit([enc.finish()]);
+        if trace {
+            wait()?;
+        }
+        mark("buffers");
         let step = (PAIRS_PER_SUBMIT / npts).max(64);
         let mut j0 = 0;
         while j0 < ns {
@@ -351,6 +410,7 @@ impl Gpu {
             queue.submit([enc.finish()]);
             // 1 回ずつ終わるのを待つ（次の write_buffer の前に。Windows の 2 s の制限は投入ごと）
             wait()?;
+            mark("submit");
             j0 = j1;
         }
         let mut enc = dev.create_command_encoder(&CommandEncoderDescriptor::default());
@@ -386,6 +446,23 @@ impl Gpu {
                 .collect()
         };
         read.unmap();
+        mark("readback");
+        if trace {
+            let mut prev = 0.0;
+            let parts: Vec<String> = marks
+                .iter()
+                .map(|&(w, t)| {
+                    let d = t - prev;
+                    prev = t;
+                    format!("{w} {:.1}", d * 1e3)
+                })
+                .collect();
+            eprintln!(
+                "gpu trace: {ns} sources x {npts} points, {:.1} ms: {} (ms)",
+                t0.elapsed().as_secs_f64() * 1e3,
+                parts.join(", ")
+            );
+        }
         Ok(v)
     }
 }

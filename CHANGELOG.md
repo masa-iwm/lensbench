@@ -62,10 +62,11 @@
 - **Huygens PSF・MTF を GPU で**: GPU（Vulkan・DX12・Metal）があれば、Huygens の和（瞳の標本 × 像の点）を GPU の compute shader で
   単精度で計算する（新しい設定 `device`: `auto`（既定）・`cpu`・`gpu`。CLI `psf --huygens`・`huygens-mtf` の `--device`、Python の `device=`、
   GUI の「計算する場所」、プラグインの `device`）。位相が大きくならない書き方で、強度は厳密な和と収差のない中心の値の 5e-7 倍ほどで合う
-  （CPU の既定の近似と同じ程度）。RTX 3060（i9-9900K）で瞳 256・像 256 の 1 回の Huygens PSF（光線追跡の準備込み）が、続けて計算するときは CPU の既定の約 14 倍（A0・D0・C0 で 0.74〜0.81 → 0.055〜0.061 s）、瞳 128・像 128 で約 6 倍。休んでいた GPU の 1 回目は立ち上がりの分 0.2〜0.3 s かかる（約 3〜4 倍）。
-  CPU で動くアダプタ（WARP・llvmpipe）や GPU の無い PC では今までどおり CPU で計算する。`--exact` はいつも CPU。
+  （CPU の既定の近似と同じ程度）。RTX 3060（i9-9900K）で瞳 256・像 256 の 1 回の Huygens PSF（光線追跡の準備込み）が、続けて計算するときは CPU の既定の約 14 倍（A0・D0・C0 で 0.74〜0.81 → 0.055〜0.061 s）、瞳 128・像 128 で約 6 倍。1 s 以上休んでいた GPU の 1 回目はクロックの立ち上がりの分 0.12〜0.3 s かかる（約 3〜6 倍。小さな計算で予熱しても縮まない）。
+  CPU で動くアダプタ（WARP・llvmpipe）や GPU の無い PC では今までどおり CPU で計算する。内蔵 GPU（macOS 以外）も `auto` では使わない
+  （Intel UHD 630 で瞳 256・像 256 が 0.71 s、CPU の既定 0.77〜0.83 s と同じ程度で、瞳 128 では遅い。`--device gpu` なら使う）。`--exact` はいつも CPU。
   配る CLI・GUI・Python は `gpu` 機能を既定で入れて組む（exe が数 MB 大きくなる）。Web 版は CPU だけ。
-  結果の `device`（CLI・Python・GUI の計算時間の横）に和を計算した装置（`cpu` か `gpu: アダプタの名前`）を出し、`lensbench devices` で `auto` が使う GPU を出す
+  結果の `device`（CLI・Python・GUI の計算時間の横）に和を計算した装置（`cpu` か `gpu: アダプタの名前`）を出し、`lensbench devices` で `auto` が使う GPU を出す。外付けと内蔵の GPU がある PC では外付けを使い、環境変数 `WGPU_POWER_PREF=low` と `--device gpu` を合わせると内蔵で計算する（`auto` のままなら CPU）
 - **GUI: 操作の履歴のパネル**: パネル > 操作の履歴に、元に戻す・やり直す段を新しい順に並べ（やり直す段は「▶ 今」の上）、行を押すとその段の前まで
   一度に戻る・進む（編集メニューの「ここまで元に戻す」と同じ段。ポインタを載せると変わった所を全部出す）。
 - **近軸ガウスビーム**（`gaussian-beam`、OpticStudio の Paraxial Gaussian Beam 相当）: ウエストの半径・面 1 からの距離・M² で与えたビームを近軸の
