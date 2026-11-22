@@ -15,6 +15,8 @@ use serde_json::{json, Map, Value};
 
 use crate::combo::{Combo, ElemKind};
 
+#[cfg(test)]
+mod back_solve_tests;
 mod reversed;
 
 /// 系 s（.zmx を構成 1 で読んだもの）を、p（[`lensbench_project::zmx_project`] の設定）の blocks を要素に分けた
@@ -544,13 +546,16 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
     // 往路を戻る鏡の面（その厚さは戻りの空気が受け持つ）
     let mut back_mirror = None;
     let mut placed = Vec::new();
+    // 往路を戻る鏡にまとめた戻りの面 → 同じ往きの面（戻りの面のソルブはブロックの面の back で書く）
+    let mut back_of = BTreeMap::new();
     if dp {
         // 座標ブレークで挟んだ玉は玉の置き方に（往路を戻る鏡は置き方ごと戻る）
         placed = collapse_placed(s, &mut blocks, &mut ranges, &mut airs)?;
         for &x in &placed {
             cb[x] = None;
         }
-        let (f, m) = fold_double_pass(s, &mut blocks, &ranges, &mut airs)?;
+        let (f, m, b) = fold_double_pass(s, &mut blocks, &ranges, &mut airs)?;
+        back_of = b;
         back_mirror = Some(m);
         for &x in &f {
             face[x] = None;
@@ -562,6 +567,10 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
         folded = f;
     }
     let at = |j: usize| -> Option<Value> {
+        if let Some(&y) = back_of.get(&j) {
+            let (b, i) = face.get(y)?.as_ref()?;
+            return Some(json!({ "block": b, "surface": i, "back": true }));
+        }
         let (b, i) = face.get(j)?.as_ref()?;
         Some(json!({ "block": b, "surface": i }))
     };
@@ -579,10 +588,9 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
             == 1)
             .then(|| n.clone())
     };
-    // 戻りの面のソルブ・マクロは往路を戻る鏡では書けない（まとめない）。戻りの面へのピックアップは要らなくなる
-    if s.solves.iter().any(|q| folded.contains(&q.surf))
-        || s.macro_parms.iter().any(|q| folded.contains(&q.surf))
-    {
+    // 戻りの面のソルブは往きの面の back で書く。戻りの面のマクロは書けない（まとめない）。戻りの面へのピックアップは
+    // 要らなくなる
+    if s.macro_parms.iter().any(|q| folded.contains(&q.surf)) {
         return None;
     }
     for q in &s.solves {
@@ -638,8 +646,8 @@ fn split_parts(s: &System, p: &Value, dp: bool) -> Option<Parts> {
             "surface"
         };
         let b = o[key]["block"].as_str()?.to_string();
-        // 座標ブレークはブロックの面の形のまま（ブロックの面の番号は座標ブレークを数えない）
-        if o[key]["coordbrk"] != true {
+        // 座標ブレーク・戻りの面はブロックの面の形のまま（ブロックの面の番号は座標ブレークを数えない）
+        if o[key]["coordbrk"] != true && o[key]["back"] != true {
             o[key] = o[key]["surface"].clone();
         }
         let blk = blocks.iter_mut().find(|x| x["id"] == b.as_str())?;
@@ -776,7 +784,7 @@ fn fold_double_pass(
     blocks: &mut Vec<Value>,
     ranges: &[Option<(usize, usize)>],
     airs: &mut Vec<(usize, String, usize)>,
-) -> Option<(BTreeSet<usize>, usize)> {
+) -> Option<(BTreeSet<usize>, usize, BTreeMap<usize, usize>)> {
     let bm = blocks.iter().position(|b| b["type"] == "mirror")?;
     let is_air = |i: usize| blocks.get(i).is_some_and(|b| b["type"] == "air");
     let air_t = |i: usize| blocks.get(i).and_then(|b| b["t"].as_f64());
@@ -816,12 +824,16 @@ fn fold_double_pass(
     {
         return None;
     }
-    // 戻りの要素: 往きと逆の順で、同じ種類・同じ面の数
+    // 戻りの要素: 往きと逆の順で、同じ種類・同じ面の数。戻りの面 → 同じ往きの面（逆の順にたどる）
     let nsurf = |i: usize| ranges[i].map(|(j, k)| k - j);
+    let mut back_of = BTreeMap::new();
     for (q, &e) in fwd.iter().rev().enumerate() {
         let r = bc + 2 + 2 * q;
         if !is_air(r + 1) || blocks[r]["type"] != blocks[e]["type"] || nsurf(r) != nsurf(e) {
             return None;
+        }
+        if let (Some((jr, kr)), Some((_, ke))) = (ranges[r], ranges[e]) {
+            back_of.extend((jr..=kr).map(|x| (x, ke - (x - jr))));
         }
     }
     let tail = bc + 2 * n + 1;
@@ -858,7 +870,7 @@ fn fold_double_pass(
     }
     *airs = na;
     *blocks = out;
-    Some((folded, ranges[bm]?.0))
+    Some((folded, ranges[bm]?.0, back_of))
 }
 
 #[cfg(test)]

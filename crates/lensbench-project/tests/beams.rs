@@ -257,3 +257,70 @@ fn back_refers_to_the_return_faces() {
     let v: serde_json::Value = serde_json::from_str(&p.to_json()).unwrap();
     assert_eq!(v["glrs"], serde_json::json!({"block": "L", "surface": 1}));
 }
+
+/// 書き戻し: 復路の面へのソルブ・ピックアップは、ブロックの面の back（往路と同じ番号）で書く。復路の面の値の上書きは
+/// 往路の面で（書かずに説明を返す）
+#[test]
+fn write_back_puts_solves_and_pickups_on_return_faces() {
+    use lensbench_project::edit_spec::EditOp;
+    let x = double_pass("", "[]").unwrap();
+    let faces: Vec<_> = x.map.iter().map(|o| o.face.clone()).collect();
+    // 復路の L の面 0（復路では L の 2 つ目の面）と往路の L の面 1
+    let back0 = (0..faces.len())
+        .find(|&j| {
+            faces[j]
+                .as_ref()
+                .is_some_and(|f| f.back && !f.cb && f.index == 1)
+        })
+        .unwrap();
+    let fwd1 = (0..faces.len())
+        .find(|&j| {
+            faces[j]
+                .as_ref()
+                .is_some_and(|f| !f.back && !f.cb && f.index == 1)
+        })
+        .unwrap();
+    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
+        { "op": "add_pickup", "dst": back0, "src": fwd1, "what": "c" },
+        { "op": "add_solve", "surface": back0, "kind": "marginal_height", "value": 0.0 },
+        { "op": "set_surface", "surface": back0, "fields": { "r": 30.0 } },
+    ]))
+    .unwrap();
+    let mut p = Project::from_json(&format!(
+        r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
+          {{"type": "lens", "id": "L", "source": {{"surfaces": [
+             {{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}},
+          {{"type": "air", "t": 20}}, {{"type": "mirror", "back": true, "semi": 10}}]}}"#
+    ))
+    .unwrap();
+    let ed = lensbench_project::writeback::Edited {
+        system: &x.system,
+        faces: &faces,
+        before: &x.system,
+    };
+    let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].contains("edit 3") && notes[0].contains("later pass"),
+        "{notes:?}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&p.to_json()).unwrap();
+    let ops = &v["blocks"][2]["surface_ops"];
+    let back = serde_json::json!({"block": "L", "surface": 0, "back": true});
+    assert_eq!(ops[0]["dst"], back, "{ops}");
+    assert_eq!(
+        ops[0]["src"],
+        serde_json::json!({"block": "L", "surface": 1}),
+        "{ops}"
+    );
+    assert_eq!(ops[1]["surface"], back, "{ops}");
+    // 展開すると復路の面 0 にピックアップとソルブ
+    let y = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    assert_eq!(y.system.pickups.len(), 1);
+    assert_eq!(y.system.pickups[0].dst, back0);
+    assert!(
+        y.system.solves.iter().any(|q| q.surf == back0),
+        "{:?}",
+        y.system.solves
+    );
+}

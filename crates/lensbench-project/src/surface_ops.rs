@@ -36,7 +36,11 @@ pub fn put_pickup(ops: &mut Vec<SurfaceOp>, o: PickupOp<BlockRef>, shown: bool) 
 
 /// 面 i のソルブを外す: 要素で置いたソルブなら外し、無ければ要素の元（.zmx など）のソルブを外す操作を置く
 pub fn drop_solve(ops: &mut Vec<SurfaceOp>, i: usize, what: SolveWhat) {
-    let here = BlockRef::Sys(Ref::Index(i));
+    drop_solve_at(ops, BlockRef::Sys(Ref::Index(i)), what)
+}
+
+/// [`drop_solve`] と同じ。面は here（復路の面を指すブロックの面など）
+pub fn drop_solve_at(ops: &mut Vec<SurfaceOp>, here: BlockRef, what: SolveWhat) {
     let c = what == SolveWhat::C;
     let own = |q: &SurfaceOp| matches!(q, SurfaceOp::AddSolve(q) if q.surface == here && q.is_curv() == c);
     if ops.iter().any(own) {
@@ -52,7 +56,11 @@ pub fn drop_solve(ops: &mut Vec<SurfaceOp>, i: usize, what: SolveWhat) {
 
 /// 面 i のピックアップ what を外す（ソルブと同じく、要素で置いたものが無ければ要素の元のものを外す）
 pub fn drop_pickup(ops: &mut Vec<SurfaceOp>, i: usize, what: String) {
-    let here = BlockRef::Sys(Ref::Index(i));
+    drop_pickup_at(ops, BlockRef::Sys(Ref::Index(i)), what)
+}
+
+/// [`drop_pickup`] と同じ。面は here
+pub fn drop_pickup_at(ops: &mut Vec<SurfaceOp>, here: BlockRef, what: String) {
     let own =
         |q: &SurfaceOp| matches!(q, SurfaceOp::AddPickup(q) if q.dst == here && q.what == what);
     if ops.iter().any(own) {

@@ -60,8 +60,9 @@ fn node<'p>(blocks: &'p [Block], path: &NodePath) -> Option<&'p Block> {
     Some(cur)
 }
 
-/// 展開した系の面 j を書き戻せるブロックの面（往路の 1 回目の、座標ブレークでない面だけ）
-fn face_of(x: Edited, r: &Ref) -> Result<(FaceId, usize), String> {
+/// 展開した系の面 j を書き戻せるブロックの面（座標ブレークでない面）と、ブロックの面の番号。`back` なら鏡の `back`
+/// で戻る復路の面も（番号は往路と同じ番号、[`crate::edit_spec::BlockFace`] の `back`）、でなければ往路の 1 回目だけ
+fn face_of(x: Edited, r: &Ref, back: bool) -> Result<(FaceId, usize), String> {
     let j = match r {
         Ref::Index(j) => *j,
         Ref::Name(n) => x.system.find_surface(n).map_err(|e| e.to_string())?,
@@ -77,6 +78,19 @@ fn face_of(x: Edited, r: &Ref) -> Result<(FaceId, usize), String> {
             "surface {j} is a coordinate break of a block (use the block decenter and tilt)"
         ));
     }
+    if f.back && back && f.pass == 0 {
+        // 復路は往路の面を逆の順にたどる
+        let n = x
+            .faces
+            .iter()
+            .flatten()
+            .filter(|g| g.node == f.node && !g.cb && !g.back && g.pass == 0)
+            .count();
+        let i = n.checked_sub(f.index + 1).ok_or_else(|| {
+            format!("surface {j} on the return pass has no surface on the forward pass")
+        })?;
+        return Ok((f, i));
+    }
     if f.back || f.pass > 0 {
         return Err(format!(
             "surface {j} is on a later pass of a block (edit the surface on its first forward pass)"
@@ -85,14 +99,8 @@ fn face_of(x: Edited, r: &Ref) -> Result<(FaceId, usize), String> {
     Ok((f.clone(), f.index))
 }
 
-/// 面のブロックが往復する（復路の面がある）
-fn round_trip(x: Edited, f: &FaceId) -> bool {
-    x.faces.iter().flatten().any(|g| g.node == f.node && g.back)
-}
-
-/// ほかの面を指す面（ピックアップの元・ソルブの参照の面）: id のあるブロックの面
-fn other_ref(p: &Project, x: Edited, r: &Ref) -> Result<BlockRef, String> {
-    let (f, i) = face_of(x, r)?;
+/// 面の id のあるブロックの id（無ければ誤り。復路の面・ほかの面を指すのに要る）
+fn block_id_of<'p>(p: &'p Project, f: &FaceId, r: &Ref) -> Result<&'p str, String> {
     let id = node(&p.blocks, &f.node).map(crate::block_id).unwrap_or("");
     if id.is_empty() {
         return Err(format!(
@@ -103,11 +111,23 @@ fn other_ref(p: &Project, x: Edited, r: &Ref) -> Result<BlockRef, String> {
             }
         ));
     }
+    Ok(id)
+}
+
+/// 面のブロックが往復する（復路の面がある）
+fn round_trip(x: Edited, f: &FaceId) -> bool {
+    x.faces.iter().flatten().any(|g| g.node == f.node && g.back)
+}
+
+/// ほかの面を指す面（ピックアップの元・ソルブの参照の面）: id のあるブロックの面（復路の面も）
+fn other_ref(p: &Project, x: Edited, r: &Ref) -> Result<BlockRef, String> {
+    let (f, i) = face_of(x, r, true)?;
+    let id = block_id_of(p, &f, r)?;
     Ok(BlockRef::Block(BlockFace {
         block: id.to_string(),
         surface: i,
         coordbrk: false,
-        back: false,
+        back: f.back,
         pass: 0,
     }))
 }
@@ -155,13 +175,13 @@ fn put_op(ops: &mut Vec<SurfaceOp>, o: SurfaceOp, shown: bool) {
         SurfaceOp::AddSolve(o) => so::put_solve(ops, o, shown),
         SurfaceOp::AddPickup(o) => so::put_pickup(ops, o, shown),
         SurfaceOp::RemoveSolve {
-            surface: BlockRef::Sys(Ref::Index(i)),
+            surface: at @ (BlockRef::Sys(Ref::Index(_)) | BlockRef::Block(_)),
             what,
-        } => so::drop_solve(ops, i, what),
+        } => so::drop_solve_at(ops, at, what),
         SurfaceOp::RemovePickup {
-            dst: BlockRef::Sys(Ref::Index(i)),
+            dst: at @ (BlockRef::Sys(Ref::Index(_)) | BlockRef::Block(_)),
             what,
-        } => so::drop_pickup(ops, i, what),
+        } => so::drop_pickup_at(ops, at, what),
         o => ops.push(o),
     }
 }
@@ -170,7 +190,7 @@ fn put_op(ops: &mut Vec<SurfaceOp>, o: SurfaceOp, shown: bool) {
 fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String> {
     use EditOp as E;
     let edit = |r: &Ref, fields: Map<String, Value>| -> Result<(NodePath, Mod), String> {
-        let (f, i) = face_of(x, r)?;
+        let (f, i) = face_of(x, r, false)?;
         // ブロックの最後の面の厚さには後ろの空気のブロックが入っている（状態で変わる間隔も）。上書きすると全部の
         // 状態で固定されるので、空気のブロックで変える。往復するブロックの最後の面の後の媒質（材料など）も同じ
         // （展開で通らない）
@@ -201,11 +221,25 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             }),
         ))
     };
-    // 当てる面（surface・dst）はブロックの面の番号
-    let own = |r: &Ref| -> Result<(NodePath, BlockRef), String> {
-        let (f, i) = face_of(x, r)?;
+    // 当てる面（surface・dst）はブロックの面の番号。back ならソルブ・ピックアップを復路の面にも置ける（ブロックの面
+    // `{"block": id, "surface": 往路の番号, "back": true}` で指す）
+    let at = |r: &Ref, back: bool| -> Result<(NodePath, BlockRef), String> {
+        let (f, i) = face_of(x, r, back)?;
+        if f.back {
+            let id = block_id_of(p, &f, r)?.to_string();
+            let b = BlockFace {
+                block: id,
+                surface: i,
+                coordbrk: false,
+                back: true,
+                pass: 0,
+            };
+            return Ok((f.node, BlockRef::Block(b)));
+        }
         Ok((f.node, BlockRef::Sys(Ref::Index(i))))
     };
+    let own = |r: &Ref| at(r, false);
+    let any = |r: &Ref| at(r, true);
     Ok(match op {
         E::SetSurface { surface, fields } => edit(surface, fields.clone())?,
         E::SetSurfaceData { surface, data } => edit(surface, data.clone())?,
@@ -225,7 +259,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             )
         }
         E::AddSolve(o) => {
-            let (n, r) = own(&o.surface)?;
+            let (n, r) = any(&o.surface)?;
             let other = o.other.as_ref().map(|q| other_ref(p, x, q)).transpose()?;
             let j = sys_index(x, &o.surface);
             let shown = x
@@ -249,7 +283,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             )
         }
         E::AddPickup(o) => {
-            let (n, r) = own(&o.dst)?;
+            let (n, r) = any(&o.dst)?;
             let src = other_ref(p, x, &o.src)?;
             let j = sys_index(x, &o.dst);
             let w = lensbench_core::pickup::pick_kind_parse(&o.what).ok();
@@ -274,7 +308,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             )
         }
         E::RemoveSolve { surface, what } => {
-            let (n, r) = own(surface)?;
+            let (n, r) = any(surface)?;
             (
                 n,
                 Mod::Op(
@@ -287,7 +321,7 @@ fn to_mod(p: &Project, x: Edited, op: &EditOp) -> Result<(NodePath, Mod), String
             )
         }
         E::RemovePickup { dst, what } => {
-            let (n, r) = own(dst)?;
+            let (n, r) = any(dst)?;
             (
                 n,
                 Mod::Op(
@@ -395,7 +429,7 @@ fn param_op(run: &mut Option<System>, x: Edited, op: &EditOp) -> Result<Option<E
 }
 
 /// 展開した系 x（プロジェクト p の展開。状態・経路は問わない、ブロックの木が同じこと）にした編集 ops を、面を足した
-/// ブロックの [`FaceMods`] に足す。書き戻せない操作（面を入れる・消す、座標ブレーク・復路の面、面の上書きを
+/// ブロックの [`FaceMods`] に足す。書き戻せない操作（面を入れる・消す、座標ブレーク・復路の面の値（復路の面のソルブ・ピックアップは書ける）、面の上書きを
 /// 持てないブロックの面、系の設定など）は書かずに、説明を返す。面を入れる・消す操作の後の操作は面の番号が
 /// ずれるので書かない。check は足した後のプロジェクトを確かめる（展開できるか）。通らない上書きは外して説明を返す
 /// ので、書き戻したプロジェクトは check を通る

@@ -1393,3 +1393,53 @@ LTTL 0 1 Wide 0 0 0 1 1 0 0.0 \"\" 0\nLTTL 0 2 Tele 0 0 0 1 1 0 0.0 \"\" 0\n",
     assert_eq!(h.state().c.sys.ld_rows[4].material, "N-BK7");
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 往路を戻る鏡のある組合せで、復路の面にピックアップを置ける（serve の書き戻しがブロックの面の back で要素の操作に
+/// する）。復路の面の値は往路の面と同じ形のまま、ピックアップの値になる
+#[test]
+fn pickup_on_a_return_face_of_a_double_pass() {
+    use lensbench_project::edit_ops::SurfaceOp;
+    use lensbench_project::edit_spec::BlockRef;
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("examples/projects/P4_double_pass.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let st = h.state().test_state();
+    assert_eq!(st["status_error"], false, "{st}");
+    let rows = h.state().c.sys.ld_rows.clone();
+    let near = |x: f64, y: f64| (x - y).abs() < 1e-9;
+    // 玉 L の面 0 は R 40、面 1 は R −60。復路の面 0 は最後の R 40 の面
+    let back0 = rows.iter().rposition(|w| near(w.r, 40.0)).unwrap();
+    let fwd1 = rows.iter().position(|w| near(w.r, -60.0)).unwrap();
+    assert!(back0 > fwd1 + 1, "{back0} {fwd1}");
+    h.state_mut()
+        .c
+        .msgs
+        .push(Msg::LensData(lens_data::Act::Ops(vec![json!({
+            "op": "add_pickup", "dst": back0, "src": fwd1, "what": "c"
+        })])));
+    settle(&mut h);
+    let st = h.state().test_state();
+    assert_eq!(st["status_error"], false, "{st}");
+    let c = &h.state().c.doc.combo;
+    let l = c
+        .all()
+        .into_iter()
+        .filter_map(|x| c.get(&x).cloned())
+        .find(|p| p.id == "L")
+        .unwrap();
+    assert!(
+        l.ops.iter().any(|o| matches!(o, SurfaceOp::AddPickup(q)
+            if matches!(&q.dst, BlockRef::Block(f) if f.back && f.surface == 0))),
+        "{:?}",
+        l.ops
+    );
+    assert!(
+        near(h.state().c.sys.ld_rows[back0].r, -60.0),
+        "{:?}",
+        h.state().c.sys.ld_rows[back0]
+    );
+}
