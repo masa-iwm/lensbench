@@ -24,6 +24,7 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("mtf-focus", n_("Through-focus MTF"), true),
     ("interference", n_("Two-beam fringes"), true),
     ("pop", n_("Simple POP"), true),
+    ("image-sim", n_("Image simulation"), false),
     ("rays", n_("Ray table"), false),
     ("coatings", n_("Coating interfaces"), false),
     ("info", n_("System data"), false),
@@ -71,6 +72,7 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "mtf-focus" => "Through-focus MTF: MTF as the image plane shifts",
         "interference" => "Two-beam fringes: overlap of two configurations or states",
         "pop" => "Simple POP: irradiance of a field built from rays and propagated",
+        "image-sim" => "Image simulation: a source image through the diffraction PSF, distortion and relative illumination",
         "rays" => "Ray table: intersections, directions and optical path per surface",
         "coatings" => "Coating boundaries: every boundary (coating, media) and how it is handled",
         "info" => "System data: focal length, F-number, pupils, image height, etc.",
@@ -114,7 +116,9 @@ pub(crate) fn analysis_group(cmd: &str) -> &'static str {
         | "footprint"
         | "relative-illumination"
         | "vignetting" => "Image quality",
-        "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
+        "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" | "image-sim" => {
+            "MTF / PSF"
+        }
         "interference" | "pop" | "gaussian-beam" => "Interference / propagation",
         "ray-fan" | "opd-fan" | "pupil-fan" | "field-curvature" | "longitudinal"
         | "lateral-color" | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",

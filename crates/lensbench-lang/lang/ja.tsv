@@ -2617,6 +2617,34 @@ the waist radius must be positive ({})	ウエストの半径は正の値にし�
 M² must be 1 or more ({})	M² は 1 以上にしてください（{}）
 the distance to the waist must be finite	ウエストまでの距離は有限の値にしてください
 the paraxial trace fails at surface {j} (the beam can't be carried)	面 {j} で近軸の追跡が失敗しました（ビームを運べません）
+image simulation: the source image is empty or its channels have the wrong size	像の模擬: 元の画像が空か、チャンネルの大きさが違います
+image simulation: the source image must be gray (1 channel) or RGB (3 channels)	像の模擬: 元の画像はグレー（1 チャンネル）か RGB（3 チャンネル）にしてください
+image simulation: field height {} must be positive	像の模擬: 視野の高さ {} は正にしてください
+image simulation: PSF grid {:?} must be 1 or more and the map grid {} 2 or more	像の模擬: PSF のグリッド {:?} は 1 以上、歪曲のグリッド {} は 2 以上にしてください
+image simulation: an RGB image needs 3 wavelengths (or give the channel wavelengths)	像の模擬: RGB の画像には波長が 3 つ要ります（またはチャンネルの波長を指定してください）
+image simulation: can't trace the chief ray of field ({:.4}, {:.4}) (normalized); reduce the field height	像の模擬: 視野 ({:.4}, {:.4})（正規化）の主光線を追跡できません。視野の高さを小さくしてください
+image simulation: detector pixel {p}	像の模擬: 検出器の画素 {p}
+image simulation: detector size {w1} × {h1}	像の模擬: 検出器の大きさ {w1} × {h1}
+rgb_waves {v:?}: give 3 wavelength numbers from 1	rgb_waves {v:?}: 波長の番号（1 から）を 3 つ指定してください
+{}: the extension must be png or json	{}: 拡張子は png・json のどれか
+Image simulation: a source image through the system's diffraction PSF, distortion and relative illumination	像の模擬: 元の画像にシステムの回折 PSF・歪曲・相対照度をかける
+Places the source image (PNG; gray uses all weighted wavelengths, RGB one wavelength per channel) in the object field and images it onto a detector, as OpticStudio's Image Simulation: chief ray image positions (distortion and lateral color), relative illumination, and the FFT PSF on a grid of fields (interpolated between the grid points; FFT convolution). Brightness 1 is the on-axis value of an unaberrated uniform source of 1. --save writes the detector image as PNG (16 bit) or JSON	元の画像（PNG。グレーはウェイトのある全波長、RGB はチャンネルごとに 1 波長）を物体の視野に置き、検出器に写します（OpticStudio の Image Simulation 相当）: 主光線の像点（歪曲・倍率色収差）、相対照度、視野のグリッドの FFT PSF（グリッドの点の間は補間、FFT で畳み込み）。明るさ 1 は、収差のない一様な元の画像（値 1）の軸上の値。--save で検出器の像を PNG（16 bit）か JSON に書きます
+Source image (PNG, gray or RGB; a built-in 512 × 512 grid chart if omitted)	元の画像（PNG、グレーか RGB。省略で組み込みの 512 × 512 のグリッドの図）
+Full height of the source image in field units (√2 × the largest field if omitted, so that the corners reach the largest field, as in OpticStudio). The image is centered on the axis; row 0 (top) is +y	元の画像の高さ（全体）[視野の単位]（省略で最大の視野の √2 倍。角が最大の視野に届く。OpticStudio と同じ）。画像の中心は光軸、行 0（上）が +y
+PSF grid points across the image in x (the PSF is interpolated between them)	画像の x 方向の PSF のグリッド点の数（間は PSF を補間）
+PSF grid points across the image in y	画像の y 方向の PSF のグリッド点の数
+Distortion and relative illumination grid points on a side	歪曲・相対照度のグリッドの一辺の点の数
+Aberrations: diffraction (FFT PSF at each PSF grid point) or none (distortion and relative illumination only)	収差: diffraction（PSF のグリッド点ごとの FFT PSF）か none（歪曲と相対照度だけ）
+Pupil grid side of the PSF (automatic if omitted)	PSF の瞳のグリッドの一辺（省略で自動）
+Image grid side of the PSF before it is binned to detector pixels	検出器の画素にまとめる前の PSF の像のグリッドの一辺
+Detector pixel size [lens units] (the on-axis image of one source pixel if omitted)	検出器の画素の大きさ [レンズ単位]（省略で元の 1 画素の軸上の像の大きさ）
+Detector width [pixels] (same as the source if omitted)	検出器の幅 [画素]（省略で元の画像と同じ）
+Detector height [pixels] (same as the source if omitted)	検出器の高さ [画素]（省略で元の画像と同じ）
+Include relative illumination	相対照度をかける
+RGB only: wavelength numbers for R, G and B (from 1; the system's wavelengths 1 to 3, shortest as B, if omitted)	RGB だけ: R・G・B の波長の番号（1 から。省略でシステムの波長 1〜3、短い方から B・G・R）
+Include the detector image in the result (always in .json output)	検出器の像を結果に入れる（.json に書くときはいつも）
+Gray only: wavelength number (from 1; all weighted wavelengths if omitted)	グレーだけ: 波長の番号（1 から。省略でウェイトのある全波長）
+wave: wavelength numbers are from 1	wave: 波長の番号は 1 から
 the paraxial stop radius is 0	近軸の絞りの半径が 0 です
 the chief ray (wavelength {}) stopped	主光線（波長 {}）が止まりました
 the paraxial focus is on the image surface (wavelength {})	近軸の焦点が像面の上にあります（波長 {}）

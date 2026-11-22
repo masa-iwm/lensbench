@@ -3,6 +3,7 @@
 //! （足し忘れは `every_test_file_is_listed` が落とす）。1 ファイルだけ回すときは `cargo test --test it <モジュール名>::`。
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
+mod imagesim_refs;
 mod mtf_refs;
 mod samples;
 mod zemax_refs;

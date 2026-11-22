@@ -24,6 +24,7 @@
 
 ### 変更履歴
 
+- **2.7**: 像の模擬 `System.image_sim(image, ...)`（OpticStudio の Image Simulation 相当。NumPy の (高さ, 幅) か (高さ, 幅, 3) を受けて同じ形で返す）を追加。
 - **2.6**: 膜の一覧を登録する `register_coating_catalog(name, files=[], dat=None)`・`unregister_coating_catalog(name)`・
   `coating_catalogs()` を追加。登録した膜は面の膜の名前で、.zmx の膜ファイル・膜のフォルダより先に引く（拡張の
   `Extensions::coating_catalog` と同じ表。[ライブラリ（Rust）](rust.md) の `lensbench_core::usercoating`）。系は膜を一度だけ読むので、使う系を読む前に登録する。

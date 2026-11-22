@@ -27,3 +27,7 @@ ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "c
 [[test]]
 name = "it"
 path = "tests/it.rs"
+
+[dev-dependencies]
+# 像の模擬の基準（OpticStudio の PNG）を読む
+lensbench-export = { path = "../lensbench-export" }

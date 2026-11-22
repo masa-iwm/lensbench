@@ -1,6 +1,7 @@
 //! 書き出しの形（光線の表・画像）や系の読み方の要る解析の定義。解析の登録簿（[`lensbench_analysis::Analyses`]）に
 //! 同梱の解析と並べて足す（lensbench-analysis は書き出しの lensbench-export より下の層なので、ここに置く。段階 2-3 の engine 層へ移す）
 
+mod imagesim;
 mod interference;
 mod trace;
 
@@ -12,6 +13,7 @@ pub fn register(a: &mut lensbench_analysis::Analyses) {
     a.add(trace::MechCheck);
     a.add(trace::Elements);
     a.add(interference::Interference);
+    a.add(imagesim::ImageSim);
 }
 
 #[cfg(test)]
@@ -36,6 +38,9 @@ mod tests {
             let name = d.meta().name;
             let p = match name {
                 "pop" => json!({ "n": 32, "rays": 11 }),
+                "image-sim" => {
+                    json!({ "psf_x": 1, "psf_y": 1, "map_grid": 3, "aberrations": "none" })
+                }
                 _ => json!({}),
             };
             let r = d.run_json(&cx, &p);

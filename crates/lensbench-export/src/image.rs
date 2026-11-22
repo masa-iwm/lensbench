@@ -1,5 +1,5 @@
 //! 格子の画像（16 bit TIFF・32 bit float TIFF・16 bit PNG）。外部の画像ライブラリなしで、
-//! TIFF は非圧縮・ストリップ 1 本・リトルエンディアン、PNG は 16 bit グレー。
+//! TIFF は非圧縮・ストリップ 1 本・リトルエンディアン、PNG は 16 bit グレー（像の模擬は 16 bit の RGB も、読むのは png の crate）。
 //! 画像の行 0 = 上 = y の最大（格子は行 0 = y の最小で渡す）。説明（JSON）は TIFF の ImageDescription にも入れる。
 
 use std::path::Path;
@@ -211,6 +211,80 @@ pub fn write_png16(path: &Path, nx: usize, ny: usize, u: &[u16]) -> std::io::Res
     lensbench_core::vfs::write(path, buf)
 }
 
+/// PNG を読む（グレー・RGB、8・16 bit、パレット・α 付きも。α は捨てる）: (幅, 高さ, チャンネル（1 か 3、行 0 = 上、0〜1）)
+pub fn read_png(path: &Path) -> std::io::Result<(usize, usize, Vec<Vec<f64>>)> {
+    let b = lensbench_core::vfs::read(path)?;
+    let mut d = png::Decoder::new(std::io::Cursor::new(b));
+    d.set_transformations(png::Transformations::EXPAND);
+    let mut r = d.read_info().map_err(std::io::Error::other)?;
+    let mut buf = vec![0; r.output_buffer_size()];
+    let info = r.next_frame(&mut buf).map_err(std::io::Error::other)?;
+    let (w, h) = (info.width as usize, info.height as usize);
+    let (bytes, max) = match info.bit_depth {
+        png::BitDepth::Sixteen => (2, 65535.0),
+        png::BitDepth::Eight => (1, 255.0),
+        d => return Err(std::io::Error::other(format!("PNG bit depth {d:?}"))),
+    };
+    let (nc, color) = match info.color_type {
+        png::ColorType::Grayscale => (1, 1),
+        png::ColorType::GrayscaleAlpha => (2, 1),
+        png::ColorType::Rgb => (3, 3),
+        png::ColorType::Rgba => (4, 3),
+        c => return Err(std::io::Error::other(format!("PNG color type {c:?}"))),
+    };
+    let at = |k: usize| -> f64 {
+        let o = k * bytes;
+        let v = if bytes == 2 {
+            u16::from_be_bytes([buf[o], buf[o + 1]]) as f64
+        } else {
+            buf[o] as f64
+        };
+        v / max
+    };
+    let line = info.line_size / bytes;
+    let ch = (0..color)
+        .map(|c| {
+            (0..w * h)
+                .map(|k| at((k / w) * line + (k % w) * nc + c))
+                .collect()
+        })
+        .collect();
+    Ok((w, h, ch))
+}
+
+/// 16 bit の PNG（チャンネル 1 ならグレー、3 なら RGB。値は 0〜1 を 0〜65535 に、外は切る。行 0 = 上）
+pub fn write_png16_channels(
+    path: &Path,
+    w: usize,
+    h: usize,
+    ch: &[Vec<f64>],
+) -> std::io::Result<()> {
+    let mut buf = Vec::new();
+    let mut e = png::Encoder::new(&mut buf, w as u32, h as u32);
+    e.set_color(if ch.len() == 3 {
+        png::ColorType::Rgb
+    } else {
+        png::ColorType::Grayscale
+    });
+    e.set_depth(png::BitDepth::Sixteen);
+    let mut wr = e.write_header().map_err(std::io::Error::other)?;
+    let mut data = Vec::with_capacity(w * h * 2 * ch.len());
+    for k in 0..w * h {
+        for c in ch {
+            let v = c[k];
+            let u = if v.is_finite() {
+                (v.clamp(0.0, 1.0) * 65535.0).round() as u16
+            } else {
+                0
+            };
+            data.extend_from_slice(&u.to_be_bytes());
+        }
+    }
+    wr.write_image_data(&data).map_err(std::io::Error::other)?;
+    wr.finish().map_err(std::io::Error::other)?;
+    lensbench_core::vfs::write(path, buf)
+}
+
 /// JSON の説明を横に書く（拡張子を .json に）
 pub fn write_sidecar(path: &Path, json: &str) -> std::io::Result<()> {
     lensbench_core::vfs::write(path.with_extension("json"), json)
@@ -219,6 +293,23 @@ pub fn write_sidecar(path: &Path, json: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn png_channels_read_back() {
+        let dir = std::env::temp_dir().join(format!("lb_png_{}", std::process::id()));
+        lensbench_core::vfs::create_dir_all(&dir).unwrap();
+        let f = dir.join("c.png");
+        let ch = vec![
+            vec![0.0, 0.5, 1.0, 2.0],
+            vec![1.0, 0.0, 0.25, 0.0],
+            vec![0.0; 4],
+        ];
+        write_png16_channels(&f, 2, 2, &ch).unwrap();
+        let (w, h, back) = read_png(&f).unwrap();
+        assert_eq!((w, h, back.len()), (2, 2, 3));
+        assert!((back[0][1] - 0.5).abs() < 1e-4 && back[0][3] == 1.0 && back[1][2] > 0.24);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn tiff_reads_back() {

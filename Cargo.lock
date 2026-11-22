@@ -3255,6 +3255,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-core",
  "lensbench-design",
+ "lensbench-export",
  "lensbench-formats",
  "lensbench-project",
  "ndarray",

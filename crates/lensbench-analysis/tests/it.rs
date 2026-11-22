@@ -12,6 +12,7 @@ mod ghost;
 mod huygens;
 mod huygens_gpu;
 mod huygens_refs;
+mod imagesim;
 mod obsc_mtf;
 mod plugin_system;
 mod plugins;

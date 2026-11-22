@@ -38,6 +38,7 @@ pub(crate) fn has_figure(cmd: &str) -> bool {
             | "rms"
             | "interference"
             | "pop"
+            | "image-sim"
     )
 }
 
@@ -57,7 +58,7 @@ pub(crate) fn figure_params(
         "wavefront" if figure => {
             m.entry("map").or_insert(json!(true));
         }
-        "interference" | "pop" if figure => {
+        "interference" | "pop" | "image-sim" if figure => {
             m.entry("grid").or_insert(json!(true));
         }
         // 周波数が要る解析は遮断周波数の 1/10・1/4・1/2（無ければ 10・20・40）
@@ -189,6 +190,7 @@ pub(crate) fn show(
         }
         "interference" => interference(ui, id, v),
         "pop" => pop(ui, id, gen, v),
+        "image-sim" => image_sim(ui, id, gen, v),
         _ => false,
     }
 }
@@ -1397,3 +1399,72 @@ fn lens_mm(unit: &str) -> bool {
 #[cfg(test)]
 #[path = "figures_tests.rs"]
 mod tests;
+
+/// 像の模擬の像（検出器の画素、1 で白。グレーは値も読める、RGB はそのまま色に）
+fn image_sim(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
+    let (w, h) = (
+        v["width"].as_u64().unwrap_or(0) as usize,
+        v["height"].as_u64().unwrap_or(0) as usize,
+    );
+    let ch: Vec<Vec<f64>> = v["image"]
+        .as_array()
+        .map(|a| a.iter().map(f64s).collect())
+        .unwrap_or_default();
+    if w == 0 || ch.is_empty() || ch.iter().any(|c| c.len() != w * h) {
+        return false;
+    }
+    let px = v["pixel"].as_f64().unwrap_or(1.0);
+    let c = f64s(&v["center"]);
+    let (cx, cy) = (
+        c.first().copied().unwrap_or(0.0),
+        c.get(1).copied().unwrap_or(0.0),
+    );
+    let (hw, hh) = (w as f64 * px / 2.0, h as f64 * px / 2.0);
+    let extent = [cx - hw, cx + hw, cy - hh, cy + hh];
+    let height = (ui.available_height() * 0.8).clamp(200.0, 720.0);
+    if ch.len() == 1 {
+        let g = Grid {
+            w,
+            h,
+            v: ch[0].clone(),
+            extent,
+        };
+        heatmap(
+            ui,
+            ("image-sim", id),
+            &g,
+            Cmap::Gray,
+            0.0,
+            1.0,
+            ("x", "y", tr("Brightness")),
+            height,
+        );
+        return true;
+    }
+    let tex = memo(ui, ("image-sim-rgb", id), gen, || {
+        let u = |x: f64| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let pixels = (0..w * h)
+            .map(|k| Color32::from_rgb(u(ch[0][k]), u(ch[1][k]), u(ch[2][k])))
+            .collect();
+        ui.ctx().load_texture(
+            format!("image-sim-{id}"),
+            ColorImage {
+                size: [w, h],
+                pixels,
+            },
+            TextureOptions::NEAREST,
+        )
+    });
+    let plot = Plot::new(("image-sim-plot", id))
+        .data_aspect(1.0)
+        .height(height)
+        .show_grid(false);
+    crate::plot_tools::nav(ui, plot, false, |p| {
+        p.image(PlotImage::new(
+            tex.id(),
+            PlotPoint::new(cx, cy),
+            [(2.0 * hw) as f32, (2.0 * hh) as f32],
+        ));
+    });
+    true
+}

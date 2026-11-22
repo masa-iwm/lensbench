@@ -144,6 +144,21 @@ def test_huygens_device(b0):
         b0.huygens_mtf(1, [0.0], device="x")
 
 
+def test_image_sim(b0):
+    # 一様な画像は軸上で 1（収差なし・相対照度なし）、RGB は (高さ, 幅, 3)。CLI の image-sim と同じ値
+    g = b0.image_sim(np.ones((16, 16)), psf_grid=(1, 1), map_grid=3, aberrations="none", relative_illumination=False)
+    assert g["image"].shape == (16, 16)
+    assert g["image"][8, 8] == pytest.approx(1.0, abs=1e-2)
+    r = b0.image_sim(np.ones((8, 8, 3)), psf_grid=(1, 1), map_grid=3)
+    assert r["image"].shape == (8, 8, 3)
+    c = cli("image-sim", zmx("B0"), "--psf-x", "1", "--psf-y", "1", "--map-grid", "3", "--aberrations", "none", "--grid")
+    assert c["width"] == 512 and len(c["image"][0]) == 512 * 512
+    with pytest.raises(ValueError):
+        b0.image_sim(np.ones((4, 4, 2)))
+    with pytest.raises(ValueError):
+        b0.image_sim(np.ones((4, 4)), aberrations="x")
+
+
 def test_geo_mtf(b0):
     g = b0.geo_mtf(2, [0.0, 50.0], diff_limit=True)
     assert g["tangential"][0] == pytest.approx(1.0, abs=1e-14)

@@ -1,0 +1,203 @@
+//! 像の模擬（[`image_sim`]）: 明るさの単位・PSF の和・歪曲の向き・RGB のチャンネル
+
+use lensbench_analysis::imagesim::{image_sim, Aberrations, ImageSimOpts, SimImage};
+use lensbench_core::system::System;
+use lensbench_formats::zmx::{self, LoadOptions};
+use std::path::PathBuf;
+
+fn load(name: &str) -> System {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    zmx::load_with(&root.join("tests/refs").join(name).join("system.zmx"), &opt).unwrap()
+}
+
+fn gray(w: usize, h: usize, f: impl Fn(usize, usize) -> f64) -> SimImage {
+    SimImage {
+        width: w,
+        height: h,
+        channels: vec![(0..w * h).map(|k| f(k % w, k / w)).collect()],
+    }
+}
+
+/// 一様な元の画像（値 1）は、収差なし・周辺光量なしで軸上の検出器の画素が 1。回折 PSF をかけても（PSF の和が 1
+/// なので）中央は 1 のまま
+#[test]
+fn uniform_image_is_one_on_axis() {
+    let s = load("A0");
+    for ab in [Aberrations::None, Aberrations::Diffraction] {
+        let o = ImageSimOpts {
+            field_height: 10.0,
+            psf_grid: (3, 3),
+            map_grid: 9,
+            aberrations: ab,
+            relative_illumination: false,
+            ..Default::default()
+        };
+        let r = image_sim(&s, &gray(32, 32, |_, _| 1.0), &o).unwrap();
+        let im = &r.image;
+        let c = im.channels[0][16 * 32 + 16];
+        assert!((c - 1.0).abs() < 2e-2, "{ab:?}: center {c}");
+    }
+}
+
+/// 点（1 画素）の像: 収差なしは明るさの和が倍率どおりに保たれ、回折 PSF の像も和は同じ（像の外に出ない限り）
+#[test]
+fn point_source_keeps_energy() {
+    let s = load("A0");
+    let src = gray(33, 33, |i, j| if i == 16 && j == 16 { 1.0 } else { 0.0 });
+    let base = ImageSimOpts {
+        field_height: 4.0,
+        psf_grid: (1, 1),
+        map_grid: 5,
+        relative_illumination: false,
+        ..Default::default()
+    };
+    let none = image_sim(
+        &s,
+        &src,
+        &ImageSimOpts {
+            aberrations: Aberrations::None,
+            ..base.clone()
+        },
+    )
+    .unwrap();
+    let diff = image_sim(&s, &src, &base).unwrap();
+    let sum =
+        |r: &lensbench_analysis::imagesim::ImageSimOut| r.image.channels[0].iter().sum::<f64>();
+    assert!((sum(&none) - sum(&diff)).abs() < 1e-6 * sum(&none));
+    // 収差なしの点は中央の画素に来る
+    let k = none.image.channels[0]
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .unwrap()
+        .0;
+    assert_eq!(k, 16 * 33 + 16);
+}
+
+/// 元の画像の上（行 0）は視野の +y。A0 の +y の視野の主光線は像面の +y に来るので、上の明るい点は検出器の上半分に来る
+#[test]
+fn orientation_follows_the_chief_ray() {
+    let s = load("A0");
+    let src = gray(32, 32, |i, j| {
+        if j < 4 && (14..18).contains(&i) {
+            1.0
+        } else {
+            0.0
+        }
+    });
+    let o = ImageSimOpts {
+        field_height: 20.0,
+        psf_grid: (1, 1),
+        map_grid: 9,
+        aberrations: Aberrations::None,
+        relative_illumination: false,
+        ..Default::default()
+    };
+    let r = image_sim(&s, &src, &o).unwrap();
+    let ch = &r.image.channels[0];
+    let (top, bottom): (f64, f64) = (ch[..16 * 32].iter().sum(), ch[16 * 32..].iter().sum());
+    assert!(top > 0.0 && bottom == 0.0, "top {top} bottom {bottom}");
+}
+
+/// RGB は 3 チャンネル、周辺光量で端が暗くなる
+#[test]
+fn rgb_and_relative_illumination() {
+    let s = load("D0");
+    let src = SimImage {
+        width: 24,
+        height: 24,
+        channels: vec![vec![1.0; 24 * 24]; 3],
+    };
+    let o = ImageSimOpts {
+        field_height: 2.0 * s.fields.iter().map(|f| f.y.abs()).fold(0.0, f64::max) / 2f64.sqrt(),
+        psf_grid: (3, 3),
+        map_grid: 9,
+        ..Default::default()
+    };
+    let r = image_sim(&s, &src, &o).unwrap();
+    assert_eq!(r.image.channels.len(), 3);
+    for ch in &r.image.channels {
+        let c = ch[12 * 24 + 12];
+        assert!(c > 0.5 && c < 1.2, "center {c}");
+    }
+}
+
+/// 一様な元の画像は端の画素まで 1（面積の差分が格子の外で切り詰められない）
+#[test]
+fn uniform_image_reaches_the_edges() {
+    let s = load("A0");
+    let o = ImageSimOpts {
+        field_height: 10.0,
+        psf_grid: (1, 1),
+        map_grid: 9,
+        aberrations: Aberrations::None,
+        relative_illumination: false,
+        ..Default::default()
+    };
+    let r = image_sim(&s, &gray(32, 32, |_, _| 1.0), &o).unwrap();
+    let ch = &r.image.channels[0];
+    for (i, j) in [(0, 0), (0, 16), (16, 0), (31, 31), (31, 16)] {
+        let v = ch[j * 32 + i];
+        assert!((v - 1.0).abs() < 3e-2, "pixel ({i}, {j}) {v}");
+    }
+}
+
+/// 検出器の画素が PSF の標本の間隔より細かくても、回折の像に櫛の凸凹が出ない（一様な元の画像の中央が平ら）
+#[test]
+fn fine_detector_pixels_give_a_smooth_image() {
+    let s = load("D0");
+    let o = ImageSimOpts {
+        field_height: 1.0,
+        psf_grid: (1, 1),
+        map_grid: 5,
+        pixel: Some(0.0005),
+        size: Some((96, 96)),
+        relative_illumination: false,
+        ..Default::default()
+    };
+    let r = image_sim(&s, &gray(64, 64, |_, _| 1.0), &o).unwrap();
+    let ch = &r.image.channels[0];
+    let mid: Vec<f64> = (32..64)
+        .flat_map(|j| (32..64).map(move |i| (i, j)))
+        .map(|(i, j)| ch[j * 96 + i])
+        .collect();
+    let (lo, hi) = mid
+        .iter()
+        .fold((f64::INFINITY, 0.0f64), |(a, b), &v| (a.min(v), b.max(v)));
+    assert!(hi - lo < 1e-2 && (hi - 1.0).abs() < 2e-2, "{lo}..{hi}");
+}
+
+/// 1 点の回折の像は、検出器の画素が PSF の標本の間隔より細かくても、中央の行が中心から単調に下がる（核が櫛にならない）
+#[test]
+fn point_image_has_no_comb() {
+    let s = load("D0");
+    let o = ImageSimOpts {
+        field_height: 0.0107, // 元の 1 画素の像が 0.2 µm ほど（PSF より十分小さい）
+        psf_grid: (1, 1),
+        map_grid: 3,
+        pixel: Some(0.0005),
+        size: Some((41, 41)),
+        relative_illumination: false,
+        ..Default::default()
+    };
+    let r = image_sim(
+        &s,
+        &gray(33, 33, |i, j| if i == 16 && j == 16 { 1.0 } else { 0.0 }),
+        &o,
+    )
+    .unwrap();
+    let ch = &r.image.channels[0];
+    let row: Vec<f64> = (0..41).map(|i| ch[20 * 41 + i]).collect();
+    let peak = (0..41).max_by(|&a, &b| row[a].total_cmp(&row[b])).unwrap();
+    for k in 0..3 {
+        assert!(
+            row[peak + k + 1] < row[peak + k] && row[peak - k - 1] < row[peak - k],
+            "{row:?}"
+        );
+    }
+}

@@ -25,6 +25,7 @@ pub mod gauss;
 pub mod ghost;
 pub mod huygens;
 pub mod illum;
+pub mod imagesim;
 pub mod interference;
 mod nan;
 pub mod plugins;

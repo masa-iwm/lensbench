@@ -15,6 +15,7 @@
 mod edit;
 mod errors;
 pub mod ext;
+mod imagesim;
 mod interference;
 mod many;
 mod mtfs;
@@ -2638,6 +2639,48 @@ impl PySystem {
         mtf_dict(py, &m)
     }
 
+    /// Image simulation (as OpticStudio's Image Simulation): places image ((height, width) gray or (height, width, 3) RGB, row 0 at the top = field +y)
+    /// in the object field, field_height (full height in field units; √2 × the largest field if omitted) high and centered on the axis, and images it onto
+    /// a detector with the chief ray positions (distortion, lateral color), relative illumination and, with aberrations="diffraction", the FFT PSF on a
+    /// psf_grid of fields (interpolated between them). Gray uses all weighted wavelengths (or wave, from 1), RGB one wavelength per channel (rgb_waves, from 1; the
+    /// wavelengths 1 to 3, shortest as B, if omitted). pixel is the detector pixel [lens units] (the on-axis image of one source pixel if omitted), size
+    /// (width, height) the detector pixels. Returns image (same layout; 1 is the on-axis value of an unaberrated uniform source of 1), pixel, center, field_height and warnings
+    #[pyo3(signature = (image, field_height=None, psf_grid=(5, 5), aberrations="diffraction", pixel=None, size=None, relative_illumination=true, rgb_waves=None, wave=None, pupil=None, psf_points=64, map_grid=17, threads=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn image_sim<'py>(
+        &self,
+        py: Python<'py>,
+        image: numpy::PyArrayLikeDyn<'py, f64, AllowTypeChange>,
+        field_height: Option<f64>,
+        psf_grid: (usize, usize),
+        aberrations: &str,
+        pixel: Option<f64>,
+        size: Option<(usize, usize)>,
+        relative_illumination: bool,
+        rgb_waves: Option<[usize; 3]>,
+        wave: Option<usize>,
+        pupil: Option<usize>,
+        psf_points: usize,
+        map_grid: usize,
+        threads: Option<usize>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let a = imagesim::Args {
+            field_height,
+            psf_grid,
+            aberrations: aberrations.into(),
+            pixel,
+            size,
+            relative_illumination,
+            rgb_waves,
+            wave,
+            pupil,
+            psf_points,
+            map_grid,
+            threads,
+        };
+        imagesim::run(py, &self.sys(), image, a)
+    }
+
     /// pickle: turns the system into the JSON bytes of a system file and passes them with the file names of the coating tables and models
     /// and the folders of the glass catalogs. The receiving side reads the coating file, tables and catalogs again from the same paths
     /// (for another process on the same machine). With parameter changes, glasses, aiming and pickups, the round-tripped system traces bit
@@ -2693,7 +2736,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 6);
+pub const API_VERSION: (u32, u32) = (2, 7);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める
