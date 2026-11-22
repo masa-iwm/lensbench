@@ -3,7 +3,7 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.7.0 の後）
+## v0.7.0 の後・v0.8.0 まで
 
 ### 結果が変わる所
 - GPU のある PC では、Huygens PSF・MTF を既定（`device` が `auto`）で GPU の単精度の和で計算する。CPU の既定の近似と、値が収差のない
