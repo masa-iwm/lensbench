@@ -273,6 +273,25 @@ fn coatings_lists_interfaces_and_missing_tables() {
     assert_eq!(v["configurations"][0]["interfaces"][0]["kind"], "measured");
 }
 
+/// プロジェクトの .json は状態ごとに膜の一覧を出す（前は .zmx として読み、分かりにくい誤りになった）
+#[test]
+fn coatings_reads_project_states() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let glass = format!("{root}/tests/glass");
+    let p = format!("{root}/examples/projects/P6_states_focus_group.json");
+    let (ok, out, err) = run(&["coatings", &p, "--glass-dir", &glass, "--json"]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let cfgs = v["configurations"].as_array().unwrap();
+    assert!(cfgs.len() >= 2, "{v}");
+    assert_eq!(cfgs[0]["state"], "far");
+    assert_eq!(cfgs[0]["cfg"], 1);
+    for c in cfgs {
+        assert!(c["interfaces"].as_array().unwrap().len() >= 4);
+        assert_eq!(c["wavelengths_um"].as_array().unwrap().len(), 3);
+    }
+}
+
 #[test]
 fn layout_writes_every_format() {
     let dir = std::env::temp_dir().join(format!("lensbench-layout-{}", std::process::id()));

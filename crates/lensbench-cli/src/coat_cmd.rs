@@ -52,6 +52,25 @@ pub(crate) fn coat_kinks(
     Ok(json!({ "coats": coats, "keys": keys }))
 }
 
+// `coatings` の引数（main.rs を大きくしないようここに置く）
+#[derive(clap::Args)]
+pub(crate) struct CoatingsArgs {
+    /// A .zmx file (every multi-configuration), a project file (.json, every state) or a system file
+    pub(crate) file: PathBuf,
+    /// Folders to search for glass catalogs (more than one allowed)
+    #[arg(long = "glass-dir")]
+    pub(crate) glass_dir: Vec<PathBuf>,
+    /// Lens catalogs for the catalog lenses ("vendor", "part") of a project file (.zmx files, or folders of .zmx; the folder name is the maker and the file name is the part number; more than one allowed)
+    #[arg(long = "lens-catalog")]
+    pub(crate) lens_catalog: Vec<PathBuf>,
+    /// Measured coating tables and models (more than one allowed; same as --coatings of ghost and the analyses)
+    #[arg(long)]
+    pub(crate) coatings: Vec<PathBuf>,
+    /// Output JSON
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
 // `coat-model` の引数（main.rs を大きくしないようここに置く）
 #[derive(clap::Args)]
 pub(crate) struct CoatModelArgs {
@@ -549,15 +568,57 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
     }))
 }
 
-/// 面の膜の一覧（coatings）
-pub(crate) fn coatings(
-    file: &std::path::Path,
-    glass_dir: &[PathBuf],
-    tables: &[PathBuf],
-) -> Result<Value, AppError> {
+/// 面の膜の一覧（coatings）。.zmx は多重構成ごと、プロジェクトの .json は状態ごと、系ファイルは 1 つ
+pub(crate) fn coatings(a: &CoatingsArgs) -> Result<Value, AppError> {
+    let (file, glass_dir, lens_catalog, tables) =
+        (a.file.as_path(), &a.glass_dir, &a.lens_catalog, &a.coatings);
+    use lensbench_project::open::FileKind;
     let e = AppError::from;
-    let txt = glass::read_text(file).map_err(AppError::io_at(file))?;
-    let raw = zmx::parse_text(&txt).map_err(e)?;
+    // 構成（番号、プロジェクトの状態の名前）ごとの系
+    let mut systems: Vec<(usize, Option<String>, lensbench_core::System)> = Vec::new();
+    let (coating_file, catalogs) = if FileKind::of(file) == FileKind::Zmx {
+        let txt = glass::read_text(file).map_err(AppError::io_at(file))?;
+        let raw = zmx::parse_text(&txt).map_err(e)?;
+        for cfg in 1..=raw.configurations() {
+            let opt = zmx::LoadOptions {
+                cfg,
+                catalog_dirs: glass_dir.to_vec(),
+                ..Default::default()
+            };
+            let s = zmx::load_with(file, &opt).map_err(|x| x.at(format!("configuration {cfg}")))?;
+            systems.push((cfg, None, s));
+        }
+        (raw.coating_file_name(), raw.catalogs())
+    } else {
+        let spec = |state: Option<String>| lensbench_engine::SysSpec {
+            file: file.to_path_buf(),
+            glass_dir: glass_dir.to_vec(),
+            lens_catalog: lens_catalog.to_vec(),
+            cfg: 1,
+            state,
+            ..Default::default()
+        };
+        let states = lensbench_engine::load::state_names(&spec(None));
+        if states.is_empty() {
+            systems.push((
+                1,
+                None,
+                lensbench_engine::load::load_file_noted(&spec(None)).map_err(e)?,
+            ));
+        } else {
+            for (k, st) in states.into_iter().enumerate() {
+                let s = lensbench_engine::load::load_file_noted(&spec(Some(st.clone())))
+                    .map_err(|x| x.at(format!("state {st}")))?;
+                systems.push((k + 1, Some(st), s));
+            }
+        }
+        let name = systems
+            .first()
+            .and_then(|x| x.2.coating_file.as_ref())
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned());
+        (name, Vec::new())
+    };
     let mut cfgs = Vec::new();
     // 実測表が要る境界 → (コンフィグ, 波長)
     let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
@@ -567,13 +628,8 @@ pub(crate) fn coatings(
     // 登録した膜の一覧から入れたもの（膜, 一覧）と注意
     let mut registered: Vec<(String, String)> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
-    for cfg in 1..=raw.configurations() {
-        let opt = zmx::LoadOptions {
-            cfg,
-            catalog_dirs: glass_dir.to_vec(),
-            ..Default::default()
-        };
-        let s = zmx::load_with(file, &opt).map_err(|x| x.at(format!("configuration {cfg}")))?;
+    for (cfg, state, s) in &systems {
+        let cfg = *cfg;
         found = s.coating_file.clone();
         let CoatInterfaces {
             list: v,
@@ -581,7 +637,7 @@ pub(crate) fn coatings(
             auto: au,
             registered: re,
             notes: no,
-        } = coat_interfaces(&s, tables)?;
+        } = coat_interfaces(s, tables)?;
         for r in re {
             if !registered.contains(&r) {
                 registered.push(r);
@@ -615,12 +671,16 @@ pub(crate) fn coatings(
                 }
             }
         }
-        cfgs.push(json!({ "cfg": cfg, "wavelengths_um": s.wavelengths, "interfaces": v }));
+        let mut c = json!({ "cfg": cfg, "wavelengths_um": s.wavelengths, "interfaces": v });
+        if let Some(st) = state {
+            c["state"] = json!(st);
+        }
+        cfgs.push(c);
     }
     Ok(json!({
-        "coating_file": raw.coating_file_name(),
+        "coating_file": coating_file,
         "coating_file_path": found.map(|p| p.display().to_string()),
-        "catalogs": raw.catalogs(),
+        "catalogs": catalogs,
         "auto_coatings": auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
         "registered_coatings": registered.iter().map(|(c, k)| json!({ "coat": c, "catalog": k })).collect::<Vec<_>>(),
         "notes": notes,

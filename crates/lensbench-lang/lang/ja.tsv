@@ -1458,6 +1458,7 @@ no coating model could be made	作れたコーティングのモデルがあり�
 material {name} is neither in the coating file nor in the glass catalogs	材料 {name} がコーティングファイルにも硝材カタログにもありません
 can't be fitted	フィッティングられません
 configuration {cfg}	構成 {cfg}
+state {st}	状態 {st}
 no verify description (*.verify.json) found	照合の記述（*.verify.json）が見つかりません
 {bad} of {} checks fail	照合 {} 件のうち {bad} 件が通りません
 serve, watch and run can't be nested	serve・watch・run は入れ子にできません
@@ -1873,6 +1874,7 @@ List the items of a user catalog	ユーザーカタログの項目の一覧
 List the coatings of the surfaces	面のコーティングの一覧
 Interfaces (coating|medium before|medium after) of all configurations and how they are handled. Also shows the interfaces that need a measured table (encrypted coatings, etc.)	全コンフィグの境界（コーティング|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化されたコーティングなど）も示す
 .zmx file	.zmx ファイル
+A .zmx file (every multi-configuration), a project file (.json, every state) or a system file	.zmx ファイル（多重構成ごと）、プロジェクトファイル（.json、状態ごと）、またはシステムファイル
 Folders to search for glass catalogs (more than one allowed)	硝材カタログを探すフォルダ（複数可）
 Measured coating tables and models (more than one allowed; same as --coatings of ghost and the analyses)	コーティングの実測表・モデル（複数可。ghost・解析の --coatings と同じ）
 Write the layout (section or 3D) and rays	レイアウト（断面図・立体）と光線をエクスポート

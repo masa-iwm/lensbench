@@ -351,19 +351,7 @@ enum Cmd {
     /// List the coatings of the surfaces
     ///
     /// Interfaces (coating|medium before|medium after) of all configurations and how they are handled. Also shows the interfaces that need a measured table (encrypted coatings, etc.)
-    Coatings {
-        /// .zmx file
-        file: PathBuf,
-        /// Folders to search for glass catalogs (more than one allowed)
-        #[arg(long = "glass-dir")]
-        glass_dir: Vec<PathBuf>,
-        /// Measured coating tables and models (more than one allowed; same as --coatings of ghost and the analyses)
-        #[arg(long)]
-        coatings: Vec<PathBuf>,
-        /// Output JSON
-        #[arg(long)]
-        json: bool,
-    },
+    Coatings(coat_cmd::CoatingsArgs),
     /// Find the kinks along wavelength (nodes of the dispersion tables of the coating materials) from measured tables (LBCT)
     ///
     /// Measure the wavelength grid about 4 times finer than the grid chosen from the coating thickness
@@ -1349,12 +1337,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .collect();
             (json, json!({ "items": v }))
         }
-        Cmd::Coatings {
-            file,
-            glass_dir,
-            coatings: table,
-            json,
-        } => (json, coatings(&file, &glass_dir, &table)?),
+        Cmd::Coatings(a) => (a.json, coatings(&a)?),
         Cmd::CoatKinks {
             tables,
             key,

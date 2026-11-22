@@ -15,6 +15,11 @@
 - **偏光ありの POLS の .zmx**: .zmx の POLS（系の入射偏光）を読むようになったので、偏光ありの POLS を持つ .zmx では `--polarization` の
   MTF・PSF・Huygens・相対照度の値が変わる（これまでは POLS を読まず、いつも偏光なしで計算していた）。偏光なしの .zmx は変わらない
 
+### 変えたもの
+
+- **`lensbench coatings` がプロジェクトファイルを読む**: プロジェクトの .json は状態ごと、システムファイルは 1 つの構成としてコーティングの
+  境界を一覧にする（これまではいつも .zmx として読み、「configuration 1: no wavelength 1」という分かりにくい誤りになった）。`--lens-catalog` を足した
+
 ### 足したもの
 
 - **系の入射偏光**（OpticStudio の System Explorer の Polarization）: システム・プロジェクトの `input_pol`、.zmx の POLS、多重構成の
