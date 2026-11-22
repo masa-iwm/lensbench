@@ -15,21 +15,25 @@ use serde_json::{json, Map, Value};
 
 use crate::combo::{Combo, ElemKind};
 
+mod reversed;
+
 /// 系 s（.zmx を構成 1 で読んだもの）を、p（[`lensbench_project::zmx_project`] の設定）の blocks を要素に分けた
 /// 組合せにする。同じ系にならなければ None
 pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) -> Option<Combo> {
     // 鏡で折り返して同じ面を戻る系（ダブルパス）は、往きの要素と「往路を戻る」鏡にまとめてみる。
     // 同じ系にならなければ、今までどおり戻りも別の要素にする
+    // 前の玉を裏返した処方の玉は、前の玉の処方の裏返しにしてみる（同じ系にならなければ別の処方のまま）
     [true, false].into_iter().find_map(|dp| {
         let a = split_parts(s, p, dp)?;
-        finish(
-            a.v.clone(),
-            &a.compared(s),
-            &[],
-            &a.folded,
-            base,
-            glass_dirs,
-        )
+        let t = a.compared(s);
+        let mut v = a.v.clone();
+        let merged = v["blocks"]
+            .as_array_mut()
+            .is_some_and(|b| reversed::merge_reversed(b));
+        merged
+            .then(|| finish(v, &t, &[], &a.folded, base, glass_dirs))
+            .flatten()
+            .or_else(|| finish(a.v.clone(), &t, &[], &a.folded, base, glass_dirs))
     })
 }
 
