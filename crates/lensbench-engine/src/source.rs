@@ -153,16 +153,20 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     .file
                     .extension()
                     .is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
-                if !zmx {
+                if !zmx && !project {
                     return Err(Error::Invalid(
-                        "only .zmx can be read with replaced trace wavelengths".into(),
+                        "only .zmx and project files can be read with replaced trace wavelengths"
+                            .into(),
                     ));
                 }
-                // 読んだときの中身から（ファイルは読み直さない）
+                // 読んだときの中身から（ファイルは読み直さない）。プロジェクトは光束（状態）と経路のまま
                 let mut o = c.open_spec();
                 o.wavelengths = Some(wl.clone());
-                let s = self.src()?.open(&o)?.system;
-                let n = crate::load::system_notes(&s);
+                let op = self.src()?.open(&o)?;
+                faces = op.faces;
+                let s = op.system;
+                let mut n = op.warnings;
+                n.extend(crate::load::system_notes(&s));
                 (s, n)
             }
         };

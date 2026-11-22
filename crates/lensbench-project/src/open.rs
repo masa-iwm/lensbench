@@ -345,7 +345,9 @@ impl Source {
                     )));
                 }
                 if o.wavelengths.is_some() {
-                    return Err(bad_arg("wavelengths is only for .zmx".into()));
+                    return Err(bad_arg(
+                        "wavelengths is only for .zmx and project files".into(),
+                    ));
                 }
                 let (system, m, warnings) =
                     crate::sysfile::load_text_with(path, text, o.glass_dirs)?;
@@ -368,16 +370,26 @@ impl Source {
                         "choose the state with {state}, not {cfg}, in a project file"
                     )));
                 }
-                if o.wavelengths.is_some() {
-                    return Err(bad_arg("wavelengths is only for .zmx".into()));
-                }
                 let at = |e: Error| e.at(path.display());
-                let p = match o.state {
+                let mut p = match o.state {
                     Some(n) => project
                         .with_state_and_path(n, o.split_path.is_some())
                         .map_err(at)?,
                     None => (**project).clone(),
                 };
+                // 追跡する波長を置き換える（重みは 1、主波長の番号はそのまま。.zmx と同じ）
+                if let Some(w) = &o.wavelengths {
+                    if p.primary == 0 || p.primary > w.len() {
+                        let (pw, nw) = (p.primary, w.len());
+                        return Err(at(Error::Invalid(format!(
+                            "primary wavelength {pw} (there are {nw} wavelengths)"
+                        ))));
+                    }
+                    p.wavelengths = w
+                        .iter()
+                        .map(|&um| crate::model::Wave { um, weight: 1.0 })
+                        .collect();
+                }
                 let cat = LensCatalog::load_registered(o.lens_catalogs)?;
                 let look = |v: &str, q: &str| cat.zmx(v, q);
                 cache.scope(&o.cache_scope());
@@ -482,6 +494,40 @@ mod tests {
         std::fs::write(&f, s).unwrap();
         assert_eq!(FileKind::of(&f), FileKind::SystemFile);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// プロジェクトでも追跡する波長を置き換えて読める（重みは 1、主波長の番号はそのまま。番号が並びを越えれば誤り）
+    #[test]
+    fn project_with_replaced_wavelengths() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let glass = [root.join("tests/glass")];
+        let src = Source::read(&root.join("examples/projects/P16_twyman_green.json")).unwrap();
+        let o = OpenSpec {
+            glass_dirs: &glass,
+            cfg: 1,
+            state: Some("reference arm"),
+            wavelengths: Some(vec![0.84, 0.83, 0.85]),
+            ..Default::default()
+        };
+        let s = src.open(&o).unwrap().system;
+        assert_eq!(s.wavelengths, vec![0.84, 0.83, 0.85]);
+        assert_eq!(s.weights, vec![1.0; 3]);
+        assert_eq!(s.primary, 0);
+        let plain = src
+            .open(&OpenSpec {
+                wavelengths: None,
+                ..o.clone()
+            })
+            .unwrap()
+            .system;
+        assert_eq!(s.surfaces.len(), plain.surfaces.len());
+        let e = src
+            .open(&OpenSpec {
+                wavelengths: Some(Vec::new()),
+                ..o
+            })
+            .unwrap_err();
+        assert!(e.to_string().contains("primary wavelength 1"), "{e}");
     }
 
     /// プロジェクトは 1 回読んで、状態・経路・状態ごとの系をそこから引く（ファイルから直に読んだものと同じ）

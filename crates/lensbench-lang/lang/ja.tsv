@@ -113,7 +113,7 @@ no lens {k} ({} lenses)	レンズ {k} はありません（{} 個）
 {}: a folder (give a system file)	{}: フォルダ（システムのファイルを渡してください）
 {}: no such file	{}: ファイルがありません
 {cfg}, {state} and {split} can't be used with a system file	システムファイルでは {cfg}・{state}・{split} は使えません
-wavelengths is only for .zmx	wavelengths は .zmx だけ
+wavelengths is only for .zmx and project files	wavelengths は .zmx とプロジェクトファイルだけ
 choose the state with {state}, not {cfg}, in a project file	プロジェクトファイルでは {cfg} ではなく {state} で状態を選択
 {state} is only for project files (.json) (.zmx uses {cfg})	{state} はプロジェクトファイル（.json）だけ（.zmx は {cfg}）
 {split} is only for project files (.json)	{split} はプロジェクトファイル（.json）だけ
@@ -258,7 +258,7 @@ grid must be 2 or more	grid は 2 以上
 no lens {k} (1 to {})	レンズ {k} はありません（1〜{}）
 surfaces to write {from} to {to} (1 to {})	エクスポートする面 {from}〜{to}（1〜{}）
 beam {b} (a configuration number in .zmx, from 1)	光束 {b}（.zmx では構成の番号、1 始まり）
-only .zmx can be read with replaced trace wavelengths	追跡する波長を置き換えて読めるのは .zmx だけ
+only .zmx and project files can be read with replaced trace wavelengths	追跡する波長を置き換えて読めるのは .zmx とプロジェクトファイルだけ
 
 # cli
 can't read the number of {what} ({x})	{what} の数が読めません（{x}）
