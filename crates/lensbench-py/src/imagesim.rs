@@ -1,6 +1,8 @@
 //! 像の模擬（NumPy の配列を受けて返す）
 
-use lensbench_analysis::imagesim::{self as core, Aberrations, ImageSimOpts, SimImage};
+use lensbench_analysis::imagesim::{
+    self as core, Aberrations, Flip, ImageSimOpts, Rotate, SimImage,
+};
 use lensbench_core::{with_threads, System};
 use numpy::ndarray::{Array2, Array3};
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLikeDyn};
@@ -23,7 +25,25 @@ pub(crate) struct Args {
     pub pupil: Option<usize>,
     pub psf_points: usize,
     pub map_grid: usize,
+    pub field: Option<usize>,
+    pub flip_source: String,
+    pub rotate: u32,
+    pub flip_image: String,
     pub threads: Option<usize>,
+}
+
+fn flip_of(name: &str, x: &str) -> PyResult<Flip> {
+    Ok(match x {
+        "none" => Flip::None,
+        "top-bottom" => Flip::TopBottom,
+        "left-right" => Flip::LeftRight,
+        "both" => Flip::Both,
+        _ => {
+            return Err(value_err(format!(
+                "{name} {x:?}: none, top-bottom, left-right or both"
+            )))
+        }
+    })
 }
 
 pub(crate) fn run<'py>(
@@ -80,6 +100,23 @@ pub(crate) fn run<'py>(
         }
         None => None,
     };
+    let rotate = match a.rotate {
+        0 => Rotate::R0,
+        90 => Rotate::R90,
+        180 => Rotate::R180,
+        270 => Rotate::R270,
+        r => return Err(value_err(format!("rotate {r}: 0, 90, 180 or 270"))),
+    };
+    let center_field = match a.field {
+        None => (0.0, 0.0),
+        Some(n) if n >= 1 && n <= s.fields.len() => (s.fields[n - 1].x, s.fields[n - 1].y),
+        Some(n) => {
+            let nf = s.fields.len();
+            return Err(value_err(format!(
+                "field {n}: field numbers are from 1 ({nf} in all)"
+            )));
+        }
+    };
     let o = ImageSimOpts {
         field_height: a
             .field_height
@@ -97,6 +134,10 @@ pub(crate) fn run<'py>(
             Some(0) => return Err(value_err("wave: wavelength numbers are from 1")),
             w => w.map(|w| w - 1),
         },
+        center_field,
+        flip_source: flip_of("flip_source", &a.flip_source)?,
+        rotate,
+        flip_image: flip_of("flip_image", &a.flip_image)?,
     };
     let fh = o.field_height;
     let r = py

@@ -29,6 +29,7 @@ use optargs::{opt_problem, VarArg};
 mod coatings;
 mod plugin;
 mod pyjson;
+mod runenv;
 mod runs;
 mod search;
 mod soa;
@@ -66,59 +67,6 @@ fn env_coatings() -> Vec<PathBuf> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-/// Settings passed by `lensbench run`. All are read from environment variables; empty or None if not set
-///
-/// - glass_dirs: folders to search for glass catalogs (LENSBENCH_GLASSCAT; System.load and others also read it)
-/// - coatings: coating tables and models (LENSBENCH_COATINGS; the default of coatings= of System.load)
-/// - threads: number of threads (LENSBENCH_THREADS; the default of calculations with threads= omitted)
-/// - out: output folder (LENSBENCH_OUT); for the script's own use
-/// - log: log file (LENSBENCH_LOG)
-/// - args: arguments passed to the script (same as sys.argv[1:])
-/// - under_run: whether started from `lensbench run`
-#[pyfunction]
-fn run_settings<'py>(py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-    let paths = |k: &str| -> Vec<String> {
-        std::env::var_os(k)
-            .map(|v| {
-                std::env::split_paths(&v)
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .map(|p| p.display().to_string())
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let opt = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    let d = PyDict::new(py);
-    d.set_item("glass_dirs", paths("LENSBENCH_GLASSCAT"))?;
-    d.set_item("coatings", paths("LENSBENCH_COATINGS"))?;
-    d.set_item("threads", lensbench_core::par::default_threads())?;
-    d.set_item("out", opt("LENSBENCH_OUT"))?;
-    d.set_item("log", opt("LENSBENCH_LOG"))?;
-    let argv: Vec<String> = py.import("sys")?.getattr("argv")?.extract()?;
-    d.set_item("args", argv.into_iter().skip(1).collect::<Vec<_>>())?;
-    d.set_item(
-        "under_run",
-        std::env::var("LENSBENCH_RUN").is_ok_and(|v| v == "1"),
-    )?;
-    Ok(d)
-}
-
-/// Print the progress on one line to standard error: `lensbench:progress 3/10 message`.
-/// `lensbench run` picks up this line and logs it; a future GUI will use it to show progress
-#[pyfunction]
-#[pyo3(signature = (done, total, message=""))]
-fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResult<()> {
-    let line = if message.is_empty() {
-        format!("lensbench:progress {done}/{total}\n")
-    } else {
-        format!("lensbench:progress {done}/{total} {message}\n")
-    };
-    let err = py.import("sys")?.getattr("stderr")?;
-    err.call_method1("write", (line,))?;
-    err.call_method0("flush")?;
-    Ok(())
 }
 
 /// Run a long calculation in another thread and watch for Ctrl-C (signals) in the calling thread (Python's main thread).
@@ -2649,12 +2597,14 @@ impl PySystem {
     }
 
     /// Image simulation (as OpticStudio's Image Simulation): places image ((height, width) gray or (height, width, 3) RGB, row 0 at the top = field +y)
-    /// in the object field, field_height (full height in field units; √2 × the largest field if omitted) high and centered on the axis, and images it onto
+    /// in the object field, field_height (full height in field units; √2 × the largest field if omitted) high and centered on the axis (or on field, a field number from 1;
+    /// the detector is then centered on its chief ray image), and images it onto
     /// a detector with the chief ray positions (distortion, lateral color), relative illumination and, with aberrations="diffraction" the FFT PSF (or "geometric", the ray density of a pupil grid) on a
     /// psf_grid of fields (interpolated between them). Gray uses all weighted wavelengths (or wave, from 1), RGB one wavelength per channel (rgb_waves, from 1; the
     /// wavelengths 1 to 3, shortest as B, if omitted). pixel is the detector pixel [lens units] (the on-axis image of one source pixel if omitted), size
-    /// (width, height) the detector pixels. Returns image (same layout; 1 is the on-axis value of an unaberrated uniform source of 1), pixel, center, field_height and warnings
-    #[pyo3(signature = (image, field_height=None, psf_grid=(5, 5), aberrations="diffraction", pixel=None, size=None, relative_illumination=true, rgb_waves=None, wave=None, pupil=None, psf_points=64, map_grid=17, threads=None))]
+    /// (width, height) the detector pixels. flip_source ("none", "top-bottom", "left-right" or "both") and rotate (counterclockwise, 0, 90, 180 or 270 degrees,
+    /// after the flip) turn the source, flip_image the detector image. Returns image (same layout; 1 is the on-axis value of an unaberrated uniform source of 1), pixel, center, field_height and warnings
+    #[pyo3(signature = (image, field_height=None, psf_grid=(5, 5), aberrations="diffraction", pixel=None, size=None, relative_illumination=true, rgb_waves=None, wave=None, pupil=None, psf_points=64, map_grid=17, field=None, flip_source="none", rotate=0, flip_image="none", threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn image_sim<'py>(
         &self,
@@ -2671,6 +2621,10 @@ impl PySystem {
         pupil: Option<usize>,
         psf_points: usize,
         map_grid: usize,
+        field: Option<usize>,
+        flip_source: &str,
+        rotate: u32,
+        flip_image: &str,
         threads: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let a = imagesim::Args {
@@ -2685,6 +2639,10 @@ impl PySystem {
             pupil,
             psf_points,
             map_grid,
+            field,
+            flip_source: flip_source.into(),
+            rotate,
+            flip_image: flip_image.into(),
             threads,
         };
         imagesim::run(py, &self.sys(), image, a)
@@ -2770,8 +2728,7 @@ pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySystem>()?;
     m.add_function(wrap_pyfunction!(many::trace_many, m)?)?;
     m.add_function(wrap_pyfunction!(_system_from_state, m)?)?;
-    m.add_function(wrap_pyfunction!(run_settings, m)?)?;
-    m.add_function(wrap_pyfunction!(progress, m)?)?;
+    runenv::register(m)?;
     interference::register(m)?;
     plugin::register(m)?;
     coatings::register(m)?;

@@ -2747,7 +2747,11 @@ rgb_waves {v:?}: give 3 wavelength numbers from 1	rgb_waves {v:?}: 波長の番�
 Image simulation: a source image through the system's diffraction PSF, distortion and relative illumination	像の模擬: 元の画像にシステムの回折 PSF・歪曲・相対照度をかける
 Places the source image (PNG; gray uses all weighted wavelengths, RGB one wavelength per channel) in the object field and images it onto a detector, as OpticStudio's Image Simulation: chief ray image positions (distortion and lateral color), relative illumination, and the FFT PSF on a grid of fields (interpolated between the grid points; FFT convolution). Brightness 1 is the on-axis value of an unaberrated uniform source of 1. --save writes the detector image as PNG (16 bit) or JSON	元の画像（PNG。グレーはウェイトのある全波長、RGB はチャンネルごとに 1 波長）を物体の視野に置き、検出器に写します（OpticStudio の Image Simulation 相当）: 主光線の像点（歪曲・倍率色収差）、相対照度、視野のグリッドの FFT PSF（グリッドの点の間は補間、FFT で畳み込み）。明るさ 1 は、収差のない一様な元の画像（値 1）の軸上の値。--save で検出器の像を PNG（16 bit）か JSON に書きます
 Source image (PNG, gray or RGB; a built-in 512 × 512 grid chart if omitted)	元の画像（PNG、グレーか RGB。省略で組み込みの 512 × 512 のグリッドの図）
-Full height of the source image in field units (√2 × the largest field if omitted, so that the corners reach the largest field, as in OpticStudio). The image is centered on the axis; row 0 (top) is +y	元の画像の高さ（全体）[視野の単位]（省略で最大の視野の √2 倍。角が最大の視野に届く。OpticStudio と同じ）。画像の中心は光軸、行 0（上）が +y
+Full height of the source image in field units (√2 × the largest field if omitted, so that the corners reach the largest field, as in OpticStudio). The image is centered on the axis (or on the field given by field); row 0 (top) is +y	元の画像の高さ（全体）[視野の単位]（省略で最大の視野の √2 倍。角が最大の視野に届く。OpticStudio と同じ）。画像の中心は光軸（field を与えるとその視野）、行 0（上）が +y
+Field number (from 1) at the center of the source image; the detector is centered on its chief ray image (the axis if omitted)	元の画像の中心に置く視野の番号（1 から）。検出器の中心はその主光線の像点（省略で光軸）
+Flip the source image: none, top-bottom, left-right or both (before the rotation)	元の画像の反転: none・top-bottom（上下）・left-right（左右）・both（両方）（回転の前）
+Rotate the source image counterclockwise by 0, 90, 180 or 270 degrees (after the flip)	元の画像を反時計回りに 0・90・180・270 度回す（反転の後）
+Flip the detector image: none, top-bottom, left-right or both	検出器の像の反転: none・top-bottom（上下）・left-right（左右）・both（両方）
 PSF grid points across the image in x (the PSF is interpolated between them)	画像の x 方向の PSF のグリッド点の数（間は PSF を補間）
 PSF grid points across the image in y	画像の y 方向の PSF のグリッド点の数
 Distortion and relative illumination grid points on a side	歪曲・相対照度のグリッドの一辺の点の数
@@ -2762,6 +2766,9 @@ RGB only: wavelength numbers for R, G and B (from 1; the system's wavelengths 1 
 Include the detector image in the result (always in .json output)	検出器の像を結果に入れる（.json に書くときはいつも）
 Gray only: wavelength number (from 1; all weighted wavelengths if omitted)	グレーだけ: 波長の番号（1 から。省略でウェイトのある全波長）
 wave: wavelength numbers are from 1	wave: 波長の番号は 1 から
+rotate {r}: give 0, 90, 180 or 270 degrees	rotate {r}: 0・90・180・270 度のどれかを指定してください
+field {n}: field numbers are from 1 ({nf} in all)	field {n}: 視野の番号は 1 から（全部で {nf}）
+image simulation: center field ({fcx}, {fcy})	像の模擬: 中心の視野 ({fcx}, {fcy})
 the paraxial stop radius is 0	近軸の絞りの半径が 0 です
 the chief ray (wavelength {}) stopped	主光線（波長 {}）が止まりました
 the paraxial focus is on the image surface (wavelength {})	近軸の焦点が像面の上にあります（波長 {}）

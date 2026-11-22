@@ -1928,6 +1928,10 @@ Detector pixel	検出器の画素
 Detector width	検出器の幅
 Detector height	検出器の高さ
 RGB wavelengths	RGB の波長
+Center field	中心の視野
+Flip source	元の画像の反転
+Rotate source	元の画像の回転
+Flip image	像の反転
 Pupil aberration fan	瞳の収差の扇
 Pupil aberration fan: where real rays aimed at the paraxial entrance pupil cross the stop, against the paraxial point [% of the stop radius]	瞳の収差の扇: 近軸の入射瞳へ向けた実光線が絞りを通る点の、近軸の点からのずれ [絞りの半径の %]
 Pupil aberration [{}]	瞳の収差 [{}]

@@ -1,6 +1,8 @@
 //! 像の模擬（[`image_sim`]）: 明るさの単位・PSF の和・歪曲の向き・RGB のチャンネル
 
-use lensbench_analysis::imagesim::{image_sim, Aberrations, ImageSimOpts, SimImage};
+use lensbench_analysis::imagesim::{
+    flip, image_sim, rotate, Aberrations, Flip, ImageSimOpts, Rotate, SimImage,
+};
 use lensbench_core::system::System;
 use lensbench_formats::zmx::{self, LoadOptions};
 use std::path::PathBuf;
@@ -269,4 +271,112 @@ fn geometric_psf_spreads_like_the_spot() {
         "geometric PSF rms {rms} vs spot {}",
         sp.rms_centroid
     );
+}
+
+/// 反転と回転: 90 度は反時計回り（上の行が左の列へ）、4 回で元に戻り、上下＋左右の反転は 180 度と同じ
+#[test]
+fn flip_and_rotate_the_source() {
+    // 3 × 2（幅 3）: 値は 10·行 + 列
+    let im = gray(3, 2, |i, j| (10 * j + i) as f64);
+    let r = rotate(&im, Rotate::R90);
+    assert_eq!((r.width, r.height), (2, 3));
+    // 反時計回り: 元の右上 (2, 0) が左上、元の左上 (0, 0) が左下
+    assert_eq!(r.channels[0], vec![2.0, 12.0, 1.0, 11.0, 0.0, 10.0]);
+    assert_eq!(
+        rotate(&im, Rotate::R270),
+        rotate(&rotate(&r, Rotate::R90), Rotate::R90)
+    );
+    let mut t = im.clone();
+    for _ in 0..4 {
+        t = rotate(&t, Rotate::R90);
+    }
+    assert_eq!(t, im);
+    assert_eq!(flip(&im, Flip::Both), rotate(&im, Rotate::R180));
+    assert_eq!(
+        flip(&im, Flip::TopBottom).channels[0],
+        vec![10.0, 11.0, 12.0, 0.0, 1.0, 2.0]
+    );
+    assert_eq!(
+        flip(&im, Flip::LeftRight).channels[0],
+        vec![2.0, 1.0, 0.0, 12.0, 11.0, 10.0]
+    );
+}
+
+/// 元の画像を 90 度回すと、上の明るい点は検出器の左半分に来る。検出器の像の左右の反転で右半分に戻る
+#[test]
+fn rotated_source_turns_the_image() {
+    let s = load("A0");
+    let src = gray(32, 32, |i, j| {
+        if j < 4 && (14..18).contains(&i) {
+            1.0
+        } else {
+            0.0
+        }
+    });
+    let o = ImageSimOpts {
+        field_height: 20.0,
+        psf_grid: (1, 1),
+        map_grid: 9,
+        aberrations: Aberrations::None,
+        relative_illumination: false,
+        rotate: Rotate::R90,
+        ..Default::default()
+    };
+    let halves = |o: &ImageSimOpts| {
+        let r = image_sim(&s, &src, o).unwrap();
+        let ch = &r.image.channels[0];
+        let (mut l, mut rr) = (0.0, 0.0);
+        for (k, v) in ch.iter().enumerate() {
+            if k % 32 < 16 {
+                l += v;
+            } else {
+                rr += v;
+            }
+        }
+        (l, rr)
+    };
+    let (l, r) = halves(&o);
+    assert!(l > 0.0 && r == 0.0, "left {l} right {r}");
+    let (l, r) = halves(&ImageSimOpts {
+        flip_image: Flip::LeftRight,
+        ..o.clone()
+    });
+    assert!(r > 0.0 && l == 0.0, "left {l} right {r}");
+}
+
+/// 中心の視野が軸の外: 元の画像の中央の点は検出器の中央に来て、検出器の中心はその視野の主光線の像点
+#[test]
+fn center_field_moves_the_detector() {
+    let s = load("A0");
+    let fy = s.fields.iter().map(|f| f.y.abs()).fold(0.0, f64::max) / 2.0;
+    let src = gray(33, 33, |i, j| if i == 16 && j == 16 { 1.0 } else { 0.0 });
+    let o = ImageSimOpts {
+        field_height: 4.0,
+        psf_grid: (1, 1),
+        map_grid: 5,
+        aberrations: Aberrations::None,
+        relative_illumination: false,
+        center_field: (0.0, fy),
+        ..Default::default()
+    };
+    let r = image_sim(&s, &src, &o).unwrap();
+    let k = r.image.channels[0]
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .unwrap()
+        .0;
+    assert_eq!(k, 16 * 33 + 16);
+    let (_, ny) = s.field_norm_values();
+    let c = s
+        .try_trace(
+            lensbench_core::system::FieldSel::Norm(0.0, fy / ny),
+            &[0.0],
+            &[0.0],
+            Some(s.primary),
+            None,
+            false,
+        )
+        .unwrap();
+    assert!((r.center.1 - c.rays[0].xyz[1]).abs() < 1e-12 && r.center.1.abs() > 1.0);
 }

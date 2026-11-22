@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lensbench_analysis::imagesim::{image_sim, Aberrations, ImageSimOpts, SimImage};
+use lensbench_analysis::imagesim::{image_sim, Aberrations, Flip, ImageSimOpts, Rotate, SimImage};
 use lensbench_analysis::{Analysis, Cx, Meta, Saved};
 use lensbench_core::{Error, Result};
 use schemars::JsonSchema;
@@ -22,6 +22,32 @@ pub(super) enum Aber {
     Geometric,
 }
 
+/// 画像の反転
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum FlipP {
+    /// 反転しない
+    #[default]
+    None,
+    /// 上下
+    TopBottom,
+    /// 左右
+    LeftRight,
+    /// 上下と左右
+    Both,
+}
+
+impl From<FlipP> for Flip {
+    fn from(f: FlipP) -> Flip {
+        match f {
+            FlipP::None => Flip::None,
+            FlipP::TopBottom => Flip::TopBottom,
+            FlipP::LeftRight => Flip::LeftRight,
+            FlipP::Both => Flip::Both,
+        }
+    }
+}
+
 /// 像の模擬の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
@@ -29,7 +55,7 @@ pub(super) struct ImageSimParams {
     /// Source image (PNG, gray or RGB; a built-in 512 × 512 grid chart if omitted)
     #[schemars(extend("x-kind" = "path"))]
     pub input: Option<PathBuf>,
-    /// Full height of the source image in field units (√2 × the largest field if omitted, so that the corners reach the largest field, as in OpticStudio). The image is centered on the axis; row 0 (top) is +y
+    /// Full height of the source image in field units (√2 × the largest field if omitted, so that the corners reach the largest field, as in OpticStudio). The image is centered on the axis (or on the field given by field); row 0 (top) is +y
     pub field_height: Option<f64>,
     /// PSF grid points across the image in x (the PSF is interpolated between them)
     #[schemars(extend("x-min" = 1))]
@@ -59,6 +85,14 @@ pub(super) struct ImageSimParams {
     pub wave: Option<usize>,
     /// RGB only: wavelength numbers for R, G and B (from 1; the system's wavelengths 1 to 3, shortest as B, if omitted)
     pub rgb_waves: Option<Vec<usize>>,
+    /// Field number (from 1) at the center of the source image; the detector is centered on its chief ray image (the axis if omitted)
+    pub field: Option<usize>,
+    /// Flip the source image: none, top-bottom, left-right or both (before the rotation)
+    pub flip_source: FlipP,
+    /// Rotate the source image counterclockwise by 0, 90, 180 or 270 degrees (after the flip)
+    pub rotate: u32,
+    /// Flip the detector image: none, top-bottom, left-right or both
+    pub flip_image: FlipP,
     /// Include the detector image in the result (always in .json output)
     pub grid: bool,
 }
@@ -80,6 +114,10 @@ impl Default for ImageSimParams {
             relative_illumination: true,
             wave: None,
             rgb_waves: None,
+            field: None,
+            flip_source: FlipP::None,
+            rotate: 0,
+            flip_image: FlipP::None,
             grid: false,
         }
     }
@@ -94,7 +132,7 @@ pub(super) struct ImageSimResult {
     pub channels: usize,
     /// 検出器の画素の大きさ [レンズ単位]
     pub pixel: f64,
-    /// 検出器の中心（軸上の主光線の像点）
+    /// 検出器の中心（中心の視野の主光線の像点。既定は軸上）
     pub center: [f64; 2],
     /// 元の画像の高さ（全体）[視野の単位]
     pub field_height: f64,
@@ -170,9 +208,36 @@ impl Analysis for ImageSim {
                 )))
             }
         };
+        let rotate = match p.rotate {
+            0 => Rotate::R0,
+            90 => Rotate::R90,
+            180 => Rotate::R180,
+            270 => Rotate::R270,
+            r => {
+                return Err(Error::Invalid(format!(
+                    "rotate {r}: give 0, 90, 180 or 270 degrees"
+                )))
+            }
+        };
+        let center_field = match p.field {
+            None => (0.0, 0.0),
+            Some(n) if n >= 1 && n <= s.fields.len() => (s.fields[n - 1].x, s.fields[n - 1].y),
+            Some(n) => {
+                let nf = s.fields.len();
+                return Err(Error::Invalid(format!(
+                    "field {n}: field numbers are from 1 ({nf} in all)"
+                )));
+            }
+        };
+        // 回した後の元の画像の大きさ（検出器の画素の数の既定）
+        let (sw, sh) = if matches!(rotate, Rotate::R90 | Rotate::R270) {
+            (src.height, src.width)
+        } else {
+            (src.width, src.height)
+        };
         let size = match (p.width, p.height) {
             (None, None) => None,
-            (w, h) => Some((w.unwrap_or(src.width), h.unwrap_or(src.height))),
+            (w, h) => Some((w.unwrap_or(sw), h.unwrap_or(sh))),
         };
         let o = ImageSimOpts {
             field_height: fh,
@@ -195,6 +260,10 @@ impl Analysis for ImageSim {
                 }
                 w => w.map(|w| w - 1),
             },
+            center_field,
+            flip_source: p.flip_source.into(),
+            rotate,
+            flip_image: p.flip_image.into(),
         };
         let r = image_sim(s, &src, &o)?;
         let im = r.image;

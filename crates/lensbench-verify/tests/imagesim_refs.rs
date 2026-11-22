@@ -9,6 +9,10 @@
 //!   （相対照度は歪曲による面積の変化を含む）。OS は点の明るさに面積の比をかけない（A0 の角の点で 5 % ほど暗い）。
 //!   回折の像は lensbench の PSF の裾が広く（OS の PSF は 32 × 32 の格子）、±12 px の窓の外に出る分だけ小さい（A0 の短い波長で −3 %）。
 //!   D0（面積の変化が小さい）は 1.5 % 以内
+//! - 中心の視野が軸の外（D0 の f2・f4）は重心 1.5 px・和 −4〜+6 %: OS は元の画素を検出器の画素の位置に丸めて置く（軸上でも
+//!   点の重心がちょうど整数の画素に来る）。軸の外ではその丸めが中心に対して対称でなく、点ごとに最大 1.3 px ずれる
+//!   （中心の点は 0.01 px 以内で合い、lensbench の点の位置は D0 の f·tanθ の写像そのもの）。和は視野 10° ほどの角で面積の比
+//!   （sec³θ ≈ 1.05）の分だけ大きい
 
 use lensbench_analysis::imagesim::{image_sim, Aberrations, ImageSimOpts, SimImage};
 use lensbench_export::image::read_png;
@@ -79,6 +83,11 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
         },
         relative_illumination: st["UseRelativeIllumination"].as_bool().unwrap(),
         wave: (!rgb).then(|| meta["primary_wavelength"].as_u64().unwrap() as usize - 1),
+        center_field: {
+            let n = meta["center_field_number"].as_u64().unwrap_or(1) as usize;
+            let f = &meta["fields"][n - 1];
+            (f[0].as_f64().unwrap(), f[1].as_f64().unwrap())
+        },
         ..Default::default()
     };
     let r = image_sim(
@@ -110,11 +119,13 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
             .unwrap();
         vec![(best, 0)]
     };
-    let tol_sum = if sys == "D0" {
+    let off_axis = meta["center_field_number"].as_u64().unwrap_or(1) != 1;
+    let tol_sum = if sys == "D0" && !off_axis {
         (0.985, 1.015)
     } else {
         (0.96, 1.06)
     };
+    let tol_pos = if off_axis { 1.5 } else { 0.4 };
     for (oc, mc) in pairs {
         let (od, md) = (
             dots(&och[oc], ow),
@@ -126,7 +137,7 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
             }
             let d = (b.0 - a.0).abs().max((b.1 - a.1).abs());
             let q = b.2 / a.2;
-            if d > 0.4 || !(tol_sum.0..=tol_sum.1).contains(&q) {
+            if d > tol_pos || !(tol_sum.0..=tol_sum.1).contains(&q) {
                 fails.push(format!(
                     "{sys} {run} channel {oc} dot {}: centroid {d:.3} px, sum ratio {q:.4}",
                     i + 1
@@ -143,6 +154,10 @@ fn image_simulation_matches_opticstudio() {
         for run in ["gray_none", "gray_diff", "gray127_none", "rgb_diff"] {
             check(sys, run, &mut fails);
         }
+    }
+    // 中心の視野が軸の外（D0 の視野 2 = (0, 5°)・視野 4 = (3°, −4°)）
+    for run in ["gray_none_f2", "gray_diff_f2", "gray_none_f4"] {
+        check("D0", run, &mut fails);
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }

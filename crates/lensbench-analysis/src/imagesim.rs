@@ -1,8 +1,9 @@
 //! 像の模擬（OpticStudio の Image Simulation 相当）: 物体の視野に置いた画像を、画角ごとの回折 PSF・歪曲・
 //! 相対照度（周辺光量）・波長ごとの位置（倍率色収差）をかけて像面の検出器の画素に写す。
 //!
-//! 1. 元の画像は視野の中心に置き、画像の高さ（全体）が [`ImageSimOpts::field_height`]（視野の単位）。画素は正方形。
-//!    行 0 が視野の +y、列 0 が −x
+//! 1. 元の画像は中心の視野（[`ImageSimOpts::center_field`]、既定は軸上）に置き、画像の高さ（全体）が
+//!    [`ImageSimOpts::field_height`]（視野の単位）。画素は正方形。行 0 が視野の +y、列 0 が −x。置く前に元の画像を
+//!    反転・回転できる（[`ImageSimOpts::flip_source`]・[`ImageSimOpts::rotate`]）
 //! 2. 写像の格子（[`ImageSimOpts::map_grid`]）の各点で主波長の主光線の像点（歪曲）と相対照度を求め、元の画素ごとに
 //!    双線形に補間して、その像点へ画素の明るさを検出器の格子に双線形に置く
 //! 3. PSF の格子（[`ImageSimOpts::psf_grid`]）の各点で回折 PSF（FFT PSF、像面の上。中心は主波長の主光線の像点なので
@@ -33,6 +34,96 @@ pub enum Aberrations {
     Geometric,
 }
 
+/// 画像の反転（OpticStudio の Flip Source・Flip Image）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Flip {
+    #[default]
+    None,
+    /// 上下（行の順を逆に）
+    TopBottom,
+    /// 左右（列の順を逆に）
+    LeftRight,
+    /// 上下と左右（180 度の回転と同じ）
+    Both,
+}
+
+/// 元の画像の回転（反時計回り、見たままの向き。OpticStudio の Rotation）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Rotate {
+    #[default]
+    R0,
+    R90,
+    R180,
+    R270,
+}
+
+/// 画像を反転する
+pub fn flip(im: &SimImage, f: Flip) -> SimImage {
+    let (w, h) = (im.width, im.height);
+    let (fx, fy) = match f {
+        Flip::None => return im.clone(),
+        Flip::TopBottom => (false, true),
+        Flip::LeftRight => (true, false),
+        Flip::Both => (true, true),
+    };
+    let channels = im
+        .channels
+        .iter()
+        .map(|c| {
+            (0..w * h)
+                .map(|k| {
+                    let (i, j) = (k % w, k / w);
+                    let (i, j) = (
+                        if fx { w - 1 - i } else { i },
+                        if fy { h - 1 - j } else { j },
+                    );
+                    c[j * w + i]
+                })
+                .collect()
+        })
+        .collect();
+    SimImage {
+        width: w,
+        height: h,
+        channels,
+    }
+}
+
+/// 画像を反時計回りに回す（90・270 度は幅と高さが入れ替わる）
+pub fn rotate(im: &SimImage, r: Rotate) -> SimImage {
+    let (w, h) = (im.width, im.height);
+    let (w1, h1) = match r {
+        Rotate::R0 => return im.clone(),
+        Rotate::R180 => return flip(im, Flip::Both),
+        Rotate::R90 | Rotate::R270 => (h, w),
+    };
+    // 出力の画素 (i, j) が読む元の画素（反時計回り 90 度: 出力の上の行は元の右の列を上から下へ）
+    let at = |i: usize, j: usize| {
+        if r == Rotate::R90 {
+            (w - 1 - j, i)
+        } else {
+            (j, h - 1 - i)
+        }
+    };
+    let channels = im
+        .channels
+        .iter()
+        .map(|c| {
+            (0..w1 * h1)
+                .map(|k| {
+                    let (i0, j0) = at(k % w1, k / w1);
+                    c[j0 * w + i0]
+                })
+                .collect()
+        })
+        .collect();
+    SimImage {
+        width: w1,
+        height: h1,
+        channels,
+    }
+}
+
 /// 像の模擬の設定
 #[derive(Debug, Clone)]
 pub struct ImageSimOpts {
@@ -57,6 +148,14 @@ pub struct ImageSimOpts {
     pub channel_waves: Option<[usize; 3]>,
     /// グレーの画像の波長の番号（0 から）。None ならウェイトのある全波長
     pub wave: Option<usize>,
+    /// 元の画像の中心の視野 (x, y) [視野の単位]（OpticStudio の Field。検出器の中心はその主波長の主光線の像点）
+    pub center_field: (f64, f64),
+    /// 元の画像の反転（回転の前）
+    pub flip_source: Flip,
+    /// 元の画像の回転（反転の後）
+    pub rotate: Rotate,
+    /// 検出器の像の反転
+    pub flip_image: Flip,
 }
 
 impl Default for ImageSimOpts {
@@ -73,6 +172,10 @@ impl Default for ImageSimOpts {
             relative_illumination: true,
             channel_waves: None,
             wave: None,
+            center_field: (0.0, 0.0),
+            flip_source: Flip::None,
+            rotate: Rotate::R0,
+            flip_image: Flip::None,
         }
     }
 }
@@ -92,7 +195,7 @@ pub struct ImageSimOut {
     pub image: SimImage,
     /// 検出器の画素の大きさ [レンズ単位]
     pub pixel: f64,
-    /// 検出器の中心（像面の局所座標。軸上の主光線の像点）
+    /// 検出器の中心（像面の局所座標。中心の視野の主波長の主光線の像点）
     pub center: (f64, f64),
     pub warnings: Vec<String>,
 }
@@ -131,10 +234,23 @@ fn hat(t: f64, k: usize, n: usize) -> f64 {
 
 /// 像の模擬
 pub fn image_sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
-    let (w0, h0) = (src.width, src.height);
-    if w0 == 0 || h0 == 0 || src.channels.iter().any(|c| c.len() != w0 * h0) {
+    let mut r = sim(s, src, o)?;
+    r.image = flip(&r.image, o.flip_image);
+    Ok(r)
+}
+
+fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
+    if src.width == 0
+        || src.height == 0
+        || src
+            .channels
+            .iter()
+            .any(|c| c.len() != src.width * src.height)
+    {
         invalid!("image simulation: the source image is empty or its channels have the wrong size");
     }
+    let src = &rotate(&flip(src, o.flip_source), o.rotate);
+    let (w0, h0) = (src.width, src.height);
     if !(src.channels.len() == 1 || src.channels.len() == 3) {
         invalid!("image simulation: the source image must be gray (1 channel) or RGB (3 channels)");
     }
@@ -155,9 +271,13 @@ pub fn image_sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSi
     // 視野の単位の元の画素の大きさと、元の画素 (i, j) の中心の視野
     let fpx = o.field_height / h0 as f64;
     let (nx, ny) = s.field_norm_values();
+    let (fcx, fcy) = o.center_field;
+    if !(fcx.is_finite() && fcy.is_finite()) {
+        invalid!("image simulation: center field ({fcx}, {fcy})");
+    }
     let field_of = |i: f64, j: f64| -> (f64, f64) {
-        let fx = (i + 0.5 - w0 as f64 / 2.0) * fpx;
-        let fy = (h0 as f64 / 2.0 - (j + 0.5)) * fpx;
+        let fx = fcx + (i + 0.5 - w0 as f64 / 2.0) * fpx;
+        let fy = fcy + (h0 as f64 / 2.0 - (j + 0.5)) * fpx;
         (fx / nx, fy / ny)
     };
     // 波長ごとの (波長の番号, 重み) をチャンネルごとに
@@ -240,13 +360,14 @@ pub fn image_sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSi
             }
         }
     }
-    let center = chief((0.0, 0.0))?;
-    // 軸上の元の 1 画素の像の大きさ（写像の格子の中央の差分）
+    let center = chief((fcx / nx, fcy / ny))?;
+    // 軸上の元の 1 画素の像の大きさ（軸上の差分。中心の視野が軸の外でも軸上で決める。OpticStudio も同じ）
     let pixel_img = {
         let d = 1e-3;
+        let c0 = chief((0.0, 0.0))?;
         let (x1, _) = chief((d * fpx / nx, 0.0))?;
         let (_, y1) = chief((0.0, d * fpx / ny))?;
-        ((x1 - center.0).abs() / d, (y1 - center.1).abs() / d)
+        ((x1 - c0.0).abs() / d, (y1 - c0.1).abs() / d)
     };
     let pixel = match o.pixel {
         Some(p) if p > 0.0 => p,
