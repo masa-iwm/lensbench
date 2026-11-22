@@ -180,3 +180,101 @@ def test_source_models_without_an_extension():
         lb.source_rays(s, "nothing")
     with pytest.raises(ValueError, match="frame"):
         lb.source_rays(s, "nothing", frame="pupil")
+
+
+def test_python_source_traces_like_trace_rays():
+    """Python の関数の光源: 波長ごとに 1 回呼び、物体の座標系の光線を trace_rays と同じに追う"""
+    calls = []
+
+    def fan(config, wl):
+        """fan of rays"""
+        calls.append(wl)
+        n = int(config.get("n", 5))
+        k = np.zeros((n, 3))
+        k[:, 1] = np.linspace(-0.05, 0.05, n)
+        k[:, 2] = 1.0
+        return {"start": np.zeros((n, 3)), "direction": k, "weight": np.ones(n)}
+
+    s = a0()
+    lb.register_source("py_fan", fan)
+    try:
+        assert lb.source_models()["py_fan"] == "fan of rays"
+        r = lb.source_rays(s, "py_fan", {"n": 7}, wave=1)
+        assert r["start"].shape == (7, 3) and r["weight"].shape == (7,)
+        assert len(calls) == 1 and calls[0] == pytest.approx(s.wavelengths[0])
+        t = s.trace_rays(r["start"], r["direction"], waves=[1])
+        u = s.trace_rays(np.zeros((7, 3)), r["direction"], waves=[1])
+        assert np.array_equal(t["x"], u["x"])
+        g = lb.source_rays(s, "py_fan", {"n": 7}, wave=1, frame="global")
+        assert np.array_equal(s.trace_rays(g["start"], g["direction"], waves=[1], frame="global")["x"], t["x"])
+        lb.register_source("py_bad", lambda c, wl: {"start": np.zeros((2, 3)), "direction": np.zeros((2, 3)), "weight": np.ones(2)})
+        with pytest.raises(lb.InvalidError, match="not finite or is zero"):
+            lb.source_rays(s, "py_bad")
+    finally:
+        assert lb.unregister_source("py_fan")
+        lb.unregister_source("py_bad")
+    assert "py_fan" not in lb.source_models()
+
+
+def test_python_coating_model():
+    """係数を Python の関数で計算する膜: 境界の条件の組ごとに cos1 の格子で 1 回呼ぶ。T = 50% の膜の振幅は T = 100% の膜の √0.5 倍"""
+    calls = []
+
+    def nd(t):
+        def f(wl, n1, n2, cos1, path, from_substrate):
+            calls.append(path)
+            z = np.zeros_like(cos1, dtype=complex)
+            return {"rs": z, "rp": z, "ts": np.sqrt(t) + z, "tp": np.sqrt(t)}
+        return f
+
+    def traced(coat):
+        s = a0()
+        s.set_surface(1, coating=coat)
+        return s.trace(1, [0.0, 0.3], [0.5, -0.2], pol=True)
+
+    try:
+        n = lb.register_coating_catalog("PYMODELS", models={"PY_ND50": nd(0.5), "PY_T1": nd(1.0)})
+        assert n == 2
+        a = traced("PY_ND50")["jones"]
+        b = traced("PY_T1")["jones"]
+        assert np.allclose(a, np.sqrt(0.5) * b, rtol=1e-12, atol=1e-15)
+        k = len(calls)
+        traced("PY_ND50")
+        assert len(calls) == k  # 表を覚えている
+        with pytest.raises(TypeError):
+            lb.register_coating_catalog("PYBAD", models={"X": 1})
+    finally:
+        lb.unregister_coating_catalog("PYMODELS")
+
+
+def test_python_shape_traces_like_the_sphere():
+    """Python の関数の形: 平面の土台に球の矢高を足した USERSHAPE は、同じ曲率の球面とほぼ同じに追う（格子の補間の誤差）"""
+    import json
+
+    def sphere(config, x, y):
+        """sphere sag"""
+        c = config["c"]
+        r2 = x * x + y * y
+        q = np.sqrt(1 - c * c * r2)
+        z = c * r2 / (1 + q)
+        return z, c * x / q, c * y / q
+
+    s = a0()
+    j = json.loads(s.to_json())
+    c = j["system"]["surfaces"][1]["shape"]["conic"]["c"]
+    lb.register_shape("py_sphere", sphere, params={"c": 0.0})
+    try:
+        j["system"]["surfaces"][1]["shape"] = {"user": {"c": 0.0, "k": 0.0, "model": "py_sphere",
+                                                        "config": {"c": c, "radius": 8.0, "grid": 257}}}
+        j.pop("hash", None)
+        u = lb.System.from_json(json.dumps(j), glass_dirs=GLASS)
+        # 同じ始点・方向（瞳の位置は近軸の曲率の差分で少し動くので、瞳座標でなく光線で比べる）
+        start = np.array([[0.0, 0.0, 0.0], [0.0, 2.0, 0.0], [1.5, -3.0, 0.0]])
+        k = np.array([[0.0, 0.0, 1.0], [0.0, -0.05, 1.0], [0.02, 0.03, 1.0]])
+        a, b = s.trace_rays(start, k), u.trace_rays(start, k)
+        for key in ("x", "y", "l", "m"):
+            assert np.allclose(a[key], b[key], atol=1e-8), key
+        with pytest.raises(ValueError):
+            lb.register_shape("py_bad", sphere, params={"radius": 1.0})
+    finally:
+        assert lb.unregister_shape("py_sphere")

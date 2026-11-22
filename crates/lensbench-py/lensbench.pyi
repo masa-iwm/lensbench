@@ -1107,9 +1107,13 @@ def read_batch(path: _StrPath) -> tuple[Any, list[Any]]:
     """Read a batch result file (JSONL): (head dict, [{"i", "seed", "result"}] in numbering order)"""
 
 
-def register_coating_catalog(name: str, files: Sequence[_StrPath] = ..., dat: str | None = None) -> int:
+def register_coating_catalog(name: str, files: Sequence[_StrPath] = ..., dat: str | None = None, models: Mapping[str, Any] | None = None) -> int:
     """Register a coating catalog (replaces one with the same name). `files` are coating model (.lbcm, .lbcb), measured table (.lbct)
-    or coating file (COATING.DAT format: MATE, COAT, TABLE) files, `dat` is text in the COATING.DAT format. The coatings are looked up by
+    or coating file (COATING.DAT format: MATE, COAT, TABLE) files, `dat` is text in the COATING.DAT format. `models` is {coating name: func}
+    of coatings whose coefficients a Python function computes (for prototypes: only inside this Python process, not from the CLI or GUI):
+    `func(wl, n1, n2, cos1, path, from_substrate) -> {"rs", "rp", "ts", "tp"}` (complex arrays like cos1, power-normalized amplitudes; path is
+    "transmit", "mirror" (n2 is NaN) or "reflect"). It is called once per wavelength, indices, path and side with cos1 on a grid of 2001 points
+    from 0 to 1, and the coefficients are interpolated linearly in cos1. The coatings are looked up by
     the surface's coating name before the coating file of the .zmx and the coating folder. Returns the number of coatings.
     A coating with the same name in another registered catalog is an error. Register before loading the systems that use it
     (a system reads its coatings once, at the first polarization trace)
@@ -1120,6 +1124,22 @@ def register_plugin(name: str, func: Callable[..., Mapping[str, Any]], kind: str
     """Register a Python function as a plugin (replaces one with the same name).
     `func(config: dict, inputs: dict[str, ndarray]) -> dict[str, array]`. Arrays are passed together per call.
     When called with a system, `func(config, inputs, system)`. With `needs_system=True` the system's coatings are read before passing it
+    """
+
+
+def register_shape(name: str, func: Any, params: Any = None) -> None:
+    """Register a Python function as a user-defined shape (surface type USERSHAPE; replaces one with the same name; for prototypes: only inside this
+    Python process, not from the CLI or GUI). `func(config: dict, x: ndarray, y: ndarray) -> (z, dzdx, dzdy)` gives the sag added to the conic and its
+    gradient. params is {name: default} of its numeric settings. When a shape is prepared the function is called once on a grid of `grid` × `grid`
+    points (setting, default 65) from −`radius` to `radius` mm (setting, default 10), and the sag is interpolated by bicubic Hermite
+    interpolation of the values and gradients (the settings are not variables)
+    """
+
+
+def register_source(name: str, func: Any) -> None:
+    """Register a Python function as a user-defined source (replaces one with the same name; for prototypes: only inside this Python process,
+    not from the CLI or GUI). `func(config: dict, wl: float) -> dict` returns start and direction ((rays, 3), object coordinates) and weight ((rays,))
+    for the wavelength wl [µm]. It is called once per wavelength
     """
 
 
@@ -1193,6 +1213,14 @@ def unregister_coating_catalog(name: str) -> bool:
 
 def unregister_plugin(name: str) -> bool:
     """Remove a registration (True if there was one)"""
+
+
+def unregister_shape(name: str) -> bool:
+    """Remove a registered shape (True if there was one)"""
+
+
+def unregister_source(name: str) -> bool:
+    """Remove a registered source (True if there was one)"""
 
 
 def verify(paths: Any, ci: bool = False) -> Any:

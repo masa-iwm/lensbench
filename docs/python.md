@@ -24,6 +24,11 @@
 
 ### 変更履歴
 
+- **2.9**: Python の関数を光源・膜・形として登録する口（試作用。Python のプロセスの中だけで、CLI・GUI からは使えない）: `register_source(name, func)`・
+  `unregister_source(name)`（`func(config, wl) -> {"start", "direction", "weight"}`、波長ごとに 1 回）と、`register_coating_catalog` の `models={膜の名前: func}`
+  （`func(wl, n1, n2, cos1, path, from_substrate) -> {"rs", "rp", "ts", "tp"}`。波長・屈折率・経路・向きの組ごとに cos1 の 2001 点の格子で 1 回呼び、cos1 で線形に補間する）、
+  `register_shape(name, func, params=None)`・`unregister_shape(name)`（面の種類 USERSHAPE の形。`func(config, x, y) -> (z, dzdx, dzdy)` を形の準備ごとに設定 `radius`・`grid` の格子で
+  1 回呼び、値と勾配の双 3 次 Hermite で引く。設定は変数にできない）。
 - **2.8**: 拡張が足した利用者定義の光源の一覧 `source_models()`（{名前: 説明}）と、光源の光線 `source_rays(system, name, config=None, wave=None, frame="object")`
   （始点・方向・重みの配列の dict。start・direction をそのまま `trace_rays` に渡す）を追加（[ライブラリ（Rust）](rust.md) の `lensbench_core::usersource`）。
 - **2.7**: 像の模擬 `System.image_sim(image, ...)`（OpticStudio の Image Simulation 相当。NumPy の (高さ, 幅) か (高さ, 幅, 3) を受けて同じ形で返す）を追加。

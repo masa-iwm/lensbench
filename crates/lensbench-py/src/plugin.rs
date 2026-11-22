@@ -93,7 +93,7 @@ pub(crate) fn to_config(cfg: Option<&Bound<'_, PyDict>>) -> PyResult<Config> {
     Ok(c)
 }
 
-fn config_to_py<'py>(py: Python<'py>, c: &Config) -> PyResult<Bound<'py, PyDict>> {
+pub(crate) fn config_to_py<'py>(py: Python<'py>, c: &Config) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
     for (k, v) in c {
         match v {
@@ -531,5 +531,5 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plugin_spec, m)?)?;
     m.add_function(wrap_pyfunction!(register_plugin, m)?)?;
     m.add_function(wrap_pyfunction!(unregister_plugin, m)?)?;
-    crate::sources::register(m)
+    crate::usermodels::register(m)
 }

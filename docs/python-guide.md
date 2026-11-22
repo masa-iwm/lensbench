@@ -92,7 +92,21 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   lb.source_models()                             # {"example_point": "Point source ...", ...}
   r = lb.source_rays(s, "example_point", {"y": 1.0}, wave=2)   # start・direction (n, 3)、weight (n,)。物体の座標系
   t = s.trace_rays(r["start"], r["direction"], waves=[2])
+
+  def fan(config, wl):                           # 試作用: Python の関数を光源に（波長ごとに 1 回、配列で返す）
+      return {"start": ..., "direction": ..., "weight": ...}
+  lb.register_source("fan", fan)
+
+  def nd50(wl, n1, n2, cos1, path, from_substrate):   # 試作用: 係数を計算で返す膜（cos1 の格子でまとめて呼び、補間する）
+      return {"rs": 0 * cos1, "rp": 0 * cos1, "ts": 0.5 ** 0.5 + 0 * cos1, "tp": 0.5 ** 0.5 + 0 * cos1}
+  lb.register_coating_catalog("MINE", models={"ND50": nd50})   # 面の膜の名前 ND50 で引く（系を読む前に登録）
+
+  def bump(config, x, y):                        # 試作用: USERSHAPE の形（形の準備ごとに格子でまとめて呼び、補間する）
+      a = config["a"]
+      return a * x * y, a * y, a * x
+  lb.register_shape("bump", bump, params={"a": 1e-4})   # システムファイルの "shape": {"user": {"model": "bump", "config": {"a": …, "radius": 10, "grid": 65}}}
   ```
+  Python の関数の光源・膜・形は Python のプロセスの中だけで使え、CLI・GUI からは使えない
 - px・py は list・float32・飛び飛びの配列も受け付ける（float64 に直す）
 - ゴースト: `s.ghost_pairs()` → [(a, b), ...]、`g = s.ghost(a, b)` で 2 回反射の経路を展開したシステム（`trace`・`pol` など
   そのまま）。`s.ghost_origin(a, b)` で展開したシステムの面ごとの元の面と反射の面の番号
