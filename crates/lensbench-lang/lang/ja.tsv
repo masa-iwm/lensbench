@@ -2654,3 +2654,16 @@ the closeness steps (nd_step, vd_step, dpgf_step) must be positive	近さの刻�
 no candidate glass passes the filter	絞り込みに合う候補の硝材がありません
 the --glass-* candidate settings need --glass-surfaces (the surfaces to substitute glass on)	--glass-* の候補の設定には --glass-surfaces（硝材を置き換える面）が要ります
 glass status {name} (one of {})	硝材の状態 {name}（{} のどれか）
+inverse limit {x} is not finite	逆感度の上限 {x} が有限ではありません
+inverse increment {x} must be positive	逆感度の増分 {x} は正の数
+inverse rtol {} must be positive	逆感度の rtol {} は正の数
+inverse skip: no tolerance {k}	逆感度の skip: 公差 {k} がありません
+inverse sensitivity does not write a batch run file (results)	逆感度は一括実行のファイル（results）を書きません
+inverse limit {limit} must be larger than the nominal merit {}	逆感度の上限 {limit} は公称のメリットファンクション {} より大きくしてください
+inverse: give either limit or increment	inverse: limit か increment の一方を指定してください
+inverse.skip: no tolerance named {name}	inverse.skip: 名前が {name} の公差がありません
+tolerance {i}: {n} cannot be relative	公差 {i}: {n} は比にできません
+surface {j}: glass {m} is not loaded	面 {j}: 硝材 {m} が読み込まれていません
+surface {j}: nd and vd tolerances need a glass or a model glass (nd, vd)	面 {j}: nd・vd の公差には硝材かモデルガラス（nd, vd）が要ります
+surface {j}: the glass has no dispersion for an nd or vd tolerance	面 {j}: nd・vd の公差を入れる硝材に分散がありません
+paraxial focus compensation: the marginal ray is parallel to the axis after surface {m}	近軸の焦点の補償: 面 {m} の後でマージナル光線が光軸と平行です

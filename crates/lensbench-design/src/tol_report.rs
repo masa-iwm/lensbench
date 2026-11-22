@@ -31,16 +31,56 @@ pub struct ToleranceReport {
     pub merit_values: Vec<Option<f64>>,
     /// 感度（評価関数の変化の悪い順）
     pub sensitivity: Vec<SensInfo>,
-    /// 感度からの見積り（公称 + √Σ 変化²）
+    /// 感度からの見積り（公称 + √Σ 変化²。変化² は公差ごとに lo 側と hi 側の平均）
     pub rss_estimate: Option<f64>,
     /// 試行の評価関数とずれの相関（大きい順）
     pub correlation: Vec<CorrInfo>,
+    /// 補償のしかた（"optimize"・"paraxial"・"none"）
+    #[serde(default = "optimize_name")]
+    pub comp_mode: String,
+    /// 逆感度の結果（逆感度をしたときだけ）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inverse: Option<InverseInfo>,
     /// 試行ごとのずれと評価（samples を頼んだときだけ）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub samples: Option<Vec<Sample>>,
     /// 読み込んだ後の変更を当てなかった説明（serve だけ）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<Vec<String>>,
+}
+
+fn optimize_name() -> String {
+    "optimize".into()
+}
+
+/// 逆感度の結果
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct InverseInfo {
+    /// "limit"（評価関数の上限）か "increment"（公称からの変化の上限）
+    pub mode: String,
+    /// 設定の値（limit なら評価関数の値、increment なら変化）
+    pub value: f64,
+    /// 評価関数の上限（limit はその値、increment は公称 + 変化）
+    pub limit: f64,
+    /// 公差ごとの範囲（公差の順）。締めた公差の数
+    pub tolerances: Vec<InverseTolInfo>,
+    pub tightened: usize,
+}
+
+/// 逆感度で求めた公差 1 つの範囲
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct InverseTolInfo {
+    pub label: String,
+    /// 元の範囲と締めた後の範囲（締めなかった側は元のまま）
+    pub lo0: f64,
+    pub hi0: f64,
+    pub lo: f64,
+    pub hi: f64,
+    /// 締めた側（lo・hi）
+    pub tightened_lo: bool,
+    pub tightened_hi: bool,
+    /// 締めない公差（skip）
+    pub skipped: bool,
 }
 
 /// 公差 1 つの設定
@@ -119,6 +159,11 @@ pub struct SensInfo {
     pub change_hi: Option<f64>,
     /// 変化の大きい方
     pub worst: Option<f64>,
+    /// lo・hi にしたときの補償子の値（補償子の順。補償子が無い・追跡できなければ省く）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comp_lo: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comp_hi: Option<Vec<f64>>,
 }
 
 /// 公差 1 つの相関

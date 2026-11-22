@@ -9,6 +9,7 @@ mod montecarlo;
 mod schema;
 mod swap;
 mod tolerance;
+mod tolerance_os;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）
 #[test]

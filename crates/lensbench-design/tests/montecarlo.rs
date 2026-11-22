@@ -446,6 +446,7 @@ fn wavelength_tolerance_with_focus() {
         relative: false,
         dist: Dist::Uniform,
         scale: Vec::new(),
+        glass: None,
     };
     let mut p = problem(&s);
     p.vars

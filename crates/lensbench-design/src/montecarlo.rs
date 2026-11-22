@@ -26,6 +26,14 @@
 //! 公称との差を出す（OpticStudio の感度解析の「最悪の項目」に当たる）。モンテカルロの結果からは、
 //! 評価関数とずれ δ・|δ| の相関（[`McResult::correlation`]）も出す。
 //!
+//! 補償のしかた（[`CompMode`]、OpticStudio の公差解析の Comp）: `Optimize` は補償子を評価関数で DLS により合わせ直す
+//! （Optimize All (DLS)）。`Paraxial` は補償子を使わず、像面の前の厚さを近軸の焦点の動きだけ動かして公称の焦点のずれを
+//! 保つ（Paraxial Focus）。`None` は補償しない。
+//!
+//! 逆感度（[`McSpec::inverse`]、OpticStudio の Inverse Limit・Inverse Increment）: 感度の lo・hi で評価関数が上限
+//! （Limit: 評価関数の値、Increment: 公称からの変化）を超える側だけ、その公差の範囲を上限ちょうどになるまで締める
+//! （広げない。lo・hi は別々に解く）。試行（モンテカルロ）・感度の表・RSS の見積りは締めた範囲で求める（[`InverseTol`]）。
+//!
 //! 簡易設定（[`simple`]）: 玉ごとの公差の組（[`LensTol`]、既定の組 [`LensTol::preset`]）から公差の並びを作る。
 
 use lensbench_core::error::Result;
@@ -38,6 +46,10 @@ use lensbench_core::LockExt;
 use lensbench_optim::{DlsOpts, Problem};
 use lensbench_runs::{self as runs, Draws, Joint};
 use std::sync::Mutex;
+
+mod inverse;
+use inverse::run_inverse;
+pub use inverse::{GlassShift, Inverse, InverseTarget, InverseTol};
 
 /// 分布。設定の JSON では名前の文字列（"uniform"・"normal"・"normal:σの数"・"end"・"disc_x"・"disc_y:normal" など）
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, schemars::JsonSchema)]
@@ -145,6 +157,8 @@ pub struct Tol {
     /// パラメータごとにずれに掛ける数（空はすべて 1）。鏡で折り返して往復する玉の厚さのように、往きと戻りで同じずれを
     /// 逆の符号で与えるときに -1
     pub scale: Vec<f64>,
+    /// ガラスの nd・vd のずれ（params は面の [dn, disp]。ずれの値をモデルガラスの式で dn と disp にする。scale は使わない）
+    pub glass: Option<GlassShift>,
 }
 
 impl Tol {
@@ -158,6 +172,7 @@ impl Tol {
             relative: false,
             dist: Dist::Uniform,
             scale: Vec::new(),
+            glass: None,
         }
     }
 
@@ -180,6 +195,23 @@ pub struct McSpec {
     pub comp: DlsOpts,
     /// 公差ごとの感度も求める
     pub sensitivity: bool,
+    /// 補償のしかた
+    pub comp_mode: CompMode,
+    /// 逆感度（None ならしない）。感度も求める
+    pub inverse: Option<Inverse>,
+}
+
+/// 補償のしかた（OpticStudio の公差解析の Comp）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CompMode {
+    /// 補償子（[`Problem::vars`]）を評価関数で DLS により合わせ直す（Optimize All (DLS)）
+    #[default]
+    Optimize,
+    /// 補償子は使わず、構成ごとに像面の前の面の厚さを、近軸マージナル光線の焦点の動きだけ動かす（公称の焦点のずれを保つ。
+    /// Paraxial Focus）
+    Paraxial,
+    /// 補償しない
+    None,
 }
 
 impl McSpec {
@@ -194,11 +226,40 @@ impl McSpec {
                 ..Default::default()
             },
             sensitivity: true,
+            comp_mode: CompMode::Optimize,
+            inverse: None,
         }
     }
 
     pub fn check(&self) -> Result<()> {
         self.problem.check()?;
+        if let Some(inv) = &self.inverse {
+            match inv.target {
+                InverseTarget::Limit(x) if !x.is_finite() => {
+                    invalid!("inverse limit {x} is not finite")
+                }
+                InverseTarget::Increment(x) if !(x.is_finite() && x > 0.0) => {
+                    invalid!("inverse increment {x} must be positive")
+                }
+                _ => {}
+            }
+            if !(inv.rtol.is_finite() && inv.rtol > 0.0) {
+                invalid!("inverse rtol {} must be positive", inv.rtol);
+            }
+            if let Some(&k) = inv.skip.iter().find(|&&k| k >= self.tols.len()) {
+                invalid!("inverse skip: no tolerance {k}");
+            }
+        }
+        if self.comp_mode == CompMode::Paraxial {
+            for s in &self.problem.configs {
+                let m = s.image().checked_sub(1).filter(|&m| m >= 1);
+                if m.is_none_or(|m| s.check_param(Param::new(m, Kind::Thick)).is_err()) {
+                    invalid!(
+                        "paraxial focus compensation needs a thickness before the image surface"
+                    );
+                }
+            }
+        }
         for (i, t) in self.tols.iter().enumerate() {
             if t.params.is_empty() {
                 invalid!("tolerance {i} ({}): no parameter", t.label);
@@ -401,6 +462,8 @@ pub struct McResult {
     pub sensitivity: Vec<Sens>,
     /// 止めた（progress が false を返した）なら true。trials は終わった分だけ（試行の番号の順）
     pub cancelled: bool,
+    /// 逆感度で締めた範囲（逆感度をしたときだけ、公差の順）。sensitivity の lo・hi の評価は締めた範囲の端のもの
+    pub inverse: Option<Vec<InverseTol>>,
 }
 
 impl McResult {
@@ -537,9 +600,13 @@ pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
                 if d == 0.0 {
                     continue;
                 }
+                let g = t.glass.as_ref().map(|g| g.dn_disp(d));
                 for (k, &p) in t.params.iter().enumerate() {
                     let v0 = s.get_param(p)?;
-                    let dv = t.scale_of(k) * if t.relative { v0 * d } else { d };
+                    let dv = match g {
+                        Some((dn, disp)) => [dn, disp][k.min(1)],
+                        None => t.scale_of(k) * if t.relative { v0 * d } else { d },
+                    };
                     match ch.iter_mut().find(|x| x.0 == p) {
                         Some(x) => x.1 += dv,
                         None => ch.push((p, v0 + dv)),
@@ -557,8 +624,52 @@ pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
 
 /// ずれ deltas の系を補償して評価する
 pub fn evaluate(spec: &McSpec, deltas: &[f64]) -> Result<Eval> {
-    let p = spec.problem.with_configs(perturbed(spec, deltas)?);
-    eval_problem(&p, &spec.comp, true)
+    let mut configs = perturbed(spec, deltas)?;
+    match spec.comp_mode {
+        CompMode::Optimize => {
+            let p = spec.problem.with_configs(configs);
+            eval_problem(&p, &spec.comp, true)
+        }
+        CompMode::Paraxial => {
+            for (c, s0) in configs.iter_mut().zip(&spec.problem.configs) {
+                *c = paraxial_focus(c, s0)?;
+            }
+            eval_fixed(&spec.problem.with_configs(configs))
+        }
+        CompMode::None => eval_fixed(&spec.problem.with_configs(configs)),
+    }
+}
+
+/// 補償しない評価（補償子の値は今の値）
+fn eval_fixed(p: &Problem) -> Result<Eval> {
+    eval_problem(p, &DlsOpts::default(), false)
+}
+
+/// 像面の前の面 m から近軸マージナル光線の焦点までの距離（主波長、鏡の向きも込み）
+fn paraxial_focus_distance(s: &System) -> Result<f64> {
+    let m = s.image() - 1;
+    let (y, u) = &s.paraxial().marginal;
+    let mirrors = s.surfaces[1..=m]
+        .iter()
+        .filter(|d| !d.ignore && d.is_mirror())
+        .count();
+    let sgn = if mirrors % 2 == 1 { -1.0 } else { 1.0 };
+    let z = -y[m] / (sgn * u[m]);
+    if !z.is_finite() {
+        invalid!("paraxial focus compensation: the marginal ray is parallel to the axis after surface {m}");
+    }
+    Ok(z)
+}
+
+/// ずらした系 s の像面の前の厚さを、公称の系 s0 からの近軸の焦点の動きだけ動かした系（OpticStudio の Paraxial Focus）
+fn paraxial_focus(s: &System, s0: &System) -> Result<System> {
+    let m = s.image() - 1;
+    let dz = paraxial_focus_distance(s)? - paraxial_focus_distance(s0)?;
+    if dz == 0.0 {
+        return Ok(s.clone());
+    }
+    let p = Param::new(m, Kind::Thick);
+    s.with_params_fast(&[(p, s.get_param(p)? + dz)])
 }
 
 fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {
@@ -641,8 +752,14 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
 /// o.threads は使う（None なら外の指定）、o.stage は使わない
 pub fn run_to(spec: &McSpec, o: &runs::RunOpts) -> Result<McResult> {
     spec.check()?;
+    if spec.inverse.is_some() {
+        return run_inverse(spec, o);
+    }
     let draws = spec.draws()?;
-    let nominal = eval_problem(&spec.problem, &spec.comp, true)?;
+    let nominal = match spec.comp_mode {
+        CompMode::Optimize => eval_problem(&spec.problem, &spec.comp, true)?,
+        _ => eval_fixed(&spec.problem)?,
+    };
     let nt = spec.tols.len();
     let ns = if spec.sensitivity { 2 * nt } else { 0 };
     let total = ns + spec.trials;
@@ -743,10 +860,9 @@ pub fn run_to(spec: &McSpec, o: &runs::RunOpts) -> Result<McResult> {
         trials,
         sensitivity,
         cancelled: par::cancelled(),
+        inverse: None,
     })
 }
-
-// ------------------------------------------------------------------------------------------ 簡易設定
 
 /// 玉ごとの公差の組（各値は ±、0 なら作らない）
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -867,6 +983,7 @@ pub fn simple(
                 relative,
                 dist,
                 scale,
+                glass: None,
             });
         }
     };

@@ -16,6 +16,9 @@
   解いてそこから継続法で解き直すようにした。相対照度（縁の光線を 1 本ずつ解く）が変わり、見本の超広角の系 `tests/aim_wide/W2` では
   視野 0.5〜0.6 で 0.46〜0.71 の間で上下していた値が滑らかになる（視野 0.36 以上で値が上がり、視野 0.6 は 0.46 から 0.81）。相対照度の縁の光線は並列に解く
 
+- **公差の感度からの RSS の見積り**（`rss_estimate`）: 公差ごとの変化² を悪い側から lo 側と hi 側の平均にした（OpticStudio の Estimated
+  change と同じ式）。片側だけ悪くなる公差の多い系では見積りが小さくなる
+
 ### 変えたもの
 
 - **アフォーカル像空間の系の歪曲の評価関数の演算子**（DISG・DIMX・DISC など）: 実主光線の像面の点の代わりに像空間の向きの tan（l/n・m/n）と
@@ -33,6 +36,13 @@
   serve の `set_config_pickup` に `row` を足した
 - **.zmx の機械半径の ZPL マクロのソルブ**（`MEMA 値 3 0 0 1 "名前"`）: 半直径のマクロと同じくマクロを探して解き直し、書き出しも同じ形で書く
   （これまでは注意を出して自動にしていた）。serve の `add_macro_solve` の `what` に `mech` を足した
+- **公差の逆感度と補償のしかた**（OpticStudio の Inverse Limit・Inverse Increment と Paraxial Focus・None 相当）: `inverse`
+  （`{"limit": 評価関数の値}` か `{"increment": 公称からの変化}`、`skip` で締めない公差）で、公差ごとに lo 側・hi 側を別々に評価関数が
+  その値になるまで締め（広げない）、締めた範囲で感度・モンテカルロを回す。`comp_mode` は `optimize`（既定、補償子を DLS で）・`paraxial`
+  （像面の前の厚さで近軸の焦点を保つ）・`none`（補償しない）。硝材の d 線の屈折率・アッベ数の公差 `j.nd`・`j.vd`（OpticStudio の
+  TIND・TABB と同じモデルガラスの式で波長ごとの変化を決める）。OpticStudio 2026 R1.01 の公差解析と照合（`tests/tolerance_os`）。GUI の公差の
+  パネルに「補償のしかた」「逆感度」と、結果に締めた公差の表
+
 - **像の模擬**（`image-sim`、OpticStudio の Image Simulation 相当）: 元の画像（PNG、グレーか RGB）を物体の視野に置き、主光線の像点（歪曲・倍率色収差）・
   相対照度・視野の格子の回折 PSF（FFT PSF、格子点の間は補間、FFT で畳み込み）をかけて検出器の像を作る。CLI（`--save` で 16 bit の PNG か JSON）・
   serve・Python（`System.image_sim`、NumPy の配列を受けて返す）・GUI（「像の模擬」）

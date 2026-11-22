@@ -32,6 +32,8 @@
 //!
 //! 個別の公差: {"param": "3.t"} か {"params": ["2.r", "3.r"]} に、`pm`（±）か `lo`・`hi`、`relative`（比、false）、
 //! `dist`、`label`、`scale`（パラメータごとにずれに掛ける数の並び。往復する面の厚さのように逆の符号で与えるとき -1）。
+//! "j.nd"・"j.vd" は面 j のガラスの d 線の屈折率・アッベ数のずれ（OpticStudio の TIND・TABB と同じくモデルガラスの式で
+//! 波長ごとの変化を決め、dn と disp の組合せにする。[`glass_shift`]）。
 //!
 //! 鏡の `back` で同じ玉を往復する系では、玉の公差の組は往きと戻りの面に同じ誤差を与える（曲率・くさびは同じ面、
 //! 厚さ・間隔は戻りで逆の符号、偏心・傾きは往復の範囲を持つブロックの動き）。玉の名前はブロックの id。
@@ -41,7 +43,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::montecarlo::{self as tolerance, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
+use crate::montecarlo::{
+    self as tolerance, CompMode, Dist, GlassShift, GroupTol, Inverse, InverseTarget, LensTol,
+    McResult, McSpec, Tol,
+};
 use lensbench_analysis::sweep::RmsRef;
 use lensbench_core::catalog::VendorKey;
 use lensbench_core::param::{Kind, Param};
@@ -52,9 +57,12 @@ use serde_json::{json, Value};
 use crate::term_spec::RefName;
 pub use crate::tol_report::ToleranceReport;
 use crate::tol_report::{
-    fin, CompStats, CorrInfo, Sample, SensInfo, StatsInfo, TermStats, TiltStats, TolInfo,
+    fin, CompStats, CorrInfo, InverseInfo, InverseTolInfo, Sample, SensInfo, StatsInfo, TermStats,
+    TiltStats, TolInfo,
 };
-use crate::tol_spec::{self, CatEntry, Face, MeritName, Radial, TolItem, TolSpec, VarSpec};
+use crate::tol_spec::{
+    self, CatEntry, CompModeName, Face, MeritName, Radial, TolItem, TolSpec, VarSpec,
+};
 use lensbench_project::lenient;
 
 use lensbench_project::{Block, LensSource, Project};
@@ -272,6 +280,33 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> lensbench_core::Re
             return Err(format!("tolerance {i}: either param (a string) or params (a list)").into())
         }
     };
+    // "j.nd"・"j.vd": モデルガラスの式で d 線の屈折率・アッベ数を変える（dn と disp の組合せにする）
+    if let [n] = names.as_slice() {
+        if let Some((j, which)) = glass_dn_param(n) {
+            if m.scale.is_some() {
+                return Err(format!("tolerance {i}: {n} takes no scale").into());
+            }
+            let g = glass_shift(s, j, which)
+                .map_err(|e| e.map_message(|e| format!("tolerance {i}: {e}")))?;
+            let mut t = tol_from(
+                &TolItem {
+                    param: None,
+                    params: Some(vec![format!("{j}.dn"), format!("{j}.disp")]),
+                    scale: None,
+                    ..m.clone()
+                },
+                s,
+                dist,
+                i,
+            )?;
+            if t.relative {
+                return Err(format!("tolerance {i}: {n} cannot be relative").into());
+            }
+            t.glass = Some(g);
+            t.label = m.label.clone().unwrap_or_else(|| n.clone());
+            return Ok(t);
+        }
+    }
     let mut params = Vec::new();
     for n in &names {
         // "wave" はすべての波長（光源の波長のずれ。全波長を同じだけずらす）
@@ -306,6 +341,62 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> lensbench_core::Re
         relative: m.relative.unwrap_or(false),
         dist,
         scale,
+        glass: None,
+    })
+}
+
+/// "j.nd"・"j.vd"（面の番号 j と、nd なら false・vd なら true）
+fn glass_dn_param(n: &str) -> Option<(usize, bool)> {
+    let (j, k) = n.trim().split_once('.')?;
+    let j: usize = j.trim().parse().ok()?;
+    match k.trim() {
+        "nd" => Some((j, false)),
+        "vd" => Some((j, true)),
+        _ => None,
+    }
+}
+
+/// 面 j の媒質の d 線の屈折率（abbe が false）かアッベ数（true）のずれ（[`GlassShift`]）
+pub fn glass_shift(s: &System, j: usize, abbe: bool) -> lensbench_core::Result<GlassShift> {
+    use lensbench_core::material::Material;
+    let d = s
+        .surfaces
+        .get(j)
+        .ok_or_else(|| format!("surface {j} does not exist"))?;
+    let (nd, vd, dpgf) = match &d.mat {
+        Material::Model { nd, vd, dpgf } => (*nd, *vd, *dpgf),
+        Material::Glass(m) => {
+            let g = s
+                .glasses
+                .get(m)
+                .ok_or_else(|| format!("surface {j}: glass {m} is not loaded"))?;
+            let n = |l: f64| g.index(l, s.temperature, s.pressure, s.adjust_index);
+            let nd = n(0.587_561_8);
+            let vd = (nd - 1.0) / (n(0.486_132_7) - n(0.656_272_5));
+            (nd, vd, g.props.map_or(0.0, |x| x.dpgf))
+        }
+        _ => {
+            return Err(format!(
+                "surface {j}: nd and vd tolerances need a glass or a model glass (nd, vd)"
+            )
+            .into())
+        }
+    };
+    if !(vd.is_finite() && vd > 0.0) {
+        return Err(
+            format!("surface {j}: the glass has no dispersion for an nd or vd tolerance").into(),
+        );
+    }
+    Ok(GlassShift {
+        nd,
+        vd,
+        dpgf,
+        abbe,
+        wavelengths: s.wavelengths.clone(),
+        base: (0..s.wavelengths.len())
+            .map(|w| s.base_index(j, w))
+            .collect(),
+        primary: s.primary,
     })
 }
 
@@ -429,8 +520,16 @@ pub fn spec_from_json_with(
         tols.push(tol_from(x, &s0, dist, i + 1)?);
     }
     let mut p = Problem::new(configs);
-    for x in m.compensators.iter().flat_map(|c| c.list()) {
-        p.vars.push(var_from(x, &s0)?);
+    let comp_mode = match m.comp_mode.unwrap_or(CompModeName::Optimize) {
+        CompModeName::Optimize => CompMode::Optimize,
+        CompModeName::Paraxial => CompMode::Paraxial,
+        CompModeName::None => CompMode::None,
+    };
+    // 補償子は DLS で合わせるときだけ（ほかの補償のしかたでは使わない。OpticStudio も同じ）
+    if comp_mode == CompMode::Optimize {
+        for x in m.compensators.iter().flat_map(|c| c.list()) {
+            p.vars.push(var_from(x, &s0)?);
+        }
     }
     let rings = m.rings.unwrap_or(3);
     // 名前は CLI・Python と同じ reference
@@ -476,6 +575,29 @@ pub fn spec_from_json_with(
         };
     }
     spec.sensitivity = m.sensitivity.unwrap_or(spec.sensitivity);
+    spec.comp_mode = comp_mode;
+    if let Some(x) = &m.inverse {
+        let target = match (x.limit, x.increment) {
+            (Some(l), None) => InverseTarget::Limit(l),
+            (None, Some(d)) => InverseTarget::Increment(d),
+            _ => return Err("inverse: give either limit or increment".into()),
+        };
+        let mut inv = Inverse::new(target);
+        if let Some(r) = x.rtol {
+            inv.rtol = r;
+        }
+        for name in x.skip.iter().flatten() {
+            let k: Vec<usize> = (0..spec.tols.len())
+                .filter(|&k| spec.tols[k].label == *name)
+                .collect();
+            if k.is_empty() {
+                return Err(format!("inverse.skip: no tolerance named {name}").into());
+            }
+            inv.skip.extend(k);
+        }
+        spec.inverse = Some(inv);
+        spec.sensitivity = true;
+    }
     Ok(spec)
 }
 
@@ -708,13 +830,26 @@ pub fn report(spec: &McSpec, r: &McResult, o: &OutOpts) -> ToleranceReport {
         .map(|x| {
             let t = &spec.tols[x.tol];
             let d = |e: &Option<tolerance::Eval>| e.as_ref().map(|e| e.merit - nm);
+            let comp = |e: &Option<tolerance::Eval>| {
+                e.as_ref()
+                    .filter(|e| !e.comp.is_empty())
+                    .map(|e| e.comp.clone())
+            };
             let w = x.worst(nm);
+            // 逆感度で締めた範囲（感度の評価はその端のもの）
+            let (lo, hi) = r
+                .inverse
+                .as_ref()
+                .and_then(|v| v.get(x.tol))
+                .map_or((t.lo, t.hi), |v| (v.lo, v.hi));
             (
                 w,
                 SensInfo {
                     label: t.label.clone(),
-                    lo: t.lo,
-                    hi: t.hi,
+                    lo,
+                    hi,
+                    comp_lo: comp(&x.lo),
+                    comp_hi: comp(&x.hi),
                     merit_lo: x.lo.as_ref().map(|e| e.merit),
                     merit_hi: x.hi.as_ref().map(|e| e.merit),
                     change_lo: d(&x.lo),
@@ -725,9 +860,19 @@ pub fn report(spec: &McSpec, r: &McResult, o: &OutOpts) -> ToleranceReport {
         })
         .collect();
     sens.sort_by(|a, b| b.0.total_cmp(&a.0));
-    // 感度の RSS による見積り（公称 + √Σ 変化²。片側の悪い方を使う）
+    // 感度の RSS による見積り（公称 + √Σ 変化²。変化² は lo 側と hi 側の平均で、OpticStudio と同じ）
     let rss_estimate = (!r.sensitivity.is_empty()).then(|| {
-        let s2: f64 = sens.iter().map(|x| x.0 * x.0).sum();
+        let s2: f64 = sens
+            .iter()
+            .map(|(w, x)| {
+                let v: Vec<f64> = [x.change_lo, x.change_hi].into_iter().flatten().collect();
+                if !w.is_finite() || v.is_empty() {
+                    w * w
+                } else {
+                    v.iter().map(|c| c * c).sum::<f64>() / v.len() as f64
+                }
+            })
+            .sum();
         nm + s2.sqrt()
     });
     let corr = r.correlation(&spec.tols);
@@ -853,6 +998,40 @@ pub fn report(spec: &McSpec, r: &McResult, o: &OutOpts) -> ToleranceReport {
         sensitivity: sens.into_iter().map(|x| x.1).collect(),
         rss_estimate,
         correlation: cv.into_iter().map(|x| x.1).collect(),
+        comp_mode: match spec.comp_mode {
+            tolerance::CompMode::Optimize => "optimize",
+            tolerance::CompMode::Paraxial => "paraxial",
+            tolerance::CompMode::None => "none",
+        }
+        .into(),
+        inverse: match (&spec.inverse, &r.inverse) {
+            (Some(inv), Some(v)) => Some(InverseInfo {
+                mode: match inv.target {
+                    InverseTarget::Limit(_) => "limit",
+                    InverseTarget::Increment(_) => "increment",
+                }
+                .into(),
+                value: match inv.target {
+                    InverseTarget::Limit(x) | InverseTarget::Increment(x) => x,
+                },
+                limit: inv.limit(nm),
+                tightened: v.iter().filter(|x| x.tightened.iter().any(|b| *b)).count(),
+                tolerances: v
+                    .iter()
+                    .map(|x| InverseTolInfo {
+                        label: spec.tols[x.tol].label.clone(),
+                        lo0: x.lo0,
+                        hi0: x.hi0,
+                        lo: x.lo,
+                        hi: x.hi,
+                        tightened_lo: x.tightened[0],
+                        tightened_hi: x.tightened[1],
+                        skipped: inv.skip.contains(&x.tol),
+                    })
+                    .collect(),
+            }),
+            _ => None,
+        },
         samples: o.samples.then(|| {
             r.trials
                 .iter()

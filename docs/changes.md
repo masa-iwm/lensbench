@@ -16,6 +16,8 @@
   0.7.0 以前の版や OpticStudio で開いたときのけられ・機械半径のピックアップが変わる。
 - アフォーカル像空間の系の歪曲の評価関数の演算子（DISG・DIMX・DISC など）を、像面の位置でなく像空間の向きの tan と近軸の角倍率で
   比べるようにした。アフォーカルの系でこれらの演算子を使う評価関数の値が変わる。
+- 公差の感度からの RSS の見積り（`rss_estimate`）で、公差ごとの変化² を悪い側から lo 側と hi 側の平均にした（OpticStudio の
+  Estimated change と同じ）。片側だけ悪くなる公差が多いと見積りが小さくなる。
 
 ### CLI
 - `--glass-dir`・`LENSBENCH_GLASSCAT` の後に、exe の隣の `catalogs/glass` があればそこのガラスカタログも使う。exe の隣にカタログを
@@ -25,6 +27,8 @@
 - SDK に `lensbench_sdk::coating`（膜の一覧・膜のファイル形式の口）を足した（壊れる変更ではない）。
 - `lensbench_core::coating::Coatings` に欄 `registered`・`auto_stacks`・`notes` が増えた。欄をすべて書いて作っていると
   組めなくなる（`..Default::default()` を付ける）。`lensbench_engine::load::CoatInterfaces` にも `registered`・`notes` が増えた。
+- `lensbench_design::montecarlo::Tol` に欄 `glass`（硝材の nd・vd のずれ、ふだんは `None`）、`McSpec` に `comp_mode`・`inverse`、
+  `McResult` に `inverse` が増えた。欄をすべて書いて作っていると組めなくなる。
 - 拡張の表に膜の一覧を足すと、.zmx の膜ファイル（COATING.DAT）の同じ名前の膜より一覧の膜が先になる（注意を返す）。
 
 ## v0.6.0 の後・v0.7.0 まで

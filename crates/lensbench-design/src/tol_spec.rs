@@ -67,6 +67,11 @@ pub struct TolSpec {
     pub compensators: Option<Compensators>,
     /// 補償子の DLS の反復の上限（10）
     pub comp_iters: Option<usize>,
+    /// 補償のしかた（"optimize"）: "optimize"（補償子を DLS で）・"paraxial"（像面の前の厚さを近軸の焦点に合わせて動かす。
+    /// 補償子は使わない）・"none"（補償しない）
+    pub comp_mode: Option<CompModeName>,
+    /// 逆感度（範囲を締める）。{"limit": 評価関数の上限} か {"increment": 公称からの変化の上限}
+    pub inverse: Option<InverseSpec>,
     /// 評価関数（"wavefront"）
     pub merit: Option<MeritName>,
     /// 既定の評価関数の瞳のリング数（3）
@@ -82,6 +87,32 @@ pub struct TolSpec {
     pub samples: Option<bool>,
     /// スレッド数
     pub threads: Option<usize>,
+}
+
+/// 補償のしかた
+#[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CompModeName {
+    /// 補償子を評価関数で DLS により合わせ直す（OpticStudio の Optimize All (DLS)）
+    Optimize,
+    /// 像面の前の厚さを近軸の焦点の動きだけ動かす（Paraxial Focus）
+    Paraxial,
+    /// 補償しない
+    None,
+}
+
+/// 逆感度の設定（limit か increment のどちらか 1 つ）
+#[derive(Deserialize, JsonSchema, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct InverseSpec {
+    /// 評価関数の値の上限（Inverse Limit。公称より大きいこと）
+    pub limit: Option<f64>,
+    /// 公称からの評価関数の変化の上限（Inverse Increment。正）
+    pub increment: Option<f64>,
+    /// 締めない公差の名前（label）
+    pub skip: Option<Vec<String>>,
+    /// 解きの収まり（評価関数と上限の差 ≤ 上限 × rtol。1e-8）
+    pub rtol: Option<f64>,
 }
 
 /// くさびを入れる面

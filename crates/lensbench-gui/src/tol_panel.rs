@@ -17,6 +17,7 @@ use crate::param_pick::{self as pp, Set};
 use crate::theme;
 use crate::widgets::sheet::{self, SheetState};
 
+mod inverse;
 mod sheets;
 use lensbench_design::tol_report::StatsInfo;
 use lensbench_design::tolerance::ToleranceReport;
@@ -108,6 +109,13 @@ pub(crate) struct TolPanel {
     pub catalog: bool,
     pub sensitivity: bool,
     pub comp_iters: usize,
+    /// 補償のしかた（optimize・paraxial・none）
+    pub comp_mode: String,
+    /// 逆感度（none・limit・increment）と、その評価の値（limit は評価の値そのもの、increment は公称からの変化）
+    pub inverse: String,
+    pub inverse_value: String,
+    /// 逆感度で締めない公差の名前（カンマ区切り）
+    pub inverse_skip: String,
     /// メーカーごとのカタログの玉の公差（catalog_tols）
     pub catalog_tols: Vec<crate::tol_catalog::VendorTol>,
     /// 出す百分位（空白・カンマ区切り。空は既定）
@@ -150,6 +158,10 @@ impl Default for TolPanel {
             catalog: true,
             sensitivity: true,
             comp_iters: 10,
+            comp_mode: "optimize".into(),
+            inverse: "none".into(),
+            inverse_value: String::new(),
+            inverse_skip: String::new(),
             catalog_tols: Vec::new(),
             percentiles: String::new(),
             samples: false,
@@ -198,6 +210,31 @@ impl TolPanel {
         m.insert("catalog".into(), json!(self.catalog));
         m.insert("sensitivity".into(), json!(self.sensitivity));
         m.insert("comp_iters".into(), json!(self.comp_iters));
+        if self.comp_mode == "optimize" {
+            m.remove("comp_mode");
+        } else {
+            m.insert("comp_mode".into(), json!(self.comp_mode));
+        }
+        // なし: 欄で表せない読んだ値（extra）があればそれを使う
+        if self.inverse != "none" {
+            let v: f64 = self
+                .inverse_value
+                .trim()
+                .parse()
+                .map_err(|_| trf("Inverse value {} is not a number", &[&self.inverse_value]))?;
+            let mut o = Map::new();
+            o.insert(self.inverse.clone(), crate::tol_catalog::num_val(v));
+            let skip: Vec<&str> = self
+                .inverse_skip
+                .split(',')
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .collect();
+            if !skip.is_empty() {
+                o.insert("skip".into(), json!(skip));
+            }
+            m.insert("inverse".into(), Value::Object(o));
+        }
         // 空なら extra の分（欄で表せない読んだ値）があればそれを使う
         if let Some(v) = crate::tol_catalog::to_json(&self.catalog_tols)? {
             m.insert("catalog_tols".into(), v);
@@ -385,6 +422,11 @@ impl TolPanel {
                 "catalog" => n.catalog = x.as_bool().unwrap_or(true),
                 "sensitivity" => n.sensitivity = x.as_bool().unwrap_or(true),
                 "comp_iters" => n.comp_iters = x.as_u64().unwrap_or(10) as usize,
+                "comp_mode" => n.comp_mode = x.as_str().unwrap_or("optimize").into(),
+                // 欄で表せる形（limit か increment の一方と skip だけ）なら欄に、ほかはそのまま残す
+                "inverse" if inverse::fields(x).is_some() => {
+                    (n.inverse, n.inverse_value, n.inverse_skip) = inverse::fields(x).unwrap();
+                }
                 // 欄で表せない書き方（範囲の式など）はそのまま残す
                 "catalog_tols" => match crate::tol_catalog::from_json(x) {
                     Ok(v) => n.catalog_tols = v,
@@ -763,6 +805,7 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
             tr("Also compute sensitivities (each tolerance at its limits)"),
         );
     });
+    inverse::settings(ui, p);
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("Percentiles"));
         small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
@@ -1047,6 +1090,21 @@ fn result_ui(
             .color(weak),
         );
     }
+    if r.comp_mode != "optimize" {
+        let m = if r.comp_mode == "paraxial" {
+            tr("Paraxial focus")
+        } else {
+            tr("None")
+        };
+        ui.label(
+            RichText::new(trf("Compensation: {}", &[&m]))
+                .small()
+                .color(weak),
+        );
+    }
+    if let Some(inv) = &r.inverse {
+        inverse::table(ui, inv, weak);
+    }
     // 累積分布
     let cdf = &r.cdf;
     if !cdf.is_empty() {
@@ -1169,6 +1227,45 @@ mod tests {
         assert_eq!(term_unit("wavefront #2 (config 1)"), tr("waves"));
         assert_eq!(term_unit("mtf #3"), "");
         assert_eq!(term_unit("ray #4"), "");
+    }
+
+    #[test]
+    fn inverse_and_comp_mode_round_trip() {
+        let p = TolPanel {
+            comp_mode: "paraxial".into(),
+            inverse: "increment".into(),
+            inverse_value: "0.003".into(),
+            inverse_skip: "lens1 dx, 3.t".into(),
+            ..Default::default()
+        };
+        let v = p.spec().unwrap();
+        assert_eq!(v["comp_mode"], json!("paraxial"));
+        assert_eq!(
+            v["inverse"],
+            json!({"increment": 0.003, "skip": ["lens1 dx", "3.t"]})
+        );
+        let mut q = TolPanel::default();
+        q.set_spec(&v).unwrap();
+        assert_eq!(
+            (q.comp_mode.as_str(), q.inverse.as_str()),
+            ("paraxial", "increment")
+        );
+        assert_eq!(q.spec().unwrap(), v);
+        // 既定（最適化・逆感度なし）は書かない。値が数でなければ誤り
+        let d = TolPanel::default().spec().unwrap();
+        assert!(d.get("comp_mode").is_none() && d.get("inverse").is_none());
+        let bad = TolPanel {
+            inverse: "limit".into(),
+            inverse_value: "x".into(),
+            ..Default::default()
+        };
+        assert!(bad.spec().is_err());
+        // 欄で表せない逆感度の書き方（rtol など）はそのまま残す
+        let mut r = TolPanel::default();
+        let w = json!({"inverse": {"limit": 0.02, "rtol": 1e-6}, "trials": 0});
+        r.set_spec(&w).unwrap();
+        assert_eq!(r.inverse, "none");
+        assert_eq!(r.spec().unwrap()["inverse"], w["inverse"]);
     }
 
     #[test]

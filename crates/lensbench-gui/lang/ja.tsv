@@ -1915,3 +1915,18 @@ RGB wavelengths	RGB の波長
 Pupil aberration fan	瞳の収差の扇
 Pupil aberration fan: where real rays aimed at the paraxial entrance pupil cross the stop, against the paraxial point [% of the stop radius]	瞳の収差の扇: 近軸の入射瞳へ向けた実光線が絞りを通る点の、近軸の点からのずれ [絞りの半径の %]
 Pupil aberration [{}]	瞳の収差 [{}]
+Compensation	補償のしかた
+Optimize (DLS)	最適化（DLS）
+Paraxial focus	近軸の焦点
+None	なし
+Paraxial focus keeps the paraxial image distance by the thickness before the image (the compensators are not used); None evaluates without compensation	近軸の焦点: 像面の前の厚みで近軸の像の位置を保つ（コンペンセータは使わない）。なし: 補償せずに評価する
+Inverse sensitivity	逆感度
+Limit (criterion value)	上限（評価の値）
+Increment (change from nominal)	増分（公称からの変化）
+Tightens each tolerance limit (each side separately) until the criterion reaches the value; limits are never widened. Monte Carlo then uses the tightened limits	公差の範囲を（両側を別々に）評価がその値になるまで締める。広げはしない。モンテカルロは締めた範囲で回す
+Do not adjust	締めない公差
+Inverse value {} is not a number	逆感度の値 {} が数ではありません
+Compensation: {}	補償のしかた: {}
+Inverse sensitivity: increment {} (criterion limit {}), {} tolerances tightened	逆感度: 増分 {}（評価の上限 {}）、締めた公差 {} 個
+Inverse sensitivity: limit {}, {} tolerances tightened	逆感度: 上限 {}、締めた公差 {} 個
+No tolerance reaches the criterion; the limits are unchanged	評価が上限に届く公差はなく、範囲は変わりません

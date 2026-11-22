@@ -110,6 +110,26 @@
       },
       "type": "object"
     },
+    "CompModeName": {
+      "description": "補償のしかた",
+      "oneOf": [
+        {
+          "const": "optimize",
+          "description": "補償子を評価関数で DLS により合わせ直す（OpticStudio の Optimize All (DLS)）",
+          "type": "string"
+        },
+        {
+          "const": "paraxial",
+          "description": "像面の前の厚さを近軸の焦点の動きだけ動かす（Paraxial Focus）",
+          "type": "string"
+        },
+        {
+          "const": "none",
+          "description": "補償しない",
+          "type": "string"
+        }
+      ]
+    },
     "Compensators": {
       "anyOf": [
         {
@@ -164,6 +184,47 @@
           "description": "傾き [deg]",
           "format": "double",
           "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "InverseSpec": {
+      "additionalProperties": false,
+      "description": "逆感度の設定（limit か increment のどちらか 1 つ）",
+      "properties": {
+        "increment": {
+          "description": "公称からの評価関数の変化の上限（Inverse Increment。正）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "評価関数の値の上限（Inverse Limit。公称より大きいこと）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rtol": {
+          "description": "解きの収まり（評価関数と上限の差 ≤ 上限 × rtol。1e-8）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "skip": {
+          "description": "締めない公差の名前（label）",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -638,6 +699,17 @@
         "null"
       ]
     },
+    "comp_mode": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompModeName"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "補償のしかた（\"optimize\"）: \"optimize\"（補償子を DLS で）・\"paraxial\"（像面の前の厚さを近軸の焦点に合わせて動かす。\n補償子は使わない）・\"none\"（補償しない）"
+    },
     "compensators": {
       "anyOf": [
         {
@@ -676,6 +748,17 @@
         "object",
         "null"
       ]
+    },
+    "inverse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InverseSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "逆感度（範囲を締める）。{\"limit\": 評価関数の上限} か {\"increment\": 公称からの変化の上限}"
     },
     "lenses": {
       "additionalProperties": {

@@ -2319,7 +2319,9 @@ impl PySystem {
     /// Returned dict: nominal (merit, terms, comp), merit (statistics: n, mean, std, min, max, percentiles), cdf (merit
     /// in ascending order), terms (label, nominal, stats, cdf per term), compensators (name, nominal, stats, values per trial),
     /// tilt_magnitudes (magnitude of the tx, ty pair of compensators [arcmin]), merit_values (merit per trial), sensitivity (change of the merit at lo and hi of each tolerance,
-    /// worst first), rss_estimate, correlation (correlation r with the perturbation and r_abs with |perturbation|), tolerances, trials, failed,
+    /// worst first; with inverse, lo and hi are the tightened limits), rss_estimate (nominal + root-sum-square of the mean of the squared lo and hi
+    /// changes), comp_mode, inverse (mode, value, limit, tolerances with lo0, hi0, lo, hi and the tightened sides, tightened),
+    /// correlation (correlation r with the perturbation and r_abs with |perturbation|), tolerances, trials, failed,
     /// errors (with samples true, also deltas and eval per trial)
     #[pyo3(signature = (spec=None, terms=None, vendors=None, configs=None, threads=None, reversed=None))]
     #[allow(clippy::too_many_arguments)]
