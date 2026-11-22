@@ -1141,6 +1141,15 @@ no state or beam {name} (states: {}; beams: {})	状態・光束 {name} はあり
 beam {name} has its own path, so another path can't be given	光束 {name} は経路を持つので別の経路は渡せません
 block {}: a coordinate break of the return path can't be chosen	ブロック {}: 復路の座標ブレークは選べません
 block {b} pass {k} ({n} return passes)	ブロック {b} の {k} 回目（復路は {n} 回）
+beam {name}: turn takes a surface on the way out (not back or coordbrk)	光束 {name}: turn は往路の面を指します（back・coordbrk は使えません）
+beam {name}: 0, ref and reference mean the reference sphere in interference (use another name)	光束 {name}: 0・ref・reference は干渉で参照球を表します（別の名前にしてください）
+beam {name}: turn needs a block id	光束 {name}: turn にはブロックの id が要ります
+turn: surface {k} ({n} surfaces in the block)	turn: 面 {k}（ブロックの面は {n} 面）
+turn: a lens with a mirror or a coordinate break can't be turned in	turn: ミラー・座標ブレークを含むレンズでは折り返せません
+turn: a lens in a group can't be turned in (put the turn on a lens outside groups)	turn: 群の中のレンズでは折り返せません（群の外のレンズに置いてください）
+turn: the return path leaves a BS without branches (write the arms as the BS branches t, r and d)	turn: 戻りの道が分岐の無い BS から出ます（腕を BS の分岐 t・r・d に書いてください）
+turn: the block is OFF	turn: ブロックが OFF です
+turn: block {} (pass {}) is not on the path	turn: ブロック {}（{} 回目）は経路にありません
 block {b} pass {k} ({n} forward passes)	ブロック {b} の {k} 回目（往路は {n} 回）
 block {} surface {} ({} surfaces in the pass)	ブロック {} の面 {}（その回の面は {} 枚）
 state {name}: no block {id}	状態 {name}: ブロック {id} はありません
@@ -2085,6 +2094,13 @@ Image: number of pixels (on a side)	像面上: 画素の数（一辺）
 Image: factor on the sample intensity	像面上: 試料の強度にかける数
 Image: factor on the reference intensity	像面上: 参照の強度にかける数
 Image: overlay the fields of a polarization trace (input polarizations sample_input and reference_input; coatings from the system's coating files)	像面上: 偏光追跡の場で重ねる（入射偏光は sample_input・reference_input、コーティングはシステムのコーティングファイル）
+Image: overlay these beams of a project instead of beam1 and beam2 (names separated by commas, or all for the beams not marked off). Each beam has power 1; polarized uses sample_input for all	像面上: beam1・beam2 の代わりにプロジェクトの光束を重ねる（名前をカンマで区切る。all は OFF でない光束）。強度はどれも 1、polarized の入射偏光はどれも sample_input
+no beams to overlay	重ねる光束がありません
+the beam wavelengths differ ({} µm, {} µm)	光束の波長が違います（{} µm、{} µm）
+beams needs mode detector	beams は mode detector で使います
+beams: give two or more beams to overlay	beams: 重ねる光束を 2 つ以上与えてください
+quantity {} (with beams: intensity)	quantity {}（beams では intensity）
+no beam {n} ({})	光束 {n} はありません（{}）
 Image: input polarization of the sample (x, y, 45, rcp, lcp, etc.)	像面上: 試料の入射偏光（x・y・45・rcp・lcp など）
 Image: input polarization of the reference	像面上: 参照の入射偏光
 Quantity to write: intensity or delta on the pupil; intensity, opd, visibility, sample or reference on the image	エクスポートする量: 瞳上は intensity・delta、像面上は intensity・opd・visibility・sample・reference

@@ -490,6 +490,8 @@ pub(crate) struct SplitState {
     pub passes: usize,
     /// strict で経路の文字が足りなくなった
     pub need: bool,
+    /// 復路が分岐の無い BS で A 以外の口へ出た（光束の `turn` では戻った先を置けない）
+    pub loose: bool,
 }
 
 /// 経路の文字列（T・R、大小どちらも）
@@ -727,6 +729,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         self.tag_split(id, start);
         if out != A {
             self.split.stopped = true;
+            self.split.loose = true;
         }
         Ok(())
     }

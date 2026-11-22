@@ -129,6 +129,8 @@ RMS スポット半径・RMS 波面収差を視野・フォーカス・波長に
 {{#include gen/wavefront.md}}
 
 `interference --beam2 ref` で参照球との干渉縞（瞳の上、OpticStudio の Interferogram に当たる）。
+`interference --mode detector --beams all`（名前をカンマで区切っても）でプロジェクトの光束を 3 本以上でも像面で重ねる
+（多光束の干渉計・裏面反射の重なり。画素ごとに場を足す。偏光なしでは光束ごとの瞳の平均の透過率（膜・フレネル・分岐比、解析 `beams` と同じ）を強さにかけ（`beam_weight`）、`--polarized` では電場に入る。`--polarized` の 2 本なら `--beam1`・`--beam2` と同じ）。
 
 {{#include gen/interference.md}}
 

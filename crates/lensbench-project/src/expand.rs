@@ -36,33 +36,6 @@ pub(crate) fn zmx_group_spans(
     Ok(out)
 }
 
-/// 前の座標ブレーク（順序 0 で偏心 d・傾き t）で傾けた座標の z に l 進んだ点から、元の座標の z に l 進んだ点へ戻る
-/// 座標ブレーク（順序 0 で −t、偏心 (dx2, dy2)、厚さ t2）の値: (dx2, dy2, t2) = l e_z − d − R e_z l（R = Rx Ry Rz）
-pub(crate) fn cb_return(place: &Place, l: f64) -> (f64, f64, f64) {
-    let [dx, dy] = place.decenter;
-    let [tx, ty, tz] = place.tilt;
-    let r: M3 = lensbench_core::math::mm(
-        &lensbench_core::math::mm(&rot(0, tx), &rot(1, ty)),
-        &rot(2, tz),
-    );
-    let rz = mv(&r, [0.0, 0.0, l]);
-    (-dx - rz[0], -dy - rz[1], l - rz[2])
-}
-
-/// 空気中の面の並びを逆向きに（厚さは 1 つ前の面のもの、曲率の符号を変える）。最後の面の厚さは 0
-pub(crate) fn reverse_surfaces(v: &[Surface]) -> lensbench_core::Result<Vec<Surface>> {
-    let n = v.len();
-    (0..n)
-        .map(|i| {
-            let mut s = v[n - 1 - i].clone();
-            s.flip_z()?;
-            s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
-            s.stop = false;
-            Ok(s)
-        })
-        .collect()
-}
-
 pub(crate) fn curv(r: Option<f64>) -> f64 {
     match r {
         Some(r) if r != 0.0 && r.is_finite() => 1.0 / r,
@@ -660,6 +633,7 @@ fn expand_body(
             strict: search,
             ..Default::default()
         },
+        turn: TurnState::new(p),
         frames: Vec::new(),
         zenv: Vec::new(),
         nodes: node_paths(&p.blocks),
@@ -687,6 +661,13 @@ fn expand_body(
         if let Some(e) = c.flip_err.take() {
             return Err(e);
         }
+    }
+    if let Some(t) = c.turn.at.as_ref().filter(|_| c.turn.turned.is_empty()) {
+        return Err(format!(
+            "turn: block {} (pass {}) is not on the path",
+            t.block, t.pass
+        )
+        .into());
     }
     if c.split.pos < c.split.path.len() {
         return Err(format!(
@@ -814,6 +795,11 @@ fn expand_body(
                 wl.iter()
                     .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
                     .collect()
+            } else if matches!(
+                Material::parse(&r.mat),
+                Material::Index(_) | Material::Model { .. }
+            ) {
+                Vec::new() // 光束の turn の反対側の媒質（組んだ後で入れる）
             } else {
                 return Err(format!("surface {j}: glass {} is not in the catalogs", r.mat).into());
             };
@@ -909,6 +895,7 @@ fn expand_body(
         return Err("fields solve only with type solve".into());
     }
     let mut s = s.build_raw()?;
+    fill_turned(&mut s, &c.turn.turned)?;
     let (picks, medium) = keep_pickups(&mut s, &org, &zpicks)?;
     let mut warn = Note::all(NoteKind::Pickup, None, picks);
     warn.extend(Note::all(NoteKind::Medium, None, medium));

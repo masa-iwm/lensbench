@@ -339,40 +339,8 @@ pub fn detector(
         wr,
         pol.map(|p| (p.reference, p.coat)),
     )?;
-    // 範囲
-    let (cx, cy, wd) = {
-        let (mut x0, mut x1, mut y0, mut y1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-        for r in [&rs, &rr] {
-            for q in 0..r.ok.len() {
-                if r.ok[q] {
-                    x0 = x0.min(r.xs[q]);
-                    x1 = x1.max(r.xs[q]);
-                    y0 = y0.min(r.ys[q]);
-                    y1 = y1.max(r.ys[q]);
-                }
-            }
-        }
-        if x0 > x1 {
-            invalid!("no ray reaches the image");
-        }
-        let c = o.center.unwrap_or((0.5 * (x0 + x1), 0.5 * (y0 + y1)));
-        let wd = o.width.unwrap_or_else(|| {
-            let h = (x1 - c.0)
-                .abs()
-                .max((x0 - c.0).abs())
-                .max((y1 - c.1).abs())
-                .max((y0 - c.1).abs());
-            2.0 * h
-        });
-        (c.0, c.1, wd)
-    };
-    if !(wd > 0.0) {
-        invalid!("detector width {wd} mm");
-    }
     let n = o.npx;
-    let dx = if n > 1 { wd / (n - 1) as f64 } else { wd };
-    let x0 = cx - 0.5 * dx * (n - 1) as f64;
-    let y0 = cy - 0.5 * dx * (n - 1) as f64;
+    let (x0, y0, dx) = area(&[&rs, &rr], n, o.center, o.width)?;
     let (ps, zs) = raster(&rs, &es, n, x0, y0, dx);
     let (pr, zr) = raster(&rr, &er, n, x0, y0, dx);
     let k = 2.0 * std::f64::consts::PI / (lam * 1e-3);
@@ -429,6 +397,166 @@ pub fn detector(
         }
     }
     Ok(out)
+}
+
+/// 検出面の範囲: 左下の画素の中心 (x0, y0) と画素の間隔。center・width を省けば光線の届く範囲を覆う正方形
+fn area(
+    rays: &[&RayGrid],
+    n: usize,
+    center: Option<(f64, f64)>,
+    width: Option<f64>,
+) -> Result<(f64, f64, f64)> {
+    let (mut x0, mut x1, mut y0, mut y1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+    for r in rays {
+        for q in 0..r.ok.len() {
+            if r.ok[q] {
+                x0 = x0.min(r.xs[q]);
+                x1 = x1.max(r.xs[q]);
+                y0 = y0.min(r.ys[q]);
+                y1 = y1.max(r.ys[q]);
+            }
+        }
+    }
+    if x0 > x1 {
+        invalid!("no ray reaches the image");
+    }
+    let c = center.unwrap_or((0.5 * (x0 + x1), 0.5 * (y0 + y1)));
+    let wd = width.unwrap_or_else(|| {
+        let h = (x1 - c.0)
+            .abs()
+            .max((x0 - c.0).abs())
+            .max((y1 - c.1).abs())
+            .max((y0 - c.1).abs());
+        2.0 * h
+    });
+    if !(wd > 0.0) {
+        invalid!("detector width {wd} mm");
+    }
+    let dx = if n > 1 { wd / (n - 1) as f64 } else { wd };
+    Ok((
+        c.0 - 0.5 * dx * (n - 1) as f64,
+        c.1 - 0.5 * dx * (n - 1) as f64,
+        dx,
+    ))
+}
+
+/// N 本の経路の 1 本（[`detector_sum`]）: 系・強度にかける数・足す光路長 [mm]・入射偏光（偏光を扱うとき）
+#[derive(Debug, Clone, Copy)]
+pub struct BeamIn<'a> {
+    pub sys: &'a System,
+    pub power: f64,
+    pub delay: f64,
+    pub input: InputPol,
+}
+
+/// N 本の経路を重ねた像面上の強度（[`detector_sum`]）
+#[derive(Debug, Clone)]
+pub struct DetectorSum {
+    /// 画素の間隔 [mm]
+    pub dx: f64,
+    /// 波長 [µm]
+    pub wavelength: f64,
+    /// 重ねた強度 |Σ A_i e^{−ikL_i}|²
+    pub intensity: Grid2,
+    /// 経路ごとの強度（power をかけた値。届かない画素は 0）
+    pub each: Vec<Grid2>,
+    /// 画素に届いた経路の数
+    pub count: Grid2<usize>,
+}
+
+/// N 本の経路（多光束の干渉計、ゴーストの重なり）の像面上の干渉: 画素ごとに場を足して I = |Σ A_i e^{−ik(L_i + delay_i)}|²。
+/// 範囲・瞳の照らし方・偏光の扱いは [`detector`] と同じ（2 本なら [`detector`] の intensity と同じ）。
+/// `coat` を指定すると偏光追跡の場で重ねる（入射偏光は各経路の input）
+pub fn detector_sum(
+    beams: &[BeamIn],
+    field: FieldSel,
+    w: Option<usize>,
+    o: &DetectorOpts,
+    coat: Option<&Coatings>,
+) -> Result<DetectorSum> {
+    if beams.is_empty() {
+        invalid!("no beams to overlay");
+    }
+    if o.pupil < 2 {
+        invalid!("the pupil grid must be 2 or more");
+    }
+    if o.npx < 1 {
+        invalid!("the number of pixels must be 1 or more");
+    }
+    if beams
+        .iter()
+        .any(|b| !(b.power >= 0.0) || !b.delay.is_finite())
+    {
+        invalid!("intensity weights must be 0 or more and delay finite");
+    }
+    let s0 = beams[0].sys;
+    let lam = s0.wavelengths[w.unwrap_or(s0.primary).min(s0.wavelengths.len() - 1)];
+    let mut grids = Vec::with_capacity(beams.len());
+    for b in beams {
+        let wi = w.unwrap_or(b.sys.primary);
+        if wi >= b.sys.wavelengths.len() {
+            invalid!("the wavelength number is out of range");
+        }
+        if (b.sys.wavelengths[wi] - lam).abs() > 1e-12 * lam {
+            invalid!(
+                "the beam wavelengths differ ({} µm, {} µm)",
+                lam,
+                b.sys.wavelengths[wi]
+            );
+        }
+        grids.push(trace_grid(
+            b.sys,
+            field,
+            o.pupil,
+            wi,
+            coat.map(|c| (b.input, c)),
+        )?);
+    }
+    let n = o.npx;
+    let rs: Vec<&RayGrid> = grids.iter().map(|g| &g.0).collect();
+    let (x0, y0, dx) = area(&rs, n, o.center, o.width)?;
+    let px: Vec<(rg::PixelData, Vec<C64>)> = grids
+        .iter()
+        .map(|(r, e)| raster(r, e, n, x0, y0, dx))
+        .collect();
+    // 光路長の基準（位相の桁落ちを避ける。差だけが効く）
+    let l0 = px
+        .iter()
+        .flat_map(|(p, _)| (0..p.ok.len()).filter(|&q| p.ok[q]).map(|q| p.l[0][q]))
+        .fold(f64::INFINITY, f64::min);
+    let k = 2.0 * std::f64::consts::PI / (lam * 1e-3);
+    let n2 = n * n;
+    let pi = std::f64::consts::PI;
+    let xs: Vec<f64> = (0..n).map(|i| x0 + i as f64 * dx).collect();
+    let ys: Vec<f64> = (0..n).map(|j| y0 + j as f64 * dx).collect();
+    let mut total = vec![0.0; n2];
+    let mut each = vec![vec![0.0; n2]; beams.len()];
+    let mut count = vec![0usize; n2];
+    for q in 0..n2 {
+        let mut sum = [C64::new(0.0, 0.0); 3];
+        for (i, ((p, z), b)) in px.iter().zip(beams).enumerate() {
+            if !p.ok[q] {
+                continue;
+            }
+            count[q] += 1;
+            let a = (b.power * p.i[q] / pi).sqrt();
+            let v = [p.ex[q] * a, p.ey[q] * a, z[q] * a];
+            each[i][q] = v.iter().map(|c| c.norm_sqr()).sum();
+            let ph = C64::from_polar(1.0, -k * (p.l[0][q] + b.delay - l0));
+            for c in 0..3 {
+                sum[c] += v[c] * ph;
+            }
+        }
+        total[q] = sum.iter().map(|c| c.norm_sqr()).sum();
+    }
+    let grid = |v: Vec<f64>| Grid2::new(xs.clone(), ys.clone(), v);
+    Ok(DetectorSum {
+        dx,
+        wavelength: lam,
+        intensity: grid(total),
+        each: each.into_iter().map(grid).collect(),
+        count: Grid2::new(xs.clone(), ys.clone(), count),
+    })
 }
 
 #[cfg(test)]
@@ -566,6 +694,45 @@ mod tests {
         let r3 = detector(&s, &s, FieldSel::Index(0), None, &o3, None).unwrap();
         let tot: f64 = r3.i_sample.data().iter().sum::<f64>() * r3.dx * r3.dx;
         assert!((tot - 1.0).abs() < 0.03, "{tot}");
+    }
+
+    #[test]
+    fn sum_of_two_beams_is_the_two_beam_fringe_and_n_equal_beams_give_n_squared() {
+        let s = lens(2.0, &[0.0]);
+        let t = lens(2.3, &[0.0]);
+        let o = DetectorOpts {
+            pupil: 33,
+            npx: 11,
+            center: Some((0.0, 0.0)),
+            width: Some(0.25),
+            reference_power: 0.5,
+            delay: 1.0e-4,
+            ..Default::default()
+        };
+        let f = FieldSel::Index(0);
+        let r = detector(&s, &t, f, None, &o, None).unwrap();
+        let b = |sys, power, delay| BeamIn {
+            sys,
+            power,
+            delay,
+            input: InputPol::X,
+        };
+        let m = detector_sum(&[b(&s, 1.0, 0.0), b(&t, 0.5, 1.0e-4)], f, None, &o, None).unwrap();
+        for q in 0..r.n() * r.n() {
+            let (a, c) = (r.intensity.data()[q], m.intensity.data()[q]);
+            assert!((a - c).abs() <= 1e-9 * a.max(1.0), "{q}: {a} {c}");
+        }
+        assert_eq!(m.each.len(), 2);
+        let m3 = detector_sum(&[b(&s, 1.0, 0.0); 3], f, None, &o, None).unwrap();
+        let mut seen = 0;
+        for q in 0..m3.intensity.data().len() {
+            if m3.count.data()[q] == 3 {
+                seen += 1;
+                let one = m3.each[0].data()[q];
+                assert!((m3.intensity.data()[q] - 9.0 * one).abs() < 1e-9 * one.max(1e-30));
+            }
+        }
+        assert!(seen > 20, "{seen}");
     }
 
     #[test]

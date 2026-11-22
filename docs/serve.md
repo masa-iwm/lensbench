@@ -258,7 +258,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 {"method": "analyze", "params": {"cmd": "interference", "beam1": "1", "beam2": "2", "mode": "detector"}}
 ```
 
-- 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か、状態・光束の名前）で選ぶ。
+- 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か、状態・光束の名前）で選ぶ。`beams`（光束の名前をカンマで区切るか `all`、`mode` は `detector`）なら 3 本以上の光束を重ねる（偏光なしでは光束ごとの瞳の平均の透過率を強さにかける。`beam_weight`）。
   光束ごとにシステムのファイルをその構成・状態で読み、読み込んだ後の変更（`set`・`edit`）を順に当てる
 - `set` のパラメータで、その光束のファイルの値が読み込んだシステムの変える前の値と違うもの（多重構成の表で構成ごとに値が違うもの）は当てず、
   結果の `notes` に書く。例: 構成 1 を読み込み、試料の腕だけの厚みを `set` すると、参照（構成 2）の厚みは変えない

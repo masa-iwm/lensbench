@@ -130,6 +130,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) gaps: Vec<Gap>,
     /// ビームスプリッターの経路
     pub(crate) split: SplitState,
+    /// 光束の `turn`（玉の面で折り返す）
+    pub(crate) turn: TurnState,
     /// 枠付きのユーザーカタログの品（名前, 枠）。品の面は [`SurfOrigin::frame`] の番号で引く（面を巻き戻せば品も外れる）
     pub(crate) frames: Vec<(String, MechSpec)>,
     /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正, 膜ファイル）。プロジェクトの環境と違えば注意を出す。
@@ -501,7 +503,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// 最後に足した面を置き方の座標ブレークにする（[`SurfOrigin::placed`]）
-    fn mark_placed(&mut self) {
+    pub(crate) fn mark_placed(&mut self) {
         if let Some(m) = self.map.last_mut() {
             m.placed = true;
         }
@@ -1098,6 +1100,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
         if !matches!(b, Block::Mirror { .. } | Block::Splitter { .. }) {
             self.note(block_id(b), b.faces(), start);
         }
+        if self.turn.pending {
+            self.finish_turn(siblings, idx)?;
+        }
         Ok(())
     }
 
@@ -1138,6 +1143,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 e.surfaces.iter_mut().for_each(|s| s.stop = false);
                 if *stop {
                     e.surfaces[0].stop = true;
+                }
+                if let Some(k) = self.turn_here(b) {
+                    if !place.on {
+                        return Err("turn: the block is OFF".into());
+                    }
+                    return self.turn_lens(&e, place, k);
                 }
                 let rev = *reversed;
                 self.placed(place, &mut |c: &mut Self| {
@@ -1249,17 +1260,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.note(id, Some(faces), start);
                 if back {
                     // 前のブロックを戻る。BS で A 以外の口へ出たら止まり、並びの初めまで戻れば（BS の分岐なら）BS を通る
-                    self.split.stopped = false;
-                    for x in siblings[..idx].iter().rev() {
-                        self.back_block(x)?;
-                        if self.split.stopped {
-                            break;
-                        }
-                    }
-                    if !self.split.stopped {
-                        let lv = self.split.levels.last().cloned().unwrap_or(Level::Other);
-                        self.return_at(lv)?;
-                    }
+                    self.go_back(siblings, idx)?;
                     self.split.stopped = false;
                     if self.split.done && idx + 1 < siblings.len() {
                         return Err(

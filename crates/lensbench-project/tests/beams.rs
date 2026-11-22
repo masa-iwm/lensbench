@@ -98,10 +98,10 @@ fn a_beam_applies_its_state() {
     let p = case(
         "mich_RT",
         r#"{"states": [{"name": "near", "project": {"object_distance": 40, "path": "TR"}}],
-            "beams": [{"name": "ref", "path": "RT", "state": "near"},
+            "beams": [{"name": "refb", "path": "RT", "state": "near"},
                       {"name": "near_only", "state": "near"}]}"#,
     );
-    let r = p.with_state("ref").unwrap();
+    let r = p.with_state("refb").unwrap();
     assert_eq!(
         (r.object_distance, r.path.as_deref()),
         (Some(40.0), Some("RT"))
@@ -109,7 +109,7 @@ fn a_beam_applies_its_state() {
     let n = p.with_state("near_only").unwrap();
     assert_eq!(n.path.as_deref(), Some("TR"));
     identical(
-        &sys(&p, Some("ref"), None),
+        &sys(&p, Some("refb"), None),
         &sys(&p.with_state("near").unwrap(), None, Some("RT")),
     );
     // 状態・光束の一覧は残る
@@ -139,6 +139,10 @@ fn beam_names_are_checked() {
         ),
         (r#"{"beams": [{"name": " "}]}"#, "beam 1: the name is empty"),
         (
+            r#"{"beams": [{"name": "ref"}]}"#,
+            "beam ref: 0, ref and reference mean the reference sphere in interference",
+        ),
+        (
             r#"{"states": [{"name": "a"}], "beams": [{"name": "a"}]}"#,
             "beam a: a state has the same name",
         ),
@@ -147,28 +151,31 @@ fn beam_names_are_checked() {
             "beam a: no state x",
         ),
         (r#"{"beams": [{"name": "a", "path": "TX"}]}"#, "beam a:"),
-        (r#"{"beams": [{"name": "a", "turn": []}]}"#, "turn"),
+        (
+            r#"{"beams": [{"name": "a", "turn": {"block": "L", "surface": 0, "back": true}}]}"#,
+            "beam a: turn takes a surface on the way out",
+        ),
     ] {
         let e = with(extra);
         assert!(e.contains(want), "{extra}: {e}");
     }
-    let p = case("mich_RT", r#"{"beams": [{"name": "ref", "path": "RT"}]}"#);
+    let p = case("mich_RT", r#"{"beams": [{"name": "refb", "path": "RT"}]}"#);
     let e = p.with_state("x").unwrap_err().to_string();
-    assert!(e.contains("no state or beam x (beams: ref)"), "{e}");
+    assert!(e.contains("no state or beam x (beams: refb)"), "{e}");
     // 状態で光束の組は変えられない
     let p = case(
         "mich_RT",
-        r#"{"states": [{"name": "s", "project": {"beams": []}}], "beams": [{"name": "ref"}]}"#,
+        r#"{"states": [{"name": "s", "project": {"beams": []}}], "beams": [{"name": "refb"}]}"#,
     );
     let e = p.with_state("s").unwrap_err().to_string();
     assert!(e.contains("beams can't be changed"), "{e}");
     // 経路を持つ光束に別の経路は渡せない
-    let p = case("mich_RT", r#"{"beams": [{"name": "ref", "path": "RT"}]}"#);
+    let p = case("mich_RT", r#"{"beams": [{"name": "refb", "path": "RT"}]}"#);
     let e = expand(
         &p,
         &env(),
         &ExpandOpts {
-            state: Some("ref"),
+            state: Some("refb"),
             path: Some("TR"),
             ..Default::default()
         },
@@ -176,7 +183,7 @@ fn beam_names_are_checked() {
     .map(|_| ())
     .unwrap_err()
     .to_string();
-    assert!(e.contains("beam ref has its own path"), "{e}");
+    assert!(e.contains("beam refb has its own path"), "{e}");
 }
 
 const HEAD: &str = r#""wavelengths": [{"um": 0.5875618}], "glass_catalogs": ["SCHOTT"],
@@ -258,69 +265,155 @@ fn back_refers_to_the_return_faces() {
     assert_eq!(v["glrs"], serde_json::json!({"block": "L", "surface": 1}));
 }
 
-/// 書き戻し: 復路の面へのソルブ・ピックアップは、ブロックの面の back（往路と同じ番号）で書く。復路の面の値の上書きは
-/// 往路の面で（書かずに説明を返す）
-#[test]
-fn write_back_puts_solves_and_pickups_on_return_faces() {
-    use lensbench_project::edit_spec::EditOp;
-    let x = double_pass("", "[]").unwrap();
-    let faces: Vec<_> = x.map.iter().map(|o| o.face.clone()).collect();
-    // 復路の L の面 0（復路では L の 2 つ目の面）と往路の L の面 1
-    let back0 = (0..faces.len())
-        .find(|&j| {
-            faces[j]
-                .as_ref()
-                .is_some_and(|f| f.back && !f.cb && f.index == 1)
-        })
-        .unwrap();
-    let fwd1 = (0..faces.len())
-        .find(|&j| {
-            faces[j]
-                .as_ref()
-                .is_some_and(|f| !f.back && !f.cb && f.index == 1)
-        })
-        .unwrap();
-    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
-        { "op": "add_pickup", "dst": back0, "src": fwd1, "what": "c" },
-        { "op": "add_solve", "surface": back0, "kind": "marginal_height", "value": 0.0 },
-        { "op": "set_surface", "surface": back0, "fields": { "r": 30.0 } },
-    ]))
-    .unwrap();
-    let mut p = Project::from_json(&format!(
+/// 玉 L（面 0 は R 40、面 1 は R −60、N-BK7）を通り、光束 g の turn で折り返す系。other は L の後のブロック
+fn turned(turn: &str, other: &str) -> Result<System, String> {
+    let txt = format!(
         r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
           {{"type": "lens", "id": "L", "source": {{"surfaces": [
              {{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}},
-          {{"type": "air", "t": 20}}, {{"type": "mirror", "back": true, "semi": 10}}]}}"#
+          {{"type": "air", "t": 20}} {other}],
+          "beams": [{{"name": "g", "turn": {turn}}}]}}"#
+    );
+    let p = Project::from_json(&txt).map_err(|e| e.to_string())?;
+    expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("g"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .map_err(|e| e.to_string())
+}
+
+/// 垂直入射の境界の反射率
+fn fresnel(n: f64) -> f64 {
+    ((n - 1.0) / (n + 1.0)).powi(2)
+}
+
+/// turn で玉の面 0 で折り返すと、同じ形の鏡で戻る系と光線の道は同じで、強さは境界の反射率
+#[test]
+fn turn_reflects_at_a_lens_face() {
+    use lensbench_analysis::defs::mean_transmission;
+    let s = turned(r#"{"block": "L", "surface": 0}"#, "").unwrap();
+    let m = Project::from_json(&format!(
+        r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
+          {{"type": "mirror", "radius": 40, "back": true, "semi": 8}}]}}"#
     ))
     .unwrap();
-    let ed = lensbench_project::writeback::Edited {
-        system: &x.system,
-        faces: &faces,
-        before: &x.system,
-    };
-    let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
-    assert_eq!(notes.len(), 1, "{notes:?}");
-    assert!(
-        notes[0].contains("edit 3") && notes[0].contains("later pass"),
-        "{notes:?}"
+    let m = expand(&m, &env(), &ExpandOpts::default()).unwrap().system;
+    assert_eq!(s.surfaces.len(), m.surfaces.len());
+    let j = s.surfaces.iter().position(|d| d.is_mirror()).unwrap();
+    let r = s.surfaces[j].reflect.as_ref().unwrap();
+    assert_eq!(r.mat, "N-BK7");
+    let nbk7 = r.n[0];
+    assert!((nbk7 - 1.5168).abs() < 1e-3, "{nbk7}");
+    let ta = s
+        .try_trace(FieldSel::Index(0), &PX, &PY, Some(0), None, false)
+        .unwrap();
+    let tb = m
+        .try_trace(FieldSel::Index(0), &PX, &PY, Some(0), None, false)
+        .unwrap();
+    for (ra, rb) in ta.rays.iter().zip(&tb.rays) {
+        assert_eq!(ra.status, rb.status);
+        for i in 0..3 {
+            assert!((ra.p[i] - rb.p[i]).abs() < 1e-12 && (ra.k[i] - rb.k[i]).abs() < 1e-12);
+        }
+        assert!((ra.opl - rb.opl).abs() < 1e-9);
+    }
+    let t = mean_transmission(&s, FieldSel::Index(0), 0).unwrap();
+    assert!((t - fresnel(nbk7)).abs() < 2e-4, "{t}");
+
+    // 面 1（後ろは空気）で折り返すと、玉の中を戻って面 0 を出る: 入る・出るの透過と面 1 の反射
+    let s = turned(r#"{"block": "L", "surface": 1}"#, "").unwrap();
+    let j = s.surfaces.iter().position(|d| d.is_mirror()).unwrap();
+    assert_eq!(s.surfaces[j].reflect.as_ref().unwrap().r#mat, "AIR");
+    assert_eq!(s.surfaces[j].reflect.as_ref().unwrap().n, vec![1.0]);
+    let t = mean_transmission(&s, FieldSel::Index(0), 0).unwrap();
+    let r = fresnel(nbk7);
+    assert!((t - r * (1.0 - r).powi(2)).abs() < 3e-4, "{t}");
+    // 戻りで面 0 を出た後は空気、像は物体の側
+    let last = &s.surfaces[s.surfaces.len() - 2];
+    assert!(last.mat.glass().is_none(), "{:?}", last.mat);
+}
+
+/// turn の誤り: 面の番号の外、経路に無いブロック、群の中、OFF
+#[test]
+fn turn_errors() {
+    for (turn, want) in [
+        (
+            r#"{"block": "L", "surface": 2}"#,
+            "turn: surface 2 (2 surfaces in the block)",
+        ),
+        (
+            r#"{"block": "X", "surface": 0}"#,
+            "turn: block X (pass 0) is not on the path",
+        ),
+        (
+            r#"{"block": "L", "surface": 0, "pass": 1}"#,
+            "turn: block L (pass 1) is not on the path",
+        ),
+    ] {
+        let e = turned(turn, "").map(|_| ()).unwrap_err();
+        assert!(e.contains(want), "{turn}: {e}");
+    }
+    let txt = format!(
+        r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "group", "blocks": [{{"type": "air", "t": 10}},
+          {{"type": "lens", "id": "L", "source": {{"surfaces": [{{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}},
+          {{"radius": -60, "semi": 8}}]}}}}]}}, {{"type": "air", "t": 20}}],
+          "beams": [{{"name": "g", "turn": {{"block": "L", "surface": 0}}}}]}}"#
     );
-    let v: serde_json::Value = serde_json::from_str(&p.to_json()).unwrap();
-    let ops = &v["blocks"][2]["surface_ops"];
-    let back = serde_json::json!({"block": "L", "surface": 0, "back": true});
-    assert_eq!(ops[0]["dst"], back, "{ops}");
-    assert_eq!(
-        ops[0]["src"],
-        serde_json::json!({"block": "L", "surface": 1}),
-        "{ops}"
-    );
-    assert_eq!(ops[1]["surface"], back, "{ops}");
-    // 展開すると復路の面 0 にピックアップとソルブ
-    let y = expand(&p, &env(), &ExpandOpts::default()).unwrap();
-    assert_eq!(y.system.pickups.len(), 1);
-    assert_eq!(y.system.pickups[0].dst, back0);
-    assert!(
-        y.system.solves.iter().any(|q| q.surf == back0),
-        "{:?}",
-        y.system.solves
-    );
+    let p = Project::from_json(&txt).unwrap();
+    let e = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("g"),
+            ..Default::default()
+        },
+    )
+    .map(|_| ())
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("turn: a lens in a group"), "{e}");
+}
+
+/// BS の腕の玉で turn すると、戻りは BS で経路の文字の口へ出る。同じ所の平面鏡で戻る系と光線の道が同じ
+#[test]
+fn turn_returns_through_a_bs() {
+    let txt = std::fs::read_to_string(root().join("tests/splitter/mich_RT.json")).unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&txt).unwrap();
+    v["blocks"][2]["t"] = serde_json::json!([
+        {"type": "air", "t": 10},
+        {"type": "lens", "id": "W", "source": {"surfaces": [
+            {"radius": 0, "t": 2, "glass": "N-BK7", "semi": 8}, {"radius": 0, "semi": 8}]}},
+        {"type": "air", "t": 18},
+        {"type": "mirror", "back": true, "semi": 12}
+    ]);
+    v["beams"] =
+        serde_json::json!([{"name": "g", "path": "TT", "turn": {"block": "W", "surface": 0}}]);
+    let p = Project::from_json(&v.to_string()).unwrap();
+    let s = sys(&p, Some("g"), None);
+    v["blocks"][2]["t"] = serde_json::json!([
+        {"type": "air", "t": 10},
+        {"type": "mirror", "back": true, "semi": 12}
+    ]);
+    v["beams"] = serde_json::json!([]);
+    let m = Project::from_json(&v.to_string()).unwrap();
+    let m = sys(&m, None, Some("TT"));
+    assert_eq!(s.surfaces.len(), m.surfaces.len());
+    let ta = s
+        .try_trace(FieldSel::Index(0), &PX, &PY, Some(0), None, false)
+        .unwrap();
+    let tb = m
+        .try_trace(FieldSel::Index(0), &PX, &PY, Some(0), None, false)
+        .unwrap();
+    for (ra, rb) in ta.rays.iter().zip(&tb.rays) {
+        assert_eq!(ra.status, rb.status);
+        for i in 0..3 {
+            assert!((ra.p[i] - rb.p[i]).abs() < 1e-12 && (ra.k[i] - rb.k[i]).abs() < 1e-12);
+        }
+        assert!((ra.opl - rb.opl).abs() < 1e-9);
+    }
 }

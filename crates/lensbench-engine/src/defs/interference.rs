@@ -158,6 +158,8 @@ pub(super) struct InterferenceParams {
     pub float: bool,
     /// Also include the grid in the result (grid, index j·nx + i, row j along +y (j = 0 at the bottom), null for pixels without data)
     pub grid: bool,
+    /// Image: overlay these beams of a project instead of beam1 and beam2 (names separated by commas, or all for the beams not marked off). Each beam has power 1; polarized uses sample_input for all
+    pub beams: Option<String>,
 }
 
 impl Default for InterferenceParams {
@@ -186,6 +188,7 @@ impl Default for InterferenceParams {
             out: None,
             float: false,
             grid: false,
+            beams: None,
         }
     }
 }
@@ -210,6 +213,9 @@ impl Analysis for Interference {
         }
     }
     fn run(&self, cx: &Cx<'_>, a: &InterferenceParams) -> Result<Value> {
+        if let Some(b) = &a.beams {
+            return run_beams(cx, a, b);
+        }
         let src = cx.source()?;
         let mut notes = Vec::new();
         // 膜の注意（polarized のときの系の膜の注意、Coatings::notes）
@@ -335,6 +341,138 @@ impl Analysis for Interference {
         }
         Ok(summary)
     }
+}
+
+/// 光束の名前の並び（"all" なら OFF でない光束）
+fn beam_list(src: &dyn lensbench_analysis::Source, spec: &str) -> Result<Vec<String>> {
+    let Some(text) = src.project_text()? else {
+        return Err(Error::Invalid(
+            "beams are only for project files (.json)".into(),
+        ));
+    };
+    let p = lensbench_project::Project::from_json(&text)?;
+    let names: Vec<String> = if spec.trim().eq_ignore_ascii_case("all") {
+        p.beams
+            .iter()
+            .filter(|b| !b.off)
+            .map(|b| b.name.clone())
+            .collect()
+    } else {
+        spec.split(',')
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .collect()
+    };
+    for n in &names {
+        if p.beam(n).is_none() {
+            return Err(Error::Invalid(format!(
+                "no beam {n} ({})",
+                p.beam_names().join(", ")
+            )));
+        }
+    }
+    if names.len() < 2 {
+        return Err(Error::Invalid(
+            "beams: give two or more beams to overlay".into(),
+        ));
+    }
+    Ok(names)
+}
+
+/// N 本の光束を検出面で重ねる（[`interference::detector_sum`]）
+fn run_beams(cx: &Cx<'_>, a: &InterferenceParams, spec: &str) -> Result<Value> {
+    if a.mode != InterferenceMode::Detector {
+        return Err(Error::Invalid("beams needs mode detector".into()));
+    }
+    if !matches!(a.quantity, Quantity::Intensity) {
+        return Err(Error::Invalid(format!(
+            "quantity {} (with beams: intensity)",
+            a.quantity.name()
+        )));
+    }
+    let src = cx.source()?;
+    let names = beam_list(src, spec)?;
+    let mut notes = Vec::new();
+    let systems = names
+        .iter()
+        .map(|n| src.variant(n, &mut notes))
+        .collect::<Result<Vec<_>>>()?;
+    let s0 = &systems[0];
+    if a.field == 0 || a.field > s0.fields.len() {
+        return Err(Error::Invalid(format!(
+            "no field {} (1 to {})",
+            a.field,
+            s0.fields.len()
+        )));
+    }
+    let w = wave(s0, a.wave)?;
+    let input = InputPol::parse(&a.sample_input)?;
+    // 偏光なしの追跡は膜・フレネル・分岐比を含まないので、光束ごとの瞳の平均の透過率（解析 beams と同じ）を強さにかける。
+    // 偏光の追跡では電場に入るので 1
+    let weights: Vec<f64> = if a.polarized {
+        vec![1.0; systems.len()]
+    } else {
+        systems
+            .iter()
+            .map(|sys| {
+                lensbench_analysis::defs::mean_transmission(
+                    sys,
+                    FieldSel::Index(a.field - 1),
+                    w.unwrap_or(sys.primary),
+                )
+            })
+            .collect::<lensbench_core::Result<_>>()?
+    };
+    let ins: Vec<interference::BeamIn> = systems
+        .iter()
+        .zip(&weights)
+        .map(|(sys, &power)| interference::BeamIn {
+            sys,
+            power,
+            delay: 0.0,
+            input,
+        })
+        .collect();
+    let o = DetectorOpts {
+        pupil: a.pupil,
+        npx: a.npx,
+        center: a.center.as_ref().map(|c| (c[0], c[1])),
+        width: a.width,
+        ..Default::default()
+    };
+    let coat = if a.polarized {
+        let c = Coatings::for_system(s0)?;
+        for n in &c.notes {
+            if !notes.contains(n) {
+                notes.push(n.clone());
+            }
+        }
+        Some(c)
+    } else {
+        None
+    };
+    let r = interference::detector_sum(&ins, FieldSel::Index(a.field - 1), w, &o, coat.as_ref())?;
+    let grid = r.intensity.data().to_vec();
+    let n = r.intensity.nx();
+    let (xs, ys) = (r.intensity.x(), r.intensity.y());
+    let all = r.count.data().iter().filter(|&&c| c == names.len()).count();
+    let mut summary = json!({
+        "mode": "detector", "quantity": "intensity", "nx": n, "ny": n,
+        "pixel_mm": r.dx, "first_pixel_center_mm": [xs[0], ys[0]],
+        "top_left_pixel_center_mm": [xs[0], ys[n - 1]],
+        "wavelength_um": r.wavelength, "beams": names,
+        "overlap_pixels": all, "polarized": a.polarized,
+        "beam_weight": weights,
+        "beam_power": r.each.iter().map(|g| g.data().iter().sum::<f64>() * r.dx * r.dx).collect::<Vec<f64>>(),
+    });
+    if let Some(p) = &a.out {
+        write_grid(p, a.float, &grid, n, n, &summary)?;
+    }
+    if a.grid {
+        summary["grid"] = json!(grid);
+    }
+    summary["notes"] = json!(notes);
+    Ok(summary)
 }
 
 pub(crate) fn write_grid(

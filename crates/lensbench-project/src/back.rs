@@ -118,6 +118,7 @@ pub fn block_item(
         nstop: 0,
         gaps: Vec::new(),
         split: SplitState::default(),
+        turn: Default::default(),
         frames: Vec::new(),
         zenv: Vec::new(),
         nodes: HashMap::new(),

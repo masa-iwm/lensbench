@@ -440,7 +440,8 @@ fn project_beams() {
     let mut v: serde_json::Value = serde_json::from_str(&src).unwrap();
     v["beams"] = serde_json::json!([
         {"name": "test", "path": "TR", "role": "sample"},
-        {"name": "ref", "path": "RT", "role": "reference"}
+        {"name": "refb", "path": "RT", "role": "reference"},
+        {"name": "g0", "path": "TR", "turn": {"block": "TEST", "surface": 0}, "role": "stray", "off": true}
     ]);
     let dir = std::env::temp_dir().join(format!("lensbench-beams-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -455,8 +456,8 @@ fn project_beams() {
         serde_json::from_str::<serde_json::Value>(&out).unwrap()
     };
     let v0 = info(&[]);
-    assert_eq!(v0["beams"], serde_json::json!(["test", "ref"]));
-    let r = info(&["--state", "ref"]);
+    assert_eq!(v0["beams"], serde_json::json!(["test", "refb", "g0"]));
+    let r = info(&["--state", "refb"]);
     let rp = info(&["--beam-path", "RT"]);
     assert_eq!(r["system_hash"], rp["system_hash"]);
     assert_ne!(r["system_hash"], v0["system_hash"]);
@@ -466,11 +467,11 @@ fn project_beams() {
         "--glass-dir",
         "tests/glass",
         "--state",
-        "ref",
+        "refb",
         "--beam-path",
         "TR",
     ]);
-    assert!(!ok && err.contains("beam ref has its own path"), "{err}");
+    assert!(!ok && err.contains("beam refb has its own path"), "{err}");
     // 経路を選んで読んでも、干渉の光束は光束の経路で読む（読み込んだ系の経路を残さない）
     let fringes = |extra: &[&str]| {
         let mut a = vec![
@@ -483,7 +484,7 @@ fn project_beams() {
             "--beam1",
             "test",
             "--beam2",
-            "ref",
+            "refb",
             "--json",
         ];
         a.extend(extra);
@@ -498,7 +499,7 @@ fn project_beams() {
     let (ok, out, err) = run(&["beams", p, "--glass-dir", "tests/glass", "--json"]);
     assert!(ok, "{err}");
     let t: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(t["reference"], "ref");
+    assert_eq!(t["reference"], "refb");
     let rows = t["beams"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[1]["opl_difference_mm"].as_f64(), Some(0.0));
@@ -512,6 +513,65 @@ fn project_beams() {
     let want =
         rows[0]["chief_opl_mm"].as_f64().unwrap() - rows[1]["chief_opl_mm"].as_f64().unwrap();
     assert!(d != 0.0 && (d - want).abs() < 1e-12, "{d} {want}");
+    // 光束を検出面で重ねる（--beams）: 2 本なら beam1・beam2 の検出面の縞と同じ
+    let det = |extra: &[&str]| {
+        let mut a = vec![
+            "interference",
+            p,
+            "--glass-dir",
+            "tests/glass",
+            "--mode",
+            "detector",
+            "--npx",
+            "16",
+            "--pupil",
+            "17",
+            "--grid",
+            "--json",
+        ];
+        a.extend(extra);
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{err}");
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()
+    };
+    // 偏光の追跡なら強さは電場に入るので、2 本の検出面の縞と画素ごとに同じ（偏光なしは光束ごとの透過率をかけるので違う）
+    let two = det(&["--beam1", "test", "--beam2", "refb", "--polarized"]);
+    let all = det(&["--beams", "all", "--polarized"]);
+    assert_eq!(all["beams"], serde_json::json!(["test", "refb"]));
+    assert_eq!(all["overlap_pixels"], two["overlap_pixels"]);
+    let (g2, ga) = (
+        two["grid"].as_array().unwrap(),
+        all["grid"].as_array().unwrap(),
+    );
+    assert_eq!(g2.len(), ga.len());
+    for (a, b) in g2.iter().zip(ga) {
+        let (a, b) = (a.as_f64().unwrap_or(0.0), b.as_f64().unwrap_or(0.0));
+        assert!((a - b).abs() <= 1e-9 * a.abs().max(1.0), "{a} {b}");
+    }
+    let (ok, _, err) = run(&[
+        "interference",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "test",
+    ]);
+    assert!(!ok && err.contains("beams needs mode detector"), "{err}");
+    // 偏光なしでも光束ごとの透過率（膜・フレネル・分岐比）を強さにかける: 被検の玉の面 0 で戻るゴーストは
+    // 参照の光束の約 R 倍（N-BK7 で R ≈ 0.042）。偏光の追跡でも同じ比
+    for extra in [&[][..], &["--polarized"][..]] {
+        let mut a = vec!["--beams", "test,refb,g0"];
+        a.extend(extra);
+        let v = det(&a);
+        let pw: Vec<f64> = v["beam_power"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap())
+            .collect();
+        let ratio = pw[2] / pw[1];
+        assert!((0.035..0.05).contains(&ratio), "{extra:?} {pw:?}");
+    }
     // 光束を重ねて描く（光束の名前が構成の名前）。--states とは一緒に使えない
     let svg = dir.join("b.svg");
     let svg_s = svg.to_str().unwrap();
@@ -527,7 +587,7 @@ fn project_beams() {
     ]);
     assert!(ok, "{err}");
     let body = std::fs::read_to_string(&svg).unwrap();
-    assert!(body.contains("test") && body.contains("ref"), "{body}");
+    assert!(body.contains("test") && body.contains("refb"), "{body}");
     let (ok, _, err) = run(&[
         "layout",
         p,
@@ -551,7 +611,10 @@ fn project_beams() {
         "--out",
         svg_s,
     ]);
-    assert!(!ok && err.contains("no beam nope (test, ref)"), "{err}");
+    assert!(
+        !ok && err.contains("no beam nope (test, refb, g0)"),
+        "{err}"
+    );
     // 光束ごとに 1 構成の .zmx
     let z = dir.join("b.zmx");
     let (ok, _, err) = run(&[
@@ -593,7 +656,7 @@ fn project_beams() {
     let test = one(&["--beams", "test"]);
     assert_eq!(one(&["--beams", "test", "--beam-path", "RT"]), test);
     assert_eq!(one(&["--states", "test", "--beam-path", "RT"]), test);
-    assert_ne!(one(&["--beams", "ref"]), test);
+    assert_ne!(one(&["--beams", "refb"]), test);
     let (ok, _, err) = run(&[
         "layout",
         p,
