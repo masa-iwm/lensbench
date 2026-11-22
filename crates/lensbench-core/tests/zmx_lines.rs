@@ -587,6 +587,7 @@ SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
 
 /// 浮動開口は前後で媒質が変わる面だけ（OpticStudio 2026 R1.01 の実測）: 座標ブレークは半直径・材料を読込で捨てるので
 /// 付かない（ガラスの中で DIAM 0 1 でも光線をけらない）。同じガラスどうしの面にも付かず、別のガラスの境には付く
+/// （半直径を固定した 0 の面には付かない）
 #[test]
 fn floating_aperture_only_where_the_medium_changes() {
     use lensbench_core::surface::Aperture;
@@ -633,6 +634,13 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
             "another glass",
             format!("  TYPE STANDARD\n  CURV 0.0\n{g2}  DIAM 1 1 0 0 1 \"\"\n"),
             true,
+        ),
+        // 半直径を固定した 0 の面には付けない（OpticStudio 2026 R1.01 の実測: 半直径 0 の固定の玉の面のある .zmx を
+        // 開いてもけられない）
+        (
+            "another glass, fixed 0",
+            format!("  TYPE STANDARD\n  CURV 0.0\n{g2}  DIAM 0 1 0 0 1 \"\"\n"),
+            false,
         ),
     ] {
         let s = build(&txt(&s2));

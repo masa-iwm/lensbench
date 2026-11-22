@@ -147,14 +147,21 @@ pub(super) fn aperture_kind(
     // OpticStudio 2026 R1 は読込で、半直径を固定した面のうち、前後で媒質が変わる面（ガラスと空気・別のガラスの境）で開口のない
     // 面に浮動開口（FLAP）を足してける（空気どうし・同じガラスどうしの面には足さない。MEMA の行があっても足す）。座標ブレークは
     // 半直径・材料を読込で捨てる（自動の 0、後ろの媒質は前のまま）ので足さない（2026-11-21 に 2026 R1.01 で確かめた）。
-    // 鏡は前の媒質がガラスなら足す（裏面鏡。実測していないので前からの規則のまま）。絞りの大きさで決める開口（Float By Stop
+    // 半直径を固定した 0 の面には足さない（OpticStudio 2026 R1.01 で、その面のある .zmx を開いてもけられないことを 11/22 に確かめた）。
+    // 鏡は前の媒質がガラスなら足す（裏面鏡。OpticStudio 2026 R1.01 で付くことを 11/22 に確かめた）。絞りの大きさで決める開口（Float By Stop
     // Size）の絞りは瞳そのものなので除く
     let edge = lensbench_core::surface::medium_edges(sf);
     for k in 1..sf.len().min(raw.surfs.len()).saturating_sub(1) {
         let r = &raw.surfs[k];
         let cb = sf[k].typ() == SurfType::CoordBrk;
         let float_stop = kind == ApertureKind::Float && r.stop;
-        if r.diam_fixed && edge[k] && !cb && !float_stop && sf[k].ap == Aperture::None {
+        if r.diam_fixed
+            && sf[k].semi > 0.0
+            && edge[k]
+            && !cb
+            && !float_stop
+            && sf[k].ap == Aperture::None
+        {
             sf[k].ap = Aperture::Floating { semi: sf[k].semi };
         }
     }
