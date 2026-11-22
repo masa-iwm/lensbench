@@ -45,6 +45,7 @@ impl Analysis for Info {
             "paraxial_image_height": d.pimh, "paraxial_mag": d.pmag,
             "total_track": d.totr, "object_na": d.obsn, "image_na": d.isna,
             "states": src.map(|x| x.states()).transpose()?.unwrap_or_default(),
+            "beams": src.map(|x| x.beams()).transpose()?.unwrap_or_default(),
             "state": src.and_then(|x| x.state()),
             "paths": src.map(|x| x.paths()).transpose()?.unwrap_or_default(),
             "path": src.and_then(|x| x.path()),
@@ -103,7 +104,7 @@ impl Quantity {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct InterferenceParams {
-    /// Beam 1 (sample): a configuration number (from 1) for .zmx, a state name for a project file
+    /// Beam 1 (sample): a configuration number (from 1) for .zmx, a state or beam name for a project file
     pub beam1: String,
     /// Beam 2 (reference): the same; 0 or ref for the reference sphere (mode pupil only)
     pub beam2: String,

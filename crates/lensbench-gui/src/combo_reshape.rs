@@ -584,6 +584,8 @@ mod tests {
                     block: "S".into(),
                     surface: 0,
                     coordbrk: false,
+                    back: false,
+                    pass: 0,
                 }),
                 what: "c".into(),
                 scale: None,

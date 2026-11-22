@@ -786,6 +786,39 @@ pub struct State {
     pub project: Map<String, Value>,
 }
 
+/// 光束の役割（[`Beam::role`]）。表示の色と既定の組み合わせだけに使い、計算は変えない
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BeamRole {
+    /// 試料の光束（被検の系を通る）
+    Sample,
+    /// 参照の光束
+    Reference,
+    /// 迷光の経路
+    Stray,
+}
+
+/// 光束（[`Project::beams`]）: ビームスプリッターの経路 1 本に名前を付けたもの。経路を選ぶだけで、分岐比・膜・偏光は
+/// 追跡で決まる。名前は状態の名前と同じ所（`--state`、干渉の光束など）で引ける
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Beam {
+    /// 光束の名前（状態の名前と重ならない）
+    pub name: String,
+    /// ビームスプリッターの経路（BS を通る順の T・R）。省略で状態・プロジェクトの path
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// この光束に当てる状態の名前（経路ごとに系の設定を変える）。省略で状態を当てない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// 役割（`sample`・`reference`・`stray`）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<BeamRole>,
+    /// 解析の既定の組から外す
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub off: bool,
+}
+
 /// プロジェクトファイルの形式の印（[`Project::format`]）
 pub const PROJECT_FORMAT: &str = "lensbench-project";
 /// プロジェクトファイルの形式の版。これより新しい版のファイルは読まない（知らない項目を落として黙って計算しないよう）
@@ -862,6 +895,9 @@ pub struct Project {
     /// ビームスプリッターの経路（BS を通る順の T・R）。省略で各 BS の arm。状態の project でも変えられる
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// 光束の組（名前つきの経路）。光束の名前は状態の名前の代わりに使え、光束の状態を当てて経路を選んだ系になる
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beams: Vec<Beam>,
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
@@ -1032,8 +1068,67 @@ impl Project {
             .into());
         }
         check_detectors(&p.blocks)?;
+        p.check_beams()?;
         Ok(p)
     }
+
+    /// 光束の組の誤り: 名前の空・重なり（光束どうし・状態と）、無い状態、経路の文字
+    pub fn check_beams(&self) -> lensbench_core::Result<()> {
+        for (i, b) in self.beams.iter().enumerate() {
+            let name = &b.name;
+            if name.trim().is_empty() {
+                return Err(format!("beam {}: the name is empty", i + 1).into());
+            }
+            if self.beams[..i].iter().any(|c| c.name == *name) {
+                return Err(format!("two or more beams named {name}").into());
+            }
+            if self.states.iter().any(|s| s.name == *name) {
+                return Err(format!("beam {name}: a state has the same name").into());
+            }
+            if let Some(st) = &b.state {
+                if !self.states.iter().any(|s| s.name == *st) {
+                    return Err(Error::Invalid(format!("beam {name}: no state {st}"))
+                        .with_code(code::STATE_NOT_FOUND));
+                }
+            }
+            if let Some(path) = &b.path {
+                crate::splitter::parse_path(path).map_err(|e| format!("beam {name}: {e}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 光束の名前（[`Project::beams`] の順）
+    pub fn beam_names(&self) -> Vec<&str> {
+        self.beams.iter().map(|b| b.name.as_str()).collect()
+    }
+
+    /// 名前が name の光束
+    pub fn beam(&self, name: &str) -> Option<&Beam> {
+        self.beams.iter().find(|b| b.name == name)
+    }
+
+    /// 状態・光束の名前 name と一緒に別の経路を渡してよいか（経路を持つ光束には渡せない）
+    pub fn beam_takes_path(&self, name: &str, path_given: bool) -> lensbench_core::Result<()> {
+        if path_given && self.beam(name).is_some_and(|b| b.path.is_some()) {
+            return Err(Error::Invalid(format!(
+                "beam {name} has its own path, so another path can't be given"
+            ))
+            .with_code(code::BAD_ARGUMENT));
+        }
+        Ok(())
+    }
+
+    /// [`Project::with_state`]。別の経路を渡すなら（path_given）、経路を持つ光束は誤り
+    pub fn with_state_and_path(
+        &self,
+        name: &str,
+        path_given: bool,
+    ) -> lensbench_core::Result<Project> {
+        self.beam_takes_path(name, path_given)?;
+        self.with_state(name)
+    }
+
     /// プロジェクトの JSON（形式の印と版、先頭に `$schema` をいつも付ける）
     pub fn to_json(&self) -> String {
         let mut p = self.clone();
@@ -1047,11 +1142,44 @@ impl Project {
         self.states.iter().map(|s| s.name.as_str()).collect()
     }
 
-    /// 状態 name の変更を当てたプロジェクト（状態の一覧は残す）
+    /// 状態 name の変更を当てたプロジェクト（状態の一覧は残す）。name が光束の名前なら、光束の状態を当て、経路を
+    /// 光束の経路にする
     pub fn with_state(&self, name: &str) -> lensbench_core::Result<Project> {
+        if let Some(b) = self.beam(name) {
+            let mut p = match &b.state {
+                Some(st) => self
+                    .state_only(st)
+                    .map_err(|e| format!("beam {name}: {e}"))?,
+                None => self.clone(),
+            };
+            if b.path.is_some() {
+                p.path = b.path.clone();
+            }
+            return Ok(p);
+        }
+        self.state_only(name)
+    }
+
+    /// 状態 name（光束は引かない）の変更を当てたプロジェクト（[`Project::with_state`]）
+    fn state_only(&self, name: &str) -> lensbench_core::Result<Project> {
         let st: Vec<&State> = self.states.iter().filter(|s| s.name == name).collect();
         let st = match st.as_slice() {
             [s] => *s,
+            [] if self.states.is_empty() && !self.beams.is_empty() => {
+                return Err(Error::Invalid(format!(
+                    "no state or beam {name} (beams: {})",
+                    self.beam_names().join(", ")
+                ))
+                .with_code(code::STATE_NOT_FOUND))
+            }
+            [] if !self.beams.is_empty() => {
+                return Err(Error::Invalid(format!(
+                    "no state or beam {name} (states: {}; beams: {})",
+                    self.state_names().join(", "),
+                    self.beam_names().join(", ")
+                ))
+                .with_code(code::STATE_NOT_FOUND))
+            }
             [] if self.states.is_empty() => {
                 return Err(
                     Error::Invalid(format!("no state {name} (the project has no states)"))
@@ -1074,11 +1202,17 @@ impl Project {
         if !st.project.is_empty() {
             let blocks = std::mem::take(&mut p.blocks);
             let states = std::mem::take(&mut p.states);
-            patch(&mut p, &st.project, &["blocks", "states"], name, |k| {
-                format!("state {name}: system value {k} can't be changed")
-            })?;
+            let beams = std::mem::take(&mut p.beams);
+            patch(
+                &mut p,
+                &st.project,
+                &["blocks", "states", "beams"],
+                name,
+                |k| format!("state {name}: system value {k} can't be changed"),
+            )?;
             p.blocks = blocks;
             p.states = states;
+            p.beams = beams;
         }
         for (id, fields) in &st.set {
             let n = count_id(&p.blocks, id);

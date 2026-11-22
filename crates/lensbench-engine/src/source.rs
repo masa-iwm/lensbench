@@ -89,6 +89,9 @@ impl lensbench_analysis::Source for FileSource<'_> {
     fn states(&self) -> Result<Vec<String>> {
         Ok(self.src().map(|s| s.states()).unwrap_or_default())
     }
+    fn beams(&self) -> Result<Vec<String>> {
+        Ok(self.src().map(|s| s.beams()).unwrap_or_default())
+    }
     fn state(&self) -> Option<String> {
         self.c.state.clone()
     }
@@ -122,8 +125,18 @@ impl lensbench_analysis::Source for FileSource<'_> {
                 return Ok(s);
             }
         }
+        // 経路を持つ光束は自分の経路で読む（読み込んだ系の経路は残さない）
+        let own_path = project
+            && state.as_deref().is_some_and(|n| {
+                self.src()
+                    .ok()
+                    .and_then(|s| s.project())
+                    .and_then(|p| p.beam(n))
+                    .is_some_and(|b| b.path.is_some())
+            });
         let c = SysSpec {
             cfg,
+            path: if own_path { None } else { self.c.path.clone() },
             state,
             ..self.c.clone()
         };

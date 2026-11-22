@@ -107,6 +107,8 @@ fn other_ref(p: &Project, x: Edited, r: &Ref) -> Result<BlockRef, String> {
         block: id.to_string(),
         surface: i,
         coordbrk: false,
+        back: false,
+        pass: 0,
     }))
 }
 

@@ -280,6 +280,13 @@ impl Source {
             .unwrap_or_default()
     }
 
+    /// プロジェクトの光束の名前（.zmx・系ファイル・光束なしなら空）
+    pub fn beams(&self) -> Vec<String> {
+        self.project()
+            .map(|p| p.beam_names().iter().map(|s| s.to_string()).collect())
+            .unwrap_or_default()
+    }
+
     /// プロジェクトの状態 state（None は既定の状態）
     fn project_in(&self, state: Option<&str>) -> Result<Option<crate::Project>, Error> {
         let Some(p) = self.project() else {
@@ -366,7 +373,9 @@ impl Source {
                 }
                 let at = |e: Error| e.at(path.display());
                 let p = match o.state {
-                    Some(n) => project.with_state(n).map_err(at)?,
+                    Some(n) => project
+                        .with_state_and_path(n, o.split_path.is_some())
+                        .map_err(at)?,
                     None => (**project).clone(),
                 };
                 let cat = LensCatalog::load_registered(o.lens_catalogs)?;

@@ -67,6 +67,10 @@ pub trait Source {
     fn is_project(&self) -> bool;
     /// プロジェクトファイルの状態の名前（.zmx・系ファイルなら空）
     fn states(&self) -> Result<Vec<String>>;
+    /// プロジェクトファイルの光束の名前（状態の名前と同じ所で選べる。光束なし・.zmx・系ファイルなら空）
+    fn beams(&self) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
     /// 選んだ状態
     fn state(&self) -> Option<String>;
     /// ビームスプリッターの経路の一覧（BS なし・.zmx なら空）

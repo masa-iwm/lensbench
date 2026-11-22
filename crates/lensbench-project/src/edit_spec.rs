@@ -103,6 +103,16 @@ pub struct BlockFace {
     /// 座標ブレークの面を指す（surface はブロックの座標ブレークだけを数えた番号）
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordbrk: bool,
+    /// 鏡の `back` で戻る復路の面を指す（surface は往路と同じ番号で、復路では逆の順に通る）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
+    /// 同じ向きに何回目に通る面か（0 始まり。往復を重ねてブロックを 2 回以上通るとき）
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pass: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// ブロックの `surface_ops` の面: ブロックの面 `{"block": id, "surface": i}` か、展開した系の面の番号か名前

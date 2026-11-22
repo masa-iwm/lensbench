@@ -429,6 +429,73 @@ fn project_states() {
     assert!(!ok && err.contains("--state"), "{err}");
 }
 
+/// 光束の組: info が光束の一覧を出し、光束の名前を --state で選べる（経路を直に選んだのと同じ）
+#[test]
+fn project_beams() {
+    let src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/projects/P16_twyman_green.json"
+    ))
+    .unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&src).unwrap();
+    v["beams"] = serde_json::json!([
+        {"name": "test", "path": "TR", "role": "sample"},
+        {"name": "ref", "path": "RT", "role": "reference"}
+    ]);
+    let dir = std::env::temp_dir().join(format!("lensbench-beams-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("tg.json");
+    std::fs::write(&f, v.to_string()).unwrap();
+    let p = f.to_str().unwrap();
+    let info = |extra: &[&str]| {
+        let mut a = vec!["info", p, "--glass-dir", "tests/glass", "--json"];
+        a.extend(extra);
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{err}");
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()
+    };
+    let v0 = info(&[]);
+    assert_eq!(v0["beams"], serde_json::json!(["test", "ref"]));
+    let r = info(&["--state", "ref"]);
+    let rp = info(&["--beam-path", "RT"]);
+    assert_eq!(r["system_hash"], rp["system_hash"]);
+    assert_ne!(r["system_hash"], v0["system_hash"]);
+    let (ok, _, err) = run(&[
+        "info",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--state",
+        "ref",
+        "--beam-path",
+        "TR",
+    ]);
+    assert!(!ok && err.contains("beam ref has its own path"), "{err}");
+    // 経路を選んで読んでも、干渉の光束は光束の経路で読む（読み込んだ系の経路を残さない）
+    let fringes = |extra: &[&str]| {
+        let mut a = vec![
+            "interference",
+            p,
+            "--glass-dir",
+            "tests/glass",
+            "--n",
+            "8",
+            "--beam1",
+            "test",
+            "--beam2",
+            "ref",
+            "--json",
+        ];
+        a.extend(extra);
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{err}");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        v["rms_waves"].as_f64().unwrap()
+    };
+    assert_eq!(fringes(&["--beam-path", "RT"]), fringes(&[]));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn layout_and_rays_follow_the_state() {
     // 状態で群を動かすと、レイアウトの大きさと光線の交点が変わる

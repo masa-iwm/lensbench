@@ -520,7 +520,7 @@ pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> Result<Expansion, Expan
     let with;
     let p = match o.state {
         Some(n) => {
-            with = p.with_state(n)?;
+            with = p.with_state_and_path(n, o.path.is_some())?;
             &with
         }
         None => p,

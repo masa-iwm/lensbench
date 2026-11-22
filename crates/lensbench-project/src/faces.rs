@@ -105,25 +105,61 @@ pub(crate) fn block_face(
         .ok_or(format!("block {block} surface {i} ({} surfaces)", faces.len()).into())
 }
 
-/// ブロックの面 f（座標ブレークを指すなら座標ブレークだけを数えた番号）の往路の系の面。ブロックが系に無ければ None
+/// ブロックの面 f（座標ブレークを指すなら座標ブレークだけを数えた番号）の系の面。f.back なら復路、f.pass は同じ向きの
+/// 何回目の範囲か。ブロックが系に無ければ None
 pub(crate) fn block_face_of(
     s: &System,
     f: &crate::edit_ops::BlockFace,
     map: &[SurfOrigin],
 ) -> lensbench_core::Result<Option<usize>> {
-    if !f.coordbrk {
+    if !f.coordbrk && !f.back && f.pass == 0 {
         return block_face(s, &f.block, f.surface, map);
     }
-    let Some(x) = fwd_run(map, &f.block) else {
-        return Ok(None);
+    if f.coordbrk && f.back {
+        return Err(format!(
+            "block {}: a coordinate break of the return path can't be chosen",
+            f.block
+        )
+        .into());
+    }
+    let runs = crate::block_runs(map, &f.block, Some(f.back));
+    let Some(&x) = runs.get(f.pass) else {
+        if runs.is_empty() {
+            return Ok(None);
+        }
+        let (b, k, n) = (&f.block, f.pass, runs.len());
+        return Err(if f.back {
+            format!("block {b} pass {k} ({n} return passes)")
+        } else {
+            format!("block {b} pass {k} ({n} forward passes)")
+        }
+        .into());
     };
-    let cbs = cbs_in(s, map, x);
-    cbs.get(f.surface).copied().map(Some).ok_or(
+    if f.coordbrk {
+        let cbs = cbs_in(s, map, x);
+        return cbs.get(f.surface).copied().map(Some).ok_or(
+            format!(
+                "block {} coordinate break {} ({} coordinate breaks)",
+                f.block,
+                f.surface,
+                cbs.len()
+            )
+            .into(),
+        );
+    }
+    let faces = faces_in(s, x);
+    // 復路は往路の逆の順に通る（往路の最後の面が鏡なら、復路はその前の面から始まる）
+    let k = if f.back {
+        faces.len().checked_sub(f.surface + 1)
+    } else {
+        Some(f.surface)
+    };
+    k.and_then(|k| faces.get(k)).copied().map(Some).ok_or(
         format!(
-            "block {} coordinate break {} ({} coordinate breaks)",
+            "block {} surface {} ({} surfaces in the pass)",
             f.block,
             f.surface,
-            cbs.len()
+            faces.len()
         )
         .into(),
     )

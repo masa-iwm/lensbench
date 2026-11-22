@@ -640,6 +640,69 @@
       ],
       "type": "string"
     },
+    "Beam": {
+      "additionalProperties": false,
+      "description": "光束（[`Project::beams`]）: ビームスプリッターの経路 1 本に名前を付けたもの。経路を選ぶだけで、分岐比・膜・偏光は\n追跡で決まる。名前は状態の名前と同じ所（`--state`、干渉の光束など）で引ける",
+      "properties": {
+        "name": {
+          "description": "光束の名前（状態の名前と重ならない）",
+          "type": "string"
+        },
+        "off": {
+          "description": "解析の既定の組から外す",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "ビームスプリッターの経路（BS を通る順の T・R）。省略で状態・プロジェクトの path",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BeamRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "役割（`sample`・`reference`・`stray`）"
+        },
+        "state": {
+          "description": "この光束に当てる状態の名前（経路ごとに系の設定を変える）。省略で状態を当てない",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "BeamRole": {
+      "description": "光束の役割（[`Beam::role`]）。表示の色と既定の組み合わせだけに使い、計算は変えない",
+      "oneOf": [
+        {
+          "const": "sample",
+          "description": "試料の光束（被検の系を通る）",
+          "type": "string"
+        },
+        {
+          "const": "reference",
+          "description": "参照の光束",
+          "type": "string"
+        },
+        {
+          "const": "stray",
+          "description": "迷光の経路",
+          "type": "string"
+        }
+      ]
+    },
     "Binary2": {
       "description": "Binary 2 の位相 Φ = order · Σ coef[i] ρ^{2(i+1)}（ρ = r / norm、係数の単位は rad）",
       "properties": {
@@ -1541,6 +1604,10 @@
       "additionalProperties": false,
       "description": "プロジェクトのブロックの面",
       "properties": {
+        "back": {
+          "description": "鏡の `back` で戻る復路の面を指す（surface は往路と同じ番号で、復路では逆の順に通る）",
+          "type": "boolean"
+        },
         "block": {
           "description": "ブロックの id",
           "type": "string"
@@ -1548,6 +1615,12 @@
         "coordbrk": {
           "description": "座標ブレークの面を指す（surface はブロックの座標ブレークだけを数えた番号）",
           "type": "boolean"
+        },
+        "pass": {
+          "description": "同じ向きに何回目に通る面か（0 始まり。往復を重ねてブロックを 2 回以上通るとき）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "surface": {
           "description": "ブロックの面の番号（0 始まり、座標ブレークを除く。往復するブロックは往路の面）",
@@ -4637,6 +4710,13 @@
     "apodization": {
       "$ref": "#/$defs/Apodization",
       "description": "瞳の振幅の分布（`\"uniform\"`・`{\"gaussian\": G}`・`\"cosine_cubed\"`。省略は一様）"
+    },
+    "beams": {
+      "description": "光束の組（名前つきの経路）。光束の名前は状態の名前の代わりに使え、光束の状態を当てて経路を選んだ系になる",
+      "items": {
+        "$ref": "#/$defs/Beam"
+      },
+      "type": "array"
     },
     "blocks": {
       "items": {

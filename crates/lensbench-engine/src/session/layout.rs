@@ -353,12 +353,13 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
             src.configurations()?
         };
         let cfg = active_cfg(&sys, &spec);
-        return Ok(json!({ "cfgs": n, "cfg": cfg, "states": [], "paths": [] }));
+        return Ok(json!({ "cfgs": n, "cfg": cfg, "states": [], "beams": [], "paths": [] }));
     }
     let paths = src.paths(&spec.open_spec())?;
     Ok(json!({
         "cfgs": 1,
         "states": src.states(),
+        "beams": src.beams(),
         "state": spec.state,
         "paths": paths,
         "path": spec.path,

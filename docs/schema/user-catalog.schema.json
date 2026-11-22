@@ -1405,6 +1405,10 @@
       "additionalProperties": false,
       "description": "プロジェクトのブロックの面",
       "properties": {
+        "back": {
+          "description": "鏡の `back` で戻る復路の面を指す（surface は往路と同じ番号で、復路では逆の順に通る）",
+          "type": "boolean"
+        },
         "block": {
           "description": "ブロックの id",
           "type": "string"
@@ -1412,6 +1416,12 @@
         "coordbrk": {
           "description": "座標ブレークの面を指す（surface はブロックの座標ブレークだけを数えた番号）",
           "type": "boolean"
+        },
+        "pass": {
+          "description": "同じ向きに何回目に通る面か（0 始まり。往復を重ねてブロックを 2 回以上通るとき）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "surface": {
           "description": "ブロックの面の番号（0 始まり、座標ブレークを除く。往復するブロックは往路の面）",

@@ -103,7 +103,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `tolerance` | （下の節） | （下の節） |
 | `zoom` | （下の節） | （下の節） |
 | `swap` | （下の節） | （下の節） |
-| `configs` | | 重ねて描ける構成: `cfgs`（.zmx の構成の数）、`states`（プロジェクトの状態の名前）、`paths`（今の状態で BS のとれる経路） |
+| `configs` | | 重ねて描ける構成: `cfgs`（.zmx の構成の数）、`states`（プロジェクトの状態の名前）、`beams`（光束の名前。`states` と同じく選べる）、`paths`（今の状態で BS のとれる経路） |
 | `echo` | 任意の bin | 同じ bin を返す（通信の時間を測る） |
 | `glasses` | `glass_dirs`（並び、省略可。LENSBENCH_GLASSCAT も使う） | `catalogs`（名前・パス・数）、`glasses`（`name`・`catalog`・`nd`・`vd`・`formula`・`range_um`）。nd・vd はカタログ温度の分散式から |
 | `lenses` | （下の節） | （下の節） |
@@ -258,7 +258,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 {"method": "analyze", "params": {"cmd": "interference", "beam1": "1", "beam2": "2", "mode": "detector"}}
 ```
 
-- 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か状態の名前）で選ぶ。
+- 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か、状態・光束の名前）で選ぶ。
   光束ごとにシステムのファイルをその構成・状態で読み、読み込んだ後の変更（`set`・`edit`）を順に当てる
 - `set` のパラメータで、その光束のファイルの値が読み込んだシステムの変える前の値と違うもの（多重構成の表で構成ごとに値が違うもの）は当てず、
   結果の `notes` に書く。例: 構成 1 を読み込み、試料の腕だけの厚みを `set` すると、参照（構成 2）の厚みは変えない
