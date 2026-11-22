@@ -263,11 +263,7 @@ pub(super) fn optimize(
     };
     let run = run_job(&sess.opt_run, job, || op.run_in(&prob, &spec.glass_dir))?;
     let r = &run.result;
-    let names: Vec<String> = prob
-        .vars
-        .iter()
-        .map(|v| prob.configs[0].param_name(v.param))
-        .collect();
+    let names = op.var_names(&prob);
     // 前は元の問題、後は最後の問題（ガラスの置き換えで材料が変わり、dn・disp の変数が外れることがある）
     let (tv0, pc0) = prob.term_values_contrib(&r.x0)?;
     let (tv, pc) = run.problem.term_values_contrib(&r.x)?;

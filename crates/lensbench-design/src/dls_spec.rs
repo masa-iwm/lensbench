@@ -717,6 +717,33 @@ impl OptimizeParams {
         })
     }
 
+    /// [`Self::problem_with`] で作った問題 p の変数の表示名（変数の順）。ブロックの面の変数（`L:0.c`）は指定の名前、
+    /// ほかは効く最初の構成の系のパラメータの名前
+    pub fn var_names(&self, p: &Problem) -> Vec<String> {
+        p.vars
+            .iter()
+            .enumerate()
+            .map(|(q, v)| {
+                let face = self
+                    .vars
+                    .get(q)
+                    .and_then(|s| s.resolve(p.configs.len()).ok())
+                    .filter(|d| lensbench_project::face_var(&d.name).is_some());
+                match face {
+                    Some(d) => d.name.trim().to_string(),
+                    None => {
+                        let c = v
+                            .configs
+                            .as_ref()
+                            .and_then(|c| c.first().copied())
+                            .unwrap_or(0);
+                        p.configs[c.min(p.configs.len() - 1)].param_name(v.param)
+                    }
+                }
+            })
+            .collect()
+    }
+
     /// 問題を作る（変数・既定の評価関数・terms の項・ヤコビアン）。返す数は既定の評価関数の項の数
     /// （terms の項はその後ろ）。呼び手は返した後に項を足してから [`Problem::check`] する
     pub fn problem(&self, systems: Vec<System>) -> Result<(Problem, usize)> {

@@ -210,18 +210,16 @@ impl SearchArgs {
 
 /// optimize の結果の変数の行（名前・前・後・動かさなかったか）。ガラスの置き換えで外した dn・disp の変数は動かさなかったに数えない
 pub fn vars_json(
-    s: &lensbench_core::System,
+    names: &[String],
     p: &lensbench_optim::Problem,
     run: &lensbench_design::dls_spec::OptimizeRun,
 ) -> Vec<serde_json::Value> {
     let r = &run.result;
     let last = |q: usize| run.problem.vars.iter().position(|u| *u == p.vars[q]);
-    p.vars
-        .iter()
-        .enumerate()
-        .map(|(q, v)| {
+    (0..p.vars.len())
+        .map(|q| {
             serde_json::json!({
-                "name": s.param_name(v.param), "x0": r.x0[q], "x": run.x[q],
+                "name": names[q], "x0": r.x0[q], "x": run.x[q],
                 "inactive": last(q).is_some_and(|i| r.inactive.contains(&i)),
             })
         })

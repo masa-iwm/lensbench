@@ -973,7 +973,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 warn_notes(zmx_write::save_with_merit(path, &r.systems[0], &rows).map_err(e)?);
             }
             let stop = r.stop.as_str();
-            let vs = search_cmd::vars_json(&s, &p, &run);
+            let vs = search_cmd::vars_json(&op.var_names(&p), &p, &run);
             if let Some(n) = &r.note {
                 eprintln!("{}", lensbench_core::i18n::warning(n));
             }

@@ -567,6 +567,7 @@ fn project_beams() {
     assert!(ok, "{err}");
     let o: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(o["vars"].as_array().unwrap().len(), 1, "{o}");
+    assert_eq!(o["vars"][0]["name"], "TEST:0.r", "{o}");
     assert!(
         o["merit_final"].as_f64().unwrap() <= o["merit0"].as_f64().unwrap(),
         "{o}"
