@@ -629,13 +629,11 @@ impl PySystem {
         n: usize,
         o: &TraceOpts,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let coat = match o.pw {
-            Some(_) => Some(self.coatings(s)?),
-            None => None,
-        };
+        let coat = o.pw.map(|_| self.coatings(s)).transpose()?;
         let out = gil
             .detach(|| with_threads(o.threads, || compute(s, coat.as_deref(), launch, n, o)))
             .map_err(err)?;
+        names::warn_coat(gil, coat.as_deref())?;
         to_dict(gil, s, o, out)
     }
 }
@@ -1315,6 +1313,7 @@ impl PySystem {
             .detach(|| lensbench_analysis::fiber::fiber_coupling(&s, w, &o, coat.as_deref()))
             .map_err(err)?;
         warn_all(py, &c.warning().into_iter().collect::<Vec<_>>())?;
+        names::warn_coat(py, coat.as_deref())?;
         let d = PyDict::new(py);
         d.set_item("eta", c.eta)?;
         d.set_item("system", c.system)?;

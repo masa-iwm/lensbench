@@ -37,6 +37,15 @@ pub(crate) fn beam_paths_of(
     .map_err(err)
 }
 
+/// 膜を使う計算（偏光の追跡・干渉・系を渡したプラグインなど）で、系の膜の注意（同じ名前の膜のどれを使ったかなど、
+/// [`lensbench_core::coating::Coatings::notes`]）を Python の警告にする。膜なし（None）なら何もしない
+pub(crate) fn warn_coat(
+    py: Python<'_>,
+    coat: Option<&lensbench_core::coating::Coatings>,
+) -> PyResult<()> {
+    coat.map_or(Ok(()), |c| warn_all(py, &c.notes))
+}
+
 /// Turn the notes of the expansion into Python warnings (UserWarning)
 pub(crate) fn warn_all(py: Python<'_>, warn: &[String]) -> PyResult<()> {
     if warn.is_empty() {

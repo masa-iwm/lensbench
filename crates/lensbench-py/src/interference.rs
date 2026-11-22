@@ -117,6 +117,7 @@ fn interference_detector<'py>(
     let r = py
         .detach(|| with_threads(threads, || core::detector(&ss, &sr, f, w, &o, pol)))
         .map_err(err)?;
+    crate::names::warn_coat(py, coat.as_deref())?;
     let d = PyDict::new(py);
     d.set_item("x", r.intensity.x().to_vec().into_pyarray(py))?;
     d.set_item("y", r.intensity.y().to_vec().into_pyarray(py))?;

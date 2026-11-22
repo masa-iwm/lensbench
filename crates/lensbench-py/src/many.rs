@@ -64,6 +64,16 @@ pub(crate) fn trace_many<'py>(
             })
         })
     });
+    // 偏光の追跡: 系の膜の注意（同じ注意は 1 度だけ）
+    let mut notes: Vec<String> = Vec::new();
+    for c in jobs.iter().filter_map(|j| j.3.as_deref()) {
+        for m in &c.notes {
+            if !notes.contains(m) {
+                notes.push(m.clone());
+            }
+        }
+    }
+    warn_all(gil, &notes)?;
     let mut res = Vec::with_capacity(jobs.len());
     for ((s, pre, o, _), out) in jobs.iter().zip(outs) {
         let d = to_dict(gil, s, o, out.map_err(err)?)?;

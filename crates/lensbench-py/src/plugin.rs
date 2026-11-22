@@ -465,6 +465,7 @@ impl PyPlugin {
         } else {
             None
         };
+        crate::names::warn_coat(py, coatings.as_deref())?;
         Ok(py.detach(|| {
             let ctx = Context {
                 system: Some(&sys),

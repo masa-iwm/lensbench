@@ -154,6 +154,15 @@ def test_registered_coating_catalog(tmp_path):
         assert n == 1
         assert lb.coating_catalogs()["PYTEST"] == ["PY_EXT_AR"]
         assert np.all(np.isfinite(traced()["jones"]))
+        # 膜ファイルにも同じ名前の膜があれば、一覧の膜を使い注意を Python の warnings に出す
+        (tmp_path / "COATING.DAT").write_text("MATE PYL\n0.4 1.38 0\n1.2 1.38 0\nCOAT PY_EXT_AR\nPYL 0.1\n")
+        s = lb.System.load(str(ROOT / "tests" / "refs" / "A0" / "system.zmx"), glass_dirs=GLASS,
+                           coating_file=str(tmp_path / "COATING.DAT"))
+        s.set_surface(1, coating="PY_EXT_AR")
+        with pytest.warns(UserWarning, match="PY_EXT_AR"):
+            s.trace(1, [0.0], [0.5], pol=True)
+        with pytest.warns(UserWarning, match="PY_EXT_AR"):
+            lb.Plugin("ghost").run(system=s)
         with pytest.raises(ValueError):
             lb.register_coating_catalog("OTHER", dat="COAT PY_EXT_AR\nPYL 0.1\n")
     finally:

@@ -82,7 +82,7 @@ impl PluginReq {
 }
 
 /// 解析・検出器のプラグインを 1 回呼ぶ。系の要るプラグインには読み込んだ系（set・edit の後）と膜を渡す。
-/// 結果は bin（<f8・<c16・|b1）、数 1 つの出力は values にも入れる
+/// 結果は bin（<f8・<c16・|b1）、数 1 つの出力は values にも入れる。膜を読んだときは膜の注意を warnings に入れる
 pub(super) fn plugin(sess: &Session, r: &PluginReq, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     use lensbench_core::plugin::{self as pl, Array};
     let name = r.name.as_str();
@@ -143,7 +143,12 @@ pub(super) fn plugin(sess: &Session, r: &PluginReq, bins: Vec<Bin>) -> Result<Re
             data,
         });
     }
-    Ok((json!({ "name": name, "values": values }), list))
+    let mut reply = json!({ "name": name, "values": values });
+    // 系の膜の注意（同じ名前の膜のどれを使ったかなど、Coatings::notes）。GUI は coating で始まる注意を結果の上に出す
+    if let Some(c) = coat.as_ref().filter(|c| !c.notes.is_empty()) {
+        reply["warnings"] = json!(c.notes);
+    }
+    Ok((reply, list))
 }
 
 /// `trace` の params: 正規化瞳座標の並び px・py（bin でもよい）、波長 wave、視野 field（番号）か hx・hy、

@@ -211,6 +211,8 @@ impl Analysis for Interference {
     fn run(&self, cx: &Cx<'_>, a: &InterferenceParams) -> Result<Value> {
         let src = cx.source()?;
         let mut notes = Vec::new();
+        // 膜の注意（polarized のときの系の膜の注意、Coatings::notes）
+        let mut warnings: Vec<String> = Vec::new();
         let s1 = src.variant(&a.beam1, &mut notes)?;
         let s2 = if reference_sphere(&a.beam2) {
             None
@@ -274,6 +276,7 @@ impl Analysis for Interference {
                 let coat;
                 let pol = if a.polarized {
                     coat = Coatings::for_system(&s1)?;
+                    warnings.extend(coat.notes.iter().cloned());
                     Some(Polarized {
                         sample: InputPol::parse(&a.sample_input)?,
                         reference: InputPol::parse(&a.reference_input)?,
@@ -326,6 +329,9 @@ impl Analysis for Interference {
             summary["grid"] = json!(grid);
         }
         summary["notes"] = json!(notes);
+        if !warnings.is_empty() {
+            summary["warnings"] = json!(warnings);
+        }
         Ok(summary)
     }
 }

@@ -135,3 +135,73 @@ fn registered_coating_catalog() {
         assert!(c.needs.is_empty());
     });
 }
+
+/// 系の膜の注意（登録した一覧の膜が膜ファイルの同じ名前の膜より先に使われた、など）が、interference の polarized の結果と
+/// serve の plugin（系を渡すもの）の返りの warnings にも出る。polarized なしの interference には出ない
+#[test]
+fn coating_notes_in_interference_and_plugin() {
+    use lensbench_core::usercoating::CoatingSet;
+    use serde_json::json;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = std::env::temp_dir().join(format!("lb_extend_notes_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("COATING.DAT"),
+        "MATE M\n0.4 1.38 0\n0.8 1.38 0\nCOAT TEST_NOTE_AR\nM 0.1\n",
+    )
+    .unwrap();
+    let opt = lensbench_formats::zmx::LoadOptions {
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let mut s =
+        lensbench_formats::zmx::load_with(&root.join("examples/lenses/LB/BCX-50.zmx"), &opt)
+            .unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].coat = "TEST_NOTE_AR".into();
+        p.coating_file = Some(dir.join("COATING.DAT"));
+        Ok(())
+    })
+    .unwrap();
+    let zmx = dir.join("sys.zmx");
+    lensbench_formats::zmx_write::save(&zmx, &s).unwrap();
+
+    let mut e = Ext::default();
+    e.add_coating_catalog(
+        "TEST_NOTES",
+        CoatingSet::parse_dat("MATE M\n0.4 1.38 0\n0.8 1.38 0\nCOAT TEST_NOTE_AR\nM 0.25\n")
+            .unwrap(),
+    );
+    let noted = |v: &serde_json::Value| {
+        v["warnings"].as_array().is_some_and(|w| {
+            w.iter().any(|x| {
+                x.as_str().is_some_and(|x| {
+                    x.starts_with("coating TEST_NOTE_AR:") && x.contains("TEST_NOTES")
+                })
+            })
+        })
+    };
+    ext::with(Arc::new(e), || {
+        let sess = lensbench_engine::Session::new();
+        sess.call(
+            "load",
+            &json!({ "file": zmx, "glass_dirs": [root.join("tests/glass")] }),
+            Some(1),
+        )
+        .unwrap();
+        let p = json!({ "cmd": "interference", "beam1": "1", "beam2": "1", "mode": "detector",
+                        "field": 1, "pupil": 8, "npx": 8 });
+        let off = sess.call("analyze", &p, Some(1)).unwrap();
+        assert!(!noted(&off), "{off}");
+        let mut q = p.clone();
+        q["polarized"] = json!(true);
+        let on = sess.call("analyze", &q, Some(1)).unwrap();
+        assert!(noted(&on), "{on}");
+        let g = sess
+            .call("plugin", &json!({ "name": "ghost" }), Some(1))
+            .unwrap();
+        assert!(noted(&g), "{g}");
+    });
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -95,7 +95,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `catalog_edit` | `catalog`、`name`、`rename`・`description`・`delete: true`・`vendor`（どれか） | 項目の名前の変更・説明の変更・削除。結果は `catalog_items` と同じ |
 | `catalog_fill` | （下の節） | （下の節） |
 | `cad_step` | （下の節） | （下の節） |
-| `plugin` | `name`、`config`（数・文字列・数の並び）、`inputs`（JSON の数の並び、入れ子で多次元）か bin | プラグインを 1 回呼ぶ。システムの要るもの（spot・mtf など）には読み込んだシステム（`set`・`edit` の後）とコーティングを渡す。出力は bin（`<f8`・`<c16`・`|b1`、形つき）、数 1 つの出力は `values` にも入れる |
+| `plugin` | `name`、`config`（数・文字列・数の並び）、`inputs`（JSON の数の並び、入れ子で多次元）か bin | プラグインを 1 回呼ぶ。システムの要るもの（spot・mtf など）には読み込んだシステム（`set`・`edit` の後）とコーティングを渡す。出力は bin（`<f8`・`<c16`・`|b1`、形つき）、数 1 つの出力は `values` にも入れる。コーティングの注意（同じ名前のコーティングのどれを使ったかなど）は `warnings` |
 | `trace` | `px`・`py`（bin か JSON の並び）、`field`（1 始まり）か `hx`・`hy`、`wave`、`last`、`global` | `rays`・`ok`・`hx`・`hy`・`wave`・`last`、bin に `x y z l m n opl`（<f8）・`err vig`（<i4） |
 | `layout` | （下の節） | （下の節） |
 | `layout_export` | （下の節） | （下の節） |

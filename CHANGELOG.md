@@ -20,6 +20,9 @@
 - **系の入射偏光**（OpticStudio の System Explorer の Polarization）: システム・プロジェクトの `input_pol`、.zmx の POLS、多重構成の
   GPIU・GPJX・GPJY・GPPX・GPPY（パラメータ `polun`・`poljx`・`poljy`・`polpx`・`polpy`）。MTF・PSF・相対照度の `polarization` はこの偏光を
   入射に使う（既定の偏光なしはこれまでと同じ）
+- **膜の注意を偏光の追跡・干渉・プラグインにも**: 系の膜の注意（登録した膜の一覧の膜が膜ファイルの同じ名前の膜より先に使われた、など）を、
+  `interference` の `polarized` の結果・serve の `plugin` の返り（`warnings`）と、Python の偏光の `trace`・`trace_rays`・`run_many`・
+  `interference`・`fiber_coupling`・系を渡したプラグインの `warnings` にも出す（0.8.0 では psf・mtf・相対照度・ghost の結果だけ）
 
 ### 直した所
 

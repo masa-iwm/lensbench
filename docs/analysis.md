@@ -13,7 +13,7 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 （`mtf-focus`・`mtf-field`・`geo-mtf`・`huygens-mtf` も同じ）。
 `--polarization` でコーティングの透過とフレネル損失を瞳の振幅に入れる（システムの入射偏光 `input_pol`（既定は偏光なし、.zmx の POLS）とシステムのコーティングを使う。OpticStudio の Use Polarization に当たる。
 `psf`・`huygens-mtf` も）。システムの膜の注意（登録した膜の一覧の膜が膜ファイルの同じ名前の膜より先に使われた、など）は結果の `warnings` に入る
-（`relative-illumination` の `--polarization`・`ghost` も同じ。GUI は結果の上に出す）。瞳のアポダイゼーションは常に入る。照合は `crates/lensbench-verify/src/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 本で 3e-4〜2e-3）。
+（`relative-illumination` の `--polarization`・`ghost`・`interference` の `--polarized`・serve の `plugin` も同じ。GUI は結果の上に出す）。瞳のアポダイゼーションは常に入る。照合は `crates/lensbench-verify/src/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 本で 3e-4〜2e-3）。
 `--each-wave` で多色に加えて波長ごとの MTF（`waves`）も出す（波長ごとの計算を使い回すので別々に求めるより約 2 倍速い）。
 `--method fft` は瞳関数（直径 512〜4096 点の格子）の自己相関を FFT で全周波数まとめて求める: 時間が周波数の数によらないので、
 周波数が多いとき（目安 100 点超）や収差の大きいシステムで速い。求積との差は 24 本で 1e-4 以下（`examples/mtf_fft.rs`）。
