@@ -1101,6 +1101,45 @@ fn sysset_wave_and_field_cells_edit() {
     assert!(format!("{f:?}").contains("3.0"), "{f:?}");
 }
 
+/// 値を変えない操作（表のセルを選ぶ・Shift+↓ で範囲を選ぶ）では組合せが変わらず、元に戻すの段も積まれない
+/// （半直径 0 の要素を選ぶと詳細の欄が下限の 0.001 に書き戻していた）
+#[test]
+fn selecting_cells_changes_nothing() {
+    let _g = serial();
+    let mut h = harness(a0());
+    let ids = h.state().c.doc.combo.ids();
+    let first = h
+        .state()
+        .c
+        .sys
+        .ld_blocks
+        .iter()
+        .find(|b| b.name == ids[2])
+        .and_then(|b| b.surfs.iter().min().copied())
+        .expect("element 2 surfaces");
+    let before = h.state().c.doc.combo.clone();
+    h.get_by_label(&format!("Surface {first} Thickness"))
+        .click();
+    h.run_steps(2);
+    for _ in 0..3 {
+        h.press_key_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+        h.run_steps(1);
+    }
+    settle(&mut h);
+    let steps: Vec<_> = h
+        .state()
+        .c
+        .undo_list(true)
+        .into_iter()
+        .filter(|s| !s.doc)
+        .collect();
+    assert!(steps.is_empty(), "{steps:?}");
+    assert_eq!(
+        format!("{:?}", h.state().c.doc.combo),
+        format!("{before:?}")
+    );
+}
+
 /// 文書を替えた段（開く・新規）の時刻は積んだときのまま: 一覧を作り直しても「0 秒前」に戻らない
 /// （11/21 masa の報告: ファイルを開いた段がいつも 0 秒前と出ていた）
 #[test]

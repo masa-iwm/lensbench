@@ -189,9 +189,12 @@ impl Widget for Num<'_> {
         }
         let x = get_set(None);
         let speed = if int { 0.1 } else { drag_speed(x) };
+        // 範囲は利用者が変えた値（ドラッグ・打ち込み）だけに効かせる。egui の既定は描くだけで今の値を範囲に丸めて書き戻し、
+        // 欄を見せただけで文書が変わって元に戻すの段が積まれる（半直径 0 の要素の詳細で 0 → 0.001）
         let mut dv = egui::DragValue::from_get_set(get_set)
             .speed(speed)
             .range(range)
+            .clamp_existing_to_range(false)
             .prefix(prefix)
             .suffix(suffix);
         if let Some(n) = max_decimals.or(int.then_some(0)) {
