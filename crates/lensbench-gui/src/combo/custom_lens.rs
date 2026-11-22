@@ -1,6 +1,11 @@
 //! 自作の玉（2 面の単玉）・平板だけが持つ欄（[`CustomLens`]）
 
+use egui::RichText;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::i18n::tr;
+use crate::theme;
 
 /// 自作の玉（2 面の単玉）・平板の欄（[`Pick::custom`]）。3 面以上・貼り合わせの玉は [`Pick::surfs`] に面ごとに持つ。
 /// 半径は [`Pick::semi`]
@@ -39,4 +44,33 @@ impl Default for CustomLens {
             semi_auto: false,
         }
     }
+}
+
+/// 半径の JSON（自動なら "auto"）
+pub(super) fn semi_json(semi: f64, auto: bool) -> Value {
+    if auto {
+        json!("auto")
+    } else {
+        json!(semi)
+    }
+}
+
+/// 自作の玉・平板の半径の欄と自動の切り替え。0 は径を書かない（開口なし。.zmx には自動の半直径で書く）ので、0 まで下げられる
+pub(super) fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
+    ui.add_enabled_ui(!*auto, |ui| {
+        let weak = theme::weak_text(ui.visuals());
+        ui.label(RichText::new(tr("Semi-diameter")).color(weak));
+        ui.add(
+            crate::widgets::Num::new(semi)
+                .max_decimals(4)
+                .range(0.0..=f64::INFINITY)
+                .suffix(" mm"),
+        )
+        .on_hover_text(tr(
+            "0 leaves the semi-diameter unwritten (no aperture on the surfaces)",
+        ));
+    });
+    ui.checkbox(auto, tr("Auto")).on_hover_text(tr(
+        "Compute the semi-diameter from rays of all fields and wavelengths",
+    ));
 }

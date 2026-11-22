@@ -855,6 +855,7 @@ Birefringent material	複屈折材
 Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes	常光はこの名前、異常光は名前-E の硝材（空なら理想の位相子）。2 つ目があれば進相軸を直交させた 2 材の組
 0 derives the thickness from the design retardance (single material)	0 は設計波長のリタデーションから厚みを決める（1 材のとき）
 Compute the semi-diameter from rays of all fields and wavelengths	クリア半径を全視野・全波長の光線から求める
+0 leaves the semi-diameter unwritten (no aperture on the surfaces)	0 はクリア半径を書かない（面に開口を付けない）
 The element is gone (removed or renamed). Choose it again	要素がありません（削除したか名前が変わりました）。選択し直してください
 JSON with the same items as the fields	欄と同じ項目の JSON
 Set the quantity, configurations, delay and so on in ⚙ Settings (same arguments as the CLI subcommand)	量・構成・遅延などは「⚙ 設定」の欄で（CLI のサブコマンドと同じ引数）

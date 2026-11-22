@@ -921,3 +921,26 @@ fn solved_gaps_are_not_edited() {
         .reason()
         .contains("Solve: marginal_height 0"));
 }
+
+/// 自作の玉・平板の半径は 0（径を書かない）まで下げられる（Alt+↓ で下限に止まる）。絞りなどは今のまま 0.001 が下限
+#[test]
+fn custom_semi_diameter_can_go_back_to_zero() {
+    use egui_kittest::kittest::{by, Queryable};
+    let _g = crate::serve_lock();
+    crate::i18n::set(crate::i18n::Lang::En);
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(400.0, 120.0))
+        .build_ui_state(
+            |ui, st: &mut (f64, bool)| {
+                let (semi, auto) = st;
+                semi_edit(ui, semi, auto);
+            },
+            (0.05, false),
+        );
+    h.run_steps(1);
+    h.get(by().role(egui::accesskit::Role::SpinButton)).focus();
+    h.run_steps(2);
+    h.press_key_modifiers(egui::Modifiers::ALT, egui::Key::ArrowDown);
+    h.run_steps(2);
+    assert_eq!(h.state().0, 0.0);
+}

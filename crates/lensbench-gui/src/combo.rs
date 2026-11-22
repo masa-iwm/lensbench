@@ -40,6 +40,7 @@ mod zgroup;
 pub(crate) use ap_shape::{ApData, ApShape};
 pub(crate) use bs::{Bs, BsForm, BsSplit};
 pub(crate) use custom_lens::CustomLens;
+use custom_lens::{semi_edit, semi_json};
 pub(crate) use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
@@ -3323,25 +3324,6 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
         p.surfs.remove(i);
     }
     p.rows_changed(&before, add, del)
-}
-
-/// 半径の JSON（自動なら "auto"）
-fn semi_json(semi: f64, auto: bool) -> Value {
-    if auto {
-        json!("auto")
-    } else {
-        json!(semi)
-    }
-}
-
-/// 自作の玉・平板の半径の欄と自動の切り替え
-fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
-    ui.add_enabled_ui(!*auto, |ui| {
-        num_in(ui, tr("Semi-diameter"), semi, " mm", 0.001)
-    });
-    ui.checkbox(auto, tr("Auto")).on_hover_text(tr(
-        "Compute the semi-diameter from rays of all fields and wavelengths",
-    ));
 }
 
 #[cfg(test)]
