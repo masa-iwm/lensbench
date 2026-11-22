@@ -2348,6 +2348,7 @@ edit {}: {} is not written back ({e})	変更 {}: {} はブロックへ書き戻�
 surface {j} is not a surface of a block	面 {j} はブロックの面ではありません
 surface {j} is a coordinate break of a block (use the block decenter and tilt)	面 {j} はブロックの座標ブレークです（ブロックの偏心・チルトで変えてください）
 surface {j} is on a later pass of a block (edit the surface on its first forward pass)	面 {j} はブロックの 2 回目以降・復路の面です（往路の 1 回目の面で変えてください）
+surface {j} on the return pass has no surface on the forward pass	復路の面 {j} に対応する往路の面がありません
 surface {} is in a block without an id (give the block an id to refer to it)	面 {} は id の無いブロックの面です（参照するにはブロックに id を付けてください）
 only surface edits can be written back to blocks	ブロックへ書き戻せるのは面の変更だけです
 the thickness after the last surface of a block includes the following air (change the air block)	ブロックの最後の面の厚みには後ろの空気が入っています（空気のブロックで変えてください）
