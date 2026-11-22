@@ -657,7 +657,7 @@
       "description": "補償子: \"9.t\"・\"G1.shift=-1:1\" か {\"param\", \"lo\", \"hi\", \"configs\"}"
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.8/tolerance.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.9/tolerance.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "設定（すべて省略可）",

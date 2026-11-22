@@ -2958,7 +2958,7 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "lensbench-analysis"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
  "lensbench-formats",
@@ -2975,7 +2975,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-cad"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "flate2",
  "lensbench-catalog",
@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-catalog"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
  "lensbench-project",
@@ -3002,7 +3002,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-cli"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "clap",
  "flate2",
@@ -3030,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-core"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "ciborium",
  "criterion",
@@ -3051,7 +3051,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-design"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "indexmap",
  "jsonschema",
@@ -3069,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-engine"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-analysis",
  "lensbench-cad",
@@ -3090,7 +3090,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-export"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
  "lensbench-formats",
@@ -3104,14 +3104,14 @@ dependencies = [
 
 [[package]]
 name = "lensbench-formats"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
 ]
 
 [[package]]
 name = "lensbench-gpu"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "bytemuck",
  "pollster 1.0.3",
@@ -3120,7 +3120,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-gui"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "ab_glyph",
  "eframe",
@@ -3158,14 +3158,14 @@ dependencies = [
 
 [[package]]
 name = "lensbench-lang"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
 ]
 
 [[package]]
 name = "lensbench-optim"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-analysis",
  "lensbench-core",
@@ -3177,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-project"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "ciborium",
  "flate2",
@@ -3195,7 +3195,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-py"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-analysis",
  "lensbench-core",
@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-runs"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-core",
  "schemars",
@@ -3226,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-sdk"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "egui",
  "lensbench-analysis",
@@ -3246,11 +3246,11 @@ dependencies = [
 
 [[package]]
 name = "lensbench-step"
-version = "0.8.0"
+version = "0.9.0-dev"
 
 [[package]]
 name = "lensbench-verify"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "lensbench-analysis",
  "lensbench-core",
@@ -3265,7 +3265,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-web"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "flate2",
  "js-sys",

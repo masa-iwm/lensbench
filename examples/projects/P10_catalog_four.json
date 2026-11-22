@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.8/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.9/project.schema.json",
  "name": "P10 four catalog lenses: a relay of two achromat pairs",
  "glass_catalogs": [
   "SCHOTT"

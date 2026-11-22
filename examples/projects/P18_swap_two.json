@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.8/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.9/project.schema.json",
  "name": "P18 catalog swap search (two lenses, air gaps as variables)",
  "glass_catalogs": ["SCHOTT"],
  "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}],
