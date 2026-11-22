@@ -14,6 +14,10 @@ impl Core {
                 self.p.opt.running = true;
                 self.p.opt.result = None;
                 self.p.opt.gen = self.sys_gen;
+                // 構成の並び（問題の構成 i の状態。置き換えた材料を状態に当てる）
+                self.p.opt.run_configs = (p["configs"].as_array().into_iter().flatten())
+                    .map(|x| x.as_str().map_or_else(|| x.to_string(), str::to_string))
+                    .collect();
                 self.calc(Tag::Optimize, p);
             }
             Action::Stop => crate::worker::progress::stop("optimize"),
@@ -30,13 +34,14 @@ impl Core {
                     return;
                 }
                 // 置き換えた硝材を先に（値の変更が面の並びを作り直す前に）
-                let glasses = op::result_glasses(&r, false);
+                let cfgs = self.p.opt.run_configs.clone();
+                let glasses = op::result_glass_configs(&r, cfgs.len());
                 if !glasses.is_empty() {
                     // 材料を当てられなければ値も当てない（硝材を替えずに、替えた前提の値だけ入るのを防ぐ）
-                    if !self.apply_materials(&glasses) {
+                    let Some(undo) = self.apply_glass(&glasses, &cfgs) else {
                         return;
-                    }
-                    self.p.opt.undo_glass = Some(op::result_glasses(&r, true));
+                    };
+                    self.p.opt.undo_glass = Some(undo);
                 }
                 // 置き換えた面の固定の dn・disp は 0 に（serve の apply と同じ）
                 let mut vals = op::result_values(&r, false);
@@ -49,7 +54,7 @@ impl Core {
             }
             Action::Undo => {
                 if let Some(g) = self.p.opt.undo_glass.take() {
-                    self.apply_materials(&g);
+                    self.undo_glass(&g);
                 }
                 if let Some(u) = self.p.opt.undo.take() {
                     self.apply_values(&u);

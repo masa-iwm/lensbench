@@ -226,15 +226,21 @@ fn result_glasses_first_and_last() {
         }),
         ..Default::default()
     };
+    let one = |a: &str, b: &str| Some((a.to_string(), b.to_string()));
     assert_eq!(
-        result_glasses(&r, false),
-        vec![(1, "N-SK14".to_string()), (3, "N-F2".to_string())]
+        result_glass_configs(&r, 0),
+        vec![
+            GlassApply {
+                surface: 1,
+                per: vec![one("1.6,58", "N-SK14")]
+            },
+            GlassApply {
+                surface: 3,
+                per: vec![one("F2", "N-F2")]
+            },
+        ]
     );
-    assert_eq!(
-        result_glasses(&r, true),
-        vec![(1, "1.6,58".to_string()), (3, "F2".to_string())]
-    );
-    assert!(result_glasses(&OptimizeView::default(), false).is_empty());
+    assert!(result_glass_configs(&OptimizeView::default(), 1).is_empty());
 }
 
 /// ガラスの置き換えの候補の絞り込みと近さの刻みを保存し、読み戻せる。数でない上限は誤り
@@ -288,7 +294,7 @@ fn glass_filter_settings_round_trip() {
     assert!(p.params().is_err());
 }
 
-/// 構成ごとの置き換え: 最初の構成を置き換えなかった面は当てない。固定の dn・disp は 0 にし、元に戻すときは前の値
+/// 構成ごとの置き換え: 構成ごとの最後の材料と、置き換えなかった構成は None。固定の dn・disp は 0 にし、元に戻すときは前の値
 #[test]
 fn result_glasses_configs_and_resets() {
     use lensbench_engine::session::views::{GlassChangeView, GlassView};
@@ -311,13 +317,26 @@ fn result_glasses_configs_and_resets() {
                 },
             ],
             materials: vec![(3, "F2".into()), (6, "N-SK14".into())],
+            config_materials: vec![(3, vec!["F2".into(), "N-F2".into(), "F2".into()])],
             reset: vec![("6.dn".into(), 0.01)],
             ..Default::default()
         }),
         ..Default::default()
     };
-    assert_eq!(result_glasses(&r, false), vec![(6, "N-SK14".to_string())]);
-    assert_eq!(result_glasses(&r, true), vec![(6, "N-SK16".to_string())]);
+    let one = |a: &str, b: &str| Some((a.to_string(), b.to_string()));
+    assert_eq!(
+        result_glass_configs(&r, 3),
+        vec![
+            GlassApply {
+                surface: 3,
+                per: vec![None, one("1.7,30", "N-F2"), None]
+            },
+            GlassApply {
+                surface: 6,
+                per: vec![one("N-SK16", "N-SK14"), None, one("N-SK16", "N-SK14")]
+            },
+        ]
+    );
     assert_eq!(result_resets(&r, false), vec![("6.dn".to_string(), 0.0)]);
     assert_eq!(result_resets(&r, true), vec![("6.dn".to_string(), 0.01)]);
 }

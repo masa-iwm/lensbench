@@ -284,31 +284,60 @@ pub(super) fn result_ui(
     }
 }
 
-/// 結果のガラスの置き換えで変わった面の (面, 材料)。before なら置き換える前の材料。材料が構成で違う面は最初の構成の
-/// 置き換え（最初の構成を置き換えなかった面は出さない）
-pub(crate) fn result_glasses(r: &OptimizeView, before: bool) -> Vec<(usize, String)> {
+/// ガラスの置き換えで変わった 1 つの面の、問題の構成ごとの材料
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GlassApply {
+    pub surface: usize,
+    /// 問題の構成 i（0 から）の (置き換える前, 最後) の材料。その構成を置き換えなかったら None
+    pub per: Vec<Option<(String, String)>>,
+}
+
+/// 結果のガラスの置き換えで変わった面の、問題の構成（n 個、0 は 1 個とみなす）ごとの材料。置き換えた順
+pub(crate) fn result_glass_configs(r: &OptimizeView, n: usize) -> Vec<GlassApply> {
     let Some(g) = &r.glass else {
         return Vec::new();
     };
-    let mut out: Vec<(usize, String)> = Vec::new();
+    let n = n.max(1);
+    // 構成 i（0 から）に効く置き換え
+    let hits = |c: &lensbench_engine::session::views::GlassChangeView, i: usize| {
+        c.configs.as_ref().is_none_or(|k| k.contains(&(i + 1)))
+    };
+    let mut out: Vec<GlassApply> = Vec::new();
     for c in &g.changes {
-        if out.iter().any(|(j, _)| *j == c.surface) {
+        if out.iter().any(|a| a.surface == c.surface) {
             continue;
         }
-        if c.configs.as_ref().is_some_and(|k| !k.contains(&1)) {
-            continue;
-        }
-        let m = if before {
-            c.from.clone()
-        } else {
-            g.materials
-                .iter()
-                .find(|(j, _)| *j == c.surface)
-                .map_or_else(|| c.to.clone(), |x| x.1.clone())
-        };
-        out.push((c.surface, m));
+        let j = c.surface;
+        let per = (0..n)
+            .map(|i| {
+                let first = g.changes.iter().find(|c| c.surface == j && hits(c, i))?;
+                let last = g
+                    .config_materials
+                    .iter()
+                    .find(|(k, _)| *k == j)
+                    .and_then(|(_, v)| v.get(i))
+                    .or_else(|| g.materials.iter().find(|(k, _)| *k == j).map(|x| &x.1))
+                    .unwrap_or(&first.to);
+                Some((first.from.clone(), last.clone()))
+            })
+            .collect();
+        out.push(GlassApply { surface: j, per });
     }
     out
+}
+
+/// ガラスの置き換えを当てる前の材料（元に戻す）。状態の上書きを先に、面の材料を後に当てた順
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum GlassUndo {
+    /// 系の面 j の材料（要素の面の材料）
+    Base(usize, String),
+    /// 要素 loc の面 face（座標ブレークを除いた番号）の状態 state の材料の上書き。None は上書きが無かった
+    State {
+        loc: crate::combo_tree::Loc,
+        face: usize,
+        state: String,
+        old: Option<Value>,
+    },
 }
 
 /// ガラスの置き換えで 0 にした、変数でない dn・disp の値 (名前, 値)。before なら置き換える前の値、でなければ 0

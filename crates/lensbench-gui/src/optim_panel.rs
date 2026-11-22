@@ -19,7 +19,7 @@ mod search;
 mod sheets;
 use kinds::{defaults, type_hint};
 use lensbench_engine::session::views::{OptimizeView, TermValue};
-pub(crate) use search::{result_glasses, result_resets};
+pub(crate) use search::{result_glass_configs, result_resets, GlassApply, GlassUndo};
 
 /// 項のキーの値の書き方
 #[derive(Clone, Copy, PartialEq)]
@@ -459,8 +459,7 @@ pub(crate) struct OptPanel {
     pub reference: String,
     pub iters: usize,
     pub jac: String,
-    /// DLS の一歩を QR で解く・勾配で止める値（0 は判定しない）・境界を外れる変数を止めて解き直す・止まった光線を
-    /// けられた光線と同じく除く（CLI の --qr・--gtol・--active-set・--stopped-as-vignetted）
+    /// DLS の一歩を QR で解く・勾配で止める値（0 は判定しない）・境界を外れる変数を止めて解き直す・止まった光線をけられた光線と同じく除く（CLI の --qr・--gtol・--active-set・--stopped-as-vignetted）
     pub qr: bool,
     pub gtol: f64,
     pub active_set: bool,
@@ -486,8 +485,9 @@ pub(crate) struct OptPanel {
     pub glass_nd_step: f64,
     pub glass_vd_step: f64,
     pub glass_dpgf_step: String,
-    /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）
-    pub undo_glass: Option<Vec<(usize, String)>>,
+    /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）・走らせたときの構成（状態の名前。空は開いている系）
+    pub undo_glass: Option<Vec<GlassUndo>>,
+    pub run_configs: Vec<String>,
     /// 構成（.zmx の構成番号か状態の名前、カンマ区切り。空は開いている系だけ）
     pub configs: String,
     pub new_var: String,
