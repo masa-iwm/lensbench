@@ -20,6 +20,8 @@ pub(super) enum Aber {
     Diffraction,
     /// 幾何 PSF
     Geometric,
+    /// Huygens PSF
+    Huygens,
 }
 
 /// 画像の反転
@@ -66,7 +68,7 @@ pub(super) struct ImageSimParams {
     /// Distortion and relative illumination grid points on a side
     #[schemars(extend("x-min" = 2))]
     pub map_grid: usize,
-    /// Aberrations: diffraction (FFT PSF at each PSF grid point), geometric (ray density of a pupil grid at each PSF grid point) or none (distortion and relative illumination only)
+    /// Aberrations: diffraction (FFT PSF at each PSF grid point), geometric (ray density of a pupil grid at each PSF grid point), huygens (Huygens PSF on the image surface at each PSF grid point; on the GPU if there is one) or none (distortion and relative illumination only)
     pub aberrations: Aber,
     /// Pupil grid side of the PSF (automatic if omitted; 64 for the geometric PSF)
     pub pupil: Option<usize>,
@@ -251,6 +253,7 @@ impl Analysis for ImageSim {
                 Aber::None => Aberrations::None,
                 Aber::Diffraction => Aberrations::Diffraction,
                 Aber::Geometric => Aberrations::Geometric,
+                Aber::Huygens => Aberrations::Huygens,
             },
             relative_illumination: p.relative_illumination,
             channel_waves,

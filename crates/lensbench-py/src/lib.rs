@@ -2599,7 +2599,7 @@ impl PySystem {
     /// Image simulation (as OpticStudio's Image Simulation): places image ((height, width) gray or (height, width, 3) RGB, row 0 at the top = field +y)
     /// in the object field, field_height (full height in field units; √2 × the largest field if omitted) high and centered on the axis (or on field, a field number from 1;
     /// the detector is then centered on its chief ray image), and images it onto
-    /// a detector with the chief ray positions (distortion, lateral color), relative illumination and, with aberrations="diffraction" the FFT PSF (or "geometric", the ray density of a pupil grid) on a
+    /// a detector with the chief ray positions (distortion, lateral color), relative illumination and, with aberrations="diffraction" the FFT PSF (or "geometric", the ray density of a pupil grid, or "huygens", the Huygens PSF) on a
     /// psf_grid of fields (interpolated between them). Gray uses all weighted wavelengths (or wave, from 1), RGB one wavelength per channel (rgb_waves, from 1; the
     /// wavelengths 1 to 3, shortest as B, if omitted). pixel is the detector pixel [lens units] (the on-axis image of one source pixel if omitted), size
     /// (width, height) the detector pixels. flip_source ("none", "top-bottom", "left-right" or "both") and rotate (counterclockwise, 0, 90, 180 or 270 degrees,

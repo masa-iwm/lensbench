@@ -1,6 +1,7 @@
 //! OpticStudio 2026 R1.01 の Image Simulation の出力（tests/refs/<系>/imagesim_os/、入力は tests/imagesim_src/）との照合。
 //! OS から数値は取れず 8 bit の PNG だけなので、試験の図の点（元の 1 画素、64 画素ごと）ごとに、重心と明るさの和を比べる
-//! （既定の画素・Oversampling なし・中心の視野 1 の設定だけ）。
+//! （既定の画素・Oversampling なしの設定。中心の視野が軸の外の D0 の f2・f4 も。細かい検出器の Oversampling X8 は
+//! [`oversampled_point_matches_opticstudio`] で中央の点の形を比べる）。
 //!
 //! 許容差と理由:
 //! - 重心 0.4 px: OS は偶数の画像の中心を画素 256 に置く（lensbench は 255.5 で上下左右に対称。README の
@@ -158,6 +159,118 @@ fn image_simulation_matches_opticstudio() {
     // 中心の視野が軸の外（D0 の視野 2 = (0, 5°)・視野 4 = (3°, −4°)）
     for run in ["gray_none_f2", "gray_diff_f2", "gray_none_f4"] {
         check("D0", run, &mut fails);
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
+/// 元の 1 画素の像より細かい検出器（D0、画素 2 µm、OS は Oversampling X8）: 中央の点（元の 1 画素、像は 17 µm 角）の
+/// 重心と、行・列の半値幅を OS と比べる。lensbench は Oversampling なしで元の画素を細かく分けて置く。
+///
+/// 許容差: 重心 0.6 px・半値幅 1 px。OS は元の 1 画素の像を検出器の整数の画素に丸めて置く（収差なしの像が 9 × 9 の画素で、
+/// 8.52 × 8.52 の正方形にならない）。回折の像の中央の明るさは、F/5 の Airy の PSF を 17.044 µm 角の正方形で積分した値
+/// 0.9385（数値積分）に 2 % で合う（OS の PNG は最大で 255 に揃えるので、明るさは比べられない）。lensbench の回折の像は
+/// 正方形の縁の外で裾が OS より広い（縁から 10 µm で 1〜2 %。円形の瞳の縁の像の裾はおよそ λF / (π²x) で、
+/// 10 µm で約 3 %。OS の PSF は 32 × 32 の格子で裾が切れる）
+#[test]
+fn oversampled_point_matches_opticstudio() {
+    let refs = refs_dir();
+    let dir = refs.join("D0").join("imagesim_os");
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: glass_dirs(),
+        ..Default::default()
+    };
+    let s = zmx::load_with(&refs.join("D0").join("system.zmx"), &opt).unwrap();
+    let mut fails = Vec::new();
+    for (run, ab) in [
+        ("gray_none_ov8", Aberrations::None),
+        ("gray_diff_ov8", Aberrations::Diffraction),
+        ("gray_geom_ov8", Aberrations::Geometric),
+    ] {
+        let meta: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(format!("{run}.json"))).unwrap())
+                .unwrap();
+        let st = &meta["settings"];
+        let (w, h, mut ch) = png(&refs
+            .parent()
+            .unwrap()
+            .join("imagesim_src")
+            .join(meta["input_image"].as_str().unwrap()));
+        ch.truncate(1);
+        let n = st["XPixels"].as_u64().unwrap() as usize;
+        let o = ImageSimOpts {
+            field_height: st["FieldHeight"].as_f64().unwrap(),
+            psf_grid: (
+                st["PSFXPoints"].as_u64().unwrap() as usize,
+                st["PSFYPoints"].as_u64().unwrap() as usize,
+            ),
+            aberrations: ab,
+            pixel: Some(meta["pixel_size_mm"].as_f64().unwrap()),
+            size: Some((n, n)),
+            relative_illumination: st["UseRelativeIllumination"].as_bool().unwrap(),
+            wave: Some(meta["primary_wavelength"].as_u64().unwrap() as usize - 1),
+            ..Default::default()
+        };
+        let r = image_sim(
+            &s,
+            &SimImage {
+                width: w,
+                height: h,
+                channels: ch,
+            },
+            &o,
+        )
+        .unwrap();
+        let (ow, _, och) = png(&dir.join(meta["output_png"].as_str().unwrap()));
+        assert_eq!(ow, n);
+        let os = &och[1];
+        let lb = &r.image.channels[0];
+        // 重心（中央の ±12 px）と、重心の行・列の半値幅（自分の最大で割る）
+        let shape = |im: &[f64]| {
+            let (mut t, mut sy, mut sx) = (0.0, 0.0, 0.0);
+            for y in n / 2 - 12..=n / 2 + 12 {
+                for x in n / 2 - 12..=n / 2 + 12 {
+                    let v = im[y * n + x];
+                    t += v;
+                    sy += v * y as f64;
+                    sx += v * x as f64;
+                }
+            }
+            let (cy, cx) = (sy / t, sx / t);
+            let width = |line: &dyn Fn(usize) -> f64| {
+                let m = (0..n).map(line).fold(0.0, f64::max);
+                let above: Vec<usize> = (0..n).filter(|&k| line(k) >= m / 2.0).collect();
+                let (a, b) = (above[0], *above.last().unwrap());
+                // 半値を横切る所を線形に補間
+                let cross = |i: usize, j: usize| {
+                    let (vi, vj) = (line(i), line(j));
+                    i as f64 + (m / 2.0 - vi) / (vj - vi) * (j as f64 - i as f64)
+                };
+                cross(b, b + 1) - cross(a, a - 1)
+            };
+            let (ry, rx) = (cy.round() as usize, cx.round() as usize);
+            (
+                cy,
+                cx,
+                width(&|k| im[ry * n + k]),
+                width(&|k| im[k * n + rx]),
+            )
+        };
+        let (a, b) = (shape(os), shape(lb));
+        let dc = (a.0 - b.0).abs().max((a.1 - b.1).abs());
+        let dw = (a.2 - b.2).abs().max((a.3 - b.3).abs());
+        if dc > 0.6 || dw > 1.0 {
+            fails.push(format!(
+                "{run}: centroid {dc:.3} px, width OS ({:.2}, {:.2}) lensbench ({:.2}, {:.2})",
+                a.2, a.3, b.2, b.3
+            ));
+        }
+        if ab == Aberrations::Diffraction {
+            let peak = lb.iter().copied().fold(0.0, f64::max);
+            if (peak / 0.9385 - 1.0).abs() > 0.02 {
+                fails.push(format!("{run}: peak {peak:.4} (Airy 0.9385)"));
+            }
+        }
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }

@@ -84,10 +84,11 @@ pub(crate) fn run<'py>(
     let aberrations = match a.aberrations.as_str() {
         "diffraction" => Aberrations::Diffraction,
         "geometric" => Aberrations::Geometric,
+        "huygens" => Aberrations::Huygens,
         "none" => Aberrations::None,
         x => {
             return Err(value_err(format!(
-                "aberrations {x:?}: diffraction, geometric or none"
+                "aberrations {x:?}: diffraction, geometric, huygens or none"
             )))
         }
     };

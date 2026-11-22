@@ -32,6 +32,9 @@ pub enum Aberrations {
     Diffraction,
     /// 幾何 PSF（瞳の格子の光線の像面の点の密度。OpticStudio の Aberrations = Geometric）
     Geometric,
+    /// Huygens PSF（像面の上で瞳の各点からの球面波を足す。像面が傾いた系・斜めの視野でも像面の上の PSF。
+    /// GPU があれば GPU で足す）
+    Huygens,
 }
 
 /// 画像の反転（OpticStudio の Flip Source・Flip Image）
@@ -433,17 +436,30 @@ fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
                         let n = o.pupil.unwrap_or(GEO_PUPIL);
                         return geo_kernel(s, FieldSel::Norm(h.0, h.1), w, n, pixel).map(Some);
                     }
-                    let p = psf(
-                        s,
-                        FieldSel::Norm(h.0, h.1),
-                        Waves::One(w),
-                        PsfOpts {
-                            pupil: o.pupil,
-                            image: o.psf_points,
-                            pixel: None,
-                            plane: PsfPlane::Image,
-                        },
-                    )?;
+                    let p = if o.aberrations == Aberrations::Huygens {
+                        crate::huygens::huygens_psf(
+                            s,
+                            FieldSel::Norm(h.0, h.1),
+                            Waves::One(w),
+                            crate::huygens::HuygensOpts {
+                                pupil: o.pupil,
+                                image: o.psf_points,
+                                ..Default::default()
+                            },
+                        )?
+                    } else {
+                        psf(
+                            s,
+                            FieldSel::Norm(h.0, h.1),
+                            Waves::One(w),
+                            PsfOpts {
+                                pupil: o.pupil,
+                                image: o.psf_points,
+                                pixel: None,
+                                plane: PsfPlane::Image,
+                            },
+                        )?
+                    };
                     for wn in &p.warnings {
                         if !warnings.contains(wn) {
                             warnings.push(wn.clone());
@@ -511,6 +527,8 @@ fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
                     }
                 }
             }
+            // 格子点ごとの像と核の畳み込みの和（周波数の上で足して、逆変換は 1 回）
+            let mut items = Vec::new();
             for (k, img) in ideal.iter().enumerate() {
                 let acc = &mut out[c];
                 match &kernels[k] {
@@ -520,14 +538,16 @@ fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
                         }
                     }
                     Some((n, ker)) => {
-                        if img.iter().all(|v| *v == 0.0) {
-                            continue;
-                        }
-                        let conv = convolve(img, w1, h1, ker, *n);
-                        for (a, b) in acc.iter_mut().zip(&conv) {
-                            *a += kw * b;
+                        if img.iter().any(|v| *v != 0.0) {
+                            items.push((img.as_slice(), ker.as_slice(), *n));
                         }
                     }
+                }
+            }
+            if !items.is_empty() {
+                let conv = convolve_sum(&items, w1, h1);
+                for (a, b) in out[c].iter_mut().zip(&conv) {
+                    *a += kw * b;
                 }
             }
         }
@@ -673,60 +693,129 @@ fn bin_kernel(p: &crate::psf::Psf, pixel: f64) -> (usize, Vec<f64>) {
     (n, k)
 }
 
-/// 像 img（w × h）と核 ker（n × n、中心が原点）の畳み込み（FFT、像の外は 0）
-fn convolve(img: &[f64], w: usize, h: usize, ker: &[f64], n: usize) -> Vec<f64> {
-    let r = n / 2;
-    let (pw, ph) = ((w + n).next_power_of_two(), (h + n).next_power_of_two());
-    let mut a = vec![Complex::new(0.0, 0.0); pw * ph];
-    let mut b = vec![Complex::new(0.0, 0.0); pw * ph];
-    for y in 0..h {
+/// 2・3・5 の積で m 以上の最小の数（FFT の速い長さ）
+fn fast_len(m: usize) -> usize {
+    let mut n = m.max(1);
+    loop {
+        let mut k = n;
+        for p in [2, 3, 5] {
+            while k.is_multiple_of(p) {
+                k /= p;
+            }
+        }
+        if k == 1 {
+            return n;
+        }
+        n += 1;
+    }
+}
+
+/// 2 次元の FFT（行と列の変換の計画を持つ）
+struct Fft2 {
+    w: usize,
+    h: usize,
+    row: std::sync::Arc<dyn rustfft::Fft<f64>>,
+    col: std::sync::Arc<dyn rustfft::Fft<f64>>,
+}
+
+impl Fft2 {
+    fn new(w: usize, h: usize, inverse: bool) -> Fft2 {
+        let mut planner = rustfft::FftPlanner::<f64>::new();
+        let (row, col) = if inverse {
+            (planner.plan_fft_inverse(w), planner.plan_fft_inverse(h))
+        } else {
+            (planner.plan_fft_forward(w), planner.plan_fft_forward(h))
+        };
+        Fft2 { w, h, row, col }
+    }
+
+    fn process(&self, a: &mut [Complex<f64>]) {
+        let (w, h) = (self.w, self.h);
+        for r in a.chunks_exact_mut(w) {
+            self.row.process(r);
+        }
+        let mut col = vec![Complex::new(0.0, 0.0); h];
         for x in 0..w {
-            a[y * pw + x].re = img[y * w + x];
+            for y in 0..h {
+                col[y] = a[y * w + x];
+            }
+            self.col.process(&mut col);
+            for y in 0..h {
+                a[y * w + x] = col[y];
+            }
         }
     }
-    // 核の中心を原点に（負の添字は端に回す）
-    for y in 0..n {
-        for x in 0..n {
-            let (px, py) = ((x + pw - r) % pw, (y + ph - r) % ph);
-            b[py * pw + px].re = ker[y * n + x];
+}
+
+/// 像 img（w × h）と核 ker（n × n、中心が原点）の組ごとの畳み込みの和（FFT、像の外は 0）。
+/// 像と核を 1 つの複素数の格子（実部と虚部）に入れて 1 回の変換で両方の変換を得て、積を周波数の上で足し、逆変換は 1 回。
+/// 格子の大きさは w + n − 1 以上の速い長さ（像の外へ回り込まない）
+fn convolve_sum(items: &[(&[f64], &[f64], usize)], w: usize, h: usize) -> Vec<f64> {
+    use rayon::prelude::*;
+    let nmax = items.iter().map(|t| t.2).max().unwrap_or(1);
+    let (pw, ph) = (fast_len(w + nmax - 1), fast_len(h + nmax - 1));
+    let (fwd, inv) = (Fft2::new(pw, ph, false), Fft2::new(pw, ph, true));
+    let zero = || vec![Complex::new(0.0, 0.0); pw * ph];
+    let spectrum = |&(img, ker, n): &(&[f64], &[f64], usize)| -> Vec<Complex<f64>> {
+        let r = n / 2;
+        let mut z = zero();
+        for y in 0..h {
+            for x in 0..w {
+                z[y * pw + x].re = img[y * w + x];
+            }
+        }
+        // 核の中心を原点に（負の添字は端に回す）
+        for y in 0..n {
+            for x in 0..n {
+                let (px, py) = ((x + pw - r) % pw, (y + ph - r) % ph);
+                z[py * pw + px].im = ker[y * n + x];
+            }
+        }
+        fwd.process(&mut z);
+        // 実の a・b の変換 A = (Z(k) + Z*(−k)) / 2、B = (Z(k) − Z*(−k)) / 2i から A·B = (Z(k)² − Z*(−k)²) / 4i
+        let mut out = zero();
+        for ky in 0..ph {
+            for kx in 0..pw {
+                let zk = z[ky * pw + kx];
+                let zm = z[((ph - ky) % ph) * pw + (pw - kx) % pw].conj();
+                out[ky * pw + kx] = (zk * zk - zm * zm) * Complex::new(0.0, -0.25);
+            }
+        }
+        out
+    };
+    // 足す順を番号の順に決める（スレッドの数で値が変わらない）。並列に求めるのは決まった数ずつ（使う記憶を抑える）
+    const BATCH: usize = 8;
+    let mut acc = zero();
+    for batch in items.chunks(BATCH) {
+        let sp: Vec<Vec<Complex<f64>>> = if batch.len() > 1 && !lensbench_core::par::sequential() {
+            batch
+                .par_iter()
+                .map(lensbench_core::par::scoped(spectrum))
+                .collect()
+        } else {
+            batch.iter().map(spectrum).collect()
+        };
+        for v in sp {
+            for (u, x) in acc.iter_mut().zip(&v) {
+                *u += x;
+            }
         }
     }
-    fft2(&mut a, pw, ph, false);
-    fft2(&mut b, pw, ph, false);
-    for (u, v) in a.iter_mut().zip(&b) {
-        *u *= v;
-    }
-    fft2(&mut a, pw, ph, true);
+    inv.process(&mut acc);
     let sc = 1.0 / (pw * ph) as f64;
     let mut out = vec![0.0; w * h];
     for y in 0..h {
         for x in 0..w {
-            out[y * w + x] = a[y * pw + x].re * sc;
+            out[y * w + x] = acc[y * pw + x].re * sc;
         }
     }
     out
 }
 
-fn fft2(a: &mut [Complex<f64>], w: usize, h: usize, inverse: bool) {
-    let mut planner = rustfft::FftPlanner::<f64>::new();
-    let (fr, fc) = if inverse {
-        (planner.plan_fft_inverse(w), planner.plan_fft_inverse(h))
-    } else {
-        (planner.plan_fft_forward(w), planner.plan_fft_forward(h))
-    };
-    for row in a.chunks_exact_mut(w) {
-        fr.process(row);
-    }
-    let mut col = vec![Complex::new(0.0, 0.0); h];
-    for x in 0..w {
-        for y in 0..h {
-            col[y] = a[y * w + x];
-        }
-        fc.process(&mut col);
-        for y in 0..h {
-            a[y * w + x] = col[y];
-        }
-    }
+/// 像 img（w × h）と核 ker（n × n、中心が原点）の畳み込み（FFT、像の外は 0）
+#[cfg(test)]
+fn convolve(img: &[f64], w: usize, h: usize, ker: &[f64], n: usize) -> Vec<f64> {
+    convolve_sum(&[(img, ker, n)], w, h)
 }
 
 #[cfg(test)]
@@ -752,6 +841,54 @@ mod tests {
         ker[5] = 1.0;
         let out = convolve(&img, 5, 5, &ker, 3);
         assert!((out[13] - 1.0).abs() < 1e-12);
+    }
+
+    /// 組ごとの畳み込みの和が、直接の畳み込み（像の外は 0）の和と同じ（大きさの違う核、奇数と偶数の像）
+    #[test]
+    fn convolve_sum_matches_direct_convolution() {
+        let mut st = 0x2545_f491_4f6c_dd1du64;
+        let mut rnd = || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            (st >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let (w, h) = (13, 8);
+        let imgs: Vec<Vec<f64>> = (0..3)
+            .map(|_| (0..w * h).map(|_| rnd()).collect())
+            .collect();
+        let kers: Vec<(usize, Vec<f64>)> = [3usize, 7, 5]
+            .iter()
+            .map(|&n| (n, (0..n * n).map(|_| rnd()).collect()))
+            .collect();
+        let items: Vec<(&[f64], &[f64], usize)> = imgs
+            .iter()
+            .zip(&kers)
+            .map(|(i, (n, k))| (i.as_slice(), k.as_slice(), *n))
+            .collect();
+        let got = convolve_sum(&items, w, h);
+        let mut want = vec![0.0; w * h];
+        for (img, ker, n) in &items {
+            let r = (*n / 2) as i64;
+            for y in 0..h as i64 {
+                for x in 0..w as i64 {
+                    let mut v = 0.0;
+                    for ky in 0..*n as i64 {
+                        for kx in 0..*n as i64 {
+                            let (sx, sy) = (x - (kx - r), y - (ky - r));
+                            if sx >= 0 && sy >= 0 && sx < w as i64 && sy < h as i64 {
+                                v += ker[(ky * *n as i64 + kx) as usize]
+                                    * img[(sy * w as i64 + sx) as usize];
+                            }
+                        }
+                    }
+                    want[(y * w as i64 + x) as usize] += v;
+                }
+            }
+        }
+        for (a, b) in got.iter().zip(&want) {
+            assert!((a - b).abs() < 1e-12, "{a} vs {b}");
+        }
     }
 
     #[test]

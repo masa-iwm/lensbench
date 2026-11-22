@@ -380,3 +380,50 @@ fn center_field_moves_the_detector() {
         .unwrap();
     assert!((r.center.1 - c.rays[0].xyz[1]).abs() < 1e-12 && r.center.1.abs() > 1.0);
 }
+
+/// Huygens PSF: 無収差の D0 の点の像は回折（FFT PSF）とほぼ同じ（明るさの和は 1 %、最大は 2 % 以内）
+#[test]
+fn huygens_psf_matches_fft_on_a_perfect_lens() {
+    let s = load("D0");
+    let base = ImageSimOpts {
+        field_height: 0.0107,
+        psf_grid: (1, 1),
+        map_grid: 3,
+        pixel: Some(0.0005),
+        size: Some((41, 41)),
+        relative_illumination: false,
+        wave: Some(s.primary),
+        ..Default::default()
+    };
+    let src = gray(33, 33, |i, j| if i == 16 && j == 16 { 1.0 } else { 0.0 });
+    let run = |ab| {
+        image_sim(
+            &s,
+            &src,
+            &ImageSimOpts {
+                aberrations: ab,
+                ..base.clone()
+            },
+        )
+        .unwrap()
+    };
+    let (f, h) = (run(Aberrations::Diffraction), run(Aberrations::Huygens));
+    let sum =
+        |r: &lensbench_analysis::imagesim::ImageSimOut| r.image.channels[0].iter().sum::<f64>();
+    let max = |r: &lensbench_analysis::imagesim::ImageSimOut| {
+        r.image.channels[0].iter().copied().fold(0.0, f64::max)
+    };
+    // 和は検出器（20 µm 角）の外に出る裾の分だけ違う
+    assert!(
+        (sum(&h) / sum(&f) - 1.0).abs() < 0.01,
+        "sum {} vs {}",
+        sum(&h),
+        sum(&f)
+    );
+    assert!(
+        (max(&h) / max(&f) - 1.0).abs() < 0.02,
+        "max {} vs {}",
+        max(&h),
+        max(&f)
+    );
+}
