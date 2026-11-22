@@ -1126,6 +1126,25 @@ fn coating_column_gets_the_coatings_of_the_system() {
             "{coats:?}"
         );
     }
+    // 系の膜ファイルが読めない（coatings が誤り）: 前の系の候補を残さない
+    let bad = std::env::temp_dir().join(format!("lb_gui_bad_coat_{}", std::process::id()));
+    std::fs::create_dir_all(&bad).unwrap();
+    let cof = bad.join("NO_SUCH.DAT").to_string_lossy().into_owned();
+    h.state_mut().c.doc.combo.coating_file = Some(cof);
+    let p = h.state().c.doc.combo.project();
+    h.state_mut().c.build_combo(p);
+    settle(&mut h);
+    h.state_mut()
+        .c
+        .msgs
+        .push(Msg::LensData(lens_data::Act::NeedCoatings));
+    settle(&mut h);
+    std::fs::remove_dir_all(&bad).ok();
+    assert!(
+        h.state().c.p.ld.coats.is_empty(),
+        "{:?}",
+        h.state().c.p.ld.coats
+    );
 }
 
 /// 値を変えない操作（表のセルを選ぶ・Shift+↓ で範囲を選ぶ）では組合せが変わらず、元に戻すの段も積まれない

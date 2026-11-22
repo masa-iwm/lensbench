@@ -108,9 +108,19 @@ pub fn remote_loader(dir: &Path, coat: &str) -> Option<PathBuf> {
     }
 }
 
-/// 膜のモデルを置き場から取れるようにする（CLI・serve・GUI の起動時）
+/// [`lensbench_core::coating::set_remote_lister`] に渡す口: フォルダの目録の膜の名前（読めなければ空）
+pub fn remote_names(dir: &Path) -> Vec<String> {
+    read_index(dir)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// 膜のモデルを置き場から取れるようにし、膜の欄の候補に置き場の膜を出す（CLI・serve・GUI の起動時）
 pub fn install() {
     lensbench_core::coating::set_remote_loader(remote_loader);
+    lensbench_core::coating::set_remote_lister(remote_names);
 }
 
 /// フォルダの `.lbcb` の目録を作り（`out`、省略でフォルダの `lbcb-remote.json`）、置き場に無いものを上げる

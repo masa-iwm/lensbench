@@ -611,6 +611,12 @@ fn coating_models_come_from_the_store_when_missing() {
     // 口が無いうちは読めない
     assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
     lensbench_cad::coat_remote::install();
+    // 膜の欄の候補にも置き場の膜が出る（フォルダに無くても）
+    let ch = lensbench_core::coating::coat_choices(&s);
+    assert!(
+        ch.iter().any(|c| c.coat == "ZEC_R" && c.origin == "store"),
+        "{ch:?}"
+    );
     let c = Coatings::for_system(&s).unwrap();
     assert_eq!(c.auto.len(), 1, "{:?}", c.auto);
     assert!(

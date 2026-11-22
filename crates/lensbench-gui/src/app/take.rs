@@ -99,6 +99,8 @@ impl Core {
             *error = Some(e.to_string());
         }
         match &d.tag {
+            // 系の膜ファイルが読めない: 前に開いた系の膜の候補を残さない
+            Tag::Coatings => self.p.ld.coats = Default::default(),
             Tag::Analyze(id) | Tag::Rays(id) => {
                 self.results.entry(*id).or_default().error = Some(e.to_string());
             }
@@ -618,6 +620,7 @@ pub(super) fn coat_choices(v: &Value) -> Vec<lens_data::GlassChoice> {
             let name = c["coat"].as_str()?.to_string();
             let desc = match c["origin"].as_str().unwrap_or_default() {
                 "system" => tr("system settings").to_string(),
+                "store" => tr("shared store").to_string(),
                 o => o.to_string(),
             };
             Some(lens_data::GlassChoice { name, desc })

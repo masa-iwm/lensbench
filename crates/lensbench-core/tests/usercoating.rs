@@ -281,7 +281,7 @@ fn a_set_reads_model_measured_and_dat_files() {
     assert_eq!(e.coating_names(), ["EXT_AR", "ZEC_A", "ZEC_B"]);
 }
 
-/// 系で使える膜の一覧（GUI の膜の欄の候補）: 系に書いた表・登録した一覧・膜ファイル・フォルダのファイルの順で、
+/// 系で使える膜の一覧（GUI の膜の欄の候補）: 系に書いた表・登録した一覧・膜ファイル・フォルダのファイル・共有の置き場の順で、
 /// 同じ名前（大文字小文字は問わない）は先のものだけ。由来つき
 #[test]
 fn coat_choices_list_every_source_in_order() {
@@ -316,6 +316,15 @@ fn coat_choices_list_every_source_in_order() {
         let v = names(&s);
         assert_eq!(v[0], ("EXT_AR".to_string(), "EXAMPLE".to_string()));
         assert_eq!(v.len(), 3, "{v:?}");
+    });
+    // フォルダの目録で共有の置き場から取る膜は最後に（フォルダにある名前は先のもの）
+    let mut e = Ext::default();
+    e.slot_mut::<lensbench_core::coating::RemoteCoatingNames>()
+        .0 = Some(|_| vec!["STORE_AR".to_string(), "folder_m".to_string()]);
+    ext::with(Arc::new(e), || {
+        let v = names(&s);
+        assert_eq!(v.len(), 4, "{v:?}");
+        assert_eq!(v[3], ("STORE_AR".to_string(), "store".to_string()));
     });
     // 膜ファイルの無い系は登録した一覧だけ
     let (s0, _, _) = with_coat("EXT_AR", None);

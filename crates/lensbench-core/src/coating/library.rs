@@ -135,12 +135,13 @@ pub struct Coatings {
 }
 
 /// 系で使える膜の名前と由来（GUI の膜の欄の候補など）。[`Coatings::for_system`] の優先の順と同じ並び:
-/// 系に書いた表、登録した膜の一覧、膜ファイル（COFN）、膜ファイルのフォルダの膜のファイル。同じ名前（大文字小文字は問わない）は先のものだけ
+/// 系に書いた表、登録した膜の一覧、膜ファイル（COFN）、膜ファイルのフォルダの膜のファイル、フォルダの目録で共有の置き場から
+/// 取る膜。同じ名前（大文字小文字は問わない）は先のものだけ
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CoatChoice {
     /// 膜の名前
     pub coat: String,
-    /// 由来（`system`、登録した一覧の名前、膜ファイル・フォルダのファイルの名前）
+    /// 由来（`system`、登録した一覧の名前、膜ファイル・フォルダのファイルの名前、共有の置き場は `store`）
     pub origin: String,
 }
 
@@ -206,6 +207,14 @@ pub fn coat_choices(sys: &System) -> Vec<CoatChoice> {
         };
         if exts.contains(&e.to_string_lossy().to_ascii_lowercase()) {
             push(&stem.to_string_lossy(), &file_name(&p));
+        }
+    }
+    // フォルダに無く共有の置き場から取る膜（[`super::set_remote_lister`]）
+    if let Some(list) = super::remote::remote_lister() {
+        let mut names = list(dir);
+        names.sort();
+        for n in names {
+            push(&n, "store");
         }
     }
     out
