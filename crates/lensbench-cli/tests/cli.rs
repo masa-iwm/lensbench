@@ -493,6 +493,120 @@ fn project_beams() {
         v["rms_waves"].as_f64().unwrap()
     };
     assert_eq!(fringes(&["--beam-path", "RT"]), fringes(&[]));
+    // 光束の表: 参照（RT）との光路長の差。分岐比 0.5 の往復で透過率 0.25、被検の腕は膜なしの玉を往復する
+    // 4 面のフレネルの分だけ小さい（N-BK7 で 1 面約 4 %）
+    let (ok, out, err) = run(&["beams", p, "--glass-dir", "tests/glass", "--json"]);
+    assert!(ok, "{err}");
+    let t: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(t["reference"], "ref");
+    let rows = t["beams"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1]["opl_difference_mm"].as_f64(), Some(0.0));
+    for r in rows {
+        assert_eq!(r["vignetted"].as_f64(), Some(0.0), "{r}");
+    }
+    let tr = |i: usize| rows[i]["transmission"].as_f64().unwrap();
+    assert!((tr(1) - 0.25).abs() < 1e-9, "{}", tr(1));
+    assert!((tr(0) / 0.25 - 0.96f64.powi(4)).abs() < 0.01, "{}", tr(0));
+    let d = rows[0]["opl_difference_mm"].as_f64().unwrap();
+    let want =
+        rows[0]["chief_opl_mm"].as_f64().unwrap() - rows[1]["chief_opl_mm"].as_f64().unwrap();
+    assert!(d != 0.0 && (d - want).abs() < 1e-12, "{d} {want}");
+    // 光束を重ねて描く（光束の名前が構成の名前）。--states とは一緒に使えない
+    let svg = dir.join("b.svg");
+    let svg_s = svg.to_str().unwrap();
+    let (ok, _, err) = run(&[
+        "layout",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "all",
+        "--out",
+        svg_s,
+    ]);
+    assert!(ok, "{err}");
+    let body = std::fs::read_to_string(&svg).unwrap();
+    assert!(body.contains("test") && body.contains("ref"), "{body}");
+    let (ok, _, err) = run(&[
+        "layout",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "all",
+        "--states",
+        "x",
+        "--out",
+        svg_s,
+    ]);
+    assert!(!ok && err.contains("--beams can't be combined"), "{err}");
+    let (ok, _, err) = run(&[
+        "layout",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "nope",
+        "--out",
+        svg_s,
+    ]);
+    assert!(!ok && err.contains("no beam nope (test, ref)"), "{err}");
+    // 光束ごとに 1 構成の .zmx
+    let z = dir.join("b.zmx");
+    let (ok, _, err) = run(&[
+        "zmx",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "all",
+        "--out",
+        z.to_str().unwrap(),
+    ]);
+    assert!(ok, "{err}");
+    let raw = std::fs::read(&z).unwrap();
+    let u16s: Vec<u16> = raw[2..]
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let body = String::from_utf16(&u16s).unwrap();
+    assert!(
+        body.lines().any(|l| l.trim().starts_with("MNUM 2")),
+        "{body}"
+    );
+    // 経路を選んで読んでも、重ねる光束は光束の経路で展開する
+    let one = |extra: &[&str]| {
+        let mut a = vec![
+            "zmx",
+            p,
+            "--glass-dir",
+            "tests/glass",
+            "--out",
+            z.to_str().unwrap(),
+        ];
+        a.extend(extra);
+        let (ok, _, err) = run(&a);
+        assert!(ok, "{err}");
+        std::fs::read(&z).unwrap()
+    };
+    let test = one(&["--beams", "test"]);
+    assert_eq!(one(&["--beams", "test", "--beam-path", "RT"]), test);
+    assert_eq!(one(&["--states", "test", "--beam-path", "RT"]), test);
+    assert_ne!(one(&["--beams", "ref"]), test);
+    let (ok, _, err) = run(&[
+        "layout",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--states",
+        "test",
+        "--beam-paths",
+        "RT",
+        "--out",
+        svg_s,
+    ]);
+    assert!(!ok && err.contains("beam test has its own path"), "{err}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

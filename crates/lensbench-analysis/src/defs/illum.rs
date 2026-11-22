@@ -238,7 +238,7 @@ pub struct RelIllumOut {
 /// 視野 f の瞳の上で平均した強度の透過率（膜・フレネル、系の入射偏光。偏光なし = 光線に垂直な面の正規直交の基底の 2 つの偏光の平均、
 /// [`crate::polgrid::basis_coeffs`]）。入力の偏光の強度を 1 にそろえる（斜めの光線で射影の分だけ小さく出さない。
 /// OpticStudio の Relative Illumination の Use Polarization と同じく、軸外でも透過率だけの比になる）
-fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
+pub fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
     use lensbench_core::coating::C64;
     use lensbench_core::system::{Launch, PolIn, RecSel};
     let co = lensbench_core::coating::Coatings::for_system(s)?;

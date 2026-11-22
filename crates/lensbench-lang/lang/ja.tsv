@@ -1810,6 +1810,11 @@ With --beam-paths, --states or --cfgs, put one configuration per item into a mul
 .zmx multi-configurations (from 1, comma-separated, all for every one)	.zmx の多重構成（1 始まり、カンマ区切り、all で全部）
 Project states (comma-separated names, all for every one)	プロジェクトの状態（名前のカンマ区切り、all で全部）
 Beam splitter paths (comma-separated strings of T and R, all for every possible path)	ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+Project beams (comma-separated names, all for every beam not marked off)	プロジェクトの光束（名前のカンマ区切り、all で off でない光束の全部）
+--beams can't be combined with --states or --beam-paths	--beams は --states・--beam-paths と一緒に使えません
+the project has no beams (or every beam is off)	プロジェクトに光束がありません（またはすべて off です）
+no beam {x} ({})	光束 {x} はありません（{}）
+grid {} (3 or more)	grid {}（3 以上）
 .zmx to write	エクスポート .zmx
 Optimize variables with damped least squares (DLS)	減衰最小二乗（DLS）で変数を最適化する
 The merit function is the RMS spot or RMS wavefront over all fields (field weights) and wavelengths, plus the terms of --term and --terms. --out writes the optimized system to .zmx	メリットファンクションは全視野（視野のウェイト）・多色の RMS スポットか RMS 波面に、--term・--terms の項を追加したもの。 --out で最適化したシステムを .zmx にエクスポート
@@ -2053,6 +2058,15 @@ Lens mode: show the system split into lenses, mirrors, coordinate breaks, other 
 Lens numbers to flip (from 1, comma-separated)	反転するレンズの番号（1 始まり、カンマ区切り）
 .zmx to write the rebuilt system to	組み直したシステムをエクスポート .zmx
 Monochromatic interferogram: overlay the light of two configurations or states	単色の干渉縞: 2 つの構成か状態の光を重ねる
+Beam table: transmission, vignetting and chief-ray optical path of each beam of a project	光束の表: プロジェクトの光束ごとの透過・ケラレ・主光線の光路長
+Beam table for the beams of a project file (beams: named beam splitter paths): for each beam, the pupil-averaged coating and Fresnel transmission (unpolarized, including the splitting ratio), the fraction of vignetted rays of the pupil grid, the chief-ray optical path to the image surface and its difference from the reference beam. Beams marked off are left out unless all	プロジェクトファイルの光束（beams: 名前を付けたビームスプリッターの経路）の表: 光束ごとに、瞳で平均したコーティング・フレネルの透過率（偏光なし、分岐比を含む）、瞳のグリッドのうちケラレた光線の割合、像面までの主光線の光路長と参照の光束との差。off の光束は all でなければ除く
+Side of the pupil ray grid for the transmission and the vignetting	透過率とケラレを求める瞳の光線のグリッドの一辺
+Reference beam for the optical path difference (the first beam with role reference if omitted, else the first beam)	光路長の差の基準の光束（省略は role が reference の最初の光束、無ければ最初の光束）
+Include the beams marked off	off の光束も含める
+beams are only for project files (.json)	光束はプロジェクトファイル（.json）だけです
+the project has no beams	プロジェクトに光束がありません
+every beam is off (give all to include them)	光束がすべて off です（含めるには all を渡してください）
+no beam {n} ({names})	光束 {n} はありません（{names}）
 Beam 1 (sample): a configuration number (from 1) for .zmx, a state or beam name for a project file	光束 1（試料）: .zmx は構成の番号（1 始まり）、プロジェクトファイルは状態か光束の名前
 Beam 2 (reference): the same; 0 or ref for the reference sphere (mode pupil only)	光束 2（参照）: 同上。0 か ref で参照球（mode pupil だけ）
 On the pupil or on the image surface	瞳上か像面上か

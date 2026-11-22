@@ -28,6 +28,8 @@ pub struct LayoutReq {
     pub cfgs: Option<String>,
     pub states: Option<String>,
     pub beam_paths: Option<String>,
+    /// 重ねる光束（名前のカンマ区切りか "all"）
+    pub beams: Option<String>,
     /// 構成 k をずらす量 [dx, dy, dz]（空ならずらさない）
     pub offset: Vec<f64>,
 }
@@ -135,6 +137,7 @@ impl LayoutReq {
             cfgs: one("cfgs")?,
             states: one("states")?,
             beam_paths: one("beam_paths")?,
+            beams: one("beams")?,
             offset,
         })
     }
@@ -153,6 +156,7 @@ impl LayoutReq {
             cfgs: self.cfgs.clone(),
             states: self.states.clone(),
             paths: self.beam_paths.clone(),
+            beams: self.beams.clone(),
         }
     }
 

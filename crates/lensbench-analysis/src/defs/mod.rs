@@ -19,7 +19,7 @@ pub use basic::{
     ZernikeOut, ZernikeRow,
 };
 pub use beam::{GaussOut, GaussRow, Orientation as GaussOrientation};
-pub use illum::{FootprintOut, FootprintRow, RelIllumOut, VignettingOut};
+pub use illum::{mean_transmission, FootprintOut, FootprintRow, RelIllumOut, VignettingOut};
 pub use image::{
     Plane as PsfPlane, PsfAxes, PsfOut, PsfPoint, PsfSampling, Reference as RmsReference, RmsOut,
     RmsRow, Vs as RmsVs,

@@ -28,12 +28,14 @@ mod coat_cmd;
 use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
+mod config_sel;
 pub mod ext;
 mod run;
 mod serve;
 mod serve_ipc;
 mod watch;
 mod zmx_merit;
+pub(crate) use config_sel::{overlay_systems, ConfigSel};
 
 use lensbench_design::dls_spec::{Jac, Merit, OptimizeParams, Reference, VarSpec};
 use lensbench_engine::layout::{self, Draw, Pick, RaySel, View};
@@ -105,39 +107,6 @@ impl Common {
             ..Default::default()
         }
     }
-}
-
-/// 重ね描き・多重構成の書き出しで並べる構成
-#[derive(Args, Clone, Default)]
-pub(crate) struct ConfigSel {
-    /// .zmx multi-configurations (from 1, comma-separated, all for every one)
-    #[arg(long)]
-    cfgs: Option<String>,
-    /// Project states (comma-separated names, all for every one)
-    #[arg(long)]
-    states: Option<String>,
-    /// Beam splitter paths (comma-separated strings of T and R, all for every possible path)
-    #[arg(long = "beam-paths")]
-    paths: Option<String>,
-}
-
-impl ConfigSel {
-    fn overlay(&self) -> lensbench_engine::load::Overlay {
-        lensbench_engine::load::Overlay {
-            cfgs: self.cfgs.clone(),
-            states: self.states.clone(),
-            paths: self.paths.clone(),
-        }
-    }
-}
-
-/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）。読んだときの注意は標準エラーへ
-fn overlay_systems(c: &Common, l: &ConfigSel) -> lensbench_core::Result<Vec<(String, System)>> {
-    let (systems, notes) = lensbench_engine::load::overlay_systems(&c.spec(), &l.overlay())?;
-    for w in notes {
-        eprintln!("{}", lensbench_core::i18n::warning(&w));
-    }
-    Ok(systems)
 }
 
 #[derive(Subcommand)]

@@ -230,12 +230,14 @@ pub struct Overlay {
     pub states: Option<String>,
     /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
     pub paths: Option<String>,
+    /// プロジェクトの光束（名前のカンマ区切り、all で既定の組から外していない光束の全部）
+    pub beams: Option<String>,
 }
 
 impl Overlay {
     /// どれか選んだか（選んでいなければ今の系 1 つ）
     pub fn any(&self) -> bool {
-        self.cfgs.is_some() || self.states.is_some() || self.paths.is_some()
+        self.cfgs.is_some() || self.states.is_some() || self.paths.is_some() || self.beams.is_some()
     }
 }
 
@@ -351,9 +353,35 @@ pub(crate) fn overlay_in(
     let Some(p) = src.project() else {
         return Err("--states and --beam-paths are only for project files (.json)".into());
     };
-    let states: Vec<Option<String>> = match &l.states {
-        None => vec![c.state.clone()],
-        Some(v) if v.eq_ignore_ascii_case("all") => {
+    if l.beams.is_some() && (l.states.is_some() || l.paths.is_some()) {
+        return Err("--beams can't be combined with --states or --beam-paths".into());
+    }
+    let by_state = l.states.is_some() || l.beams.is_some();
+    let states: Vec<Option<String>> = match (&l.states, &l.beams) {
+        (_, Some(v)) if v.eq_ignore_ascii_case("all") => {
+            let n: Vec<Option<String>> = p
+                .beams
+                .iter()
+                .filter(|b| !b.off)
+                .map(|b| Some(b.name.clone()))
+                .collect();
+            if n.is_empty() {
+                return Err("the project has no beams (or every beam is off)".into());
+            }
+            n
+        }
+        (_, Some(v)) => v
+            .split(',')
+            .map(|x| {
+                let x = x.trim();
+                match p.beam(x) {
+                    Some(_) => Ok(Some(x.to_string())),
+                    None => Err(format!("no beam {x} ({})", p.beam_names().join(", "))),
+                }
+            })
+            .collect::<Result<_, _>>()?,
+        (None, None) => vec![c.state.clone()],
+        (Some(v), None) if v.eq_ignore_ascii_case("all") => {
             let n: Vec<Option<String>> = p
                 .state_names()
                 .into_iter()
@@ -364,7 +392,7 @@ pub(crate) fn overlay_in(
             }
             n
         }
-        Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
+        (Some(v), None) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
     };
     let cat = LensCatalog::load_registered(&c.lens_catalog)?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
@@ -387,7 +415,15 @@ pub(crate) fn overlay_in(
             Some(n) => p.with_state(n)?,
             None => p.clone(),
         };
+        // 経路を持つ光束は自分の経路で展開する（読み込んだ系の経路は使わない。--beam-paths と一緒には誤り）
+        let own = st
+            .as_deref()
+            .is_some_and(|n| p.beam(n).is_some_and(|b| b.path.is_some()));
+        if let Some(n) = st.as_deref() {
+            p.beam_takes_path(n, l.paths.is_some())?;
+        }
         let paths: Vec<Option<String>> = match &l.paths {
+            None if own => vec![None],
             None => vec![c.path.clone()],
             Some(v) if v.eq_ignore_ascii_case("all") => {
                 let v = lensbench_project::paths_cached(&ps, &env, &cache)?;
@@ -400,7 +436,7 @@ pub(crate) fn overlay_in(
         };
         for pa in &paths {
             let mut name: Vec<&str> = Vec::new();
-            if l.states.is_some() {
+            if by_state {
                 name.extend(st.as_deref());
             }
             if l.paths.is_some() {

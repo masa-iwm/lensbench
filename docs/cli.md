@@ -40,6 +40,8 @@ lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5
 lensbench layout   system.zmx --out layout.svg --out layout.png --out lens.glb --out lens.step
 lensbench layout   project.json --beam-paths all --out paths.svg     # BS の経路を重ねて描く（--states・.zmx は --cfgs も）
 lensbench zmx      project.json --beam-paths all --out paths.zmx     # 経路ごとに 1 構成の多重構成の .zmx
+lensbench layout   project.json --beams all --out beams.svg          # プロジェクトの光束（beams）を重ねて描く
+lensbench beams    project.json                                      # 光束の表（透過・けられ・主光線の光路長と参照との差）
 lensbench rays     system.zmx --fan grid --rays 7 --save rays.npz
 lensbench zernike  system.zmx --save zernike.csv
 lensbench ghost    system.zmx --coatings coat_models.lbcm --out ghosts
