@@ -398,7 +398,7 @@ fn wave_weights_do_not_cross_kinks() {
     let wls: Vec<f64> = (0..15).map(|i| 0.4 + 0.025 * i as f64).collect();
     assert!(wls.iter().any(|&w| (w - 0.5).abs() < 1e-12));
     let ev = |wl: f64, k: &[f64]| {
-        let (i, w) = wave_weights(&wls, wl, k).unwrap();
+        let (i, w) = wave_weights(&wls, wl, k, 4).unwrap();
         w.iter()
             .enumerate()
             .map(|(a, wa)| wa * f(wls[i + a]))
@@ -561,4 +561,236 @@ fn table_phase_unwrap() {
     assert_eq!(v, vec![170.0, 179.0, 181.0, 190.0, 175.0]);
     let x = interp(0.55, &[0.5, 0.6], &[179.0, 181.0]);
     assert!((x - 180.0).abs() < 1e-12);
+}
+
+/// 厚い多層膜（高・低の屈折率の 40 層、分散あり、高い側に少し吸収）。波長 [µm] → 層
+fn thick_stack(wl: f64) -> Vec<(C64, f64)> {
+    let nh = |w: f64| C64::new(2.25 + 0.025 / (w * w), -2e-4);
+    let nl = |w: f64| C64::new(1.45 + 0.0036 / (w * w), 0.0);
+    (0..40)
+        .map(|j| {
+            let h = j % 2 == 0;
+            let n0 = if h { nh(0.55) } else { nl(0.55) };
+            let d = 0.55 / 4.0 / n0.re * (1.0 + 0.08 * (j as f64 * 0.7).sin());
+            (if h { nh(wl) } else { nl(wl) }, d)
+        })
+        .collect()
+}
+
+/// 膜ファイルの層と同じ並べ方で、層から直接計算する境界（prepare の Stack と同じ）
+fn stack_iface(key: &str, wl: f64, n1: f64, n2: f64, phase: PhaseConvention) -> Iface {
+    let k = IfaceKey::parse(key);
+    let to_mirror = k.after == After::Mirror;
+    let reflect = k.is_reflect();
+    let mut layers = thick_stack(wl);
+    let kind = if to_mirror {
+        let ns = layers.pop().unwrap().0;
+        Kind::Stack {
+            layers,
+            ns,
+            n_out: n1,
+            layer_phase: true,
+            front: true,
+        }
+    } else if reflect {
+        let front = !k.after_is_air();
+        if !front {
+            layers.reverse();
+        }
+        Kind::Stack {
+            layers,
+            ns: C64::new(n2, 0.0),
+            n_out: n1,
+            layer_phase: false,
+            front,
+        }
+    } else {
+        if k.after_is_air() {
+            layers.reverse();
+        }
+        Kind::Stack {
+            layers,
+            ns: C64::new(n2, 0.0),
+            n_out: if k.after_is_air() { n2 } else { n1 },
+            layer_phase: phase == PhaseConvention::OpticStudio,
+            front: false,
+        }
+    };
+    Iface {
+        kind,
+        mirror: to_mirror || reflect,
+        n1,
+        wl,
+    }
+}
+
+#[test]
+fn model_from_layers_matches_the_layers_for_a_thick_stack() {
+    // 1/λ を等間隔に 120 点、β² を等間隔に 300 点、近い 8 点の補間で、格子の間でも層からの直接計算と 1e-5 以内
+    let (w0, w1) = (0.45, 0.65);
+    let nw = 120;
+    let wls: Vec<f64> = (0..nw)
+        .rev()
+        .map(|i| 1.0 / (1.0 / w1 + (1.0 / w0 - 1.0 / w1) * i as f64 / (nw - 1) as f64))
+        .collect();
+    let btop: f64 = 1.44;
+    let betas: Vec<f64> = (0..300)
+        .map(|i| (btop * btop * i as f64 / 299.0).sqrt())
+        .collect();
+    let md = model_from_layers(&|w| Ok(thick_stack(w)), &wls, &betas, &[], 8, 1.44, None).unwrap();
+    // 阻止帯では |M̃| が大きい
+    let big =
+        md.m.iter()
+            .flatten()
+            .flatten()
+            .flatten()
+            .map(|z| z.norm())
+            .fold(0.0, f64::max);
+    assert!(big > 1e6, "{big}");
+    let bin = format_models_bin(&[("THICK", &md)]).unwrap();
+    assert!(bin.starts_with(MODEL_BIN_HEADER4));
+    let back = parse_models_bin(&bin).unwrap().remove(0).1;
+    assert_eq!(back.order, 8);
+    for (a, b) in
+        md.m.iter()
+            .flatten()
+            .flatten()
+            .flatten()
+            .zip(back.m.iter().flatten().flatten().flatten())
+    {
+        assert!((a - b).norm() <= 1e-9 * a.norm().max(1.0), "{a} {b}");
+    }
+    // 格子の間の波長・角度で、透過（両向き・両方の位相の約束）と屈折面の反射を比べる
+    let cases = [
+        ("THICK|AIR|G", 1.0, 1.52),
+        ("THICK|G|AIR", 1.52, 1.0),
+        ("THICK|G|G", 1.52, 1.52),
+        ("THICK|AIR|G|R", 1.0, 1.52),
+        ("THICK|G|AIR|R", 1.52, 1.0),
+    ];
+    let mut worst: f64 = 0.0;
+    for wl in [0.4537, 0.5011, 0.55, 0.5893, 0.6421] {
+        for phase in [PhaseConvention::OpticStudio, PhaseConvention::Physical] {
+            for (key, n1, n2) in cases {
+                let m = back.iface(key, wl, n1, n2, phase).unwrap();
+                let s = stack_iface(key, wl, n1, n2, phase);
+                for i in 0..=40 {
+                    let b = 1.43 * i as f64 / 40.0 + 0.0017;
+                    if b >= n1.min(n2) {
+                        continue;
+                    }
+                    let th = (b / n1).asin();
+                    let (a, c) = (m.eval(th).unwrap(), s.eval(th).unwrap());
+                    for p in 0..2 {
+                        worst = worst.max((a[p] - c[p]).norm());
+                    }
+                }
+            }
+        }
+    }
+    assert!(worst < 1e-5, "{worst}");
+}
+
+#[test]
+fn model_from_layers_mirror_matches_the_layers() {
+    // 鏡の表（基準の媒質 2.05 から）を Y で入射側の媒質へ換算すると、膜ファイルの鏡（最後の層が基板）と合う
+    let layers = |w: f64| -> Vec<(C64, f64)> {
+        vec![
+            (C64::new(1.38 + 0.002 / (w * w), 0.0), 0.1),
+            (C64::new(2.1 + 0.02 / (w * w), 0.0), 0.06),
+            (C64::new(1.46, 0.0), 0.09),
+            (C64::new(0.9, -6.5), 0.2),
+        ]
+    };
+    let wls: Vec<f64> = (0..41).map(|i| 0.45 + 0.005 * i as f64).collect();
+    let mb: Vec<f64> = (0..200).map(|i| 2.0 * i as f64 / 199.0).collect();
+    let g = MirrorGrid {
+        n_ref: 2.05,
+        wavelengths: wls.clone(),
+        betas: mb,
+    };
+    let md = model_from_layers(
+        &|w| Ok(layers(w)),
+        &wls,
+        &[0.0, 0.3, 0.6, 0.85],
+        &[],
+        8,
+        0.85,
+        Some(&g),
+    )
+    .unwrap();
+    for wl in [0.4512, 0.5, 0.5577] {
+        for n1 in [1.0, 1.52] {
+            let m = md
+                .iface("X|AIR|MIRROR", wl, n1, 1.0, PhaseConvention::OpticStudio)
+                .unwrap();
+            let mut ls = layers(wl);
+            let ns = ls.pop().unwrap().0;
+            let s = Iface {
+                kind: Kind::Stack {
+                    layers: ls,
+                    ns,
+                    n_out: n1,
+                    layer_phase: true,
+                    front: true,
+                },
+                mirror: true,
+                n1,
+                wl,
+            };
+            for i in 0..=30 {
+                let th = (i as f64 * 2.9).to_radians();
+                let (a, c) = (m.eval(th).unwrap(), s.eval(th).unwrap());
+                for p in 0..2 {
+                    assert!((a[p] - c[p]).norm() < 1e-6, "{wl} {n1} {th}: {a:?} {c:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn order_zero_models_keep_lbcm3() {
+    // 従来の補間のモデル（値も小さい）は今まで通り LBCM 3 で書く
+    let layers = |_w: f64| -> Result<Vec<(C64, f64)>> { Ok(vec![(C64::new(1.38, 0.0), 0.1)]) };
+    let wls = [0.5, 0.55, 0.6, 0.65];
+    let betas = [0.0, 0.3, 0.6, 0.9, 1.2];
+    let md = model_from_layers(&layers, &wls, &betas, &[], 0, 1.3, None).unwrap();
+    let bin = format_models_bin(&[("A", &md)]).unwrap();
+    assert!(bin.starts_with(MODEL_BIN_HEADER));
+    let mut m8 = md.clone();
+    m8.order = 8;
+    let txt = format_models(&[("A", &m8)]);
+    assert!(txt.contains("\nORDER 8\n"));
+    assert_eq!(parse_models(&txt).unwrap()[0].1.order, 8);
+    assert!(model_from_layers(&layers, &wls, &betas, &[], 3, 1.3, None).is_err());
+}
+
+#[test]
+fn lbcm4_keeps_huge_values() {
+    // LBCM 3 の整数に入らない値（1e8 超）は LBCM 4 で asinh にして持ち、相対の差が刻みほどで戻る
+    let layers = |_w: f64| -> Result<Vec<(C64, f64)>> { Ok(vec![(C64::new(1.38, 0.0), 0.1)]) };
+    let wls = [0.5, 0.55, 0.6, 0.65];
+    let betas = [0.0, 0.3, 0.6, 0.9, 1.2];
+    let mut md = model_from_layers(&layers, &wls, &betas, &[], 0, 1.3, None).unwrap();
+    for (iw, mw) in md.m.iter_mut().enumerate() {
+        for (j, mj) in mw.iter_mut().enumerate() {
+            for z in mj.iter_mut().flatten() {
+                *z *= 10f64.powi(3 * (iw + j) as i32 + 10);
+            }
+        }
+    }
+    let bin = format_models_bin(&[("H", &md)]).unwrap();
+    assert!(bin.starts_with(MODEL_BIN_HEADER4));
+    let back = parse_models_bin(&bin).unwrap().remove(0).1;
+    assert_eq!(back.order, 0);
+    for (a, b) in
+        md.m.iter()
+            .flatten()
+            .flatten()
+            .flatten()
+            .zip(back.m.iter().flatten().flatten().flatten())
+    {
+        assert!((a - b).norm() <= 1e-9 * a.norm().max(1.0), "{a} {b}");
+    }
 }

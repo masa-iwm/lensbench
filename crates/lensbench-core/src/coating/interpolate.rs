@@ -34,31 +34,52 @@ pub(in crate::coating) fn wave_segment(
     Some((s, e))
 }
 
-/// 波長 wl での値: 近い 4 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）
+/// 波長 wl での値: 近い p 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）。
+/// 重みは点 i から p 点（区間の端では内側へ寄せる）
 pub(in crate::coating) fn wave_weights(
     wls: &[f64],
     wl: f64,
     kinks: &[f64],
+    p: usize,
 ) -> Option<(usize, Vec<f64>)> {
     let (s, e) = wave_segment(wls, wl, kinks)?;
     let seg = &wls[s..e];
     let n = seg.len();
-    let m = n.min(4);
+    let m = n.min(p);
     let i = seg
         .partition_point(|&w| w < wl)
-        .saturating_sub(2)
+        .saturating_sub(m / 2)
         .min(n - m);
     let x: Vec<f64> = seg[i..i + m].iter().map(|w| 1.0 / w).collect();
-    let xv = 1.0 / wl;
-    let w = (0..m)
+    Some((s + i, lagrange_weights(&x, 1.0 / wl)))
+}
+
+/// 点 x を通る多項式の q での値を、点の値の重み付きの和にする重み（ラグランジュ）
+pub(in crate::coating) fn lagrange_weights(x: &[f64], q: f64) -> Vec<f64> {
+    let m = x.len();
+    (0..m)
         .map(|a| {
             (0..m)
                 .filter(|&b| b != a)
-                .map(|b| (xv - x[b]) / (x[a] - x[b]))
+                .map(|b| (q - x[b]) / (x[a] - x[b]))
                 .product()
         })
-        .collect();
-    Some((s + i, w))
+        .collect()
+}
+
+/// 昇順の点 xs[..n] のうち q に近い p 点の始まり（端では内側へ寄せる）と、その多項式の重み
+pub(in crate::coating) fn local_weights(
+    xs: &[f64],
+    n: usize,
+    p: usize,
+    q: f64,
+) -> (usize, Vec<f64>) {
+    let m = n.min(p);
+    let i = xs[..n]
+        .partition_point(|&x| x < q)
+        .saturating_sub(m / 2)
+        .min(n - m);
+    (i, lagrange_weights(&xs[i..i + m], q))
 }
 
 /// 鏡の 1 つの波長の分岐点（[`mirror_branch`]）

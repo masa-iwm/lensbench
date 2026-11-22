@@ -7,6 +7,16 @@ pub const MODEL_HEADER: &str = "LBCM 2";
 
 /// 膜のモデルのバイナリ形式（[`parse_models_bin`]）の先頭
 pub const MODEL_BIN_HEADER: &[u8] = b"LBCM 3\n";
+/// 膜のモデルのバイナリ形式 LBCM 4 の先頭（補間の点の数・大きな値を持てる。[`parse_models_bin`]）
+pub const MODEL_BIN_HEADER4: &[u8] = b"LBCM 4\n";
+
+/// 先頭のバイトが膜のモデルのバイナリ形式（LBCM 3 か LBCM 4）か
+pub fn is_models_bin(b: &[u8]) -> bool {
+    b.starts_with(MODEL_BIN_HEADER) || b.starts_with(MODEL_BIN_HEADER4)
+}
+
+/// 補間の点の数（[`CoatModel::order`]）の範囲
+pub const MODEL_ORDER_RANGE: std::ops::RangeInclusive<usize> = 4..=12;
 /// LBCM 3 の末尾の注記の印（注記のある膜があるときだけ書く）
 pub const MODEL_BIN_NOTES: &[u8] = b"NOTES\n";
 
@@ -20,7 +30,9 @@ pub const MODEL_BIN_NOTES: &[u8] = b"NOTES\n";
 /// （n_o は膜の外側の媒質）。基板側から入る（後ろの媒質が空気）ときは M の対角を入れ替える。
 /// 鏡は基準の媒質 `n_ref` から測った r（位相 exp(2 i k n cos D_m) を外したもの）を持ち、
 /// アドミタンス Y = e_ref (1 − r) / (1 + r) を通して入射側の媒質へ換算する。
-/// 補間は β² で 3 次スプライン、波長は近い 4 点で 1/λ の 3 次。
+/// 補間は `order` が 0 なら β² で 3 次スプライン、波長は近い 4 点で 1/λ の 3 次。
+/// `order` が p（4〜12）なら、波長は近い p 点の 1/λ の多項式、β は近い p 点の β² の多項式
+/// （厚い膜でも少ない点で済む。層から作るモデルで使う）。
 #[derive(Debug, Clone, Default)]
 pub struct CoatModel {
     /// 透過の位相の厚さ D [µm]
@@ -40,6 +52,9 @@ pub struct CoatModel {
     pub kinks: Vec<f64>,
     /// 注記（空でなければ利用者に見せる。短い測定から作った近似のモデルの印など）。LBCM 2 の `NOTE` 行、LBCM 3 の末尾の `NOTES`
     pub note: String,
+    /// 透過の補間の点の数。0 は従来（波長は近い 4 点、β は β² のスプライン）、p（4〜12）は波長・β² とも近い p 点の多項式。
+    /// LBCM 2 の `ORDER` 行、LBCM 4 の値（LBCM 3 は 0 だけ）
+    pub order: usize,
 }
 
 /// 鏡のモデル（[`CoatModel`]）
@@ -78,6 +93,7 @@ impl CoatModel {
 /// D 透過の位相の厚さ [µm]
 /// BMAX 透過で使える β の上限
 /// KINKS 折れ目の波長 [µm] ...      （なくてもよい。波長の補間はこの点をまたがない）
+/// ORDER 補間の点の数 4〜12          （なくてもよい。[`CoatModel::order`]）
 /// NOTE 注記（なくてもよい。近似のモデルの印など、利用者に見せる 1 行）
 /// WAVE 波長 [µm]
 /// β  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（s）  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（p）     （19 列、β の昇順）
@@ -210,6 +226,15 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
             "NOTE" => {
                 c.model.note = line[4..].trim().to_string();
             }
+            "ORDER" if t.len() == 2 && !c.in_mirror => {
+                let p: usize = t[1].parse().map_err(|_| {
+                    Error::Invalid(format!("coating model line {}: ORDER {}", ln + 1, t[1]))
+                })?;
+                if !MODEL_ORDER_RANGE.contains(&p) {
+                    invalid!("coating model line {}: ORDER {p} is not 4 to 12", ln + 1);
+                }
+                c.model.order = p;
+            }
             "KINKS" => {
                 let mut k = t[1..].iter().map(|x| n(x)).collect::<Result<Vec<f64>>>()?;
                 k.sort_by(f64::total_cmp);
@@ -291,6 +316,9 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
         }
         if !m.wavelengths.is_empty() {
             writeln!(s, "D {:?}\nBMAX {:?}", m.d, m.bmax).expect("write to String");
+            if m.order != 0 {
+                writeln!(s, "ORDER {}", m.order).expect("write to String");
+            }
             for (iw, w) in m.wavelengths.iter().enumerate() {
                 writeln!(s, "WAVE {w:?}").expect("write to String");
                 for (j, b) in m.betas.iter().enumerate() {

@@ -289,7 +289,7 @@ pub(in crate::coating) enum Kind {
         cmax: f64,
         sp: Box<[Spline; 4]>,
     },
-    /// モデルの透過: β² のスプライン（偏光ごとに M̃ の実部・虚部 8 本と ψ）
+    /// モデルの透過: β² の補間（偏光ごとに M̃ の実部・虚部 8 本と ψ）
     Model {
         name: String,
         /// 層ごとの位相（ψ）を含める（[`PhaseConvention::OpticStudio`]）
@@ -301,7 +301,7 @@ pub(in crate::coating) enum Kind {
         d: f64,
         bmax: f64,
         b2: (f64, f64),
-        sp: Box<[[Spline; 9]; 2]>,
+        sp: Box<BetaInterp>,
     },
     /// 係数を計算で返す利用者の膜
     User {
@@ -325,6 +325,54 @@ pub(in crate::coating) enum Kind {
         /// 値が決まらない β² の区間（両端を含む）。ここでは notimpl
         band: Option<(f64, f64)>,
     },
+}
+
+/// モデルの透過の β² 方向の補間（ある波長で、偏光ごとに M̃ の実部・虚部 8 本と ψ）
+#[derive(Debug, Clone)]
+pub(in crate::coating) enum BetaInterp {
+    /// 従来（[`CoatModel::order`] が 0）: not-a-knot スプライン。ψ は BMAX までの節
+    Spline(Box<[[Spline; 9]; 2]>),
+    /// 近い p 点の β² の多項式。ψ は BMAX までの npsi 点だけで
+    Local {
+        b2: Vec<f64>,
+        v: [Vec<[f64; 9]>; 2],
+        npsi: usize,
+        p: usize,
+    },
+}
+
+impl BetaInterp {
+    /// β² = x での偏光ごとの M̃（M00 M10 M01 M11）。psi なら ψ も（BMAX の内側だけで呼ぶ）
+    pub(in crate::coating) fn eval(&self, x: f64, psi: bool) -> [([C64; 4], f64); 2] {
+        match self {
+            BetaInterp::Spline(sp) => {
+                // 18 本のスプラインは同じ β² の節（ψ はその前の部分）なので、区間は 1 回だけ探す
+                let i = sp[0][0].locate(x);
+                std::array::from_fn(|pol| {
+                    let s = &sp[pol];
+                    let m = std::array::from_fn(|c| {
+                        C64::new(s[2 * c].eval_at(i, x), s[2 * c + 1].eval_at(i, x))
+                    });
+                    (m, if psi { s[8].eval_at(i, x) } else { 0.0 })
+                })
+            }
+            BetaInterp::Local { b2, v, npsi, p } => {
+                let (i, w) = local_weights(b2, b2.len(), *p, x);
+                let pw = psi.then(|| local_weights(b2, *npsi, *p, x));
+                std::array::from_fn(|pol| {
+                    let vv = &v[pol];
+                    let sum = |c: usize| -> f64 {
+                        w.iter().enumerate().map(|(a, wa)| wa * vv[i + a][c]).sum()
+                    };
+                    let m = std::array::from_fn(|c| C64::new(sum(2 * c), sum(2 * c + 1)));
+                    let ps = pw.as_ref().map_or(0.0, |(i, w)| {
+                        w.iter().enumerate().map(|(a, wa)| wa * vv[i + a][8]).sum()
+                    });
+                    (m, ps)
+                })
+            }
+        }
+    }
 }
 
 impl CoatModel {
@@ -494,17 +542,22 @@ pub(in crate::coating) fn prepare_model(
     if !md.has_transmit() {
         notimpl!("coating model {name} has no transmission data");
     }
-    let Some((i, w)) = wave_weights(&md.wavelengths, wl, &md.kinks) else {
+    let p = if md.order == 0 { 4 } else { md.order };
+    let Some((i, w)) = wave_weights(&md.wavelengths, wl, &md.kinks, p) else {
         let why = out_of_waves(&md.wavelengths, wl);
         notimpl!("coating model {name}: wavelength {wl} µm {why}");
     };
     let b2: Vec<f64> = md.betas.iter().map(|b| b * b).collect();
-    let mut sp: Vec<[Spline; 9]> = Vec::new();
-    for pol in 0..2 {
-        let mut v: Vec<Spline> = Vec::new();
-        for c in 0..9 {
-            let ys: Vec<f64> = (0..md.betas.len())
-                .map(|j| {
+    // ψ は BMAX までの点だけで（その先は層の屈折率で発散する）
+    let npsi = md.betas.partition_point(|&b| b <= md.bmax + 1e-12);
+    if npsi < 4 {
+        invalid!("coating model {name}: too few β points up to BMAX (4 or more)");
+    }
+    // 波長で補間した、β の点ごと・偏光ごとの 9 つの値（M̃ の実部・虚部と ψ）
+    let vals: [Vec<[f64; 9]>; 2] = std::array::from_fn(|pol| {
+        (0..md.betas.len())
+            .map(|j| {
+                std::array::from_fn(|c| {
                     w.iter()
                         .enumerate()
                         .map(|(a, wa)| {
@@ -522,21 +575,29 @@ pub(in crate::coating) fn prepare_model(
                         })
                         .sum()
                 })
-                .collect();
-            if c == 8 {
-                // ψ は BMAX までの点だけで（その先は層の屈折率で発散する）
-                let m = md.betas.partition_point(|&b| b <= md.bmax + 1e-12);
-                if m < 4 {
-                    invalid!("coating model {name}: too few β points up to BMAX (4 or more)");
-                }
-                v.push(beta_spline(name, &b2[..m], &ys[..m])?);
-            } else {
-                v.push(beta_spline(name, &b2, &ys)?);
+            })
+            .collect()
+    });
+    let sp = if md.order == 0 {
+        let mut sp: Vec<[Spline; 9]> = Vec::new();
+        for v in &vals {
+            let mut s: Vec<Spline> = Vec::new();
+            for c in 0..9 {
+                let m = if c == 8 { npsi } else { b2.len() };
+                let ys: Vec<f64> = v[..m].iter().map(|x| x[c]).collect();
+                s.push(beta_spline(name, &b2[..m], &ys)?);
             }
+            sp.push(s.try_into().expect("9 splines"));
         }
-        sp.push(v.try_into().expect("9 splines"));
-    }
-    let [s0, s1]: [[Spline; 9]; 2] = sp.try_into().expect("2 sides");
+        BetaInterp::Spline(Box::new(sp.try_into().expect("2 sides")))
+    } else {
+        BetaInterp::Local {
+            b2,
+            v: vals,
+            npsi,
+            p: md.order,
+        }
+    };
     Ok(Kind::Model {
         name: name.to_string(),
         layer_phase: phase == PhaseConvention::OpticStudio,
@@ -546,7 +607,7 @@ pub(in crate::coating) fn prepare_model(
         d: md.d,
         bmax: md.bmax,
         b2: range(&md.betas),
-        sp: Box::new([s0, s1]),
+        sp: Box::new(sp),
     })
 }
 
@@ -802,11 +863,9 @@ impl Iface {
                         C64::new(0.0, 2.0 * k * self.n1 * c0 * d).exp()
                     };
                     let mut out = [C64::new(0.0, 0.0); 2];
+                    let mv = sp.eval(x, false);
                     for (pol, o) in out.iter_mut().enumerate() {
-                        let s = &sp[pol];
-                        let m: [C64; 4] = std::array::from_fn(|c| {
-                            C64::new(s[2 * c].eval(x), s[2 * c + 1].eval(x))
-                        });
+                        let m = mv[pol].0;
                         let (m00, m10, m01, m11) = if *reverse {
                             (m[3], m[1], m[2], m[0])
                         } else {
@@ -835,18 +894,14 @@ impl Iface {
                 let k = 2.0 * PI / self.wl;
                 let ph = C64::new(0.0, k * d * n_out / co).exp();
                 let mut out = [C64::new(0.0, 0.0); 2];
-                // 18 本のスプラインは同じ β² の節（ψ はその前の部分）なので、区間は 1 回だけ探す
-                let i = sp[0][0].locate(x);
+                let mv = sp.eval(x, *layer_phase);
                 for (pol, o) in out.iter_mut().enumerate() {
-                    let s = &sp[pol];
                     let g = if *layer_phase {
-                        C64::new(0.0, k * s[8].eval_at(i, x)).exp()
+                        C64::new(0.0, k * mv[pol].1).exp()
                     } else {
                         C64::new(1.0, 0.0)
                     };
-                    let m: [C64; 4] = std::array::from_fn(|c| {
-                        g * C64::new(s[2 * c].eval_at(i, x), s[2 * c + 1].eval_at(i, x))
-                    });
+                    let m: [C64; 4] = std::array::from_fn(|c| g * mv[pol].0[c]);
                     let (m00, m10, m01, m11) = if *reverse {
                         (m[3], m[1], m[2], m[0])
                     } else {

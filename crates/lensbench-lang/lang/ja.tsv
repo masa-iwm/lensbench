@@ -2154,9 +2154,9 @@ Measured tables to check the model against (LBCT format, more than one allowed; 
 Difference of the coefficients above which --check proposes wavelengths to add	--check で測り足す波長を出す、係数の差の閾値
 Smallest score to take as a kink candidate (how many times the median residual of a smooth fit). Lower finds weaker kinks	折れ目の候補にする強さの下限（なめらかなフィッティングの残差の中央値の何倍か）。下げると弱い折れ目も拾う
 Make a coating model (LBCM) smaller	コーティングのモデル（LBCM）を小さくする
-Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)	バイナリ（LBCM 3、値を 1e-9 刻み・ミラーは 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）と同じに扱える
-Original model (LBCM 2 or 3)	元のモデル（LBCM 2 か 3）
-Model to write (LBCM 3)	エクスポートするモデル（LBCM 3）
+Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors; LBCM 4 when a model has ORDER or values over 1e8). Read the same as LBCM 2 (text)	バイナリ（LBCM 3、値を 1e-9 刻み・ミラーは 1e-12 刻みの整数にして縮めたもの。ORDER を持つか値が 1e8 を超えるモデルがあれば LBCM 4）で書く。読むときは LBCM 2（テキスト）と同じに扱える
+Original model (LBCM 2, 3 or 4)	元のモデル（LBCM 2・3・4）
+Model to write (LBCM 3 or 4)	エクスポートするモデル（LBCM 3 か 4）
 Distance to propagate (measured along the propagation direction)	伝える距離（伝搬の向きに測る）
 Half width of the input grid (the extent of the rays and aperture if omitted)	入力のグリッドの半幅（省略で光線と開口の範囲）
 Half width of the output grid (automatic if omitted)	出力のグリッドの半幅（省略で自動）
@@ -2790,3 +2790,13 @@ nd and vd offsets need a glass or a model glass (nd, vd), not {}	nd・vd のず�
 nd and vd offsets need a glass with dispersion (vd {vd})	nd・vd のずれには分散のある硝材が要ります（vd {vd}）
 surface {j}: nd and vd offsets need a glass or a model glass, not a GRIN surface	面 {j}: nd・vd のずれには硝材かモデルガラスが要ります（屈折率分布の面には使えません）
 paraxial focus compensation: the marginal ray is parallel to the axis after surface {m}	近軸の焦点の補償: 面 {m} の後でマージナル光線が光軸と平行です
+the value block of the coating model (LBCM 4) has an unknown transform {x}	コーティングのモデル（LBCM 4）の値のブロックに未知の変換 {x} があります
+the coating model (LBCM 4) has a value that is not finite	コーティングのモデル（LBCM 4）に有限でない値があります
+the coating model doesn't start with LBCM 3 or LBCM 4	コーティングのモデルが LBCM 3 か LBCM 4 で始まっていません
+coating model from layers: the interpolation order {order} is not 0 or 4 to 12	層から作るコーティングのモデル: 補間の点の数 {order} が 0 か 4〜12 ではありません
+coating model from layers: the wavelengths or β are not ascending, or there are fewer than 4 β points	層から作るコーティングのモデル: 波長か β が昇順でない、または β が 4 点より少ないです
+coating model from layers: no layers	層から作るコーティングのモデル: 層がありません
+coating model from layers: the total thickness changes with the wavelength	層から作るコーティングのモデル: 全体の厚みが波長で変わります
+coating model from layers: the characteristic matrix is not finite at {wl} µm, β {b}	層から作るコーティングのモデル: {wl} µm・β {b} で特性行列が有限ではありません
+coating model from layers: the mirror wavelengths or β are not ascending, or there are fewer than 4 β points	層から作るコーティングのモデル: ミラーの波長か β が昇順でない、または β が 4 点より少ないです
+coating model from layers: the mirror β {b} is not below the reference index {}	層から作るコーティングのモデル: ミラーの β {b} が基準の屈折率 {} より小さくありません

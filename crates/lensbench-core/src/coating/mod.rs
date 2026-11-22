@@ -22,6 +22,7 @@ use std::f64::consts::PI;
 use std::path::{Path, PathBuf};
 
 mod format;
+mod from_layers;
 mod iface;
 mod interpolate;
 mod library;
@@ -35,6 +36,7 @@ pub use format::dat::*;
 pub use format::lbcb::*;
 pub use format::lbcm::*;
 pub use format::lbct::*;
+pub use from_layers::*;
 pub use iface::*;
 pub use interpolate::*;
 pub use library::*;

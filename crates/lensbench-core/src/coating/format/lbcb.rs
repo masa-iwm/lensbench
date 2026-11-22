@@ -1,4 +1,4 @@
-//! 特性行列モデル LBCM 3（バイナリ）の符号化・復号と読み書き
+//! 特性行列モデル LBCM 3・LBCM 4（バイナリ）の符号化・復号と読み書き
 
 use super::super::*;
 
@@ -7,6 +7,11 @@ pub const MODEL_BIN_QUANTUM: f64 = 1e-9;
 /// LBCM 3 の鏡の r の刻み。鏡の補間は |r| = 1 からのずれ [`MIRROR_TIR_TOL`] 未満を全反射とみて分岐点を探す（`mirror_branch`）ので、
 /// それより十分細かくする
 pub const MODEL_BIN_QUANTUM_MIRROR: f64 = 1e-12;
+
+/// LBCM 4 の値の塊で、値を asinh にしてから刻む（|v| ≤ 1 では差が刻みほど、大きい値では相対の差が刻みほど）
+const TRANSFORM_ASINH: u8 = 1;
+/// LBCM 4 の値の塊で、値をそのまま刻む
+const TRANSFORM_NONE: u8 = 0;
 
 /// 値の表 v（[nw][nb][k] の順に並べたもの）を LBCM 3 の値の塊にする:
 /// 刻み q の整数にし、β の方向に 3 階、波長の方向に 2 階の差分を取った残り（端は低い階の差分）を zigzag で u64 にし、
@@ -136,6 +141,9 @@ pub(in crate::coating) fn decode_values(
 /// u32 波長の数 nw・u32 β の数 nb・f64 波長・f64 β・値の塊 [nw][nb][偏光 s, p][(Re Im)×(M̃00 M̃10 M̃01 M̃11), ψ]（k = 18。透過がなければ nw = 0 で塊もない）、
 /// u8 鏡の有無、鏡があれば f64 基準の屈折率・f64 D_m・u32 nw・u32 nb・f64 波長・f64 β・値の塊 [nw][nb][Re r_s, Im r_s, Re r_p, Im r_p]（k = 4）。
 /// 値の塊は f64 刻み q・u32 バイト数・deflate したバイト列（中身は `encode_values`）。
+///
+/// LBCM 4（先頭 `LBCM 4\n`）は LBCM 3 と同じ並びで、折れ目のあとに u8 補間の点の数（[`CoatModel::order`]）、
+/// 値の塊の先頭に u8 変換（0: そのまま、1: asinh にしてから刻んだもの。|M̃| が 1e8 を超える厚い膜の透過）を持つ。
 pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
     struct Rd<'a> {
         b: &'a [u8],
@@ -164,13 +172,25 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             let (c, _) = self.take(8 * n)?.as_chunks::<8>();
             Ok(c.iter().map(|c| f64::from_le_bytes(*c)).collect())
         }
-        fn values(&mut self, nw: usize, nb: usize, k: usize) -> Result<Vec<f64>> {
+        fn values(&mut self, nw: usize, nb: usize, k: usize, v4: bool) -> Result<Vec<f64>> {
+            let tr = if v4 { self.u8()? } else { TRANSFORM_NONE };
             let q = self.f64s(1)?[0];
             if !(q > 0.0 && q.is_finite()) {
                 invalid!("the value step of the coating model (LBCM 3) is not positive");
             }
             let len = self.u32()?;
-            decode_values(self.take(len)?, nw, nb, k, q)
+            let mut v = decode_values(self.take(len)?, nw, nb, k, q)?;
+            match tr {
+                TRANSFORM_NONE => {}
+                TRANSFORM_ASINH => v.iter_mut().for_each(|x| *x = x.sinh()),
+                x => invalid!(
+                    "the value block of the coating model (LBCM 4) has an unknown transform {x}"
+                ),
+            }
+            if v.iter().any(|x| !x.is_finite()) {
+                invalid!("the coating model (LBCM 4) has a value that is not finite");
+            }
+            Ok(v)
         }
     }
     fn grid(name: &str, w: &[f64], b: &[f64]) -> Result<()> {
@@ -182,8 +202,9 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         }
         Ok(())
     }
-    if !b.starts_with(MODEL_BIN_HEADER) {
-        invalid!("the coating model doesn't start with LBCM 3");
+    let v4 = b.starts_with(MODEL_BIN_HEADER4);
+    if !v4 && !b.starts_with(MODEL_BIN_HEADER) {
+        invalid!("the coating model doesn't start with LBCM 3 or LBCM 4");
     }
     let mut r = Rd {
         b,
@@ -207,12 +228,19 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         }
         let nk = r.u32()?;
         m.kinks = r.f64s(nk)?;
+        if v4 {
+            m.order = r.u8()? as usize;
+            if m.order != 0 && !MODEL_ORDER_RANGE.contains(&m.order) {
+                let p = m.order;
+                invalid!("coating model {name}: the interpolation order {p} is not 0 or 4 to 12");
+            }
+        }
         let (nw, nb) = (r.u32()?, r.u32()?);
         if nw > 0 {
             m.wavelengths = r.f64s(nw)?;
             m.betas = r.f64s(nb)?;
             grid(&name, &m.wavelengths, &m.betas)?;
-            let v = r.values(nw, nb, 18)?;
+            let v = r.values(nw, nb, 18, v4)?;
             let z = |i: usize| C64::new(v[i], v[i + 1]);
             m.m = (0..nw)
                 .map(|w| {
@@ -249,7 +277,7 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             let wavelengths = r.f64s(nw)?;
             let betas = r.f64s(nb)?;
             grid(&name, &wavelengths, &betas)?;
-            let v = r.values(nw, nb, 4)?;
+            let v = r.values(nw, nb, 4, v4)?;
             let rr = (0..nw)
                 .map(|w| {
                     (0..nb)
@@ -299,17 +327,58 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
     Ok(out)
 }
 
-/// 膜のモデルをバイナリの形式（[`parse_models_bin`]）にする。値は 1e-9 刻みの整数にして縮める（元の値との差は 5e-10 以下）
+/// 透過の値がこれより大きければ（LBCM 3 の整数に入らない）、LBCM 4 で asinh にして刻む
+const ASINH_ABOVE: f64 = 1e8;
+
+/// 膜のモデルをバイナリの形式（[`parse_models_bin`]）にする。値は 1e-9 刻みの整数にして縮める（元の値との差は 5e-10 以下）。
+/// どの膜も補間の点の数が従来（[`CoatModel::order`] が 0）で、透過の値がどれも 1e8 以下なら LBCM 3、
+/// そうでなければ LBCM 4（補間の点の数を持ち、大きな値のある透過の塊は asinh にしてから刻む。
+/// そのときの差は max(1, |v|) × 5e-10 以下）
 pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
-    let mut o = MODEL_BIN_HEADER.to_vec();
-    let block =
-        |o: &mut Vec<u8>, v: &[f64], nw: usize, nb: usize, k: usize, q: f64| -> Result<()> {
-            let c = encode_values(v, nw, nb, k, q)?;
-            o.extend_from_slice(&q.to_le_bytes());
-            o.extend_from_slice(&(c.len() as u32).to_le_bytes());
-            o.extend_from_slice(&c);
-            Ok(())
+    let big = |m: &CoatModel| {
+        m.m.iter()
+            .flatten()
+            .flat_map(|p| p.iter().flatten())
+            .any(|z| !(z.re.abs() <= ASINH_ABOVE && z.im.abs() <= ASINH_ABOVE))
+            || m.psi
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|x| !(x.abs() <= ASINH_ABOVE))
+    };
+    let v4 = entries.iter().any(|(_, m)| m.order != 0 || big(m));
+    let mut o = if v4 {
+        MODEL_BIN_HEADER4
+    } else {
+        MODEL_BIN_HEADER
+    }
+    .to_vec();
+    let block = |o: &mut Vec<u8>,
+                 v: &[f64],
+                 nw: usize,
+                 nb: usize,
+                 k: usize,
+                 q: f64,
+                 asinh: bool|
+     -> Result<()> {
+        let c = if asinh {
+            let t: Vec<f64> = v.iter().map(|x| x.asinh()).collect();
+            encode_values(&t, nw, nb, k, q)?
+        } else {
+            encode_values(v, nw, nb, k, q)?
         };
+        if v4 {
+            o.push(if asinh {
+                TRANSFORM_ASINH
+            } else {
+                TRANSFORM_NONE
+            });
+        }
+        o.extend_from_slice(&q.to_le_bytes());
+        o.extend_from_slice(&(c.len() as u32).to_le_bytes());
+        o.extend_from_slice(&c);
+        Ok(())
+    };
     let u32 = |o: &mut Vec<u8>, v: usize| o.extend_from_slice(&(v as u32).to_le_bytes());
     let f64s =
         |o: &mut Vec<u8>, v: &[f64]| v.iter().for_each(|x| o.extend_from_slice(&x.to_le_bytes()));
@@ -320,6 +389,13 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
         f64s(&mut o, &[m.d, m.bmax]);
         u32(&mut o, m.kinks.len());
         f64s(&mut o, &m.kinks);
+        if v4 {
+            if m.order != 0 && !MODEL_ORDER_RANGE.contains(&m.order) {
+                let p = m.order;
+                invalid!("coating model {name}: the interpolation order {p} is not 0 or 4 to 12");
+            }
+            o.push(m.order as u8);
+        }
         u32(&mut o, m.wavelengths.len());
         u32(
             &mut o,
@@ -350,6 +426,7 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
                 m.betas.len(),
                 18,
                 MODEL_BIN_QUANTUM,
+                big(m),
             )?;
         }
         match &m.mirror {
@@ -373,6 +450,7 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
                     r.betas.len(),
                     4,
                     MODEL_BIN_QUANTUM_MIRROR,
+                    false,
                 )?;
             }
         }

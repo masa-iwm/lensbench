@@ -244,14 +244,14 @@ impl CoatingSet {
     /// 膜のファイルを読んで足し、足した膜の数を返す: 特性行列のモデル（`.lbcm`・`.lbcb`）・実測表（`.lbct`）は
     /// 1 行目で、それ以外は COATING.DAT の形式（`.dat`・`.lbcs` など。MATE・COAT・TABLE）として読む
     pub fn add_file(&mut self, path: &Path) -> Result<usize> {
-        use crate::coating::{parse_models, parse_models_bin, MODEL_BIN_HEADER, MODEL_HEADER};
+        use crate::coating::{is_models_bin, parse_models, parse_models_bin, MODEL_HEADER};
         let at = |e: crate::Error| match e {
             crate::Error::Invalid(m) => crate::Error::Invalid(format!("{}: {m}", path.display())),
             e => e,
         };
         let b = crate::vfs::read(path)
             .map_err(|e| crate::Error::Io(format!("{}: {e}", path.display())))?;
-        if b.starts_with(MODEL_BIN_HEADER) {
+        if is_models_bin(&b) {
             let v = parse_models_bin(&b).map_err(at)?;
             let n = v.len();
             self.models.extend(v);

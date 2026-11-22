@@ -588,7 +588,7 @@ impl Coatings {
     pub fn load_models(&mut self, path: &Path) -> Result<usize> {
         let b =
             crate::vfs::read(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-        let v = if b.starts_with(MODEL_BIN_HEADER) {
+        let v = if is_models_bin(&b) {
             parse_models_bin(&b)
         } else {
             std::str::from_utf8(&b)
@@ -664,7 +664,7 @@ impl Coatings {
         }
         let b =
             crate::vfs::read(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-        if b.starts_with(MODEL_BIN_HEADER) {
+        if is_models_bin(&b) {
             return self.load_models(path);
         }
         let txt = String::from_utf8_lossy(&b);

@@ -390,13 +390,13 @@ enum Cmd {
     CoatModel(coat_cmd::CoatModelArgs),
     /// Make a coating model (LBCM) smaller
     ///
-    /// Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)
+    /// Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors; LBCM 4 when a model has ORDER or values over 1e8). Read the same as LBCM 2 (text)
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatCompact {
-        /// Original model (LBCM 2 or 3)
+        /// Original model (LBCM 2, 3 or 4)
         model: PathBuf,
-        /// Model to write (LBCM 3)
+        /// Model to write (LBCM 3 or 4)
         #[arg(long, short)]
         out: PathBuf,
         /// Output JSON

@@ -338,7 +338,7 @@ pub(crate) fn coat_compact(
     use lensbench_core::coating::format_models_bin;
     let b =
         lensbench_core::vfs::read(model).map_err(lensbench_core::Error::io_at(model.display()))?;
-    let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
+    let models = if coating::is_models_bin(&b) {
         coating::parse_models_bin(&b)
     } else {
         coating::parse_models(&String::from_utf8_lossy(&b))
