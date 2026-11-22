@@ -99,7 +99,8 @@ pub fn gpu_name() -> Option<String> {
     }
 }
 
-/// GPU の和の入力（[`gpu_sum`]）
+/// GPU の和の入力（[`gpu_sum`]）。`gpu` 機能なしで組むと作るだけで読まない
+#[cfg_attr(not(feature = "gpu"), allow(dead_code))]
 struct GpuInput<'a> {
     sphere: Sphere,
     /// 平面の基準の点（主光線の像点）と主光線の向き
