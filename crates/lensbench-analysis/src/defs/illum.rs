@@ -194,7 +194,7 @@ pub(super) struct RelIllumParams {
     /// Number of points on the rim of the beam (even, 8 or more)
     #[schemars(extend("x-min" = 8))]
     pub rim: usize,
-    /// Include the coating transmission and Fresnel losses (unpolarized, the system coatings; the pupil-averaged transmission relative to the axis)
+    /// Include the coating transmission and Fresnel losses (the system input polarization, unpolarized by default, and coatings; the pupil-averaged transmission relative to the axis)
     pub polarization: bool,
     /// Replace the vignetting factors with floating apertures at the current semi-diameters (OpticStudio's default Remove Vignetting Factors); off ignores the vignetting factors and keeps the surface apertures as they are
     pub remove_vignetting_factors: bool,
@@ -235,7 +235,7 @@ pub struct RelIllumOut {
     pub warnings: Vec<String>,
 }
 
-/// 視野 f の瞳の上で平均した強度の透過率（膜・フレネル、偏光なし = 光線に垂直な面の正規直交の基底の 2 つの偏光の平均、
+/// 視野 f の瞳の上で平均した強度の透過率（膜・フレネル、系の入射偏光。偏光なし = 光線に垂直な面の正規直交の基底の 2 つの偏光の平均、
 /// [`crate::polgrid::basis_coeffs`]）。入力の偏光の強度を 1 にそろえる（斜めの光線で射影の分だけ小さく出さない。
 /// OpticStudio の Relative Illumination の Use Polarization と同じく、軸外でも透過率だけの比になる）
 fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
@@ -254,6 +254,12 @@ fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
         hxy: Some((hx, hy)),
     };
     let (one, zero) = (C64::new(1.0, 0.0), C64::new(0.0, 0.0));
+    let pol = s.input_pol.jones();
+    if pol.is_some_and(|j| !(j[0].norm_sqr() + j[1].norm_sqr() > 0.0)) {
+        return Err(Error::Invalid(
+            "the input polarization (Ex, Ey) must not be zero".into(),
+        ));
+    }
     let p = s.trace_pol_launch(
         &l,
         w,
@@ -274,7 +280,11 @@ fn mean_transmission(s: &System, f: FieldSel, w: usize) -> Result<f64> {
                 .map(|q| (e[0][q] * c[0] + e[1][q] * c[1]).norm_sqr())
                 .sum::<f64>()
         };
-        let t = 0.5 * (i([one, zero]) + i([zero, one]));
+        // 系の入射偏光（強度を 1 にそろえる）、偏光なしは 2 つの偏光の平均
+        let t = match pol {
+            Some(j) => i(j) / (j[0].norm_sqr() + j[1].norm_sqr()),
+            None => 0.5 * (i([one, zero]) + i([zero, one])),
+        };
         if t.is_finite() {
             sum += t;
             n += 1;

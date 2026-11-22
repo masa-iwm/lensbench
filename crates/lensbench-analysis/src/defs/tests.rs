@@ -268,3 +268,58 @@ fn coating_analyses_carry_the_coating_notes() {
         assert!(noted(&g), "{}", g["warnings"]);
     });
 }
+
+/// 系の入射偏光（input_pol）は polarization の解析に入る: x と y の直線偏光で値が違い、偏光なしは既定と同じ。
+/// 相対照度の透過率も同じ
+#[test]
+fn system_input_polarization_is_used() {
+    let base = a0();
+    let with = |unpolarized: bool, jx: f64, jy: f64| {
+        let mut s = base.clone();
+        s.edit(|p| {
+            p.input_pol = lensbench_core::system::InputPolarization {
+                unpolarized,
+                jx,
+                jy,
+                ..Default::default()
+            };
+            Ok(())
+        })
+        .unwrap();
+        s
+    };
+    let a = Analyses::builtin();
+    let run = |s: &lensbench_core::System, name: &str, p: serde_json::Value| {
+        let cx = crate::registry::Cx::new(s);
+        a.get(name).unwrap().run_json(&cx, &p).unwrap()
+    };
+    for (name, p) in [
+        (
+            "mtf",
+            json!({ "field": 2, "freqs": [20.0, 40.0], "polarization": true }),
+        ),
+        (
+            "relative-illumination",
+            json!({ "points": 3, "polarization": true }),
+        ),
+    ] {
+        let def = run(&base, name, p.clone());
+        // 偏光なしの印があれば振幅は使わない
+        assert_eq!(run(&with(true, 1.0, 0.0), name, p.clone()), def, "{name}");
+        let x = run(&with(false, 1.0, 0.0), name, p.clone());
+        let y = run(&with(false, 0.0, 2.0), name, p.clone());
+        assert_ne!(x, y, "{name}");
+        assert_ne!(x, def, "{name}");
+    }
+    // 振幅が両方 0 は誤り
+    let e = a
+        .get("mtf")
+        .unwrap()
+        .run_json(
+            &crate::registry::Cx::new(&with(false, 0.0, 0.0)),
+            &json!({ "field": 2, "polarization": true }),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("must not be zero"), "{e}");
+}

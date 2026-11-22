@@ -1597,6 +1597,11 @@ Pupil shift Y	瞳のずれ Y
 Pupil shift Z	瞳のずれ Z
 Pupil compress X	瞳の圧縮 X
 Pupil compress Y	瞳の圧縮 Y
+Unpolarized	偏光なし
+Input polarization Jx	入射偏光 Jx
+Input polarization Jy	入射偏光 Jy
+Input polarization X phase	入射偏光 X の位相
+Input polarization Y phase	入射偏光 Y の位相
 Row {} {}	{} 行目の{}
 Copy	コピー
 Insert row above	上に行を挿入

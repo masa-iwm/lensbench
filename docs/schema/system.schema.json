@@ -1689,6 +1689,67 @@
         }
       ]
     },
+    "InputPolarization": {
+      "description": "系の入射偏光（OpticStudio の System Explorer の Polarization、.zmx の POLS）: 膜・偏光を入れる解析（MTF・PSF・相対照度の\n`polarization`）の入射の偏光。既定は偏光なし（光線に垂直な面の正規直交の 2 つの偏光の平均）",
+      "properties": {
+        "jx": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 0.0,
+          "description": "電場の x・y の振幅（正規化しない。強度をそろえて使う）"
+        },
+        "jy": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 1.0
+        },
+        "phase_x": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 0.0,
+          "description": "x・y の位相 [deg]"
+        },
+        "phase_y": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 0.0
+        },
+        "unpolarized": {
+          "default": true,
+          "description": "偏光なし（true なら jx・jy・位相は使わない）",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "Kind": {
       "description": "パラメータの種類",
       "oneOf": [
@@ -1877,6 +1938,22 @@
           },
           "required": [
             "AimPupil"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "系の入射偏光の偏光なし（1 か 0）・振幅 x・y・位相 x・y [deg]（0〜4）。名前は polun・poljx・poljy・polpx・polpy。\n多重構成の行（.zmx の GPIU・GPJX・GPJY・GPPX・GPPY）。[`crate::system::InputPolarization`]。最適化の変数には使えない",
+          "properties": {
+            "InputPol": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "InputPol"
           ],
           "type": "object"
         },
@@ -2666,6 +2743,10 @@
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "input_pol": {
+          "$ref": "#/$defs/InputPolarization",
+          "description": "系の入射偏光（.zmx の POLS）"
         },
         "macro_parms": {
           "items": {

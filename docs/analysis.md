@@ -11,7 +11,7 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 像面の傾き・回転は考えない。子午・球欠の向きは `--axes`: `field`（既定）は子午が視野の向き（物理の子午面）、`pupil` は子午が瞳の y・球欠が x
 （OpticStudio の FFT MTF と同じ）。違うのは x の成分のある視野だけで、そのような視野で OpticStudio と比べるときは `--axes pupil`
 （`mtf-focus`・`mtf-field`・`geo-mtf`・`huygens-mtf` も同じ）。
-`--polarization` でコーティングの透過とフレネル損失を瞳の振幅に入れる（偏光なしでシステムのコーティングを使う。OpticStudio の Use Polarization に当たる。
+`--polarization` でコーティングの透過とフレネル損失を瞳の振幅に入れる（システムの入射偏光 `input_pol`（既定は偏光なし、.zmx の POLS）とシステムのコーティングを使う。OpticStudio の Use Polarization に当たる。
 `psf`・`huygens-mtf` も）。システムの膜の注意（登録した膜の一覧の膜が膜ファイルの同じ名前の膜より先に使われた、など）は結果の `warnings` に入る
 （`relative-illumination` の `--polarization`・`ghost` も同じ。GUI は結果の上に出す）。瞳のアポダイゼーションは常に入る。照合は `crates/lensbench-verify/src/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 本で 3e-4〜2e-3）。
 `--each-wave` で多色に加えて波長ごとの MTF（`waves`）も出す（波長ごとの計算を使い回すので別々に求めるより約 2 倍速い）。

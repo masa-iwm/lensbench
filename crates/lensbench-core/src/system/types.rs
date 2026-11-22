@@ -422,3 +422,82 @@ impl AimPupil {
         }
     }
 }
+
+/// 系の入射偏光（OpticStudio の System Explorer の Polarization、.zmx の POLS）: 膜・偏光を入れる解析（MTF・PSF・相対照度の
+/// `polarization`）の入射の偏光。既定は偏光なし（光線に垂直な面の正規直交の 2 つの偏光の平均）
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+pub struct InputPolarization {
+    /// 偏光なし（true なら jx・jy・位相は使わない）
+    #[serde(default = "yes")]
+    pub unpolarized: bool,
+    /// 電場の x・y の振幅（正規化しない。強度をそろえて使う）
+    #[serde(default)]
+    pub jx: f64,
+    #[serde(default = "one")]
+    pub jy: f64,
+    /// x・y の位相 [deg]
+    #[serde(default)]
+    pub phase_x: f64,
+    #[serde(default)]
+    pub phase_y: f64,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+impl Default for InputPolarization {
+    fn default() -> InputPolarization {
+        InputPolarization {
+            unpolarized: true,
+            jx: 0.0,
+            jy: 1.0,
+            phase_x: 0.0,
+            phase_y: 0.0,
+        }
+    }
+}
+
+impl InputPolarization {
+    pub fn is_default(&self) -> bool {
+        *self == InputPolarization::default()
+    }
+
+    /// 入射の偏光 (Ex, Ey)（偏光なしは None）
+    pub fn jones(&self) -> Option<[crate::coating::C64; 2]> {
+        use crate::coating::C64;
+        (!self.unpolarized).then(|| {
+            [
+                C64::from_polar(self.jx, self.phase_x.to_radians()),
+                C64::from_polar(self.jy, self.phase_y.to_radians()),
+            ]
+        })
+    }
+
+    /// 多重構成の行の値（0 偏光なし（1 か 0）、1・2 振幅 x・y、3・4 位相 x・y）
+    pub fn value(&self, i: u8) -> f64 {
+        match i {
+            0 => self.unpolarized as u8 as f64,
+            1 => self.jx,
+            2 => self.jy,
+            3 => self.phase_x,
+            _ => self.phase_y,
+        }
+    }
+
+    pub fn set(&mut self, i: u8, v: f64) {
+        match i {
+            0 => self.unpolarized = v != 0.0,
+            1 => self.jx = v,
+            2 => self.jy = v,
+            3 => self.phase_x = v,
+            _ => self.phase_y = v,
+        }
+    }
+}

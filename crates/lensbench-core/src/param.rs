@@ -35,6 +35,7 @@ use crate::system::{Aiming, ApertureKind, Keep, System};
 use crate::units::UnitKind;
 
 mod keep;
+mod kind_preds;
 mod solve;
 mod table;
 use crate::{invalid, notimpl};
@@ -114,6 +115,9 @@ pub enum Kind {
     /// 光線エイミングの瞳のずれ x・y・z（0〜2）と圧縮 x・y（3・4）。名前は pshx・pshy・pshz・pscx・pscy。多重構成の行
     /// （.zmx の PSHX〜PSCY）。追跡には効かない（[`crate::system::AimPupil`]）。最適化の変数には使えない
     AimPupil(u8),
+    /// 系の入射偏光の偏光なし（1 か 0）・振幅 x・y・位相 x・y [deg]（0〜4）。名前は polun・poljx・poljy・polpx・polpy。
+    /// 多重構成の行（.zmx の GPIU・GPJX・GPJY・GPPX・GPPY）。[`crate::system::InputPolarization`]。最適化の変数には使えない
+    InputPol(u8),
     /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
     /// 最適化の変数には使えない
     FieldX(u8),
@@ -243,6 +247,11 @@ impl Kind {
             "pshz" => Kind::AimPupil(2),
             "pscx" => Kind::AimPupil(3),
             "pscy" => Kind::AimPupil(4),
+            "polun" => Kind::InputPol(0),
+            "poljx" => Kind::InputPol(1),
+            "poljy" => Kind::InputPol(2),
+            "polpx" => Kind::InputPol(3),
+            "polpy" => Kind::InputPol(4),
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -339,6 +348,9 @@ impl Kind {
             Kind::Apod => "apod".into(),
             Kind::Aiming => "aiming".into(),
             Kind::Ropd => "ropd".into(),
+            Kind::InputPol(i) => {
+                ["polun", "poljx", "poljy", "polpx", "polpy"][(*i as usize).min(4)].into()
+            }
             Kind::AimPupil(i) => {
                 ["pshx", "pshy", "pshz", "pscx", "pscy"][(*i as usize).min(4)].into()
             }
@@ -374,138 +386,6 @@ impl Kind {
             Kind::Coating => "coating".into(),
             Kind::User(k) => format!("u_{}", k.name()),
         }
-    }
-
-    /// ピックアップの量（[`crate::pickup::Pickup::what`] と元）になる種類
-    pub fn is_pick(&self) -> bool {
-        matches!(
-            self,
-            Kind::Curv
-                | Kind::Radius
-                | Kind::Conic
-                | Kind::Thick
-                | Kind::Dn
-                | Kind::Disp
-                | Kind::Semi
-                | Kind::MechSemi
-                | Kind::Parm(_)
-                | Kind::Before(_)
-                | Kind::After(_)
-                | Kind::Coating
-        )
-    }
-
-    /// ピックアップ・マクロのソルブだけの量（パラメータには使えない）
-    pub fn is_pick_only(&self) -> bool {
-        matches!(
-            self,
-            Kind::Semi | Kind::Parm(_) | Kind::Before(_) | Kind::After(_) | Kind::Coating
-        )
-    }
-
-    /// 多重構成の表の行にだけ使う面の値（半直径・面の無視・開口・面の前後の傾き偏心の値と順序）。最適化の変数・微分には
-    /// 使えない
-    pub fn is_table_only(&self) -> bool {
-        matches!(
-            self,
-            Kind::Semi
-                | Kind::Ignore
-                | Kind::ApMax
-                | Kind::ApMin
-                | Kind::ApDx
-                | Kind::ApDy
-                | Kind::ApType
-                | Kind::Before(_)
-                | Kind::After(_)
-                | Kind::BeforeOrder
-                | Kind::AfterOrder
-                | Kind::ModelNd
-                | Kind::ModelVd
-                | Kind::ModelDpgf
-                | Kind::Tce
-                | Kind::MechSemi
-                | Kind::ChipZone
-                | Kind::CoordRet
-                | Kind::CoordRetSurf
-                | Kind::Material
-                | Kind::Coating
-        ) || self.is_solve_value()
-    }
-
-    /// 座標の戻りの行（[`Kind::CoordRet`]・[`Kind::CoordRetSurf`]）
-    pub fn is_coord_return(&self) -> bool {
-        matches!(self, Kind::CoordRet | Kind::CoordRetSurf)
-    }
-
-    /// ソルブ・ピックアップの条件の値（[`Kind::CurvSolve`]・[`Kind::ThickSolve`]・[`Kind::ParmSolve`]）
-    pub fn is_solve_value(&self) -> bool {
-        matches!(
-            self,
-            Kind::CurvSolve(_) | Kind::ThickSolve(_) | Kind::ParmSolve(..)
-        )
-    }
-
-    /// 傾き偏心の値の位置（dx dy tx ty tz）
-    pub fn tilt_index(&self) -> Option<usize> {
-        match self {
-            Kind::Dx => Some(0),
-            Kind::Dy => Some(1),
-            Kind::Tx => Some(2),
-            Kind::Ty => Some(3),
-            Kind::Tz => Some(4),
-            _ => None,
-        }
-    }
-
-    /// 物点の移動（面のパラメータではない）
-    pub fn is_object(&self) -> bool {
-        matches!(self, Kind::ObjX | Kind::ObjY)
-    }
-
-    /// 系の波長
-    pub fn is_wave(&self) -> bool {
-        matches!(self, Kind::Wave(_))
-    }
-
-    /// 面・玉・群に付かない系全体のパラメータ（物点の移動・波長）。[`Param::surf`] は使わない
-    pub fn is_global(&self) -> bool {
-        self.is_object() || self.is_system_value()
-    }
-
-    /// 系の値（波長・重み・主波長・開口・開口の種類・絞りの面・視野）。公差・多重構成の行に使い、最適化の変数・微分には使えない
-    pub fn is_system_value(&self) -> bool {
-        matches!(
-            self,
-            Kind::Wave(_)
-                | Kind::WaveW(_)
-                | Kind::Primary
-                | Kind::Aper
-                | Kind::ApertureType
-                | Kind::Stop
-                | Kind::FieldType
-                | Kind::Temp
-                | Kind::Pres
-                | Kind::Afocal
-                | Kind::ApodType
-                | Kind::Apod
-                | Kind::Aiming
-                | Kind::Ropd
-                | Kind::AimPupil(_)
-                | Kind::FieldX(_)
-                | Kind::FieldY(_)
-                | Kind::FieldW(_)
-                | Kind::FieldVig(..)
-        )
-    }
-
-    /// 玉・群のパラメータ
-    pub fn is_unit(&self) -> bool {
-        matches!(self, Kind::Unit(_))
-    }
-
-    /// 玉・群の剛体の動き（座標系を動かす。面のパラメータの組合せにならない）
-    pub fn is_unit_motion(&self) -> bool {
-        matches!(self, Kind::Unit(u) if u.motion_index().is_some())
     }
 }
 
@@ -791,6 +671,7 @@ impl System {
             Kind::Aiming => return Ok(self.aiming.os_code() as f64),
             Kind::Ropd => return Ok(self.ropd as f64),
             Kind::AimPupil(i) => return Ok(self.aim_pupil.value(i)),
+            Kind::InputPol(i) => return Ok(self.input_pol.value(i)),
             Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
             Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
             Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
@@ -1354,6 +1235,7 @@ impl System {
                 Kind::Aiming => rx.aiming = Aiming::from_os_code(v as i64),
                 Kind::Ropd => rx.ropd = v as i64,
                 Kind::AimPupil(i) => rx.aim_pupil.set(i, v),
+                Kind::InputPol(i) => rx.input_pol.set(i, v),
                 Kind::FieldX(i) => rx.fields[i as usize].x = v,
                 Kind::FieldY(i) => rx.fields[i as usize].y = v,
                 Kind::FieldW(i) => rx.fields[i as usize].w = v,

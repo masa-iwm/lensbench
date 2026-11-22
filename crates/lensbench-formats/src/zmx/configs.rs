@@ -422,6 +422,11 @@ pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Pr
             rx.aim_pupil.set(i as u8, v);
         }
     }
+    for (i, op) in POL_OPS.iter().enumerate() {
+        if let Some(v) = num(op, 0) {
+            rx.input_pol.set(i as u8, v);
+        }
+    }
     for ((op, p1), v) in ops {
         let (Some(k), Ok(j), Ok(v)) = (surface_table_kind(op), usize::try_from(*p1), fv(v)) else {
             continue;
@@ -443,6 +448,9 @@ pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Pr
 }
 
 /// 系の値の演算子のパラメータの種類（番号 1 は波長・視野の番号、1 から）
+/// 系の入射偏光の行（偏光なし・Jx・Jy・X の位相・Y の位相、[`lensbench_core::param::Kind::InputPol`] の順）
+pub(crate) const POL_OPS: [&str; 5] = ["GPIU", "GPJX", "GPJY", "GPPX", "GPPY"];
+
 fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
     use lensbench_core::param::Kind;
     let i = u8::try_from(p1 - 1).ok();
@@ -475,6 +483,9 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "PSHZ" => Kind::AimPupil(2),
         "PSCX" => Kind::AimPupil(3),
         "PSCY" => Kind::AimPupil(4),
+        o if POL_OPS.contains(&o) => {
+            Kind::InputPol(POL_OPS.iter().position(|x| *x == o).unwrap_or(0) as u8)
+        }
         _ => return None,
     })
 }

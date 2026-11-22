@@ -1613,6 +1613,8 @@ removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外�
 the global coordinate reference surface {j} was deleted, so it is now surface 1	グローバル座標の基準面 {j} を削除したので面 1 にしました
 .zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses	.zmx のシステムの行 GFAC {}（瞳のアポダイゼーション）はカタログのレンズとして読むので使いません
 .zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx のシステムの行 {k} {}（デフォルト {d} と違いますが、lensbench は読みません）
+.zmx system line POLS: the polarization settings {} {} (differ from the default 1 0) are not read	.zmx のシステムの行 POLS: 偏光の設定 {} {}（デフォルト 1 0 と違います）は読みません
+the input polarization needs finite Jx, Jy and phases, not both Jx and Jy 0	入射偏光の Jx・Jy・位相は数で、Jx と Jy の両方を 0 にはできません
 .zmx system line {k} {} was skipped	.zmx のシステムの行 {k} {} を読まずに飛ばしました
 zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばしました（字下げのない古い .zmx）
 can't read the merit function line	メリットファンクションの行を読めません
@@ -2001,7 +2003,7 @@ Huygens PSF only: where to compute the Huygens sum: auto (default; a GPU if one 
 setting exact is for the Huygens PSF (give huygens too)	設定 exact は Huygens PSF 用です（huygens も指定してください）
 setting device is for the Huygens PSF (give huygens too)	設定 device は Huygens PSF 用です（huygens も指定してください）
 setting device must be auto, cpu or gpu ({x})	設定 device は auto・cpu・gpu に（{x}）
-Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included	瞳の振幅にコーティングの透過率・境界の Fresnel の損失を入れる（偏光なし、システムのコーティング。OpticStudio の Use Polarization と同じ）。システムの瞳のアポダイゼーションは常に入る
+Include coating transmission and Fresnel losses in the pupil amplitude (with the system's input polarization, unpolarized by default, and coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included	瞳の振幅にコーティングの透過率・境界の Fresnel の損失を入れる（システムの入射偏光（デフォルトは偏光なし）とコーティング。OpticStudio の Use Polarization と同じ）。システムの瞳のアポダイゼーションは常に入る
 Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)	FFT PSF のグリッドの面（image: 像面、chief: 主光線に垂直な面。OpticStudio の FFT PSF と同じ）
 System data (EFL, F-number, pupils, etc.)	システムデータ（EFL、F 値、瞳など）
 Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface)	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）
@@ -2572,7 +2574,7 @@ Replace the vignetting factors with floating apertures at the current semi-diame
 Footprint diagram: where the beam of each field and wavelength crosses a surface, against its aperture	フットプリント図: 各視野・波長の光束が面を通る範囲と面の開口
 Footprint diagram (OpticStudio's Footprint Diagram): the local intersections on a surface of a grid of pupil rays for each field and wavelength, with the outline of the surface aperture, the largest radius and its fraction of the semi-diameter, the fraction of rays that reach the image unvignetted and the fraction clipped at this surface. Rays clipped before the surface are not drawn. The vignetting factors of the fields are used unless no_vignetting_factors	フットプリント図（OpticStudio の Footprint Diagram）: 視野・波長ごとの瞳のグリッドの光線の面のローカル座標の交点と、面の開口の輪郭、最大の半径とそのクリア半径に対する割合、像面までケラレずに届く光線の割合、この面でケラレる光線の割合。面より前でケラレた光線は描かない。no_vignetting_factors でなければ視野のケラレ係数を使う
 Number of points on the rim of the beam (even, 8 or more)	光束の縁の点の数（偶数、8 以上）
-Include the coating transmission and Fresnel losses (unpolarized, the system coatings; the pupil-averaged transmission relative to the axis)	コーティングの透過とフレネル損失を入れる（偏光なし、システムのコーティング。瞳で平均した透過率の軸上との比）
+Include the coating transmission and Fresnel losses (the system input polarization, unpolarized by default, and coatings; the pupil-averaged transmission relative to the axis)	コーティングの透過とフレネル損失を入れる（システムの入射偏光（デフォルトは偏光なし）とコーティング。瞳で平均した透過率の軸上との比）
 Relative illumination versus field (image irradiance relative to the axis) and effective F-number	視野に対する相対照度（軸上に対する像面照度）と実効 F 値
 Relative illumination (OpticStudio's Relative Illumination): for points steps of the normalized field 0 to 1, the irradiance at the image point of the chief ray relative to the axis, from the projected solid angle of the beam that reaches that image point (the RELI operand), and the effective F-number (EFNO). By default the vignetting factors are replaced with floating apertures at the current semi-diameters on the surfaces where the medium changes (OpticStudio's Remove Vignetting Factors); with remove_vignetting_factors off the vignetting factors are ignored and the surface apertures are kept as they are. With polarization the ratio of the pupil-averaged coating and Fresnel transmission to the axis is multiplied in, and the effective F-number includes the transmission (F/√T)	相対照度（OpticStudio の Relative Illumination）: 正規化視野 0〜1 を points 点で刻み、主光線の像点に届く光束の射影立体角から求めた、軸上に対する照度（RELI オペランドと同じ）と実効 F 値（EFNO）。デフォルトではケラレ係数を、媒質の変わる面の今のクリア半径の浮動開口に置き換える（OpticStudio の Remove Vignetting Factors）。remove_vignetting_factors を切るとケラレ係数を使わず、面の開口はそのまま。polarization なら瞳で平均したコーティング・フレネルの透過率の軸上との比も掛け、実効 F 値は透過を含める（F/√T）
 Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野に対するケラレずに通る光線の割合

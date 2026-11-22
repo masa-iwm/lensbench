@@ -2376,6 +2376,39 @@
       ],
       "type": "object"
     },
+    "InputPolarization": {
+      "description": "系の入射偏光（OpticStudio の System Explorer の Polarization、.zmx の POLS）: 膜・偏光を入れる解析（MTF・PSF・相対照度の\n`polarization`）の入射の偏光。既定は偏光なし（光線に垂直な面の正規直交の 2 つの偏光の平均）",
+      "properties": {
+        "jx": {
+          "default": 0.0,
+          "description": "電場の x・y の振幅（正規化しない。強度をそろえて使う）",
+          "format": "double",
+          "type": "number"
+        },
+        "jy": {
+          "default": 1.0,
+          "format": "double",
+          "type": "number"
+        },
+        "phase_x": {
+          "default": 0.0,
+          "description": "x・y の位相 [deg]",
+          "format": "double",
+          "type": "number"
+        },
+        "phase_y": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "unpolarized": {
+          "default": true,
+          "description": "偏光なし（true なら jx・jy・位相は使わない）",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "LensSource": {
       "anyOf": [
         {
@@ -4695,6 +4728,10 @@
         }
       ],
       "description": "像面（省略は平面で傾きなし）。システムファイル（版 2）の面の行で、形・面の前の傾き偏心・開口などを書く。\n厚さ・媒質・絞りの印は書けない"
+    },
+    "input_pol": {
+      "$ref": "#/$defs/InputPolarization",
+      "description": "系の入射偏光（.zmx の POLS。膜・偏光を入れる解析の入射の偏光）。省略は偏光なし"
     },
     "macros": {
       "description": "ZPL のマクロ（名前 `name` と文 `source`、.ZPL の中身）。ブロックの `surface_ops` の `add_solve` で種類\n`macro_curv`・`macro_thick` の `param` にこの並びの番号（0 始まり）を書いて使う。マクロのファイルは読まない",

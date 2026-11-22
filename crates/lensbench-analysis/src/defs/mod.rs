@@ -73,7 +73,7 @@ pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
 }
 
 /// 波長の番号（1 始まり、None で多色）を 0 始まりにする
-/// 設定 polarization の膜・偏光の振幅（偏光なし、系の膜。[`crate::pupil_amp::PolAmp`]）。off なら None
+/// 設定 polarization の膜・偏光の振幅（系の入射偏光 `input_pol`、系の膜。[`crate::pupil_amp::PolAmp`]）。off なら None
 fn pol_amp(
     s: &System,
     i: usize,
@@ -86,7 +86,15 @@ fn pol_amp(
     let co = lensbench_core::coating::Coatings::for_system(s)?;
     let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
     let f = lensbench_core::FieldSel::Index(i);
-    crate::pupil_amp::PolAmp::new(s, f, &ws, &co, crate::pupil_amp::POL_GRID, None).map(Some)
+    crate::pupil_amp::PolAmp::new(
+        s,
+        f,
+        &ws,
+        &co,
+        crate::pupil_amp::POL_GRID,
+        s.input_pol.jones(),
+    )
+    .map(Some)
 }
 
 /// 膜を使う解析（polarization・ghost など）の結果の注意に足す、系の膜の注意（同じ名前の膜のどれを使ったかなど、

@@ -111,6 +111,21 @@ fn write_header(s: &System, coat_file: &str) -> Result<String> {
             ap.auto_shift.unwrap_or(true) as u8
         ),
     );
+    // 系の入射偏光（POLS 偏光なし Jx Jy X の位相 Y の位相 変換 方法。最後の 2 つは OpticStudio の既定）
+    let ip = &s.input_pol;
+    if !ip.is_default() {
+        w(
+            &mut o,
+            format!(
+                "POLS {} {} {} {} {} 1 0",
+                ip.unpolarized as u8,
+                f(ip.jx),
+                f(ip.jy),
+                f(ip.phase_x),
+                f(ip.phase_y)
+            ),
+        );
+    }
     if !ap.is_default() {
         w(
             &mut o,

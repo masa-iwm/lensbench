@@ -29,7 +29,8 @@ const MCE_HANDLED: &[&str] = &[
     "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC", "APDT", "APDF", "RAAM", "OPDR", "APMN",
     "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY", "CBTZ", "CBOR", "CADX", "CADY", "CATX",
     "CATY", "CATZ", "CAOR", "MIND", "MABB", "MDPG", "TCEX", "FVDX", "FVDY", "FVCX", "FVCY", "FVAN",
-    "FTAN", "COTN", "CROR", "CRSR", "CSP1", "CSP2", "TSP1", "TSP2", "TSP3", "PSP1", "PSP2", "PSP3",
+    "FTAN", "COTN", "CROR", "CRSR", "GPIU", "GPJX", "GPJY", "GPPX", "GPPY", "CSP1", "CSP2", "TSP1",
+    "TSP2", "TSP3", "PSP1", "PSP2", "PSP3",
     // 構成のピックアップの一括の指定。OpticStudio は下の行のセルごとのピックアップに開いて書くので、それを読む
     "PUCN",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
@@ -122,7 +123,7 @@ pub struct Raw {
     pub notes: Vec<String>,
 }
 
-mod configs;
+pub(crate) mod configs;
 mod macros;
 pub mod merit;
 mod parse;
@@ -437,6 +438,7 @@ pub fn document(
     // 光線エイミングの瞳のずれ・圧縮（多重構成の表の書いていない構成の値に使うので先に入れる）
     s.edit_raw(|rx| {
         rx.aim_pupil = set.aim_pupil;
+        rx.input_pol = set.input_pol;
         Ok(())
     })?;
     // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）

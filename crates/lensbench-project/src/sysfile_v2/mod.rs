@@ -134,6 +134,12 @@ pub struct Prescription {
         skip_serializing_if = "lensbench_core::system::AimPupil::is_default"
     )]
     pub aim_pupil: lensbench_core::system::AimPupil,
+    /// 系の入射偏光（.zmx の POLS）
+    #[serde(
+        default,
+        skip_serializing_if = "lensbench_core::system::InputPolarization::is_default"
+    )]
+    pub input_pol: lensbench_core::system::InputPolarization,
     /// 瞳のアポダイゼーション（.zmx の GFAC。FFT PSF・Huygens・回折 MTF の瞳の振幅）
     #[serde(default, skip_serializing_if = "is_default")]
     pub apodization: lensbench_core::pupil::Apodization,

@@ -1087,3 +1087,52 @@ CRSR 4 1 1 0 0 0 1 1 0 0 0 \"\" 0\nCRSR 4 2 1 0 0 0 1 1 0 0 0 \"\" 0\nCRSR 4 3 3
     let back = build(&zmx_write::write(&s).unwrap());
     assert_eq!(back.configs(), s.configs());
 }
+
+/// 系の入射偏光（POLS 偏光なし Jx Jy X の位相 Y の位相 変換 方法、MCE の GPIU・GPJX・GPJY・GPPX・GPPY。OpticStudio 2026 R1.01
+/// で実測）を読み書きする。既定（POLS 1 0 1 0 0 1 0）は書かない
+#[test]
+fn input_polarization() {
+    let base = lens("  TYPE STANDARD\n  CURV 0.01\n");
+    let s = build(&base.replace("PWAV 1\n", "PWAV 1\nPOLS 0 1 1 0 90 1 0\n"));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let ip = s.input_pol;
+    assert!(!ip.unpolarized);
+    assert_eq!(
+        [ip.jx, ip.jy, ip.phase_x, ip.phase_y],
+        [1.0, 1.0, 0.0, 90.0]
+    );
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("POLS 0 1 1 0 90 1 0"), "{w}");
+    assert_eq!(build(&w).input_pol, ip);
+    // 既定は書かない・読んで既定
+    let d = build(&base.replace("PWAV 1\n", "PWAV 1\nPOLS 1 0 1 0 0 1 0\n"));
+    assert!(d.input_pol.is_default() && d.import_notes.is_empty());
+    assert!(!zmx_write::write(&d).unwrap().contains("POLS"));
+    // 基底の決め方が既定でなければ注意
+    let n = build(&base.replace("PWAV 1\n", "PWAV 1\nPOLS 0 1 0 0 0 1 2\n"));
+    assert!(
+        n.import_notes.iter().any(|x| x.contains("POLS")),
+        "{:?}",
+        n.import_notes
+    );
+    // 多重構成: 構成 2 は偏光なし
+    let mce = "MNUM 2 1\n\
+GPIU 0 1 0 0 0 0 1 1 0 0 0 \"\" 0\nGPIU 0 2 1 0 0 0 1 1 0 0 0 \"\" 0\n\
+GPJX 0 1 1 0 0 0 1 1 0 0 0 \"\" 0\nGPJX 0 2 0.5 0 0 0 1 1 0 0 0 \"\" 0\n";
+    let s = build(&(base.replace("PWAV 1\n", "PWAV 1\nPOLS 0 1 1 0 90 1 0\n") + mce));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let names: Vec<String> = s
+        .configs()
+        .unwrap()
+        .rows
+        .iter()
+        .map(|r| r.param.name())
+        .collect();
+    assert_eq!(names, ["polun", "poljx"]);
+    let c2 = s.config(2).unwrap();
+    assert!(c2.input_pol.unpolarized && c2.input_pol.jx == 0.5);
+    assert_eq!(c2.input_pol.phase_y, 90.0);
+    let back = build(&zmx_write::write(&s).unwrap());
+    assert_eq!(back.configs(), s.configs());
+    assert_eq!(back.input_pol, s.input_pol);
+}

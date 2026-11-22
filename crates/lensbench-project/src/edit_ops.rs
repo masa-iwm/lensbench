@@ -462,6 +462,7 @@ pub const SYSTEM_KEYS: &[&str] = &[
     "glrs",
     "ropd",
     "aim_pupil",
+    "input_pol",
     "coating_file",
     "apodization",
 ];
@@ -480,6 +481,7 @@ pub fn system_data(s: &System) -> lensbench_core::Result<Value> {
                 // 既定（ける）は系ファイルに書かない
                 (None, "floating_clip") => Some((k.to_string(), Value::Bool(true))),
                 (None, "apodization") => Some((k.to_string(), Value::String("uniform".into()))),
+                (None, "aim_pupil" | "input_pol") => Some((k.to_string(), serde_json::json!({}))),
                 _ => None,
             })
             .collect(),
@@ -542,6 +544,16 @@ pub(crate) fn set_system_data(
         .all(|v| v.is_finite())
     {
         return Err("ray aiming pupil shift and compress must be numbers".into());
+    }
+    let ip = &n.input_pol;
+    if ![ip.jx, ip.jy, ip.phase_x, ip.phase_y]
+        .iter()
+        .all(|v| v.is_finite())
+        || (!ip.unpolarized && ip.jx == 0.0 && ip.jy == 0.0)
+    {
+        return Err(
+            "the input polarization needs finite Jx, Jy and phases, not both Jx and Jy 0".into(),
+        );
     }
     if let lensbench_core::pupil::Apodization::Gaussian(g) = n.apodization {
         if !(g.is_finite() && g >= 0.0) {

@@ -232,6 +232,7 @@ pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
 pub(super) struct Settings {
     pub aiming: Aiming,
     pub aim_pupil: lensbench_core::system::AimPupil,
+    pub input_pol: lensbench_core::system::InputPolarization,
     pub glrs: usize,
     pub ropd: i64,
     pub coating_file: Option<PathBuf>,
@@ -264,6 +265,15 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
             None => None,
         },
     };
+    // 系の入射偏光: POLS 偏光なし Jx Jy X の位相 Y の位相 …（OpticStudio 2026 R1.01 で実測。Jx・Jy は正規化しない）
+    let pols = |i: usize, d: f64| sys_f(raw, "POLS", i, d);
+    let input_pol = lensbench_core::system::InputPolarization {
+        unpolarized: pols(0, 1.0)? != 0.0,
+        jx: pols(1, 0.0)?,
+        jy: pols(2, 1.0)?,
+        phase_x: pols(3, 0.0)?,
+        phase_y: pols(4, 0.0)?,
+    };
     let mut cofn = None;
     for a in raw.sysl.get("COFN").into_iter().flatten() {
         if a.first().map(|s| s.as_str()) == Some("QF") {
@@ -285,6 +295,7 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
     Ok(Settings {
         aiming,
         aim_pupil,
+        input_pol,
         glrs,
         ropd,
         coating_file,

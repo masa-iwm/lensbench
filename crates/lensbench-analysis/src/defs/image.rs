@@ -271,7 +271,7 @@ pub(super) struct PsfParams {
     pub device: HuygensDevice,
     /// Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)
     pub plane: Plane,
-    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (with the system's input polarization, unpolarized by default, and coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
 }
 

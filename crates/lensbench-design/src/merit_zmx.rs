@@ -882,6 +882,11 @@ fn kind_of(
                 "OPDR" => ("ropd".to_string(), 1.0),
                 "PSHX" | "PSHY" | "PSHZ" => (mop.to_ascii_lowercase(), unit),
                 "PSCX" | "PSCY" => (mop.to_ascii_lowercase(), 1.0),
+                "GPIU" => ("polun".to_string(), 1.0),
+                "GPJX" => ("poljx".to_string(), 1.0),
+                "GPJY" => ("poljy".to_string(), 1.0),
+                "GPPX" => ("polpx".to_string(), 1.0),
+                "GPPY" => ("polpy".to_string(), 1.0),
                 o => return Err(format!("the multi-configuration operand {o} of row {k}")),
             };
             m.insert("type".into(), json!("param"));

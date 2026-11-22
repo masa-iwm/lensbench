@@ -86,6 +86,9 @@ pub struct Prescription {
     /// （2026 R1.01 で実測）。lensbench の追跡も使わず、読み書き・多重構成の行のために持つ
     #[serde(default, skip_serializing_if = "AimPupil::is_default")]
     pub aim_pupil: AimPupil,
+    /// 系の入射偏光（.zmx の POLS）。膜・偏光を入れる解析（MTF・PSF・相対照度の `polarization`）の入射の偏光。既定は偏光なし
+    #[serde(default, skip_serializing_if = "InputPolarization::is_default")]
+    pub input_pol: InputPolarization,
     /// 像空間がアフォーカル（.zmx の FTYP の 7 番目）。波面収差・Zernike・OPD を、射出瞳の位置で主光線に
     /// 垂直な平面（平面波）を基準に測る。スポット・MTF・PSF は角度（[`System::image_point`]、単位は
     /// [`System::afocal_unit`]）で出す
@@ -461,6 +464,7 @@ impl System {
             ropd: 2,
             apodization: crate::pupil::Apodization::Uniform,
             aim_pupil: AimPupil::default(),
+            input_pol: InputPolarization::default(),
             afocal: false,
             afocal_unit: AfocalUnit::Milliradians,
             vig_interp: VigInterp::Continuous,

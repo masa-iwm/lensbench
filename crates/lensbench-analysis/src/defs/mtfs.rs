@@ -52,7 +52,7 @@ pub(super) struct MtfParams {
     pub method: MtfHow,
     /// Also output the MTF of each wavelength besides the polychromatic one ("waves"; faster than separate runs because the per-wavelength computation is reused). Can't be used with wave
     pub each_wave: bool,
-    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (with the system's input polarization, unpolarized by default, and coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
     /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
     pub axes: MtfDirs,
@@ -494,7 +494,7 @@ pub(super) struct HuygensMtfParams {
     pub exact: bool,
     /// Where to compute the Huygens sum: auto (default; a GPU if one is present, otherwise the CPU), cpu, or gpu (use the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak). Not used with exact
     pub device: HuygensDevice,
-    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (with the system's input polarization, unpolarized by default, and coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
     /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
     pub axes: MtfDirs,

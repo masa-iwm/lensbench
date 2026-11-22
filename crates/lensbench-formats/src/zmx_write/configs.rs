@@ -35,6 +35,14 @@ pub(super) fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<C
         Kind::Apod => return Some(("APDF", 0, None, id)),
         Kind::Aiming => return Some(("RAAM", 0, None, id)),
         Kind::Ropd => return Some(("OPDR", 0, None, id)),
+        Kind::InputPol(i) => {
+            return Some((
+                crate::zmx::configs::POL_OPS[(i as usize).min(4)],
+                0,
+                None,
+                id,
+            ))
+        }
         Kind::AimPupil(i) => {
             return Some((
                 ["PSHX", "PSHY", "PSHZ", "PSCX", "PSCY"][(i as usize).min(4)],

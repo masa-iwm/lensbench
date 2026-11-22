@@ -6,7 +6,7 @@ use super::*;
 const SYS_READ: &[&str] = &[
     "VERS", "MODE", "UNIT", "NAME", "ENPD", "FNUM", "OBNA", "FLOA", "ENVD", "GCAT", "RAIM", "FTYP",
     "ROPD", "XFLN", "YFLN", "FWGN", "VDXN", "VDYN", "VCXN", "VCYN", "VANN", "WAVM", "WAVL", "WWGT",
-    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR", "PUSH",
+    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR", "PUSH", "POLS",
 ];
 
 /// 系の行のうち、読まなくても光線追跡・解析に効かない鍵（表示・作者・言語・公差・非順次の設定・最適化の設定・
@@ -20,8 +20,6 @@ const SYS_HARMLESS: &[&str] = &[
 const SYS_DEFAULT_ONLY: &[(&str, &str)] = &[
     // 自動の半直径の余裕（mm・%）
     ("SDMA", "0 1 0"),
-    // 偏光の状態（解析ごとに lensbench の設定を使う）
-    ("POLS", "1 0 1 0 0 1 0"),
     // 近軸の量で座標ブレークを無視する
     ("PICB", "1"),
 ];
@@ -37,6 +35,20 @@ impl Raw {
         keys.sort();
         for k in keys {
             let k = k.as_str();
+            // 入射偏光の 6・7 番目（薄膜の位相の変換・基底の決め方）は既定（1 0）だけ。偏光なしなら使わない
+            if k == "POLS" {
+                let v = self.sysl[k].first().cloned().unwrap_or_default();
+                let at = |i: usize, d: &str| v.get(i).map_or(d.to_string(), |x| x.clone());
+                let num = |i: usize, d: f64| v.get(i).and_then(|x| fv(x).ok()).unwrap_or(d);
+                if num(0, 1.0) == 0.0 && (num(5, 1.0) != 1.0 || num(6, 0.0) != 0.0) {
+                    out.push(format!(
+                        ".zmx system line POLS: the polarization settings {} {} (differ from the default 1 0) are not read",
+                        at(5, "1"),
+                        at(6, "0")
+                    ));
+                }
+                continue;
+            }
             if SYS_READ.contains(&k) || SYS_HARMLESS.contains(&k) {
                 continue;
             }

@@ -847,6 +847,12 @@ pub struct Project {
         skip_serializing_if = "lensbench_core::system::AimPupil::is_default"
     )]
     pub aim_pupil: lensbench_core::system::AimPupil,
+    /// 系の入射偏光（.zmx の POLS。膜・偏光を入れる解析の入射の偏光）。省略は偏光なし
+    #[serde(
+        default,
+        skip_serializing_if = "lensbench_core::system::InputPolarization::is_default"
+    )]
+    pub input_pol: lensbench_core::system::InputPolarization,
     /// 定義した視野以外の点のケラレ係数の求め方（`"continuous"`・`"opticstudio"`。省略は連続）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<lensbench_core::system::VigInterp>,

@@ -7,6 +7,17 @@
 
 0.8.0 からの変更。
 
+### 結果が変わる所
+
+- **偏光ありの POLS の .zmx**: .zmx の POLS（系の入射偏光）を読むようになったので、偏光ありの POLS を持つ .zmx では `--polarization` の
+  MTF・PSF・Huygens・相対照度の値が変わる（これまでは POLS を読まず、いつも偏光なしで計算していた）。偏光なしの .zmx は変わらない
+
+### 足したもの
+
+- **系の入射偏光**（OpticStudio の System Explorer の Polarization）: システム・プロジェクトの `input_pol`、.zmx の POLS、多重構成の
+  GPIU・GPJX・GPJY・GPPX・GPPY（パラメータ `polun`・`poljx`・`poljy`・`polpx`・`polpy`）。MTF・PSF・相対照度の `polarization` はこの偏光を
+  入射に使う（既定の偏光なしはこれまでと同じ）
+
 ## 0.8.0（2026-11-22）
 
 0.7.0 からの変更。
