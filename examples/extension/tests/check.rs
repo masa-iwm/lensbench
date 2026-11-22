@@ -1,4 +1,4 @@
-//! 足したものの試験: 足し忘れの検査と、CLI・serve と同じ呼び出しで解析とプラグインが動くこと、形の約束
+//! 足したものの試験: 足し忘れの検査と、CLI・serve と同じ呼び出しで解析とプラグインが動くこと、形と光源の約束
 
 use lensbench_extension_example::extensions;
 
@@ -56,4 +56,18 @@ fn the_shape_keeps_the_contract() {
     use lensbench_sdk::shape::check_shape;
     let cfg = Config::from([("a".to_string(), Value::Num(2e-4))]);
     check_shape(&lensbench_extension_example::Saddle, &cfg, 10.0).unwrap();
+}
+
+#[test]
+fn the_source_keeps_the_contract() {
+    use lensbench_sdk::plugin::{Config, Value};
+    use lensbench_sdk::source::{check_source, SourceModel};
+    let p = lensbench_extension_example::PointSource;
+    let cfg = Config::from([("y".to_string(), Value::Num(1.0))]);
+    check_source(&p, &cfg).unwrap();
+    // 中心の 1 本と、輪 1〜3 の 6・12・18 本
+    let r = p.prepare(&cfg).unwrap().rays(0.55).unwrap();
+    assert_eq!(r.len(), 37);
+    let bad = Config::from([("angle".to_string(), Value::Num(95.0))]);
+    assert!(p.prepare(&bad).is_err());
 }

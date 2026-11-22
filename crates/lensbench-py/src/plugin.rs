@@ -81,7 +81,7 @@ fn to_value(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Value> {
     )))
 }
 
-fn to_config(cfg: Option<&Bound<'_, PyDict>>) -> PyResult<Config> {
+pub(crate) fn to_config(cfg: Option<&Bound<'_, PyDict>>) -> PyResult<Config> {
     let mut c = Config::new();
     if let Some(d) = cfg {
         for (k, v) in d.iter() {
@@ -531,5 +531,5 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plugin_spec, m)?)?;
     m.add_function(wrap_pyfunction!(register_plugin, m)?)?;
     m.add_function(wrap_pyfunction!(unregister_plugin, m)?)?;
-    Ok(())
+    crate::sources::register(m)
 }

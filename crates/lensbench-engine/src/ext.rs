@@ -1,6 +1,6 @@
 //! 拡張の登録を 1 つの値にまとめる
 //!
-//! 別の exe（非公開版など）が足すもの（プラグイン・カタログの形式・利用者定義の面・材料と膜のカタログ・検出器のブロック・解析・誤りの
+//! 別の exe（非公開版など）が足すもの（プラグイン・カタログの形式・利用者定義の面と光源・材料と膜のカタログ・検出器のブロック・解析・誤りの
 //! 文の訳）を [`Extensions`] に集め、入口で 1 回 [`Extensions::install`] する。足す側のクレートは `Extensions` を
 //! 返す関数を 1 つ持てばよく、入口は呼ぶ順を気にしなくてよい。GUI の見せ方（図・欄）・Python の関数は、それぞれの
 //! クレートの拡張トレイト（`lensbench_gui::ext::GuiExtensions`・`lensbench::ext::PyExtensions`）で同じ値に足す
@@ -19,6 +19,7 @@ use lensbench_core::plugin::Registry;
 use lensbench_core::usercoating::{CoatingSet, CoatingSource};
 use lensbench_core::usermaterial::MaterialModel;
 use lensbench_core::usershape::ShapeModel;
+use lensbench_core::usersource::SourceModel;
 use lensbench_core::usersurf::SurfaceModel;
 use lensbench_project::detectors::DetectorKind;
 use std::collections::BTreeSet;
@@ -36,6 +37,7 @@ pub struct Extensions {
     sources: Vec<Arc<dyn LensCatalogSource + Send + Sync>>,
     surfaces: Vec<Arc<dyn SurfaceModel>>,
     shapes: Vec<Arc<dyn ShapeModel>>,
+    source_models: Vec<Arc<dyn SourceModel>>,
     materials: Vec<(&'static str, Vec<Arc<dyn MaterialModel>>)>,
     coat_sources: Vec<Arc<dyn CoatingSource>>,
     coatings: Vec<(&'static str, CoatingSet)>,
@@ -91,6 +93,12 @@ impl Extensions {
     /// 利用者定義の形のモデル（面の種類 USERSHAPE）
     pub fn shape_model(mut self, m: Arc<dyn ShapeModel>) -> Self {
         self.shapes.push(m);
+        self
+    }
+
+    /// 利用者定義の光源のモデル
+    pub fn source_model(mut self, m: Arc<dyn SourceModel>) -> Self {
+        self.source_models.push(m);
         self
     }
 
@@ -177,6 +185,11 @@ impl Extensions {
         &self.shapes
     }
 
+    /// 足した利用者定義の光源のモデル
+    pub fn source_models(&self) -> &[Arc<dyn SourceModel>] {
+        &self.source_models
+    }
+
     /// 足した材料のカタログ（名前とモデル）
     pub fn material_catalogs(&self) -> &[(&'static str, Vec<Arc<dyn MaterialModel>>)] {
         &self.materials
@@ -192,7 +205,7 @@ impl Extensions {
         &self.coatings
     }
 
-    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・膜の一覧と膜・カタログと膜の拡張子）を
+    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形と光源のモデル・材料のカタログ・膜の一覧と膜・カタログと膜の拡張子）を
     /// 足していれば誤り（other が [`Extensions::replacing`] なら other の方が勝つ）
     pub fn merge(mut self, other: Extensions) -> lensbench_core::Result<Self> {
         if !other.replacing {
@@ -208,6 +221,7 @@ impl Extensions {
         self.sources.extend(other.sources);
         self.surfaces.extend(other.surfaces);
         self.shapes.extend(other.shapes);
+        self.source_models.extend(other.source_models);
         self.materials.extend(other.materials);
         self.coat_sources.extend(other.coat_sources);
         self.coatings.extend(other.coatings);
@@ -249,6 +263,11 @@ impl Extensions {
             self.shapes
                 .iter()
                 .map(|m| format!("shape model {}", m.name())),
+        );
+        n.extend(
+            self.source_models
+                .iter()
+                .map(|m| format!("source model {}", m.name())),
         );
         n.extend(
             self.materials
@@ -297,6 +316,9 @@ impl Extensions {
         }
         for m in &self.shapes {
             e.add_shape_model(m.clone());
+        }
+        for m in &self.source_models {
+            e.add_source_model(m.clone());
         }
         for (c, ms) in &self.materials {
             // 同梱のガラスのカタログと同じ名前は、同梱のものを黙って隠すので誤り

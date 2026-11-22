@@ -32,6 +32,7 @@ mod pyjson;
 mod runs;
 mod search;
 mod soa;
+mod sources;
 use soa::{a2, to_dict, Soa, Traced};
 mod userterm;
 
@@ -2744,7 +2745,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 7);
+pub const API_VERSION: (u32, u32) = (2, 8);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

@@ -170,3 +170,13 @@ def test_registered_coating_catalog(tmp_path):
     assert "PYTEST" not in lb.coating_catalogs()
     with pytest.raises(ValueError):
         traced()
+
+
+def test_source_models_without_an_extension():
+    # 光源は拡張が足す（同梱の光源は無い）。知らない名前・frame は誤り
+    s = a0()
+    assert lb.source_models() == {}
+    with pytest.raises(lb.InvalidError, match="no user-defined source model"):
+        lb.source_rays(s, "nothing")
+    with pytest.raises(ValueError, match="frame"):
+        lb.source_rays(s, "nothing", frame="pupil")

@@ -1,6 +1,6 @@
 //! lensbench の拡張の SDK: 外のクレートが依存するのはこのクレート 1 つ。
 //!
-//! 外のクレートは足すもの（プラグイン・解析・検出器・利用者定義の面・材料・カタログの形式・膜のカタログ・誤りの文の訳、GUI の見せ方、
+//! 外のクレートは足すもの（プラグイン・解析・検出器・利用者定義の面・光源・材料・カタログの形式・膜のカタログ・誤りの文の訳、GUI の見せ方、
 //! Python の関数）を [`Extensions`] 1 つにまとめる関数を持ち、自分の exe・wheel の入口でそれを渡す:
 //!
 //! ```ignore
@@ -69,6 +69,12 @@ pub mod shape {
     pub use lensbench_core::usershape::{check_shape, ShapeInstance, ShapeModel};
 }
 
+/// 利用者定義の光源（設定から光線の始点・方向・重みを作る。追跡は `trace::Launch::Rays`、物体の座標系から大域へは
+/// `System::source_rays`）
+pub mod source {
+    pub use lensbench_core::usersource::{check_source, SourceInstance, SourceModel, SourceRays};
+}
+
 /// 利用者定義の材料（名前つきのカタログの単位で足し、AGF のカタログと同じに名前で引く）
 pub mod material {
     pub use lensbench_core::usermaterial::{check_material, MaterialModel};
@@ -97,7 +103,7 @@ pub mod detector {
 }
 
 /// 足し忘れの検査: GUI の見せ方の無い解析、検出器の欄の無い検出器（feature `gui` のとき）、反転の約束を守らない
-/// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル、
+/// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル、約束（有限・重みが 0 以上・同じ設定で同じ光線）を守らない光源のモデル、
 /// 約束を守らない・同じカタログに同じ名前のある材料のモデル（同梱のガラスのカタログと同じ名前の材料のカタログは、
 /// 表を作れない誤りとして挙がる）、約束を守らない膜の一覧（2 つの一覧の同じ名前の膜は、表を作れない誤りとして挙がる）。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
 pub fn check(ext: &Extensions) -> Vec<String> {
@@ -138,6 +144,13 @@ pub fn check(ext: &Extensions) -> Vec<String> {
             let r = m.example_radius();
             if let Err(e) = lensbench_core::usershape::check_shape(m.as_ref(), &c, r) {
                 out.push(format!("shape model {}: {e}", m.name()));
+            }
+        }
+    }
+    for m in ext.source_models() {
+        if let Some(c) = m.example_config() {
+            if let Err(e) = lensbench_core::usersource::check_source(m.as_ref(), &c) {
+                out.push(format!("source model {}: {e}", m.name()));
             }
         }
     }

@@ -1,4 +1,4 @@
-//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、材料のカタログ 1 つ、
+//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、光源 1 つ、材料のカタログ 1 つ、
 //! 膜の一覧 1 つと膜のファイル形式 1 つ、Python の関数 1 つ。
 //!
 //! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel・Web 版の入口がそれを渡す
@@ -16,6 +16,7 @@ use lensbench_sdk::plugin::{
 use lensbench_sdk::schemars::JsonSchema;
 use lensbench_sdk::serde::{Deserialize, Serialize};
 use lensbench_sdk::shape::{ShapeInstance, ShapeModel};
+use lensbench_sdk::source::{SourceInstance, SourceModel, SourceRays};
 use lensbench_sdk::trace::FieldSel;
 use lensbench_sdk::{Extensions, Result};
 use std::sync::Arc;
@@ -33,6 +34,7 @@ pub fn extensions() -> Extensions {
         .plugins(|r| r.register(Arc::new(Gain)))
         .analysis(Chief)
         .shape_model(Arc::new(Saddle))
+        .source_model(Arc::new(PointSource))
         .material_catalog("EXAMPLE", vec![Arc::new(Cauchy)])
         .coating_catalog("EXAMPLE_COATINGS", example_coatings())
         .coating_source(Arc::new(LayersFile));
@@ -134,6 +136,86 @@ impl ShapeInstance for SaddleShape {
     /// 設定 a による微分（変数・dOPL/dp 用）
     fn dsag(&self, key: &str, x: f64, y: f64) -> Option<[f64; 3]> {
         (key == "a").then_some([x * y, y, x])
+    }
+}
+
+// ------------------------------------------------------------------------------------------ 光源
+
+/// 点光源（名前 example_point、設定 y [mm]・angle [°]・rings）: 物体の座標系の点 (0, y, 0) から +z の向きの半角 angle の
+/// 円錐へ、同心の輪（輪 i に 6i 本、中心に 1 本）で光線を出す。重みは Lambert の cos θ。Python では
+/// `lb.source_rays(system, "example_point", {"y": 1.0})` の start・direction を `system.trace_rays` に渡す
+pub struct PointSource;
+
+impl SourceModel for PointSource {
+    fn name(&self) -> &str {
+        "example_point"
+    }
+    fn doc(&self) -> String {
+        "Point source with a cone of rays (Lambertian weights)".into()
+    }
+    fn params(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec::new(
+                "y",
+                ParamType::Num,
+                Some(Value::Num(0.0)),
+                "mm",
+                "Height of the point",
+            ),
+            ParamSpec::new(
+                "angle",
+                ParamType::Num,
+                Some(Value::Num(5.0)),
+                "deg",
+                "Half angle of the cone",
+            ),
+            ParamSpec::new(
+                "rings",
+                ParamType::Num,
+                Some(Value::Num(3.0)),
+                "",
+                "Number of rings",
+            ),
+        ]
+    }
+    fn prepare(&self, config: &Config) -> Result<Arc<dyn SourceInstance>> {
+        let mut c = ConfigReader::new(config);
+        let (y, angle, rings) = (c.num("y", 0.0)?, c.num("angle", 5.0)?, c.num("rings", 3.0)?);
+        if !(angle > 0.0 && angle < 90.0) || !(1.0..=100.0).contains(&rings) || rings.fract() != 0.0
+        {
+            return Err(lensbench_sdk::Error::Invalid(format!(
+                "example_point needs 0 < angle < 90 and rings a whole number from 1 to 100 (angle {angle}, rings {rings})"
+            )));
+        }
+        Ok(Arc::new(Point {
+            y,
+            angle: angle.to_radians(),
+            rings: rings as usize,
+        }))
+    }
+}
+
+struct Point {
+    y: f64,
+    angle: f64,
+    rings: usize,
+}
+
+impl SourceInstance for Point {
+    /// 波長によらない光線（物体の座標系）
+    fn rays(&self, _wl: f64) -> Result<SourceRays> {
+        let mut r = SourceRays::default();
+        for i in 0..=self.rings {
+            let th = self.angle * i as f64 / self.rings as f64;
+            let n = (6 * i).max(1);
+            for j in 0..n {
+                let ph = std::f64::consts::TAU * j as f64 / n as f64;
+                r.p.push([0.0, self.y, 0.0]);
+                r.k.push([th.sin() * ph.cos(), th.sin() * ph.sin(), th.cos()]);
+                r.w.push(th.cos());
+            }
+        }
+        Ok(r)
     }
 }
 

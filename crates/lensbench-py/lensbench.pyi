@@ -1155,6 +1155,18 @@ def run_settings() -> _RunSettings:
     """
 
 
+def source_models() -> dict[str, str]:
+    """Registered user-defined source models: {name: description}"""
+
+
+def source_rays(system: System, name: str, config: Mapping[str, Any] | None = None, wave: int | None = None, frame: str = "object") -> dict[str, Any]:
+    """Rays of a registered user-defined source model name with the settings config (dict) at the wavelength number wave (primary wavelength if omitted).
+    frame is "object" (the object coordinate system, as trace_rays) or "global".
+    Returned dict: start and direction ((rays, 3); directions as the source gave them) and weight ((rays,)).
+    Pass start and direction to `system.trace_rays(start, direction, waves=[wave], frame=frame)`
+    """
+
+
 def swap_search(project: _StrPath, spec: Any, glass_dirs: Sequence[_StrPath] | None = None, lens_catalogs: Sequence[_StrPath] | None = None, top: int = 0, threads: int | None = None, out: _StrPath | None = None, resume: bool = True) -> Any:
     """Catalog lens swap search: runs in parallel the sets with the lens blocks of project (path of a project file) swapped for the candidates of spec (a dict or JSON
     string; the same as the CLI's swap --spec: slots, vars, merit, iters, efl, state and so on) and

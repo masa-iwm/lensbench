@@ -28,15 +28,15 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 
 ## 拡張の約束: 外のクレートから足す
 
-別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・材料・膜・カタログの形式を足し、自分の exe・wheel を組める
+別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・光源・材料・膜・カタログの形式を足し、自分の exe・wheel を組める
 （DLL は使わない。静的にリンクする）。依存するのは `lensbench-sdk` 1 つ。
 
 - 足すものは `lensbench_sdk::Extensions` 1 つにまとめる: `.plugins(..)`・`.analysis(..)`・`.detector(..)`・
-  `.surface_model(..)`・`.shape_model(..)`・`.material_catalog(..)`・`.coating_catalog(..)`・`.coating_source(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
+  `.surface_model(..)`・`.shape_model(..)`・`.source_model(..)`・`.material_catalog(..)`・`.coating_catalog(..)`・`.coating_source(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
   （`gui_analysis`・`gui_detector`・`gui_translations`）、Python の関数は `lensbench_sdk::py::PyExtensions`（`py_module`）。
 - 入口に渡す: CLI は `lensbench_sdk::cli::main(ext)`、GUI は `lensbench_sdk::gui::main(ext)`、Python の拡張モジュールは
   `#[pymodule]` から `lensbench_sdk::py::module(m, ext)`。呼ぶ順の約束は無い。
-- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・膜の一覧と中の膜・カタログと膜の拡張子）は誤りになる
+- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形と光源のモデル・材料のカタログ・膜の一覧と中の膜・カタログと膜の拡張子）は誤りになる
   （置き換えるときは後の方に `.replacing()`）。`Extensions::named(..)` の名前は誤りの文にだけ使い、サブコマンドなど
   利用者に見える名前には入らない。
 - 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面・勾配が矢高の差分と合わない形・約束を守らない材料）。
@@ -102,6 +102,13 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   Jones 面と同じ（局所の ±z を出射の向きへ移す最小の回転で運んだ x・y、`lensbench_core::trace::apply_jones`）。USERSHAPE の
   裏返しは core が包み（z では同じ、x では映した点の行列の B・C の符号を替える）、USER では `flip` が同じ約束を守る
   （`check_flip` が確かめる）。モデルが途中の点で None を返すと、その光線は偏光の誤り
+- `lensbench_core::usersource`（SDK では `lensbench_sdk::source`）: 利用者が定義する光源の口。`SourceModel`（名前・`prepare(&Config)`）の
+  `SourceInstance::rays(波長 µm)` が光線の始点・方向・重み（`SourceRays` の `p`・`k`・`w`）を返す。光線は物体の座標系（有限物体は物体面、
+  無限遠物体は面 1 の変換の前の座標系）で、方向は規格化しなくてよい（長さ 0 は誤り）、重みは 0 以上の相対的な強さ。
+  `Extensions::source_model` か拡張の表の `add_source_model` で足し、`source_model(名前)` で引く。`System::source_rays(光源, 波長の番号)` が
+  大域に直し（`Launch::Rays` にそのまま渡せる）、約束を守らない光線は誤り。約束は、同じ設定・波長なら同じ光線（乱数は種を設定に持つ）、
+  状態を持たずどのスレッドから呼んでもよい。`check_source(モデル, 設定)` で約束（F・d・C 線で 1 本以上、有限、重みが 0 以上、2 回で同じ）を
+  確かめられる（`lensbench_sdk::check` は `example_config` で呼ぶ）。Python からは `lensbench.source_models()`・`lensbench.source_rays(系, 名前, 設定)`
 - `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
   （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
   `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の

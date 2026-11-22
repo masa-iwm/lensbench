@@ -45,6 +45,7 @@ mod units;
 mod usercoating;
 mod usermaterial;
 mod usershape;
+mod usersource;
 mod usersurf;
 mod vfs_mem;
 mod vig_interp;

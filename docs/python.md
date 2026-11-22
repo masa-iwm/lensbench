@@ -24,6 +24,8 @@
 
 ### 変更履歴
 
+- **2.8**: 拡張が足した利用者定義の光源の一覧 `source_models()`（{名前: 説明}）と、光源の光線 `source_rays(system, name, config=None, wave=None, frame="object")`
+  （始点・方向・重みの配列の dict。start・direction をそのまま `trace_rays` に渡す）を追加（[ライブラリ（Rust）](rust.md) の `lensbench_core::usersource`）。
 - **2.7**: 像の模擬 `System.image_sim(image, ...)`（OpticStudio の Image Simulation 相当。NumPy の (高さ, 幅) か (高さ, 幅, 3) を受けて同じ形で返す）を追加。
 - **2.6**: 膜の一覧を登録する `register_coating_catalog(name, files=[], dat=None)`・`unregister_coating_catalog(name)`・
   `coating_catalogs()` を追加。登録した膜は面の膜の名前で、.zmx の膜ファイル・膜のフォルダより先に引く（拡張の

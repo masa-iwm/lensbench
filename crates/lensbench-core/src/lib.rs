@@ -73,6 +73,7 @@ pub mod units;
 pub mod usercoating;
 pub mod usermaterial;
 pub mod usershape;
+pub mod usersource;
 pub mod usersurf;
 pub mod vfs;
 pub mod waves;

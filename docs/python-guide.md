@@ -87,6 +87,12 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   lb.register_plugin("fringe", fringe, kind="analysis")
   lb.Plugin("fringe", deg=4).run(img=img4)
   ```
+- 利用者定義の光源（拡張が足したもの）: 光線を作って `trace_rays` に渡す。重みは結果に掛けて使う
+  ```python
+  lb.source_models()                             # {"example_point": "Point source ...", ...}
+  r = lb.source_rays(s, "example_point", {"y": 1.0}, wave=2)   # start・direction (n, 3)、weight (n,)。物体の座標系
+  t = s.trace_rays(r["start"], r["direction"], waves=[2])
+  ```
 - px・py は list・float32・飛び飛びの配列も受け付ける（float64 に直す）
 - ゴースト: `s.ghost_pairs()` → [(a, b), ...]、`g = s.ghost(a, b)` で 2 回反射の経路を展開したシステム（`trace`・`pol` など
   そのまま）。`s.ghost_origin(a, b)` で展開したシステムの面ごとの元の面と反射の面の番号

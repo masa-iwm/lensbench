@@ -1,4 +1,4 @@
-//! 拡張の表（レンズカタログの形式・利用者定義の面のモデル・材料と膜のカタログ・プラグイン）を 1 つの値 [`Ext`] にまとめる
+//! 拡張の表（レンズカタログの形式・利用者定義の面と光源のモデル・材料と膜のカタログ・プラグイン）を 1 つの値 [`Ext`] にまとめる
 //! 。
 //!
 //! 計算は今の文脈（[`crate::par::Ctx`]）の表を使う。文脈に無ければプロセスの既定（[`set_default`]。入口の exe・
@@ -16,6 +16,7 @@ use crate::plugin::Registry;
 use crate::usercoating::{CoatingCatalog, CoatingSet, CoatingSource};
 use crate::usermaterial::{MaterialCatalog, MaterialModel};
 use crate::usershape::ShapeModel;
+use crate::usersource::SourceModel;
 use crate::usersurf::{IdealMapping, SurfaceModel};
 use crate::{invalid, RwLockExt};
 use std::any::{Any, TypeId};
@@ -33,6 +34,8 @@ pub struct Ext {
     sources: Vec<CatalogSource>,
     surfaces: BTreeMap<String, Arc<dyn SurfaceModel>>,
     shapes: BTreeMap<String, Arc<dyn ShapeModel>>,
+    /// 光源のモデル
+    sources_m: BTreeMap<String, Arc<dyn SourceModel>>,
     /// 材料のカタログ（足したときの綴り。引くときは大文字小文字を問わない）
     materials: BTreeMap<String, Arc<MaterialCatalog>>,
     /// 膜のファイル形式（後から足したものが先に引かれる）
@@ -52,6 +55,7 @@ impl Default for Ext {
             sources: Vec::new(),
             surfaces,
             shapes: BTreeMap::new(),
+            sources_m: BTreeMap::new(),
             materials: BTreeMap::new(),
             coat_sources: Vec::new(),
             coatings: BTreeMap::new(),
@@ -67,6 +71,7 @@ impl std::fmt::Debug for Ext {
             .field("sources", &self.sources.len())
             .field("surfaces", &self.surfaces.keys().collect::<Vec<_>>())
             .field("shapes", &self.shapes.keys().collect::<Vec<_>>())
+            .field("source_models", &self.sources_m.keys().collect::<Vec<_>>())
             .field("materials", &self.materials.keys().collect::<Vec<_>>())
             .field("coat_sources", &self.coat_sources.len())
             .field("coatings", &self.coatings.keys().collect::<Vec<_>>())
@@ -108,6 +113,17 @@ impl Ext {
     /// 形のモデルを外す（あれば true）
     pub fn remove_shape_model(&mut self, name: &str) -> bool {
         self.shapes.remove(name).is_some()
+    }
+
+    /// 利用者定義の光源のモデルを足す（同じ名前は差し替える）
+    pub fn add_source_model(&mut self, m: Arc<dyn SourceModel>) -> &mut Self {
+        self.sources_m.insert(m.name().to_string(), m);
+        self
+    }
+
+    /// 光源のモデルを外す（あれば true）
+    pub fn remove_source_model(&mut self, name: &str) -> bool {
+        self.sources_m.remove(name).is_some()
     }
 
     /// 利用者定義の材料のカタログを足す（名前は AGF のカタログと同じに引く。大文字小文字は問わず、同じ名前は差し替える）
@@ -252,6 +268,9 @@ impl Ext {
         for (k, m) in &other.shapes {
             self.shapes.insert(k.clone(), m.clone());
         }
+        for (k, m) in &other.sources_m {
+            self.sources_m.insert(k.clone(), m.clone());
+        }
         for (k, c) in &other.materials {
             self.materials.retain(|x, _| !x.eq_ignore_ascii_case(k));
             self.materials.insert(k.clone(), c.clone());
@@ -308,6 +327,22 @@ impl Ext {
     /// 形のモデルの名前（名前の順）
     pub fn shape_models(&self) -> Vec<String> {
         self.shapes.keys().cloned().collect()
+    }
+
+    /// 名前の光源のモデル
+    pub fn source_model(&self, name: &str) -> Result<Arc<dyn SourceModel>> {
+        match self.sources_m.get(name) {
+            Some(m) => Ok(m.clone()),
+            None => invalid!(
+                "no user-defined source model {name} (registered: {})",
+                self.source_models().join(", ")
+            ),
+        }
+    }
+
+    /// 光源のモデルの名前（名前の順）
+    pub fn source_models(&self) -> Vec<String> {
+        self.sources_m.keys().cloned().collect()
     }
 }
 
