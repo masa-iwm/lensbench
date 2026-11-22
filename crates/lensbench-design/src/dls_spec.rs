@@ -440,6 +440,9 @@ pub struct GlassParams {
     /// 候補から除く硝材の名前（大文字小文字は問わない。`名前@カタログ` ならそのカタログのものだけ）
     #[serde(deserialize_with = "seq")]
     pub exclude: Vec<String>,
+    /// 上限を入れた性質に値の無い硝材を除く（OpticStudio の Exclude Glasses With Incomplete Data。相対価格・CR・SR・AR・PR の
+    /// 0 も値なし、FR の 0 は等級）
+    pub exclude_incomplete: bool,
     /// 近さ (Δnd / nd_step)² + (Δvd / vd_step)² の nd の刻み
     #[schemars(extend("exclusiveMinimum" = 0))]
     pub nd_step: f64,
@@ -474,7 +477,20 @@ impl GlassParams {
             ],
             status,
             exclude: self.exclude.clone(),
+            exclude_incomplete: self.exclude_incomplete,
         })
+    }
+
+    /// 系 s での候補の絞り込み: 絞り込みの欄（上限・状態・除く名前・値の無い硝材を除く）を何も書いていなければ、系の
+    /// ガラス置換のテンプレート（.zmx の GSTD、使う設定のとき）。書いていればその欄だけ
+    pub fn filter_for(&self, s: &lensbench_core::System) -> Result<crate::glass_sub::GlassFilter> {
+        let f = self.filter()?;
+        if f.is_empty() {
+            if let Some(t) = crate::glass_sub::GlassFilter::from_template(&s.glass_template) {
+                return Ok(t);
+            }
+        }
+        Ok(f)
     }
 
     /// 近さの刻み
@@ -502,6 +518,7 @@ impl Default for GlassParams {
             max_pr: None,
             status: Vec::new(),
             exclude: Vec::new(),
+            exclude_incomplete: false,
             nd_step: 0.01,
             vd_step: 1.0,
             dpgf_step: None,
@@ -605,7 +622,7 @@ impl OptimizeParams {
                 candidates: gp.candidates,
                 passes: gp.passes,
                 local: o,
-                filter: gp.filter()?,
+                filter: gp.filter_for(&p.configs[0])?,
                 closeness: gp.closeness(),
             };
             let merit_before = result.merit;

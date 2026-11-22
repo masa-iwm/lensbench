@@ -126,6 +126,23 @@ fn write_header(s: &System, coat_file: &str) -> Result<String> {
             ),
         );
     }
+    // ガラス置換のテンプレート（GSTD）。既定なら書かない（OpticStudio は既定の行を補う）
+    let gt = &s.glass_template;
+    if !gt.is_default() {
+        let b = |x: bool| if x { "1" } else { "0" };
+        let mut l = format!("GSTD {}", b(gt.enabled));
+        for x in gt.max {
+            l += &format!(" {}", f(x));
+        }
+        l += &format!(" {}", b(gt.exclude_incomplete));
+        for x in gt.status {
+            l += &format!(" {}", b(x));
+        }
+        for x in gt.check {
+            l += &format!(" {}", b(x));
+        }
+        w(&mut o, l);
+    }
     if !ap.is_default() {
         w(
             &mut o,

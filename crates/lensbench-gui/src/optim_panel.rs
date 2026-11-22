@@ -475,12 +475,12 @@ pub(crate) struct OptPanel {
     pub glass_catalogs: String,
     pub glass_candidates: usize,
     pub glass_passes: usize,
-    /// ガラスの置き換えの候補の絞り込み: 相対価格・耐性の等級（CR・FR・SR・AR・PR）の上限（空は上限なし）・使う状態
-    /// （標準・推奨・廃止・特殊・溶解。どれも選ばなければすべて）・除く硝材（カンマ区切り）
+    /// ガラスの置き換えの候補の絞り込み: 価格・耐性の等級の上限（空は上限なし）・状態（選ばなければすべて）・除く硝材・値の無い硝材を除くか
     pub glass_max_cost: String,
     pub glass_max_resist: [String; 5],
     pub glass_status: [bool; 5],
     pub glass_exclude: String,
+    pub glass_exclude_incomplete: bool,
     /// 近さの nd・vd の刻みと ΔPgF の刻み（空は ΔPgF を見ない）
     pub glass_nd_step: f64,
     pub glass_vd_step: f64,

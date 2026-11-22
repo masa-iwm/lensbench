@@ -99,6 +99,7 @@ pub(crate) fn system(
     s.ropd = p.ropd;
     s.aim_pupil = p.aim_pupil;
     s.input_pol = p.input_pol;
+    s.glass_template = p.glass_template;
     s.apodization = p.apodization;
     s.afocal = p.afocal;
     s.afocal_unit = p.afocal_unit;

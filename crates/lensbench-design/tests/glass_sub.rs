@@ -268,6 +268,89 @@ fn filter_excludes_names_status_cost_and_resistance() {
     assert!(substitute(&pm, &x, &e).is_err());
 }
 
+/// 値の無い性質の扱い（OpticStudio 2026 R1.01 のガラス置換のテンプレートの実測）: 既定は除かず、
+/// 除く設定では上限を入れた性質に値の無い硝材を除く。相対価格・CR・SR・AR・PR の 0 は値なし、FR の 0 は等級
+#[test]
+fn incomplete_data_and_glass_template() {
+    use lensbench_core::glass::GlassProps;
+    use lensbench_core::system::GlassTemplate;
+    use lensbench_design::glass_sub::GlassFilter;
+    let o = opts(vec![3], &["SCHOTT"]);
+    let base = o.glasses.get("F2").unwrap().clone();
+    let with = |cost: f64, r: [Option<f64>; 5]| {
+        let mut g = base.clone();
+        g.props = Some(GlassProps {
+            cost,
+            resist: Some(r),
+            ..base.props.unwrap_or_default()
+        });
+        g
+    };
+    let full = with(1.0, [Some(1.0); 5]);
+    let no_cost = with(-1.0, [Some(1.0); 5]);
+    let no_sr = with(1.0, [Some(1.0), Some(1.0), None, Some(1.0), Some(1.0)]);
+    let fr0 = with(1.0, [Some(1.0), Some(0.0), Some(1.0), Some(1.0), Some(1.0)]);
+    let sr0 = with(1.0, [Some(1.0), Some(1.0), Some(0.0), Some(1.0), Some(1.0)]);
+    let mut no_od = base.clone();
+    no_od.props = Some(GlassProps {
+        cost: -1.0,
+        resist: None,
+        ..base.props.unwrap_or_default()
+    });
+    let mut f = GlassFilter {
+        max_cost: Some(2.0),
+        max_resist: [Some(2.0); 5],
+        ..Default::default()
+    };
+    // 既定: 値が無くても上限の検査を通る
+    for g in [&full, &no_cost, &no_sr, &fr0, &sr0, &no_od] {
+        assert!(f.passes("F2", g));
+    }
+    // 除く設定
+    f.exclude_incomplete = true;
+    assert!(f.passes("F2", &full));
+    assert!(f.passes("F2", &fr0), "FR の 0 は等級");
+    for g in [&no_cost, &no_sr, &sr0, &no_od] {
+        assert!(!f.passes("F2", g));
+    }
+    // 上限を入れていない性質は値が無くても除かない
+    f.max_cost = None;
+    f.max_resist[2] = None;
+    assert!(f.passes("F2", &no_cost) && f.passes("F2", &no_sr) && f.passes("F2", &sr0));
+    assert!(!f.passes("F2", &no_od));
+
+    // テンプレート（GSTD）: 使わない設定なら None
+    assert!(GlassFilter::from_template(&GlassTemplate::default()).is_none());
+    let t = GlassTemplate {
+        enabled: true,
+        max: [2.0, 2.0, 0.0, 2.0, 2.0, 2.0],
+        exclude_incomplete: true,
+        status: [true, false, false, true],
+        check: [true, true, true, false, true, true],
+    };
+    let tf = GlassFilter::from_template(&t).unwrap();
+    // 上限 0 と確かめない性質は上限なし。状態は選んだもの（溶解は入らない）
+    assert_eq!(tf.max_cost, Some(2.0));
+    assert_eq!(tf.max_resist, [Some(2.0), None, None, Some(2.0), Some(2.0)]);
+    assert_eq!(tf.status, Some(vec![0, 3]));
+    assert!(tf.exclude_incomplete);
+    // 絞り込みの欄を何も書かなければ系のテンプレート、書けばその欄だけ
+    let mut s = load("A0");
+    s.edit_raw(|rx| {
+        rx.glass_template = t;
+        Ok(())
+    })
+    .unwrap();
+    let gp = lensbench_design::dls_spec::GlassParams::default();
+    assert_eq!(gp.filter_for(&s).unwrap(), tf);
+    let gp = lensbench_design::dls_spec::GlassParams {
+        max_cost: Some(3.0),
+        ..Default::default()
+    };
+    assert_eq!(gp.filter_for(&s).unwrap().max_cost, Some(3.0));
+    assert!(!gp.filter_for(&s).unwrap().exclude_incomplete);
+}
+
 #[test]
 fn glass_failing_the_filter_is_always_replaced() {
     // 実在の硝材の面は良くなるときだけ入れ替えるが、絞り込みに合わない硝材（ここでは除く一覧の F2）は必ず置き換える

@@ -79,7 +79,14 @@ lensbench optimize lens.zmx --var 1.c=-0.08:0.08 --var 2.c=-0.08:0.08 ... --star
   - `--glass-status standard,preferred`（`status`）: 使ってよいカタログの状態（`standard` 標準・`preferred` 推奨・`obsolete` 廃止・
     `special` 特殊・`melt` 溶解。AGF の NM の行の 8 番目）。省けばすべて。
   - `--glass-exclude N-LASF9,F2@OHARA`（`exclude`）: 候補にしない硝材（大文字小文字は問わない。`名前@カタログ` ならそのカタログのものだけ）。
-  - カタログに値の無い性質（OD の -1、OD の行が無い）・状態の無い硝材は、その上限・状態では除かない。同梱の SCHOTT・OHARA には
+  - `--glass-exclude-incomplete`（`exclude_incomplete`）: 上限を入れた性質（上限 0 は除く）に値の無い硝材を除く（OpticStudio の
+    Exclude Glasses With Incomplete Data）。OD の -1・OD の行が無いものに加え、相対価格・CR・SR・AR・PR の 0 も値なしとする（FR の 0 は
+    等級。OpticStudio 2026 R1.01 と同じ）。
+  - 絞り込みの欄を何も書かなければ、システムのガラス置換のテンプレート（`glass_template`、.zmx の GSTD）が使う設定ならそれを使う
+    （確かめる性質・上限 0 より大きい上限・選んだ状態。溶解はテンプレートでは選べず除く。OpticStudio と同じ）。欄を 1 つでも書けば
+    書いた欄だけ。
+  - カタログに値の無い性質（OD の -1、OD の行が無い）・状態の無い硝材は、除く設定にしなければ、その上限・状態では除かない
+    （OpticStudio の既定と同じ）。同梱の SCHOTT・OHARA には
     価格・耐性・状態が無いので、絞り込むにはメーカーの AGF を使う。カタログで置き換えから除く印（NM の 7 番目、OpticStudio の
     Exclude Substitution）の付いた硝材は使わない。
   - 絞り込みに合わない今の硝材の面は、モデルガラスと同じく必ず置き換える。絞り込みに合う硝材が 1 つも無ければ誤り。

@@ -54,6 +54,10 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
                 "ropd" => json!(2),
                 "aim_pupil" => json!({}),
                 "input_pol" => json!({}),
+                "glass_template" => {
+                    serde_json::to_value(lensbench_core::system::GlassTemplate::default())
+                        .unwrap_or_default()
+                }
                 "environment" => {
                     json!({ "temperature_c": 20.0, "pressure_atm": 1.0, "adjust_index": false })
                 }
@@ -158,6 +162,9 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
     }
     if s.ropd != 2 {
         p["ropd"] = json!(s.ropd);
+    }
+    if !s.glass_template.is_default() {
+        p["glass_template"] = serde_json::to_value(s.glass_template).map_err(|e| e.to_string())?;
     }
     if !s.input_pol.is_default() {
         p["input_pol"] = serde_json::to_value(s.input_pol).map_err(|e| e.to_string())?;

@@ -233,6 +233,7 @@ pub(super) struct Settings {
     pub aiming: Aiming,
     pub aim_pupil: lensbench_core::system::AimPupil,
     pub input_pol: lensbench_core::system::InputPolarization,
+    pub glass_template: lensbench_core::system::GlassTemplate,
     pub glrs: usize,
     pub ropd: i64,
     pub coating_file: Option<PathBuf>,
@@ -274,6 +275,22 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
         phase_x: pols(3, 0.0)?,
         phase_y: pols(4, 0.0)?,
     };
+    // ガラス置換のテンプレート: GSTD 使う 上限 6 つ 値の無い硝材を除く 状態 4 つ 確かめる 6 つ（OpticStudio 2026 R1.01 で実測）
+    let gd = lensbench_core::system::GlassTemplate::default();
+    let gs = |i: usize, d: f64| sys_f(raw, "GSTD", i, d);
+    let on = |i: usize, d: bool| -> Result<bool> { Ok(gs(i, d as u8 as f64)? != 0.0) };
+    let mut glass_template = lensbench_core::system::GlassTemplate {
+        enabled: on(0, gd.enabled)?,
+        exclude_incomplete: on(7, gd.exclude_incomplete)?,
+        ..gd
+    };
+    for k in 0..6 {
+        glass_template.max[k] = gs(1 + k, gd.max[k])?;
+        glass_template.check[k] = on(12 + k, gd.check[k])?;
+    }
+    for k in 0..4 {
+        glass_template.status[k] = on(8 + k, gd.status[k])?;
+    }
     let mut cofn = None;
     for a in raw.sysl.get("COFN").into_iter().flatten() {
         if a.first().map(|s| s.as_str()) == Some("QF") {
@@ -296,6 +313,7 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
         aiming,
         aim_pupil,
         input_pol,
+        glass_template,
         glrs,
         ropd,
         coating_file,

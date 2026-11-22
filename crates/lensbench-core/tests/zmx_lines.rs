@@ -1136,3 +1136,27 @@ GPJX 0 1 1 0 0 0 1 1 0 0 0 \"\" 0\nGPJX 0 2 0.5 0 0 0 1 1 0 0 0 \"\" 0\n";
     assert_eq!(back.configs(), s.configs());
     assert_eq!(back.input_pol, s.input_pol);
 }
+
+/// ガラス置換のテンプレート（GSTD 使う 上限 6 つ 値の無い硝材を除く 状態 4 つ 確かめる 6 つ。OpticStudio 2026 R1.01 で 1 欄ずつ
+/// 実測）を読み書きする。既定（GSTD 0 100 100 100 100 100 100 0 1 1 0 0 1 1 1 1 1 1）は書かない
+#[test]
+fn glass_substitution_template() {
+    let base = lens("  TYPE STANDARD\n  CURV 0.01\n");
+    let line = "GSTD 1 2 3 0 2 2 2 1 1 0 0 1 1 1 1 0 1 1";
+    let s = build(&base.replace("PWAV 1\n", &format!("PWAV 1\n{line}\n")));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let t = s.glass_template;
+    assert!(t.enabled && t.exclude_incomplete);
+    assert_eq!(t.max, [2.0, 3.0, 0.0, 2.0, 2.0, 2.0]);
+    assert_eq!(t.status, [true, false, false, true]);
+    assert_eq!(t.check, [true, true, true, false, true, true]);
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains(line), "{w}");
+    assert_eq!(build(&w).glass_template, t);
+    let d = build(&base.replace(
+        "PWAV 1\n",
+        "PWAV 1\nGSTD 0 100 100 100 100 100 100 0 1 1 0 0 1 1 1 1 1 1\n",
+    ));
+    assert!(d.glass_template.is_default() && d.import_notes.is_empty());
+    assert!(!zmx_write::write(&d).unwrap().contains("GSTD"));
+}

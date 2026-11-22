@@ -94,7 +94,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `"ropd"`（既定 2。.zmx の ROPD と同じ）、光線エイミングの瞳のずれ・圧縮は `"aim_pupil": {"shift": [x, y, z], "compress": [x, y],
   "scale_by_field": false, "auto_shift": true}`（省略は全部 0。.zmx の PUSH と RAIM の 10 番目と同じ。追跡には効かない）、系の入射偏光は
   `"input_pol": {"unpolarized": false, "jx": 1, "jy": 0, "phase_x": 0, "phase_y": 0}`（省略は偏光なし。.zmx の POLS と同じ。Jx・Jy は
-  正規化しない。膜・偏光を入れる解析（`polarization`）の入射の偏光）。
+  正規化しない。膜・偏光を入れる解析（`polarization`）の入射の偏光）。最適化のガラスの置き換えの候補を絞るガラス置換のテンプレートは
+  `"glass_template": {"enabled": true, "max": [相対価格, CR, FR, SR, AR, PR], "exclude_incomplete": false,
+  "status": [標準, 推奨, 廃止, 特殊], "check": [6 つ]}`（省略は使わない。.zmx の GSTD と同じ並び、[最適化](optimize.md)）。
 - 温度・気圧は `"environment": {"temperature_c": 25, "pressure_atm": 1, "adjust_index": true}`（省略で 20 °C・1 atm・補正なし。
   .zmx の ENVD と同じ）。ガラスの屈折率はこの環境で計算し、インポートした .zmx の環境と違えば注意を出す。
 - 知らないキー（綴りの違いなど）はエラーにする。GUI は自分の編集の状態を `gui` に残す。

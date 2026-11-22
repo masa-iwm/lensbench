@@ -55,7 +55,8 @@ pub struct GlassSubOpts {
     pub closeness: Closeness,
 }
 
-/// 候補の絞り込み（OpticStudio のガラス置換のテンプレートに当たる）。カタログに値の無い性質の上限では除かない
+/// 候補の絞り込み（OpticStudio のガラス置換のテンプレートに当たる）。カタログに値の無い性質は、既定では上限で除かない
+/// （OpticStudio 2026 R1.01 の既定と同じ。[`GlassFilter::exclude_incomplete`] で除く）
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GlassFilter {
     /// 相対価格の上限（AGF の OD の 1 番目）
@@ -66,6 +67,9 @@ pub struct GlassFilter {
     pub status: Option<Vec<u8>>,
     /// 除く硝材の名前（大文字小文字は問わない。`名前@カタログ` ならそのカタログのものだけ）
     pub exclude: Vec<String>,
+    /// 上限を入れた性質（上限が 0 のものは除く）に値の無い硝材を除く（OpticStudio の Exclude Glasses With Incomplete Data）。
+    /// OD の -1・OD の行が無いものに加え、相対価格・CR・SR・AR・PR の 0 も値なしとする（FR の 0 は等級。OpticStudio と同じ）
+    pub exclude_incomplete: bool,
 }
 
 /// 状態の名前（AGF の NM の 8 番目の順）
@@ -107,6 +111,9 @@ impl GlassFilter {
                 return false;
             }
         }
+        if self.exclude_incomplete && self.incomplete(g) {
+            return false;
+        }
         if let (Some(m), Some(c)) = (self.max_cost, g.props.and_then(|p| p.cost())) {
             if c > m {
                 return false;
@@ -122,6 +129,39 @@ impl GlassFilter {
             }
         }
         true
+    }
+
+    /// 系のガラス置換のテンプレート（.zmx の GSTD）の絞り込み。使わない設定なら None。確かめない性質・上限が 0 以下の性質は
+    /// 上限なし、状態は選んだもの（溶解は選べないので除く。OpticStudio 2026 R1.01 と同じ）
+    pub fn from_template(t: &lensbench_core::system::GlassTemplate) -> Option<GlassFilter> {
+        if !t.enabled {
+            return None;
+        }
+        let lim = |k: usize| (t.check[k] && t.max[k] > 0.0).then_some(t.max[k]);
+        Some(GlassFilter {
+            max_cost: lim(0),
+            max_resist: [lim(1), lim(2), lim(3), lim(4), lim(5)],
+            status: Some((0..4u8).filter(|&k| t.status[k as usize]).collect()),
+            exclude: Vec::new(),
+            exclude_incomplete: t.exclude_incomplete,
+        })
+    }
+
+    /// 上限を入れた性質に値が無いか（[`GlassFilter::exclude_incomplete`]）
+    fn incomplete(&self, g: &Glass) -> bool {
+        let on = |l: Option<f64>| l.is_some_and(|x| x != 0.0);
+        if on(self.max_cost) && g.props.and_then(|p| p.cost()).is_none() {
+            return true;
+        }
+        let r = g.props.and_then(|p| p.resist).unwrap_or([None; 5]);
+        self.max_resist
+            .iter()
+            .zip(r)
+            .enumerate()
+            .any(|(k, (&lim, v))| {
+                // FR（2 番目）だけ 0 も等級
+                on(lim) && v.is_none_or(|x| x == 0.0 && k != 1)
+            })
     }
 
     /// 絞り込みが何もしないか（カタログの置き換えから除く印は別）

@@ -2,6 +2,7 @@
 
 use super::*;
 use lensbench_core::error::{code, Error};
+use lensbench_core::system::{GlassTemplate, InputPolarization};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Wave {
@@ -881,11 +882,11 @@ pub struct Project {
     )]
     pub aim_pupil: lensbench_core::system::AimPupil,
     /// 系の入射偏光（.zmx の POLS。膜・偏光を入れる解析の入射の偏光）。省略は偏光なし
-    #[serde(
-        default,
-        skip_serializing_if = "lensbench_core::system::InputPolarization::is_default"
-    )]
-    pub input_pol: lensbench_core::system::InputPolarization,
+    #[serde(default, skip_serializing_if = "InputPolarization::is_default")]
+    pub input_pol: InputPolarization,
+    /// ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補を絞る
+    #[serde(default, skip_serializing_if = "GlassTemplate::is_default")]
+    pub glass_template: GlassTemplate,
     /// 定義した視野以外の点のケラレ係数の求め方（`"continuous"`・`"opticstudio"`。省略は連続）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<lensbench_core::system::VigInterp>,

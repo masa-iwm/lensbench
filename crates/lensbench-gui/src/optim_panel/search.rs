@@ -72,6 +72,9 @@ pub(super) fn glass_params(p: &OptPanel) -> Result<Option<Value>, String> {
     if !ex.is_empty() {
         o["exclude"] = json!(ex);
     }
+    if p.glass_exclude_incomplete {
+        o["exclude_incomplete"] = json!(true);
+    }
     if p.glass_nd_step != g.nd_step {
         o["nd_step"] = json!(p.glass_nd_step);
     }
@@ -112,6 +115,7 @@ pub(super) fn load_glass_filter(n: &mut OptPanel, g: &Value) {
                 .join(", ")
         })
         .unwrap_or_default();
+    n.glass_exclude_incomplete = g["exclude_incomplete"].as_bool().unwrap_or(false);
     if let Some(x) = g["nd_step"].as_f64() {
         n.glass_nd_step = x;
     }
@@ -158,12 +162,14 @@ pub(super) fn search_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
         });
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Max relative cost"))
-                .on_hover_text(tr("Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. Glasses without the value are kept"));
+                .on_hover_text(tr("Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. With no filter at all, the system's glass substitution template (GSTD of a .zmx) is used when it is on. Glasses without the value are kept unless excluded"));
             small_edit(ui, &mut p.glass_max_cost, 50.0, "");
             for (k, t) in RESIST_NAMES.iter().zip(p.glass_max_resist.iter_mut()) {
                 ui.label(k.to_ascii_uppercase());
                 small_edit(ui, t, 36.0, "");
             }
+            ui.checkbox(&mut p.glass_exclude_incomplete, tr("Exclude glasses without the value"))
+                .on_hover_text(tr("Drop candidates that have no value for a property with a limit (a relative cost or class of 0 counts as no value, except FR)"));
         });
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Catalog status"))

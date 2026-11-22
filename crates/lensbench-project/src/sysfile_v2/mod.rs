@@ -140,6 +140,12 @@ pub struct Prescription {
         skip_serializing_if = "lensbench_core::system::InputPolarization::is_default"
     )]
     pub input_pol: lensbench_core::system::InputPolarization,
+    /// ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補を絞る
+    #[serde(
+        default,
+        skip_serializing_if = "lensbench_core::system::GlassTemplate::is_default"
+    )]
+    pub glass_template: lensbench_core::system::GlassTemplate,
     /// 瞳のアポダイゼーション（.zmx の GFAC。FFT PSF・Huygens・回折 MTF の瞳の振幅）
     #[serde(default, skip_serializing_if = "is_default")]
     pub apodization: lensbench_core::pupil::Apodization,

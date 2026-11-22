@@ -135,6 +135,9 @@ pub struct SearchArgs {
     /// Glass substitution: glasses never used as candidates (comma-separated names; NAME@CATALOG for one catalog's glass)
     #[arg(long = "glass-exclude", value_delimiter = ',')]
     pub glass_exclude: Vec<String>,
+    /// Glass substitution: drop candidates that have no value for a property with a limit (OpticStudio's Exclude Glasses With Incomplete Data)
+    #[arg(long = "glass-exclude-incomplete")]
+    pub glass_exclude_incomplete: bool,
     /// Glass substitution: closeness (Δnd / nd-step)² + (Δvd / vd-step)²: the step of nd
     #[arg(long = "glass-nd-step", default_value_t = GLASS.nd_step)]
     pub glass_nd_step: f64,
@@ -166,6 +169,7 @@ impl SearchArgs {
             .any(Option::is_some)
             || !self.glass_status.is_empty()
             || !self.glass_exclude.is_empty()
+            || self.glass_exclude_incomplete
             || self.glass_dpgf_step.is_some();
         if self.glass_surfaces.is_empty() && filters {
             return Err("the --glass-* candidate settings need --glass-surfaces (the surfaces to substitute glass on)".into());
@@ -194,6 +198,7 @@ impl SearchArgs {
                 max_pr: self.glass_max_pr,
                 status: self.glass_status.clone(),
                 exclude: self.glass_exclude.clone(),
+                exclude_incomplete: self.glass_exclude_incomplete,
                 nd_step: self.glass_nd_step,
                 vd_step: self.glass_vd_step,
                 dpgf_step: self.glass_dpgf_step,

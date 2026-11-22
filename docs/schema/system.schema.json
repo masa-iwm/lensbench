@@ -1328,6 +1328,79 @@
       ],
       "type": "object"
     },
+    "GlassTemplate": {
+      "description": "ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補の\n絞り込みに使う（lensbench-design の `glass_sub`）。並びは GSTD と同じで、OpticStudio 2026 R1.01 で 1 欄ずつ確かめた",
+      "properties": {
+        "check": {
+          "default": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "description": "上限を確かめる性質（相対価格・CR・FR・SR・AR・PR、13〜18 番目）。上限が 0 以下なら確かめない",
+          "items": {
+            "type": "boolean"
+          },
+          "maxItems": 6,
+          "minItems": 6,
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "テンプレートを使う（GSTD の 1 番目）",
+          "type": "boolean"
+        },
+        "exclude_incomplete": {
+          "default": false,
+          "description": "値の無い硝材を除く（Exclude Glasses With Incomplete Data、8 番目）",
+          "type": "boolean"
+        },
+        "max": {
+          "default": [
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "description": "上限: 相対価格・耐候性 CR・耐汚染性 FR・耐酸性 SR・耐アルカリ性 AR・耐リン酸塩性 PR（2〜7 番目）",
+          "items": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "$ref": "#/$defs/NonFinite"
+              }
+            ]
+          },
+          "maxItems": 6,
+          "minItems": 6,
+          "type": "array"
+        },
+        "status": {
+          "default": [
+            true,
+            true,
+            false,
+            false
+          ],
+          "description": "使ってよい状態: 標準・推奨・廃止・特殊（9〜12 番目。溶解は選べず、テンプレートを使うといつも除く）",
+          "items": {
+            "type": "boolean"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "Grad9Mat": {
       "description": "Gradient 9 の材料（GRADIENT_9.DAT の組）",
       "properties": {
@@ -2737,6 +2810,10 @@
         "floating_clip": {
           "description": "浮動開口（半直径を固定した面）の外の光線をけるか",
           "type": "boolean"
+        },
+        "glass_template": {
+          "$ref": "#/$defs/GlassTemplate",
+          "description": "ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補を絞る"
         },
         "glrs": {
           "description": "大域座標の基準の面（.zmx の GLRS）",

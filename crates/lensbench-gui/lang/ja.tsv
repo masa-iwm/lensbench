@@ -1875,7 +1875,9 @@ System glasses	システムの硝材
 Candidates per surface	面ごとの候補の数
 Max passes	巡回の上限
 Max relative cost	相対価格の上限
-Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. Glasses without the value are kept	候補: カタログの値（相対価格と耐性の等級）の上限。空は上限なし。値の無い硝材は除きません
+Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. With no filter at all, the system's glass substitution template (GSTD of a .zmx) is used when it is on. Glasses without the value are kept unless excluded	候補: カタログの値（相対価格と耐性の等級）の上限。空は上限なし。絞り込みを何も入れなければ、システムの硝材置換のテンプレート（.zmx の GSTD）が使う設定ならそれを使います。値の無い硝材は、除く設定にしなければ除きません
+Exclude glasses without the value	値の無い硝材を除く
+Drop candidates that have no value for a property with a limit (a relative cost or class of 0 counts as no value, except FR)	上限を入れた性質に値の無い硝材を候補から除きます（相対価格・等級の 0 も値なしとします。FR の 0 は除きません）
 Catalog status	カタログの状態
 Candidates: only glasses of the checked statuses. None checked: all. Glasses without a status are kept	候補: 選んだ状態の硝材だけ。どれも選ばなければすべて。状態の無い硝材は除きません
 Preferred	推奨

@@ -423,6 +423,43 @@ impl AimPupil {
     }
 }
 
+/// ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補の
+/// 絞り込みに使う（lensbench-design の `glass_sub`）。並びは GSTD と同じで、OpticStudio 2026 R1.01 で 1 欄ずつ確かめた
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(default)]
+pub struct GlassTemplate {
+    /// テンプレートを使う（GSTD の 1 番目）
+    pub enabled: bool,
+    /// 上限: 相対価格・耐候性 CR・耐汚染性 FR・耐酸性 SR・耐アルカリ性 AR・耐リン酸塩性 PR（2〜7 番目）
+    pub max: [f64; 6],
+    /// 値の無い硝材を除く（Exclude Glasses With Incomplete Data、8 番目）
+    pub exclude_incomplete: bool,
+    /// 使ってよい状態: 標準・推奨・廃止・特殊（9〜12 番目。溶解は選べず、テンプレートを使うといつも除く）
+    pub status: [bool; 4],
+    /// 上限を確かめる性質（相対価格・CR・FR・SR・AR・PR、13〜18 番目）。上限が 0 以下なら確かめない
+    pub check: [bool; 6],
+}
+
+impl Default for GlassTemplate {
+    fn default() -> GlassTemplate {
+        GlassTemplate {
+            enabled: false,
+            max: [100.0; 6],
+            exclude_incomplete: false,
+            status: [true, true, false, false],
+            check: [true; 6],
+        }
+    }
+}
+
+impl GlassTemplate {
+    pub fn is_default(&self) -> bool {
+        *self == GlassTemplate::default()
+    }
+}
+
 /// 系の入射偏光（OpticStudio の System Explorer の Polarization、.zmx の POLS）: 膜・偏光を入れる解析（MTF・PSF・相対照度の
 /// `polarization`）の入射の偏光。既定は偏光なし（光線に垂直な面の正規直交の 2 つの偏光の平均）
 #[derive(

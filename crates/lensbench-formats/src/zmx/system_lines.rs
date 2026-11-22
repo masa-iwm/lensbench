@@ -6,14 +6,14 @@ use super::*;
 const SYS_READ: &[&str] = &[
     "VERS", "MODE", "UNIT", "NAME", "ENPD", "FNUM", "OBNA", "FLOA", "ENVD", "GCAT", "RAIM", "FTYP",
     "ROPD", "XFLN", "YFLN", "FWGN", "VDXN", "VDYN", "VCXN", "VCYN", "VANN", "WAVM", "WAVL", "WWGT",
-    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR", "PUSH", "POLS",
+    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR", "PUSH", "POLS", "GSTD",
 ];
 
 /// 系の行のうち、読まなくても光線追跡・解析に効かない鍵（表示・作者・言語・公差・非順次の設定・最適化の設定・
 /// エイミングの途中の値など）
 const SYS_HARMLESS: &[&str] = &[
     "AUTH", "NOTE", "PFIL", "LANG", "IWDP", "TOL", "TOLE", "NSCD", "LUID", "EERA", "BLNK", "OMMA",
-    "GSTD", "MAZH", "MCOM", "XFIE", "YFIE", "RSCE", "DMFS", "OPDX", "TELE",
+    "MAZH", "MCOM", "XFIE", "YFIE", "RSCE", "DMFS", "OPDX", "TELE",
 ];
 
 /// 系の行のうち、値が既定（OpticStudio が普通に書く値）のときだけ害がない鍵と、その既定。違えば注意に残す

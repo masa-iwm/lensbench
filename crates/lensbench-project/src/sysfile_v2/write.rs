@@ -41,6 +41,7 @@ pub(crate) fn prescription(s: &System) -> lensbench_core::Result<Prescription> {
         ropd: s.ropd,
         aim_pupil: s.aim_pupil,
         input_pol: s.input_pol,
+        glass_template: s.glass_template,
         apodization: s.apodization,
         coating_file: s
             .coating_file

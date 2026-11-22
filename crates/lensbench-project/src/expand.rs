@@ -870,7 +870,7 @@ fn expand_body(
     s.floating_clip = p.floating_clip;
     s.apodization = p.apodization;
     s.ropd = p.ropd;
-    (s.aim_pupil, s.input_pol) = (p.aim_pupil, p.input_pol);
+    (s.aim_pupil, s.input_pol, s.glass_template) = (p.aim_pupil, p.input_pol, p.glass_template);
     if let Some(v) = p.vig_interp {
         s.vig_interp = v;
     }

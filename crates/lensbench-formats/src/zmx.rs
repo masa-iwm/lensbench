@@ -439,6 +439,7 @@ pub fn document(
     s.edit_raw(|rx| {
         rx.aim_pupil = set.aim_pupil;
         rx.input_pol = set.input_pol;
+        rx.glass_template = set.glass_template;
         Ok(())
     })?;
     // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）

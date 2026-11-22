@@ -12,6 +12,9 @@
 - .zmx の POLS（系の入射偏光）を読むようにした。偏光ありの POLS を持つ .zmx では、`--polarization` の MTF・PSF・Huygens・相対照度の値が
   変わる（前は POLS を読まず、いつも偏光なしで計算していた）。前と同じ値にするにはシステムの `input_pol` を偏光なし
   （`{"unpolarized": true}`）にする。
+- .zmx の GSTD（ガラス置換のテンプレート）を読むようにした。テンプレートを使う設定（GSTD の 1 番目が 1）の .zmx では、最適化のガラスの
+  置き換えで絞り込みの欄を何も書かないとき、候補がテンプレートで絞られる（前は GSTD を読まず、絞らなかった）。前と同じにするには
+  システムの `glass_template` の `enabled` を false にする
 - 公差の `j.vd`（`j.nd` も）は、面の硝材の nd・vd のずれ（`dnd`・`dvd`）として与え、モデルガラスの式の差を波長ごとにそのまま足す
   （前は `dn` と `disp` に直していた）。`j.vd` の結果が OpticStudio の TABB と同じになり、±5 では前と公称の評価の 1% ほど変わる。
   Rust の `lensbench_design::montecarlo::GlassShift` は面の番号と種類（`surf`・`abbe`）だけになった
