@@ -13,6 +13,7 @@ pub const RESERVED: &[&str] = &[
     "convert",
     "make-thermal",
     "zmx",
+    "zmx-beams",
     "optimize",
     "tolerance",
     "zoom",
