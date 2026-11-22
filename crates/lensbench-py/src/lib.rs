@@ -1460,7 +1460,7 @@ impl PySystem {
     }
 
     // ---------------------------------------------------------------------- 系の編集
-    /// A dict of the values of surface s (type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order
+    /// A dict of the values of surface s (type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order cb_return
     /// focal jones dn disp n). r is the radius of curvature (inf for a plane), aperture a dict or None
     fn surface<'py>(&self, py: Python<'py>, s: SurfArg) -> PyResult<Bound<'py, PyDict>> {
         let sys = self.sys();

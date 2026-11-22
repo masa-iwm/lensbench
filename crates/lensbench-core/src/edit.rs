@@ -131,6 +131,7 @@ pub const SURF_FIELDS: &[&str] = &[
     "aperture",
     "cb",
     "cb_order",
+    "cb_return",
     "focal",
     "jones",
     "dn",
@@ -482,6 +483,35 @@ impl System {
                             None => invalid!("surface {j} is not a coordinate break (cb_order)"),
                         }
                     }
+                    // 座標の戻り [戻し方 0〜3, 戻り先の面]（0 は戻さない）
+                    "cb_return" => {
+                        use crate::coord_return::{CoordReturn, ReturnMode};
+                        let v = v.nums(name, Some(2))?;
+                        let Some(mode) = (v[0].fract() == 0.0)
+                            .then(|| ReturnMode::from_os_code(v[0] as i64))
+                            .flatten()
+                        else {
+                            invalid!("cb_return mode {} (0 to 3)", v[0]);
+                        };
+                        if mode == ReturnMode::Off {
+                            d.coord_return = None;
+                        } else {
+                            if d.typ() != SurfType::CoordBrk {
+                                invalid!("surface {j} is not a coordinate break (cb_return)");
+                            }
+                            if v[1].fract() != 0.0 || !(0.0..j as f64).contains(&v[1]) {
+                                invalid!(
+                                    "cb_return surface {} (0 to {})",
+                                    v[1],
+                                    j.saturating_sub(1)
+                                );
+                            }
+                            d.coord_return = Some(CoordReturn {
+                                mode,
+                                surf: v[1] as usize,
+                            });
+                        }
+                    }
                     "focal" => {
                         let f = v.num(name)?;
                         match d.paraxial_mut() {
@@ -545,6 +575,12 @@ impl System {
             ("aperture", Aperture(d.ap)),
             ("cb", Nums(d.cb().to_vec())),
             ("cb_order", Num(d.cb_order() as f64)),
+            (
+                "cb_return",
+                Nums(d.coord_return.map_or(vec![0.0, 0.0], |c| {
+                    vec![c.mode.os_code() as f64, c.surf as f64]
+                })),
+            ),
             ("focal", Num(d.focal())),
             ("jones", Nums(d.jones().to_vec())),
             ("dn", Num(d.dn)),
@@ -785,6 +821,14 @@ impl System {
 /// 面 j を消す前に、j を参照するピックアップ・ソルブ・表の行・玉・群の範囲を外す。説明を返す
 fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
     let mut notes = Vec::new();
+    for (k, d) in s.rx_mut().surfaces.iter_mut().enumerate() {
+        if d.coord_return.is_some_and(|c| c.surf == j) {
+            d.coord_return = None;
+            notes.push(format!(
+                "removed the coordinate return of surface {k} (to surface {j})"
+            ));
+        }
+    }
     s.rx_mut().pickups.retain(|p| {
         let used = p.src == j || p.dst == j;
         if used {
@@ -907,6 +951,11 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
 /// （範囲の前に入る）。削除の範囲は [`drop_refs`] で済ませている
 fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, insert: bool) {
     let mm = |j: usize| m(j).unwrap_or(j);
+    for d in s.rx_mut().surfaces.iter_mut() {
+        if let Some(c) = &mut d.coord_return {
+            c.surf = mm(c.surf);
+        }
+    }
     for p in s.rx_mut().pickups.iter_mut() {
         p.src = mm(p.src);
         p.dst = mm(p.dst);

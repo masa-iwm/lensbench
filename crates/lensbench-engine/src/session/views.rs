@@ -360,6 +360,9 @@ pub struct SurfaceView {
     pub cb: Vec<f64>,
     #[serde(with = "fnum")]
     pub cb_order: f64,
+    /// 座標の戻り [戻し方 0〜3, 戻り先の面]（0 は戻さない）
+    #[serde(with = "fnums")]
+    pub cb_return: Vec<f64>,
     /// 焦点距離（Paraxial）
     #[serde(with = "fnum")]
     pub focal: f64,

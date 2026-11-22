@@ -999,3 +999,91 @@ PSCY 0 1 -0.2 0 0 0 1 1 1 0 0 \"\" 0\nPSCY 0 2 -0.3 0 0 0 1 1 1 0 0 \"\" 0\n";
     assert_eq!(d.aim_pupil.shift[0], 0.75 * 25.4);
     assert_eq!(d.aim_pupil.compress[1], -0.3);
 }
+
+/// 座標の戻り（SCBD 3 戻し方 戻り先の面、MCE の CROR・CRSR）: 戻した後の面が戻り先の面の座標系にそろう
+#[test]
+fn coordinate_return() {
+    let sys = |ret: &str, t4: f64, mce: &str| {
+        format!(
+            "{HEAD}SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE COORDBRK\n  PARM 1 0.5\n  PARM 2 -1\n  PARM 3 10\n  PARM 4 -5\n  PARM 5 20\n  PARM 6 0\n  DISZ 20\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 5\n\
+SURF 4\n  TYPE COORDBRK\n{ret}  DISZ {t4}\n\
+SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 30\n\
+SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n{mce}"
+        )
+    };
+    let fr = |s: &System, j: usize| s.frames().surf[j].unwrap();
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    let same_r = |s: &System| {
+        let (a, b) = (fr(s, 1).r, fr(s, 5).r);
+        (0..3).all(|i| (0..3).all(|k| close(a[i][k], b[i][k])))
+    };
+    // 面 1 の座標系で見た面 5 の原点
+    let local = |s: &System| {
+        let (f1, f5) = (fr(s, 1), fr(s, 5));
+        let d = [f5.o[0] - f1.o[0], f5.o[1] - f1.o[1], f5.o[2] - f1.o[2]];
+        [0, 1, 2].map(|i| (0..3).map(|k| f1.r[k][i] * d[k]).sum::<f64>())
+    };
+    // XYZ: 次の面は面 1 の頂点
+    let s = build(&sys("  SCBD 3 3 1\n", 0.0, ""));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    assert!(same_r(&s));
+    assert!(local(&s).iter().all(|&v| close(v, 0.0)), "{:?}", local(&s));
+    // 前の面を変えても求め直す
+    let moved = s
+        .with_params(&[
+            (s.param("3.t").unwrap(), 9.0),
+            (s.param("2.tx").unwrap(), -25.0),
+        ])
+        .unwrap();
+    assert!(
+        local(&moved).iter().all(|&v| close(v, 0.0)),
+        "{:?}",
+        local(&moved)
+    );
+    assert!(!close(moved.surfaces[4].t, s.surfaces[4].t));
+    // XY: 厚さは戻した向きの z に当てる
+    let s = build(&sys("  SCBD 3 2 1\n", 7.0, ""));
+    assert!(same_r(&s));
+    let p = local(&s);
+    assert!(close(p[0], 0.0) && close(p[1], 0.0), "{p:?}");
+    assert!(!close(p[2], 0.0));
+    // Only: 向きだけ
+    let s = build(&sys("  SCBD 3 1 1\n", 7.0, ""));
+    assert!(same_r(&s));
+    assert!(!close(local(&s)[1], 0.0));
+    // 書いて読み直す（求めた傾き・偏心・厚さも書く）
+    let s = build(&sys("  SCBD 3 3 1\n", 0.0, ""));
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("SCBD 3 3 1"), "{w}");
+    let back = build(&w);
+    assert_eq!(back.surfaces[4].coord_return, s.surfaces[4].coord_return);
+    assert!(close(back.surfaces[4].t, s.surfaces[4].t));
+    // 標準面の行は使わない（OpticStudio と同じ）
+    let plain = sys("", 0.0, "").replace(
+        "SURF 5\n  TYPE STANDARD\n",
+        "SURF 5\n  TYPE STANDARD\n  SCBD 3 3 1\n",
+    );
+    assert!(build(&plain).surfaces[5].coord_return.is_none());
+    // 多重構成: 構成 2 は戻さない、構成 3 は面 3 へ
+    let mce = "MNUM 3 1\n\
+CROR 4 1 3 0 0 0 1 1 0 0 0 \"\" 0\nCROR 4 2 0 0 0 0 1 1 0 0 0 \"\" 0\nCROR 4 3 3 0 0 0 1 1 0 0 0 \"\" 0\n\
+CRSR 4 1 1 0 0 0 1 1 0 0 0 \"\" 0\nCRSR 4 2 1 0 0 0 1 1 0 0 0 \"\" 0\nCRSR 4 3 3 0 0 0 1 1 0 0 0 \"\" 0\n";
+    let s = build(&sys("  SCBD 3 3 1\n", 0.0, mce));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let names: Vec<String> = s
+        .configs()
+        .unwrap()
+        .rows
+        .iter()
+        .map(|r| r.param.name())
+        .collect();
+    assert_eq!(names, ["4.cror", "4.crsr"]);
+    assert!(local(&s).iter().all(|&v| close(v, 0.0)));
+    let c3 = s.config(3).unwrap();
+    let (f3, f5) = (fr(&c3, 3), fr(&c3, 5));
+    assert!((0..3).all(|i| close(f3.o[i], f5.o[i])), "{f3:?} {f5:?}");
+    let back = build(&zmx_write::write(&s).unwrap());
+    assert_eq!(back.configs(), s.configs());
+}

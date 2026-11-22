@@ -841,6 +841,8 @@ fn kind_of(
                 "TCEX" => (format!("{j}.tce"), 1.0),
                 "MCSD" => (format!("{j}.mech"), unit),
                 "CHZN" => (format!("{j}.chip"), unit),
+                "CROR" => (format!("{j}.cror"), 1.0),
+                "CRSR" => (format!("{j}.crsr"), 1.0),
                 "CSP1" | "CSP2" | "TSP1" | "TSP2" | "TSP3" => {
                     (format!("{j}.{}", mop.to_ascii_lowercase()), 1.0)
                 }

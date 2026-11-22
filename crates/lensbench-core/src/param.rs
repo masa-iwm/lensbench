@@ -34,9 +34,11 @@ use crate::surface::{After, Aperture, Tilt};
 use crate::system::{Aiming, ApertureKind, Keep, System};
 use crate::units::UnitKind;
 
+mod keep;
 mod solve;
 mod table;
 use crate::{invalid, notimpl};
+pub(crate) use keep::keep_for;
 pub use solve::{set_solve_value, solve_value};
 pub use table::set_surface_table_value;
 use table::{aperture_decenter, aperture_os_code};
@@ -151,6 +153,10 @@ pub enum Kind {
     /// 多重構成の行（.zmx の MCSD・CHZN）。最適化の変数には使えない
     MechSemi,
     ChipZone,
+    /// 座標ブレークの座標の戻り（[`crate::surface::Surface::coord_return`]）の戻し方（OpticStudio の番号 0〜3）と戻り先の面。
+    /// 名前は cror・crsr。多重構成の行（.zmx の CROR・CRSR）。最適化の変数には使えない
+    CoordRet,
+    CoordRetSurf,
     /// 面の曲率・厚さのソルブ（ピックアップを含む）の条件の値 i（0 始まり、名前は csp1・tsp1 から）と、面タイプのパラメータ
     /// n のピックアップの値 i（名前は psp1_n から）。値の番号は OpticStudio のソルブの窓の順（[`set_solve_value`]）。
     /// 多重構成の行（.zmx の CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3）。最適化の変数には使えない
@@ -218,6 +224,8 @@ impl Kind {
             "tce" => Kind::Tce,
             "mech" => Kind::MechSemi,
             "chip" => Kind::ChipZone,
+            "cror" => Kind::CoordRet,
+            "crsr" => Kind::CoordRetSurf,
             "primary" => Kind::Primary,
             "aper" => Kind::Aper,
             "atype" => Kind::ApertureType,
@@ -355,6 +363,8 @@ impl Kind {
             Kind::Tce => "tce".into(),
             Kind::MechSemi => "mech".into(),
             Kind::ChipZone => "chip".into(),
+            Kind::CoordRet => "cror".into(),
+            Kind::CoordRetSurf => "crsr".into(),
             Kind::CurvSolve(i) => format!("csp{}", i + 1),
             Kind::ThickSolve(i) => format!("tsp{}", i + 1),
             Kind::ParmSolve(n, i) => format!("psp{}_{n}", i + 1),
@@ -415,9 +425,16 @@ impl Kind {
                 | Kind::Tce
                 | Kind::MechSemi
                 | Kind::ChipZone
+                | Kind::CoordRet
+                | Kind::CoordRetSurf
                 | Kind::Material
                 | Kind::Coating
         ) || self.is_solve_value()
+    }
+
+    /// 座標の戻りの行（[`Kind::CoordRet`]・[`Kind::CoordRetSurf`]）
+    pub fn is_coord_return(&self) -> bool {
+        matches!(self, Kind::CoordRet | Kind::CoordRetSurf)
     }
 
     /// ソルブ・ピックアップの条件の値（[`Kind::CurvSolve`]・[`Kind::ThickSolve`]・[`Kind::ParmSolve`]）
@@ -848,6 +865,8 @@ impl System {
             Kind::Tce => d.tce,
             Kind::MechSemi => self.lens_radius(p.index()),
             Kind::ChipZone => d.chip_zone,
+            Kind::CoordRet => d.coord_return.map_or(0.0, |c| c.mode.os_code() as f64),
+            Kind::CoordRetSurf => d.coord_return.map_or(0.0, |c| c.surf as f64),
             Kind::ApMax => match d.ap {
                 Aperture::Circular { max, .. } | Aperture::Obsc { max, .. } => max,
                 _ => invalid!(
@@ -1153,6 +1172,7 @@ impl System {
                 Kind::ApMin | Kind::MechSemi | Kind::ChipZone if !(v >= 0.0) => {
                     invalid!("{} = {v}", p.name())
                 }
+                Kind::CoordRet | Kind::CoordRetSurf => crate::coord_return::check(self, p, v)?,
                 Kind::BeforeOrder | Kind::AfterOrder if v != 0.0 && v != 1.0 => {
                     invalid!("{} = {v} (0 or 1)", p.name())
                 }
@@ -1409,7 +1429,9 @@ impl System {
                 | Kind::AfterOrder
                 | Kind::Tce
                 | Kind::MechSemi
-                | Kind::ChipZone => {
+                | Kind::ChipZone
+                | Kind::CoordRet
+                | Kind::CoordRetSurf => {
                     set_surface_table_value(d, p.kind, v);
                 }
                 Kind::Dn => {
@@ -1447,6 +1469,14 @@ impl System {
         if index {
             self.resolve_media()?;
         }
+        // 座標の戻りは、前の面の形が変われば傾き・偏心・厚さを求め直す（厚さが変われば近軸量も変わる）
+        let cr = changes.iter().any(|(p, _)| p.kind.is_coord_return());
+        if crate::coord_return::resolve_changed(self.rx_mut())? || cr {
+            return Ok(Keep {
+                frames: false,
+                paraxial: false,
+            });
+        }
         Ok(keep_for(changes))
     }
 }
@@ -1462,30 +1492,5 @@ fn vig_mut(f: &mut crate::system::Field, j: u8) -> &mut f64 {
         2 => &mut f.vcx,
         3 => &mut f.vcy,
         _ => &mut f.van,
-    }
-}
-
-/// 変えるパラメータから、残してよいキャッシュを決める
-pub(crate) fn keep_for(changes: &[(Param, f64)]) -> Keep {
-    // 玉・群の剛体の動きは傾き偏心と同じ（座標系だけ）。移動は厚さ、dn・disp は屈折率
-    let tilt = |k: Kind| {
-        k.tilt_index().is_some()
-            || k.is_unit_motion()
-            || matches!(
-                k,
-                Kind::Before(_) | Kind::After(_) | Kind::BeforeOrder | Kind::AfterOrder
-            )
-    };
-    let geom = changes.iter().any(|(p, _)| {
-        // ソルブの条件は厚さ・曲率を解き直す
-        p.kind == Kind::Thick
-            || p.kind == Kind::Unit(UnitKind::Shift)
-            || p.kind.is_solve_value()
-            || tilt(p.kind)
-    });
-    let only_tilt = changes.iter().all(|(p, _)| tilt(p.kind));
-    Keep {
-        frames: !geom,
-        paraxial: only_tilt,
     }
 }

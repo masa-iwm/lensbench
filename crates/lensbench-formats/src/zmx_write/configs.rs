@@ -63,6 +63,8 @@ pub(super) fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<C
         Kind::Tce => ("TCEX", p.index(), None, id),
         Kind::MechSemi => ("MCSD", p.index(), None, id),
         Kind::ChipZone => ("CHZN", p.index(), None, id),
+        Kind::CoordRet => ("CROR", p.index(), None, id),
+        Kind::CoordRetSurf => ("CRSR", p.index(), None, id),
         Kind::CurvSolve(i) => (["CSP1", "CSP2"][i as usize], p.index(), None, id),
         Kind::ThickSolve(i) => (["TSP1", "TSP2", "TSP3"][i as usize], p.index(), None, id),
         Kind::ParmSolve(n, i) => (["PSP1", "PSP2", "PSP3"][i as usize], p.index(), Some(n), id),

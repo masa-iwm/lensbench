@@ -242,6 +242,7 @@ class _Surface(TypedDict):
     aperture: dict[str, Any] | None
     cb: list[float]
     cb_order: float
+    cb_return: list[float]
     focal: float
     jones: list[float]
     dn: float
@@ -945,7 +946,7 @@ class System:
         """Surface number of the stop"""
 
     def surface(self, s: _Surf) -> _Surface:
-        """A dict of the values of surface s (type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order
+        """A dict of the values of surface s (type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order cb_return
         focal jones dn disp n). r is the radius of curvature (inf for a plane), aperture a dict or None
         """
 

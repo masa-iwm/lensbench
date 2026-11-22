@@ -75,6 +75,19 @@ pub fn set_surface_table_value(d: &mut crate::surface::Surface, k: Kind, v: f64)
         Kind::Tce => d.tce = v,
         Kind::MechSemi => d.mech_semi = Some(v),
         Kind::ChipZone => d.chip_zone = v,
+        Kind::CoordRet | Kind::CoordRetSurf => {
+            use crate::coord_return::{CoordReturn, ReturnMode};
+            let mut c = d.coord_return.unwrap_or(CoordReturn {
+                mode: ReturnMode::Off,
+                surf: 0,
+            });
+            if k == Kind::CoordRet {
+                c.mode = ReturnMode::from_os_code(v as i64).unwrap_or(ReturnMode::Off);
+            } else {
+                c.surf = v.max(0.0) as usize;
+            }
+            d.coord_return = (c.mode != ReturnMode::Off || c.surf != 0).then_some(c);
+        }
         Kind::ModelNd | Kind::ModelVd | Kind::ModelDpgf => {
             if let Material::Model { nd, vd, dpgf } = &mut d.mat {
                 *match k {

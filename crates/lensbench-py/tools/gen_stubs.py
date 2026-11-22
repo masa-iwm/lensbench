@@ -95,7 +95,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
         "Values of a surface from System.surface (the same names as the keywords of insert_surface and set_surface)",
         {"type": "str", "comment": "str", "t": "float", "c": "float", "r": "float", "k": "float", "asph": "list[float]",
          "cx": "float", "material": "str", "mirror": "bool", "coating": "str", "semi": "float", "semi_auto": "bool",
-         "mech": "float", "mech_auto": "bool", "chip": "float", "stop": "bool", "ignore": "bool", "aperture": "dict[str, Any] | None", "cb": "list[float]", "cb_order": "float",
+         "mech": "float", "mech_auto": "bool", "chip": "float", "stop": "bool", "ignore": "bool", "aperture": "dict[str, Any] | None", "cb": "list[float]", "cb_order": "float", "cb_return": "list[float]",
          "focal": "float", "jones": "list[float]", "dn": "float", "disp": "float", "n": "list[float]"},
         {},
     ),

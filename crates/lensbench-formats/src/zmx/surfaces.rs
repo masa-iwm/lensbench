@@ -2,6 +2,7 @@
 
 use super::values::Glasses;
 use super::*;
+use lensbench_core::coord_return::{CoordReturn, ReturnMode};
 use lensbench_core::material::Material as M;
 use std::sync::Arc;
 
@@ -399,11 +400,37 @@ pub(super) fn materials(raw: &Raw, ops: &Ops) -> Result<Vec<Material>> {
         .collect()
 }
 
+/// SCBD 3 の行の戻り先の面
+fn mode_surf(v: &[String]) -> i64 {
+    v.get(2).and_then(|x| fv(x).ok()).unwrap_or(-1.0) as i64
+}
+
 fn tilts(s: &RawSurf, d: &mut Surface, k: usize) -> Result<AfterPick> {
     let mut pick = None;
     for v in &s.scbd {
         let g = |i: usize| -> f64 { v.get(i).and_then(|x| fv(x).ok()).unwrap_or(0.0) };
         let (which, order, mode) = (g(0) as i64, g(1) as i64, g(2) as i64);
+        // 座標の戻り（SCBD 3 戻し方 戻り先の面）: 座標ブレークだけ（標準面の行は OpticStudio 2026 R1.01 でも使わない）
+        if which == 3 {
+            if d.typ() == SurfType::CoordBrk {
+                let Some(mode) = ReturnMode::from_os_code(order) else {
+                    notimpl!("surface {k}: coordinate return {order}");
+                };
+                if mode != ReturnMode::Off {
+                    if !(0..k as i64).contains(&mode_surf(v)) {
+                        invalid!(
+                            "surface {k}: coordinate return to surface {} (an earlier surface)",
+                            mode_surf(v)
+                        );
+                    }
+                    d.coord_return = Some(CoordReturn {
+                        mode,
+                        surf: mode_surf(v) as usize,
+                    });
+                }
+            }
+            continue;
+        }
         let vals = [g(3), g(4), g(5), g(6), g(7)];
         let any = vals.iter().any(|&x| x != 0.0);
         if d.typ() == SurfType::CoordBrk && any {

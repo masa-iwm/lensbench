@@ -198,6 +198,10 @@ pub struct Surface {
     /// （自動より小さい値は使わない。OpticStudio 26.1 と同じ）。光線追跡には効かない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mech_semi: Option<f64>,
+    /// 座標の戻り（OpticStudio の Coordinate Return、座標ブレークだけ）: 座標ブレークの傾き・偏心（と厚さ）を、前の面 surf の
+    /// 座標系に戻るように求める（[`crate::coord_return`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coord_return: Option<crate::coord_return::CoordReturn>,
     /// チップゾーン（OpticStudio の Chip Zone、.zmx の OEMA）: 面の形をクリア半径からこの幅だけ外へ延ばし、その外を平らにする。
     /// 光線追跡には効かない
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -438,6 +442,7 @@ impl Default for Surface {
             bire: None,
             tce: 0.0,
             mech_semi: None,
+            coord_return: None,
             chip_zone: 0.0,
         }
     }

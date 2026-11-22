@@ -1581,6 +1581,8 @@ Model glass dPgF	モデルガラスの ΔPgF
 Thermal expansion coefficient	熱膨張係数
 Mechanical semi-diameter	機械半径
 Chip zone	チップゾーン
+Coordinate return	座標の戻り
+Coordinate return surface	座標の戻り先の面
 Field {} vignetting {}	視野 {} のケラレ係数 {}
 Curvature solve value {}	曲率のソルブの値 {}
 Thickness solve value {}	厚みのソルブの値 {}

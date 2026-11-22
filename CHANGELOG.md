@@ -31,6 +31,8 @@
 
 ### 足したもの
 
+- **座標ブレークの座標の戻り**（OpticStudio の Coordinate Return）: 面の `cb_return`（戻し方と戻り先の面）、.zmx の `SCBD 3`、多重構成の
+  CROR・CRSR（パラメータ `cror`・`crsr`）。座標ブレークの傾き・偏心（と厚さ）を前の面の座標系に戻るように求め、前の面を変えると求め直す
 - **光線エイミングの瞳のずれ・圧縮**（OpticStudio の Pupil Shift・Pupil Compress）: システム・プロジェクトの `aim_pupil`、.zmx の PUSH と RAIM の
   10 番目、多重構成の PSHX〜PSCY（パラメータ `pshx`〜`pscy`）を読み書きする（これまでは PUSH を読み飛ばし、多重構成の行は読めなかった）。
   OpticStudio と同じく追跡には効かない。インチなどの .zmx で RAIM の 5〜7 番目が 0 でないと読込を止めていたのも直した（瞳のずれの欄と取り違えていた）

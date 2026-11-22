@@ -5,6 +5,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+use lensbench_core::coord_return::ReturnMode;
 use lensbench_core::error::{Error, Result};
 use lensbench_core::notimpl;
 use lensbench_core::param::Kind;
@@ -822,6 +823,13 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             }
             (After::Reverse, None) => {}
             (After::Tilt(t), _) => tilt_line(&mut o, 2, 0, t),
+        }
+        // 座標の戻り（座標ブレークの傾き・偏心・厚さは求めた値を上に書いている。OpticStudio も同じ）
+        if let Some(c) = d
+            .coord_return
+            .filter(|c| c.mode != ReturnMode::Off && d.is_coord_break())
+        {
+            w(&mut o, format!("  SCBD 3 {} {}", c.mode.os_code(), c.surf));
         }
     }
     // 多重構成の表（MCE）。書ける行だけ（[`config_op`]）

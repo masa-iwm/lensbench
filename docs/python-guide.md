@@ -36,7 +36,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   （ダブルパスなら往きと戻りの範囲を 2 つ）、プロジェクトではブロック・群の id。`s.units()` で一覧。偏心・傾きは
   玉・群を剛体として回転の中心 pivot のまわりに動かす（範囲の外は動かない）。`grad=` でも同じ名前
 - システムの編集: `s.insert_surface(4, r=50, t=5, material="N-BK7", semi=8, comment="L1")`（面 4 の前に入れる。
-  値は `s.surface(4)` の dict と同じ名前: type comment t c r k asph cx material coating semi ignore aperture cb cb_order focal jones dn disp）、
+  値は `s.surface(4)` の dict と同じ名前: type comment t c r k asph cx material coating semi ignore aperture cb cb_order cb_return focal jones dn disp）、
   `s.set_surface(j, ...)`、`s.delete_surface(j)`（外したピックアップ・ソルブの説明を返す）、`s.set_surface_type(j, "COORDBRK")`、
   `s.set_material(j, "MIRROR")`、`s.set_stop(j)`、`s.add_glass_catalogs(["SCHOTT"], dirs=[...])`。
   ピックアップ `s.add_pickup(dst, src, "c", scale=-1)`（面の前・後の傾き偏心も `"before0"`〜`"before4"`・`"after0"`〜`"after4"` で。

@@ -34,6 +34,10 @@
   （境界を含む）。腕は 360° を等分し、最初の腕は +x。外周の円はなく、クリア半径を固定にしても腕に当たらない光線は切らない。
   OpticStudio 2026 R1.01 の合成系 8 ケース（`tests/spider.rs`）と在庫カタログの反射対物の光線の遮りが全光線で一致
 - 座標ブレークの主光線のソルブ（`PPAR` の元の面が負）は、保存された値で固定する
+- 座標ブレークの座標の戻り（`SCBD 3 戻し方 戻り先の面`、面の `cb_return`）は、傾き・偏心（向きと x・y なら偏心も、向きと x・y・z なら厚さも）を
+  戻り先の面の座標系に戻るように求め直す。戻り先の面の座標系は、その面が置かれる座標系（座標ブレークなら傾き偏心を当てる前、前の傾き偏心のある面なら
+  当てた後）。順序は傾きの後に偏心。書き出しも求めた値と `SCBD 3` の行を書く（OpticStudio 2026 R1.01 と同じ）。標準面の `SCBD 3` は OpticStudio も
+  使わないので読まない。玉・群の剛体の動きは戻りの計算に入れない
 - 読込で解き直せないソルブは外して、保存された値で固定する（読込の注意に出す）。外したソルブは、.zmx に書き出すと
   ソルブの行が消えて固定の値になる
 - クリア半径の `DIAM 値 0` は自動（光線から求め直す）。ただし、自動のクリア半径を入れる前の lensbench が書いた .zmx（`VERS 260327 42 20120530 20120530`
@@ -71,7 +75,7 @@
 構成で変わる行は、多重構成の表（[パラメータの名前](params.md) の「多重構成」の列）に読み、書き出しも同じオペランドに書く。
 
 - 表に読むオペランド: THIC・CRVT・CONN・PRAM（偶数次非球面の係数・Zernike の係数・座標ブレークの値など）・SDIA・IGNR・APMX・APMN・APDX・APDY・APTP・
-  CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
+  CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN・CROR・CRSR・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
   システムの値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR・PSHX・PSHY・PSHZ・PSCX・PSCY
 - 名前を読み替えるもの: FVAN は FTAN（同じ値）、古い名前の PAR1〜PAR8 は PRAM の PARM 1〜8、面の範囲の無視 IGNM は面ごとの IGNR
 - モデルガラスでない面の MIND・MABB・MDPG、ソルブもピックアップも無い面の CSP・TSP・PSP は OpticStudio でも効かないので表に入れない

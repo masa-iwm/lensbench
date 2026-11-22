@@ -331,7 +331,7 @@ fn material_pickers(raw: &Raw, j: usize) -> Vec<usize> {
         .collect()
 }
 
-/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
+/// 面の多重構成の表だけの値の演算子（APMN・APDX・APDY・APTP・CBOR・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN、座標の戻りの CROR・CRSR、面の前後の傾き偏心 CBDX〜CBTZ・CADX〜CATZ。
 /// 値の位置は dx dy tx ty tz の順）の種類（[`lensbench_core::param::set_surface_table_value`] で入れる種類）
 fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
     use lensbench_core::param::Kind;
@@ -346,6 +346,8 @@ fn surface_table_kind(op: &str) -> Option<lensbench_core::param::Kind> {
         "TCEX" => return Some(Kind::Tce),
         "MCSD" => return Some(Kind::MechSemi),
         "CHZN" => return Some(Kind::ChipZone),
+        "CROR" => return Some(Kind::CoordRet),
+        "CRSR" => return Some(Kind::CoordRetSurf),
         "CBOR" => return Some(Kind::BeforeOrder),
         "CAOR" => return Some(Kind::AfterOrder),
         _ => {}

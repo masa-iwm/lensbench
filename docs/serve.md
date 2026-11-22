@@ -224,7 +224,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 | op | 引数 |
 | --- | --- |
-| `insert_surface` | at・surface（面の値: type comment t c r k asph cx material coating semi mech chip ignore aperture cb cb_order focal jones dn disp） |
+| `insert_surface` | at・surface（面の値: type comment t c r k asph cx material coating semi mech chip ignore aperture cb cb_order cb_return focal jones dn disp） |
 | `delete_surface` | surface |
 | `set_surface` | surface・fields |
 | `set_surface_type` | surface・type、 `set_material` surface・material |

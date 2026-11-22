@@ -567,6 +567,9 @@ impl System {
 
     /// 文書を書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てて系を確かめる）
     pub(crate) fn changed(&mut self) -> Result<()> {
+        if self.surfaces.iter().any(|d| d.coord_return.is_some()) {
+            crate::coord_return::resolve(self.rx_mut())?;
+        }
         self.cache = Cache::default();
         self.resolve_media()?;
         self.check()

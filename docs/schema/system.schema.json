@@ -1705,7 +1705,8 @@
             "AfterOrder",
             "ModelVd",
             "ModelDpgf",
-            "ChipZone"
+            "ChipZone",
+            "CoordRetSurf"
           ],
           "type": "string"
         },
@@ -2015,6 +2016,11 @@
         {
           "const": "MechSemi",
           "description": "面の機械半径（[`System::lens_radius`]、設定すると固定）・チップゾーン（[`crate::surface::Surface::chip_zone`]）。\n多重構成の行（.zmx の MCSD・CHZN）。最適化の変数には使えない",
+          "type": "string"
+        },
+        {
+          "const": "CoordRet",
+          "description": "座標ブレークの座標の戻り（[`crate::surface::Surface::coord_return`]）の戻し方（OpticStudio の番号 0〜3）と戻り先の面。\n名前は cror・crsr。多重構成の行（.zmx の CROR・CRSR）。最適化の変数には使えない",
           "type": "string"
         },
         {

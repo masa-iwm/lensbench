@@ -22,6 +22,7 @@ pub mod batch;
 pub mod catalog;
 pub mod coating;
 pub mod configs;
+pub mod coord_return;
 pub mod edit;
 pub mod elements;
 pub mod ext;

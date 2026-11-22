@@ -311,6 +311,15 @@ the object and image surfaces can't be ignored	物体面・像面は無視でき
 surface value aperture	面の値 aperture
 surface {j} is not a coordinate break (cb)	面 {j} は座標ブレークではありません（cb）
 surface {j} is not a coordinate break (cb_order)	面 {j} は座標ブレークではありません（cb_order）
+surface {j} is not a coordinate break (cb_return)	面 {j} は座標ブレークではありません（cb_return）
+cb_return mode {} (0 to 3)	cb_return の戻し方 {}（0〜3）
+cb_return surface {} (0 to {})	cb_return の戻り先の面 {}（0〜{}）
+{}: only a coordinate break returns coordinates	{}: 座標の戻りは座標ブレークだけです
+{}: coordinate return {v} (0 to 3)	{}: 座標の戻し方 {v}（0〜3）
+{}: coordinate return surface {v} (0 to {})	{}: 座標の戻り先の面 {v}（0〜{}）
+surface {j}: the coordinate return goes to surface {} (an earlier surface)	面 {j}: 座標の戻り先の面 {} は前の面にしてください
+surface {j}: the coordinate return to the object surface at infinity can only return the orientation	面 {j}: 無限遠の物体面への座標の戻りは向きだけです
+removed the coordinate return of surface {k} (to surface {j})	面 {k} の座標の戻り（面 {j} へ）を外しました
 surface {j} is not a toroidal surface (cx)	面 {j} はトロイダル面ではありません（cx）
 surface {j} is not a paraxial lens (focal)	面 {j} は理想レンズではありません（focal）
 surface {j} is not a Jones surface (jones)	面 {j} は Jones 面ではありません（jones）
@@ -563,6 +572,8 @@ surface {k}: tilt and decenter order {order}	面 {k}: チルト・偏心の順�
 surface {k}: pickup source surface of the tilt and decenter after the surface (mode {m})	面 {k}: 面の後のチルト・偏心のピックアップ元の面（モード {m}）
 surface {k}: tilt and decenter after the surface, mode {mode}	面 {k}: 面の後のチルト・偏心のモード {mode}
 surface {k}: SCBD {which}	面 {k}: SCBD {which}
+surface {k}: coordinate return {order}	面 {k}: 座標の戻し方 {order}
+surface {k}: coordinate return to surface {} (an earlier surface)	面 {k}: 座標の戻り先の面 {}（前の面にしてください）
 surface {k}: {nterm} Zernike terms	面 {k}: Zernike の項の数 {nterm}
 surface {k}: Zernike normalization radius {norm}	面 {k}: Zernike の正規化半径 {norm}
 surface {k}: no Grid Sag grid (GDAT)	面 {k}: Grid Sag のグリッド（GDAT）がありません
