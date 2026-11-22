@@ -80,7 +80,16 @@ impl System {
                                 / (b.norm * b.norm)
                                 * yy
                         }
-                        _ => 0.0,
+                        // 利用者定義の形の面の位相: 頂点での ∂²Φ/∂y²（Binary 2 の 2 order a / norm² に当たる）
+                        _ => match d.user_shape().filter(|u| u.has_phase()) {
+                            Some(u) => {
+                                let h = crate::usershape::paraxial_step(d.semi);
+                                self.wave(w).mm() / (2.0 * std::f64::consts::PI)
+                                    * u.paraxial_dphi(h)
+                                    * yy
+                            }
+                            None => 0.0,
+                        },
                     };
                     if d.is_mirror() {
                         uu += 2.0 * c * yy - sgn * dphi / n;

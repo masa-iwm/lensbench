@@ -509,7 +509,8 @@ impl System {
                 && (matches!(
                     d.action(),
                     crate::action::Action::Fresnel(_) | crate::action::Action::Binary2(_)
-                ) || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9))
+                ) || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9)
+                    || d.user_shape().is_some_and(|u| u.has_phase()))
             {
                 notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ());
             }

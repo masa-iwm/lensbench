@@ -220,7 +220,8 @@ impl System {
             }
             if !d.ignore
                 && (matches!(d.action(), Action::Fresnel(_) | Action::Binary2(_))
-                    || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9))
+                    || matches!(d.typ(), SurfType::Gradium | SurfType::Gradient9)
+                    || d.user_shape().is_some_and(|u| u.has_phase()))
             {
                 notimpl!(
                     "landing derivatives of rays through surface {j} ({:?})",

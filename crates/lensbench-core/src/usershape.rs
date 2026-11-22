@@ -20,6 +20,11 @@
 //!   モデルは何もしなくてよい
 //! - 近軸の曲率（EFL・瞳など）は、土台の c に、頂点での矢高の 2 階（YZ 面、勾配の中心差分。幅はクリア半径の
 //!   1e-6）を足したもの。近軸は YZ 面だけで、XZ 面の曲率は見ない（ほかの回転対称でない面と同じ）
+//! - [`ShapeInstance::phase`] を返すモデルは、面の上の位相 Φ [rad] も持つ（回折・メタ面）。扱いは Binary 2 と同じ: 屈折・
+//!   反射の後に回折の式で向きを変え（Φ の勾配 × λ/2π を接線の成分に足す）、光路長に λ/2π · Φ を足す（λ はレンズの単位）。
+//!   電場は方向の変化と同じ最小の回転で回す。近軸は頂点での ∂²Φ/∂y²（勾配の中心差分）を屈折力に足す。回折次数・波長に
+//!   よらない位相（rad）を返し、次数を変えたいときは設定に持つ。裏返し（z）では変えず、x の映しは x の向きを替える。
+//!   dOPL/dp・着地点の微分はこの面を通る光線では未対応（Binary 2 と同じく誤り）
 //! - .zmx には書けない（系ファイル・プロジェクトには書ける）
 
 use std::collections::HashSet;
@@ -65,6 +70,12 @@ pub trait ShapeInstance: Send + Sync {
         let _ = (key, x, y);
         None
     }
+    /// 面の上の位相と勾配 (Φ [rad], ∂Φ/∂x, ∂Φ/∂y)（面の局所座標）。None は位相なし（既定）。頂点 (0, 0) で
+    /// None を返すモデルは位相を持たないとみなし、ほかの点でも呼ばない
+    fn phase(&self, x: f64, y: f64) -> Option<(f64, f64, f64)> {
+        let _ = (x, y);
+        None
+    }
 }
 
 /// 面に付ける利用者定義の形（モデルの名前・設定・裏返しの向きと、準備した形）。系ファイルには名前・設定・向きを
@@ -79,6 +90,8 @@ pub struct UserShape {
     /// x について映した（x の向きが逆）
     pub mirror_x: bool,
     inst: Arc<dyn ShapeInstance>,
+    /// 位相を持つ（頂点で [`ShapeInstance::phase`] が Some）
+    has_phase: bool,
 }
 
 /// [`UserShape`] の書き出しの形
@@ -157,12 +170,14 @@ impl UserShape {
                 UserKey::intern(k);
             }
         }
+        let has_phase = inst.phase(0.0, 0.0).is_some();
         Ok(UserShape {
             model: model.to_string(),
             config,
             flip_z: false,
             mirror_x: false,
             inst,
+            has_phase,
         })
     }
 
@@ -191,6 +206,30 @@ impl UserShape {
         let (s, m) = self.signs();
         let d = self.inst.dsag(key, m * x, y)?;
         Some([s * d[0], s * m * d[1], s * d[2]])
+    }
+
+    /// 位相を持つか（[`ShapeInstance::phase`]）
+    pub fn has_phase(&self) -> bool {
+        self.has_phase
+    }
+
+    /// 裏返しを含めた位相と勾配（位相を持たなければ None）。z の裏返しでは変えず、x の映しは x の向きを替える
+    #[inline]
+    pub fn phase(&self, x: f64, y: f64) -> Option<(f64, f64, f64)> {
+        if !self.has_phase {
+            return None;
+        }
+        let (_, m) = self.signs();
+        let (p, px, py) = self.inst.phase(m * x, y)?;
+        Some((p, m * px, py))
+    }
+
+    /// 頂点での位相の 2 階 ∂²Φ/∂y² [rad/mm²]（近軸の屈折力に足す分。幅 h の勾配の中心差分）。位相なしは 0
+    pub fn paraxial_dphi(&self, h: f64) -> f64 {
+        match (self.phase(0.0, h), self.phase(0.0, -h)) {
+            (Some(a), Some(b)) => (a.2 - b.2) / (2.0 * h),
+            _ => 0.0,
+        }
     }
 
     /// 設定の数の項目 `key` の値（無い・数（`Num`）でなければ None。数の並びは変数にできない）
@@ -380,6 +419,7 @@ impl schemars::JsonSchema for UserKey {
 /// - 矢高・勾配が有限
 /// - 勾配が矢高の中心差分と合う
 /// - [`ShapeInstance::dsag`] を返す項目は、設定のその項目を少し変えて作り直した矢高・勾配の中心差分と合う
+/// - 位相を持つ（頂点で [`ShapeInstance::phase`] が Some）なら、同じ点で位相が有限で、勾配が位相の中心差分と合う
 pub fn check_shape(model: &dyn ShapeModel, config: &Config, radius: f64) -> Result<()> {
     let name = model.name();
     if !(radius > 0.0 && radius.is_finite()) {
@@ -408,6 +448,19 @@ pub fn check_shape(model: &dyn ShapeModel, config: &Config, radius: f64) -> Resu
         let tol = |a: f64| 1e-5 * (1.0 + a.abs());
         if (nx - zx).abs() > tol(zx) || (ny - zy).abs() > tol(zy) {
             invalid!("user-defined shape model {name}: the gradient ({zx}, {zy}) at ({x}, {y}) does not match the difference of the sag ({nx}, {ny})");
+        }
+        if base.phase(0.0, 0.0).is_some() {
+            let ph = |x: f64, y: f64| base.phase(x, y).map(|p| p.0).unwrap_or(f64::NAN);
+            let fin = |p: &(f64, f64, f64)| p.0.is_finite() && p.1.is_finite() && p.2.is_finite();
+            let Some((_, px, py)) = base.phase(x, y).filter(fin) else {
+                invalid!("user-defined shape model {name}: the phase is not finite at ({x}, {y}) (inside 1.2 × radius)");
+            };
+            let nx = (ph(x + h, y) - ph(x - h, y)) / (2.0 * h);
+            let ny = (ph(x, y + h) - ph(x, y - h)) / (2.0 * h);
+            let tol = |a: f64| 1e-5 * (1.0 + a.abs());
+            if !((nx - px).abs() <= tol(px) && (ny - py).abs() <= tol(py)) {
+                invalid!("user-defined shape model {name}: the phase gradient ({px}, {py}) at ({x}, {y}) does not match the difference of the phase ({nx}, {ny})");
+            }
         }
     }
     for (key, v) in config {

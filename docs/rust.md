@@ -89,6 +89,12 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   鏡の後・玉の反転の裏返し（z・x の向き）は core が包むので、モデルは何もしなくてよい。近軸の曲率は土台の c に頂点の
   2 階（勾配の差分、幅はクリア半径の 1e-6）を足したもので、YZ 面だけ。.zmx には書けない。`check_shape(モデル, 設定, 半径)` で約束を確かめられる
   （`lensbench_sdk::check` は `example_config`・`example_radius` で呼ぶ）
+
+  面の上の位相（回折・メタ面）は `ShapeInstance::phase(x, y)` で (Φ [rad], ∂Φ/∂x, ∂Φ/∂y) を返す（既定は None で位相なし。
+  頂点で None なら位相を持たないとみなす）。扱いは Binary 2 と同じ: 屈折・反射の後に回折の式で向きを変え、光路長に
+  λ/2π · Φ を足し、電場は向きの変化と同じ最小の回転で回す。近軸は頂点の ∂²Φ/∂y² を屈折力に足す。回折次数・波長には
+  よらない値を返す（次数は設定に持つ）。位相を持つ面を通る光線の dOPL/dp・着地点の微分は Binary 2 と同じく未対応（誤り）。
+  `check_shape` は位相の勾配も差分と比べる
 - `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
   （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
   `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の

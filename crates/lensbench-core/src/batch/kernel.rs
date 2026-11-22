@@ -780,13 +780,23 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     Some(Action::Binary2(b)) => b,
                     _ => None,
                 };
-                if let Some(b) = bin2 {
+                // 利用者定義の形の面の位相（Binary 2 と同じ扱い）
+                let uph = match bin2 {
+                    None if st.kind.act == Act::Bend => d.user_shape().filter(|u| u.has_phase()),
+                    _ => None,
+                };
+                if bin2.is_some() || uph.is_some() {
                     let sc = plan.lam * 1e-3 / (2.0 * std::f64::consts::PI);
                     for i in 0..N {
                         if err[i] != 0.0 {
                             continue;
                         }
-                        let (ph, gx, gy) = b.phase(pl[0][i], pl[1][i]);
+                        let (x, y) = (pl[0][i], pl[1][i]);
+                        let (ph, gx, gy) = match (bin2, uph) {
+                            (Some(b), _) => b.phase(x, y),
+                            (None, Some(u)) => u.phase(x, y).unwrap_or((f64::NAN, 0.0, 0.0)),
+                            (None, None) => unreachable!("one of them is given"),
+                        };
                         opl[i] += sc * ph;
                         let k1 = get(&kl, i);
                         match trace::diffract(k1, get(&nv, i), nn[i], [sc * gx, sc * gy]) {

@@ -270,3 +270,153 @@ fn errors_name_the_model_and_the_setting() {
         assert!(e.to_string().contains("has no model (shape)"), "{e}");
     });
 }
+
+/// 矢高 a (r/R)⁴ と、Binary 2 と同じ位相 Φ = p1 (r/R)² + p2 (r/R)⁴ [rad]。wrong は位相の勾配を間違える
+struct Phased {
+    wrong: bool,
+}
+
+struct PhasedInst {
+    a: f64,
+    p1: f64,
+    p2: f64,
+    wrong: bool,
+}
+
+impl ShapeModel for Phased {
+    fn name(&self) -> &str {
+        if self.wrong {
+            "lbtest_phase_wrong"
+        } else {
+            "lbtest_phase"
+        }
+    }
+    fn prepare(&self, config: &Config) -> Result<Arc<dyn ShapeInstance>> {
+        let mut c = ConfigReader::new(config);
+        Ok(Arc::new(PhasedInst {
+            a: c.num("a", 0.0)?,
+            p1: c.num("p1", 0.0)?,
+            p2: c.num("p2", 0.0)?,
+            wrong: self.wrong,
+        }))
+    }
+}
+
+impl ShapeInstance for PhasedInst {
+    fn sag(&self, x: f64, y: f64) -> (f64, f64, f64) {
+        let (u, v) = (x / R, y / R);
+        let r2 = u * u + v * v;
+        (
+            self.a * r2 * r2,
+            4.0 * self.a * r2 * u / R,
+            4.0 * self.a * r2 * v / R,
+        )
+    }
+    fn phase(&self, x: f64, y: f64) -> Option<(f64, f64, f64)> {
+        let (u, v) = (x / R, y / R);
+        let r2 = u * u + v * v;
+        let g = (2.0 * self.p1 + 4.0 * self.p2 * r2) / R;
+        let gx = if self.wrong { 1.1 * g * u } else { g * u };
+        Some((self.p1 * r2 + self.p2 * r2 * r2, gx, g * v))
+    }
+}
+
+fn phase_cfg(a: f64, p1: f64, p2: f64) -> Config {
+    [("a", a), ("p1", p1), ("p2", p2)]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), Value::Num(v)))
+        .collect()
+}
+
+/// 利用者定義の形の位相は Binary 2 と同じに効く: 同じ矢高・位相の Binary 2 の面と、光線・光路長・近軸の焦点距離・
+/// 偏光の場が合う。dOPL/dp は誤り。約束の検査は位相の勾配の誤りを見つける
+#[test]
+fn a_user_phase_traces_like_binary2() {
+    let mut e = Ext::default();
+    e.add_shape_model(Arc::new(Phased { wrong: false }));
+    e.add_shape_model(Arc::new(Phased { wrong: true }));
+    ext::with(Arc::new(e), || {
+        let (a, p1, p2) = (2e-3, -40.0, 6.0);
+        let mut rx = a0().into_prescription();
+        let d = &mut rx.surfaces[3];
+        d.set_type(SurfType::UserShape);
+        d.k = -0.3;
+        *d.user_shape_mut().unwrap() =
+            Some(UserShape::new("lbtest_phase", phase_cfg(a, p1, p2)).unwrap());
+        let mut u = rx.build_raw().unwrap();
+        u.resolve_links().unwrap();
+        let mut rx = a0().into_prescription();
+        let d = &mut rx.surfaces[3];
+        d.set_type(SurfType::Binary2);
+        d.k = -0.3;
+        d.set_asph(vec![0.0, a / R.powi(4)]);
+        *d.bin2_mut().unwrap() = Some(Arc::new(lensbench_core::surface::Binary2 {
+            order: 1.0,
+            norm: R,
+            coef: vec![p1, p2],
+        }));
+        let mut b = rx.build_raw().unwrap();
+        b.resolve_links().unwrap();
+
+        let px = [0.0, 0.6, -0.3, 0.2, -0.7, 0.95];
+        let py = [0.0, 0.1, 0.5, -0.8, -0.4, 0.0];
+        for f in 0..u.fields.len() {
+            for w in 0..u.wavelengths.len() {
+                let tu = u
+                    .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                    .unwrap();
+                let tb = b
+                    .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                    .unwrap();
+                for (ru, rb) in tu.rays.iter().zip(&tb.rays) {
+                    assert_eq!(ru.status.is_ok(), rb.status.is_ok(), "{f} {w}");
+                    if !ru.status.is_ok() {
+                        continue;
+                    }
+                    for i in 0..3 {
+                        assert!((ru.xyz[i] - rb.xyz[i]).abs() < 1e-10, "{f} {w}");
+                        assert!((ru.lmn[i] - rb.lmn[i]).abs() < 1e-12, "{f} {w}");
+                    }
+                    assert!((ru.opl - rb.opl).abs() < 1e-10, "{f} {w}");
+                }
+            }
+        }
+        let (pu, pb) = (u.paraxial(), b.paraxial());
+        assert!(
+            (pu.efl - pb.efl).abs() < 1e-7 * pb.efl.abs(),
+            "{} {}",
+            pu.efl,
+            pb.efl
+        );
+        assert!((pu.efl - a0().paraxial().efl).abs() > 1e-3);
+        let (cu, cb) = (
+            Coatings::for_system(&u).unwrap(),
+            Coatings::for_system(&b).unwrap(),
+        );
+        let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+        let tu = u
+            .try_trace_pol(FieldSel::Index(2), &px, &py, None, PolIn::new(&[x], &cu))
+            .unwrap();
+        let tb = b
+            .try_trace_pol(FieldSel::Index(2), &px, &py, None, PolIn::new(&[x], &cb))
+            .unwrap();
+        for i in 0..px.len() {
+            for c in 0..3 {
+                assert!((tu.e[i][0][c] - tb.e[i][0][c]).norm() < 1e-7, "{i} {c}");
+            }
+        }
+        // dOPL/dp は Binary 2 と同じく未対応
+        let t = u
+            .try_trace(FieldSel::Index(1), &[0.3], &[0.2], None, None, true)
+            .unwrap();
+        let p = u.param("3.t").unwrap();
+        assert!(u.opl_grad(&t, u.primary, &[p]).is_err());
+        // 約束の検査
+        let cfg = phase_cfg(a, p1, p2);
+        check_shape(&Phased { wrong: false }, &cfg, R).unwrap();
+        let e = check_shape(&Phased { wrong: true }, &cfg, R)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("phase gradient"), "{e}");
+    });
+}
