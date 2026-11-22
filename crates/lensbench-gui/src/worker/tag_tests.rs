@@ -49,6 +49,7 @@ fn every_tag_method_is_answered() {
         Tag::CadMeasure,
         Tag::OpenDoc,
         Tag::PopupDoc,
+        Tag::Coatings,
     ];
     for t in &tags {
         let m = t.method().unwrap();

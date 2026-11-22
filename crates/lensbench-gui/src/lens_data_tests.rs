@@ -617,6 +617,7 @@ fn drive_glasses(
             note: None,
             glasses,
             glasses_loaded: true,
+            coats: glasses,
             groups: &[],
         };
         // 修飾キーは押しているキーのもの（表は i.modifiers を見る）
@@ -1073,6 +1074,81 @@ fn ui_material_list_selects_the_current_glass_after_the_catalog_arrives() {
     let e = st.edit.as_ref().expect("書き換え中");
     let m = e.choices.as_ref().unwrap().4.clone();
     assert_eq!(m[e.pick].0, "F2", "{m:?}");
+}
+
+#[test]
+fn coating_choices_list_coatings_with_their_origin_and_used_names() {
+    let c = [
+        GlassChoice {
+            name: "AR".into(),
+            desc: "COATING.DAT".into(),
+        },
+        GlassChoice {
+            name: "AR_V".into(),
+            desc: "MY_CAT".into(),
+        },
+    ];
+    let names = |text: &str, filter: bool| -> Vec<(String, String)> {
+        list_choices(Col::Coating, &c, &["MYMODEL".to_string()], text, filter)
+    };
+    let all = names("", false);
+    assert_eq!(all[0], ("AR".to_string(), "COATING.DAT".to_string()));
+    assert_eq!(all[1].1, "MY_CAT");
+    assert_eq!(all[2].0, "MYMODEL", "{all:?}");
+    let ar: Vec<String> = names("ar", true).into_iter().map(|x| x.0).collect();
+    assert_eq!(ar, ["AR", "AR_V"]);
+}
+
+/// 膜の列も候補の一覧で選べる（書き換え始めると膜の候補を頼む）。打った名前は前方一致の別の膜に替えずにそのまま、
+/// ↓ で選べば候補
+#[test]
+fn ui_coating_column_offers_choices_but_keeps_typed_names() {
+    let rows = sample_rows();
+    let c = [glass("AR_V"), glass("BBAR")];
+    let run = |frames: Vec<Vec<egui::Event>>| {
+        let mut st = LensData {
+            active: true,
+            cur: Some((1, Col::Coating)),
+            ..Default::default()
+        };
+        let frames = frames.into_iter().map(|e| (e, &c[..])).collect();
+        let acts = drive_glasses(&mut st, &rows, &[], &BTreeSet::new(), frames);
+        (st, acts)
+    };
+    let (st, acts) = run(vec![vec![key(egui::Key::F2)], Vec::new(), Vec::new()]);
+    assert!(
+        acts.iter().any(|a| matches!(a, Act::NeedCoatings)),
+        "{acts:?}"
+    );
+    let e = st.edit.as_ref().expect("書き換え中");
+    let m = e.choices.as_ref().unwrap().4.clone();
+    assert!(m.iter().any(|x| x.0 == "BBAR"), "{m:?}");
+    // 打った「AR」は AR_V に替えない
+    let (_, acts) = run(vec![
+        vec![egui::Event::Text("AR".into())],
+        Vec::new(),
+        vec![key(egui::Key::Enter)],
+        Vec::new(),
+    ]);
+    assert!(
+        acts.iter().any(|a| matches!(a,
+            Act::Edit { j: 1, col: Col::Coating, value } if value == "AR")),
+        "{acts:?}"
+    );
+    // ↓ で選んだ候補
+    let (_, acts) = run(vec![
+        vec![egui::Event::Text("AR".into())],
+        Vec::new(),
+        vec![key(egui::Key::ArrowDown)],
+        Vec::new(),
+        vec![key(egui::Key::Enter)],
+        Vec::new(),
+    ]);
+    assert!(
+        acts.iter().any(|a| matches!(a,
+            Act::Edit { j: 1, col: Col::Coating, value } if value == "AR_V" || value == "BBAR")),
+        "{acts:?}"
+    );
 }
 
 /// Alt+↑↓・PageUp/PageDown で今のセルの数を増減する（共通の表と同じ刻み: 0.1、Shift 1、Ctrl 0.01、

@@ -151,6 +151,12 @@ impl Core {
         if busy {
             self.status = save_as::busy_status();
         }
+        // 系の膜の注意（同じ名前の膜のどれを使ったかなど。偏光・ゴーストなど膜を使う解析の warnings のうち膜のもの。
+        // ほかの注意は図・表がそれぞれ出す）
+        let coat = coat_notes(v);
+        if !coat.is_empty() {
+            ui.label(RichText::new(coat.join("\n")).small().color(weak));
+        }
         // 図の矩形（画像にするときに切り出す）
         self.fig_rects.insert(id, ui.available_rect_before_wrap());
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
@@ -261,5 +267,35 @@ impl Core {
                     json_view::show(ui, v);
                 }
             });
+    }
+}
+
+/// 解析の結果の warnings のうち、系の膜の注意（[`lensbench_core::coating::Coatings::notes`]、`coating <名前>: …`）を訳したもの
+pub(super) fn coat_notes(v: &serde_json::Value) -> Vec<String> {
+    v["warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|w| w.as_str())
+        .filter(|w| w.starts_with("coating "))
+        .map(lensbench_core::i18n::warning)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    /// 結果の注意のうち膜のものだけを出す（ほかの注意は図・表が出す）
+    #[test]
+    fn coat_notes_pick_coating_warnings() {
+        let _g = crate::serve_lock();
+        crate::i18n::set(crate::i18n::Lang::En);
+        let v = serde_json::json!({"warnings": [
+            "field 1: undersampled",
+            "coating AR: the registered coating catalog X is used; AR in the coating file is not used",
+        ]});
+        let n = super::coat_notes(&v);
+        assert_eq!(n.len(), 1, "{n:?}");
+        assert!(n[0].contains("AR"));
+        assert!(super::coat_notes(&serde_json::json!({})).is_empty());
     }
 }

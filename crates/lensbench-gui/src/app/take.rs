@@ -176,6 +176,10 @@ impl Core {
                 return self.system_done(d, (v, typed), text);
             }
             Tag::Info => self.sys.info = Some(v),
+            Tag::Coatings => {
+                self.p.ld.coats = std::sync::Arc::new(coat_choices(&v));
+                return None;
+            }
             Tag::Analyze(id) => {
                 let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
                 let gen = self.rev;
@@ -602,4 +606,21 @@ impl Core {
             }
         }
     }
+}
+
+/// serve の coatings の available（系で使える膜の名前と由来）を、レンズデータの膜の列の候補に
+pub(super) fn coat_choices(v: &Value) -> Vec<lens_data::GlassChoice> {
+    v["available"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let name = c["coat"].as_str()?.to_string();
+            let desc = match c["origin"].as_str().unwrap_or_default() {
+                "system" => tr("system settings").to_string(),
+                o => o.to_string(),
+            };
+            Some(lens_data::GlassChoice { name, desc })
+        })
+        .collect()
 }

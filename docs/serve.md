@@ -166,7 +166,9 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 #### `analyze`
 
 - params: `cmd` と CLI と同じ引数
-- result: CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）のコーティングの境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings`
+- result: CLI の `--json` と同じ結果。干渉（`interference`）は下の「干渉の解析」。`coatings` は読み込んだシステム（今の構成・状態、.zmx でなくても）のコーティングの境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings`・`registered_coatings`・`notes`（同じ名前の膜の優先などの注意）・
+  `available`（システムで使える膜の名前 `coat` と由来 `origin`: `system`（システムに書いた表）・登録した膜の一覧の名前・膜ファイルやフォルダのファイルの名前。
+  使われる順に並び、同じ名前は先のものだけ。GUI のレンズデータのコーティングの列の候補）
 
 #### `catalog_add`
 

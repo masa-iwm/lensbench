@@ -280,3 +280,44 @@ fn a_set_reads_model_measured_and_dat_files() {
     e.add_coating_catalog("Y", CoatingSet::parse_dat("COAT ZEC_A\nM 0.1\n").unwrap());
     assert_eq!(e.coating_names(), ["EXT_AR", "ZEC_A", "ZEC_B"]);
 }
+
+/// 系で使える膜の一覧（GUI の膜の欄の候補）: 系に書いた表・登録した一覧・膜ファイル・フォルダのファイルの順で、
+/// 同じ名前（大文字小文字は問わない）は先のものだけ。由来つき
+#[test]
+fn coat_choices_list_every_source_in_order() {
+    use lensbench_core::coating::coat_choices;
+    let d = tmp("choices");
+    std::fs::write(
+        d.join("COATING.DAT"),
+        "MATE MGF2X\n0.4 1.5 0\n0.8 1.5 0\nCOAT EXT_AR\nMGF2X 0.1\nCOAT FILE_ONLY\nMGF2X 0.2\n",
+    )
+    .unwrap();
+    std::fs::write(d.join("FOLDER_M.lbcm"), lbcm("FOLDER_M")).unwrap();
+    std::fs::write(d.join("file_only.lbcs"), "x").unwrap();
+    std::fs::write(d.join("readme.txt"), "x").unwrap();
+    let (s, _, _) = with_coat("EXT_AR", Some(d.join("COATING.DAT")));
+    let names = |s: &System| -> Vec<(String, String)> {
+        coat_choices(s)
+            .into_iter()
+            .map(|c| (c.coat, c.origin))
+            .collect()
+    };
+    assert_eq!(
+        names(&s),
+        [
+            ("EXT_AR".to_string(), "COATING.DAT".to_string()),
+            ("FILE_ONLY".to_string(), "COATING.DAT".to_string()),
+            ("FOLDER_M".to_string(), "FOLDER_M.lbcm".to_string()),
+        ]
+    );
+    let mut e = Ext::default();
+    e.add_coating_catalog("EXAMPLE", CoatingSet::parse_dat(AR).unwrap());
+    ext::with(Arc::new(e), || {
+        let v = names(&s);
+        assert_eq!(v[0], ("EXT_AR".to_string(), "EXAMPLE".to_string()));
+        assert_eq!(v.len(), 3, "{v:?}");
+    });
+    // 膜ファイルの無い系は登録した一覧だけ
+    let (s0, _, _) = with_coat("EXT_AR", None);
+    assert!(names(&s0).is_empty());
+}

@@ -382,6 +382,10 @@ impl Core {
                     self.refresh_catalog();
                 }
             }
+            Act::NeedCoatings => {
+                // 系で使える膜は系（膜ファイル・フォルダ）と登録した一覧で変わるので、書き換え始めるたびに頼む
+                self.calc(Tag::Coatings, serde_json::json!({ "cmd": "coatings" }));
+            }
             Act::OptVar(name) => {
                 if !self.p.opt.vars.iter().any(|v| v.name.trim() == name) {
                     // 空の行があればそこに入れる

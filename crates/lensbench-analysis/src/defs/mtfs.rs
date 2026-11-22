@@ -8,7 +8,9 @@ use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfDirs, MtfRow, WaveMtf};
+use super::{
+    coat_notes, fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfDirs, MtfRow, WaveMtf,
+};
 use crate::registry::{Analysis, Cx, Meta};
 use lensbench_core::pupil::PupilAmp;
 
@@ -81,6 +83,9 @@ pub struct MtfOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
     pub mtf: Vec<MtfRow>,
+    /// 注意（polarization のときの系の膜の注意など）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     /// huygens-mtf の和を計算した装置: cpu か「gpu: アダプタの名前」（視野で違えば , で並べる）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
@@ -154,6 +159,7 @@ impl Analysis for Mtf {
             unit: freq_unit(s),
             method: None,
             mtf: v,
+            warnings: coat_notes(s, p.polarization)?,
             device: None,
         })
     }
@@ -550,6 +556,7 @@ impl Analysis for HuygensMtf {
             unit: freq_unit(s),
             method: Some("huygens".into()),
             mtf: v,
+            warnings: coat_notes(s, p.polarization)?,
             device: Some(dev.join(", ")),
         })
     }

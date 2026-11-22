@@ -1183,6 +1183,16 @@ fn coatings_of_loaded_project() {
     assert_eq!(kind("BP550").as_deref(), Some("table"), "{r}");
     assert_eq!(kind("ND05").as_deref(), Some("table"), "{r}");
     assert_eq!(r["needs_table"], json!([]));
+    // 系で使える膜（GUI の膜の欄の候補）: プロジェクトで定義した膜は由来 system
+    let avail = r["available"].as_array().unwrap();
+    for c in ["BP550", "ND05"] {
+        assert!(
+            avail
+                .iter()
+                .any(|x| x["coat"] == c && x["origin"] == "system"),
+            "{r}"
+        );
+    }
     assert!(sv
         .error("analyze", json!({ "cmd": "coatings", "field": 1 }))
         .contains("field"));

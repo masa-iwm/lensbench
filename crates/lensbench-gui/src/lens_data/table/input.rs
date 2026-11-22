@@ -384,6 +384,9 @@ pub(super) fn apply(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &mut
         if col == Col::Material && c.glasses.is_empty() {
             out.acts.push(Act::NeedGlasses);
         }
+        if col == Col::Coating {
+            out.acts.push(Act::NeedCoatings);
+        }
     }
     if let Some((j, col, text)) = out.commit.take() {
         st.active = true;

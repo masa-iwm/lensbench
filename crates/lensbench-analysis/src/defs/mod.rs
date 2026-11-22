@@ -89,6 +89,15 @@ fn pol_amp(
     crate::pupil_amp::PolAmp::new(s, f, &ws, &co, crate::pupil_amp::POL_GRID, None).map(Some)
 }
 
+/// 膜を使う解析（polarization・ghost など）の結果の注意に足す、系の膜の注意（同じ名前の膜のどれを使ったかなど、
+/// [`lensbench_core::coating::Coatings::notes`]）。on でなければ空
+fn coat_notes(s: &System, on: bool) -> Result<Vec<String>> {
+    if !on {
+        return Ok(Vec::new());
+    }
+    Ok(lensbench_core::coating::Coatings::for_system(s)?.notes)
+}
+
 pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
     lensbench_core::waves::index_opt(w, s.wavelengths.len())
 }

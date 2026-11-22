@@ -1433,6 +1433,8 @@ Expand all (show every surface)	全部展開（面を全部見せる）
 Previous result (before the system change)	前の結果（システムを変える前）
 Select the previous / next element	前・次の要素を選択
 No matching glass (names not in the catalogs are refused; write a model glass as nd,νd like 1.5,60)	合う硝材がありません（カタログに無い名前は入れられません。モデルガラスは 1.5,60 のように nd,νd で）
+No matching coating (any name can be written: a coating in a coating file, a coating model or a registered coating catalog)	合うコーティングがありません（コーティングファイルのコーティング・コーティングのモデル・登録したコーティングの一覧の名前なら、候補に無くても書けます）
+system settings	システムの設定
 Figure as image	図の画像
 Figure as image (PNG)…	図の画像（PNG）…
 Copied the figure as an image	図を画像でコピーしました

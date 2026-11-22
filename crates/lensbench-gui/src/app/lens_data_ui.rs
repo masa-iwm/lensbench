@@ -114,10 +114,12 @@ impl Core {
                 (g, lost)
             })
             .collect();
+        let coats = self.p.ld.coats.clone();
         let ctx = lens_data::Ctx {
             groups: &groups,
             glasses: &self.ld_glasses,
             glasses_loaded: self.browser.loaded && !self.browser.glasses_pending,
+            coats: &coats,
             rows,
             blocks: &self.sys.ld_blocks,
             locked: &locked,

@@ -9,7 +9,7 @@ use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, pol_amp, spot_unit, wave, Axis};
+use super::{coat_notes, fields, pol_amp, spot_unit, wave, Axis};
 use crate::registry::{Analysis, Cx, Meta};
 
 // ----------------------------------------------------------------------------------------- rms
@@ -440,6 +440,7 @@ impl Analysis for Psf {
                 pixel: [r.pixel.0, r.pixel.1],
             });
         }
+        warn.extend(coat_notes(s, p.polarization)?);
         Ok(PsfOut {
             unit: spot_unit(s),
             method: if p.huygens { "huygens" } else { "fft" }.into(),

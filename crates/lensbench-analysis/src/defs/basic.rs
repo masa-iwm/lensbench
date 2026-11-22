@@ -417,7 +417,7 @@ impl Analysis for Ghost {
             co.load_file(f)?;
         }
         let v = crate::ghost::survey(s, p.first, last, &co)?;
-        let (mut written, mut warnings) = (Vec::new(), Vec::new());
+        let (mut written, mut warnings) = (Vec::new(), co.notes.clone());
         if let Some(dir) = &p.out {
             lensbench_core::vfs::create_dir_all(dir)
                 .map_err(|x| lensbench_core::Error::Io(format!("{}: {x}", dir.display())))?;

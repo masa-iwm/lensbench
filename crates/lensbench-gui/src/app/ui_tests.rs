@@ -1101,6 +1101,33 @@ fn sysset_wave_and_field_cells_edit() {
     assert!(format!("{f:?}").contains("3.0"), "{f:?}");
 }
 
+/// レンズデータの膜の列の候補: 書き換え始めると serve の coatings の available（系で使える膜と由来）を頼み、表の候補にする
+#[test]
+fn coating_column_gets_the_coatings_of_the_system() {
+    let _g = serial();
+    let r = root();
+    let mut h = harness(Args {
+        open: Some(r.join("tests/filter_os/bp_nd.json")),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    assert!(h.state().c.p.ld.coats.is_empty());
+    h.state_mut()
+        .c
+        .msgs
+        .push(Msg::LensData(lens_data::Act::NeedCoatings));
+    settle(&mut h);
+    let coats = h.state().c.p.ld.coats.clone();
+    for c in ["BP550", "ND05"] {
+        assert!(
+            coats
+                .iter()
+                .any(|x| x.name == c && x.desc == "system settings"),
+            "{coats:?}"
+        );
+    }
+}
+
 /// 値を変えない操作（表のセルを選ぶ・Shift+↓ で範囲を選ぶ）では組合せが変わらず、元に戻すの段も積まれない
 /// （半直径 0 の要素を選ぶと詳細の欄が下限の 0.001 に書き戻していた）
 #[test]

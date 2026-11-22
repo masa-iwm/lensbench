@@ -85,7 +85,8 @@ impl Rec {
                 | L::ExportRange(_)
                 | L::Refused(_)
                 | L::NeedData(_)
-                | L::NeedGlasses => return None,
+                | L::NeedGlasses
+                | L::NeedCoatings => return None,
             },
             // 組合せの変更（欄の書き換え・パネルの操作）は note が残す。ファイル・画面・計算の操作は文書を変えない。
             // Msg を足したらここでどちらかを決める（黙って記録から漏らさない）

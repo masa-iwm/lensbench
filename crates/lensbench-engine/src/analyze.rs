@@ -126,6 +126,8 @@ pub(crate) fn coatings_loaded(sess: &Session, m: &Map<String, Value>) -> Result<
         "auto_coatings": c.auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
         "registered_coatings": c.registered.iter().map(|(c, k)| json!({ "coat": c, "catalog": k })).collect::<Vec<_>>(),
         "notes": c.notes,
+        // 系で使える膜の名前と由来（GUI の膜の欄の候補）
+        "available": lensbench_core::coating::coat_choices(&s),
     }))
 }
 

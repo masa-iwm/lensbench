@@ -210,3 +210,61 @@ fn field_sweeps_need_a_field_off_the_axis() {
         .run_json(&cx, &json!({ "axis": "x", "points": 3 }))
         .is_ok());
 }
+
+/// 膜を使う解析（polarization の psf・mtf・huygens-mtf・相対照度、ghost）は、系の膜の注意（登録した一覧の膜が膜ファイルの
+/// 同じ名前の膜より先に使われた、など）を結果の warnings に載せる。polarization なしでは載せない
+#[test]
+fn coating_analyses_carry_the_coating_notes() {
+    use lensbench_core::usercoating::CoatingSet;
+    let mut s = a0();
+    let d = std::env::temp_dir().join(format!("lensbench-coatnotes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    std::fs::write(
+        d.join("COATING.DAT"),
+        "MATE MGF2X\n0.4 1.38 0\n0.8 1.38 0\nCOAT EXT_AR\nMGF2X 0.1\n",
+    )
+    .unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].coat = "EXT_AR".into();
+        p.coating_file = Some(d.join("COATING.DAT"));
+        Ok(())
+    })
+    .unwrap();
+    let mut e = lensbench_core::ext::Ext::default();
+    e.add_coating_catalog(
+        "EXAMPLE",
+        CoatingSet::parse_dat("MATE MGF2X\n0.4 1.38 0\n0.8 1.38 0\nCOAT EXT_AR\nMGF2X 0.25\n")
+            .unwrap(),
+    );
+    lensbench_core::ext::with(std::sync::Arc::new(e), || {
+        let cx = crate::registry::Cx::new(&s);
+        let a = Analyses::builtin();
+        let noted = |v: &serde_json::Value| {
+            v["warnings"].as_array().is_some_and(|w| {
+                w.iter().any(|x| {
+                    x.as_str()
+                        .is_some_and(|x| x.starts_with("coating EXT_AR:") && x.contains("EXAMPLE"))
+                })
+            })
+        };
+        for (name, p) in [
+            ("psf", json!({ "field": 1, "image": 32 })),
+            ("mtf", json!({ "field": 1, "freqs": [20.0] })),
+            (
+                "huygens-mtf",
+                json!({ "field": 1, "image": 32, "freqs": [20.0] }),
+            ),
+            ("relative-illumination", json!({ "points": 3 })),
+        ] {
+            let off = a.get(name).unwrap().run_json(&cx, &p).unwrap();
+            assert!(!noted(&off), "{name}: {off}");
+            let mut q = p.clone();
+            q["polarization"] = json!(true);
+            let on = a.get(name).unwrap().run_json(&cx, &q).unwrap();
+            assert!(noted(&on), "{name}: {}", on["warnings"]);
+        }
+        let g = a.get("ghost").unwrap().run_json(&cx, &json!({})).unwrap();
+        assert!(noted(&g), "{}", g["warnings"]);
+    });
+}

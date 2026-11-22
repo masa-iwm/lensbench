@@ -134,6 +134,83 @@ pub struct Coatings {
     pub notes: Vec<String>,
 }
 
+/// 系で使える膜の名前と由来（GUI の膜の欄の候補など）。[`Coatings::for_system`] の優先の順と同じ並び:
+/// 系に書いた表、登録した膜の一覧、膜ファイル（COFN）、膜ファイルのフォルダの膜のファイル。同じ名前（大文字小文字は問わない）は先のものだけ
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CoatChoice {
+    /// 膜の名前
+    pub coat: String,
+    /// 由来（`system`、登録した一覧の名前、膜ファイル・フォルダのファイルの名前）
+    pub origin: String,
+}
+
+/// 系 sys で使える膜の一覧（[`CoatChoice`]）。膜ファイル・フォルダが読めなければその分を飛ばす
+pub fn coat_choices(sys: &System) -> Vec<CoatChoice> {
+    let mut out: Vec<CoatChoice> = Vec::new();
+    let mut push = |coat: &str, origin: &str| {
+        if coat.is_empty() || out.iter().any(|c| c.coat.eq_ignore_ascii_case(coat)) {
+            return;
+        }
+        out.push(CoatChoice {
+            coat: coat.to_string(),
+            origin: origin.to_string(),
+        });
+    };
+    let mut keys: Vec<&String> = sys.coat_tables.keys().collect();
+    keys.sort();
+    for k in keys {
+        push(k, "system");
+    }
+    let ext = crate::ext::current();
+    for n in ext.coating_names() {
+        if let Some(c) = ext.find_coating(&n) {
+            push(&n, &c.name);
+        }
+    }
+    let Some(path) = sys.coating_file.as_ref() else {
+        return out;
+    };
+    let file_name = |p: &Path| {
+        p.file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    if let Ok(f) = CoatingFile::load(path) {
+        let mut names: Vec<&String> = f.coat.keys().chain(f.table.keys()).collect();
+        names.sort();
+        let origin = file_name(path);
+        for n in names {
+            push(n, &origin);
+        }
+    }
+    let Some(dir) = path.parent().filter(|d| crate::vfs::is_dir(d)) else {
+        return out;
+    };
+    let mut exts: Vec<String> = ["lbcb", "lbcm", "lbct", "lbcs"]
+        .iter()
+        .map(|e| e.to_string())
+        .collect();
+    for s in ext.coating_sources() {
+        for e in s.extensions() {
+            let e = e.to_ascii_lowercase();
+            if !exts.contains(&e) {
+                exts.push(e);
+            }
+        }
+    }
+    let mut files: Vec<PathBuf> = crate::vfs::read_dir(dir).unwrap_or_default();
+    files.sort();
+    for p in files {
+        let (Some(stem), Some(e)) = (p.file_stem(), p.extension()) else {
+            continue;
+        };
+        if exts.contains(&e.to_string_lossy().to_ascii_lowercase()) {
+            push(&stem.to_string_lossy(), &file_name(&p));
+        }
+    }
+    out
+}
+
 impl Coatings {
     /// 系の膜ファイル（zmx の COFN）。なければ空（膜なし・理想膜・実測表だけ）
     pub fn for_system(sys: &System) -> Result<Coatings> {

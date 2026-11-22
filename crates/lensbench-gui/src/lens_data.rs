@@ -16,7 +16,8 @@ mod names;
 mod strip;
 mod table;
 use cell_menu::{cell_menu, override_item};
-pub(crate) use names::TYPE_NAMES;
+use names::list_choices;
+pub(crate) use names::{GlassChoice, TYPE_NAMES};
 use names::{IRR_LABELS, ODD_LABELS, TILT_LABELS};
 
 use std::collections::BTreeSet;
@@ -597,9 +598,9 @@ impl Col {
         }
     }
 
-    /// 入力できるドロップダウンの列（種類・硝材）
+    /// 入力できるドロップダウンの列（種類・硝材・膜）
     pub(crate) fn has_list(self) -> bool {
-        matches!(self, Col::Type | Col::Material)
+        matches!(self, Col::Type | Col::Material | Col::Coating)
     }
 
     /// 入力の文字を値に（曲率半径の inf・空は平面 = 0）
@@ -667,6 +668,8 @@ pub(crate) enum Act {
     NeedData(usize),
     /// 硝材の候補（ガラスカタログ）を読む
     NeedGlasses,
+    /// 膜の列を書き換え始めた: 膜の候補（[`Ctx::coats`]）を頼む
+    NeedCoatings,
     /// 最適化の変数に足す（名前は serve の set と同じ 4.t など）
     OptVar(String),
     /// 面 j の列 col の値を多重構成の表（状態の表）の行にする
@@ -718,74 +721,6 @@ struct Editing {
     choices: Option<ChoiceCache>,
     /// 選んでいる候補まで一覧を送る
     scroll: bool,
-}
-
-/// 入力できるドロップダウンの候補（値、説明）。種類は面タイプ、硝材はガラスカタログ（と鏡）。filter なら text で絞る
-/// （完全一致を先に、次に前方一致、部分一致）
-fn list_choices(
-    col: Col,
-    glasses: &[GlassChoice],
-    used: &[String],
-    text: &str,
-    filter: bool,
-) -> Vec<(String, String)> {
-    match col {
-        Col::Type => {
-            let names: Vec<&str> = if filter {
-                type_matches(text)
-            } else {
-                TYPE_NAMES.iter().map(|x| x.0).collect()
-            };
-            names
-                .into_iter()
-                .map(|t| {
-                    let d = TYPE_NAMES.iter().find(|x| x.0 == t).map_or("", |x| tr(x.1));
-                    (t.to_string(), d.to_string())
-                })
-                .collect()
-        }
-        Col::Material => {
-            // この系で使っている硝材（カタログに無いものも）を先に、次に鏡、カタログ
-            let extra: Vec<(String, String)> = used
-                .iter()
-                .filter(|u| !u.eq_ignore_ascii_case("MIRROR"))
-                .filter(|u| !glasses.iter().any(|g| g.name.eq_ignore_ascii_case(u)))
-                .map(|u| (u.clone(), tr("used in this system").to_string()))
-                .collect();
-            let all = extra
-                .into_iter()
-                .chain(std::iter::once((
-                    "MIRROR".to_string(),
-                    tr("Mirror").to_string(),
-                )))
-                .chain(glasses.iter().map(|g| (g.name.clone(), g.desc.clone())));
-            if !filter {
-                return all.collect();
-            }
-            let q = text.trim().to_uppercase();
-            let (mut exact, mut head, mut rest) = (Vec::new(), Vec::new(), Vec::new());
-            for (n, d) in all {
-                let u = n.to_uppercase();
-                match crate::widgets::match_rank(&u, &d.to_uppercase(), &q) {
-                    Some(true) if u == q => exact.push((n, d)),
-                    Some(true) => head.push((n, d)),
-                    Some(false) => rest.push((n, d)),
-                    None => {}
-                }
-            }
-            exact.extend(head);
-            exact.extend(rest);
-            exact
-        }
-        _ => Vec::new(),
-    }
-}
-
-/// 硝材の候補（GUI のガラスカタログの名前と、カタログ・nd・νd の説明）
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct GlassChoice {
-    pub name: String,
-    pub desc: String,
 }
 
 /// セルの右クリックの欄の入力
@@ -1340,6 +1275,8 @@ fn popup(ui: &mut Ui, r: &egui::Response, id: &str, add: impl FnOnce(&mut Ui)) {
 /// 表の状態
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LensData {
+    /// 膜の列の候補（書き換え始めたときに serve の coatings の available から作る。[`Ctx::coats`] に渡す）
+    pub coats: std::sync::Arc<Vec<GlassChoice>>,
     /// 右クリックの貼り付けを頼んだ（Some(true) は面を挿入して）。次の Paste で使う
     paste_insert: Option<bool>,
     /// 貼り付けを頼んだ画面の回（届かなければ数回で忘れる。次の Ctrl+V が挿入にならない）
@@ -1402,6 +1339,8 @@ pub(crate) struct Ctx<'a> {
     pub glasses: &'a [GlassChoice],
     /// ガラスカタログを読み終えた（候補が空でも）
     pub glasses_loaded: bool,
+    /// 膜の候補（系で使える膜の名前と由来。serve の coatings の available）
+    pub coats: &'a [GlassChoice],
     /// 群（表のブロックのうち、群にした・解除できるもの）の名前と、解除で消える役割・移動の説明
     pub groups: &'a [(String, Option<String>)],
 }

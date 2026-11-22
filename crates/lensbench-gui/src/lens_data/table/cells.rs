@@ -231,7 +231,7 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
     let (up, down, enter_k, esc) = (keys.up, keys.down, keys.enter, keys.esc);
     let mv = keys.nav(!col.has_list());
     if col.has_list() {
-        // 種類・硝材: 入力できるドロップダウン。開いたときは全部の候補から今の値を選び、
+        // 種類・硝材・膜: 入力できるドロップダウン。開いたときは全部の候補から今の値を選び、
         // 打ち始めたら絞る（↑↓ で選び Enter、クリックでも）
         if resp.changed() {
             e.filtered = true;
@@ -239,24 +239,33 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
             e.pick = 0;
             e.scroll = true;
         }
+        let names = if col == Col::Coating {
+            c.coats
+        } else {
+            c.glasses
+        };
         let fresh = e.choices.as_ref().is_some_and(|x| {
-            x.0 == e.text && x.1 == e.filtered && x.2 == c.glasses.len() && x.3 == c.rows.len()
+            x.0 == e.text && x.1 == e.filtered && x.2 == names.len() && x.3 == c.rows.len()
         });
         if !fresh {
             let mut used: Vec<String> = Vec::new();
-            if col == Col::Material {
+            if matches!(col, Col::Material | Col::Coating) {
                 for x in c.rows {
-                    let n = x.material.trim();
+                    let n = if col == Col::Coating {
+                        x.coating.trim()
+                    } else {
+                        x.material.trim()
+                    };
                     if !n.is_empty() && !used.iter().any(|u| u.eq_ignore_ascii_case(n)) {
                         used.push(n.to_string());
                     }
                 }
             }
-            let m = list_choices(col, c.glasses, &used, &e.text, e.filtered);
+            let m = list_choices(col, names, &used, &e.text, e.filtered);
             e.choices = Some((
                 e.text.clone(),
                 e.filtered,
-                c.glasses.len(),
+                names.len(),
                 c.rows.len(),
                 std::sync::Arc::new(m),
             ));
@@ -290,6 +299,8 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
         let scroll_to = std::mem::take(&mut e.scroll).then_some(e.pick);
         let empty = if col == Col::Type {
             tr("No matching surface type")
+        } else if col == Col::Coating {
+            tr("No matching coating (any name can be written: a coating in a coating file, a coating model or a registered coating catalog)")
         } else if c.glasses.is_empty() && !c.glasses_loaded {
             tr("Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)")
         } else {
@@ -297,7 +308,7 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
         };
         let shown = crate::widgets::choices::Choices {
             scroll_to,
-            min_width: if col == Col::Material { 300.0 } else { 220.0 },
+            min_width: if col == Col::Type { 220.0 } else { 300.0 },
             empty: Some(empty),
             footer: (col == Col::Material)
                 .then(|| trf("{} items. Type to filter (name, catalog, nd)", &[&m.len()])),
@@ -306,12 +317,15 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
         .show(ui, resp.id.with("choices"), resp.rect);
         let chosen = shown.clicked.and_then(|k| m.get(k)).map(|x| x.0.clone());
         let hover = shown.hovered;
-        // 種類は選んでいる候補、硝材は ↑↓ で選んだか打った文字で始まる候補（ほかは打った文字のまま）
+        // 種類は選んでいる候補、硝材は ↑↓ で選んだか打った文字で始まる候補（ほかは打った文字のまま）。膜はどんな名前も
+        // 書けるので、↑↓ で選んだか同じ名前の候補だけ（打った文字で始まる別の膜に替えない）
         let pick = m.get(e.pick).map(|x| x.0.clone()).filter(|x| {
             e.moved
                 || (!e.filtered && x.eq_ignore_ascii_case(&e.text))
                 || (col == Col::Type && e.filtered)
-                || (!e.text.trim().is_empty()
+                || (col == Col::Coating && x.eq_ignore_ascii_case(e.text.trim()))
+                || (col == Col::Material
+                    && !e.text.trim().is_empty()
                     && x.to_uppercase().starts_with(&e.text.trim().to_uppercase()))
         });
         if esc {

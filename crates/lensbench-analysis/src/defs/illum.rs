@@ -4,7 +4,7 @@ use lensbench_core::{Error, FieldSel, Result, System};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, wave, Axis};
+use super::{coat_notes, fields, wave, Axis};
 use crate::footprint;
 use crate::registry::{Analysis, Cx, Meta};
 use crate::sweep::steps01;
@@ -352,6 +352,7 @@ impl Analysis for RelIllum {
                 }
             }
         }
+        warnings.extend(coat_notes(s, p.polarization)?);
         Ok(RelIllumOut {
             wave: w + 1,
             field_value: h.iter().map(|&x| ax.value(s, x)).collect(),

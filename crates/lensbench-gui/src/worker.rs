@@ -83,6 +83,8 @@ pub(crate) enum Tag {
     OpenDoc,
     /// Web 版: 解析のパネルを出した別の窓に写す系を書き出す（serve の save。別の窓はそれを読んで自分で計算する）
     PopupDoc,
+    /// レンズデータの膜の列の候補（serve の analyze の coatings の available）
+    Coatings,
 }
 
 /// ユーザーカタログへの操作
@@ -101,7 +103,7 @@ impl Tag {
     pub(crate) fn method(&self) -> Option<&'static str> {
         Some(match self {
             Tag::Load => "load",
-            Tag::Info | Tag::Analyze(_) => "analyze",
+            Tag::Info | Tag::Analyze(_) | Tag::Coatings => "analyze",
             Tag::Rays(_) | Tag::Focus => "trace",
             Tag::Glasses => "glasses",
             Tag::Lenses => "lenses",
@@ -155,6 +157,7 @@ impl Tag {
                 | Tag::Surfaces
                 | Tag::SurfData(_)
                 | Tag::Configs
+                | Tag::Coatings
                 | Tag::Refresh
                 | Tag::Folders
                 | Tag::PopupDoc
