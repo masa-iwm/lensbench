@@ -44,3 +44,16 @@ pub(crate) fn overlay_systems(
     }
     Ok(systems)
 }
+
+/// 最適化する構成の系と、構成ごとのプロジェクトのブロックの面の範囲（変数 `ブロック:面.種類`）。構成を選ばなければ
+/// 今の系 1 つ。読んだときの注意は標準エラーへ
+pub(crate) fn optimize_systems(
+    c: &Common,
+    l: &ConfigSel,
+) -> lensbench_core::Result<(Vec<System>, Vec<Vec<lensbench_project::BlockSpans>>)> {
+    let (v, notes) = lensbench_engine::load::overlay_systems_spans(&c.spec(), &l.overlay())?;
+    for w in notes {
+        eprintln!("{}", lensbench_core::i18n::warning(&w));
+    }
+    Ok(v.into_iter().unzip())
+}

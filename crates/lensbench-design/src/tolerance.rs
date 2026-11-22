@@ -648,6 +648,7 @@ fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
         K::Strehl { .. } => "strehl",
         K::Param { .. } => "param",
         K::Spread { .. } => "spread",
+        K::Diff { .. } => "diff",
         K::Illum { .. } => "illum",
         K::Longitudinal { .. } => "longitudinal",
         K::LateralColor { .. } => "lateral_color",

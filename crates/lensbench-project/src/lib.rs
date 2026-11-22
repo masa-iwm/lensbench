@@ -74,7 +74,7 @@ mod model;
 mod zmx_links;
 mod zmx_wrap;
 pub use back::*;
-pub use beams::{Beam, BeamRole};
+pub use beams::{face_surfaces, face_var, Beam, BeamRole};
 pub use blocks::*;
 pub use catalog::*;
 pub use expand::*;

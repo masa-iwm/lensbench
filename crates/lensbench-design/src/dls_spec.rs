@@ -720,9 +720,24 @@ impl OptimizeParams {
     /// 問題を作る（変数・既定の評価関数・terms の項・ヤコビアン）。返す数は既定の評価関数の項の数
     /// （terms の項はその後ろ）。呼び手は返した後に項を足してから [`Problem::check`] する
     pub fn problem(&self, systems: Vec<System>) -> Result<(Problem, usize)> {
+        self.problem_with(systems, &[])
+    }
+
+    /// [`Self::problem`] で、構成ごとのプロジェクトのブロックの面の範囲（[`lensbench_project::block_spans`]、構成の順。
+    /// プロジェクトでない構成は空）を渡したもの。変数の名前 `ブロック:面.種類`（例 `L:0.c`）は、構成ごとにそのブロックの
+    /// 面が通るすべての面（光束ごとに番号が違う面・往復の 2 面）に同じ値を当てる
+    pub fn problem_with(
+        &self,
+        systems: Vec<System>,
+        spans: &[Vec<lensbench_project::BlockSpans>],
+    ) -> Result<(Problem, usize)> {
         let mut p = Problem::new(systems);
         for v in &self.vars {
             let d = v.resolve(p.configs.len())?;
+            if let Some(face) = lensbench_project::face_var(&d.name) {
+                p.vars.push(face_variable(&p, spans, &d, face)?);
+                continue;
+            }
             let first = d
                 .configs
                 .as_ref()
@@ -765,6 +780,50 @@ impl OptimizeParams {
             active_set: self.active_set,
         }
     }
+}
+
+/// ブロックの面の変数 `ブロック:面.種類`（[`OptimizeParams::problem_with`]）: 効く構成のうち、そのブロックの面が通る
+/// すべての面に同じ値を当てる。種類は面の形（c・r・k・非球面・Zernike の係数）だけ（往復で値の変わらないもの）
+fn face_variable(
+    p: &Problem,
+    spans: &[Vec<lensbench_project::BlockSpans>],
+    d: &VarDef,
+    (block, k, kind): (&str, usize, &str),
+) -> Result<Var> {
+    let name = &d.name;
+    let cs: Vec<usize> = d
+        .configs
+        .clone()
+        .unwrap_or_else(|| (0..p.configs.len()).collect());
+    let mut at: Vec<(usize, Param)> = Vec::new();
+    for c in cs {
+        let s = &p.configs[c];
+        let sp = spans.get(c).map(Vec::as_slice).unwrap_or(&[]);
+        for j in lensbench_project::face_surfaces(s, sp, block, k)
+            .map_err(|e| Error::Invalid(format!("variable {name}: {e}")))?
+        {
+            let q = s.param(&format!("{j}.{kind}"))?;
+            if !matches!(
+                q.kind,
+                Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+            ) {
+                return Err(Error::Invalid(format!(
+                    "variable {name}: a block face variable takes a surface shape (c, r, k, aspheric or Zernike terms)"
+                )));
+            }
+            at.push((c, q));
+        }
+    }
+    let Some(&(c0, q0)) = at.first() else {
+        return Err(Error::Invalid(format!(
+            "variable {name}: block {block} is in none of the configurations"
+        )));
+    };
+    let mut var = Var::new(q0).bounds(d.lo, d.hi).in_configs(vec![c0]);
+    for &(c, q) in &at[1..] {
+        var = var.linked(c, q);
+    }
+    Ok(var)
 }
 
 /// 状態ごとの近軸量の目標: 数の並び（null は目標なし）、または CLI の書き方 "50,-,80"

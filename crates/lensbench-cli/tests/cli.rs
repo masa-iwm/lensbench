@@ -548,6 +548,29 @@ fn project_beams() {
         let (a, b) = (a.as_f64().unwrap_or(0.0), b.as_f64().unwrap_or(0.0));
         assert!((a - b).abs() <= 1e-9 * a.abs().max(1.0), "{a} {b}");
     }
+    // 光束をまたぐ最適化: 被検の玉の面を両方の光束（往復の 2 面）に当てる。評価は光束ごとの既定の項と、光路長の差の項
+    let (ok, out, err) = run(&[
+        "optimize",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beams",
+        "all",
+        "--var",
+        "TEST:0.r=40:80",
+        "--iters",
+        "3",
+        "--json",
+        "--term",
+        r#"{"type": "diff", "a": 1, "b": 2, "term": {"type": "ray", "q": "opth", "field": 1, "px": 0, "py": 0}, "weight": 0}"#,
+    ]);
+    assert!(ok, "{err}");
+    let o: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(o["vars"].as_array().unwrap().len(), 1, "{o}");
+    assert!(
+        o["merit_final"].as_f64().unwrap() <= o["merit0"].as_f64().unwrap(),
+        "{o}"
+    );
     let (ok, _, err) = run(&[
         "interference",
         p,

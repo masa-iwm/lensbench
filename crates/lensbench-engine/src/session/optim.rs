@@ -164,6 +164,44 @@ pub(super) fn config_system(
     Ok(replay(s, log, (faces, &to), &beam, notes)?)
 }
 
+/// 変数 `ブロック:面.種類` があれば、構成ごとのプロジェクトのブロックの面の範囲（構成の順。[`lensbench_project::face_var`]）。
+/// 範囲は状態をファイルから展開し直して求めるので、面の数が変わる変更（面の足し引き）の入った系では誤り
+fn face_spans(
+    op: &lensbench_design::dls_spec::OptimizeParams,
+    systems: &[System],
+    spec: &LoadSpec,
+    src: &Source,
+) -> Result<Vec<Vec<BlockSpans>>, RpcErr> {
+    let any = op.vars.iter().any(|v| {
+        v.resolve(systems.len())
+            .is_ok_and(|d| lensbench_project::face_var(&d.name).is_some())
+    });
+    if !any || !is_project(&spec.file) {
+        return Ok(Vec::new());
+    }
+    let names: Vec<Option<String>> = if op.configs.is_empty() {
+        vec![spec.state.clone()]
+    } else {
+        op.configs
+            .iter()
+            .map(|b| b.as_str().map(str::to_string))
+            .collect()
+    };
+    let mut out = Vec::new();
+    for (st, s) in names.into_iter().zip(systems) {
+        let mut sp = spec.clone();
+        sp.state = st;
+        let (x, _, spans) = crate::load::load_source_spans(src, &sp)?;
+        if x.surfaces.len() != s.surfaces.len() {
+            return Err(RpcErr::params(
+                "a block face variable needs the surfaces as the project expands them (an edit added or removed surfaces)",
+            ));
+        }
+        out.push(spans);
+    }
+    Ok(out)
+}
+
 /// 最適化。params は [`lensbench_design::dls_spec::OptimizeParams`]（CLI の optimize・Python の optimize と同じ設定の型）:
 /// vars・merit・terms・reference・rings・iters・jac と、configs（構成の番号か状態の名前の並び。省けば読み込んだ系だけ。
 /// 項・変数の構成の番号はこの並びの順）・apply（最適化した値を読み込んだ系に set する。読み込んだ系の構成に効く変数だけ）。
@@ -213,8 +251,9 @@ pub(super) fn optimize(
     for t in op.terms.iter_mut() {
         sess.files.check_term_paths(t)?;
     }
+    let spans = face_spans(&op, &systems, &spec, &src)?;
     let (prob, n_default) = op
-        .problem(systems)
+        .problem_with(systems, &spans)
         .map_err(|e| RpcErr::params(e.to_string()))?;
     prob.check()?;
     let m0 = prob.merit(&prob.x0()?)?;

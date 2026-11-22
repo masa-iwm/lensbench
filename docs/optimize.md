@@ -31,6 +31,18 @@
   残差とヤコビアンだけを返す（反復を自前で回す使い方）。Python は `System.optimize(vars, merit=...)`（最適化したシステムは `"system"`）と
   `System.merit_jacobian(vars, ...)`。
 
+## 光束をまたぐ最適化
+
+プロジェクトの光束（[プロジェクトファイル](project-file.md) の `beams`）を構成にして、共通のブロックを一緒に最適化する。
+
+- CLI は `optimize --beams all`（名前の並びでも。`--states`・`--beam-paths`・.zmx の `--cfgs` も同じ書き方で構成を並べる）、serve は
+  `configs` に光束・状態の名前。既定の評価関数は構成ごとの項、`--term` の `config`・`diff` の `a`・`b` は並べた順の番号
+- 変数 `ブロック:面.種類`（例 `TEST:0.r`、面は座標ブレークを除いて 0 から）は、構成ごとにそのブロックの面が通るすべての面に同じ値を
+  当てる: 光束ごとに番号の違う面、ミラーの `back` で往復する 2 面、光束の `turn` で戻る面。種類は面の形（`c`・`r`・`k`・非球面・
+  Zernike の係数）だけ。つないだ面の微分は差分
+- 光束ごとの光路長の差は `diff` の項で合わせる（例: 2 本の腕の主光線の光路長をそろえる）
+- 系の面を足す・消す変更の入った serve の系では、ブロックの面の変数は使えない（展開したままの面で引くため）
+
 ## 大域の探索
 
 減衰最小二乗は始点の近くの谷に落ちる。`--starts N`（serve・Python は `starts`、Rust は `optim::global_search`）は始点を変えて
@@ -132,6 +144,7 @@ lensbench optimize lens.zmx --var 1.c=-0.08:0.08 --var 2.c=-0.08:0.08 ... --star
 - `strehl`: FFT の PSF のピークの、無収差の PSF のピークに対する比。`wave` 省略は多色。STRH
 - `param`: 系のパラメータ `name`（変数と同じ書き方: `6.t`・`3.c`・`wave1`・`aper` など）の、項の構成 `config` の系での値。.zmx の MCOV・MCOG・MCOL は多重構成の行 Op# のパラメータの構成 Cfg# の項にする（行は THIC・SDIA・CRVT・CONN・PRAM・WAVE・WLWT・PRWV・APER・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FVAN・FTAN・SATP・STPS・IGNR・APMX・APMN・APDX・APDY・APTP・CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN・CROR・CRSR・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR・PSHX〜PSCY・GPIU・GPJX・GPJY・GPPX・GPPY）。書き出しはしない
 - `spread`: 1 つの値の項 `term`（weight・config・min・max は書かない）の、問題のすべての構成での値の最大 − 最小。`max` を付けた厚みの項の `spread` は OpticStudio の ZTHI（Surf2 が像面なら像面の手前まで）。微分は差分で、変数ごとにすべての構成の系をずらす
+- `diff`: 1 つの値の項 `term` の、構成 `a` の値 − 構成 `b` の値（`a`・`b` は 1 始まりの構成の番号、`target` は省略で 0）。光束の間の光路長の差（`term` に `{"type": "ray", "q": "opth", ...}`）など。微分は差分で、変数ごとにすべての構成の系をずらす
 - `illum`: 視野 `field`・波長 `wave`（既定は主波長）の主光線が像面に当たる点に届く光の、像空間の向きの射影立体角 Ωp から。`q` が `relative` なら軸上の視野に対する相対照度（RELI）、`fno` なら実効 F ナンバー 1/(2 √(Ωp n′² / π))（EFNO）。瞳の縁の各点を通って像点に着く光線を視野を変えて解き、その向きの像面の接平面への成分が囲む面積を Ωp にする。けられ係数は使わず、面の開口でけられる向きは瞳の半径を縮めて縁を探す。`n` は縁の点の数（既定 128）。アフォーカルの系は項の誤り
 - `comment`: `text` の文だけのコメントの行。OpticStudio の BLNK。項の並びを読むときに飛ばし（誤りの「term N」の番号は数える）、.zmx に書き出すと BLNK の行になる
 

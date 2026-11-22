@@ -25,7 +25,12 @@ pub(super) fn columns(
     // 変数 q・項 ti の差分で使う刻みと、刻みの種類（射出瞳の揺れに負ける項は大きく取る）
     let fd_of = |q: usize, ti: usize| -> Option<(f64, bool)> {
         let t = &p.terms[ti];
-        if !fds[ti].contains(&q) || matches!(t.kind, TermKind::User(_) | TermKind::Spread { .. }) {
+        if !fds[ti].contains(&q)
+            || matches!(
+                t.kind,
+                TermKind::User(_) | TermKind::Spread { .. } | TermKind::Diff { .. }
+            )
+        {
             return None;
         }
         let noisy = noisy_fd(&sys[t.config], &t.kind, p.vars[q].param.kind);

@@ -354,6 +354,14 @@ pub enum TermKind {
     /// 1 つの値の項 term の、問題のすべての構成での値の最大 − 最小 − target（term の目標は使わない。OpticStudio の ZTHI は
     /// 厚みの項の広がりの max）。微分は差分（変数ごとにすべての構成の系をずらす）
     Spread { term: Box<TermKind>, target: f64 },
+    /// 1 つの値の項 term の、構成 a の値 − 構成 b の値 − target（0 始まり。光束の間の光路長の差など。term の目標は使わない）。
+    /// 微分は差分（変数ごとにすべての構成の系をずらす）
+    Diff {
+        a: usize,
+        b: usize,
+        term: Box<TermKind>,
+        target: f64,
+    },
     /// 系のパラメータ（[`System::get_param`]、面の厚み・曲率・多重構成の値など）の値 − target。項の構成の系で求めるので、
     /// 多重構成の値は構成ごとの項になる（OpticStudio の MCOV・MCOG・MCOL）。微分は差分
     Param {
@@ -1047,6 +1055,7 @@ impl TermKind {
             | TermKind::Strehl { target, .. }
             | TermKind::Param { target, .. }
             | TermKind::Spread { target, .. }
+            | TermKind::Diff { target, .. }
             | TermKind::Illum { target, .. }
             | TermKind::Calc { target, .. } => Some(*target),
             _ => None,
@@ -1228,6 +1237,7 @@ pub(super) fn term_rows(s: &System, k: &TermKind) -> usize {
         | TermKind::Strehl { .. }
         | TermKind::Param { .. }
         | TermKind::Spread { .. }
+        | TermKind::Diff { .. }
         | TermKind::Illum { .. }
         | TermKind::Calc { .. } => 1,
         TermKind::User(u) => u.0.rows(),

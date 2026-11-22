@@ -1,13 +1,19 @@
-//! 構成をまたぐ項（[`TermKind::Spread`]）: 1 つの値の項の、すべての構成の値の最大 − 最小
+//! 構成をまたぐ項: 1 つの値の項の、すべての構成の値の最大 − 最小（[`TermKind::Spread`]）と、2 つの構成の値の差
+//! （[`TermKind::Diff`]）
 
 use super::*;
 
 /// 構成をまたぐ項なら、すべての構成の系 sys での残差（そうでなければ None）
 pub(super) fn value(sys: &[System], k: &TermKind, keep: bool) -> Option<Result<Vec<f64>>> {
-    let TermKind::Spread { term, target } = k else {
-        return None;
-    };
-    Some(spread(sys, term, keep).map(|v| vec![v - target]))
+    match k {
+        TermKind::Spread { term, target } => {
+            Some(spread(sys, term, keep).map(|v| vec![v - target]))
+        }
+        TermKind::Diff { a, b, term, target } => {
+            Some(diff(sys, *a, *b, term, keep).map(|v| vec![v - target]))
+        }
+        _ => None,
+    }
 }
 
 /// 項 term（1 つの値の項）の、構成ごとの値の最大 − 最小
@@ -23,9 +29,24 @@ fn spread(sys: &[System], term: &TermKind, keep: bool) -> Result<f64> {
     Ok(hi - lo)
 }
 
+/// 項 term（1 つの値の項）の、構成 a の値 − 構成 b の値
+fn diff(sys: &[System], a: usize, b: usize, term: &TermKind, keep: bool) -> Result<f64> {
+    let (Some(sa), Some(sb)) = (sys.get(a), sys.get(b)) else {
+        invalid!(
+            "difference term: configurations {} and {} (of {})",
+            a + 1,
+            b + 1,
+            sys.len()
+        );
+    };
+    let va = eval_term(sa, term, None, None, keep)?.0[0];
+    let vb = eval_term(sb, term, None, None, keep)?.0[0];
+    Ok(va - vb)
+}
+
 /// 変数 q がどれかの構成に効くか
 pub(super) fn moves(p: &Problem, q: usize) -> bool {
-    (0..p.configs.len()).any(|c| p.vars[q].applies(c))
+    (0..p.configs.len()).any(|c| p.vars[q].acts(c))
 }
 
 /// 構成をまたぐ項 t の、変数 fd の差分の列（変数ごとにすべての構成の +h・−h の系を作る。片側しか作れなければ片側差分）
@@ -39,7 +60,7 @@ pub(super) fn columns(
     let keep = p.stopped_as_vignetted;
     let at = |xs: &[f64]| -> Result<Vec<f64>> {
         let sys = p.systems(xs)?;
-        value(&sys, &t.kind, keep).expect("a spread term")
+        value(&sys, &t.kind, keep).expect("a term across configurations")
     };
     let r0 = at(x)?;
     let mut out = Vec::with_capacity(fd.len());

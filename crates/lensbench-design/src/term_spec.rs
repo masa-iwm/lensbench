@@ -622,6 +622,7 @@ pub enum TermSpec {
     Plugin(PluginSpec),
     Calc(CalcSpec),
     Spread(SpreadSpec),
+    Diff(DiffSpec),
     /// コメントの行（OpticStudio の BLNK）。評価関数に入らず、項の並びを読むときに飛ばす
     Comment(CommentSpec),
 }
@@ -633,6 +634,20 @@ pub enum TermSpec {
 pub struct SpreadSpec {
     pub term: Box<TermSpec>,
     /// 目標（target・min・max のどれかが要る）
+    pub target: Option<f64>,
+}
+
+/// diff の項: 1 つの値の項 term の、構成 a の値 − 構成 b の値 − target（光束の間の光路長の差など）。a・b は構成の
+/// 番号（1 始まり）。term には weight・config・min・max を書かない
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DiffSpec {
+    /// 引かれる側の構成（1 始まり）
+    pub a: usize,
+    /// 引く側の構成（1 始まり）
+    pub b: usize,
+    pub term: Box<TermSpec>,
+    /// 目標（省略は 0。min・max も書ける）
     pub target: Option<f64>,
 }
 

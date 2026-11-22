@@ -171,9 +171,11 @@ enum Cmd {
         dls: search_cmd::DlsArgs,
         #[command(flatten)]
         search: Box<search_cmd::SearchArgs>,
-        /// .zmx to write the optimized system to
+        /// .zmx to write the optimized system to (the first configuration)
         #[arg(long, short)]
         out: Option<PathBuf>,
+        #[command(flatten)]
+        sel: ConfigSel,
     },
     /// Monte Carlo tolerance simulation
     ///
@@ -911,17 +913,18 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             dls,
             search,
             out,
+            sel,
         } => {
-            let s = load(&c)?;
+            let (mut systems, mut spans) = config_sel::optimize_systems(&c, &sel)?;
+            let s = systems[0].clone();
             let mut specs: Vec<Value> = Vec::new();
-            let mut systems = vec![s.clone()];
             let mut merit = merit;
             let mut zmx_rows = Vec::new();
             if zmx_merit {
                 let z = zmx_merit::terms(&c, &s, out.is_some())?;
                 specs.extend(z.terms);
                 if !z.systems.is_empty() {
-                    systems = z.systems;
+                    (systems, spans) = (z.systems, Vec::new());
                 }
                 zmx_rows = z.rows;
                 merit = Merit::None;
@@ -961,7 +964,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 ..OptimizeParams::default()
             };
             search.fill(&mut op).map_err(AppError::usage)?;
-            let (p, n_default) = op.problem(systems).map_err(e)?;
+            let (p, n_default) = op.problem_with(systems, &spans).map_err(e)?;
             p.check().map_err(e)?;
             let run = progress::with(c.json, || op.run_in(&p, &c.glass_dir)).map_err(e)?;
             let r = &run.result;

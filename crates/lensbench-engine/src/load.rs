@@ -116,6 +116,16 @@ pub(crate) fn load_source_faces(
     Ok((o.system, o.warnings, o.faces))
 }
 
+/// [`load_source_notes`] で、プロジェクトの id のあるブロックの面の範囲（[`lensbench_project::block_spans`]。最適化の
+/// 変数 `ブロック:面.種類`）も返す。プロジェクトでなければ範囲は空
+pub fn load_source_spans(
+    src: &Source,
+    c: &SysSpec,
+) -> Result<(System, Vec<String>, Vec<lensbench_project::BlockSpans>), lensbench_core::Error> {
+    let o = open_source(src, c)?;
+    Ok((o.system, o.warnings, o.blocks))
+}
+
 /// 読んだファイル src から、c の構成・状態・経路の系を読む。注意（プロジェクトの展開・分散式・マクロ・
 /// 取り込み）は返す（CLI は標準エラーへ、serve は load の返事と解析の notes へ、GUI は履歴へ）
 pub fn load_source_notes(
@@ -263,6 +273,8 @@ pub(crate) struct OverlaidSys {
     pub edited: bool,
     /// プロジェクトの展開した系の面ごとの名前（変更を当て直す。ほかは空）
     pub faces: Faces,
+    /// プロジェクトの id のあるブロックの面の範囲（最適化の変数 `ブロック:面.種類`。ほかは空）
+    pub spans: Vec<lensbench_project::BlockSpans>,
 }
 
 impl OverlaidSys {
@@ -272,8 +284,26 @@ impl OverlaidSys {
             sys,
             edited,
             faces: Vec::new(),
+            spans: Vec::new(),
         }
     }
+}
+
+/// 構成の系とブロックの面の範囲（[`overlay_systems_spans`]）と、読んだときの注意
+pub type OverlaidSpans = (
+    Vec<(System, Vec<lensbench_project::BlockSpans>)>,
+    Vec<String>,
+);
+
+/// [`overlay_systems`] で、構成ごとのブロックの面の範囲も返す（最適化で光束をまたぐ変数を引く）
+pub fn overlay_systems_spans(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<OverlaidSpans> {
+    if !l.any() {
+        let (s, notes, spans) = load_source_spans(&Source::read(&c.file)?, c)?;
+        crate::provenance::set(&s);
+        return Ok((vec![(s, spans)], notes));
+    }
+    let (v, notes) = overlay_in(c, l, None)?;
+    Ok((v.into_iter().map(|o| (o.sys, o.spans)).collect(), notes))
 }
 
 /// 読み込んだ系（serve）: 読んだときのファイル src と、読み込んだ後の変更の入った系 cur
@@ -471,6 +501,7 @@ pub(crate) fn overlay_in(
                 name: name.join("/"),
                 sys: s,
                 edited: false,
+                spans: lensbench_project::block_spans(&map),
                 faces: map.into_iter().map(|o| o.face).collect(),
             });
         }

@@ -205,7 +205,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 30] = [
+    const TYPES: [&str; 31] = [
         "spot",
         "wavefront",
         "mtf",
@@ -235,6 +235,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "plugin",
         "calc",
         "spread",
+        "diff",
         "comment",
     ];
     if !TYPES.contains(&ty.as_str()) {
@@ -275,6 +276,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
             | TermKind::Strehl { .. }
             | TermKind::Param { .. }
             | TermKind::Spread { .. }
+            | TermKind::Diff { .. }
             | TermKind::Illum { .. }
             | TermKind::Longitudinal { .. }
             | TermKind::LateralColor { .. }
@@ -781,6 +783,25 @@ fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
                 target: t
                     .target
                     .ok_or("spread term has no target (or min and max)")?,
+            }
+        }
+        TermSpec::Diff(t) => {
+            let inner = kind_of(*t.term, s)?;
+            if inner.target().is_none()
+                || matches!(inner, TermKind::Spread { .. } | TermKind::Diff { .. })
+            {
+                return Err(
+                    "the term of a difference term must be a term with a single value".into(),
+                );
+            }
+            if t.a == 0 || t.b == 0 {
+                return Err("difference term: a and b are configuration numbers from 1".into());
+            }
+            TermKind::Diff {
+                a: t.a - 1,
+                b: t.b - 1,
+                term: Box::new(inner),
+                target: t.target.unwrap_or(0.0),
             }
         }
         TermSpec::Comment(_) => {

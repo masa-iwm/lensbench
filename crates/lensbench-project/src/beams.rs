@@ -119,3 +119,47 @@ impl Project {
         self.with_state(name)
     }
 }
+
+/// 光束をまたぐ最適化の変数の名前 `ブロック:面.種類`（例 `L:0.c`、面は座標ブレークを除いて 0 から）を
+/// (ブロックの id, 面, 種類) に分ける。この形でなければ None
+pub fn face_var(name: &str) -> Option<(&str, usize, &str)> {
+    let (block, rest) = name.trim().split_once(':')?;
+    let (k, kind) = rest.split_once('.')?;
+    let k = k.trim().parse().ok()?;
+    let block = block.trim();
+    (!block.is_empty() && !kind.trim().is_empty()).then_some((block, k, kind.trim()))
+}
+
+/// ブロック block の面 surface（座標ブレークを除いて 0 から）が系 s で通るすべての面の番号（往路の各回と、鏡の `back`・
+/// 光束の `turn` で戻る復路の各回。復路は往路の逆の順に通る）。spans は展開の [`crate::block_spans`]。系に無ければ空
+pub fn face_surfaces(
+    s: &lensbench_core::System,
+    spans: &[crate::BlockSpans],
+    block: &str,
+    surface: usize,
+) -> lensbench_core::Result<Vec<usize>> {
+    let Some(b) = spans.iter().find(|b| b.id == block) else {
+        return Ok(Vec::new());
+    };
+    let faces = |r: &[usize; 2]| -> Vec<usize> {
+        (r[0]..=r[1].min(s.surfaces.len().saturating_sub(1)))
+            .filter(|&j| !s.surfaces[j].is_coord_break())
+            .collect()
+    };
+    let mut out = Vec::new();
+    for r in &b.forward {
+        let f = faces(r);
+        let Some(&j) = f.get(surface) else {
+            return Err(format!("block {block} surface {surface} ({} surfaces)", f.len()).into());
+        };
+        out.push(j);
+    }
+    for r in &b.back {
+        let f = faces(r);
+        // 光束の turn で折り返した面より先の面は復路に無い
+        if let Some(k) = f.len().checked_sub(surface + 1) {
+            out.push(f[k]);
+        }
+    }
+    Ok(out)
+}

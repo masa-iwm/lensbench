@@ -2587,6 +2587,16 @@ the square wave MTF needs a positive frequency ({freq})	矩形波の MTF には�
 the multi-configuration operand {o} of row {k}	多重構成の行 {k} の演算子 {o}
 the term of a spread term must be a term with a single value	spread の項の term は 1 つの値の項にしてください
 a spread term is evaluated over all the configurations	spread の項はすべての構成で求めます
+the term of a difference term must be a term with a single value	diff の項の term は 1 つの値の項にしてください
+term {i}: the term of a difference term must have a single value	項 {i}: diff の項の term は 1 つの値の項にしてください
+difference term: a and b are configuration numbers from 1	diff の項: a・b は構成の番号（1 始まり）です
+difference term: configurations {} and {} (of {})	diff の項: 構成 {} と {}（構成は {} 個）
+term {i}: configurations {} and {} (of {n})	項 {i}: 構成 {} と {}（構成は {n} 個）
+variable {q}: a link to a configuration out of range	変数 {q}: つないだ構成が範囲の外です
+variable {name}: {e}	変数 {name}: {e}
+variable {name}: a block face variable takes a surface shape (c, r, k, aspheric or Zernike terms)	変数 {name}: ブロックの面の変数は面の形（c・r・k・非球面・Zernike の係数）だけです
+variable {name}: block {block} is in none of the configurations	変数 {name}: ブロック {block} はどの構成にもありません
+a block face variable needs the surfaces as the project expands them (an edit added or removed surfaces)	ブロックの面の変数は、プロジェクトを展開したままの面が要ります（面を足す・消す変更が入っています）
 bfs q {}	bfs の q {}
 data {d} (0 to 7)	Data {d}（0〜7）
 the line from ({}, {}, {}) doesn't meet surface {j}	点 ({}, {}, {}) からの線が面 {j} に当たりません

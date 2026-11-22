@@ -2770,6 +2770,74 @@
         },
         {
           "additionalProperties": false,
+          "description": "diff の項: 1 つの値の項 term の、構成 a の値 − 構成 b の値 − target（光束の間の光路長の差など）。a・b は構成の\n番号（1 始まり）。term には weight・config・min・max を書かない",
+          "properties": {
+            "a": {
+              "description": "引かれる側の構成（1 始まり）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "b": {
+              "description": "引く側の構成（1 始まり）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（省略は 0。min・max も書ける）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "term": {
+              "$ref": "#"
+            },
+            "type": {
+              "const": "diff",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "a",
+            "b",
+            "term"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "コメントの行（OpticStudio の BLNK）。評価関数に入らず、項の並びを読むときに飛ばす",
           "properties": {
             "config": {

@@ -22,6 +22,9 @@ pub struct Var {
     /// 範囲（既定は ±∞）
     pub lo: f64,
     pub hi: f64,
+    /// 同じ値を当てるほかの (構成, パラメータ)。光束ごとの系で同じブロックの面が別の番号になるとき・往復で 2 面になるとき。
+    /// つないだ列の微分は差分
+    pub links: Vec<(usize, Param)>,
 }
 
 impl Var {
@@ -31,7 +34,13 @@ impl Var {
             configs: None,
             lo: f64::NEG_INFINITY,
             hi: f64::INFINITY,
+            links: Vec::new(),
         }
+    }
+    /// 構成 c のパラメータ p にも同じ値を当てる（[`Var::links`]）
+    pub fn linked(mut self, c: usize, p: Param) -> Var {
+        self.links.push((c, p));
+        self
     }
     pub fn bounds(mut self, lo: f64, hi: f64) -> Var {
         self.lo = lo;
@@ -44,6 +53,23 @@ impl Var {
     }
     fn applies(&self, c: usize) -> bool {
         self.configs.as_ref().is_none_or(|v| v.contains(&c))
+    }
+    /// 構成 c で値を当てるパラメータ（param と links）
+    fn params_in(&self, c: usize) -> Vec<Param> {
+        let mut v: Vec<Param> = Vec::new();
+        if self.applies(c) {
+            v.push(self.param);
+        }
+        v.extend(self.links.iter().filter(|l| l.0 == c).map(|l| l.1));
+        v
+    }
+    /// 構成 c に効くか
+    fn acts(&self, c: usize) -> bool {
+        self.applies(c) || self.links.iter().any(|l| l.0 == c)
+    }
+    /// 構成 c で param 1 つだけに当てるか（解析的な微分を使える）
+    fn plain_in(&self, c: usize) -> bool {
+        self.applies(c) && !self.links.iter().any(|l| l.0 == c)
     }
 }
 
@@ -279,10 +305,16 @@ impl Problem {
             }
             let mut any = false;
             for (c, s) in self.configs.iter().enumerate() {
-                if v.applies(c) {
-                    s.check_param(v.param)?;
+                for p in v.params_in(c) {
+                    if p.kind.is_object() || p.kind.is_system_value() || p.kind.is_table_only() {
+                        invalid!("variable {q}: {} is not a variable", p.name());
+                    }
+                    s.check_param(p)?;
                     any = true;
                 }
+            }
+            if v.links.iter().any(|l| l.0 >= self.configs.len()) {
+                invalid!("variable {q}: a link to a configuration out of range");
             }
             if !any {
                 invalid!("variable {q}: no configuration it acts on");
@@ -302,6 +334,12 @@ impl Problem {
                 invalid!("term {i}: weight {}", t.weight);
             }
             check_kind(i, &t.kind, t.side, s)?;
+            if let TermKind::Diff { a, b, .. } = &t.kind {
+                let n = self.configs.len();
+                if *a >= n || *b >= n {
+                    invalid!("term {i}: configurations {} and {} (of {n})", a + 1, b + 1);
+                }
+            }
         }
         Ok(())
     }
@@ -310,9 +348,12 @@ impl Problem {
     pub fn x0(&self) -> Result<Vec<f64>> {
         self.vars
             .iter()
-            .map(|v| {
-                let c = (0..self.configs.len()).find(|&c| v.applies(c)).unwrap_or(0);
-                self.configs[c].get_param(v.param)
+            .map(|v| match (0..self.configs.len()).find(|&c| v.applies(c)) {
+                Some(c) => self.configs[c].get_param(v.param),
+                None => match v.links.first() {
+                    Some(&(c, p)) => self.configs[c].get_param(p),
+                    None => self.configs[0].get_param(v.param),
+                },
             })
             .collect()
     }
@@ -337,11 +378,10 @@ impl Problem {
             .vars
             .iter()
             .zip(x)
-            .filter(|(v, _)| v.applies(c))
+            .flat_map(|(v, &xv)| v.params_in(c).into_iter().map(move |p| (p, xv)))
             // 今の値と同じものは変えない（傾き偏心のない面に偏心 0 を与えると、回転対称でない系の扱いになり
             // 射出瞳の求め方が変わるため。初期値の系を元の系と同じにする）
-            .filter(|(v, &xv)| self.configs[c].get_param(v.param).ok() != Some(xv))
-            .map(|(v, &xv)| (v.param, xv))
+            .filter(|&(p, xv)| self.configs[c].get_param(p).ok() != Some(xv))
             .collect();
         if ch.is_empty() {
             return Ok(self.configs[c].clone());
@@ -488,9 +528,7 @@ impl Problem {
         }
         let parts: Vec<Part> = map_maybe_par(&self.terms, |t| {
             let s = &sys[t.config];
-            let act: Vec<usize> = (0..nv)
-                .filter(|&q| self.vars[q].applies(t.config))
-                .collect();
+            let act: Vec<usize> = (0..nv).filter(|&q| self.vars[q].acts(t.config)).collect();
             if let Some(r) = cross::value(&sys, &t.kind, self.stopped_as_vignetted) {
                 let r = r?;
                 let fd = (0..nv).filter(|&q| cross::moves(self, q)).collect();
@@ -505,7 +543,8 @@ impl Problem {
                 let m = r.len();
                 let mut j = vec![0.0; m * nv];
                 let ps: Vec<Param> = act.iter().map(|&q| self.vars[q].param).collect();
-                let g = if self.jac == JacMode::Auto && !ps.is_empty() {
+                let plain = act.iter().all(|&q| self.vars[q].plain_in(t.config));
+                let g = if self.jac == JacMode::Auto && !ps.is_empty() && plain {
                     u.0.grad(s, &ps)?
                 } else {
                     None
@@ -537,6 +576,7 @@ impl Problem {
             {
                 act.iter()
                     .copied()
+                    .filter(|&q| self.vars[q].plain_in(t.config))
                     .filter(|&q| {
                         !cache.launch_moves(
                             t.config,
@@ -611,7 +651,7 @@ impl Problem {
         }
         // 構成をまたぐ項の差分: 変数ごとにすべての構成の ±h の系で
         for (ti, t) in self.terms.iter().enumerate() {
-            if matches!(t.kind, TermKind::Spread { .. }) {
+            if matches!(t.kind, TermKind::Spread { .. } | TermKind::Diff { .. }) {
                 for (q, d) in cross::columns(self, x, &steps, t, &parts[ti].fd)? {
                     d.iter()
                         .enumerate()
@@ -837,6 +877,10 @@ fn check_kind(i: usize, k: &TermKind, side: Side, s: &System) -> Result<()> {
             invalid!("term {i}: the term of a spread term must have a single value")
         }
         TermKind::Spread { term, .. } => return check_kind(i, term, Side::Eq, s),
+        TermKind::Diff { term, .. } if term.target().is_none() => {
+            invalid!("term {i}: the term of a difference term must have a single value")
+        }
+        TermKind::Diff { term, .. } => return check_kind(i, term, Side::Eq, s),
         TermKind::Coupling { wave, .. } => {
             if s.infinite() {
                 invalid!("term {i}: fiber coupling is only for finite-object systems");
@@ -1062,7 +1106,7 @@ fn eval_term(
             Ok((vec![x - target], None))
         }
         TermKind::User(u) => Ok((u.eval_checked(&[s])?.remove(0), None)),
-        TermKind::Spread { .. } => {
+        TermKind::Spread { .. } | TermKind::Diff { .. } => {
             invalid!("a spread term is evaluated over all the configurations")
         }
     }
