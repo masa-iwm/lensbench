@@ -1734,17 +1734,13 @@ impl App {
                 crate::layout::redock(&mut app.dock, w.pane, w.home.as_ref());
             }
         }
-        if let Some(d) = &args.tour {
+        // 通し確認で系のファイルを渡さなければ、exe に埋めた例の系（ズームの例）を開く（配る版の確認）
+        let tour_open = args.tour.as_ref().map(|d| {
             let _ = lensbench_core::vfs::create_dir_all(d);
             app.tour = Some(Tour::new(d.clone(), args.tour_timeout));
-            if args.open.is_none() {
-                app.tour
-                    .as_mut()
-                    .unwrap()
-                    .errors
-                    .push("--tour needs a system file".into());
-            }
-        }
+            crate::tour::zoom_sample(d)
+        });
+        let tour_open = tour_open.filter(|_| args.open.is_none());
         // Web 版: 前に開いていた、ブラウザに残したファイルがあればそれを開く（見本より先に）
         #[cfg(target_arch = "wasm32")]
         let reopen = app
@@ -1759,7 +1755,11 @@ impl App {
             .map(PathBuf::from);
         #[cfg(not(target_arch = "wasm32"))]
         let reopen: Option<PathBuf> = None;
-        if let Some(p) = reopen.as_ref().or(args.open.as_ref()) {
+        if let Some(p) = reopen
+            .as_ref()
+            .or(args.open.as_ref())
+            .or(tour_open.as_ref())
+        {
             app.c.open_doc(p);
         }
     }

@@ -15,7 +15,8 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
             }
         }
-        let busy = self.c.busy();
+        // カタログの一覧の読み込み（下書きの worker）も待つ（待たないと、組合せの段がレンズの一覧の無いうちに進む）
+        let busy = self.c.busy() || self.c.browser.lenses_pending || self.c.browser.glasses_pending;
         if t.timed_out() {
             t.errors.push(format!("{} で時間切れ", t.step.name()));
             t.step = Step::Done;
@@ -209,12 +210,21 @@ impl App {
 
     /// 通し確認の段 Combo
     fn tour_combo(&mut self) {
-        // 正のレンズを焦点距離の短い順に 2 枚
+        // 正のレンズ（ガラスの玉。鏡は除く）を焦点距離の短い順に 2 枚。組合せの既定の入射瞳径 5 mm の光束が収まる径
+        // （12 mm 以上）のものから選ぶ（メーカーのカタログには径 1〜2 mm の玉や凹面鏡があり、選ぶと光線がけられ・止まる）。
+        // lensbench 形式のカタログの品（ファイルを参照する玉）は差し替え探索の段で差し替えられないので除く
         let b = &mut self.c.browser;
         let mut pos: Vec<catalog::LensRow> = b
             .lenses
             .iter()
-            .filter(|l| l.error.is_none() && l.efl > 0.0)
+            .filter(|l| {
+                l.error.is_none()
+                    && l.efl > 0.0
+                    && l.diameter >= 12.0
+                    && l.mirror.is_none()
+                    && l.pieces >= 1
+                    && l.source.is_none()
+            })
             .cloned()
             .collect();
         pos.sort_by(|a, b| a.efl.total_cmp(&b.efl));
