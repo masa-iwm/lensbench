@@ -813,6 +813,27 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 }
             }
         }
+        // 利用者定義の面・形の位置ごとの Jones（面の処理・回折の後、出射の向きの基底で）
+        if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
+            let surf = pr.surf;
+            if let Some(uj) = surf[j].user_jones.as_ref() {
+                for i in 0..N {
+                    if err[i] != 0.0 || pr.err[i].is_some() {
+                        continue;
+                    }
+                    match uj.at(pl[0][i], pl[1][i]) {
+                        Ok(m) => {
+                            let mut x = e.lane(i);
+                            trace::apply_jones(&mut x, get(&kl, i), &m);
+                            e.set_lane(i, &x);
+                        }
+                        Err(er) => {
+                            pr.err[i] = Some(er.at(sys.surf_label(j)));
+                        }
+                    }
+                }
+            }
+        }
         // 異常光の道の板の中: 光路長を数える屈折率は m·ŝ のまま。出口を出た光線は等方な媒質へ
         match st.ext {
             ExtStep::Inside => {

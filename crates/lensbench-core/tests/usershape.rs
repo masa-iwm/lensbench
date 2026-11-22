@@ -420,3 +420,115 @@ fn a_user_phase_traces_like_binary2() {
         assert!(e.contains("phase gradient"), "{e}");
     });
 }
+
+/// 平面の形で Jones 行列を返すモデル: kind 0 は λ/4（速軸 x、[1, 0, 0, i]）、kind 1 は位置で変わる位相 exp(i a x)·I
+struct JonesShape;
+
+struct JonesShapeInst {
+    kind: f64,
+    a: f64,
+}
+
+impl ShapeModel for JonesShape {
+    fn name(&self) -> &str {
+        "lbtest_jones"
+    }
+    fn prepare(&self, config: &Config) -> Result<Arc<dyn ShapeInstance>> {
+        let mut c = ConfigReader::new(config);
+        Ok(Arc::new(JonesShapeInst {
+            kind: c.num("kind", 0.0)?,
+            a: c.num("a", 0.0)?,
+        }))
+    }
+}
+
+impl ShapeInstance for JonesShapeInst {
+    fn sag(&self, _: f64, _: f64) -> (f64, f64, f64) {
+        (0.0, 0.0, 0.0)
+    }
+    fn jones(&self, x: f64, _: f64, _: f64) -> Option<[C64; 4]> {
+        let (o, z) = (C64::new(1.0, 0.0), C64::new(0.0, 0.0));
+        Some(if self.kind == 0.0 {
+            [o, z, z, C64::new(0.0, 1.0)]
+        } else {
+            let p = C64::from_polar(1.0, self.a * x);
+            [p, z, z, p]
+        })
+    }
+}
+
+/// 像面を Jones を返す利用者定義の形にすると、同じ行列の Jones 面と同じ場になる（基底は Jones 面と同じ）。位置で変わる
+/// 行列は交点ごとに引く（exp(i a x)·I は場をその位相だけ回す）
+#[test]
+fn a_user_jones_matches_the_jones_surface() {
+    let mut e = Ext::default();
+    e.add_shape_model(Arc::new(JonesShape));
+    ext::with(Arc::new(e), || {
+        let s = a0();
+        let img = s.image();
+        let with = |kind: f64, a: f64| {
+            let mut s = s.clone();
+            s.edit_raw(|p| {
+                p.surfaces[img].set_type(SurfType::UserShape);
+                *p.surfaces[img].user_shape_mut().unwrap() = Some(
+                    UserShape::new("lbtest_jones", phase_like_cfg(&[("kind", kind), ("a", a)]))
+                        .unwrap(),
+                );
+                Ok(())
+            })
+            .unwrap();
+            s
+        };
+        let mut j = s.clone();
+        j.edit_raw(|p| {
+            p.surfaces[img].set_type(SurfType::Jones);
+            *p.surfaces[img].jones_mut().unwrap() = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+            Ok(())
+        })
+        .unwrap();
+        let px = [0.0, 0.6, -0.3, 0.2, -0.7];
+        let py = [0.0, 0.1, 0.5, -0.8, -0.4];
+        let d45 = [C64::new(0.5f64.sqrt(), 0.0), C64::new(0.5f64.sqrt(), 0.0)];
+        let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+        let tr = |s: &System, f: usize| {
+            let c = Coatings::for_system(s).unwrap();
+            s.try_trace_pol(
+                FieldSel::Index(f),
+                &px,
+                &py,
+                None,
+                PolIn::new(&[d45, x], &c),
+            )
+            .unwrap()
+        };
+        let q = with(0.0, 0.0);
+        for f in 0..s.fields.len() {
+            let (a, b) = (tr(&q, f), tr(&j, f));
+            for i in 0..px.len() {
+                for m in 0..2 {
+                    for c in 0..3 {
+                        let d = (a.e[i][m][c] - b.e[i][m][c]).norm();
+                        assert!(d < 1e-12, "{f} {i} {m} {c}: {d:e}");
+                    }
+                }
+            }
+        }
+        // 位置で変わる位相: 場は exp(i a x) 倍（x は像面の交点）
+        let a = 3.0;
+        let (p, b) = (with(1.0, a), with(1.0, 0.0));
+        let (tp, tb) = (tr(&p, 2), tr(&b, 2));
+        for i in 0..px.len() {
+            let ph = C64::from_polar(1.0, a * tp.trace.rays[i].xyz[0]);
+            for c in 0..3 {
+                let d = (tp.e[i][0][c] - ph * tb.e[i][0][c]).norm();
+                assert!(d < 1e-12, "{i} {c}: {d:e}");
+            }
+        }
+    });
+}
+
+fn phase_like_cfg(kv: &[(&str, f64)]) -> Config {
+    kv.iter()
+        .map(|(k, v)| (k.to_string(), Value::Num(*v)))
+        .collect()
+}

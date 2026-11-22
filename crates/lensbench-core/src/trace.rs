@@ -8,8 +8,8 @@ pub(crate) mod uniaxial;
 
 #[doc(hidden)]
 pub use aperture::{aperture_margin, aperture_out};
+pub use pol::{apply_jones, CryKind, PolKind, PolSurf, UserJones};
 pub(crate) use pol::{cmv, pol_step, rotate_min, CryState, CNAN3, CV3};
-pub use pol::{CryKind, PolKind, PolSurf};
 
 use crate::math::*;
 use crate::system::System;

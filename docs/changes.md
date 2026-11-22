@@ -17,7 +17,8 @@
   Rust の `lensbench_design::montecarlo::GlassShift` は面の番号と種類（`surf`・`abbe`）だけになった
 
 ### Rust の API
-- `ShapeInstance` に既定つきの `phase` を足した（壊れる変更ではない。実装しなければ今までどおり位相なし）。
+- `ShapeInstance` に既定つきの `phase`・`jones`、`SurfaceInstance` に既定つきの `jones` を足した（壊れる変更ではない。
+  実装しなければ今までどおり）。`trace::PolSurf` に欄 `user_jones` が増えた（欄をすべて書いて作っていると組めなくなる）。
 
 ## v0.7.0 の後・v0.8.0 まで
 

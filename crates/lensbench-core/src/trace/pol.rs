@@ -34,6 +34,59 @@ pub struct PolSurf {
     pub it: Option<f64>,
     /// ln(it) / 2（振幅の吸収 exp(la · 距離) を pow なしで求める）
     pub la: f64,
+    /// 利用者定義の面・形の位置ごとの Jones 行列（面の処理の後に光線ごとにかける）
+    pub user_jones: Option<UserJones>,
+}
+
+/// 利用者定義の面・形の位置ごとの Jones 行列（波長ごとに用意する）
+#[derive(Clone)]
+pub struct UserJones {
+    src: UserJonesSrc,
+    wl: f64,
+}
+
+#[derive(Clone)]
+enum UserJonesSrc {
+    Shape(crate::usershape::UserShape),
+    Surf(std::sync::Arc<dyn crate::usersurf::SurfaceInstance>),
+}
+
+impl std::fmt::Debug for UserJones {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserJones").field("wl", &self.wl).finish()
+    }
+}
+
+impl UserJones {
+    /// 利用者定義の形の Jones（持たなければ None）
+    pub fn of_shape(u: &crate::usershape::UserShape, wl: f64) -> Option<UserJones> {
+        u.has_jones().then(|| UserJones {
+            src: UserJonesSrc::Shape(u.clone()),
+            wl,
+        })
+    }
+
+    /// 利用者定義の面の Jones（持たなければ None）
+    pub fn of_surf(u: &crate::usersurf::UserSurf, wl: f64) -> Option<UserJones> {
+        u.instance().jones(0.0, 0.0, 0.55).map(|_| UserJones {
+            src: UserJonesSrc::Surf(u.instance_arc()),
+            wl,
+        })
+    }
+
+    /// 局所座標の交点 (x, y) での行列（モデルが None を返せば誤り）
+    pub fn at(&self, x: f64, y: f64) -> Result<[C64; 4], Error> {
+        let m = match &self.src {
+            UserJonesSrc::Shape(u) => u.jones(x, y, self.wl),
+            UserJonesSrc::Surf(s) => s.jones(x, y, self.wl),
+        };
+        match m {
+            Some(m) if m.iter().all(|z| z.re.is_finite() && z.im.is_finite()) => Ok(m),
+            _ => Err(Error::Invalid(format!(
+                "the user-defined Jones matrix is not given at ({x}, {y})"
+            ))),
+        }
+    }
 }
 
 impl PolSurf {
@@ -45,6 +98,7 @@ impl PolSurf {
             cemented: false,
             it,
             la: it.map_or(0.0, |t| 0.5 * t.ln()),
+            user_jones: None,
         }
     }
 }
@@ -157,6 +211,25 @@ pub(crate) fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
 
 pub(crate) const CNAN3: CV3 = [C64::new(f64::NAN, f64::NAN); 3];
 
+/// 電場（局所座標）に Jones 行列 m = [A, B, C, D] をかける。OpticStudio の Jones 面と同じく、局所の ±z 軸を光線の
+/// 向き kl へ移す最小の回転が x・y を運んだ横の基底で（Ex' = A·Ex + B·Ey、Ey' = C·Ex + D·Ey）
+pub fn apply_jones(e: &mut [[C64; 3]], kl: V3, m: &[C64; 4]) {
+    let sz = if kl[2] > 0.0 {
+        1.0
+    } else if kl[2] < 0.0 {
+        -1.0
+    } else {
+        0.0
+    };
+    let h = scale(add(kl, [0.0, 0.0, sz]), 1.0 / (1.0 + kl[2].abs()));
+    let u = sub([1.0, 0.0, 0.0], scale(h, kl[0]));
+    let v = sub([0.0, 1.0, 0.0], scale(h, kl[1]));
+    for x in e.iter_mut() {
+        let (eu, ev) = (cdot(*x, u), cdot(*x, v));
+        *x = comb(m[0] * eu + m[1] * ev, u, m[2] * eu + m[3] * ev, v);
+    }
+}
+
 /// 面での電場の変化（局所座標）。kin・kl は面の前後の方向、nv は法線
 fn pol_surface(
     ps: &PolSurf,
@@ -169,23 +242,7 @@ fn pol_surface(
 ) -> Result<(), Error> {
     match &ps.kind {
         PolKind::None => {}
-        PolKind::Jones(m) => {
-            // OpticStudio は、局所の ±z 軸を光線へ移す最小の回転が x・y を運んだ横の基底で行列をかける
-            let sz = if kl[2] > 0.0 {
-                1.0
-            } else if kl[2] < 0.0 {
-                -1.0
-            } else {
-                0.0
-            };
-            let h = scale(add(kl, [0.0, 0.0, sz]), 1.0 / (1.0 + kl[2].abs()));
-            let u = sub([1.0, 0.0, 0.0], scale(h, kl[0]));
-            let v = sub([0.0, 1.0, 0.0], scale(h, kl[1]));
-            for x in e.iter_mut() {
-                let (eu, ev) = (cdot(*x, u), cdot(*x, v));
-                *x = comb(m[0] * eu + m[1] * ev, u, m[2] * eu + m[3] * ev, v);
-            }
-        }
+        PolKind::Jones(m) => apply_jones(e, kl, m),
         PolKind::Iface(f) => {
             let mut sv = cross(kin, nv);
             if !(norm(sv) > PARALLEL_SIN) {

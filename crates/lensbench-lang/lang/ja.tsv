@@ -782,6 +782,8 @@ no user-defined surface model {name} (registered: {})	ユーザー定義の面�
 no user-defined shape model {name} (registered: {})	ユーザー定義の形のモデル {name} はありません（登録: {}）
 user-defined shape model {name}: the phase is not finite at ({x}, {y}) (inside 1.2 × radius)	ユーザー定義の形のモデル {name}: ({x}, {y}) で位相が有限ではありません（半径の 1.2 倍の内）
 user-defined shape model {name}: the phase gradient ({px}, {py}) at ({x}, {y}) does not match the difference of the phase ({nx}, {ny})	ユーザー定義の形のモデル {name}: ({x}, {y}) での位相の勾配 ({px}, {py}) が位相の差分 ({nx}, {ny}) と合いません
+user-defined surface model {name}: the Jones matrix of the surface flipped in {h} at ({px}, {py}) is not the mirror image	ユーザー定義の面のモデル {name}: {h} で反転した面の ({px}, {py}) での Jones 行列が映したものになっていません
+the user-defined Jones matrix is not given at ({x}, {y})	ユーザー定義の Jones 行列が ({x}, {y}) で与えられていません
 material model {name}: the range [{lo}, {hi}] µm is not a valid interval	材料のモデル {name}: 範囲 [{lo}, {hi}] µm が正しい区間ではありません
 material model {name}: the index at {wl} µm, {t} °C, {p} atm is {n} (not a positive number)	材料のモデル {name}: {wl} µm・{t} °C・{p} atm での屈折率が {n} です（正の数ではありません）
 material model {name}: the transmittance row ({wl} µm, {tr}, {th} mm) is out of range	材料のモデル {name}: 内部透過率の行（{wl} µm、{tr}、{th} mm）が範囲の外です

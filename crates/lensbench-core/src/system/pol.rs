@@ -48,6 +48,15 @@ impl System {
                 }
             };
             let mut ps = PolSurf::new(kind, it);
+            // 利用者定義の面・形の位置ごとの Jones
+            if !d.ignore && j > 0 && !d.is_coord_break() {
+                ps.user_jones = match d.action() {
+                    Action::User(Some(u)) => crate::trace::UserJones::of_surf(u, wl),
+                    _ => d
+                        .user_shape()
+                        .and_then(|u| crate::trace::UserJones::of_shape(u, wl)),
+                };
+            }
             if !d.ignore && j > 0 {
                 ps.cry = match &d.bire {
                     Some(Bire::In { mode, axis, ne }) => {

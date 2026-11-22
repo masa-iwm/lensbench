@@ -25,6 +25,8 @@
 //!   電場は方向の変化と同じ最小の回転で回す。近軸は頂点での ∂²Φ/∂y²（勾配の中心差分）を屈折力に足す。回折次数・波長に
 //!   よらない位相（rad）を返し、次数を変えたいときは設定に持つ。裏返し（z）では変えず、x の映しは x の向きを替える。
 //!   dOPL/dp・着地点の微分はこの面を通る光線では未対応（Binary 2 と同じく誤り）
+//! - [`ShapeInstance::jones`] を返すモデルは、偏光の追跡で膜の係数（と位相の回折）の後に位置ごとの Jones 行列をかける
+//!   （基底は Jones 面と同じ、[`crate::trace::apply_jones`]）。z の裏返しでは変えず、x の映しは B・C の符号を替える
 //! - .zmx には書けない（系ファイル・プロジェクトには書ける）
 
 use std::collections::HashSet;
@@ -74,6 +76,13 @@ pub trait ShapeInstance: Send + Sync {
     /// None を返すモデルは位相を持たないとみなし、ほかの点でも呼ばない
     fn phase(&self, x: f64, y: f64) -> Option<(f64, f64, f64)> {
         let _ = (x, y);
+        None
+    }
+    /// 面の局所座標 (x, y) と波長 [µm] での Jones 行列 [A, B, C, D]（Ex' = A·Ex + B·Ey、Ey' = C·Ex + D·Ey）。膜の
+    /// 係数（屈折・反射）の後にかける。基底は Jones 面と同じく、局所の ±z を出射の向きへ移す最小の回転で運んだ
+    /// x・y。None は Jones なし（既定）。頂点 (0, 0)・0.55 µm で None を返すモデルは Jones を持たないとみなす
+    fn jones(&self, x: f64, y: f64, wl_um: f64) -> Option<[crate::coating::C64; 4]> {
+        let _ = (x, y, wl_um);
         None
     }
 }
@@ -222,6 +231,22 @@ impl UserShape {
         let (_, m) = self.signs();
         let (p, px, py) = self.inst.phase(m * x, y)?;
         Some((p, m * px, py))
+    }
+
+    /// Jones を持つか（頂点・0.55 µm で [`ShapeInstance::jones`] が Some）
+    pub fn has_jones(&self) -> bool {
+        self.inst.jones(0.0, 0.0, 0.55).is_some()
+    }
+
+    /// 裏返しを含めた Jones 行列: z の裏返しでは変えず、x の映しは映した点の行列の B・C の符号を替える
+    pub fn jones(&self, x: f64, y: f64, wl_um: f64) -> Option<[crate::coating::C64; 4]> {
+        let (_, m) = self.signs();
+        let j = self.inst.jones(m * x, y, wl_um)?;
+        Some(if self.mirror_x {
+            [j[0], -j[1], -j[2], j[3]]
+        } else {
+            j
+        })
     }
 
     /// 頂点での位相の 2 階 ∂²Φ/∂y² [rad/mm²]（近軸の屈折力に足す分。幅 h の勾配の中心差分）。位相なしは 0

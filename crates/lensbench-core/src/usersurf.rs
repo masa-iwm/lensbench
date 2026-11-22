@@ -10,7 +10,9 @@
 //!   OPD に足す光路長 [mm]（理想レンズの位相と同じ扱い。幾何的な光路長 `opl` には入れない）を返す。
 //!   状態を持たず、どのスレッドから呼んでもよい。光線を落とすときは None（その面で err）
 //! - 近軸の追跡（EFL・瞳・近軸像面）には [`SurfaceInstance::paraxial_power`]（1 / 焦点距離）を使う
-//! - 偏光の追跡では、電場を方向の変化と同じ最小の回転で回す（振幅は変えない。理想レンズと同じ）
+//! - 偏光の追跡では、電場を方向の変化と同じ最小の回転で回す（振幅は変えない。理想レンズと同じ）。
+//!   [`SurfaceInstance::jones`] を返すモデルは、その後に位置ごとの Jones 行列をかける（基底は Jones 面と同じ、
+//!   [`crate::trace::apply_jones`]）
 //! - dOPL/dp（[`crate::fermat`]）・着地点の微分（[`crate::landing`]）は、この面を通る光線では未対応（誤り）
 //! - .zmx には書けない（系ファイル・プロジェクトには書ける）。前後の媒質は空気に限る（理想レンズと同じ）
 //!
@@ -137,6 +139,25 @@ pub fn check_flip(model: &dyn SurfaceModel, config: &Config) -> Result<()> {
                     );
                 }
             }
+            // Jones: z は同じ点で同じ行列、x は映した点の行列の B・C の符号を替えたもの
+            let q = how.apply([px, py, 0.0]);
+            let ja = base.jones(q[0], q[1], 0.55).map(|m| match how {
+                Flip::X => [m[0], -m[1], -m[2], m[3]],
+                Flip::Z => m,
+            });
+            let jb = fl.jones(px, py, 0.55);
+            let ok = match (ja, jb) {
+                (None, None) => true,
+                (Some(a), Some(b)) => {
+                    (0..4).all(|i| (a[i] - b[i]).norm() <= tol * (1.0 + a[i].norm()))
+                }
+                _ => false,
+            };
+            if !ok {
+                invalid!(
+                    "user-defined surface model {name}: the Jones matrix of the surface flipped in {h} at ({px}, {py}) is not the mirror image"
+                );
+            }
         }
     }
     Ok(())
@@ -150,6 +171,14 @@ pub trait SurfaceInstance: Send + Sync {
     /// 近軸の屈折力 1 / f [1/mm]（近軸の追跡で使う。0 なら素通し）
     fn paraxial_power(&self) -> f64 {
         0.0
+    }
+    /// 局所座標の交点 (x, y) と波長 [µm] での Jones 行列 [A, B, C, D]（Ex' = A·Ex + B·Ey、Ey' = C·Ex + D·Ey。基底は
+    /// Jones 面と同じく、局所の ±z を出射の向きへ移す最小の回転で運んだ x・y）。None は Jones なし（既定）。頂点
+    /// (0, 0)・0.55 µm で None を返すモデルは Jones を持たないとみなす。裏返した面（[`SurfaceModel::flip`]）の Jones は、
+    /// z では同じ点で同じ行列、x では映した点 (−x, y) の行列の B・C の符号を替えたもの（[`check_flip`] が確かめる）
+    fn jones(&self, x: f64, y: f64, wl_um: f64) -> Option<[crate::coating::C64; 4]> {
+        let _ = (x, y, wl_um);
+        None
     }
 }
 
@@ -227,6 +256,11 @@ impl UserSurf {
 
     pub fn instance(&self) -> &dyn SurfaceInstance {
         self.inst.as_ref()
+    }
+
+    /// 準備した面（偏光の準備で Jones を持つ面を写すため）
+    pub(crate) fn instance_arc(&self) -> Arc<dyn SurfaceInstance> {
+        self.inst.clone()
     }
 
     /// 裏返した面（[`SurfaceModel::flip`]）。モデルが対応しなければ誤り

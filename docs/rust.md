@@ -95,6 +95,13 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   λ/2π · Φ を足し、電場は向きの変化と同じ最小の回転で回す。近軸は頂点の ∂²Φ/∂y² を屈折力に足す。回折次数・波長には
   よらない値を返す（次数は設定に持つ）。位相を持つ面を通る光線の dOPL/dp・着地点の微分は Binary 2 と同じく未対応（誤り）。
   `check_shape` は位相の勾配も差分と比べる
+
+  位置ごとの Jones 行列（偏光子・波長板・メタ面の偏光の働き）は、`ShapeInstance::jones(x, y, 波長)`（USERSHAPE）と
+  `SurfaceInstance::jones(x, y, 波長)`（USER）で [A, B, C, D] を返す（既定は None。頂点・0.55 µm で None なら持たない
+  とみなす）。偏光の追跡で、面の処理（USERSHAPE は膜の係数と位相の回折、USER は向きの回転）の後に交点ごとにかける。基底は
+  Jones 面と同じ（局所の ±z を出射の向きへ移す最小の回転で運んだ x・y、`lensbench_core::trace::apply_jones`）。USERSHAPE の
+  裏返しは core が包み（z では同じ、x では映した点の行列の B・C の符号を替える）、USER では `flip` が同じ約束を守る
+  （`check_flip` が確かめる）。モデルが途中の点で None を返すと、その光線は偏光の誤り
 - `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
   （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
   `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の

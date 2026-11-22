@@ -187,3 +187,111 @@ fn user_model_traces() {
         (t.rays[0].lens_opd - t0.rays[0].lens_opd - 1e-3 * t0.rays[0].xyz[1].powi(2)).abs() < 1e-15
     );
 }
+
+/// 光線を曲げずに、軸 θ（config `deg`、x から y へ）の λ/4 の Jones 行列をかける面。flip の x は軸を映す（θ → −θ）。
+/// wrong は映さない（約束の検査が見つける）
+struct Qwp {
+    wrong: bool,
+}
+struct QwpInst(f64);
+impl SurfaceModel for Qwp {
+    fn name(&self) -> &str {
+        if self.wrong {
+            "test_qwp_wrong"
+        } else {
+            "test_qwp"
+        }
+    }
+    fn prepare(&self, c: &Config) -> lensbench_core::Result<Arc<dyn SurfaceInstance>> {
+        let mut r = lensbench_core::plugin::ConfigReader::new(c);
+        let d = r.num("deg", 0.0)?;
+        r.finish()?;
+        Ok(Arc::new(QwpInst(d)))
+    }
+    fn example_config(&self) -> Option<Config> {
+        Some(Config::from([("deg".into(), Value::Num(30.0))]))
+    }
+    fn flip(
+        &self,
+        c: &Config,
+        how: lensbench_core::usersurf::Flip,
+    ) -> lensbench_core::Result<Option<Config>> {
+        let d = match c.get("deg") {
+            Some(Value::Num(d)) => *d,
+            _ => 0.0,
+        };
+        let d = match how {
+            lensbench_core::usersurf::Flip::X if !self.wrong => -d,
+            _ => d,
+        };
+        Ok(Some(Config::from([("deg".into(), Value::Num(d))])))
+    }
+}
+impl SurfaceInstance for QwpInst {
+    fn deflect(&self, _: [f64; 3], k: [f64; 3], _: f64, _: f64, _: f64) -> Option<([f64; 3], f64)> {
+        Some((k, 0.0))
+    }
+    fn jones(&self, _: f64, _: f64, _: f64) -> Option<[lensbench_core::coating::C64; 4]> {
+        use lensbench_core::coating::C64;
+        let (s, c) = self.0.to_radians().sin_cos();
+        // R(θ) diag(1, i) R(−θ)
+        let i = C64::new(0.0, 1.0);
+        Some([
+            C64::new(c * c, 0.0) + i * s * s,
+            (C64::new(1.0, 0.0) - i) * (c * s),
+            (C64::new(1.0, 0.0) - i) * (c * s),
+            C64::new(s * s, 0.0) + i * c * c,
+        ])
+    }
+}
+
+/// 利用者定義の面の Jones は、同じ行列の Jones 面と同じ場になる。check_flip は Jones の映しも確かめる
+#[test]
+fn user_surface_jones_matches_the_jones_surface() {
+    use lensbench_core::coating::{Coatings, C64};
+    let mut e = Ext::default();
+    e.add_surface_model(Arc::new(Qwp { wrong: false }));
+    e.add_surface_model(Arc::new(Qwp { wrong: true }));
+    ext::with(Arc::new(e), || {
+        let cfg = Config::from([("deg".into(), Value::Num(30.0))]);
+        let mut s = paraxial();
+        s.edit_raw(|p| {
+            p.surfaces[2].set_type(SurfType::User);
+            *p.surfaces[2].user_mut().unwrap() =
+                Some(UserSurf::new("test_qwp", cfg.clone()).unwrap());
+            Ok(())
+        })
+        .unwrap();
+        let m = QwpInst(30.0).jones(0.0, 0.0, 0.55).unwrap();
+        let mut j = paraxial();
+        j.edit_raw(|p| {
+            p.surfaces[2].set_type(SurfType::Jones);
+            *p.surfaces[2].jones_mut().unwrap() = [
+                m[0].re, m[0].im, m[1].re, m[1].im, m[2].re, m[2].im, m[3].re, m[3].im,
+            ];
+            Ok(())
+        })
+        .unwrap();
+        let c = Coatings::default();
+        let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+        let (px, py) = ([0.0, 0.3, -0.6], [0.5, -0.2, 0.7]);
+        for f in 0..s.fields.len() {
+            let a = s
+                .try_trace_pol(FieldSel::Index(f), &px, &py, None, PolIn::new(&[x], &c))
+                .unwrap();
+            let b = j
+                .try_trace_pol(FieldSel::Index(f), &px, &py, None, PolIn::new(&[x], &c))
+                .unwrap();
+            for i in 0..px.len() {
+                for k in 0..3 {
+                    assert!((a.e[i][0][k] - b.e[i][0][k]).norm() < 1e-13, "{f} {i} {k}");
+                }
+            }
+        }
+        lensbench_core::usersurf::check_flip(&Qwp { wrong: false }, &cfg).unwrap();
+        let e = lensbench_core::usersurf::check_flip(&Qwp { wrong: true }, &cfg)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("Jones"), "{e}");
+    });
+}
