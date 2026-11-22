@@ -423,7 +423,7 @@ Reset all	すべてデフォルトに
 Choose a file	ファイルを選択
 Reset to default	デフォルトに戻す
 a, b, … (required)	a, b, …（必須）
-↑↓ steps the value (1 for integers, the last typed digit for decimals)	↑↓ で増減（整数は 1、実数は書いた最後の桁の 1）
+↑↓ steps the value by 0.1 (Shift 1, Ctrl 0.01; integers by 1, Shift 10). PageUp/PageDown steps 10 times as much	↑↓ で 0.1 ずつ増減（Shift で 1、Ctrl で 0.01。整数は 1、Shift で 10）。PageUp/PageDown は 10 倍
 This analysis has no settings	この解析に設定はありません
 Pick one (they can't be combined)	どれか 1 つ（一緒には使えない）
 lens units	レンズ単位

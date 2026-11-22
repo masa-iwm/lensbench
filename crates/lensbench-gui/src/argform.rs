@@ -473,29 +473,21 @@ pub(crate) fn flatten(v: &Value) -> BTreeMap<String, String> {
     out
 }
 
-/// 数の欄を ↑↓ で 1 刻み動かす（整数は 1、実数は書いた最後の桁の 1）。空なら既定から。動かせなければ None
-pub(crate) fn step_text(t: &str, default: &Value, ty: &str, up: bool) -> Option<String> {
+/// 数の欄を d だけ動かす（刻みはほかの数の欄と同じ [`crate::widgets::num::key_step`]、整数は丸める）。空なら既定から。
+/// 動かせなければ None
+pub(crate) fn step_text(t: &str, default: &Value, ty: &str, d: f64) -> Option<String> {
     let base = if t.trim().is_empty() {
         value_text(default)
     } else {
         t.trim().to_string()
     };
     let x: f64 = base.parse().ok().filter(|x: &f64| x.is_finite())?;
-    let sign = if up { 1.0 } else { -1.0 };
     match ty {
         "count" | "int" => {
-            let y = x.round() + sign;
+            let y = (x + d).round();
             (ty == "int" || y >= 0.0).then(|| format!("{}", y as i64))
         }
-        "num" => {
-            // 指数の書き方は桁を数えにくいので 1 刻みでなく 10% 動かす
-            if base.contains(['e', 'E']) {
-                return Some(format!("{}", x * (1.0 + 0.1 * sign)));
-            }
-            let dec = base.split('.').nth(1).map_or(0, str::len).min(12);
-            let d = 10f64.powi(-(dec as i32));
-            Some(format!("{:.*}", dec, x + sign * d))
-        }
+        "num" => Some(format!("{}", crate::widgets::num::nudge(x, d, false))),
         _ => None,
     }
 }
@@ -604,14 +596,30 @@ pub(crate) fn form(
                             );
                             let num = matches!(s.ty.as_str(), "num" | "count" | "int");
                             if num && r.has_focus() {
-                                let (up, down) = ui.input_mut(|i| {
-                                    (
-                                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                                    )
-                                });
-                                if up || down {
-                                    if let Some(n) = step_text(t, &s.default, &s.ty, up)
+                                // ほかの数の欄と同じ刻み（素の ↑↓・Alt+↑↓ は 0.1、Shift で 1、Ctrl で 0.01、整数は 1・Shift 10。
+                                // PageUp/PageDown は 10 倍）
+                                let int = s.ty != "num";
+                                let mut key = crate::widgets::num::take_alt_arrows(ui);
+                                if key.is_none() {
+                                    // 素の ↑↓（Shift・Ctrl つきも）。単一行の欄では ↑↓ に使い道が無い
+                                    key = ui.input_mut(|i| {
+                                        // 余分な Shift を無視して合わせるので、Shift つきを先に
+                                        [
+                                            egui::Modifiers::SHIFT,
+                                            egui::Modifiers::COMMAND,
+                                            egui::Modifiers::NONE,
+                                        ]
+                                        .into_iter()
+                                        .find_map(|m| {
+                                            let up = i.consume_key(m, egui::Key::ArrowUp);
+                                            let down = i.consume_key(m, egui::Key::ArrowDown);
+                                            (up != down).then_some((if up { 1.0 } else { -1.0 }, m))
+                                        })
+                                    });
+                                }
+                                if let Some((n, m)) = key {
+                                    let d = crate::widgets::num::key_step(m, int) * n;
+                                    if let Some(n) = step_text(t, &s.default, &s.ty, d)
                                         .filter(|n| s.value(n).is_ok())
                                     {
                                         *t = n;
@@ -621,7 +629,7 @@ pub(crate) fn form(
                             }
                             let r = if num {
                                 r.on_hover_text(tr(
-                                    "↑↓ steps the value (1 for integers, the last typed digit for decimals)",
+                                    "↑↓ steps the value by 0.1 (Shift 1, Ctrl 0.01; integers by 1, Shift 10). PageUp/PageDown steps 10 times as much",
                                 ))
                             } else {
                                 r
@@ -798,28 +806,86 @@ mod tests {
     #[test]
     fn step_numbers() {
         assert_eq!(
-            step_text("3", &Value::Null, "count", true).as_deref(),
+            step_text("3", &Value::Null, "count", 1.0).as_deref(),
             Some("4")
         );
-        assert_eq!(step_text("0", &Value::Null, "count", false), None);
+        assert_eq!(step_text("0", &Value::Null, "count", -1.0), None);
         assert_eq!(
-            step_text("", &json!(64), "count", false).as_deref(),
-            Some("63")
+            step_text("", &json!(64), "count", -10.0).as_deref(),
+            Some("54")
+        );
+        // 小数はほかの数の欄と同じ刻み（打った桁によらない）
+        assert_eq!(
+            step_text("0.25", &Value::Null, "num", 0.1).as_deref(),
+            Some("0.35")
         );
         assert_eq!(
-            step_text("0.25", &Value::Null, "num", true).as_deref(),
-            Some("0.26")
+            step_text("2", &Value::Null, "num", -0.01).as_deref(),
+            Some("1.99")
         );
         assert_eq!(
-            step_text("2", &Value::Null, "num", false).as_deref(),
-            Some("1")
+            step_text("1e-3", &Value::Null, "num", 1.0).as_deref(),
+            Some("1.001")
         );
         assert_eq!(
-            step_text("-1", &Value::Null, "int", false).as_deref(),
+            step_text("-1", &Value::Null, "int", -1.0).as_deref(),
             Some("-2")
         );
-        assert_eq!(step_text("", &Value::Null, "num", true), None);
-        assert_eq!(step_text("a", &Value::Null, "nums", true), None);
+        assert_eq!(step_text("", &Value::Null, "num", 0.1), None);
+        assert_eq!(step_text("a", &Value::Null, "nums", 0.1), None);
+    }
+
+    /// ⚙ 設定の数の欄の ↑↓ はほかの数の欄と同じ刻み（↑↓ 0.1・Shift 1・Ctrl 0.01、整数は 1・Shift 10、PageUp/PageDown は 10 倍）
+    #[test]
+    fn arrow_keys_step_like_other_number_fields() {
+        use egui_kittest::kittest::{by, Queryable};
+        let _g = crate::serve_lock();
+        crate::i18n::set(crate::i18n::Lang::En);
+        let mut w = spec("wave", "num", None);
+        w.default = json!(0.5);
+        let mut r = spec("rings", "count", None);
+        r.default = json!(3);
+        let specs = [w, r];
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(600.0, 300.0))
+            .build_ui_state(
+                move |ui, vals: &mut BTreeMap<String, String>| {
+                    let refs: Vec<&ArgSpec> = specs.iter().collect();
+                    form(ui, "t", &refs, vals);
+                },
+                BTreeMap::new(),
+            );
+        let key = |h: &mut egui_kittest::Harness<'_, BTreeMap<String, String>>,
+                   m: egui::Modifiers,
+                   k: egui::Key| {
+            h.press_key_modifiers(m, k);
+            h.run_steps(2);
+        };
+        let field = |h: &egui_kittest::Harness<'_, BTreeMap<String, String>>, k: usize| {
+            h.get_all(by().role(egui::accesskit::Role::TextInput))
+                .nth(k)
+                .expect("text field")
+                .focus();
+        };
+        field(&h, 0);
+        h.run_steps(2);
+        let m = egui::Modifiers::NONE;
+        key(&mut h, m, egui::Key::ArrowUp);
+        assert_eq!(h.state()["wave"], "0.6");
+        key(&mut h, egui::Modifiers::SHIFT, egui::Key::ArrowUp);
+        assert_eq!(h.state()["wave"], "1.6");
+        key(&mut h, egui::Modifiers::COMMAND, egui::Key::ArrowDown);
+        assert_eq!(h.state()["wave"], "1.59");
+        key(&mut h, egui::Modifiers::ALT, egui::Key::ArrowUp);
+        assert_eq!(h.state()["wave"], "1.69");
+        key(&mut h, m, egui::Key::PageDown);
+        assert_eq!(h.state()["wave"], "0.69");
+        field(&h, 1);
+        h.run_steps(2);
+        key(&mut h, m, egui::Key::ArrowUp);
+        assert_eq!(h.state()["rings"], "4");
+        key(&mut h, egui::Modifiers::SHIFT, egui::Key::ArrowUp);
+        assert_eq!(h.state()["rings"], "14");
     }
 
     #[test]
