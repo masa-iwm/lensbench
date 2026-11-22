@@ -88,7 +88,8 @@ OpticStudio の収差図に当たる解析。どれも評価関数の演算子�
 - `relative-illumination`（Relative Illumination 相当）: 正規化視野 0〜1 を `--points` 点で、主光線の像点に届く光束の射影立体角から求めた軸上に対する
   照度（RELI）と実効 F 値（EFNO）。面の開口でけられる向きは光束の縁を探して入れる。`--polarization` で瞳で平均したコーティング・
   フレネルの透過率の軸上との比を掛け、実効 F 値は透過を含めた F/√T にする（OpticStudio の Use Polarization と同じ）。OpticStudio の図の実効 F 値は
-  瞳の標本（既定の Ray Density 10）で数 % 大きく出る（標本を増やすと lensbench の値に近づく）。
+  瞳の標本（既定の Ray Density 10）で数 % 大きく出る（標本を増やすと lensbench の値に近づく）。OpticStudio は物体の 1 点の光束で求めるので、収差がとても大きく像の 1 点に
+  広い視野の光が集まる系では違う（超広角の `tests/aim_wide/W2` の視野 0.6 で OpticStudio 0.964・lensbench 0.81。外側の視野から来る光が面 2 に当たらず抜ける分が lensbench だけに入る）。
 - ケラレ係数（`relative-illumination`・`vignetting`）: 既定（`remove_vignetting_factors`）では OpticStudio の既定の Remove Vignetting Factors と同じく、
   係数を使った今の半直径（自動の値も）を全部の面で固定にし、前後で媒質が変わる面に浮動開口を付けて、係数を 0 にした系で計算する（係数の無い系はそのまま。半直径を書いていない面には付けない。OpticStudio 2026 R1.01 の
   A6 で、OpticStudio の道具 Replace Vignetting With Apertures と同じ開口）。けられる視野では、OpticStudio の相対照度は瞳の標本が粗く、自分の Vignetting Plot

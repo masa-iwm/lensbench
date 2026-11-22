@@ -85,7 +85,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - クリア半径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。
-- 定義した視野以外の点のケラレ係数の求め方は `"vig_interp"`（`"continuous"`（既定、視野の間で連続）・`"opticstudio"`（OpticStudio と同じ、視野の間で段差）。
+- 定義した視野以外の点のケラレ係数の求め方は `"vig_interp"`（`"continuous"`（既定、視野の間で連続）・`"opticstudio"`（OpticStudio と同じ、視野の間で段差。x ≠ 0 の視野があると補間せず物理座標で最も近い視野の係数を使う。OpticStudio 2026 R1.01 で Remove Vignetting Factors を切ると、A6 の視野 0.86 で相対照度が 0.85→0.47 と跳ぶ）。
   システムファイルの同じ名前の項目と同じ）。
 - 瞳の振幅の分布は `"apodization"`（`"uniform"`（既定）・`{"gaussian": G}`・`"cosine_cubed"`。.zmx の GFAC と同じ）、OPD の基準は
   `"ropd"`（既定 2。.zmx の ROPD と同じ）。

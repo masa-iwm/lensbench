@@ -121,15 +121,15 @@ lensbench optimize lens.zmx --var 1.c=-0.08:0.08 --var 2.c=-0.08:0.08 ... --star
 - CONF n の後の行は構成 n の項で、使う構成をまとめて最適化する。
 - 重み 0 の行は飛ばし、写せない行・負の重み（OpticStudio のラグランジュの拘束）は行の番号つきの警告にして残りで最適化する。
 - 長さの目標はレンズ単位から mm に直す。
-- RSCE・RSCH・RWCE・RWCH は `quadrature: "opticstudio"` の項にし、瞳の求積を OpticStudio 26.1 と同じにする（腕 2·Ring 本を 90° 回して置く。Double Gauss 28 の Ring 2〜6・6 視野・各波長で 1e-10 で一致。Ring 1 の Hx = 0・Hy ≠ 0 の RSCE だけは OpticStudio の置き方が分からず数 % 違う。多色の RWCE は波長ごとの傾きの除き方が違い、Ring 2 以上で 1.4e-5、Ring 1 では大きく違う。OpticStudio の RSCE などは面の開口でけらないが、lensbench の項はけった光線を除く。けられのある系では値が違う）。
-- RSRE・RSRH・RWRE・RWRH（目標 0 だけ）は `quadrature: "grid"` の項（`n` は 2·Samp）にし、Double Gauss 28 などで 1e-11 で一致する（Hx・Hy がどちらも 0 でない視野の RSRH と、多色の RWRE の軸外 1e-5 は違う。前者は読むと警告を出す）。
+- RSCE・RSCH・RWCE・RWCH は `quadrature: "opticstudio"` の項にし、瞳の求積を OpticStudio 26.1 と同じにする（腕 2·Ring 本を 90° 回して置く。Double Gauss 28 の Ring 2〜6・6 視野・各波長で 1e-10 で一致。Ring 1 の Hx = 0 の RSCE だけは数 % 違う（OpticStudio 2026 R1.01 はこのときだけ重心を引かず、RSCH と同じ値を返す。Hx を 1e-6 ずらすと重心を引いた値になる）。アフォーカル系のちょうど軸上の RSCE も OpticStudio だけ別の計算で Ring ごとに値が揃わない（Hy を 1e-4 ずらすと Ring 3〜6 が揃い lensbench と一致）。どちらも OpticStudio 側の例外の扱いと見て、lensbench は合わせない。多色の RWCE は波長ごとの傾きの除き方が違い、Ring 2 以上で 1.4e-5、Ring 1 では大きく違う。OpticStudio の RSCE などは面の開口でけらないが、lensbench の項はけった光線を除く。けられのある系では値が違う）。
+- RSRE・RSRH・RWRE・RWRH（目標 0 だけ）は `quadrature: "grid"` の項（`n` は 2·Samp）にし、Double Gauss 28 などで 1e-11 で一致する（Hx ≠ 0 の視野の RSRH と、多色の RWRE の軸外 1e-5 は違う。前者は読むと警告を出す。OpticStudio 2026 R1.01 の RSRH は格子の Px > 0 の半分の瞳だけで計算していて（左右対称を仮定した近道）、x にずれた視野では対称でなくなるので値が狂う。回転対称の系で視野 (0.6, 0)・(0, 0.6)・(−0.6, 0) が 0.00797・0.00699・0.00585 と違い、瞳全体なら 0.00724 で lensbench と同じ。lensbench は合わせない）。
 - TRAI は面 `surf` の `trar`、ANAX〜ANAR・DXDX〜DYDY は像面の `anax`〜`dydy`（Wave 0 の ANAX・ANAY は OpticStudio では 0 だが、主波長として読み、警告を出す）、SPCH は帯 Zone と帯 0 の `longitudinal` の差の `calc` の項にする。
 - DIMX・DISG・DISC・ABCD・DISA は `distortion` の `peak`・`reference`・`ftheta`・`coef`・`abcd` の項、BSER は軸上の視野の像面の `r` を近軸の `efl` で割る `calc` の項、FCGS・FCGT は像面の `fcgs`・`fcgt` にする（DISG の Px・Py は OpticStudio でも値を変えないので読まない）。
 - 像の質の行は OpticStudio の標本を上げると lensbench の値に近づく（Double Gauss 28 の 3 視野・3 波長と多色で、MTF* は Samp 6 で 3.1e-4、MSW* は Samp 5 で 1.8e-3（標本を 1 段上げるごとに差が半分）、GMT* は 1.2e-4、STRH は OpticStudio が Samp 4 でもまだ動いていて 6e-3、RELI は 1e-5〜1.8e-4、EFNO は OpticStudio の標本の 1/Samp の誤りを外挿して 3.6e-5、GENC・GENF は 1.5e-3）。
 - `--out` の .zmx には STRH を Samp 5、RELI・EFNO を Samp 100 で書く（それでも OpticStudio の EFNO は 1/Samp の誤りで 0.5% ほど違う）。
 - MTH* は OpticStudio の Samp 1〜3 の値が大きくずれる（像の格子が小さい）ので、lensbench の回折 MTF との差（8.6e-3）で確かめた。
 - DENC・DENF は OpticStudio が主光線に垂直な面で測り、lensbench は像面で測るので軸外で違う（視野 3 で 1.2%。主光線に垂直な面の PSF で計算すると 3e-3〜6.2e-3 で一致）。
-- 原点が基準の GENC・GENF（Refp 2）は OpticStudio の値が 0.6% 大きく、理由が分からない（読むと警告を出す）。
+- 原点が基準の GENC・GENF（Refp 2）は OpticStudio の値が 0.6% 大きく、理由が分からない（読むと警告を出す）。OpticStudio 2026 R1.01 では、像の広がりが 11 µm の系で Frac を動かすと値が約 240 µm の幅で変わり、GENF が 1 を超える（最大 1.108）ので、OpticStudio 側の誤りと見て合わせない。
 - XENC・XENF・MECS などの MEC*・ERFP は読まない。
 - 行の流れを変える行も OpticStudio 26.1 の実測どおりに読む: ENDX の後の行は項にしない。
 - GOTO n は自分の行から行 n の手前までを飛ばす（n が自分の行以下なら何も飛ばさない）。
