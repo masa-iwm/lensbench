@@ -227,7 +227,9 @@ pub fn reverse(e: &Element) -> Result<Element> {
 }
 
 /// 同じ玉を鏡の後の座標（z を逆に向けた座標、厚さが負）で、光が戻る順に書く（復路）: 面の順を逆にし、形は
-/// [`Surface::flip_z`] だけ（x はそのまま、開口も動かさない）。鏡の後に面を足すときの裏返しと合わせて、往路と同じ形になる
+/// [`Surface::flip_z`] だけ（x はそのまま、開口も動かさない）。鏡の後に面を足すときの裏返しと合わせて、往路と同じ形になる。
+/// z 軸まわりの回転だけの座標ブレークは逆の回転に、Jones 面の行列は転置にする（相反性: 同じ x・y の基底で逆向きに
+/// 通る行列は転置）。面の前の偏心・傾き（後ろで戻すもの）はそのまま
 pub fn reverse_folded(e: &Element) -> Result<Element> {
     reverse_with(e, false)
 }
@@ -236,16 +238,21 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
     if e.kind != Kind::Lens {
         invalid!("only a lens can be reversed");
     }
+    // 復路では z 軸まわりの回転だけの座標ブレークを通せる
+    let z_rotation = |s: &Surface| s.is_coord_break() && s.cb()[..4].iter().all(|&x| x == 0.0);
     if e.surfaces
         .iter()
-        .any(|s| s.is_mirror() || s.is_coord_break())
+        .any(|s| s.is_mirror() || (s.is_coord_break() && (mirror || !z_rotation(s))))
     {
         notimpl_rev()?;
     }
-    if e.surfaces
-        .iter()
-        .any(|s| s.before.is_some() || !matches!(s.after, crate::surface::After::None))
-    {
+    // 復路では、面の前の偏心・傾き（後ろで戻す）の面を通せる。面の座標は往路と同じなので、偏心・傾きはそのまま
+    let wrapped =
+        |s: &Surface| s.before.is_some() && matches!(s.after, crate::surface::After::Reverse);
+    if e.surfaces.iter().any(|s| {
+        (s.before.is_some() || !matches!(s.after, crate::surface::After::None))
+            && (mirror || !wrapped(s))
+    }) {
         invalid!("a lens with surface tilts or decenters is not reversed");
     }
     let n = e.surfaces.len();
@@ -253,11 +260,22 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
     let mut nv = Vec::with_capacity(n);
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
-        if matches!(s.action(), Action::Jones(_)) {
+        if matches!(s.action(), Action::Jones(_)) && mirror {
             invalid!("a lens with a Jones surface is not reversed");
         }
+        if let Some((cb, _)) = s.cb_mut() {
+            cb[4] = -cb[4];
+        }
+        if let Some(j) = s.jones_mut() {
+            j.swap(2, 4);
+            j.swap(3, 5);
+        }
         // 利用者定義の面はモデルが裏返しに対応すれば反転できる（対応しなければ flip_z・mirror_x の誤り）
-        if !reversible(&s) && s.typ() != crate::surface::SurfType::User {
+        let passes = matches!(
+            s.typ(),
+            crate::surface::SurfType::CoordBrk | crate::surface::SurfType::Jones
+        ) && !mirror;
+        if !reversible(&s) && s.typ() != crate::surface::SurfType::User && !passes {
             invalid!("a lens with a paraxial surface is not reversed");
         }
         if s.bire.is_some() {
@@ -321,17 +339,21 @@ fn reverse_with(e: &Element, mirror: bool) -> Result<Element> {
         }
         // 面の後の媒質と厚さは、反転前の 1 つ前の面の後のもの。屈折率分布も媒質なので、1 つ前の面から移す
         move_grin(&mut s, e, n, i, mirror)?;
-        if i + 1 < n {
-            let q = &e.surfaces[n - 2 - i];
-            s.t = q.t;
-            s.mat = q.mat.clone();
-            nv.extend(e.n.get(n - 2 - i).cloned());
+        // 座標ブレーク（媒質なし）は媒質を持たないまま、ほかの面は座標ブレークを飛ばした前の面の媒質
+        let inherit = s.mat == crate::material::Material::Inherit;
+        let medium = (0..n - 1 - i)
+            .rev()
+            .find(|&k| e.surfaces[k].mat != crate::material::Material::Inherit)
+            .unwrap_or(n - 1);
+        s.t = if i + 1 < n {
+            e.surfaces[n - 2 - i].t
         } else {
-            let last = &e.surfaces[n - 1];
-            s.t = 0.0;
-            s.mat = last.mat.clone();
-            nv.extend(e.n.get(n - 1).cloned());
+            0.0
+        };
+        if !inherit {
+            s.mat = e.surfaces[medium].mat.clone();
         }
+        nv.extend(e.n.get(medium).cloned());
         v.push(s);
     }
     Ok(Element {

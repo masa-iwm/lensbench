@@ -17,12 +17,43 @@ pub(crate) fn cb_return(place: &Place, l: f64) -> (f64, f64, f64) {
     (-dx - rz[0], -dy - rz[1], l - rz[2])
 }
 
-/// 空気中の面の並びを逆向きに（厚さは 1 つ前の面のもの、曲率の符号を変える）。最後の面の厚さは 0
-pub(crate) fn reverse_surfaces(v: &[Surface]) -> lensbench_core::Result<Vec<Surface>> {
+/// 面の並びを逆向きに（厚さは 1 つ前の面のもの、曲率の符号を変える）。最後の面の厚さは 0。面の後の媒質も
+/// 1 つ前の面のもの（座標ブレークは媒質なしのまま）で、最後の面の後は往路で並びの前にあった媒質 before。
+/// z 軸まわりの回転だけの座標ブレークは逆の回転に、Jones 面の行列は転置にする（相反性: 同じ x・y の基底で
+/// 逆向きに通る行列は転置。直線の波長板・偏光子は対称で変わらない）
+pub(crate) fn reverse_surfaces(
+    v: &[Surface],
+    before: &Material,
+) -> lensbench_core::Result<Vec<Surface>> {
     let n = v.len();
+    // 往路の各面の前の媒質（屈折率のずれ dn・分散の変化 disp も媒質と一緒に）
+    let mut front = Vec::with_capacity(n);
+    let mut cur = (before.clone(), 0.0, 0.0);
+    for s in v {
+        front.push(cur.clone());
+        if s.mat != Material::Inherit {
+            cur = (s.mat.clone(), s.dn, s.disp);
+        }
+    }
     (0..n)
         .map(|i| {
             let mut s = v[n - 1 - i].clone();
+            if s.mat != Material::Inherit {
+                (s.mat, s.dn, s.disp) = front[n - 1 - i].clone();
+            }
+            if let Some((cb, _)) = s.cb_mut() {
+                if cb[..4].iter().any(|&x| x != 0.0) {
+                    return Err(
+                        "a coordinate break with a decenter or a tilt about x or y on the return path (only rotations about z)"
+                            .into(),
+                    );
+                }
+                cb[4] = -cb[4];
+            }
+            if let Some(j) = s.jones_mut() {
+                j.swap(2, 4);
+                j.swap(3, 5);
+            }
             s.flip_z()?;
             s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
             s.stop = false;

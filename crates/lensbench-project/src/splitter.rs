@@ -557,6 +557,21 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let dv = mtv(&r, sub(ot, o));
         let ang = xyz_angles(&mm(&transpose(&r), &rt));
         let snap = |v: f64, eps: f64| if v.abs() < eps { 0.0 } else { v };
+        // 向きを変えて新しい軸の上を進むときは、回す座標ブレークの厚さで進む（OpticStudio の書き方と同じ。
+        // 近軸の追跡が軸の上の長さを数えるように、ずらしで移さない）
+        let dn = mtv(&rt, sub(ot, o));
+        let turn = ang.iter().any(|a| a.abs() >= 1e-10);
+        if turn && dn[0].abs() < 1e-12 && dn[1].abs() < 1e-12 && dn[2].abs() >= 1e-12 {
+            let d = [
+                0.0,
+                0.0,
+                snap(ang[0], 1e-10),
+                snap(ang[1], 1e-10),
+                snap(ang[2], 1e-10),
+            ];
+            self.put(crate::cb(d, 0, dn[2]));
+            return;
+        }
         let d = [
             snap(dv[0], 1e-12),
             snap(dv[1], 1e-12),

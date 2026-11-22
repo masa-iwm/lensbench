@@ -83,7 +83,7 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
 }
 
 /// 系 s の設定と zmx ブロック 1 つのプロジェクト（多重構成の表は見ない）
-fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
+pub(crate) fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
     let ap = match s.aperture.0 {
         ApertureKind::Epd => "epd",
         ApertureKind::FNum => "fnum",
@@ -342,7 +342,7 @@ fn diff(a: &Value, b: &Value, path: &mut String, out: &mut Vec<String>) {
 }
 
 /// 書いたプロジェクトを読み直す。読めなければ null の欄（有限でない値は JSON で null になる）の場所を理由に足す
-fn checked(p: &Value) -> lensbench_core::Result<Project> {
+pub(crate) fn checked(p: &Value) -> lensbench_core::Result<Project> {
     fn nulls(v: &Value, at: &str, out: &mut Vec<String>) {
         match v {
             Value::Null => out.push(at.to_string()),
@@ -369,7 +369,7 @@ fn checked(p: &Value) -> lensbench_core::Result<Project> {
 
 /// 構成のガラスを引くカタログ（.zmx の GCAT で引いたものと同じガラスになる並び）を `glass_catalogs` に書く。
 /// 既定の並びでは、同じ名前のガラスを別のカタログから引くことがある
-fn set_catalogs(p: &mut Value, cfgs: &[System]) {
+pub(crate) fn set_catalogs(p: &mut Value, cfgs: &[System]) {
     let mut names: Vec<String> = Vec::new();
     for s in cfgs {
         for n in crate::sysfile_v2::catalogs::names(s) {

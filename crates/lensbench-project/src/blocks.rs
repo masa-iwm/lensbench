@@ -145,6 +145,8 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) failed: Option<NodePath>,
     /// 展開の注意（取り込んだ系のガラスの名前の付け替えなど）。系の import_notes へ
     pub(crate) notes: Vec<String>,
+    /// 往路で面の並びのブロック（アドレス）の前にあった媒質。復路で並びを逆にするときの最後の面の後の媒質
+    pub(crate) media: HashMap<usize, Material>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -400,6 +402,17 @@ impl<'a, 'b> Ctx<'a, 'b> {
         self.put(s);
     }
 
+    /// いまの媒質（足した面の後の媒質。鏡・座標ブレークは前の媒質のまま。面が無ければ空気）
+    pub(crate) fn medium(&self) -> Material {
+        self.sf
+            .iter()
+            .rev()
+            .map(|s| &s.mat)
+            .find(|m| !matches!(m, Material::Mirror | Material::Inherit))
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// 間隔を媒質で満たす: 前の面の後の媒質を空気から m に（液浸）
     fn fill_gap(&mut self, m: &str) -> lensbench_core::Result<()> {
         let s = self
@@ -582,10 +595,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn back_block_inner(&mut self, b: &Block) -> lensbench_core::Result<()> {
         match b {
             Block::Air { id, t, medium } => {
-                if medium.is_some() {
-                    return Err(
-                        "a gap filled with a medium (air with medium) on the return path".into(),
-                    );
+                // 復路の間隔の媒質は、いま足した面（往路で間隔の後にあった面を戻ったもの）の後の媒質
+                if let Some(m) = medium {
+                    let m = match m.trim().parse::<f64>() {
+                        Ok(nd) => Material::Index(nd),
+                        Err(_) => Material::parse(m),
+                    };
+                    if let Some(s) = self.sf.last_mut().filter(|s| !s.is_mirror()) {
+                        s.mat = m;
+                    }
                 }
                 self.note_gap(id);
                 self.gap(*t)
@@ -623,11 +641,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 surfaces, place, ..
             } => {
                 let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
-                if v.iter().any(|s| {
-                    matches!(s.typ(), SurfType::Jones | SurfType::CoordBrk) || s.bire.is_some()
-                }) {
+                if v.iter().any(|s| s.bire.is_some()) {
                     return Err(
-                        "jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path".into(),
+                        "birefringent surfaces are not supported in a surface list on the return path".into(),
                     );
                 }
                 if v.iter()
@@ -639,7 +655,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 }
                 // 面の並びは空気中なので、理想レンズも向きを変えずに使える
                 if v.iter().any(|s| {
-                    (!lensbench_core::elements::reversible(s) && s.typ() != SurfType::Paraxial)
+                    (!lensbench_core::elements::reversible(s)
+                        && !matches!(
+                            s.typ(),
+                            SurfType::Paraxial | SurfType::Jones | SurfType::CoordBrk
+                        ))
                         || s.grin().is_some()
                 }) {
                     return Err(
@@ -657,7 +677,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let tail = v.last().map(|s| s.t).unwrap_or(0.0);
                 let len: f64 = v.iter().map(|s| s.t).sum::<f64>() - tail;
                 self.gap(tail);
-                self.back_placed(place, len, &reverse_surfaces(&v)?)?;
+                let before = self
+                    .media
+                    .get(&(b as *const Block as usize))
+                    .cloned()
+                    .unwrap_or_default();
+                self.back_placed(place, len, &reverse_surfaces(&v, &before)?)?;
             }
             Block::Group {
                 blocks,
@@ -1179,6 +1204,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 }
                 let v = self.crystal_plates(v)?;
                 check_crystal_order(&v)?;
+                let m = self.medium();
+                self.media.insert(b as *const Block as usize, m);
                 self.placed(place, &mut |c: &mut Self| {
                     for s in &v {
                         c.push(s.clone());

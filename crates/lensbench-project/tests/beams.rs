@@ -417,3 +417,119 @@ fn turn_returns_through_a_bs() {
         assert!((ra.opl - rb.opl).abs() < 1e-9);
     }
 }
+
+/// 面の並びの Jones 面と z 軸まわりの回転の座標ブレークは往路を戻れる。復路は逆の順で、回転は逆、Jones の行列は
+/// 転置（相反性）。旋光子（回転の行列）は往復で打ち消し、像面の電場は旋光子なしと同じ
+#[test]
+fn jones_and_z_rotations_return() {
+    use lensbench_core::coating::{Coatings, C64};
+    use lensbench_core::surface::SurfType;
+    use lensbench_core::system::PolIn;
+    let (c, s) = (0.3f64.cos(), 0.3f64.sin());
+    let run = |plate: &str| {
+        let txt = format!(
+            r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
+              {{"type": "surfaces", "surfaces": [{plate}]}}, {{"type": "air", "t": 20}},
+              {{"type": "mirror", "back": true, "semi": 10, "coat": "I.s=0,p=0"}}]}}"#
+        );
+        let p = Project::from_json(&txt).unwrap();
+        expand(&p, &env(), &ExpandOpts::default()).unwrap().system
+    };
+    let plain = run(r#"{"t": 0}"#);
+    let rot = run(&format!(
+        r#"{{"coordbrk": [0, 0, 0, 0, 25]}}, {{"jones": [{c}, 0, {}, 0, {s}, 0, {c}, 0]}},
+           {{"coordbrk": [0, 0, 0, 0, -25]}}"#,
+        -s
+    ));
+    // 復路の面: 回転 25°、転置した行列、回転 −25°
+    let kinds: Vec<usize> = (0..rot.surfaces.len())
+        .filter(|&j| matches!(rot.surfaces[j].typ(), SurfType::Jones | SurfType::CoordBrk))
+        .collect();
+    assert_eq!(kinds.len(), 6, "{kinds:?}");
+    let back = &kinds[3..];
+    assert_eq!(rot.surfaces[back[0]].cb()[4], 25.0);
+    assert_eq!(
+        rot.surfaces[back[1]].jones(),
+        [c, 0.0, s, 0.0, -s, 0.0, c, 0.0]
+    );
+    assert_eq!(rot.surfaces[back[2]].cb()[4], -25.0);
+    let e = |sys: &System| {
+        let co = Coatings::for_system(sys).unwrap();
+        let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+        sys.try_trace_pol(
+            FieldSel::Index(0),
+            &[0.0, 0.5],
+            &[0.0, 0.3],
+            None,
+            PolIn::new(&[x], &co).no_phase(),
+        )
+        .unwrap()
+        .e
+    };
+    let (a, b) = (e(&plain), e(&rot));
+    for i in 0..2 {
+        for k in 0..3 {
+            assert!(
+                (a[i][0][k] - b[i][0][k]).norm() < 1e-12,
+                "{:?} {:?}",
+                a[i][0],
+                b[i][0]
+            );
+        }
+    }
+}
+
+/// 媒質で満たす間隔と、z 軸まわりの回転・Jones 面を含む玉は往路を戻れる。ミラーで折り返した系は、同じ媒質を
+/// 逆の順に並べた展開した系と、像面の x・y・方向・光路長が同じ
+#[test]
+fn media_return() {
+    let sys = |blocks: &str| {
+        let txt = format!(
+            r#"{{ {HEAD} "fields": {{"type": "angle", "points": [[0, 0], [0, 2]]}}, "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}}, {blocks}]}}"#
+        );
+        let p = Project::from_json(&txt).unwrap();
+        expand(&p, &env(), &ExpandOpts::default()).unwrap().system
+    };
+    let folded = sys(
+        r#"{"type": "surfaces", "surfaces": [{"t": 0}]}, {"type": "air", "t": 2, "medium": "F2"},
+           {"type": "lens", "id": "L", "source": {"surfaces": [{"t": 0, "glass": "N-BK7", "semi": 8},
+             {"coordbrk": [0, 0, 0, 0, 25]}, {"jones": [1, 0, 0.2, 0, 0, 0, 1, 0], "glass": "N-BK7", "t": 3},
+             {"coordbrk": [0, 0, 0, 0, -25]}, {"semi": 8}]}},
+           {"type": "air", "t": 20}, {"type": "mirror", "back": true, "semi": 10}"#,
+    );
+    let open = sys(
+        r#"{"type": "lens", "id": "A", "source": {"surfaces": [{"t": 2, "glass": "F2", "semi": 8},
+             {"t": 3, "glass": "N-BK7", "semi": 8}, {"semi": 8}]}}, {"type": "air", "t": 40},
+           {"type": "lens", "id": "B", "source": {"surfaces": [{"t": 3, "glass": "N-BK7", "semi": 8},
+             {"t": 2, "glass": "F2", "semi": 8}, {"semi": 8}]}}, {"type": "air", "t": 10}"#,
+    );
+    let jones: Vec<[f64; 8]> = folded
+        .surfaces
+        .iter()
+        .filter(|s| s.typ() == lensbench_core::surface::SurfType::Jones)
+        .map(|s| s.jones())
+        .collect();
+    assert_eq!(
+        jones,
+        [
+            [1.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.2, 0.0, 1.0, 0.0]
+        ]
+    );
+    for f in 0..2 {
+        let ta = folded
+            .try_trace(FieldSel::Index(f), &PX, &PY, None, None, false)
+            .unwrap();
+        let tb = open
+            .try_trace(FieldSel::Index(f), &PX, &PY, None, None, false)
+            .unwrap();
+        for (a, b) in ta.rays.iter().zip(&tb.rays) {
+            assert_eq!(a.status, b.status);
+            for k in 0..2 {
+                assert!((a.p[k] - b.p[k]).abs() < 1e-9, "{:?} {:?}", a.p, b.p);
+                assert!((a.k[k] - b.k[k]).abs() < 1e-12, "{:?} {:?}", a.k, b.k);
+            }
+            assert!((a.opl - b.opl).abs() < 1e-9, "{} {}", a.opl, b.opl);
+        }
+    }
+}

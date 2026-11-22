@@ -694,6 +694,49 @@ fn project_beams() {
         svg_s,
     ]);
     assert!(!ok && err.contains("beam test has its own path"), "{err}");
+    // 経路ごとの多重構成の .zmx を、BS と往路を戻るミラーのプロジェクトに読み戻す（光束 C1・C2 が経路 TR・RT）
+    let bz = dir.join("bp.zmx");
+    let back = dir.join("back.json");
+    let (ok, _, err) = run(&[
+        "zmx",
+        p,
+        "--glass-dir",
+        "tests/glass",
+        "--beam-paths",
+        "TR,RT",
+        "--out",
+        bz.to_str().unwrap(),
+    ]);
+    assert!(ok, "{err}");
+    let (ok, out, err) = run(&[
+        "zmx-beams",
+        bz.to_str().unwrap(),
+        "--glass-dir",
+        "tests/glass",
+        "--out",
+        back.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+    let o: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        o["beams"],
+        serde_json::json!([{"name": "C1", "path": "TR"}, {"name": "C2", "path": "RT"}])
+    );
+    let spot = |file: &str, extra: &[&str]| {
+        let mut a = vec!["spot", file, "--glass-dir", "tests/glass", "--json"];
+        a.extend(extra);
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{err}");
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()
+    };
+    for (beam, path) in [("C1", "TR"), ("C2", "RT")] {
+        let (a, b) = (
+            spot(p, &["--beam-path", path]),
+            spot(back.to_str().unwrap(), &["--state", beam]),
+        );
+        assert_eq!(a, b, "{beam}");
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

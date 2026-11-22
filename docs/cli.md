@@ -40,6 +40,7 @@ lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5
 lensbench layout   system.zmx --out layout.svg --out layout.png --out lens.glb --out lens.step
 lensbench layout   project.json --beam-paths all --out paths.svg     # BS の経路を重ねて描く（--states・.zmx は --cfgs も）
 lensbench zmx      project.json --beam-paths all --out paths.zmx     # 経路ごとに 1 構成の多重構成の .zmx
+lensbench zmx-beams paths.zmx --out project.json                    # 腕ごとの構成の .zmx を BS と往路を戻るミラーのプロジェクトに（構成 k が光束 C<k>）
 lensbench layout   project.json --beams all --out beams.svg          # プロジェクトの光束（beams）を重ねて描く
 lensbench beams    project.json                                      # 光束の表（透過・けられ・主光線の光路長と参照との差）
 lensbench rays     system.zmx --fan grid --rays 7 --save rays.npz
@@ -47,6 +48,12 @@ lensbench zernike  system.zmx --save zernike.csv
 lensbench ghost    system.zmx --coatings coat_models.lbcm --out ghosts
 lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 ```
+
+**腕ごとの構成の .zmx（zmx-beams）**: キューブの BS に入り、片方の腕のミラーで同じ面を戻ってキューブを出る、を構成ごとに
+書いた多重構成の .zmx（戻りの面も書き並べ、通らない腕の面は IGNR で無視したもの。`zmx --beam-paths` の書き出しも同じ形）を、
+BS の腕の先に往路を戻るミラー（`back`）を置いたプロジェクトに読み替える。構成 k は光束 `C<k>`（経路は往きと戻りの分ける面の
+T・R、状態 `Config k`）。構成ごとの絞りは状態の `surface_ops` の `set_stop`。戻りの面が往路の面と合わない（往路を戻らない）、
+ミラーで何度も往復する、などの形は誤り。
 
 **既定が真の旗**: 既定で入っている真偽の設定（`relative-illumination`・`vignetting` の `--remove-vignetting-factors`）は、
 `--remove-vignetting-factors=false` で切る（`=` で付ける。値なしと `=true` は既定と同じ）。ほかの真偽の旗は値を取らず、付けると入る。

@@ -134,6 +134,19 @@ enum Cmd {
         #[arg(long, short)]
         out: PathBuf,
     },
+    /// Read a multi-configuration .zmx whose configurations are the arms of a cube BS as a project with a BS and beams
+    ///
+    /// Each configuration goes into the cube, out through one arm to a mirror, back along the same surfaces (written out in the .zmx) and out of the cube (the form `zmx --beam-paths` writes, or one with the arms ignored per configuration). The arms become BS branches ending in a mirror that sends the light back, and configuration k becomes beam C<k> (state "Config k")
+    ZmxBeams {
+        #[command(flatten)]
+        c: Common,
+        /// .zmx configurations (from 1, comma-separated, all for every one)
+        #[arg(long, default_value = "all")]
+        cfgs: String,
+        /// Project file to write (.json)
+        #[arg(long, short)]
+        out: PathBuf,
+    },
     /// Optimize variables with damped least squares (DLS)
     ///
     /// The merit function is the RMS spot or RMS wavefront over all fields (field weights) and wavelengths, plus the terms of --term and --terms. --out writes the optimized system to .zmx
@@ -794,6 +807,30 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 json!({
                     "file": out.display().to_string(),
                     "configs": systems.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
+                }),
+            )
+        }
+        Cmd::ZmxBeams { c, cfgs, out } => {
+            let sel = ConfigSel {
+                cfgs: Some(cfgs),
+                ..Default::default()
+            };
+            let systems = overlay_systems(&c, &sel)?;
+            let v: Vec<System> = systems.iter().map(|x| x.1.clone()).collect();
+            let env = lensbench_project::Env {
+                step_files: None,
+                base: out.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
+                glass_dirs: c.glass_dir.clone(),
+                catalog: None,
+            };
+            let p = lensbench_project::zmx_beams(&v, &c.file.display().to_string(), &env)?;
+            let txt = serde_json::to_string_pretty(&p).unwrap_or_default();
+            std::fs::write(&out, txt + "\n").map_err(AppError::io_at(&out))?;
+            (
+                c.json,
+                json!({
+                    "written": out.display().to_string(),
+                    "beams": p["beams"].as_array().map(|b| b.iter().map(|x| json!({"name": x["name"], "path": x["path"]})).collect::<Vec<_>>()),
                 }),
             )
         }

@@ -166,7 +166,8 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
                 format!("a {what} surface can't have curvature, conic or asphere terms").into(),
             );
         }
-        if q.glass.as_deref().is_some_and(|g| !is_air_name(g)) {
+        // Jones 面・偏光子・波長板は玉の中（フィルムの中など）にも置ける。座標ブレークは媒質を持たない
+        if what == "coordbrk" && q.glass.as_deref().is_some_and(|g| !is_air_name(g)) {
             return Err(format!("no glass after a {what} surface").into());
         }
     }
@@ -634,6 +635,7 @@ fn expand_body(
             ..Default::default()
         },
         turn: TurnState::new(p),
+        media: HashMap::new(),
         frames: Vec::new(),
         zenv: Vec::new(),
         nodes: node_paths(&p.blocks),

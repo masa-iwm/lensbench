@@ -49,6 +49,7 @@ fn every_test_file_is_listed() {
         }
     }
 }
+mod zmx_beams;
 mod zmx_wrap;
 
 /// プロジェクトの JSON の id のブロック（群・BS の腕・.zmx の取り込みの群の中も）に、項目 key の値（JSON）を入れる。

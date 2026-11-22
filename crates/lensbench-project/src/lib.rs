@@ -71,6 +71,7 @@ mod turn;
 use turn::*;
 mod lens_edge;
 mod model;
+mod zmx_beams;
 mod zmx_links;
 mod zmx_wrap;
 pub use back::*;
@@ -81,6 +82,7 @@ pub use expand::*;
 pub use expand_error::{BlockAt, ExpandError, Note, NoteKind};
 use faces::*;
 pub use model::*;
+pub use zmx_beams::{zmx_beams, BS_ID};
 pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};
 
 #[cfg(test)]

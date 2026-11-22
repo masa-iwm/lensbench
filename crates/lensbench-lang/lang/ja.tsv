@@ -973,7 +973,8 @@ a birefringent plate has no exit	複屈折材の板に出口がありません
 tilt is not supported on a birefringent waveplate	複屈折材の波長板に tilt は未対応
 a block with a mirror can't be 'kept as air'	ミラーを含むブロックは「空気で残す」にできません
 a mirror can't go in a decentered or tilted block (tilt the mirror itself)	偏心・チルトをつけたブロックにミラーは入れられません（ミラーのチルトはミラーで）
-jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path	往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応
+birefringent surfaces are not supported in a surface list on the return path	往路を戻る範囲の面の並びに複屈折材の面は未対応
+a coordinate break with a decenter or a tilt about x or y on the return path (only rotations about z)	往路を戻る範囲に偏心か x・y 軸まわりのチルトのある座標ブレーク（z 軸まわりの回転だけ使える）
 GRIN and user-defined surfaces are not supported in a surface list on the return path	復路の面の並びに GRIN・ユーザー定義の面は未対応
 decentered or tilted groups are not supported on the return path (put it on the lenses in the group)	往路を戻る範囲の、偏心・チルトをつけた群は未対応（群の中のレンズに付けてください）
 groups that are OFF are not supported on the return path	往路を戻る範囲の、OFF の群は未対応
@@ -1240,6 +1241,26 @@ ray pattern {s} must be y, x, cross, grid or ring	光線のパターン {s} は 
 ZPLM macro {}	ZPLM のマクロ {}
 gzip can't be inflated	gzip を展開できません
 the file bundle is cut short	ファイルの束が途中で切れています
+two or more configurations are needed to read the arms of a BS	BS の腕を読むには 2 つ以上の構成が必要です
+configuration {}: {} surfaces (configuration 1 has {n})	構成 {}: 面が {} 個（構成 1 は {n} 個）
+configuration {}: surface {j} differs in more than ignore, stop and thickness	構成 {}: 面 {j} が無視・絞り・厚みのほかでも違います
+the configurations share no surfaces before or after the BS	構成に BS の前か後ろの共通の面がありません
+surface {entry} (the last surface the configurations share) doesn't enter a BS cube	面 {entry}（構成に共通の最後の面）が BS のキューブに入りません
+surface {exit} (the cube's exit face) doesn't leave into air	面 {exit}（キューブの出口の面）の後ろが空気ではありません
+configuration {}: the BS's splitting face differs from configuration 1	構成 {}: BS の分ける面が構成 1 と違います
+configuration {}: the light leaves the BS through port A (it must come back to port D)	構成 {}: 光が BS の口 A から出ます（口 D に戻る必要があります）
+two configurations go out through BS port {} into different arms	2 つの構成が BS の口 {} から違う腕へ出ます
+configuration {}: the stop (surface {j}) is on a face the BS writes	構成 {}: 絞り（面 {j}）が BS の書く面にあります
+too few surfaces between the BS's entrance and exit faces	BS の入口と出口の面の間の面が足りません
+surfaces {}–{} are not a BS's splitting face (a coordinate break, a flat surface and a coordinate break)	面 {}–{} は BS の分ける面（座標ブレーク・平面・座標ブレーク）ではありません
+surface {}: the splitting face neither reflects nor stays in the cube	面 {}: 分ける面が反射せず、キューブの中にも留まりません
+the coordinate breaks around the mirror (surfaces {} and {}) don't undo each other	ミラーの前後の座標ブレーク（面 {} と {}）が互いに戻しません
+the beam read from it traces differently (field {}, ray {}: {what}); the surfaces after the mirror must retrace the arm	読み替えた光束の光線が違います（視野 {}・光線 {}: {what}）。ミラーの後の面は往路を戻る必要があります
+stopped or vignetted in one only	片方だけで止まるかケラレる
+{dp:.3e} mm apart	{dp:.3e} mm 離れる
+optical path {dl:.3e} mm apart	光路長が {dl:.3e} mm 違う
+no BS face after the splitting face	分ける面の後ろに BS の面がありません
+no mirror in the arm	腕にミラーがありません
 
 # engine, design (Err(String))
 {k} can't be changed in analyze (choose it in load)	{k} は analyze では変えられません（load で選択）
@@ -1828,6 +1849,10 @@ Configuration 1 is the system as it is, and one configuration is added for each 
 Temperatures of the added configurations [°C] (comma-separated)	足す構成の温度 [°C]（カンマ区切り）
 Pressures of the added configurations [atm] (comma-separated, as many as the temperatures; the system pressure if omitted)	足す構成の気圧 [atm]（カンマ区切り、温度と同じ数。省くとシステムの気圧）
 Write the system to .zmx (an expanded project, etc.)	システムを .zmx にエクスポート（プロジェクトの展開など）
+Read a multi-configuration .zmx whose configurations are the arms of a cube BS as a project with a BS and beams	腕ごとの構成の多重構成の .zmx を、キューブの BS と光束のプロジェクトとして読む
+Each configuration goes into the cube, out through one arm to a mirror, back along the same surfaces (written out in the .zmx) and out of the cube (the form `zmx --beam-paths` writes, or one with the arms ignored per configuration). The arms become BS branches ending in a mirror that sends the light back, and configuration k becomes beam C<k> (state "Config k")	各構成は、キューブに入り、片方の腕からミラーへ出て、同じ面を戻り（.zmx に書き並べたもの）、キューブを出る（`zmx --beam-paths` で出力したもの、または構成ごとに腕を無視した形）。腕は往路を戻るミラーで終わる BS の分岐に、構成 k は光束 C<k>（状態 "Config k"）になる
+.zmx configurations (from 1, comma-separated, all for every one)	.zmx の構成（1 始まり、カンマ区切り、all で全部）
+Project file to write (.json)	エクスポートするプロジェクトのファイル（.json）
 With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)	--beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
 .zmx multi-configurations (from 1, comma-separated, all for every one)	.zmx の多重構成（1 始まり、カンマ区切り、all で全部）
 Project states (comma-separated names, all for every one)	プロジェクトの状態（名前のカンマ区切り、all で全部）
@@ -2399,7 +2424,6 @@ surface {j} after a mirror: {e}	ミラーの後の面 {j}: {e}
 this surface can't be written as a row	この面は行で書けません
 this surface can't be written as a mirror in a lens	この面はレンズの中のミラーとして書けません
 a surface list can't have a mirror (use a mirror block)	面の並びにはミラーを書けません（ミラーのブロックで）
-a gap filled with a medium (air with medium) on the return path	復路の間隔に媒質は書けません（air の medium）
 a gap filled with a medium needs a surface before it	媒質で満たす間隔の前に面が要ります
 a gap filled with {m}: the medium before it is not air (the gap after a mirror or a glass)	{m} で満たす間隔: 前の媒質が空気ではありません（ミラーや硝材の後の間隔）
 a surface written as row can't have the other keys	row で書いた面にはほかの鍵を書けません
