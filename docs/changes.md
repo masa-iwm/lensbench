@@ -5,6 +5,12 @@
 
 ## 次の版（v0.7.0 の後）
 
+### Rust の API
+- SDK に `lensbench_sdk::coating`（膜の一覧・膜のファイル形式の口）を足した（壊れる変更ではない）。
+- `lensbench_core::coating::Coatings` に欄 `registered`・`auto_stacks`・`notes` が増えた。欄をすべて書いて作っていると
+  組めなくなる（`..Default::default()` を付ける）。`lensbench_engine::load::CoatInterfaces` にも `registered`・`notes` が増えた。
+- 拡張の表に膜の一覧を足すと、.zmx の膜ファイル（COATING.DAT）の同じ名前の膜より一覧の膜が先になる（注意を返す）。
+
 ## v0.6.0 の後・v0.7.0 まで
 
 ### 和訳の表の場所

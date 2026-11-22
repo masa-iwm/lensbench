@@ -28,15 +28,15 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
 
 ## 拡張の約束: 外のクレートから足す
 
-別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・材料・カタログの形式を足し、自分の exe・wheel を組める
+別のリポジトリのクレートから解析・プラグイン・検出器・利用者定義の面と形・材料・膜・カタログの形式を足し、自分の exe・wheel を組める
 （DLL は使わない。静的にリンクする）。依存するのは `lensbench-sdk` 1 つ。
 
 - 足すものは `lensbench_sdk::Extensions` 1 つにまとめる: `.plugins(..)`・`.analysis(..)`・`.detector(..)`・
-  `.surface_model(..)`・`.shape_model(..)`・`.material_catalog(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
+  `.surface_model(..)`・`.shape_model(..)`・`.material_catalog(..)`・`.coating_catalog(..)`・`.coating_source(..)`・`.catalog_source(..)`・`.messages(訳の表)`。GUI の見せ方は `lensbench_sdk::gui::GuiExtensions`
   （`gui_analysis`・`gui_detector`・`gui_translations`）、Python の関数は `lensbench_sdk::py::PyExtensions`（`py_module`）。
 - 入口に渡す: CLI は `lensbench_sdk::cli::main(ext)`、GUI は `lensbench_sdk::gui::main(ext)`、Python の拡張モジュールは
   `#[pymodule]` から `lensbench_sdk::py::module(m, ext)`。呼ぶ順の約束は無い。
-- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・カタログの拡張子）は誤りになる
+- 2 つの拡張を `merge` すると、同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・膜の一覧と中の膜・カタログと膜の拡張子）は誤りになる
   （置き換えるときは後の方に `.replacing()`）。`Extensions::named(..)` の名前は誤りの文にだけ使い、サブコマンドなど
   利用者に見える名前には入らない。
 - 足し忘れは `lensbench_sdk::check(&ext)` で見つかる（GUI の見せ方の無い解析・欄の無い検出器・反転の約束を守らない面・勾配が矢高の差分と合わない形・約束を守らない材料）。
@@ -100,6 +100,21 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   換算はモデルが持つ。屈折率を環境に合わせないときは `tref` と 1 atm で呼ぶ）、状態を持たずどのスレッドから呼んでも
   よい。システムファイルにはカタログの名前だけを書き（hash は空）、カタログを足していないプロセスで読むとカタログが
   無い誤り。.zmx に書くと GCAT にカタログの名前が入るが、OpticStudio には無い（書き出しの注意に挙げる）。`check_material` で約束を確かめられる
+- `lensbench_core::usercoating`（SDK では `lensbench_sdk::coating`）: 膜のカタログに外から足す口。膜の中身は今ある型の
+  `CoatingSet`（層の並びとその材料 `mate`・`coat`、TABLE の `table`、特性行列のモデル `models`、実測表 `measured`。
+  `CoatingSet::parse_dat` で COATING.DAT の形式の文から作れる）。2 つの口がある:
+  - **膜の一覧**: `Extensions::coating_catalog(名前, 膜の組)`（拡張の表では `add_coating_catalog`）。中の膜は .zmx の
+    面の膜の名前で引く（大文字小文字は問わない）。2 つの一覧に同じ名前の膜があると `Extensions` を入れる時の誤り
+  - **膜のファイル形式**: `Extensions::coating_source(..)`（`CoatingSource`: 拡張子と `load(パス) → CoatingSet`）。
+    .zmx の膜ファイルと同じフォルダの `<膜の名前>.<拡張子>` を、同梱の `.lbcb` などと同じに膜の名前で読む（同梱の
+    形式が先。同梱と同じ拡張子を足すと足した方で読む）。CLI の `--coatings` などで明示して読むファイルも拡張子で選ぶ
+
+  膜の名前を引く順（上ほど先）: 系に書いた表 → 明示して読んだモデル・実測表（`--coatings`）→ 登録した膜の一覧 →
+  .zmx の膜ファイル（COATING.DAT）の COAT・TABLE → 膜のフォルダのファイル → 共有の置き場。拡張を入れると、同じ .zmx
+  でも COATING.DAT の同じ名前の膜が一覧の膜に替わる。一覧の膜と同じ名前の膜がほかにあれば注意を返す（`Coatings::notes`、
+  CLI の `coatings` の `notes`。どの膜を一覧から入れたかは `registered_coatings`）。一覧の層の材料が膜ファイルの同じ名前の
+  材料と違えば `<材料>@<一覧の名前>` に替えて入れる。膜の計算は同梱の膜と同じ（利用者が係数を計算する膜はまだ無い）。
+  `check_coatings` で約束（膜の名前・材料の行・層の厚さ・表の角度の昇順など）を確かめられる
 
 ## パラメータ変更・光路長の微分・光線の解き
 

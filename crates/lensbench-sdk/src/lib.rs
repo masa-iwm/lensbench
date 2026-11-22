@@ -1,6 +1,6 @@
 //! lensbench の拡張の SDK: 外のクレートが依存するのはこのクレート 1 つ。
 //!
-//! 外のクレートは足すもの（プラグイン・解析・検出器・利用者定義の面・カタログの形式・誤りの文の訳、GUI の見せ方、
+//! 外のクレートは足すもの（プラグイン・解析・検出器・利用者定義の面・材料・カタログの形式・膜のカタログ・誤りの文の訳、GUI の見せ方、
 //! Python の関数）を [`Extensions`] 1 つにまとめる関数を持ち、自分の exe・wheel の入口でそれを渡す:
 //!
 //! ```ignore
@@ -74,6 +74,15 @@ pub mod material {
     pub use lensbench_core::usermaterial::{check_material, MaterialModel};
 }
 
+/// 膜のカタログ: 膜のファイル形式（拡張子ごとの読み手）と、名前つきの膜の一覧。膜の中身は層の並びとその材料・TABLE・
+/// 特性行列のモデル・実測表。同じ名前の膜の引く順は `lensbench_core::usercoating` の文書
+pub mod coating {
+    pub use lensbench_core::coating::{
+        parse_measured, parse_models, CoatModel, CoatingFile, Layer, Measured, Table, C64,
+    };
+    pub use lensbench_core::usercoating::{check_coatings, CoatingSet, CoatingSource};
+}
+
 /// レンズカタログの形式
 pub mod catalog {
     pub use lensbench_core::catalog::{CatalogLens, LensCatalogSource};
@@ -87,7 +96,7 @@ pub mod detector {
 /// 足し忘れの検査: GUI の見せ方の無い解析、検出器の欄の無い検出器（feature `gui` のとき）、反転の約束を守らない
 /// 利用者定義の面のモデル、約束（有限・勾配と微分が差分と合う）を守らない利用者定義の形のモデル、
 /// 約束を守らない・同じカタログに同じ名前のある材料のモデル（同梱のガラスのカタログと同じ名前の材料のカタログは、
-/// 表を作れない誤りとして挙がる）。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
+/// 表を作れない誤りとして挙がる）、約束を守らない膜の一覧（2 つの一覧の同じ名前の膜は、表を作れない誤りとして挙がる）。見つけたものの説明を返す（空なら問題なし）。雛形と exe の試験で呼ぶ
 pub fn check(ext: &Extensions) -> Vec<String> {
     let mut out = Vec::new();
     let table = match ext.ext() {
@@ -141,6 +150,11 @@ pub fn check(ext: &Extensions) -> Vec<String> {
             if let Err(e) = lensbench_core::usermaterial::check_material(m.as_ref()) {
                 out.push(format!("material catalog {cat}: {e}"));
             }
+        }
+    }
+    for (cat, set) in ext.coating_catalogs() {
+        if let Err(e) = lensbench_core::usercoating::check_coatings(set) {
+            out.push(format!("coating catalog {cat}: {e}"));
         }
     }
     out

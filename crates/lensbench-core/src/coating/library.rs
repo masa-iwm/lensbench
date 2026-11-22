@@ -125,6 +125,13 @@ pub struct Coatings {
     pub auto: Vec<(String, PathBuf)>,
     /// 自動で読んだ実測表（`.lbct`）の境界の鍵（明示したモデルのある膜から外すため）
     pub auto_measured: Vec<String>,
+    /// 登録した膜の一覧から入れた膜（系の膜の名前, 一覧の名前）。[`Coatings::for_system`] が埋める
+    pub registered: Vec<(String, String)>,
+    /// 自動で膜ファイルに入れた層の並び・表の膜の名前（近似の膜 `.lbcs`・登録した一覧・登録した形式。明示して読んだ
+    /// モデル・実測表のある膜から外すため）
+    pub auto_stacks: Vec<String>,
+    /// 注意（同じ名前の膜が 2 か所にあり、先のものを使ったときなど）
+    pub notes: Vec<String>,
 }
 
 impl Coatings {
@@ -146,11 +153,133 @@ impl Coatings {
             table_normal: TableNormal::default(),
             auto: Vec::new(),
             auto_measured: Vec::new(),
+            registered: Vec::new(),
+            auto_stacks: Vec::new(),
+            notes: Vec::new(),
         };
+        c.apply_registered(sys);
         if let Some(dir) = sys.coating_file.as_ref().and_then(|p| p.parent()) {
             c.load_dir_for(sys, dir)?;
         }
         Ok(c)
+    }
+
+    /// 系 sys が使う膜を、今の拡張の表（[`crate::ext::current`]）の登録した膜の一覧から入れる（優先の順は
+    /// [`crate::usercoating`]）。入れたものは [`Coatings::registered`] に記録し、数を返す。膜ファイルに同じ名前の膜が
+    /// あれば膜ファイルから外して一覧の方を使い、系に書いた表と同じ名前なら表の方を使う（どちらも注意を足す）
+    pub fn apply_registered(&mut self, sys: &System) -> usize {
+        let ext = crate::ext::current();
+        if ext.coating_catalogs().is_empty() {
+            return 0;
+        }
+        let mut n = 0;
+        for coat in used_coats(sys) {
+            if self.registered.iter().any(|(c, _)| *c == coat) {
+                continue;
+            }
+            let Some(cat) = ext.find_coating(&coat) else {
+                continue;
+            };
+            if sys.coat_tables.contains_key(&coat) {
+                let note = format!(
+                    "coating {coat}: the table in the system is used; the registered coating catalog {} also has {coat}",
+                    cat.name
+                );
+                if !self.notes.contains(&note) {
+                    self.notes.push(note);
+                }
+                continue;
+            }
+            if self.file.table.remove(&coat).is_some() | self.file.coat.remove(&coat).is_some() {
+                let note = format!(
+                    "coating {coat}: the registered coating catalog {} is used; {coat} in the coating file is not used",
+                    cat.name
+                );
+                if !self.notes.contains(&note) {
+                    self.notes.push(note);
+                }
+            }
+            if self.merge_set(&coat, cat.set(), &cat.name, true) {
+                self.registered.push((coat, cat.name.clone()));
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// 膜の組 set の膜 coat（大文字小文字は問わない）を、系の名前 coat で入れる（あれば true）。auto なら自動で入れたものとして
+    /// 記録する（明示して読んだモデル・実測表が勝つ）。層の材料が膜ファイルの同じ名前の材料と違えば `<材料>@<origin>` に替える
+    pub(in crate::coating) fn merge_set(
+        &mut self,
+        coat: &str,
+        set: &crate::usercoating::CoatingSet,
+        origin: &str,
+        auto: bool,
+    ) -> bool {
+        if !auto {
+            // 明示して読んだもので置き換える膜は、一覧・フォルダから入れた記録から外す
+            self.registered.retain(|(c, _)| c != coat);
+            self.auto.retain(|(c, _)| c != coat);
+        }
+        let mut hit = false;
+        let stack = set
+            .coat
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(coat))
+            .map(|(_, l)| l.clone());
+        if let Some(mut ls) = stack {
+            for l in &mut ls {
+                let Some(rows) = set.mate.get(&l.mat) else {
+                    continue; // 系のガラスの表で引く
+                };
+                match self.file.mate.get(&l.mat) {
+                    None => {
+                        self.file.mate.insert(l.mat.clone(), rows.clone());
+                    }
+                    Some(r) if r == rows => {}
+                    Some(_) => {
+                        let m = format!("{}@{origin}", l.mat);
+                        self.file.mate.insert(m.clone(), rows.clone());
+                        l.mat = m;
+                    }
+                }
+            }
+            self.file.coat.insert(coat.to_string(), ls);
+            if auto {
+                self.auto_stacks.push(coat.to_string());
+            }
+            hit = true;
+        }
+        if let Some((_, t)) = set.table.iter().find(|(k, _)| k.eq_ignore_ascii_case(coat)) {
+            self.file.table.insert(coat.to_string(), t.clone());
+            if auto && !self.auto_stacks.iter().any(|c| c == coat) {
+                self.auto_stacks.push(coat.to_string());
+            }
+            hit = true;
+        }
+        if let Some((_, m)) = set
+            .models
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(coat))
+        {
+            self.models.insert(coat.to_string(), m.clone());
+            hit = true;
+        }
+        for (key, m) in &set.measured {
+            let mut it = key.splitn(2, '|');
+            let (c0, rest) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
+            if c0.eq_ignore_ascii_case(coat) {
+                let k = format!("{coat}|{rest}");
+                self.measured.insert(k.clone(), m.clone());
+                if auto {
+                    self.auto_measured.push(k);
+                } else {
+                    self.auto_measured.retain(|a| *a != k);
+                }
+                hit = true;
+            }
+        }
+        hit
     }
 
     /// フォルダ dir から、系 sys が使う膜のうち膜ファイルで決まらないもの（暗号化された膜など）の
@@ -169,14 +298,29 @@ impl Coatings {
                 || coat.starts_with("I.")
                 || self.file.table.contains_key(coat)
                 || self.file.coat.contains_key(coat)
+                || self.registered.iter().any(|(c, _)| c == coat)
                 || want.contains(&coat)
             {
                 continue;
             }
             want.push(coat);
         }
-        if want.is_empty() || !crate::vfs::is_dir(dir) {
+        if (want.is_empty() && self.registered.is_empty()) || !crate::vfs::is_dir(dir) {
             return Ok(0);
+        }
+        let ext = crate::ext::current();
+        // 拡張子の順位: 同梱の 4 つ、続けて足した形式だけの拡張子（新しい形式が先）
+        let mut exts: Vec<String> = ["lbcb", "lbcm", "lbct", "lbcs"]
+            .iter()
+            .map(|e| e.to_string())
+            .collect();
+        for s in ext.coating_sources() {
+            for e in s.extensions() {
+                let e = e.to_ascii_lowercase();
+                if !exts.contains(&e) {
+                    exts.push(e);
+                }
+            }
         }
         let files =
             crate::vfs::read_dir(dir).map_err(|e| Error::Io(format!("{}: {e}", dir.display())))?;
@@ -187,15 +331,24 @@ impl Coatings {
                 continue;
             };
             let ext = ext.to_string_lossy().to_ascii_lowercase();
-            let Some(rank) = ["lbcb", "lbcm", "lbct", "lbcs"]
-                .iter()
-                .position(|e| *e == ext)
-            else {
+            let Some(rank) = exts.iter().position(|e| *e == ext) else {
                 continue;
             };
             let name = stem.to_string_lossy().to_uppercase();
             if found.get(&name).is_none_or(|(r, _)| rank < *r) {
                 found.insert(name, (rank, p));
+            }
+        }
+        // 登録した一覧の膜と同じ名前のファイルは使わない（一覧が先）
+        for (coat, cat) in &self.registered {
+            if let Some((_, p)) = found.get(&coat.to_uppercase()) {
+                let note = format!(
+                    "coating {coat}: the registered coating catalog {cat} is used; the file {} in the coating folder is not used",
+                    p.display()
+                );
+                if !self.notes.contains(&note) {
+                    self.notes.push(note);
+                }
             }
         }
         let mut n = 0;
@@ -212,6 +365,24 @@ impl Coatings {
                     None => continue,
                 },
             };
+            // 足した形式（同梱と同じ拡張子なら足した方）
+            let reader = p
+                .extension()
+                .and_then(|e| ext.coating_source_for(&e.to_string_lossy()).cloned());
+            if let Some(r) = reader {
+                let set = r.load(p)?;
+                let origin = p
+                    .file_name()
+                    .map(|f| f.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if !self.merge_set(coat, &set, &origin, true) {
+                    let path = p.display();
+                    invalid!("{path}: no coating {coat} (the file name and the coating name inside differ)");
+                }
+                self.auto.push((coat.to_string(), p.clone()));
+                n += 1;
+                continue;
+            }
             let lbcs = p
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("lbcs"));
@@ -231,6 +402,7 @@ impl Coatings {
                     self.file.mate.entry(m).or_insert(rows);
                 }
                 self.file.coat.insert(coat.to_string(), ls);
+                self.auto_stacks.push(coat.to_string());
                 self.auto.push((coat.to_string(), p.clone()));
                 n += 1;
                 continue;
@@ -329,6 +501,7 @@ impl Coatings {
         // 自動で読んだ実測表は、明示したモデルのある膜から外す（実測表はモデルより先に引かれる）
         let names: Vec<String> = v.iter().map(|(c, _)| c.clone()).collect();
         self.models.extend(v);
+        self.registered.retain(|(c, _)| !names.contains(c));
         let auto = std::mem::take(&mut self.auto_measured);
         for k in auto {
             let coat = IfaceKey::parse(&k).coat;
@@ -342,25 +515,50 @@ impl Coatings {
         Ok(n)
     }
 
-    /// 自動で読んだ近似の膜（`.lbcs`）のうち、後から明示して読んだモデル・実測表のある膜を膜ファイルから外す
-    /// （膜ファイルの COAT はモデル・実測表より先に引かれるので、外さないと明示の指定が負ける）
+    /// 自動で入れた層の並び・表（[`Coatings::auto_stacks`]）のうち、後から明示して読んだモデル・実測表のある膜を
+    /// 膜ファイルから外す（膜ファイルの COAT・TABLE はモデル・実測表より先に引かれるので、外さないと明示の指定が負ける）
     fn drop_auto_stacks(&mut self) {
-        for (coat, p) in &self.auto {
-            if !p
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("lbcs"))
-            {
-                continue;
-            }
+        let mut keep = Vec::new();
+        for coat in std::mem::take(&mut self.auto_stacks) {
             let pre = format!("{coat}|");
-            if self.models.contains_key(coat) || self.measured.keys().any(|k| k.starts_with(&pre)) {
-                self.file.coat.remove(coat);
+            // 一覧から入れたモデルは明示ではない（明示して読めば registered から外れる）
+            let from_catalog = self.registered.iter().any(|(c, _)| *c == coat);
+            let explicit = (self.models.contains_key(&coat) && !from_catalog)
+                || self
+                    .measured
+                    .keys()
+                    .any(|k| k.starts_with(&pre) && !self.auto_measured.contains(k));
+            if explicit {
+                self.file.coat.remove(&coat);
+                self.file.table.remove(&coat);
+            } else {
+                keep.push(coat);
             }
         }
+        self.auto_stacks = keep;
     }
 
-    /// 実測表（LBCT）か膜のモデル（LBCM）のファイルを、1 行目で見分けて読む
+    /// 実測表（LBCT）か膜のモデル（LBCM）のファイルを、1 行目で見分けて読む。拡張子を足した膜のファイル形式
+    /// （[`crate::ext::Ext::add_coating_source`]）が読むなら、それで読んだ膜をすべて入れる（読んだ膜の数を返す）
     pub fn load_file(&mut self, path: &Path) -> Result<usize> {
+        let reader = path.extension().and_then(|e| {
+            crate::ext::current()
+                .coating_source_for(&e.to_string_lossy())
+                .cloned()
+        });
+        if let Some(r) = reader {
+            let set = r.load(path)?;
+            let origin = path
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let names = set.names();
+            for c in &names {
+                self.merge_set(c, &set, &origin, false);
+            }
+            self.drop_auto_stacks();
+            return Ok(names.len());
+        }
         let b =
             crate::vfs::read(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
         if b.starts_with(MODEL_BIN_HEADER) {
@@ -390,6 +588,8 @@ impl Coatings {
         let n = v.len();
         for (k, m) in v {
             self.auto_measured.retain(|a| *a != k);
+            let coat = IfaceKey::parse(&k).coat;
+            self.registered.retain(|(c, _)| c != coat);
             self.add_measured(&k, m)?;
         }
         self.drop_auto_stacks();
@@ -427,6 +627,20 @@ impl Coatings {
             ),
         }
     }
+}
+
+/// 系 sys の面が使う膜の名前（膜なし・理想膜を除く。最初に出た順）
+fn used_coats(sys: &System) -> Vec<String> {
+    let (keys, _) = media_keys(sys);
+    let mut v: Vec<String> = Vec::new();
+    for k in keys.iter().flatten() {
+        let coat = IfaceKey::parse(k).coat;
+        if coat.is_empty() || coat == "-" || coat.starts_with("I.") || v.iter().any(|c| c == coat) {
+            continue;
+        }
+        v.push(coat.to_string());
+    }
+    v
 }
 
 /// 面ごとの境界の鍵（`膜|前の媒質|後の媒質（鏡は MIRROR）`、境界でなければ None）と、各面の前の媒質の名前

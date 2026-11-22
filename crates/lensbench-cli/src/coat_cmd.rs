@@ -564,6 +564,9 @@ pub(crate) fn coatings(
     let mut found = None;
     // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
     let mut auto: Vec<AutoCoat> = Vec::new();
+    // 登録した膜の一覧から入れたもの（膜, 一覧）と注意
+    let mut registered: Vec<(String, String)> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     for cfg in 1..=raw.configurations() {
         let opt = zmx::LoadOptions {
             cfg,
@@ -576,7 +579,19 @@ pub(crate) fn coatings(
             list: v,
             needs: keys,
             auto: au,
+            registered: re,
+            notes: no,
         } = coat_interfaces(&s, tables)?;
+        for r in re {
+            if !registered.contains(&r) {
+                registered.push(r);
+            }
+        }
+        for n in no {
+            if !notes.contains(&n) {
+                notes.push(n);
+            }
+        }
         for a in au {
             if !auto.iter().any(|b| b.0 == a.0 && b.1 == a.1) {
                 auto.push(a);
@@ -607,6 +622,8 @@ pub(crate) fn coatings(
         "coating_file_path": found.map(|p| p.display().to_string()),
         "catalogs": raw.catalogs(),
         "auto_coatings": auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
+        "registered_coatings": registered.iter().map(|(c, k)| json!({ "coat": c, "catalog": k })).collect::<Vec<_>>(),
+        "notes": notes,
         "configurations": cfgs,
         "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
     }))

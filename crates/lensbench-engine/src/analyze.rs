@@ -124,6 +124,8 @@ pub(crate) fn coatings_loaded(sess: &Session, m: &Map<String, Value>) -> Result<
         "interfaces": c.list,
         "needs_table": c.needs,
         "auto_coatings": c.auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
+        "registered_coatings": c.registered.iter().map(|(c, k)| json!({ "coat": c, "catalog": k })).collect::<Vec<_>>(),
+        "notes": c.notes,
     }))
 }
 

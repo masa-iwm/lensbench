@@ -1,9 +1,11 @@
-//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、材料のカタログ 1 つ、Python の関数 1 つ。
+//! lensbench に足すものの雛形: 配列のプラグイン 1 つ、解析 1 つ（GUI の見せ方・訳つき）、面の形 1 つ、材料のカタログ 1 つ、
+//! 膜の一覧 1 つと膜のファイル形式 1 つ、Python の関数 1 つ。
 //!
 //! 足すものはすべて [`extensions`] が 1 つの [`Extensions`] にまとめ、exe・wheel・Web 版の入口がそれを渡す
 //! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`・`web`）。
 
 use lensbench_sdk::analysis::{Analysis, Cx, Meta};
+use lensbench_sdk::coating::{CoatingSet, CoatingSource, Layer};
 use lensbench_sdk::material::MaterialModel;
 use lensbench_sdk::plugin::{
     Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance, Kind, ParamSpec,
@@ -29,7 +31,9 @@ pub fn extensions() -> Extensions {
         .plugins(|r| r.register(Arc::new(Gain)))
         .analysis(Chief)
         .shape_model(Arc::new(Saddle))
-        .material_catalog("EXAMPLE", vec![Arc::new(Cauchy)]);
+        .material_catalog("EXAMPLE", vec![Arc::new(Cauchy)])
+        .coating_catalog("EXAMPLE_COATINGS", example_coatings())
+        .coating_source(Arc::new(LayersFile));
     #[cfg(feature = "gui")]
     let e = gui::add(e);
     #[cfg(feature = "py")]
@@ -147,6 +151,69 @@ impl MaterialModel for Cauchy {
     }
     fn range(&self) -> Option<[f64; 2]> {
         Some([0.4, 1.0])
+    }
+}
+
+// ------------------------------------------------------------------------------------------ 膜
+
+/// 膜の一覧 EXAMPLE_COATINGS: 1/4 波長の MgF2 の単層反射防止膜 EXAMPLE_AR（基準波長での光学的な厚さ 0.25 波長）。
+/// .zmx の面の膜の名前に EXAMPLE_AR と書けば、COATING.DAT・膜のフォルダより先にこれを引く
+pub fn example_coatings() -> CoatingSet {
+    let mut s = CoatingSet::new();
+    s.add_material("EXAMPLE_MGF2", vec![[0.4, 1.38, 0.0], [1.0, 1.375, 0.0]]);
+    s.add_layers(
+        "EXAMPLE_AR",
+        vec![Layer {
+            mat: "EXAMPLE_MGF2".into(),
+            d: 0.25,
+            absolute: false,
+        }],
+    );
+    s
+}
+
+/// 膜のファイル形式 `.layers`: 1 行に 1 層、`屈折率 厚さ[µm]`（入射側から、分散・吸収なし。`#` から行末は注記）。
+/// 膜の名前はファイル名（拡張子なし）。.zmx の膜ファイルと同じフォルダに `<膜の名前>.layers` を置くと膜の名前で読む
+pub struct LayersFile;
+
+impl CoatingSource for LayersFile {
+    fn extensions(&self) -> &[&str] {
+        &["layers"]
+    }
+    fn load(&self, path: &std::path::Path) -> Result<CoatingSet> {
+        let bad = |m: String| lensbench_sdk::Error::Invalid(format!("{}: {m}", path.display()));
+        let txt = std::fs::read_to_string(path)
+            .map_err(|e| lensbench_sdk::Error::Io(format!("{}: {e}", path.display())))?;
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .ok_or_else(|| bad("no file name".into()))?;
+        let mut set = CoatingSet::new();
+        let mut layers = Vec::new();
+        for (i, line) in txt.lines().enumerate() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let v: Vec<f64> = line
+                .split_whitespace()
+                .map(|t| t.parse::<f64>())
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|_| bad(format!("line {}: not numbers", i + 1)))?;
+            let [n, d] = v[..] else {
+                return Err(bad(format!("line {}: write index and thickness", i + 1)));
+            };
+            // 材料は層ごとに名前を付ける（分散なしなので 1 行）
+            let mat = format!("{name}_L{}", layers.len() + 1);
+            set.add_material(&mat, vec![[0.5, n, 0.0]]);
+            layers.push(Layer {
+                mat,
+                d,
+                absolute: true,
+            });
+        }
+        set.add_layers(&name, layers);
+        Ok(set)
     }
 }
 

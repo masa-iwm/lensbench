@@ -1,6 +1,6 @@
 //! 拡張の登録を 1 つの値にまとめる
 //!
-//! 別の exe（非公開版など）が足すもの（プラグイン・カタログの形式・利用者定義の面・検出器のブロック・解析・誤りの
+//! 別の exe（非公開版など）が足すもの（プラグイン・カタログの形式・利用者定義の面・材料と膜のカタログ・検出器のブロック・解析・誤りの
 //! 文の訳）を [`Extensions`] に集め、入口で 1 回 [`Extensions::install`] する。足す側のクレートは `Extensions` を
 //! 返す関数を 1 つ持てばよく、入口は呼ぶ順を気にしなくてよい。GUI の見せ方（図・欄）・Python の関数は、それぞれの
 //! クレートの拡張トレイト（`lensbench_gui::ext::GuiExtensions`・`lensbench::ext::PyExtensions`）で同じ値に足す
@@ -16,6 +16,7 @@ use lensbench_analysis::{Analyses, Analysis, DynAnalysis};
 use lensbench_core::catalog::LensCatalogSource;
 use lensbench_core::ext::Ext;
 use lensbench_core::plugin::Registry;
+use lensbench_core::usercoating::{CoatingSet, CoatingSource};
 use lensbench_core::usermaterial::MaterialModel;
 use lensbench_core::usershape::ShapeModel;
 use lensbench_core::usersurf::SurfaceModel;
@@ -36,6 +37,8 @@ pub struct Extensions {
     surfaces: Vec<Arc<dyn SurfaceModel>>,
     shapes: Vec<Arc<dyn ShapeModel>>,
     materials: Vec<(&'static str, Vec<Arc<dyn MaterialModel>>)>,
+    coat_sources: Vec<Arc<dyn CoatingSource>>,
+    coatings: Vec<(&'static str, CoatingSet)>,
     detectors: Vec<DetectorKind>,
     analyses: Vec<Arc<dyn DynAnalysis>>,
     hooks: Vec<Hook>,
@@ -98,6 +101,18 @@ impl Extensions {
         models: Vec<Arc<dyn MaterialModel>>,
     ) -> Self {
         self.materials.push((name, models));
+        self
+    }
+
+    /// 膜のファイル形式（膜ファイルのフォルダの `<膜の名前>.<拡張子>` を膜の名前で読む。同じ拡張子なら後から足したもの）
+    pub fn coating_source(mut self, s: Arc<dyn CoatingSource>) -> Self {
+        self.coat_sources.push(s);
+        self
+    }
+
+    /// 膜の一覧（名前 name。中の膜は .zmx の膜ファイル・フォルダの膜より先に引く。`lensbench_core::usercoating`）
+    pub fn coating_catalog(mut self, name: &'static str, set: CoatingSet) -> Self {
+        self.coatings.push((name, set));
         self
     }
 
@@ -167,7 +182,17 @@ impl Extensions {
         &self.materials
     }
 
-    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・カタログの拡張子）を
+    /// 足した膜のファイル形式
+    pub fn coating_sources(&self) -> &[Arc<dyn CoatingSource>] {
+        &self.coat_sources
+    }
+
+    /// 足した膜の一覧（名前と膜の組）
+    pub fn coating_catalogs(&self) -> &[(&'static str, CoatingSet)] {
+        &self.coatings
+    }
+
+    /// other の分を後ろに足す。2 つが同じ名前のもの（解析・検出器・プラグイン・面と形のモデル・材料のカタログ・膜の一覧と膜・カタログと膜の拡張子）を
     /// 足していれば誤り（other が [`Extensions::replacing`] なら other の方が勝つ）
     pub fn merge(mut self, other: Extensions) -> lensbench_core::Result<Self> {
         if !other.replacing {
@@ -184,6 +209,8 @@ impl Extensions {
         self.surfaces.extend(other.surfaces);
         self.shapes.extend(other.shapes);
         self.materials.extend(other.materials);
+        self.coat_sources.extend(other.coat_sources);
+        self.coatings.extend(other.coatings);
         self.detectors.extend(other.detectors);
         self.analyses.extend(other.analyses);
         self.hooks.extend(other.hooks);
@@ -235,6 +262,21 @@ impl Extensions {
                     .map(|e| format!("catalog format .{e}")),
             );
         }
+        for (c, set) in &self.coatings {
+            n.insert(format!("coating catalog {}", c.to_ascii_uppercase()));
+            n.extend(
+                set.names()
+                    .iter()
+                    .map(|m| format!("coating {}", m.to_ascii_uppercase())),
+            );
+        }
+        for s in &self.coat_sources {
+            n.extend(
+                s.extensions()
+                    .iter()
+                    .map(|e| format!("coating format .{}", e.to_ascii_lowercase())),
+            );
+        }
         n
     }
 
@@ -264,6 +306,23 @@ impl Extensions {
                 );
             }
             e.add_material_catalog(c, ms.clone());
+        }
+        for s in &self.coat_sources {
+            e.add_coating_source(s.clone());
+        }
+        // 膜の名前に一覧の名前は付かないので、2 つの一覧に同じ名前の膜があると、どちらを引くかが一覧の名前の順で黙って決まる
+        let mut seen: std::collections::BTreeMap<String, &str> = Default::default();
+        for (c, set) in &self.coatings {
+            for m in set.names() {
+                if let Some(o) = seen.insert(m.to_ascii_uppercase(), c) {
+                    if !o.eq_ignore_ascii_case(c) {
+                        lensbench_core::invalid!(
+                            "coating {m} is in both coating catalogs {o} and {c}; give one of them another name"
+                        );
+                    }
+                }
+            }
+            e.add_coating_catalog(c, set.clone());
         }
         for f in &self.plugins {
             f(e.plugins_mut());

@@ -52,7 +52,7 @@ use crate::{invalid, notimpl, Error, Result};
 pub(crate) const TABLE_NORMAL: f64 = 1e-8;
 
 /// 膜の材料の表の k の、誤りにしない正の値の上限（標準の膜ファイルの数値の誤差を許す）
-const MATE_K_POS_TOL: f64 = 1e-6;
+pub(crate) const MATE_K_POS_TOL: f64 = 1e-6;
 
 /// 膜なしの鏡の基板
 pub(crate) const MIRROR_N: C64 = C64::new(0.7, -7.0);

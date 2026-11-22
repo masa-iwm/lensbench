@@ -774,6 +774,21 @@ material model {name}: the index at {wl} µm, {t} °C, {p} atm is {n} (not a pos
 material model {name}: the transmittance row ({wl} µm, {tr}, {th} mm) is out of range	材料のモデル {name}: 内部透過率の行（{wl} µm、{tr}、{th} mm）が範囲の外です
 glass {} is a user-defined material, but the registered material catalog {} has no {}	硝材 {} はユーザー定義の材料ですが、登録された材料のカタログ {} に {} がありません
 glass {} is a user-defined material of catalog {}, but no extension registers that catalog (install the extension that adds it)	硝材 {} はカタログ {} のユーザー定義の材料ですが、そのカタログを登録した拡張がありません（足す拡張を入れてください）
+coating {m} is in both coating catalogs {o} and {c}; give one of them another name	コーティング {m} がコーティングのカタログ {o} と {c} の両方にあります。どちらかの名前を変えてください
+coating name {name:?} is not allowed (empty, contains |, or is - or I.xx)	コーティングの名前 {name:?} は使えません（空、| を含む、- か I.xx）
+coating {c} has no layers	コーティング {c} に層がありません
+coating {n} has layers or a table and also a model or measured table; use one of them	コーティング {n} に層か表があり、モデルか実測表もあります。どちらか一方にしてください
+coating table {c} has no data	コーティングの表 {c} にデータがありません
+measured table key {k} is not coating|medium before|medium after	実測表のキー {k} が コーティング|前の媒質|後の媒質 の形ではありません
+coating model {c} has neither transmission nor mirror data	コーティングのモデル {c} に透過のデータもミラーのデータもありません
+coating material {m}: the wavelengths are not positive and ascending	コーティングの材料 {m}: 波長が正の昇順になっていません
+coating material {m}: n must be positive and k ≤ 0 (absorption is k < 0)	コーティングの材料 {m}: n は正、k は 0 以下にしてください（吸収は k < 0）
+coating {c}: the thickness {} of layer {} is not a number ≥ 0	コーティング {c}: 厚み {}（層 {}）が 0 以上の数ではありません
+coating table {c}: the angles are not ascending	コーティングの表 {c}: 角度が昇順になっていません
+coating {coat}: the table in the system is used; the registered coating catalog {} also has {coat}	コーティング {coat}: システムに書いた表を使います。登録されたコーティングのカタログ {} にも {coat} があります
+coating {coat}: the registered coating catalog {} is used; {coat} in the coating file is not used	コーティング {coat}: 登録されたコーティングのカタログ {} のものを使います。コーティングファイルの {coat} は使いません
+coating {coat}: the registered coating catalog {cat} is used; the file {} in the coating folder is not used	コーティング {coat}: 登録されたコーティングのカタログ {cat} のものを使います。コーティングのフォルダのファイル {} は使いません
+{path}: no coating {coat} (the file name and the coating name inside differ)	{path}: コーティング {coat} がありません（ファイル名と中のコーティングの名前が違います）
 material catalog {c} has the name of a built-in glass catalog; give it another name	材料のカタログ {c} は同梱の硝材のカタログと同じ名前です。別の名前にしてください
 no user-defined shape has the number setting {n}	ユーザー定義の形に数の設定 {n} はありません
 no user-defined shape has the number setting {s}	ユーザー定義の形に数の設定 {s} はありません

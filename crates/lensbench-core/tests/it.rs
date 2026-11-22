@@ -42,6 +42,7 @@ mod surftypes;
 mod surftypes_os;
 mod thinfilm;
 mod units;
+mod usercoating;
 mod usermaterial;
 mod usershape;
 mod usersurf;

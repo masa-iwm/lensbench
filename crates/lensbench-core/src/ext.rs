@@ -1,4 +1,4 @@
-//! 拡張の表（レンズカタログの形式・利用者定義の面のモデル・プラグイン）を 1 つの値 [`Ext`] にまとめる
+//! 拡張の表（レンズカタログの形式・利用者定義の面のモデル・材料と膜のカタログ・プラグイン）を 1 つの値 [`Ext`] にまとめる
 //! 。
 //!
 //! 計算は今の文脈（[`crate::par::Ctx`]）の表を使う。文脈に無ければプロセスの既定（[`set_default`]。入口の exe・
@@ -13,6 +13,7 @@
 use crate::catalog::{LbcatSource, LensCatalogSource, ZmxFileSource};
 use crate::error::Result;
 use crate::plugin::Registry;
+use crate::usercoating::{CoatingCatalog, CoatingSet, CoatingSource};
 use crate::usermaterial::{MaterialCatalog, MaterialModel};
 use crate::usershape::ShapeModel;
 use crate::usersurf::{IdealMapping, SurfaceModel};
@@ -34,6 +35,10 @@ pub struct Ext {
     shapes: BTreeMap<String, Arc<dyn ShapeModel>>,
     /// 材料のカタログ（足したときの綴り。引くときは大文字小文字を問わない）
     materials: BTreeMap<String, Arc<MaterialCatalog>>,
+    /// 膜のファイル形式（後から足したものが先に引かれる）
+    coat_sources: Vec<Arc<dyn CoatingSource>>,
+    /// 膜の一覧（足したときの綴り。引くときは大文字小文字を問わない）
+    coatings: BTreeMap<String, Arc<CoatingCatalog>>,
     plugins: Registry,
     /// 上の層の表（型ごとに 1 つ）
     slots: BTreeMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -48,6 +53,8 @@ impl Default for Ext {
             surfaces,
             shapes: BTreeMap::new(),
             materials: BTreeMap::new(),
+            coat_sources: Vec::new(),
+            coatings: BTreeMap::new(),
             plugins: Registry::new(),
             slots: BTreeMap::new(),
         }
@@ -61,6 +68,8 @@ impl std::fmt::Debug for Ext {
             .field("surfaces", &self.surfaces.keys().collect::<Vec<_>>())
             .field("shapes", &self.shapes.keys().collect::<Vec<_>>())
             .field("materials", &self.materials.keys().collect::<Vec<_>>())
+            .field("coat_sources", &self.coat_sources.len())
+            .field("coatings", &self.coatings.keys().collect::<Vec<_>>())
             .field("plugins", &self.plugins.list())
             .field("slots", &self.slots.len())
             .finish()
@@ -136,6 +145,58 @@ impl Ext {
         self.materials.values().map(|c| c.name.clone()).collect()
     }
 
+    /// 膜のファイル形式を足す（同じ拡張子なら後から足したものを使う。同梱の形式と同じ拡張子ならこちらが勝つ）
+    pub fn add_coating_source(&mut self, s: Arc<dyn CoatingSource>) -> &mut Self {
+        self.coat_sources.push(s);
+        self
+    }
+
+    /// 膜のファイル形式（足したものが新しい順。同梱の形式は含まない）
+    pub fn coating_sources(&self) -> Vec<Arc<dyn CoatingSource>> {
+        self.coat_sources.iter().rev().cloned().collect()
+    }
+
+    /// 拡張子 ext（大文字小文字は問わない）を読む足した膜のファイル形式（新しいものが先）
+    pub fn coating_source_for(&self, ext: &str) -> Option<&Arc<dyn CoatingSource>> {
+        self.coat_sources
+            .iter()
+            .rev()
+            .find(|s| s.extensions().iter().any(|e| e.eq_ignore_ascii_case(ext)))
+    }
+
+    /// 膜の一覧を足す（名前は大文字小文字を問わず、同じ名前は差し替える。中の膜の引き方は [`crate::usercoating`]）
+    pub fn add_coating_catalog(&mut self, name: &str, set: CoatingSet) -> &mut Self {
+        self.coatings.retain(|k, _| !k.eq_ignore_ascii_case(name));
+        self.coatings
+            .insert(name.to_string(), Arc::new(CoatingCatalog::new(name, set)));
+        self
+    }
+
+    /// 膜の一覧を外す（あれば true）
+    pub fn remove_coating_catalog(&mut self, name: &str) -> bool {
+        let n = self.coatings.len();
+        self.coatings.retain(|k, _| !k.eq_ignore_ascii_case(name));
+        self.coatings.len() != n
+    }
+
+    /// 名前の膜の一覧（大文字小文字は問わない）
+    pub fn coating_catalog(&self, name: &str) -> Option<&Arc<CoatingCatalog>> {
+        self.coatings
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, c)| c)
+    }
+
+    /// 膜の一覧の名前（足したときの綴り、名前の順）
+    pub fn coating_catalogs(&self) -> Vec<String> {
+        self.coatings.values().map(|c| c.name.clone()).collect()
+    }
+
+    /// 膜 coat（大文字小文字は問わない）を持つ膜の一覧（2 つにあれば一覧の名前の順で先）
+    pub fn find_coating(&self, coat: &str) -> Option<&Arc<CoatingCatalog>> {
+        self.coatings.values().find(|c| c.set().contains(coat))
+    }
+
     /// プラグインの表
     pub fn plugins(&self) -> &Registry {
         &self.plugins
@@ -182,6 +243,11 @@ impl Ext {
         for (k, c) in &other.materials {
             self.materials.retain(|x, _| !x.eq_ignore_ascii_case(k));
             self.materials.insert(k.clone(), c.clone());
+        }
+        self.coat_sources.extend(other.coat_sources.iter().cloned());
+        for (k, c) in &other.coatings {
+            self.coatings.retain(|x, _| !x.eq_ignore_ascii_case(k));
+            self.coatings.insert(k.clone(), c.clone());
         }
         for p in other.plugins.plugins() {
             self.plugins.register(p.clone());

@@ -23,6 +23,11 @@
 
 ### 足したもの
 
+- **拡張: 膜のカタログに外から足す口**: 外のクレートが、名前つきの膜の一覧（`Extensions::coating_catalog`）と膜のファイル形式
+  （`Extensions::coating_source`、拡張子ごとの読み手）を足せる（SDK の `lensbench_sdk::coating`）。膜の中身は層の並び・TABLE・
+  特性行列のモデル・実測表。一覧の膜は .zmx の面の膜の名前で引き、.zmx の膜ファイル（COATING.DAT）・膜のフォルダの同じ名前の膜より先
+  （系に書いた表と `--coatings` で明示したファイルの方が先）。同じ名前の膜が 2 か所にあれば注意を返す（CLI の `coatings` の `notes`）。
+  足した形式のファイルは膜のフォルダから膜の名前で読み、`--coatings` でも読める。拡張の雛形に膜の一覧と `.layers` 形式の見本を足した
 - **Huygens PSF・MTF を GPU で**: GPU（Vulkan・DX12・Metal）があれば、Huygens の和（瞳の標本 × 像の点）を GPU の compute shader で
   単精度で計算する（新しい設定 `device`: `auto`（既定）・`cpu`・`gpu`。CLI `psf --huygens`・`huygens-mtf` の `--device`、Python の `device=`、
   GUI の「計算する場所」、プラグインの `device`）。位相が大きくならない書き方で、強度は厳密な和と収差のない中心の値の 5e-7 倍ほどで合う

@@ -523,6 +523,10 @@ pub struct CoatInterfaces {
     pub needs: Vec<String>,
     /// 膜の名前で自動で読んだ膜
     pub auto: Vec<AutoCoat>,
+    /// 登録した膜の一覧から入れた膜（膜, 一覧の名前）
+    pub registered: Vec<(String, String)>,
+    /// 注意（同じ名前の膜が 2 か所にあったときなど）
+    pub notes: Vec<String>,
 }
 
 /// 系 s の膜の境界（CLI の coatings の 1 構成分）
@@ -567,6 +571,8 @@ pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> lensbench_core::Result
         list: v,
         needs: need,
         auto,
+        registered: c.registered.clone(),
+        notes: c.notes.clone(),
     })
 }
 

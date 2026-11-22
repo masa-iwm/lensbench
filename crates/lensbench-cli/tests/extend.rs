@@ -93,3 +93,45 @@ fn registered_source_and_plugin() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 拡張の表に足した膜の一覧が、系の膜の一覧（CLI の coatings・serve の coatings と同じ関数）に効き、由来が出る
+#[test]
+fn registered_coating_catalog() {
+    use lensbench_core::usercoating::CoatingSet;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let opt = lensbench_formats::zmx::LoadOptions {
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let mut s =
+        lensbench_formats::zmx::load_with(&root.join("examples/lenses/LB/BCX-50.zmx"), &opt)
+            .unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].coat = "TEST_EXT_AR".into();
+        Ok(())
+    })
+    .unwrap();
+    let kinds = |c: &lensbench_engine::load::CoatInterfaces| {
+        c.list
+            .iter()
+            .filter(|v| v["key"].as_str().unwrap().starts_with("TEST_EXT_AR|"))
+            .map(|v| v["kind"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    let c = lensbench_engine::load::coat_interfaces(&s, &[]).unwrap();
+    assert_eq!(kinds(&c), ["missing"]);
+    let mut e = Ext::default();
+    e.add_coating_catalog(
+        "TEST",
+        CoatingSet::parse_dat("MATE M\n0.5 1.38 0\nCOAT TEST_EXT_AR\nM 0.25\n").unwrap(),
+    );
+    ext::with(Arc::new(e), || {
+        let c = lensbench_engine::load::coat_interfaces(&s, &[]).unwrap();
+        assert_eq!(kinds(&c), ["stack"]);
+        assert_eq!(
+            c.registered,
+            [("TEST_EXT_AR".to_string(), "TEST".to_string())]
+        );
+        assert!(c.needs.is_empty());
+    });
+}

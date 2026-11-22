@@ -69,6 +69,7 @@ pub mod tol;
 pub mod trace;
 pub mod trig;
 pub mod units;
+pub mod usercoating;
 pub mod usermaterial;
 pub mod usershape;
 pub mod usersurf;

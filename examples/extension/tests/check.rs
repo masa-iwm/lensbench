@@ -30,6 +30,26 @@ fn the_plugin_runs() {
 }
 
 #[test]
+fn the_coatings_are_found() {
+    use lensbench_sdk::coating::check_coatings;
+    let table = extensions().ext().unwrap();
+    let cat = table.find_coating("example_ar").unwrap();
+    assert_eq!(cat.name, "EXAMPLE_COATINGS");
+    check_coatings(cat.set()).unwrap();
+    let dir = std::env::temp_dir().join(format!("example-layers-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("MY_AR.layers");
+    std::fs::write(&p, "# MgF2 on top of ZrO2\n1.38 0.0996\n2.05 0.0671\n").unwrap();
+    let set = table
+        .coating_source_for("layers")
+        .unwrap()
+        .load(&p)
+        .unwrap();
+    check_coatings(&set).unwrap();
+    assert_eq!(set.coat["MY_AR"].len(), 2);
+}
+
+#[test]
 fn the_shape_keeps_the_contract() {
     use lensbench_sdk::plugin::{Config, Value};
     use lensbench_sdk::shape::check_shape;

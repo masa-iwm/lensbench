@@ -509,6 +509,9 @@ fn kinds() {
         table_normal: TableNormal::default(),
         auto: Vec::new(),
         auto_measured: Vec::new(),
+        registered: Vec::new(),
+        auto_stacks: Vec::new(),
+        notes: Vec::new(),
     };
     assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
     assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);
