@@ -25,6 +25,7 @@ pub(crate) const WAVES_UM: &str = "lensbench-waves-um";
 pub(crate) const CMDS: &[&str] = &[
     "ray-fan",
     "opd-fan",
+    "pupil-fan",
     "field-curvature",
     "longitudinal",
     "lateral-color",
@@ -45,7 +46,7 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, out: Out<'_>) -> O
         };
     }
     Some(match cmd {
-        "ray-fan" | "opd-fan" => get!(FanOut).is_some_and(|v| fans(ui, id, cmd, &v)),
+        "ray-fan" | "opd-fan" | "pupil-fan" => get!(FanOut).is_some_and(|v| fans(ui, id, cmd, &v)),
         "field-curvature" => get!(FieldCurvOut).is_some_and(|v| field_curv(ui, id, &v)),
         "longitudinal" => get!(LongOut).is_some_and(|v| longitudinal(ui, id, &v)),
         "lateral-color" => get!(LatOut).is_some_and(|v| lateral(ui, id, &v)),
@@ -170,6 +171,8 @@ fn fans(ui: &mut Ui, id: u64, cmd: &str, v: &FanOut) -> bool {
     let unit = v.unit.clone();
     let ylab = if cmd == "opd-fan" {
         trf("OPD [{}]", &[&unit])
+    } else if cmd == "pupil-fan" {
+        trf("Pupil aberration [{}]", &[&unit])
     } else {
         trf("Ray error [{}]", &[&unit])
     };

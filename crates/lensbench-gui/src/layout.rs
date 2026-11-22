@@ -32,6 +32,7 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("mech-check", n_("Mechanical vignetting"), false),
     ("ray-fan", n_("Ray fan"), true),
     ("opd-fan", n_("OPD fan"), true),
+    ("pupil-fan", n_("Pupil aberration fan"), true),
     ("field-curvature", n_("Field curvature / distortion"), false),
     ("longitudinal", n_("Longitudinal aberration"), false),
     ("lateral-color", n_("Lateral color"), false),
@@ -78,6 +79,7 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "mech-check" => "Mechanical vignetting: share of rays outside the mechanical apertures",
         "ray-fan" => "Ray fan: transverse ray error versus pupil coordinate (tangential and sagittal) per field and wavelength",
         "opd-fan" => "OPD fan: optical path difference [waves] versus pupil coordinate (tangential and sagittal)",
+        "pupil-fan" => "Pupil aberration fan: where real rays aimed at the paraxial entrance pupil cross the stop, against the paraxial point [% of the stop radius]",
         "field-curvature" => "Field curvature and distortion: tangential and sagittal focus and distortion % versus field",
         "longitudinal" => "Longitudinal aberration: where on-axis rays cross the axis versus pupil height",
         "lateral-color" => "Lateral color: chief ray height of each wavelength minus the primary wavelength versus field",
@@ -114,8 +116,8 @@ pub(crate) fn analysis_group(cmd: &str) -> &'static str {
         | "vignetting" => "Image quality",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
         "interference" | "pop" | "gaussian-beam" => "Interference / propagation",
-        "ray-fan" | "opd-fan" | "field-curvature" | "longitudinal" | "lateral-color"
-        | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",
+        "ray-fan" | "opd-fan" | "pupil-fan" | "field-curvature" | "longitudinal"
+        | "lateral-color" | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",
         "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "Tables / system",
         _ => "Extra analyses",
     }

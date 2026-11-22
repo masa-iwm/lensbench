@@ -47,6 +47,7 @@ pub fn register(a: &mut Analyses) {
     a.add(image::Psf);
     a.add(aber::RayFan);
     a.add(aber::OpdFan);
+    a.add(aber::PupilFan);
     a.add(aber::FieldCurv);
     a.add(aber::Longitudinal);
     a.add(aber::LateralColor);

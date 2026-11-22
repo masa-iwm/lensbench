@@ -244,7 +244,8 @@ fn field_of_t(s: &System, t: [f64; 2]) -> (f64, f64) {
     (t[0] / nx, t[1] / ny)
 }
 
-/// 視野 (hx, hy) の主光線の像面での (x, y)（波長 w）
+/// 視野 (hx, hy) の主光線の像面での (x, y)（波長 w）。アフォーカル像空間の系では向きの tan (l/n, m/n)（OpticStudio の
+/// アフォーカルの歪曲・グリッド歪曲の Real の値。2026 R1.01 で実測）
 fn chief_xy(s: &System, h: (f64, f64), w: usize) -> Result<[f64; 2]> {
     let t = s.try_trace(
         FieldSel::Norm(h.0, h.1),
@@ -261,6 +262,9 @@ fn chief_xy(s: &System, h: (f64, f64), w: usize) -> Result<[f64; 2]> {
             h.0,
             h.1
         );
+    }
+    if s.afocal {
+        return Ok([r.lmn[0] / r.lmn[2], r.lmn[1] / r.lmn[2]]);
     }
     Ok([r.xyz[0], r.xyz[1]])
 }
@@ -297,8 +301,8 @@ pub fn distortion_point(s: &System, w: usize, reference: Option<(f64, f64)>) -> 
     })
 }
 
-/// 基準の視野（None は軸上）での [`DistRef`]。軸上の J は近軸主光線の倍率（回転対称な系だけ）、ほかは主光線の点を
-/// t で中心差分した値
+/// 基準の視野（None は軸上）での [`DistRef`]。軸上の J は近軸主光線の倍率（回転対称な系だけ。アフォーカル像空間では
+/// 像空間の傾きの倍率）、ほかは主光線の点を t で中心差分した値
 pub fn distortion_ref(s: &System, w: usize, reference: Option<(f64, f64)>) -> Result<DistRef> {
     let mut r = distortion_point(s, w, reference)?;
     r.j = match reference {
@@ -310,14 +314,15 @@ pub fn distortion_ref(s: &System, w: usize, reference: Option<(f64, f64)>) -> Re
             let img = s.image();
             let p = s.paraxial();
             let k = chief_scale(s);
-            let (yc, _) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
+            let (yc, uc) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
             // t の大きさで最大の半径の視野（角度の視野は k が tan、ほかは視野の座標の最大の半径）
             let tm = if s.field_type == FieldType::Angle {
                 k
             } else {
                 s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max)
             };
-            let m = yc[img] / tm;
+            // アフォーカル像空間では像空間の近軸主光線の傾き（向きの tan の倍率）
+            let m = if s.afocal { uc[img - 1] } else { yc[img] } / tm;
             [[m, 0.0], [0.0, m]]
         }
         Some(_) => {

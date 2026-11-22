@@ -31,6 +31,11 @@ fn len_unit() -> String {
     "mm".into()
 }
 
+/// 焦点のずれの単位（アフォーカル像空間の系は視度。OpticStudio と同じ）
+fn shift_unit(s: &System) -> String {
+    if s.afocal { "diopters" } else { "mm" }.into()
+}
+
 // ------------------------------------------------------------------------------- ray-fan, opd-fan
 
 /// 扇の設定（ray-fan・opd-fan）
@@ -152,6 +157,31 @@ impl Analysis for OpdFan {
     }
 }
 
+pub(super) struct PupilFan;
+
+impl Analysis for PupilFan {
+    type Params = FanParams;
+    type Output = FanOut;
+    fn meta(&self) -> Meta {
+        Meta {
+            name: "pupil-fan",
+            about: "Pupil aberration fans: where real rays cross the stop against the paraxial point [% of the stop radius]",
+            help: "Pupil aberration fans (OpticStudio's Pupil Aberration Fan): for each field and wavelength, real rays aimed at the paraxial entrance pupil coordinates along the pupil y axis (tangential) and x axis (sagittal) without ray aiming, and the y (tangential) or x (sagittal) of the point where they cross the stop surface, as the paraxial point (pupil coordinate × paraxial stop radius of the primary wavelength) minus the real point in percent of the stop radius. Rays vignetted before the stop are null",
+        }
+    }
+    fn run(&self, cx: &Cx<'_>, p: &FanParams) -> Result<FanOut> {
+        // エイミングをすると実光線が絞りの近軸の点を通るので、エイミングを外して追う（OpticStudio と同じ）
+        let mut s = cx.system.clone();
+        if s.aiming != lensbench_core::system::Aiming::Off {
+            s.edit(|q| {
+                q.aiming = lensbench_core::system::Aiming::Off;
+                Ok(())
+            })?;
+        }
+        fans(&s, p, "%".into(), aber::pupil_fan)
+    }
+}
+
 // ---------------------------------------------------------------------------- field-curvature
 
 /// 歪曲の理想の像高
@@ -235,17 +265,12 @@ impl Analysis for FieldCurv {
         Meta {
             name: "field-curvature",
             about: "Field curvature and distortion versus field (tangential and sagittal focus, distortion %)",
-            help: "Field curvature and distortion (OpticStudio's Field Curvature/Distortion): for points steps of the normalized field 0 to 1, the z of the tangential and sagittal focus of the rays near the chief ray measured from the image surface (the FCGT and FCGS operands), and the distortion of the real chief ray against the paraxial ideal height f tan θ (or f θ). Every wavelength if wave is omitted. Vignetting factors are not used, as in OpticStudio",
+            help: "Field curvature and distortion (OpticStudio's Field Curvature/Distortion): for points steps of the normalized field 0 to 1, the z of the tangential and sagittal focus of the rays near the chief ray measured from the image surface (the FCGT and FCGS operands), and the distortion of the real chief ray against the paraxial ideal height f tan θ (or f θ). Every wavelength if wave is omitted. Vignetting factors are not used, as in OpticStudio. In afocal image space the focus is in diopters (the inverse of the distance in meters along the chief ray, negative for a virtual focus before the image surface) and the distortion compares the direction tangents of the chief ray with the paraxial angular magnification, as in OpticStudio",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &FieldCurvParams) -> Result<FieldCurvOut> {
         let (s, vig) = crate::sweep::without_vig(cx.system);
         let s = &*s;
-        if s.afocal {
-            return Err(Error::Invalid(
-                "field curvature in afocal image space is not supported yet".into(),
-            ));
-        }
         if p.distortion == DistKind::FTheta && s.field_type != FieldType::Angle {
             return Err(Error::Invalid(
                 "the f-theta distortion needs angle fields".into(),
@@ -268,7 +293,12 @@ impl Analysis for FieldCurv {
             };
             for &hh in &h {
                 let f = ax.sel(hh);
-                let mut get = |t: bool| match aber::field_focus(s, f, w, s.image(), t) {
+                let focus = if s.afocal {
+                    aber::field_focus_diopters
+                } else {
+                    aber::field_focus
+                };
+                let mut get = |t: bool| match focus(s, f, w, s.image(), t) {
                     Ok(z) => z,
                     Err(e) => {
                         warnings.push(format!("wavelength {}, field {}: {e}", w + 1, f3(hh)));
@@ -302,7 +332,7 @@ impl Analysis for FieldCurv {
         }
         warnings.dedup();
         Ok(FieldCurvOut {
-            unit: len_unit(),
+            unit: shift_unit(s),
             field_value: h.iter().map(|&x| ax.value(s, x)).collect(),
             h,
             distortion_kind: p.distortion,
@@ -575,16 +605,11 @@ impl Analysis for FocalShift {
         Meta {
             name: "focal-shift",
             about: "Chromatic focal shift versus wavelength (paraxial focus relative to the primary wavelength)",
-            help: "Chromatic focal shift (OpticStudio's Chromatic Focal Shift): for points wavelengths from min to max, the shift of the paraxial focus from the paraxial focus of the primary wavelength (the difference of the LONA zone 0 operand, as AXCL), with the diffraction-limited depth 4 λ (F/#)²",
+            help: "Chromatic focal shift (OpticStudio's Chromatic Focal Shift): for points wavelengths from min to max, the shift of the paraxial focus from the paraxial focus of the primary wavelength (the difference of the LONA zone 0 operand, as AXCL), with the diffraction-limited depth 4 λ (F/#)². In afocal image space the shift is in diopters (the difference of the inverse distances of the paraxial focus from the image surface in meters) and the depth is 0, as in OpticStudio",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &ShiftParams) -> Result<ShiftOut> {
         let s = cx.system;
-        if s.afocal {
-            return Err(Error::Invalid(
-                "the chromatic focal shift in afocal image space is not supported yet".into(),
-            ));
-        }
         let lo = p
             .min
             .unwrap_or_else(|| s.wavelengths.iter().copied().fold(f64::INFINITY, f64::min));
@@ -602,7 +627,12 @@ impl Analysis for FocalShift {
         let shift: Vec<f64> = wl
             .iter()
             .map(|&l| {
-                aber::focal_shift(s, l).unwrap_or_else(|e| {
+                let f = if s.afocal {
+                    aber::focal_shift_diopters
+                } else {
+                    aber::focal_shift
+                };
+                f(s, l).unwrap_or_else(|e| {
                     warnings.push(format!("{l} µm: {e}"));
                     f64::NAN
                 })
@@ -613,11 +643,16 @@ impl Analysis for FocalShift {
             - fin.fold(f64::INFINITY, |a, &b| a.min(b));
         let f = lensbench_core::report::system_data(s).wfno;
         Ok(ShiftOut {
-            unit: len_unit(),
+            unit: shift_unit(s),
             wavelengths: wl,
             shift,
             range,
-            diffraction_depth: 4.0 * s.wave(s.primary).mm() * f * f,
+            // アフォーカル像空間では 0（OpticStudio と同じ）
+            diffraction_depth: if s.afocal {
+                0.0
+            } else {
+                4.0 * s.wave(s.primary).mm() * f * f
+            },
             warnings,
         })
     }
@@ -689,16 +724,11 @@ impl Analysis for GridDistortion {
         Meta {
             name: "grid-distortion",
             about: "Grid distortion: real chief ray image points of a square grid of fields against the paraxial ideal grid",
-            help: "Grid distortion (OpticStudio's Grid Distortion): for a grid × grid square inscribed in the circle of the largest field (evenly spaced in tan θ for angle fields), the real chief ray image point and the ideal point from the paraxial magnification, with the distortion % (the DISG operand against the axis). Needs a rotationally symmetric system",
+            help: "Grid distortion (OpticStudio's Grid Distortion): for a grid × grid square inscribed in the circle of the largest field (evenly spaced in tan θ for angle fields), the real chief ray image point and the ideal point from the paraxial magnification, with the distortion % (the DISG operand against the axis). In afocal image space the points are the direction tangents (l/n, m/n) of the image space ray and the ideal points come from the paraxial angular magnification, as in OpticStudio. Needs a rotationally symmetric system",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &GridParams) -> Result<GridOut> {
         let s = cx.system;
-        if s.afocal {
-            return Err(Error::Invalid(
-                "grid distortion in afocal image space is not supported yet".into(),
-            ));
-        }
         let w = wave(s, p.wave)?.unwrap_or(s.primary);
         // 軸外の視野が無い系は、歪曲の基準を求める前に格子の視野の文で止める
         seidel::grid_field(s, 1.0, 1.0)?;
@@ -738,7 +768,8 @@ impl Analysis for GridDistortion {
             }
         }
         Ok(GridOut {
-            unit: len_unit(),
+            // アフォーカル像空間では像空間の向きの tan (l/n, m/n)
+            unit: if s.afocal { "tan".into() } else { len_unit() },
             wave: w + 1,
             grid: n,
             points,

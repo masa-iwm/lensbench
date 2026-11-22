@@ -1,4 +1,4 @@
-//! 収差図の計算: 横収差と OPD の扇（Ray Fan・OPD Fan）、像面湾曲（主光線の近くの焦点）、倍率色収差、色の焦点ずれ。
+//! 収差図の計算: 横収差と OPD の扇（Ray Fan・OPD Fan）、瞳の収差の扇、像面湾曲（主光線の近くの焦点）、倍率色収差、色の焦点ずれ。
 //!
 //! どれも評価関数の演算子と同じ計算から作る（TRAY・TRAX は [`ray_fan`]、OPDC は [`opd_fan`]、FCGT・FCGS は
 //! [`field_focus`]、LONA は `lensbench_core::seidel::longitudinal`）。図の値と演算子の値が合う。
@@ -91,6 +91,22 @@ pub fn field_focus(
     j: usize,
     tangential: bool,
 ) -> Result<f64> {
+    let (dp, ds) = near_pair(s, field, w, j, tangential)?;
+    let z = -(dp[0] * ds[0] + dp[1] * ds[1]) / (ds[0] * ds[0] + ds[1] * ds[1]);
+    if !z.is_finite() {
+        invalid!("the field curvature is not finite (wavelength {})", w + 1);
+    }
+    Ok(z)
+}
+
+/// [`field_focus`] の 2 本の光線の、面 j の上の横の位置の差 Δp と傾きの差 Δs
+fn near_pair(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    j: usize,
+    tangential: bool,
+) -> Result<([f64; 2], [f64; 2])> {
     const H: f64 = 1e-3;
     let (px, py) = if tangential {
         ([0.0, 0.0], [-H, H])
@@ -111,11 +127,63 @@ pub fn field_focus(
         b.lmn[0] / b.lmn[2] - a.lmn[0] / a.lmn[2],
         b.lmn[1] / b.lmn[2] - a.lmn[1] / a.lmn[2],
     ];
-    let z = -(dp[0] * ds[0] + dp[1] * ds[1]) / (ds[0] * ds[0] + ds[1] * ds[1]);
-    if !z.is_finite() {
+    Ok((dp, ds))
+}
+
+/// アフォーカル像空間の系の像面湾曲 [視度]: [`field_focus`] の z [mm] を主光線に沿った距離 z / cos θ' [m] にし、その逆数
+/// （OpticStudio のアフォーカルの Field Curvature。2026 R1.01 で実測）。z を経ずに逆数を求めるので、平行に出る光（焦点が
+/// 無限遠）は 0 視度
+pub fn field_focus_diopters(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    j: usize,
+    tangential: bool,
+) -> Result<f64> {
+    let (dp, ds) = near_pair(s, field, w, j, tangential)?;
+    let t = s.try_trace(field, &[0.0], &[0.0], Some(w), Some(j), false)?;
+    if !t.traced(0) {
+        invalid!("the chief ray (wavelength {}) stopped", w + 1);
+    }
+    // 1 / z = −|Δs|² / (Δp·Δs)（傾きの差がちょうど 0 なら平行で 0）
+    let s2 = ds[0] * ds[0] + ds[1] * ds[1];
+    let inv = if s2 == 0.0 {
+        0.0
+    } else {
+        -s2 / (dp[0] * ds[0] + dp[1] * ds[1])
+    };
+    let d = 1000.0 * t.rays[0].lmn[2] * inv;
+    if !d.is_finite() {
         invalid!("the field curvature is not finite (wavelength {})", w + 1);
     }
-    Ok(z)
+    // 平行のときの −0 は 0 に
+    Ok(d + 0.0)
+}
+
+/// 瞳の収差の扇（OpticStudio の Pupil Aberration Fan）[%]: エイミングをせずに近軸の入射瞳の正規化座標へ向けた実光線の、絞りの
+/// 面での y（子午）・x（球欠）の、近軸の点（瞳座標 × 主波長の近軸の絞りの半径）からのずれを、絞りの半径に対する %
+/// で（近軸 − 実）。絞りまでにけられた光線は NaN
+pub fn pupil_fan(s: &System, field: FieldSel, w: usize, p: &[f64]) -> Result<Fan> {
+    let st = s.stop();
+    let (rx, ry) = s.stop_radius();
+    if rx == 0.0 || ry == 0.0 {
+        invalid!("the paraxial stop radius is 0");
+    }
+    let zeros = vec![0.0; p.len()];
+    let tan = s.try_trace(field, &zeros, p, Some(w), Some(st), false)?;
+    let sag = s.try_trace(field, p, &zeros, Some(w), Some(st), false)?;
+    let val = |t: &lensbench_core::system::Trace, i: usize, y: bool| {
+        if !t.ok(i) {
+            return f64::NAN;
+        }
+        let (k, r) = if y { (1, ry) } else { (0, rx) };
+        100.0 * (p[i] * r - t.rays[i].xyz[k]) / r
+    };
+    Ok(Fan {
+        p: p.to_vec(),
+        tan: (0..p.len()).map(|i| val(&tan, i, true)).collect(),
+        sag: (0..p.len()).map(|i| val(&sag, i, false)).collect(),
+    })
 }
 
 /// 視野 field の波長 w の実主光線の像面の点と、主波長の実主光線の点の差 (dx, dy)（倍率色収差。アフォーカル像空間では角度）
@@ -131,6 +199,29 @@ pub fn focal_shift(s: &System, lam: f64) -> Result<f64> {
     let base = lensbench_core::seidel::longitudinal(s, s.primary, 0.0)?;
     let (d, w) = s.with_wavelength(lam)?;
     Ok(lensbench_core::seidel::longitudinal(&d, w, 0.0)? - base)
+}
+
+/// アフォーカル像空間の系の色の焦点ずれ [視度]: 波長 lam [µm] と主波長の近軸の焦点の、像面からの距離 z [m] の逆数の差
+/// （OpticStudio のアフォーカルの Chromatic Focal Shift。2026 R1.01 で実測）。平行に出る光は 0 視度
+pub fn focal_shift_diopters(s: &System, lam: f64) -> Result<f64> {
+    let base = paraxial_diopters(s, s.primary)?;
+    let (d, w) = s.with_wavelength(lam)?;
+    Ok(paraxial_diopters(&d, w)? - base + 0.0)
+}
+
+/// 波長 w の近軸周辺光線（LONA の帯 0 と同じ光線）の焦点の、像面からの距離 [m] の逆数 −u / y [視度]
+fn paraxial_diopters(s: &System, w: usize) -> Result<f64> {
+    let img = s.image();
+    let p = s.paraxial();
+    let (ym, um) = s.ptrace(p.marginal.0[1], p.marginal.1[0], w, None);
+    let d = -1000.0 * um[img - 1] / ym[img];
+    if !d.is_finite() {
+        invalid!(
+            "the paraxial focus is on the image surface (wavelength {})",
+            w + 1
+        );
+    }
+    Ok(d)
 }
 
 #[cfg(test)]

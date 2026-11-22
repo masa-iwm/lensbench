@@ -18,6 +18,9 @@
 
 ### 変えたもの
 
+- **アフォーカル像空間の系の歪曲の評価関数の演算子**（DISG・DIMX・DISC など）: 実主光線の像面の点の代わりに像空間の向きの tan（l/n・m/n）と
+  近軸の角倍率で比べる（OpticStudio のアフォーカルの歪曲の図・グリッド歪曲と同じ定義。演算子そのものは OpticStudio と照合していない。
+  これまでは像面の位置で、アフォーカルでは意味の無い値だった）。
 - **CLI が exe の隣の catalogs/glass を探す**: `--glass-dir`・`LENSBENCH_GLASSCAT` の後に、exe の隣の `catalogs/glass` があればそこのガラスカタログも使う
   （GUI の既定のカタログと同じ配置）。exe の隣にカタログを置いた配置なら、`--glass-dir` なしで CLI も同梱の屈折率だけのカタログでなくそこのカタログを使う
 
@@ -44,6 +47,10 @@
 - **近軸ガウスビーム**（`gaussian-beam`、OpticStudio の Paraxial Gaussian Beam 相当）: ウエストの半径・面 1 からの距離・M² で与えたビームを近軸の
   ABCD 行列で運び、各面の後のビーム半径・ウエスト・ウエストの位置・曲率半径・広がり角・レイリー長（基本モードと M² の混合モード）を出す。
   CLI・serve・Python（`System.analyze("gaussian-beam", ...)`）・GUI（光軸に沿ったビーム半径の図）。OpticStudio 26.1 と表示の 6 桁で一致
+- **瞳の収差の扇**（`pupil-fan`、OpticStudio の Pupil Aberration Fan）: 近軸の入射瞳へ向けた実光線が絞りを通る点の、近軸の点からのずれ
+  [絞りの半径の %]。CLI・serve・Python・GUI（収差の群）。OpticStudio 2026 R1.01 と A0・E0 で出力の桁まで一致
+- **アフォーカル像空間の像面湾曲・色の焦点ずれ・グリッド歪曲**: これまでエラーだったのを、OpticStudio と同じく焦点は視度、歪曲・グリッドの点は
+  向きの tan で出す。OpticStudio 2026 R1.01 とケプラー式の望遠鏡で出力の桁まで一致
 - **熱の構成**（OpticStudio の Make Thermal）: CLI `make-thermal --temps -20,60 --out t.zmx`・GUI の「ファイル > 熱の構成を作る…」・
   Python `System.make_thermal`・serve の `write` の `thermal` と `edit` の `make_thermal`。構成 1 を今のシステムにし、温度ごとに温度・気圧と、
   線膨張係数で伸び縮みさせた曲率・厚さ（空気の間隔は縁を結ぶスペーサーの式）・偶数次非球面の係数・半直径・機械半径・チップゾーンを

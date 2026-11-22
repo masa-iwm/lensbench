@@ -15,7 +15,7 @@ lensbench mtf      system.zmx --max-freq 200 --freq-steps 40     # 周波数を�
 lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --points 11
 lensbench mtf-field system.zmx --freqs 30,60 --points 11
 lensbench rms      system.zmx --vs field --points 11 --reference centroid
-lensbench ray-fan  system.zmx --field 3 --rays 20                # 収差図（ほかに opd-fan・field-curvature・longitudinal・lateral-color・focal-shift・grid-distortion・seidel）
+lensbench ray-fan  system.zmx --field 3 --rays 20                # 収差図（ほかに opd-fan・pupil-fan・field-curvature・longitudinal・lateral-color・focal-shift・grid-distortion・seidel）
 lensbench footprint system.zmx --surface 5                       # 面の上の光束の範囲（ほかに relative-illumination・vignetting）
 lensbench gaussian-beam system.zmx --waist 0.5 --surf1-to-waist -20 --m2 1.2   # 近軸ガウスビーム（各面のビーム径・ウエスト・広がり角）
 lensbench optimize system.zmx --var 8.t --var "6.c=0:0.05" --merit wavefront --out opt.zmx

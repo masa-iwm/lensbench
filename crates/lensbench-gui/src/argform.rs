@@ -231,7 +231,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         ("pop", "center") => "Output center",
         ("interference", "width") => "Area width",
         ("mech-check", "grid") => "Pupil grid",
-        ("ray-fan" | "opd-fan", "rays") => "Rays per side",
+        ("ray-fan" | "opd-fan" | "pupil-fan", "rays") => "Rays per side",
         ("field-curvature" | "lateral-color", "points") => "Field points",
         ("longitudinal", "points") => "Pupil zones",
         ("focal-shift", "points") => "Wavelength points",
