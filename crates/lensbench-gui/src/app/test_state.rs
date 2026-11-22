@@ -41,6 +41,8 @@ impl App {
             // 組合せ（写しを持つ別の窓は元のタブの写し）: 要素の数・前の絞りの間隔・版
             "combo": { "picks": c.doc.combo.picks.len(), "stop_gap": c.doc.combo.stop_gap },
             "copy_ready": c.popup_doc.copies.recv.ready(),
+            "sel": c.p.combo_view.sel(),
+            "lenses": c.browser.lenses.len(),
             "hist": c.undo_list(true).len(),
         })
     }
@@ -73,7 +75,7 @@ impl App {
     pub(crate) fn test_send(&mut self, op: &str) -> bool {
         match serde_json::from_str::<copy_panel::Fwd>(op) {
             Ok(f) => {
-                self.c.msgs.push(f.into_msg());
+                self.c.take_fwd(0, f);
                 true
             }
             Err(_) => false,

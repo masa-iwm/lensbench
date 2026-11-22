@@ -339,6 +339,12 @@ impl App {
                     {
                         recopy = true;
                     }
+                    if let Ok(w) =
+                        serde_json::from_value::<super::copy_panel::ViewCopy>(v["view"].clone())
+                    {
+                        w.apply(c);
+                        c.popup_doc.copies.recv.view = Some(w);
+                    }
                     if let Ok(h) =
                         serde_json::from_value::<super::copy_panel::HistCopy>(v["hist"].clone())
                     {
@@ -438,11 +444,28 @@ impl App {
             c.ask_ui(ctx);
         }
         // この窓で当てるのは文書を変えない操作だけ。文書を変える操作は元のタブへ送り、当てた結果が写しで戻る
-        let ops: Vec<Value> = self
+        use super::copy_panel::{Fwd, ViewCopy};
+        let mut fwd: Vec<Fwd> = self.c.msgs.iter().filter_map(Fwd::from_msg).collect();
+        // カタログから足した玉の像面合わせの印・見え方（選んだ要素・今のセル・自動の作り直し）も元のタブへ
+        if std::mem::take(&mut self.c.doc.refocus) {
+            fwd.push(Fwd::Refocus);
+        }
+        let view = ViewCopy::of(&self.c);
+        // 元のタブの見え方を受けてから（受ける前の窓の既定で元のタブの選択を消さない）
+        if self
             .c
-            .msgs
-            .iter()
-            .filter_map(super::copy_panel::Fwd::from_msg)
+            .popup_doc
+            .copies
+            .recv
+            .view
+            .as_ref()
+            .is_some_and(|v| *v != view)
+        {
+            self.c.popup_doc.copies.recv.view = Some(view.clone());
+            fwd.push(Fwd::View { view });
+        }
+        let ops: Vec<Value> = fwd
+            .into_iter()
             .filter_map(|f| serde_json::to_value(f).ok())
             .collect();
         let focus = ctx.memory(|m| m.focused());

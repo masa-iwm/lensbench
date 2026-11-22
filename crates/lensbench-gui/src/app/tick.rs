@@ -222,7 +222,7 @@ impl App {
                 Ev::Ops(id, ops) => {
                     for op in ops {
                         match serde_json::from_value::<copy_panel::Fwd>(op) {
-                            Ok(f) => self.c.msgs.push(f.into_msg()),
+                            Ok(f) => self.c.take_fwd(id, f),
                             Err(e) => self.c.fail(format!(
                                 "{} {id}: {e}",
                                 tr("Could not apply an operation from another window")
@@ -292,6 +292,14 @@ impl App {
                 .combo_for(id, c.doc.rev, &c.doc.combo)
             {
                 t.send_copy(id, &json!({ "combo": v }));
+            }
+            if let Some(v) = c
+                .popup_doc
+                .copies
+                .sync
+                .view_for(id, copy_panel::ViewCopy::of(c))
+            {
+                t.send_copy(id, &json!({ "view": v }));
             }
             if w.pane.kind == Kind::History {
                 let h = copy_panel::HistCopy::of(c);

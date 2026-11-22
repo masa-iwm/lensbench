@@ -1,8 +1,8 @@
 //! Web 版: 解析以外のパネルも、別の窓が元のタブの写しを持って自分で描く（[`copies`]）。
 //!
 //! - 系の写しは解析の窓と同じ（[`super::calc_panel`]）。組合せを見るパネルには、組合せ（保存の形）と、その後の
-//!   組合せの書き換え（[`super::edit::Edit`]）も送る（[`CopySync`]）。履歴のパネルには元に戻す段の一覧を送る
-//!   （[`HistCopy`]）
+//!   組合せの書き換え（[`super::edit::Edit`]）と見え方（選んだ要素・面の表の今のセル。[`ViewCopy`]）も送る
+//!   （[`CopySync`]）。履歴のパネルには元に戻す段の一覧を送る（[`HistCopy`]）
 //! - 別の窓でした操作は自分では当てず、[`Fwd`] にして元のタブへ送る。文書を変えるのは元のタブだけで、当てた結果
 //!   （組合せの書き換え・系の読み込みと変更）がまた写しとして全部の別の窓に届く。元に戻す段・保存・ファイルの窓も
 //!   元のタブ
@@ -12,7 +12,7 @@
 
 use super::*;
 
-/// 別の窓が元のタブの写しを持って自分で描くパネルか。ほかのパネル（最適化・公差・差し替え探索・ズームなど
+/// 別の窓が元のタブの写しを持って自分で描くパネルか。ほかのパネル（最適化・公差・差し替え探索・ズーム。
 /// 長い計算を元のタブで回すもの）は、元のタブが描いて画面を送る
 pub(super) fn copies(kind: &Kind) -> bool {
     matches!(
@@ -23,6 +23,8 @@ pub(super) fn copies(kind: &Kind) -> bool {
             | Kind::LensData
             | Kind::MultiConfig
             | Kind::History
+            | Kind::Layout
+            | Kind::Catalog
     )
 }
 
@@ -76,6 +78,57 @@ pub(super) enum Fwd {
     Build,
     /// 像面を近軸の焦点へ
     FocusImage,
+    /// 要素 index の面を面の表で見る（図の要素のダブルクリック）
+    OpenElement {
+        index: usize,
+    },
+    /// 要素 index（から始まる範囲）をユーザーカタログに保存する
+    SaveToCatalog {
+        index: usize,
+    },
+    /// その種類のパネルを表に出す
+    FocusKind {
+        kind: Kind,
+    },
+    /// 硝材・レンズのフォルダの窓を開く
+    Folders,
+    /// カタログの組合せを系にして読む（プロジェクトの JSON）
+    CatalogBuild {
+        project: Value,
+    },
+    /// 足した玉の系ができたら像面を近軸の焦点へ（カタログから足したときの印）
+    Refocus,
+    /// 見え方（選んだ要素・面の表の今のセル・自動で作り直すか）が変わった
+    View {
+        view: ViewCopy,
+    },
+}
+
+/// 窓の間で写す見え方: 組合せの図で選んだ要素、面の表の今のセル、組合せを変えたら自動で系を作り直すか
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(super) struct ViewCopy {
+    pub sel: Option<usize>,
+    pub cur: Option<(usize, lens_data::Col)>,
+    pub auto: bool,
+}
+
+impl ViewCopy {
+    pub(super) fn of(c: &Core) -> ViewCopy {
+        ViewCopy {
+            sel: c.p.combo_view.sel(),
+            cur: c.p.ld.cur,
+            auto: c.s.auto_build,
+        }
+    }
+
+    /// 見え方を当てる（選んだ要素が変われば図と表に知らせる）
+    pub(super) fn apply(&self, c: &mut Core) {
+        if c.p.combo_view.sel() != self.sel {
+            c.p.combo_view.set_sel(self.sel);
+        }
+        c.p.ld.cur = self.cur;
+        c.s.auto_build = self.auto;
+    }
 }
 
 impl Fwd {
@@ -101,13 +154,25 @@ impl Fwd {
             Msg::Save(as_new) => Fwd::Save { as_new: *as_new },
             Msg::Combo(combo::Act::Build) => Fwd::Build,
             Msg::Combo(combo::Act::Focus) | Msg::FocusImage => Fwd::FocusImage,
+            Msg::Combo(combo::Act::Open(k)) => Fwd::OpenElement { index: *k },
+            Msg::Combo(combo::Act::SaveToCatalog(k)) => Fwd::SaveToCatalog { index: *k },
+            Msg::Combo(combo::Act::Catalog) => Fwd::FocusKind {
+                kind: Kind::Catalog,
+            },
+            Msg::FocusKind(k) => Fwd::FocusKind { kind: k.clone() },
+            Msg::Folders | Msg::Catalog(catalog::Action::Settings) => Fwd::Folders,
+            Msg::Catalog(catalog::Action::SysSettings) => Fwd::FocusKind {
+                kind: Kind::SysSettings,
+            },
+            Msg::Catalog(catalog::Action::New) => Fwd::New,
+            Msg::Catalog(catalog::Action::Build(p)) => Fwd::CatalogBuild { project: p.clone() },
             _ => return None,
         })
     }
 
-    /// 元のタブで当てる操作
-    pub(super) fn into_msg(self) -> Msg {
-        match self {
+    /// 元のタブで当てる操作（操作の列を通さずに当てるもの（[`Core::take_fwd`]）は None）
+    pub(super) fn into_msg(self) -> Option<Msg> {
+        Some(match self {
             Fwd::Edit { ops } => Msg::Edit(super::edit::Edit { ops }),
             Fwd::LensData { act } => Msg::LensData(act),
             Fwd::Undo { back, steps } => Msg::Undo(back, steps),
@@ -121,15 +186,41 @@ impl Fwd {
             Fwd::Save { as_new } => Msg::Save(as_new),
             Fwd::Build => Msg::Combo(combo::Act::Build),
             Fwd::FocusImage => Msg::FocusImage,
+            Fwd::OpenElement { index } => Msg::Combo(combo::Act::Open(index)),
+            Fwd::SaveToCatalog { index } => Msg::Combo(combo::Act::SaveToCatalog(index)),
+            Fwd::FocusKind { kind } => Msg::FocusKind(kind),
+            Fwd::Folders => Msg::Folders,
+            Fwd::CatalogBuild { project } => Msg::Catalog(catalog::Action::Build(project)),
+            Fwd::Refocus | Fwd::View { .. } => return None,
+        })
+    }
+}
+
+impl Core {
+    /// 元のタブ: 別の窓 id から届いた操作を当てる（操作の列に入れるか、見え方・印はここで当てる）
+    pub(super) fn take_fwd(&mut self, id: u64, f: Fwd) {
+        match f {
+            Fwd::Refocus => self.doc.refocus = true,
+            Fwd::View { view } => {
+                view.apply(self);
+                // 送ってきた窓には送り返さない（ほかの窓には送る）
+                self.popup_doc.copies.sync.view.insert(id, view);
+            }
+            f => {
+                if let Some(m) = f.into_msg() {
+                    self.msgs.push(m);
+                }
+            }
         }
     }
 }
 
-/// 別の窓の中で当てる操作か（文書を変えない: 解析の計算、表の選び方・候補と面のデータの読み込み・断る理由）
+/// 別の窓の中で当てる操作か（文書を変えない: 解析の計算、カタログの一覧の読み直し、表の選び方・候補と面のデータの
+/// 読み込み・断る理由）
 pub(super) fn local(m: &Msg) -> bool {
     use lens_data::Act as L;
     match m {
-        Msg::Analyze(_) => true,
+        Msg::Analyze(_) | Msg::Catalog(catalog::Action::Refresh) => true,
         Msg::LensData(a) => matches!(
             a,
             L::Select(_) | L::NeedData(_) | L::NeedGlasses | L::NeedCoatings | L::Refused(_)
@@ -224,6 +315,8 @@ pub(super) struct CopySync {
     combo: HashMap<u64, (u64, Combo)>,
     /// 窓 id → 送った履歴
     hist: HashMap<u64, HistCopy>,
+    /// 窓 id → 送った（窓から受けた）見え方
+    view: HashMap<u64, ViewCopy>,
 }
 
 impl CopySync {
@@ -231,12 +324,14 @@ impl CopySync {
     pub(super) fn retain(&mut self, keep: &[u64]) {
         self.combo.retain(|id, _| keep.contains(id));
         self.hist.retain(|id, _| keep.contains(id));
+        self.view.retain(|id, _| keep.contains(id));
     }
 
     /// 窓 id が始まり直した・写しが続かなかった: 次は全部を送る
     pub(super) fn restart(&mut self, id: u64) {
         self.combo.remove(&id);
         self.hist.remove(&id);
+        self.view.remove(&id);
     }
 
     /// 窓 id に送る組合せ（版 rev の combo）。前に送った版と同じなら None。前に送っていれば変わった所だけ
@@ -253,6 +348,16 @@ impl CopySync {
         };
         self.combo.insert(id, (rev, combo.clone()));
         Some(v)
+    }
+
+    /// 窓 id に送る見え方（前に送った・窓から受けたものと同じなら None）
+    pub(super) fn view_for(&mut self, id: u64, v: ViewCopy) -> Option<Value> {
+        if self.view.get(&id) == Some(&v) {
+            return None;
+        }
+        let j = serde_json::to_value(&v).ok();
+        self.view.insert(id, v);
+        j
     }
 
     /// 窓 id に送る履歴（前に送ったものと同じなら None）
@@ -273,6 +378,8 @@ pub(super) struct CopyRecv {
     rev: Option<u64>,
     /// 受けた履歴と受けた時刻
     pub hist: Option<(HistCopy, web_time::Instant)>,
+    /// 元のタブと揃っている見え方（受けたか、送ったもの）
+    pub view: Option<ViewCopy>,
 }
 
 impl CopyRecv {
@@ -341,13 +448,18 @@ mod tests {
             Msg::LensData(lens_data::Act::Lock("L1".into(), true)),
             Msg::Combo(combo::Act::Build),
             Msg::FocusImage,
+            Msg::Combo(combo::Act::Open(2)),
+            Msg::Combo(combo::Act::SaveToCatalog(1)),
+            Msg::FocusKind(Kind::SysSettings),
+            Msg::Folders,
+            Msg::Catalog(catalog::Action::Build(json!({ "surfaces": [] }))),
         ];
         for m in msgs {
             let f = Fwd::from_msg(&m).unwrap_or_else(|| panic!("{m:?}"));
             let j = serde_json::to_value(&f).unwrap();
             let back: Fwd = serde_json::from_value(j).unwrap();
             assert_eq!(back, f);
-            assert_eq!(Fwd::from_msg(&back.into_msg()), Some(f));
+            assert_eq!(Fwd::from_msg(&back.into_msg().unwrap()), Some(f));
         }
         for m in [
             Msg::Analyze(3),
@@ -357,7 +469,22 @@ mod tests {
         ] {
             assert_eq!(Fwd::from_msg(&m), None, "{m:?}");
         }
+        // 見え方と印は操作の列を通さない
+        let v = Fwd::View {
+            view: ViewCopy {
+                sel: Some(1),
+                cur: Some((3, lens_data::Col::R)),
+                auto: false,
+            },
+        };
+        let j = serde_json::to_value(&v).unwrap();
+        assert_eq!(serde_json::from_value::<Fwd>(j).unwrap(), v);
+        assert!(v.into_msg().is_none());
+        assert!(Fwd::Refocus.into_msg().is_none());
         assert!(local(&Msg::Analyze(1)));
+        // カタログの一覧の読み直しは窓が自分でする（送らずに捨てない）
+        let refresh = Msg::Catalog(catalog::Action::Refresh);
+        assert!(local(&refresh) && Fwd::from_msg(&refresh).is_none());
         assert!(!local(&Msg::Undo(true, 1)));
     }
 
@@ -391,6 +518,22 @@ mod tests {
         let v = sync.combo_for(7, 5, &c).unwrap();
         assert!(recv.combo(&mut win, &v));
         assert_eq!(win, c);
+    }
+
+    /// 見え方は変わったときだけ、窓から受けたものは送り返さない
+    #[test]
+    fn view_copy_is_sent_on_change() {
+        let mut sync = CopySync::default();
+        let v = ViewCopy {
+            sel: Some(0),
+            cur: None,
+            auto: true,
+        };
+        assert!(sync.view_for(4, v.clone()).is_some());
+        assert!(sync.view_for(4, v.clone()).is_none());
+        let w = ViewCopy { sel: Some(2), ..v };
+        sync.view.insert(4, w.clone());
+        assert!(sync.view_for(4, w).is_none());
     }
 
     /// 履歴の写しは中身が変わったときだけ送る（何秒前かは比べない）

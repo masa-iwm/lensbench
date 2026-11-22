@@ -175,6 +175,31 @@ if (!process.env.NO_POPUP) {
     await settle("窓に当てた結果が写しで戻る", s => s.combo.stop_gap === gap2, 60000, popup);
   }
 }
+// レイアウトの別の窓で選んだ要素は元のタブでも選ばれる。カタログの別の窓は一覧を自分で読む
+if (!process.env.NO_POPUP) {
+  for (const kind of ["Layout", "Catalog"]) {
+    const popupP = context.waitForEvent("page", { timeout: 60000 });
+    const moved = await page.evaluate(async k => (await import("./lensbench_web.js")).test_detach_panel(k), `"${kind}"`);
+    for (let i = 0; i < 5; i++) await page.mouse.move(300 + 10 * i, 340);
+    const popup = moved ? await popupP.catch(() => null) : null;
+    if (!popup) {
+      errors.push(`${kind} の別の窓が開かない（${JSON.stringify(await state())}）`);
+      continue;
+    }
+    watch(popup, `${kind} の窓: `);
+    await popup.waitForFunction(() => !document.getElementById("msg"), null, { timeout: 120000 }).catch(() => {});
+    const p0 = await settle(`${kind} の窓が写しを受ける`, s => s.calc_window && s.copy_ready && s.system, 120000, popup);
+    if (kind === "Layout") {
+      const k = p0.sel === 1 ? 0 : 1;
+      const op = JSON.stringify({ op: "view", view: { sel: k, cur: null, auto: true } });
+      await popup.evaluate(async o => (await import("./lensbench_web.js")).test_send(o), op);
+      for (let i = 0; i < 3; i++) await popup.mouse.move(200 + 10 * i, 220);
+      await settle("レイアウトの窓で選んだ要素が元のタブで選ばれる", s => s.sel === k);
+    } else {
+      await settle("カタログの窓が一覧を読む", s => s.lenses > 0, 120000, popup);
+    }
+  }
+}
 console.log(`画面が止まった最長 ${gap.toFixed(0)} ms`);
 await page.screenshot({ path: shot });
 await browser.close();
