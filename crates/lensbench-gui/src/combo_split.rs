@@ -261,7 +261,8 @@ fn derived(s: &System, j: usize, name: &str) -> bool {
     };
     by_solve
         || s.pickups.iter().any(|q| q.dst == j)
-        || (matches!(name, "k" | "semi" | "asph") && s.macro_parms.iter().any(|q| q.surf == j))
+        || (matches!(name, "k" | "semi" | "mech" | "asph")
+            && s.macro_parms.iter().any(|q| q.surf == j))
 }
 
 /// 曲率 c の面の半径（平面は 0）。1/半径 が c に戻る値があればそれ。どの f64 の逆数にもならない曲率もあるので

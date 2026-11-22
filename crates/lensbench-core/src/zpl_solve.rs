@@ -1,4 +1,4 @@
-//! ZPL Macro Solve: .zmx のソルブが呼ぶ ZPL のマクロを [`crate::zpl`] で走らせ、曲率・厚さ・円錐係数・半直径・面タイプのパラメータを
+//! ZPL Macro Solve: .zmx のソルブが呼ぶ ZPL のマクロを [`crate::zpl`] で走らせ、曲率・厚さ・円錐係数・半直径・機械半径・面タイプのパラメータを
 //! 決める。
 //!
 //! マクロの文（.ZPL）は読込のときに探す（[`crate::test_zmx::LoadOptions::macro_dirs`]、.zmx のフォルダ、その隣の
@@ -444,6 +444,7 @@ impl MacroParm {
             Kind::Parm(i) => format!("parameter {i}"),
             Kind::Conic => "conic".into(),
             Kind::Semi => "semi-diameter".into(),
+            Kind::MechSemi => "mechanical semi-diameter".into(),
             k => k.name(),
         }
     }
@@ -476,8 +477,8 @@ impl System {
             let Some(mut v) = self.run_macro(m, q.surf)? else {
                 continue;
             };
-            // 負の半直径は絶対値にする（OpticStudio 26.1.1 で実測）
-            if q.what == Kind::Semi {
+            // 負の半直径は絶対値にする（OpticStudio 26.1.1 で実測）。機械半径も同じにする
+            if matches!(q.what, Kind::Semi | Kind::MechSemi) {
                 v = v.abs();
             }
             let what = q.what;

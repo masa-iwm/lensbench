@@ -738,7 +738,7 @@ impl System {
         })
     }
 
-    /// 円錐係数・半直径・面タイプのパラメータの ZPL マクロのソルブ（[`crate::zpl_solve::MacroParm`]）を足す（同じ面・
+    /// 円錐係数・半直径・機械半径・面タイプのパラメータの ZPL マクロのソルブ（[`crate::zpl_solve::MacroParm`]）を足す（同じ面・
     /// 同じ量のものは置き換える）。マクロは [`System::macros`] の番号。値はすぐに解き直す
     pub fn add_macro_parm(&mut self, q: crate::zpl_solve::MacroParm) -> Result<()> {
         let ns = self.surfaces.len();
@@ -748,8 +748,14 @@ impl System {
         if q.id as usize >= self.macros.len() {
             invalid!("no macro {} (the system has {})", q.id, self.macros.len());
         }
-        if !matches!(q.what, Kind::Conic | Kind::Semi | Kind::Parm(_)) {
-            invalid!("a macro solve sets k, semi or p1.. (not {})", q.what.name());
+        if !matches!(
+            q.what,
+            Kind::Conic | Kind::Semi | Kind::MechSemi | Kind::Parm(_)
+        ) {
+            invalid!(
+                "a macro solve sets k, semi, mech or p1.. (not {})",
+                q.what.name()
+            );
         }
         if !q.what.is_pick_only() {
             self.check_param(Param::new(q.surf, q.what))?;

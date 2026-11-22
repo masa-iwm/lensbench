@@ -202,7 +202,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - ZPL マクロのソルブ: `"macros": [{"name": "MIRR", "source": "…"}]`（.ZPL の中身をそのまま。マクロのファイルは読まない。同じ名前は 2 つ書けない）と書き、
   ブロックの `surface_ops` に `{"op": "add_solve", "surface": 1, "kind": "macro_curv", "macro": "MIRR"}`（厚みは `macro_thick`）で
   `macro` にマクロの名前（大文字・小文字は区別しない。0 始まりの番号でもよい、`param` に番号でも読む）を書く。円錐係数・半直径・
-  面タイプのパラメータは `{"op": "add_macro_solve", "surface": 0, "macro": "K", "what": "k"}`（`what` は `k`・`semi`・`p1` …）。
+  面タイプのパラメータは `{"op": "add_macro_solve", "surface": 0, "macro": "K", "what": "k"}`（`what` は `k`・`semi`・`mech`・`p1` …）。
   OpticStudio の Macro Solve と同じに解く（.zmx のマクロのソルブと同じ）。マクロの中の面の番号は展開したシステムの面の番号
   （`SOSO(0)` からの相対でなければ、前に面を足し引きすると指す面が変わる。OpticStudio と同じ）。
   GUI がマクロのソルブのある .zmx を要素に分けると、マクロをここに書き、ソルブは名前で指す。

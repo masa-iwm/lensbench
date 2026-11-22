@@ -26,6 +26,8 @@
 
 ### 足したもの
 
+- **.zmx の機械半径の ZPL マクロのソルブ**（`MEMA 値 3 0 0 1 "名前"`）: 半直径のマクロと同じくマクロを探して解き直し、書き出しも同じ形で書く
+  （これまでは注意を出して自動にしていた）。serve の `add_macro_solve` の `what` に `mech` を足した
 - **像の模擬**（`image-sim`、OpticStudio の Image Simulation 相当）: 元の画像（PNG、グレーか RGB）を物体の視野に置き、主光線の像点（歪曲・倍率色収差）・
   相対照度・視野の格子の回折 PSF（FFT PSF、格子点の間は補間、FFT で畳み込み）をかけて検出器の像を作る。CLI（`--save` で 16 bit の PNG か JSON）・
   serve・Python（`System.image_sim`、NumPy の配列を受けて返す）・GUI（「像の模擬」）

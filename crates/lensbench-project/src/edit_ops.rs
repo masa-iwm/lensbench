@@ -15,7 +15,7 @@
 //!   from（元の量、省くと what） ／ `remove_pickup` dst, what
 //! - `add_solve` surface, kind（既定 marginal_height、[`lensbench_core::solves::SOLVE_KINDS`]）, value（既定 0）,
 //!   other（別の面を参照する種類の面）, param（帯・縁の高さ） ／ `remove_solve` surface, what（t か c、既定 t）
-//! - `add_macro_solve` surface, macro（系のマクロの番号）, what（k・semi・p1〜）: 円錐係数・半直径・面タイプのパラメータを
+//! - `add_macro_solve` surface, macro（系のマクロの番号）, what（k・semi・mech・p1〜）: 円錐係数・半直径・機械半径・面タイプのパラメータを
 //!   ZPL マクロで解く
 //! - `set_surface_data` surface, data（面のデータを全部の項目で。[`surface_data`] と同じ形で、書いた項目だけ変える。
 //!   屈折率 n・絞り stop・鏡 mirror は変えない（材料・set_stop で）。面タイプの形のデータ zern・grid・bin2・cylf・grin、

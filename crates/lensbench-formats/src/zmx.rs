@@ -79,6 +79,8 @@ pub struct RawSurf {
     pub kmacro: Option<String>,
     /// 半直径の ZPL マクロのソルブ（DIAM 値 4 0 0 1 "名前"、OpticStudio 26.1.1 で実測）
     pub smacro: Option<String>,
+    /// 機械半径の ZPL マクロのソルブ（MEMA 値 3 0 0 1 "名前"）
+    pub mmacro: Option<String>,
     /// パラメータの ZPL マクロのソルブ（番号, 名前）。PZPL 番号 "名前"
     pub pmacros: Vec<(u8, String)>,
     /// 円錐係数のピックアップ（元の面, 倍率, オフセット（常に 0）, 元の列）

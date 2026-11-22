@@ -2411,7 +2411,7 @@ cardinal quantity {s} ({})	基点の量 {s}（{}）
 {} of surfaces {from} to {to} is not finite	面 {from}〜{to} の {} が有限ではありません
 term {i}: cardinal points of surfaces {from} to {to} (1 to {last})	項 {i}: 面 {from}〜{to} の基点（1〜{last}）
 SSAG with Off-Axis, Remove or BFS	Off-Axis・Remove・BFS のある SSAG
-a macro solve sets k, semi or p1.. (not {})	マクロのソルブで解くのは k・semi・p1.. です（{} ではありません）
+a macro solve sets k, semi, mech or p1.. (not {})	マクロのソルブで解くのは k・semi・mech・p1.. です（{} ではありません）
 macro solve surface {} (1 to {})	マクロのソルブの面 {}（1〜{}）
 no macro {} (the system has {})	マクロ {} がありません（システムのマクロは {} 個）
 no macro named {n}	{n} という名前のマクロがありません

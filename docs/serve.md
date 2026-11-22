@@ -230,7 +230,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `add_pickup` | dst・src・what（c r t k p1〜 dn disp semi before0〜4 after0〜4）・scale・offset・from（元の量、省くと what） |
 | `remove_pickup` | dst・what、 `add_solve` surface・kind（marginal_height など、Python の add_solve と同じ名前）・value・other（別の面）・param・macro（macro_curv・macro_thick のマクロの名前か番号） |
 | `remove_solve` | surface・what（t か c） |
-| `add_macro_solve` | surface・macro（システムのマクロの名前か番号）・what（k・semi・p1〜。円錐係数・半直径・面タイプのパラメータを ZPL マクロで解く） |
+| `add_macro_solve` | surface・macro（システムのマクロの名前か番号）・what（k・semi・mech・p1〜。円錐係数・半直径・機械半径・面タイプのパラメータを ZPL マクロで解く） |
 | `set_param` | param・value |
 | `set_config_count` | n |
 | `set_config_row` | param・values |

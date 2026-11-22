@@ -305,7 +305,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く",
+          "description": "円錐係数・半直径・機械半径・面タイプのパラメータのマクロのソルブを置く",
           "properties": {
             "macro": {
               "$ref": "#/$defs/Ref",
@@ -319,7 +319,7 @@
               "$ref": "#/$defs/Ref"
             },
             "what": {
-              "description": "解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）",
+              "description": "解く量: `k`（円錐係数）・`semi`（半直径）・`mech`（機械半径）・`p1` …（面タイプのパラメータ）",
               "type": "string"
             }
           },

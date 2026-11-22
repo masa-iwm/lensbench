@@ -571,7 +571,7 @@ SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     }
     // 知らないソルブ・0 でない列は読込を止めず、自動にして注意を出す（機械半径は追跡に効かない）
     for (line, want) in [
-        ("  MEMA 24 3 0 0 1 \"\"\n", "solve 3 is not supported"),
+        ("  MEMA 24 5 0 0 1 \"\"\n", "solve 5 is not supported"),
         ("  MEMA 24 2 1 1 1 \"\"\n", "picks up column 1"),
     ] {
         let s = build(&txt(line));

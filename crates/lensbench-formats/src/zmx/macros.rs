@@ -19,7 +19,7 @@ pub(super) fn solves(raw: &Raw) -> Vec<Solve> {
         .collect()
 }
 
-/// 面の行の ZPL マクロのソルブを依頼の表にする（面の順、面の中は曲率・厚さ・円錐係数・半直径・パラメータの順）。
+/// 面の行の ZPL マクロのソルブを依頼の表にする（面の順、面の中は曲率・厚さ・円錐係数・半直径・機械半径・パラメータの順）。
 /// マクロはここで探して読み、今の系で試すのは [`System::from_import`]
 pub(super) fn requests(raw: &Raw, opt: &LoadOptions, base: Option<&Path>) -> Vec<MacroRequest> {
     let dirs = lensbench_core::zpl_solve::macro_dirs(&opt.macro_dirs, base);
@@ -30,6 +30,11 @@ pub(super) fn requests(raw: &Raw, opt: &LoadOptions, base: Option<&Path>) -> Vec
         todo.extend(r.tmacro.iter().map(|n| (MacroTarget::Thick, n)));
         todo.extend(r.kmacro.iter().map(|n| (MacroTarget::Col(Kind::Conic), n)));
         todo.extend(r.smacro.iter().map(|n| (MacroTarget::Col(Kind::Semi), n)));
+        todo.extend(
+            r.mmacro
+                .iter()
+                .map(|n| (MacroTarget::Col(Kind::MechSemi), n)),
+        );
         todo.extend(
             r.pmacros
                 .iter()

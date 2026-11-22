@@ -244,6 +244,35 @@ fn conic_and_semi_diameter_macros() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 機械半径のマクロ（MEMA 値 3 0 0 1 "名前"、DIAM の 4 と番号が違う）も解き直し、書き出して読み戻せる
+#[test]
+fn mechanical_semi_diameter_macro() {
+    let d = macro_dir("mech", &[("MM", "SOLVERETURN THIC(1) + 2.5\n")]);
+    let txt = singlet("X", -0.02)
+        .replace("  CURV -2e-2 12 0 0 0 \"X\"\n", "  CURV -2e-2\n")
+        .replacen(
+            "  DIAM 6 1 0 0 1 \"\"\n",
+            "  DIAM 6 1 0 0 1 \"\"\n  MEMA 9 3 0 0 1 \"MM\"\n",
+            1,
+        );
+    let s = load(&txt, &d);
+    assert!(s.macro_warnings().is_empty(), "{:?}", s.macro_warnings());
+    assert!(
+        !s.import_notes.iter().any(|n| n.contains("solve 3")),
+        "{:?}",
+        s.import_notes
+    );
+    assert_eq!(s.surfaces[1].mech_semi, Some(7.5));
+    let s = s.with_params(&[(Param::new(1, Kind::Thick), 7.0)]).unwrap();
+    assert_eq!(s.surfaces[1].mech_semi, Some(9.5));
+    let out = zmx_write::write(&s).unwrap();
+    assert!(out.contains("MEMA 9.5 3 0 0 1 \"MM\""), "{out}");
+    let back = load(&out, &d);
+    assert!(back.macro_warnings().is_empty());
+    assert_eq!(back.surfaces[1].mech_semi, Some(9.5));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 /// 自分の値を読むマクロ（OpticStudio は更新のたびに決まった回数だけ走らせて値が増えていく）は、収まらないので外す
 #[test]
 fn self_referencing_macro_is_dropped() {

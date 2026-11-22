@@ -719,7 +719,18 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     f(q.scale)
                 ),
             ),
-            (None, Some(m)) => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
+            (None, Some(m)) => match s
+                .macro_parms
+                .iter()
+                .find(|q| q.surf == k && q.what == Kind::MechSemi)
+            {
+                // 機械半径のマクロのソルブ: MEMA 値 3 0 0 1 "名前"（OpticStudio 2026 R1.01 の書き方）
+                Some(q) => w(
+                    &mut o,
+                    format!("  MEMA {} 3 0 0 1 \"{}\"", f(m), macro_name(s, q.id)),
+                ),
+                None => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
+            },
             // 自動も今の値を書く（OpticStudio と同じ。OpticStudio 2026 R1.01 の読込は、機械半径のピックアップを元の面の
             // MEMA の値 × 倍率とクリア半径で確かめ、0 ならピックアップを外す）
             (None, None) => w(&mut o, format!("  MEMA {} 0 0 0 1 \"\"", f(s.lens_radius(k)))),

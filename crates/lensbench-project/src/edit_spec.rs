@@ -160,7 +160,7 @@ pub struct StopOp<S> {
     pub surface: S,
 }
 
-/// 円錐係数・半直径・面タイプのパラメータを ZPL マクロで解く（同じ面・同じ量のものは置き換える。OpticStudio の
+/// 円錐係数・半直径・機械半径・面タイプのパラメータを ZPL マクロで解く（同じ面・同じ量のものは置き換える。OpticStudio の
 /// KZPL・DIAM の Macro Solve・PZPL）
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields, bound(deserialize = "S: Deserialize<'de>"))]
@@ -169,7 +169,7 @@ pub struct MacroSolveOp<S> {
     /// マクロの名前か番号（系のマクロ、プロジェクトでは `macros`。番号は 0 始まり）
     #[serde(rename = "macro")]
     pub macro_ref: Ref,
-    /// 解く量: `k`（円錐係数）・`semi`（半直径）・`p1` …（面タイプのパラメータ）
+    /// 解く量: `k`（円錐係数）・`semi`（半直径）・`mech`（機械半径）・`p1` …（面タイプのパラメータ）
     pub what: String,
 }
 
@@ -342,7 +342,7 @@ pub enum EditOp {
     RemovePickup { dst: Ref, what: String },
     /// ソルブを置く
     AddSolve(SolveOp<Ref>),
-    /// 円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く
+    /// 円錐係数・半直径・機械半径・面タイプのパラメータのマクロのソルブを置く
     AddMacroSolve(MacroSolveOp<Ref>),
     /// ソルブを外す
     RemoveSolve {
@@ -472,7 +472,7 @@ pub enum SurfaceOp {
     SetStop(StopOp<BlockRef>),
     /// ソルブを置く
     AddSolve(SolveOp<BlockRef>),
-    /// 円錐係数・半直径・面タイプのパラメータのマクロのソルブを置く
+    /// 円錐係数・半直径・機械半径・面タイプのパラメータのマクロのソルブを置く
     AddMacroSolve(MacroSolveOp<BlockRef>),
     /// ピックアップを置く
     AddPickup(PickupOp<BlockRef>),
