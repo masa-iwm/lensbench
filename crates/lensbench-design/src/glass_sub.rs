@@ -210,7 +210,7 @@ fn nd_vd(n: impl Fn(f64) -> f64) -> (f64, f64) {
     (d, (d - 1.0) / (f - c))
 }
 
-/// 面 j の今の媒質の実効の nd・vd（dn・disp 込み）
+/// 面 j の今の媒質の実効の nd・vd（dn・disp・dnd・dvd 込み）
 pub fn effective_nd_vd(s: &System, j: usize) -> Result<(f64, f64)> {
     let d = &s.surfaces[j];
     if d.is_mirror() || d.is_coord_break() || d.grin().is_some() {
@@ -220,7 +220,10 @@ pub fn effective_nd_vd(s: &System, j: usize) -> Result<(f64, f64)> {
         invalid!("surface {j}: the medium is air");
     }
     let lp = s.wavelengths[s.primary];
-    let b = s.material_index_at(&d.mat, &[LD, LF, LC, lp])?;
+    // 硝材の nd・vd のずれ（dnd・dvd）込み
+    let b = s
+        .surface_medium_index_at(j, &[LD, LF, LC, lp])?
+        .ok_or_else(|| format!("surface {j}: no medium"))?;
     let eff = |x: f64| x + d.dn + d.disp * (x - b[3]);
     let (nd, nf, nc) = (eff(b[0]), eff(b[1]), eff(b[2]));
     Ok((nd, (nd - 1.0) / (nf - nc)))
@@ -313,10 +316,17 @@ fn with_glass(s: &System, j: usize, name: &str, g: &Glass) -> Result<(System, St
     if !ch.is_empty() {
         t = t.with_params(&ch)?;
     }
+    if t.surfaces[j].dnd != 0.0 || t.surfaces[j].dvd != 0.0 {
+        t.edit(|rx| {
+            rx.surfaces[j].dnd = 0.0;
+            rx.surfaces[j].dvd = 0.0;
+            Ok(())
+        })?;
+    }
     Ok((t, used))
 }
 
-/// 面 j が必ず置き換える面か（モデルガラス・屈折率だけの媒質・dn か disp のある面・絞り込みに合わない硝材の面）
+/// 面 j が必ず置き換える面か（モデルガラス・屈折率だけの媒質・dn・disp・dnd・dvd のある面・絞り込みに合わない硝材の面）
 fn must_replace(s: &System, j: usize, o: &GlassSubOpts) -> bool {
     let d = &s.surfaces[j];
     let filtered = match &d.mat {
@@ -328,14 +338,22 @@ fn must_replace(s: &System, j: usize, o: &GlassSubOpts) -> bool {
     matches!(d.mat, Material::Model { .. } | Material::Index(_))
         || d.dn != 0.0
         || d.disp != 0.0
+        || d.dnd != 0.0
+        || d.dvd != 0.0
         || filtered
 }
 
-/// 面 j の材料（名前と dn・disp）が同じ構成の組（0 始まり、最初の構成の順）
+/// 面 j の材料（名前と dn・disp・dnd・dvd）が同じ構成の組（0 始まり、最初の構成の順）
 fn config_groups(p: &Problem, j: usize) -> Vec<Vec<usize>> {
     let key = |s: &System| {
         let d = &s.surfaces[j];
-        (d.mat.name(), d.dn.to_bits(), d.disp.to_bits())
+        (
+            d.mat.name(),
+            d.dn.to_bits(),
+            d.disp.to_bits(),
+            d.dnd.to_bits(),
+            d.dvd.to_bits(),
+        )
     };
     let mut out: Vec<(_, Vec<usize>)> = Vec::new();
     for (k, s) in p.configs.iter().enumerate() {

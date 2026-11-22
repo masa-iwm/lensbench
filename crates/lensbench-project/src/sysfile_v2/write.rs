@@ -127,6 +127,8 @@ pub(crate) fn surface_row(d: &Surface, float_stop: bool) -> Result<Row, String> 
         t: d.t,
         dn: d.dn,
         disp: d.disp,
+        dnd: d.dnd,
+        dvd: d.dvd,
         tce: d.tce,
         mech: d.mech_semi,
         chip: d.chip_zone,

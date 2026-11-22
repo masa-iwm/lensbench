@@ -3103,6 +3103,16 @@
           "format": "double",
           "type": "number"
         },
+        "dnd": {
+          "description": "ガラスの d 線の屈折率のずれ（OpticStudio の TIND）: モデルガラスの式で nd を変えた差を波長ごとに足す",
+          "format": "double",
+          "type": "number"
+        },
+        "dvd": {
+          "description": "ガラスのアッベ数のずれ（OpticStudio の TABB）: モデルガラスの式で vd を変えた差を波長ごとに足す",
+          "format": "double",
+          "type": "number"
+        },
         "ignore": {
           "description": "無視する",
           "type": "boolean"

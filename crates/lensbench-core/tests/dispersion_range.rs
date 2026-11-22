@@ -31,3 +31,49 @@ fn warns_outside_formula_range_and_extrapolates() {
     // 屈折率は式を延ばした値（1.0 にはしない）
     assert!(s.n(1)[1] > 1.5 && s.n(2)[1] > 1.5);
 }
+
+/// 面の硝材の nd・vd のずれ（dnd・dvd、OpticStudio の TIND・TABB）: モデルガラスの式の差を波長ごとに足す
+#[test]
+fn glass_nd_vd_offsets_add_model_glass_difference() {
+    use lensbench_core::glass::model_index;
+    use lensbench_core::surface::Material;
+    let mut s = load("WAVM 1 0.4861 1\nWAVM 2 0.5876 1\nWAVM 3 0.6563 1\n");
+    let n0: Vec<f64> = s.n(2).to_vec();
+    let (nd, vd, dpgf) = s.glass_nd_vd(&s.surfaces[2].mat).unwrap();
+    assert!((vd - 36.37).abs() < 0.05, "F2 vd {vd}");
+    s.edit(|rx| {
+        rx.surfaces[2].dvd = 5.0;
+        rx.surfaces[2].dnd = 1e-3;
+        Ok(())
+    })
+    .unwrap();
+    for (w, &l) in s.wavelengths.clone().iter().enumerate() {
+        let d = model_index(nd + 1e-3, vd + 5.0, dpgf, l) - model_index(nd, vd, dpgf, l);
+        assert!((s.n(2)[w] - n0[w] - d).abs() < 1e-15);
+    }
+    // モデルガラスでは nd・vd を直接変えたのと同じ
+    let mut m = s.clone();
+    m.edit(|rx| {
+        rx.surfaces[2].mat = Material::Model {
+            nd: 1.6,
+            vd: 40.0,
+            dpgf: 0.0,
+        };
+        rx.surfaces[2].dnd = 0.0;
+        rx.surfaces[2].dvd = -2.0;
+        Ok(())
+    })
+    .unwrap();
+    for (w, &l) in m.wavelengths.clone().iter().enumerate() {
+        assert!((m.n(2)[w] - model_index(1.6, 38.0, 0.0, l)).abs() < 1e-15);
+    }
+    // 屈折率だけの媒質には使えない
+    let mut x = s.clone();
+    let e = x
+        .edit(|rx| {
+            rx.surfaces[2].mat = Material::Index(1.5);
+            Ok(())
+        })
+        .unwrap_err();
+    assert!(e.to_string().contains("nd and vd offsets"), "{e}");
+}

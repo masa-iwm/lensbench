@@ -4,9 +4,8 @@
 //! 公差の表の写し方: TRAD → 面の曲率半径 `s.r`、TTHI s s → 厚さ `s.t`（後ろの面をずらす）、TEDX・TEDY・TETX・TETY → 玉の
 //! 偏心・傾き（回転の中心は玉の前の頂点で OpticStudio の既定と同じ）、TSTX → 面の傾き `s.tx`、TIND → `s.nd`、
 //! TABB → `s.vd`（どちらもモデルガラスの式で波長ごとの変化を決める。OpticStudio と同じ解釈）、COMP → 補償子 `8.t`。
-//!
-//! TABB だけは少し合わない: 式の差は同じでも、lensbench は波長ごとの変化を dn と disp の 2 つで表す（主波長で合わせ、
-//! ほかの波長は最小二乗）ため。±0.5 では評価の差が公称の 1e-3 以下、±5 で 1e-2 以下。
+//! TIND・TABB は面のガラスの nd・vd のずれ（dnd・dvd）にし、モデルガラスの式の差を波長ごとにそのまま足すので、
+//! ほかの公差と同じ精度で合う。
 
 use lensbench_core::System;
 use lensbench_design::montecarlo::run;
@@ -154,31 +153,14 @@ struct Tol {
     crit: f64,
     /// 締めた値の相対差
     value: f64,
-    /// TABB の評価の差 / 公称
-    glass_crit: f64,
-    /// TABB の締めた値の相対差
-    glass_value: f64,
     /// 補償子の値の差 [mm]
     comp: f64,
-    /// TABB の補償子の値の差 [mm]
-    glass_comp: f64,
 }
 
 const TOL: Tol = Tol {
     crit: 5e-4,
     value: 1e-5,
-    glass_crit: 1e-3,
-    glass_value: 1e-2,
     comp: 1e-4,
-    glass_comp: 2e-3,
-};
-
-/// 公差を 10 倍にした系（TABB の Δν ±5 は OpticStudio の非線形の変化と差が出る）
-const TOL_X: Tol = Tol {
-    glass_crit: 1e-2,
-    glass_value: 2e-2,
-    glass_comp: 2e-2,
-    ..TOL
 };
 
 /// 実行 name の公称・各公差の評価・締めた値・補償子を比べ、いちばん大きい差を返す（許す差を超えたら落とす）
@@ -205,46 +187,33 @@ fn compare(name: &str, tol: &Tol) {
         let ty = r["type"].as_str().unwrap();
         let label = format!("{ty} {} {}", ints[0], ints.get(1).copied().unwrap_or(0));
         let x = &m[&label];
-        let glass = ty == "TABB";
         let sides = [("min", "lo", 0), ("max", "hi", 1)];
         for (side, k, ci) in sides {
             let os_v = r[side][0].as_f64().unwrap();
             let os_c = r[side][1].as_f64().unwrap();
             let lb_v = x[k].as_f64().unwrap();
             let lb_c = x[&format!("merit_{k}")].as_f64().unwrap();
-            let dc = if glass {
-                (lb_c - os_c).abs() / n_os
-            } else {
-                // OS は 8 桁で出すので 1e-8 の丸めを除く
-                ((lb_c - os_c).abs() - 1e-8).max(0.0) / ((os_c - n_os).abs().max(1e-2 * n_os))
-            };
+            // OS は 8 桁で出すので 1e-8 の丸めを除く
+            let dc = ((lb_c - os_c).abs() - 1e-8).max(0.0) / ((os_c - n_os).abs().max(1e-2 * n_os));
             let dv = (lb_v - os_v).abs() / os_v.abs().max(1e-12);
             let vmsg = format!("{label} {side}: lensbench {lb_v:.8} OS {os_v:.8}");
             // 補償子（OS は 6 桁で出す。評価の底が平らなので、値は評価ほど合わない）
             if let Some(c) = r["comp"].as_array() {
                 let os_k = c[ci].as_f64().unwrap();
                 let lb_k = x[&format!("comp_{k}")][0].as_f64().unwrap();
-                let ct = if glass { tol.glass_comp } else { tol.comp };
                 assert!(
-                    (lb_k - os_k).abs() <= ct,
+                    (lb_k - os_k).abs() <= tol.comp,
                     "{name} {label} {side} comp: lensbench {lb_k:.6} OS {os_k:.6}"
                 );
-                if !glass {
-                    worst_comp = worst_comp.max((lb_k - os_k).abs());
-                }
+                worst_comp = worst_comp.max((lb_k - os_k).abs());
             } else {
                 assert!(x[&format!("comp_{k}")].is_null(), "{name} {label}: comp");
             }
-            let (ct, vt) = if glass {
-                (tol.glass_crit, tol.glass_value)
-            } else {
-                (tol.crit, tol.value)
-            };
             assert!(
-                dc <= ct,
+                dc <= tol.crit,
                 "{name} {label} {side}: criterion lensbench {lb_c:.8} OS {os_c:.8} ({dc:.3e})"
             );
-            assert!(dv <= vt, "{name} {vmsg} ({dv:.3e})");
+            assert!(dv <= tol.value, "{name} {vmsg} ({dv:.3e})");
             let e = by_ty
                 .entry(ty.to_string())
                 .or_insert((0.0, String::new(), 0.0, String::new()));
@@ -273,7 +242,7 @@ fn compare(name: &str, tol: &Tol) {
     let lb_rss = rss.unwrap() - nominal;
     println!("  RSS change: lensbench {lb_rss:.8} OS {os_rss:.8}");
     assert!(
-        (lb_rss - os_rss).abs() <= tol.glass_crit * os_rss,
+        (lb_rss - os_rss).abs() <= tol.crit * os_rss,
         "{name} RSS {lb_rss} {os_rss}"
     );
     for (t, e) in &by_ty {
@@ -291,6 +260,6 @@ fn matches_opticstudio() {
     for n in [
         "R1", "R2", "R3", "R4", "R5", "R1x", "R2x", "R3x", "R4x", "R5x",
     ] {
-        compare(n, if n.ends_with('x') { &TOL_X } else { &TOL });
+        compare(n, &TOL);
     }
 }

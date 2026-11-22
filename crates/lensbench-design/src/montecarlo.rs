@@ -157,7 +157,8 @@ pub struct Tol {
     /// パラメータごとにずれに掛ける数（空はすべて 1）。鏡で折り返して往復する玉の厚さのように、往きと戻りで同じずれを
     /// 逆の符号で与えるときに -1
     pub scale: Vec<f64>,
-    /// ガラスの nd・vd のずれ（params は面の [dn, disp]。ずれの値をモデルガラスの式で dn と disp にする。scale は使わない）
+    /// ガラスの nd・vd のずれ（params は面の [dn] で、確かめと表示の面の番号だけに使う。ずれは面の dnd・dvd に足す。
+    /// scale・relative は使わない）
     pub glass: Option<GlassShift>,
 }
 
@@ -596,25 +597,42 @@ pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
         .map(|s| {
             // 同じパラメータに 2 つの公差があれば足し合わせる
             let mut ch: Vec<(Param, f64)> = Vec::new();
+            // ガラスの nd・vd のずれ（面, nd, vd）
+            let mut gl: Vec<(usize, f64, f64)> = Vec::new();
             for (t, &d) in spec.tols.iter().zip(deltas) {
                 if d == 0.0 {
                     continue;
                 }
-                let g = t.glass.as_ref().map(|g| g.dn_disp(d));
+                if let Some(g) = &t.glass {
+                    let (a, b) = if g.abbe { (0.0, d) } else { (d, 0.0) };
+                    match gl.iter_mut().find(|x| x.0 == g.surf) {
+                        Some(x) => (x.1, x.2) = (x.1 + a, x.2 + b),
+                        None => gl.push((g.surf, a, b)),
+                    }
+                    continue;
+                }
                 for (k, &p) in t.params.iter().enumerate() {
                     let v0 = s.get_param(p)?;
-                    let dv = match g {
-                        Some((dn, disp)) => [dn, disp][k.min(1)],
-                        None => t.scale_of(k) * if t.relative { v0 * d } else { d },
-                    };
+                    let dv = t.scale_of(k) * if t.relative { v0 * d } else { d };
                     match ch.iter_mut().find(|x| x.0 == p) {
                         Some(x) => x.1 += dv,
                         None => ch.push((p, v0 + dv)),
                     }
                 }
             }
+            let mut s = s.clone();
+            if !gl.is_empty() {
+                s.edit(|rx| {
+                    for &(j, a, b) in &gl {
+                        let d = &mut rx.surfaces[j];
+                        d.dnd += a;
+                        d.dvd += b;
+                    }
+                    Ok(())
+                })?;
+            }
             if ch.is_empty() {
-                Ok(s.clone())
+                Ok(s)
             } else {
                 s.with_params_fast(&ch)
             }

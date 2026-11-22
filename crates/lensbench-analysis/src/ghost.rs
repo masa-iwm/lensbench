@@ -185,6 +185,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
         // 鏡の後ろは前の媒質（媒質を解くときに決まる）
         g.dn = 0.0;
         g.disp = 0.0;
+        g.dnd = 0.0;
+        g.dvd = 0.0;
         g.after = After::None;
         g.t = 0.0;
         push(&mut out, &mut origin, g, Some(a));
@@ -244,6 +246,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
             // 反射のあとは元の b の後ろの媒質のまま、元の b と同じ厚さ・傾きで b+1 へ
             g.dn = 0.0;
             g.disp = 0.0;
+            g.dnd = 0.0;
+            g.dvd = 0.0;
         } else {
             if !d.is_mirror() {
                 // 媒質は元の前の媒質（それを持つ面の材料・屈折率・ずれを写す）
@@ -251,6 +255,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
                 g.mat = sf[k].mat.clone();
                 g.dn = sf[k].dn;
                 g.disp = sf[k].disp;
+                g.dnd = sf[k].dnd;
+                g.dvd = sf[k].dvd;
             }
             g.after = After::None;
             g.t = 0.0;

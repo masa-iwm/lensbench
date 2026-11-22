@@ -282,6 +282,12 @@ pub struct Row {
     /// 媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))
     #[serde(default, skip_serializing_if = "zero")]
     pub disp: f64,
+    /// ガラスの d 線の屈折率のずれ（OpticStudio の TIND）: モデルガラスの式で nd を変えた差を波長ごとに足す
+    #[serde(default, skip_serializing_if = "zero")]
+    pub dnd: f64,
+    /// ガラスのアッベ数のずれ（OpticStudio の TABB）: モデルガラスの式で vd を変えた差を波長ごとに足す
+    #[serde(default, skip_serializing_if = "zero")]
+    pub dvd: f64,
     /// 面の熱膨張係数 [1e-6/°C]（OpticStudio のレンズデータの TCE の列。光線追跡には効かない）
     #[serde(default, skip_serializing_if = "zero")]
     pub tce: f64,

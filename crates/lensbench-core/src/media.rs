@@ -27,6 +27,11 @@ fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Ve
         return Ok(None);
     }
     if let Some(g) = d.grin() {
+        if d.dnd != 0.0 || d.dvd != 0.0 {
+            invalid!(
+                "surface {j}: nd and vd offsets need a glass or a model glass, not a GRIN surface"
+            );
+        }
         return lams
             .iter()
             .map(|&l| {
@@ -39,9 +44,19 @@ fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Ve
             .collect::<Result<Vec<f64>>>()
             .map(Some);
     }
-    p.material_index_at(&d.mat, lams)
-        .map(Some)
-        .map_err(|e| Error::Invalid(format!("surface {j}: {e}")))
+    let mut n = p
+        .material_index_at(&d.mat, lams)
+        .map_err(|e| Error::Invalid(format!("surface {j}: {e}")))?;
+    if d.dnd != 0.0 || d.dvd != 0.0 {
+        let (nd, vd, dpgf) = p
+            .glass_nd_vd(&d.mat)
+            .map_err(|e| Error::Invalid(format!("surface {j}: {e}")))?;
+        for (x, &l) in n.iter_mut().zip(lams) {
+            *x += glass::model_index(nd + d.dnd, vd + d.dvd, dpgf, l)
+                - glass::model_index(nd, vd, dpgf, l);
+        }
+    }
+    Ok(Some(n))
 }
 
 /// 文書の全面の媒質の屈折率を作る（屈折率を求めるのはここだけ）。無視した面は次の面の「前の媒質」にならない
@@ -81,6 +96,37 @@ impl Prescription {
     /// 媒質の屈折率（系の波長ごと、dn・disp をかける前）。ガラスは系のガラス（[`System::add_glasses`] で足せる）
     pub fn material_index(&self, mat: &Material) -> Result<Vec<f64>> {
         self.material_index_at(mat, &self.wavelengths)
+    }
+
+    /// ガラス（系の温度・気圧・Adjust Index での値）かモデルガラスの d 線の屈折率・アッベ数・ΔPgF。
+    /// 面の nd・vd のずれ（[`crate::surface::Surface::dnd`]・`dvd`、OpticStudio の TIND・TABB）の元の値
+    pub fn glass_nd_vd(&self, mat: &Material) -> Result<(f64, f64, f64)> {
+        let (nd, vd, dpgf) = match mat {
+            Material::Model { nd, vd, dpgf } => (*nd, *vd, *dpgf),
+            Material::Glass(m) => {
+                let n = self.material_index_at(mat, &[glass::WL_D, glass::WL_F, glass::WL_C])?;
+                let dpgf = self
+                    .glasses
+                    .get(m)
+                    .and_then(|g| g.props.map(|x| x.dpgf))
+                    .unwrap_or(0.0);
+                (n[0], (n[0] - 1.0) / (n[1] - n[2]), dpgf)
+            }
+            _ => invalid!(
+                "nd and vd offsets need a glass or a model glass (nd, vd), not {}",
+                mat.name()
+            ),
+        };
+        if !(vd.is_finite() && vd > 0.0) {
+            invalid!("nd and vd offsets need a glass with dispersion (vd {vd})");
+        }
+        Ok((nd, vd, dpgf))
+    }
+
+    /// 面 j の後の媒質の、波長 lams [µm] での屈折率（硝材の nd・vd のずれ dnd・dvd 込み、dn・disp をかける前）。
+    /// 鏡・座標ブレークは None（前の媒質）
+    pub fn surface_medium_index_at(&self, j: usize, lams: &[f64]) -> Result<Option<Vec<f64>>> {
+        medium_index_at(self, j, lams)
     }
 
     /// [`Prescription::material_index`] を波長 lams [µm] で

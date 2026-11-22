@@ -2,44 +2,15 @@
 
 use super::*;
 
-/// ガラスの d 線の屈折率かアッベ数のずれを、モデルガラスの式（nd・vd・ΔPgF）で波長ごとの屈折率の変化にし、
-/// dn と disp で表す（OpticStudio の TIND・TABB と同じ解釈）。主波長で合わせ、ほかの波長は最小二乗で disp に寄せる
-#[derive(Debug, Clone, PartialEq)]
+/// ガラスの d 線の屈折率かアッベ数のずれ（OpticStudio の TIND・TABB）。面 `surf` の
+/// [`Surface::dnd`](lensbench_core::surface::Surface::dnd)・`dvd` にずれを足し、媒質の屈折率はモデルガラスの式
+/// （nd・vd・ΔPgF）の差で波長ごとに変える（OpticStudio と同じ解釈）
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GlassShift {
-    pub nd: f64,
-    pub vd: f64,
-    pub dpgf: f64,
+    /// 面の番号
+    pub surf: usize,
     /// アッベ数のずれ（false は屈折率のずれ）
     pub abbe: bool,
-    /// 系の波長 [µm]
-    pub wavelengths: Vec<f64>,
-    /// dn・disp をかける前の屈折率（系の波長ごと）
-    pub base: Vec<f64>,
-    pub primary: usize,
-}
-
-impl GlassShift {
-    /// ずれ d のときの（dn, disp）
-    pub fn dn_disp(&self, d: f64) -> (f64, f64) {
-        use lensbench_core::glass::model_index;
-        let (nd1, vd1) = if self.abbe {
-            (self.nd, self.vd + d)
-        } else {
-            (self.nd + d, self.vd)
-        };
-        let dm = |l: f64| {
-            model_index(nd1, vd1, self.dpgf, l) - model_index(self.nd, self.vd, self.dpgf, l)
-        };
-        let p = self.primary;
-        let a = dm(self.wavelengths[p]);
-        let (mut sxy, mut sxx) = (0.0, 0.0);
-        for (k, &l) in self.wavelengths.iter().enumerate() {
-            let x = self.base[k] - self.base[p];
-            sxy += x * (dm(l) - a);
-            sxx += x * x;
-        }
-        (a, if sxx > 0.0 { sxy / sxx } else { 0.0 })
-    }
 }
 
 /// 逆感度の上限

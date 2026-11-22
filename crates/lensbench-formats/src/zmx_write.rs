@@ -254,6 +254,13 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 d.disp
             );
         }
+        if d.dnd != 0.0 || d.dvd != 0.0 {
+            notimpl!(
+                "surface {k}: a glass nd or vd offset (nd {}, vd {}) can't be written to .zmx",
+                d.dnd,
+                d.dvd
+            );
+        }
         if d.typ() == SurfType::User && !d.ignore {
             notimpl!("surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)");
         }

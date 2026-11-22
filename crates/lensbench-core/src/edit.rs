@@ -1027,6 +1027,8 @@ fn set_type(d: &mut Surface, typ: SurfType) {
         d.after = After::None;
         d.dn = 0.0;
         d.disp = 0.0;
+        d.dnd = 0.0;
+        d.dvd = 0.0;
     } else if old == SurfType::CoordBrk && d.mat == Material::Inherit {
         d.mat = Material::Air;
     }
@@ -1042,10 +1044,16 @@ fn set_material(d: &mut Surface, j: usize, m: Material, mat: &str) -> Result<()>
         invalid!("surface {j}: material {mat} on a coordinate break");
     }
     let mirror = m.is_mirror();
+    // 硝材の nd・vd のずれはガラスとモデルガラスだけ
+    let glassy = matches!(m, Material::Glass(_) | Material::Model { .. });
     d.mat = m;
     if mirror {
         d.dn = 0.0;
         d.disp = 0.0;
+    }
+    if !glassy {
+        d.dnd = 0.0;
+        d.dvd = 0.0;
     }
     Ok(())
 }

@@ -166,6 +166,8 @@ pub(crate) fn surface(r: Row) -> Result<Surface, String> {
         t: r.t,
         dn: r.dn,
         disp: r.disp,
+        dnd: r.dnd,
+        dvd: r.dvd,
         tce: r.tce,
         mech_semi: r.mech,
         chip_zone: r.chip,

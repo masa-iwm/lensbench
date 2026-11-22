@@ -372,6 +372,8 @@ fn row_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
         r.medium = None;
         r.dn = 0.0;
         r.disp = 0.0;
+        r.dnd = 0.0;
+        r.dvd = 0.0;
     }
     Ok(SurfSpec {
         row: Some(Box::new(r)),
@@ -419,8 +421,8 @@ fn surface_fields(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if f.is_mirror() {
         return Err("a mirror surface can't be written".into());
     }
-    if f.dn != 0.0 || f.disp != 0.0 {
-        return Err("dn and disp can't be written".into());
+    if f.dn != 0.0 || f.disp != 0.0 || f.dnd != 0.0 || f.dvd != 0.0 {
+        return Err("dn, disp and the glass nd and vd offsets can't be written".into());
     }
     if f.cx() != 0.0 && shape != SurfShape::Toroidal {
         return Err("cx is only for a toroidal surface".into());

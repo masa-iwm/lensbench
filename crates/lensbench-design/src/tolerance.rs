@@ -33,7 +33,7 @@
 //! 個別の公差: {"param": "3.t"} か {"params": ["2.r", "3.r"]} に、`pm`（±）か `lo`・`hi`、`relative`（比、false）、
 //! `dist`、`label`、`scale`（パラメータごとにずれに掛ける数の並び。往復する面の厚さのように逆の符号で与えるとき -1）。
 //! "j.nd"・"j.vd" は面 j のガラスの d 線の屈折率・アッベ数のずれ（OpticStudio の TIND・TABB と同じくモデルガラスの式で
-//! 波長ごとの変化を決め、dn と disp の組合せにする。[`glass_shift`]）。
+//! 波長ごとの変化を決め、面の dnd・dvd に足す。[`glass_shift`]）。
 //!
 //! 鏡の `back` で同じ玉を往復する系では、玉の公差の組は往きと戻りの面に同じ誤差を与える（曲率・くさびは同じ面、
 //! 厚さ・間隔は戻りで逆の符号、偏心・傾きは往復の範囲を持つブロックの動き）。玉の名前はブロックの id。
@@ -280,18 +280,21 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> lensbench_core::Re
             return Err(format!("tolerance {i}: either param (a string) or params (a list)").into())
         }
     };
-    // "j.nd"・"j.vd": モデルガラスの式で d 線の屈折率・アッベ数を変える（dn と disp の組合せにする）
+    // "j.nd"・"j.vd": モデルガラスの式で d 線の屈折率・アッベ数を変える（面の dnd・dvd に足す）
     if let [n] = names.as_slice() {
         if let Some((j, which)) = glass_dn_param(n) {
             if m.scale.is_some() {
                 return Err(format!("tolerance {i}: {n} takes no scale").into());
             }
+            if m.relative == Some(true) {
+                return Err(format!("tolerance {i}: {n} cannot be relative").into());
+            }
             let g = glass_shift(s, j, which)
                 .map_err(|e| e.map_message(|e| format!("tolerance {i}: {e}")))?;
             let mut t = tol_from(
                 &TolItem {
-                    param: None,
-                    params: Some(vec![format!("{j}.dn"), format!("{j}.disp")]),
+                    param: Some(format!("{j}.dn")),
+                    params: None,
                     scale: None,
                     ..m.clone()
                 },
@@ -299,9 +302,6 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> lensbench_core::Re
                 dist,
                 i,
             )?;
-            if t.relative {
-                return Err(format!("tolerance {i}: {n} cannot be relative").into());
-            }
             t.glass = Some(g);
             t.label = m.label.clone().unwrap_or_else(|| n.clone());
             return Ok(t);
@@ -356,48 +356,22 @@ fn glass_dn_param(n: &str) -> Option<(usize, bool)> {
     }
 }
 
-/// 面 j の媒質の d 線の屈折率（abbe が false）かアッベ数（true）のずれ（[`GlassShift`]）
+/// 面 j の媒質の d 線の屈折率（abbe が false）かアッベ数（true）のずれ（[`GlassShift`]）。
+/// 面の媒質がガラス（分散のある）かモデルガラスであることを確かめる
 pub fn glass_shift(s: &System, j: usize, abbe: bool) -> lensbench_core::Result<GlassShift> {
-    use lensbench_core::material::Material;
     let d = s
         .surfaces
         .get(j)
         .ok_or_else(|| format!("surface {j} does not exist"))?;
-    let (nd, vd, dpgf) = match &d.mat {
-        Material::Model { nd, vd, dpgf } => (*nd, *vd, *dpgf),
-        Material::Glass(m) => {
-            let g = s
-                .glasses
-                .get(m)
-                .ok_or_else(|| format!("surface {j}: glass {m} is not loaded"))?;
-            let n = |l: f64| g.index(l, s.temperature, s.pressure, s.adjust_index);
-            let nd = n(0.587_561_8);
-            let vd = (nd - 1.0) / (n(0.486_132_7) - n(0.656_272_5));
-            (nd, vd, g.props.map_or(0.0, |x| x.dpgf))
-        }
-        _ => {
-            return Err(format!(
-                "surface {j}: nd and vd tolerances need a glass or a model glass (nd, vd)"
-            )
-            .into())
-        }
-    };
-    if !(vd.is_finite() && vd > 0.0) {
-        return Err(
-            format!("surface {j}: the glass has no dispersion for an nd or vd tolerance").into(),
-        );
+    if d.grin().is_some() {
+        return Err(format!(
+            "surface {j}: nd and vd tolerances need a glass or a model glass, not a GRIN surface"
+        )
+        .into());
     }
-    Ok(GlassShift {
-        nd,
-        vd,
-        dpgf,
-        abbe,
-        wavelengths: s.wavelengths.clone(),
-        base: (0..s.wavelengths.len())
-            .map(|w| s.base_index(j, w))
-            .collect(),
-        primary: s.primary,
-    })
+    s.glass_nd_vd(&d.mat)
+        .map_err(|e| e.map_message(|e| format!("surface {j}: {e}")))?;
+    Ok(GlassShift { surf: j, abbe })
 }
 
 /// 設定の JSON を型に読む（null は空の設定）。誤りには欄の道が付く

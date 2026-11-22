@@ -159,6 +159,11 @@ impl Glass {
     }
 }
 
+/// d 線・F 線・C 線の波長 [µm]（アッベ数 vd = (nd − 1)/(nF − nC)）
+pub const WL_D: f64 = 0.587_561_8;
+pub const WL_F: f64 = 0.486_132_7;
+pub const WL_C: f64 = 0.656_272_5;
+
 /// OpticStudio のモデルガラス（nd・vd・ΔPgF）の屈折率（λ [µm]）。
 ///
 /// Conrady の形 n = A + B/λ + C/λ^3.5 で、係数は nd − 1、(nd − 1)/vd、ΔPgF (nd − 1)/vd の一次式。

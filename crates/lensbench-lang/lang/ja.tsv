@@ -585,6 +585,7 @@ surface {k}: too few GARR points ({} / {})	面 {k}: GARR の点が足りませ�
 surface {k}: Grid Sag interpolation {interp}	面 {k}: Grid Sag の補間 {interp}
 a field set by a condition ({c:?}) can't be written to .zmx (OpticStudio has none)	条件で定める視野（{c:?}）は .zmx に書けません（OpticStudio にありません）
 surface {k}: an index offset (dn {}, disp {}) can't be written to .zmx	面 {k}: 屈折率オフセット（dn {}、disp {}）は .zmx に書けません
+surface {k}: a glass nd or vd offset (nd {}, vd {}) can't be written to .zmx	面 {k}: 硝材の nd・vd のずれ（nd {}、vd {}）は .zmx に書けません
 surface {k}: the mechanical semi-diameter pickup has an offset ({}), which can't be written to .zmx	面 {k}: 機械半径のピックアップにオフセット（{}）があり、.zmx に書けません
 surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)	面 {k}: ユーザー定義の面は .zmx に書けません（OpticStudio にありません）
 surface {k}: a user-defined shape can't be written to .zmx (OpticStudio has none)	面 {k}: ユーザー定義の形は .zmx に書けません（OpticStudio にありません）
@@ -946,7 +947,7 @@ block {id} surface {k}: {e}	ブロック {id} の面 {k}: {e}
 surface type {:?} can't be written	面の型 {:?} は書けません
 a mirror surface can't be written	ミラーの面は書けません
 tilts and decenters before or after a surface (before, after) can't be written	面の前後のチルト・偏心（before・after）は書けません
-dn and disp can't be written	dn・disp は書けません
+dn, disp and the glass nd and vd offsets can't be written	dn・disp・硝材の nd・vd のずれは書けません
 cx is only for a toroidal surface	cx はトロイダル面だけのものです
 the glass after the exit of a birefringent plate goes to the entrance of the next plate of the same material with thickness 0	複屈折材の板の出口の後の硝材は、厚み 0 で同じ材料の次の板の入口へ
 two birefringent plate entrances in a row (an exit is needed)	複屈折材の板の入口が続きます（出口が必要です）
@@ -2697,7 +2698,8 @@ inverse limit {limit} must be larger than the nominal merit {}	逆感度の上�
 inverse: give either limit or increment	inverse: limit か increment の一方を指定してください
 inverse.skip: no tolerance named {name}	inverse.skip: 名前が {name} の公差がありません
 tolerance {i}: {n} cannot be relative	公差 {i}: {n} は比にできません
-surface {j}: glass {m} is not loaded	面 {j}: 硝材 {m} が読み込まれていません
-surface {j}: nd and vd tolerances need a glass or a model glass (nd, vd)	面 {j}: nd・vd の公差には硝材かモデルガラス（nd, vd）が要ります
-surface {j}: the glass has no dispersion for an nd or vd tolerance	面 {j}: nd・vd の公差を入れる硝材に分散がありません
+surface {j}: nd and vd tolerances need a glass or a model glass, not a GRIN surface	面 {j}: nd・vd の公差には硝材かモデルガラスが要ります（屈折率分布の面には使えません）
+nd and vd offsets need a glass or a model glass (nd, vd), not {}	nd・vd のずれには硝材かモデルガラス（nd, vd）が要ります（{} には使えません）
+nd and vd offsets need a glass with dispersion (vd {vd})	nd・vd のずれには分散のある硝材が要ります（vd {vd}）
+surface {j}: nd and vd offsets need a glass or a model glass, not a GRIN surface	面 {j}: nd・vd のずれには硝材かモデルガラスが要ります（屈折率分布の面には使えません）
 paraxial focus compensation: the marginal ray is parallel to the axis after surface {m}	近軸の焦点の補償: 面 {m} の後でマージナル光線が光軸と平行です

@@ -179,6 +179,13 @@ pub struct Surface {
     pub dn: f64,
     /// 媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))
     pub disp: f64,
+    /// ガラスの d 線の屈折率のずれ（OpticStudio の TIND）。ガラスの nd・vd・ΔPgF のモデルガラスの式で、nd を
+    /// このぶん変えた差を波長ごとに n0(λ) に足す（ガラスかモデルガラスの面だけ。dn・disp はその後にかける）
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub dnd: f64,
+    /// ガラスのアッベ数のずれ（OpticStudio の TABB）。[`Surface::dnd`] と同じくモデルガラスの式の差を足す
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub dvd: f64,
     /// 屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。材料を鏡にして立て、光線は鏡として曲げ、
     /// 偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする
     pub reflect: Option<Reflect>,
@@ -437,6 +444,8 @@ impl Default for Surface {
             ap: Aperture::None,
             dn: 0.0,
             disp: 0.0,
+            dnd: 0.0,
+            dvd: 0.0,
             reflect: None,
             retarder: None,
             bire: None,

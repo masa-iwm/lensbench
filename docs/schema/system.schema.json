@@ -3047,6 +3047,30 @@
           ],
           "description": "媒質の屈折率のずれ（全波長に足す）"
         },
+        "dnd": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "ガラスの d 線の屈折率のずれ（OpticStudio の TIND）: モデルガラスの式で nd を変えた差を波長ごとに足す"
+        },
+        "dvd": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "ガラスのアッベ数のずれ（OpticStudio の TABB）: モデルガラスの式で vd を変えた差を波長ごとに足す"
+        },
         "ignore": {
           "description": "無視する",
           "type": "boolean"
