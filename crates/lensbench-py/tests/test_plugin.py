@@ -137,3 +137,27 @@ def test_builtin_analysis_plugins_match_methods():
     # ゴーストは視野を使わない（入力なし）
     g = lb.Plugin("ghost").run(system=s)
     assert g["a"].shape == g["intensity"].shape and len(g["a"]) > 0
+
+
+def test_registered_coating_catalog(tmp_path):
+    """Python から登録した膜の一覧を、面の膜の名前で引く（読む前に登録する。同じ名前の膜が別の一覧にあれば誤り）"""
+    def traced():
+        s = a0()
+        s.set_surface(1, coating="PY_EXT_AR")
+        return s.trace(1, [0.0], [0.5], pol=True)
+
+    with pytest.raises(ValueError):
+        traced()
+    (tmp_path / "x.dat").write_text("MATE PYL\n0.4 1.38 0\n1.2 1.38 0\n")
+    try:
+        n = lb.register_coating_catalog("PYTEST", files=[str(tmp_path / "x.dat")], dat="COAT PY_EXT_AR\nPYL 0.25\n")
+        assert n == 1
+        assert lb.coating_catalogs()["PYTEST"] == ["PY_EXT_AR"]
+        assert np.all(np.isfinite(traced()["jones"]))
+        with pytest.raises(ValueError):
+            lb.register_coating_catalog("OTHER", dat="COAT PY_EXT_AR\nPYL 0.1\n")
+    finally:
+        assert lb.unregister_coating_catalog("PYTEST")
+    assert "PYTEST" not in lb.coating_catalogs()
+    with pytest.raises(ValueError):
+        traced()

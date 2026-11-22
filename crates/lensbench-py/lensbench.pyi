@@ -1037,6 +1037,10 @@ def analyses() -> list[Any]:
     """
 
 
+def coating_catalogs() -> dict[str, list[str]]:
+    """Registered coating catalogs: {catalog name: [coating names]}"""
+
+
 def defaults(name: str) -> Any:
     """The default settings of an analysis of the registry, or of "optimize" or "zoom", as a dict
     (the defaults of System.optimize, zoom and the analysis methods come from here)
@@ -1078,6 +1082,15 @@ def progress(done: int, total: int, message: str = "") -> None:
 
 def read_batch(path: _StrPath) -> tuple[Any, list[Any]]:
     """Read a batch result file (JSONL): (head dict, [{"i", "seed", "result"}] in numbering order)"""
+
+
+def register_coating_catalog(name: str, files: Sequence[_StrPath] = ..., dat: str | None = None) -> int:
+    """Register a coating catalog (replaces one with the same name). `files` are coating model (.lbcm, .lbcb), measured table (.lbct)
+    or coating file (COATING.DAT format: MATE, COAT, TABLE) files, `dat` is text in the COATING.DAT format. The coatings are looked up by
+    the surface's coating name before the coating file of the .zmx and the coating folder. Returns the number of coatings.
+    A coating with the same name in another registered catalog is an error. Register before loading the systems that use it
+    (a system reads its coatings once, at the first polarization trace)
+    """
 
 
 def register_plugin(name: str, func: Callable[..., Mapping[str, Any]], kind: str = "analysis", needs_system: bool = False) -> None:
@@ -1137,6 +1150,10 @@ def trace_many(systems: Sequence[System], field: _Field | None, px: ArrayLike, p
     Parallel over both systems and rays, so all cores are used even with few rays per system.
     threads is the total number of threads (1 for sequential)
     """
+
+
+def unregister_coating_catalog(name: str) -> bool:
+    """Remove a registered coating catalog (True if there was one)"""
 
 
 def unregister_plugin(name: str) -> bool:

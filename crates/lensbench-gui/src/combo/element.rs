@@ -70,8 +70,8 @@ pub(super) fn element_settings(
     let air_gap = matches!(step.after, Some(Gap::Air(_)));
     let st = combo.active_state().map(str::to_string);
     let st = st.as_deref();
-    // 膜の欄で選べる、系の設定で定義した膜の名前
-    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
+    // 膜の欄で選べる、系の設定で定義した膜と登録した膜の一覧の名前
+    let coats = crate::coat_defs::candidates(combo.coatings.keys());
     // 群の欄の補完の候補（組合せにある群の名前）。今の要素の群は除く（打っている途中の名前が候補に出ない）
     let mut groups: Vec<String> = Vec::new();
     for q in combo

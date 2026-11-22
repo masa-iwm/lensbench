@@ -93,6 +93,48 @@ impl CoatingSet {
         Ok(self)
     }
 
+    /// 膜のファイルを読んで足し、足した膜の数を返す: 特性行列のモデル（`.lbcm`・`.lbcb`）・実測表（`.lbct`）は
+    /// 1 行目で、それ以外は COATING.DAT の形式（`.dat`・`.lbcs` など。MATE・COAT・TABLE）として読む
+    pub fn add_file(&mut self, path: &Path) -> Result<usize> {
+        use crate::coating::{parse_models, parse_models_bin, MODEL_BIN_HEADER, MODEL_HEADER};
+        let at = |e: crate::Error| match e {
+            crate::Error::Invalid(m) => crate::Error::Invalid(format!("{}: {m}", path.display())),
+            e => e,
+        };
+        let b = crate::vfs::read(path)
+            .map_err(|e| crate::Error::Io(format!("{}: {e}", path.display())))?;
+        if b.starts_with(MODEL_BIN_HEADER) {
+            let v = parse_models_bin(&b).map_err(at)?;
+            let n = v.len();
+            self.models.extend(v);
+            return Ok(n);
+        }
+        let txt = String::from_utf8_lossy(&b);
+        let first = txt
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .unwrap_or("");
+        if first == MODEL_HEADER {
+            let v = parse_models(&txt).map_err(at)?;
+            let n = v.len();
+            self.models.extend(v);
+            Ok(n)
+        } else if first == crate::coating::MEASURED_HEADER {
+            let v = crate::coating::parse_measured(&txt).map_err(at)?;
+            let n = v.len();
+            self.measured.extend(v);
+            Ok(n)
+        } else {
+            let f = CoatingFile::parse(&txt).map_err(at)?;
+            let n = f.coat.len() + f.table.len();
+            self.mate.extend(f.mate);
+            self.coat.extend(f.coat);
+            self.table.extend(f.table);
+            Ok(n)
+        }
+    }
+
     /// 膜の名前（足したときの綴り、名前の順、重なりなし）
     pub fn names(&self) -> Vec<String> {
         let mut v: Vec<String> = self

@@ -24,6 +24,9 @@
 
 ### 変更履歴
 
+- **2.6**: 膜の一覧を登録する `register_coating_catalog(name, files=[], dat=None)`・`unregister_coating_catalog(name)`・
+  `coating_catalogs()` を追加。登録した膜は面の膜の名前で、.zmx の膜ファイル・膜のフォルダより先に引く（拡張の
+  `Extensions::coating_catalog` と同じ表。[ライブラリ（Rust）](rust.md) の `lensbench_core::usercoating`）。系は膜を一度だけ読むので、使う系を読む前に登録する。
 - **2.5**: 熱の構成を作る `System.make_thermal(temps, pressures=None)`（OpticStudio の Make Thermal。新しいシステムと注意の list を返す）を追加。
 - **2.4**: `System.optimize` に大域の探索（`starts`・`seed`・`keep`・`spread`）とガラスの置き換え（`glass`）の引数を足した。
   返り値の dict に、回したときだけ `global_search`・`glass` のキーが付く（[最適化](optimize.md)）。

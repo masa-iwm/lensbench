@@ -17,7 +17,7 @@ pub struct Measured {
 pub(in crate::coating) type Pending = (String, Vec<(f64, Vec<(f64, [C64; 2])>)>);
 
 /// 実測表のファイル形式の 1 行目
-pub(crate) const MEASURED_HEADER: &str = "LBCT 1";
+pub const MEASURED_HEADER: &str = "LBCT 1";
 
 /// 実測表のファイル（テキスト、UTF-8）を読む。
 ///

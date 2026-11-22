@@ -258,3 +258,25 @@ fn the_table_lists_and_removes_catalogs() {
     f.merge(&e);
     assert_eq!(f.coating_catalogs(), ["B"]);
 }
+
+#[test]
+fn a_set_reads_model_measured_and_dat_files() {
+    let d = tmp("addfile");
+    std::fs::write(d.join("a.lbcm"), lbcm("ZEC_A")).unwrap();
+    std::fs::write(d.join("b.dat"), AR).unwrap();
+    let mut t = String::from("LBCT 1\nKEY ZEC_B|AIR|N-BK7\nWAVE 0.5\n");
+    for a in 0..=10 {
+        t += &format!("{a}.0 0.9 0 0.9 0\n");
+    }
+    std::fs::write(d.join("c.lbct"), t).unwrap();
+    let mut s = CoatingSet::new();
+    assert_eq!(s.add_file(&d.join("a.lbcm")).unwrap(), 1);
+    assert_eq!(s.add_file(&d.join("b.dat")).unwrap(), 1);
+    assert_eq!(s.add_file(&d.join("c.lbct")).unwrap(), 1);
+    assert_eq!(s.names(), ["EXT_AR", "ZEC_A", "ZEC_B"]);
+    check_coatings(&s).unwrap();
+    let mut e = Ext::default();
+    e.add_coating_catalog("X", s);
+    e.add_coating_catalog("Y", CoatingSet::parse_dat("COAT ZEC_A\nM 0.1\n").unwrap());
+    assert_eq!(e.coating_names(), ["EXT_AR", "ZEC_A", "ZEC_B"]);
+}

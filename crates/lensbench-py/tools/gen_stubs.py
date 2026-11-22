@@ -35,6 +35,7 @@ OVERRIDES: dict[str, dict[str, str]] = {
     "Plugin.__new__": {"config": "Any"},
     "Plugin.run": {"inputs": "Any"},
     "register_plugin": {"func": "Callable[..., Mapping[str, Any]]"},
+    "coating_catalogs": {"return": "dict[str, list[str]]"},
     "run_batch": {"func": "Callable[..., Any]", "progress": "Callable[[int, int], Any] | None"},
 }
 

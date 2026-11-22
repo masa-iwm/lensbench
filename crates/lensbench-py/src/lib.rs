@@ -25,6 +25,7 @@ use names::warn_all;
 mod analyses;
 mod optargs;
 use optargs::{opt_problem, VarArg};
+mod coatings;
 mod plugin;
 mod pyjson;
 mod runs;
@@ -2692,7 +2693,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 5);
+pub const API_VERSION: (u32, u32) = (2, 6);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める
@@ -2721,6 +2722,7 @@ pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(progress, m)?)?;
     interference::register(m)?;
     plugin::register(m)?;
+    coatings::register(m)?;
     runs::register(m)?;
     search::register(m)?;
     analyses::register(m)?;

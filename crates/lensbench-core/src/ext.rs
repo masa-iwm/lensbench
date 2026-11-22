@@ -192,6 +192,18 @@ impl Ext {
         self.coatings.values().map(|c| c.name.clone()).collect()
     }
 
+    /// 登録した膜の一覧にある膜の名前（名前の順、重なりなし。GUI の膜の欄の候補など）
+    pub fn coating_names(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .coatings
+            .values()
+            .flat_map(|c| c.set().names())
+            .collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
     /// 膜 coat（大文字小文字は問わない）を持つ膜の一覧（2 つにあれば一覧の名前の順で先）
     pub fn find_coating(&self, coat: &str) -> Option<&Arc<CoatingCatalog>> {
         self.coatings.values().find(|c| c.set().contains(coat))

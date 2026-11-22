@@ -2966,7 +2966,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
 
 /// BS の残りの項目（形ごとの欄・面ごとの膜）と、口 B・C・D の先の並び
 pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
-    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
+    let coats = crate::coat_defs::candidates(combo.coatings.keys());
     let Some(p) = combo.get_mut(loc) else {
         return;
     };

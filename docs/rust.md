@@ -114,7 +114,8 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   でも COATING.DAT の同じ名前の膜が一覧の膜に替わる。一覧の膜と同じ名前の膜がほかにあれば注意を返す（`Coatings::notes`、
   CLI の `coatings` の `notes`。どの膜を一覧から入れたかは `registered_coatings`）。一覧の層の材料が膜ファイルの同じ名前の
   材料と違えば `<材料>@<一覧の名前>` に替えて入れる。膜の計算は同梱の膜と同じ（利用者が係数を計算する膜はまだ無い）。
-  `check_coatings` で約束（膜の名前・材料の行・層の厚さ・表の角度の昇順など）を確かめられる
+  `check_coatings` で約束（膜の名前・材料の行・層の厚さ・表の角度の昇順など）を確かめられる。Python からは
+  `lensbench.register_coating_catalog(名前, files=[…], dat=…)` で同じ表に一覧を足せる。GUI の膜の欄の補完の候補にも一覧の膜が出る
 
 ## パラメータ変更・光路長の微分・光線の解き
 

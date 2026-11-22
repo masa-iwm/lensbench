@@ -980,7 +980,7 @@ Wavelength [nm]	波長 [nm]
 Transmission per wavelength	波長ごとの透過
 Coating name	コーティングの名前
 Coating interfaces	コーティングの境界
-Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio	コーティングファイル（COATING.DAT など）・コーティングモデルのコーティングの名前、システムの設定で定義したコーティングの名前。空なら理想のミラー・分岐比のまま
+Name of a coating in a coating file (COATING.DAT, etc.), a coating model, a registered coating catalog, or one defined in system settings. Empty keeps an ideal mirror or the split ratio	コーティングファイル（COATING.DAT など）・コーティングモデル・登録されたコーティングのカタログのコーティングの名前、システムの設定で定義したコーティングの名前。空なら理想のミラー・分岐比のまま
 Coating (filter) definitions	コーティング（フィルタ）の定義
 No rows	行がありません
 Table (per angle and wavelength)	表（角度・波長ごと）

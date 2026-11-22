@@ -437,19 +437,44 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
     });
 }
 
+/// 膜の欄の補完の候補: 系の設定で定義した膜（defined）の後に、拡張が登録した膜の一覧の膜（同じ名前は 1 つ）
+pub(crate) fn candidates<'a>(defined: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut v: Vec<String> = defined.cloned().collect();
+    for n in lensbench_core::ext::current().coating_names() {
+        if !v.iter().any(|d| d.eq_ignore_ascii_case(&n)) {
+            v.push(n);
+        }
+    }
+    v
+}
+
 /// 膜の名前の欄（鏡・BS の分ける面）
 pub(crate) fn coat_edit(ui: &mut Ui, coat: &mut String, weak: egui::Color32, coats: &[String]) {
     ui.label(RichText::new(tr("Coating")).color(weak));
-    // 系の設定で定義した膜を補完の候補に（膜のファイル・モデルの名前も書けるので、候補に無くても印は付けない）
+    // 系の設定で定義した膜と登録した膜を補完の候補に（膜のファイル・モデルの名前も書けるので、候補に無くても印は付けない）
     crate::widgets::name_edit::name_edit(ui, coat, 70.0, tr("no coating"), coats, |_| true, "")
         .on_hover_text(tr(
-            "Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio",
+            "Name of a coating in a coating file (COATING.DAT, etc.), a coating model, a registered coating catalog, or one defined in system settings. Empty keeps an ideal mirror or the split ratio",
         ));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn candidates_add_registered_coatings() {
+        use lensbench_core::usercoating::CoatingSet;
+        let mut e = lensbench_core::ext::Ext::default();
+        e.add_coating_catalog(
+            "T",
+            CoatingSet::parse_dat("COAT REG_AR\nM 0.25\nCOAT bp\nM 0.1\n").unwrap(),
+        );
+        let defined = ["BP".to_string()];
+        let v = lensbench_core::ext::with(std::sync::Arc::new(e), || candidates(defined.iter()));
+        // 定義した膜が先、同じ名前（大文字小文字は問わない）は 1 つ
+        assert_eq!(v, ["BP", "REG_AR"]);
+    }
 
     #[test]
     fn kinds_round_trip_and_curves() {
