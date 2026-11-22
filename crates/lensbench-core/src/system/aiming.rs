@@ -306,6 +306,31 @@ impl System {
         // 失敗とする（以前は全部を解き直し、届かない光線 1 本に約 7 ms かかった）
         let mut bad: Vec<usize> = (0..n).filter(|&i| out[i].1 || out[i].2).collect();
         let mut good: Vec<usize> = (0..n).filter(|&i| !out[i].1 && !out[i].2).collect();
+        // 1 本も解けなかった（1 本だけ・数本だけを追うときに多い）: 隣の解けた光線が無いので、主光線（瞳の中心）を解いて
+        // そこから継続法で解き直す。超広角の系では、近軸の初期値から始めると絞りまで届かない縁の光線が、まとめて追えば
+        // 隣から解けるのに、1 本で追うと解けずに止まっていた（相対照度の縁の光線）
+        if good.is_empty() && !bad.is_empty() {
+            let c0 = tgt([0.0, 0.0]);
+            let [chief] = solve(1, &|_| AimStart::new(c0, sh, None, sh))[..] else {
+                unreachable!()
+            };
+            if !chief.1 && !chief.2 {
+                let redo =
+                    |&i: &usize| self.aim_follow(spec, w, chief.0, c0, tgt([px[i], py[i]]), 1.0);
+                let re: Vec<Option<[f64; 2]>> = if bad.len() > 1 && !crate::par::sequential() {
+                    bad.par_iter().with_min_len(1).map(scoped(redo)).collect()
+                } else {
+                    bad.iter().map(redo).collect()
+                };
+                for (&i, r) in bad.iter().zip(re) {
+                    if let Some(v) = r {
+                        out[i] = (v, false, false);
+                        good.push(i);
+                    }
+                }
+                bad.retain(|&i| out[i].1 || out[i].2);
+            }
+        }
         if !bad.is_empty() && !good.is_empty() {
             let pts: Vec<[f64; 2]> = (0..n).map(|i| [px[i], py[i]]).collect();
             let all = NearGrid::new(&pts, &(0..n).collect::<Vec<_>>());
@@ -336,7 +361,14 @@ impl System {
                     break;
                 }
                 let redo = |&(i, j): &(usize, usize)| {
-                    self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
+                    self.aim_follow(
+                        spec,
+                        w,
+                        out[j].0,
+                        tgt([px[j], py[j]]),
+                        tgt([px[i], py[i]]),
+                        1.0 / 8.0,
+                    )
                 };
                 // 光線ごとに独立なので結果はスレッド数によらず同じビット
                 let re: Vec<Option<[f64; 2]>> = if front.len() > 1 && !crate::par::sequential() {
@@ -498,7 +530,7 @@ impl System {
     }
 
     /// 入射瞳の座標 v0 で絞りの点 t0 を通る光線から、目標を t1 まで少しずつ動かして（継続法、各点はニュートン法）
-    /// t1 を通る光線の入射瞳の座標を解く。解けなければ None
+    /// t1 を通る光線の入射瞳の座標を解く。dt0 は初めの刻み（t0 から t1 までを 1 として。解けなければ半分にする）。解けなければ None
     pub(super) fn aim_follow(
         &self,
         spec: ObjSpec,
@@ -506,6 +538,7 @@ impl System {
         v0: [f64; 2],
         t0: [f64; 2],
         t1: [f64; 2],
+        dt0: f64,
     ) -> Option<[f64; 2]> {
         let s = self.stop();
         let fr = self.frames();
@@ -531,7 +564,7 @@ impl System {
         };
         let mut v = v0;
         let mut t: f64 = 0.0;
-        let mut dt: f64 = 1.0 / 8.0;
+        let mut dt: f64 = dt0;
         while t < 1.0 {
             let tn = (t + dt).min(1.0);
             let tg = [t0[0] + tn * (t1[0] - t0[0]), t0[1] + tn * (t1[1] - t0[1])];

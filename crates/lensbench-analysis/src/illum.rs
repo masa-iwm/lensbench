@@ -38,6 +38,10 @@ fn ray(s: &System, h: (f64, f64), p: (f64, f64), w: usize) -> Result<Option<(f64
 }
 
 /// 瞳の点 p を通って像点 x0 に着く光線の向き（視野を h から解く）。解けない・けられたら None
+///
+/// ニュートン法の 1 歩が届かない光線（全反射・開口・視野の外）に入ったら、歩幅を半分にして戻る（届く光線の範囲の縁の
+/// 近くでは、解があっても全幅の 1 歩が外へ出る。そこで止めると、届く縁の光線をけられたものと見て縁を内側に取っていた）。
+/// 微分の刻みの先が届かなければ逆向きの刻みで差分を取る
 fn ray_to(
     s: &System,
     x0: (f64, f64),
@@ -47,22 +51,28 @@ fn ray_to(
 ) -> Result<Option<V3>> {
     // 正規化視野の刻み（像面の位置の視野での微分）
     const D: f64 = 1e-6;
-    for _ in 0..20 {
-        let Some(r) = ray(s, *h, p, w)? else {
-            return Ok(None);
-        };
+    let tol = 1e-13 * (1.0 + x0.0.abs().max(x0.1.abs()));
+    let Some(mut r) = ray(s, *h, p, w)? else {
+        return Ok(None);
+    };
+    for _ in 0..40 {
         let e = (r.0 - x0.0, r.1 - x0.1);
-        if e.0.abs().max(e.1.abs()) < 1e-13 * (1.0 + x0.0.abs().max(x0.1.abs())) {
+        if e.0.abs().max(e.1.abs()) < tol {
             return Ok(Some(r.2));
         }
-        let (Some(rx), Some(ry)) = (ray(s, (h.0 + D, h.1), p, w)?, ray(s, (h.0, h.1 + D), p, w)?)
-        else {
+        // 前進差分、届かなければ後退差分
+        let col = |dh: (f64, f64)| -> Result<Option<(f64, f64)>> {
+            for sgn in [1.0, -1.0] {
+                if let Some(q) = ray(s, (h.0 + sgn * dh.0, h.1 + sgn * dh.1), p, w)? {
+                    return Ok(Some(((q.0 - r.0) / (sgn * D), (q.1 - r.1) / (sgn * D))));
+                }
+            }
+            Ok(None)
+        };
+        let (Some(cx), Some(cy)) = (col((D, 0.0))?, col((0.0, D))?) else {
             return Ok(None);
         };
-        let j = [
-            [(rx.0 - r.0) / D, (ry.0 - r.0) / D],
-            [(rx.1 - r.1) / D, (ry.1 - r.1) / D],
-        ];
+        let j = [[cx.0, cy.0], [cx.1, cy.1]];
         let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
         if det == 0.0 || !det.is_finite() {
             return Ok(None);
@@ -71,10 +81,26 @@ fn ray_to(
             (j[1][1] * e.0 - j[0][1] * e.1) / det,
             (-j[1][0] * e.0 + j[0][0] * e.1) / det,
         );
-        *h = (h.0 - dh.0, h.1 - dh.1);
         if dh.0.abs().max(dh.1.abs()) < 1e-15 {
-            return Ok(ray(s, *h, p, w)?.map(|r| r.2));
+            return Ok(Some(r.2));
         }
+        // 届く光線に着くまで歩幅を半分に（像面での誤差が減らなくても、届く所で次の 1 歩を取り直す）
+        let mut t = 1.0;
+        let next = loop {
+            let hn = (h.0 - t * dh.0, h.1 - t * dh.1);
+            if let Some(q) = ray(s, hn, p, w)? {
+                break Some((hn, q));
+            }
+            t *= 0.5;
+            if t < 1.0 / 256.0 {
+                break None;
+            }
+        };
+        let Some((hn, q)) = next else {
+            return Ok(None);
+        };
+        *h = hn;
+        r = q;
     }
     Ok(None)
 }
@@ -138,12 +164,13 @@ pub fn exit_cone(s: &System, field: FieldSel, w: usize, n: usize) -> Result<f64>
     let nrm = normalize([-zx, -zy, 1.0]);
     let e1 = normalize(sub([1.0, 0.0, 0.0], scale(nrm, nrm[0])));
     let e2 = cross(nrm, e1);
-    let mut pts = Vec::with_capacity(n);
-    for k in 0..n {
+    // 縁の点は独立に解く（並列、結果はスレッド数によらない）
+    let ks: Vec<usize> = (0..n).collect();
+    let pts = lensbench_core::par::try_map(&ks, |&k| -> Result<(f64, f64)> {
         let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
         let d = rim_dir(s, x0, h0, a, w)?;
-        pts.push((dot(d, e1), dot(d, e2)));
-    }
+        Ok((dot(d, e1), dot(d, e2)))
+    })?;
     let area = |step: usize| -> f64 {
         let m = n / step;
         let mut a = 0.0;

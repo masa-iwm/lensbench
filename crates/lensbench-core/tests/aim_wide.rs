@@ -111,3 +111,39 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert!(z < 360.0 && y < 0.0, "{:?}", r.xyz);
     assert!(((360.0 - z).powi(2) + y * y - 360.0 * 360.0).abs() < 1e-6);
 }
+
+/// 1 本だけ追う光線も、まとめて追うときと同じに絞りまで解ける（近軸の初期値で絞りまで届かない縁の光線を、主光線から
+/// 継続法で解き直す。前は 1 本では隣の解けた光線が無く、視野 0.5〜0.6 の瞳の下側が面 2 の全反射と出ていた）
+#[test]
+fn a_single_ray_is_aimed_like_a_batch() {
+    let s = zmx::load_with(
+        &dir().join("system.zmx"),
+        &LoadOptions {
+            cfg: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    for (hy, py) in [(0.51, -0.9), (0.56, -0.6), (0.6, -0.2), (0.6, -1.0)] {
+        let f = FieldSel::Norm(0.0, hy);
+        let one = s.try_trace(f, &[0.0], &[py], None, None, false).unwrap();
+        let all = s
+            .try_trace(f, &[0.0, 0.0, 0.0], &[0.0, py / 2.0, py], None, None, false)
+            .unwrap();
+        let (r1, r3) = (&one.rays[0], &all.rays[2]);
+        assert!(
+            r1.status.is_ok() && r3.status.is_ok(),
+            "{hy} {py}: {:?} {:?}",
+            r1.status,
+            r3.status
+        );
+        for j in 0..3 {
+            assert!(
+                (r1.xyz[j] - r3.xyz[j]).abs() < 1e-7,
+                "{hy} {py}: {:?} {:?}",
+                r1.xyz,
+                r3.xyz
+            );
+        }
+    }
+}

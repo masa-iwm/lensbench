@@ -270,3 +270,30 @@ fn annular(e: f64, v: f64) -> f64 {
     let ov = lens_area(1.0, 1.0, d) - 2.0 * lens_area(1.0, e, d) + lens_area(e, e, d);
     ov / (PI * (1.0 - e * e))
 }
+
+/// 超広角の系（tests/aim_wide/W2）の相対照度は、視野 0.4〜0.7 で滑らかに下がる（けられ・係数の無い系。前は縁の光線の
+/// エイミングが 1 本では解けず全反射と出て、視野 0.5〜0.6 の値が 0.46〜0.71 の間で上下していた）
+#[test]
+fn wide_angle_relative_illumination_is_smooth() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let s = zmx::load_with(&root.join("tests/aim_wide/W2/system.zmx"), &opt).unwrap();
+    let s = lensbench_analysis::illum::replace_vignetting(&s).unwrap();
+    let w = s.primary;
+    let a0 = lensbench_analysis::illum::exit_cone(&s, FieldSel::Norm(0.0, 0.0), w, 32).unwrap();
+    let r: Vec<f64> = [0.40, 0.48, 0.52, 0.56, 0.60, 0.64, 0.70]
+        .iter()
+        .map(|&h| {
+            lensbench_analysis::illum::exit_cone(&s, FieldSel::Norm(0.0, h), w, 32).unwrap() / a0
+        })
+        .collect();
+    for k in 1..r.len() {
+        assert!(r[k] < r[k - 1], "{r:?}");
+    }
+    // 視野 0.6 は 0.81（前は 0.46）
+    assert!((r[4] - 0.812).abs() < 0.01, "{r:?}");
+}
