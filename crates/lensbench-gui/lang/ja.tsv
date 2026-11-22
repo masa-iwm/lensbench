@@ -740,7 +740,6 @@ Group .zmx surfaces from–to into one group (lens/group parameters). Without gr
 Positive along the light. Added to the gap before and subtracted from the gap after	光の進む向きが正。前の間隔に足し、後の間隔から引きます
 Lens groups	レンズの群
 Shift 	移動 
-Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)	続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）
 Group	群
 Surface 	面 
 + Group	＋ 群
@@ -1289,7 +1288,6 @@ Surfaces {}–{} (click to enter)	面 {}〜{}（クリックで中へ）
 Order is 0 (decenter then tilt) or 1 (tilt then decenter)	順序は 0（偏心してからチルト）か 1（チルトしてから偏心）
 + Make solve	＋ ソルブにする
 + Make pickup	＋ ピックアップにする
-Groups in a combination are set in the element settings (Group)	組合せの群は要素の設定の「群」で
 The paste target cells cannot be changed	貼り付け先は変えられないセル
 No deletable surface in the selection	選択した範囲に削除できる面がありません
 Selection: by surface (only the chosen surfaces are highlighted). Click for by block	選択方法: 面単位（選択した面だけをハイライト）。クリックでブロック単位に
@@ -1812,6 +1810,29 @@ Vignetting plot: fraction of unvignetted rays versus field	ケラレ図: 視野�
 Rim points	縁の点の数
 Ignore vignetting factors	ケラレ係数を使わない
 Replace vignetting factors with apertures	ケラレ係数を開口に置き換える
+Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel). Nested groups go from outer to inner separated by / (G1/G2). In Lens Data, select surfaces with Shift and right-click to make a group	続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）。入れ子の群は外から内へ / で区切る（G1/G2）。レンズデータの表で Shift で面を選び、右クリックでも群にできる
+Enter a group name	群の名前を入れる
+A group name cannot contain /	群の名前に / は使えない
+{} is the same as an element name	{} は要素の名前と同じ
+A group named {} already exists	群 {} はもうある
+Select whole elements to make a group	群にするには要素をまるごと選ぶ
+A group must be consecutive elements in one path (not across a beam splitter)	群は 1 つの光路の続いた要素だけ（BS をまたげない）
+A beam splitter with arms cannot be put in a group	口の先の並びを持つ BS は群に入れられない
+The range covers only part of a group (select the whole group, or only inside it)	範囲が群の一部だけにかかる（群をまるごとか、群の中だけを選ぶ）
+{} is not a group of the combination	{} は組合せの群でない
+role {}	役割 {}
+shift {} mm	移動 {} mm
+shift in {} states	{} 個の状態の移動
+Group the element of surface {}	面 {} の要素を群にする
+Group the elements of surfaces {}–{}	面 {}–{} の要素を群にする
+Group name	群の名前
+Make group	群にする
+Select whole elements with Shift. Inside a group makes a nested group; a range containing whole groups wraps them	Shift で要素をまるごと選ぶ。群の中を選ぶと入れ子の群に、群をまるごと含む範囲ならその外側の群になる
+Ungroup {}	{} を解除
+The elements and inner groups stay. Also removes: {}	中の要素と内側の群は残る。消えるもの: {}
+The elements and inner groups stay	中の要素と内側の群は残る
+Ungrouping {} also removes: {}	{} を解除すると消える: {}
+The range cuts element {} (select whole elements to make a group)	範囲が要素 {} の途中で切れる（群にするには要素をまるごと選ぶ）
 Make thermal configurations…	熱の構成を作る…
 Make thermal configurations	熱の構成を作る
 Writes a .zmx with configurations at other temperatures (OpticStudio's Make Thermal)	別の温度の構成を足した .zmx をエクスポートする（OpticStudio の Make Thermal）

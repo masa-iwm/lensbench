@@ -100,9 +100,14 @@ fn refuses_what_it_cannot_write() {
     assert!(Combo::from_project(&tg, &dir).is_ok());
     tg["blocks"][2]["t"][0]["id"] = json!("arm");
     assert!(Combo::from_project(&tg, &dir).is_err());
-    // 入れ子の群は組合せにしない
+    // 入れ子の群は外から内の群の道に（偏心・傾けた群は組合せにしない）
     let nest = json!({ "type": "group", "id": "G", "blocks": [{ "type": "group", "id": "H", "blocks": [lens] }] });
-    assert!(with(json!([stop, air, nest, air])).is_err());
+    assert_eq!(
+        with(json!([stop, air, nest, air])).unwrap().picks[0].group,
+        ["G", "H"]
+    );
+    let moved = json!({ "type": "group", "id": "G", "decenter": [1, 0], "blocks": [lens] });
+    assert!(with(json!([stop, air, moved, air])).is_err());
     // 最後の要素の後に空気が無い: 空気 0 と同じ
     assert_eq!(with(json!([stop, air, lens])).unwrap().picks[0].air, 0.0);
     // 先頭の空気（前の絞りが無い系）は組合せの前の空気に

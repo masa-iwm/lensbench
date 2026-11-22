@@ -76,7 +76,9 @@ impl Rec {
                 | L::Ops(_)
                 | L::DropOverride { .. }
                 | L::ConfigRow { .. }
-                | L::DropPick { .. } => Rec::LensData { act: a.clone() },
+                | L::DropPick { .. }
+                | L::MakeGroup { .. }
+                | L::Ungroup(_) => Rec::LensData { act: a.clone() },
                 // 選ぶ・読む・書き出す・断った理由・最適化の変数は文書を変えない
                 L::Select(_)
                 | L::OptVar(_)

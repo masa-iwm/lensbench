@@ -10,6 +10,7 @@
 //! ロックしたブロック（と、その中のブロック）の面は変えられない。
 
 mod cell_menu;
+mod group_menu;
 mod lines;
 mod names;
 mod strip;
@@ -158,7 +159,8 @@ pub(crate) struct Block {
     pub parent: Option<usize>,
 }
 
-/// 玉・群を面の範囲の入れ子で木にする。読込で作った玉は、名前のあるブロックの中にあれば外す。同じ面の組は最初の 1 つ
+/// 玉・群を面の範囲の入れ子で木にする。読込で作った玉は、名前のあるブロックの中にあれば外す。同じ面の組は最初の 1 つ。
+/// ただし名前のあるブロック同士（1 つの要素だけの群と、その要素など）は両方残し、先に出てきた方を外にする
 pub(crate) fn tree(units: &[Unit]) -> Vec<Block> {
     let sets: Vec<BTreeSet<usize>> = units
         .iter()
@@ -166,7 +168,9 @@ pub(crate) fn tree(units: &[Unit]) -> Vec<Block> {
         .collect();
     let mut keep: Vec<usize> = Vec::new();
     for (i, u) in units.iter().enumerate() {
-        if sets[i].is_empty() || keep.iter().any(|&j| sets[j] == sets[i]) {
+        let same =
+            |j: usize| sets[j] == sets[i] && (u.auto || units[j].auto || units[j].name == u.name);
+        if sets[i].is_empty() || keep.iter().any(|&j| same(j)) {
             continue;
         }
         if u.auto
@@ -179,14 +183,21 @@ pub(crate) fn tree(units: &[Unit]) -> Vec<Block> {
         }
         keep.push(i);
     }
-    keep.sort_by_key(|&i| (sets[i].first().copied(), std::cmp::Reverse(sets[i].len())));
+    keep.sort_by_key(|&i| {
+        (
+            sets[i].first().copied(),
+            std::cmp::Reverse(sets[i].len()),
+            i,
+        )
+    });
+    // 外のブロック: 面の組をすっかり含む、より大きいか、同じ大きさで先に出てきたブロックのうち一番内側
     let parent = |i: usize| {
         keep.iter()
             .enumerate()
             .filter(|(_, &j)| {
-                j != i && sets[j].len() > sets[i].len() && sets[i].is_subset(&sets[j])
+                j != i && sets[i].is_subset(&sets[j]) && (sets[j].len() > sets[i].len() || j < i)
             })
-            .min_by_key(|(_, &j)| sets[j].len())
+            .min_by_key(|(_, &j)| (sets[j].len(), std::cmp::Reverse(j)))
             .map(|(b, _)| b)
     };
     keep.iter()
@@ -662,6 +673,10 @@ pub(crate) enum Act {
     ConfigRow { j: usize, col: Col },
     /// 面 j の列 col の面の上書きを外す（組合せの系、要素の元の値に戻す）
     DropOverride { j: usize, col: Col },
+    /// 面の範囲 [最初, 最後] の要素を群にする（組合せの群。名前）
+    MakeGroup { span: [usize; 2], name: String },
+    /// 群を解除する（中の要素・内側の群は残す）
+    Ungroup(String),
     /// カタログの行を表へ落とした: 面 `after` の後に差し込む
     DropPick {
         after: usize,
@@ -794,6 +809,8 @@ struct CellMenu {
     /// 面・玉・群のピックアップの元（面の番号・「a-b」・ブロックの名前）と向き
     rp_src: String,
     rp_mode: RangePick,
+    /// 群にするときの名前
+    group_name: String,
 }
 
 /// 面・玉・群のピックアップの向き
@@ -1203,6 +1220,7 @@ fn row_menu(
     span: Option<[usize; 2]>,
     rows: &[Row],
     blocks: &[Block],
+    groups: &[(String, Option<String>)],
 ) -> RowMenu {
     let mut m = RowMenu::default();
     let edge = j == 0 || j == last;
@@ -1241,13 +1259,7 @@ fn row_menu(
         )
         .clicked();
     ui.separator();
-    ui.label(
-        RichText::new(tr(
-            "Groups in a combination are set in the element settings (Group)",
-        ))
-        .small()
-        .color(theme::weak_text(ui.visuals())),
-    );
+    group_menu::group_menu(ui, cm, &mut m, j, span, blocks, groups);
     // 面・玉・群としてのピックアップ（選んだ範囲の面を、別の面・範囲・ブロックから。反転・戻りの向きも）
     ui.separator();
     let span = span.unwrap_or([j, j]);
@@ -1390,6 +1402,8 @@ pub(crate) struct Ctx<'a> {
     pub glasses: &'a [GlassChoice],
     /// ガラスカタログを読み終えた（候補が空でも）
     pub glasses_loaded: bool,
+    /// 群（表のブロックのうち、群にした・解除できるもの）の名前と、解除で消える役割・移動の説明
+    pub groups: &'a [(String, Option<String>)],
 }
 
 impl LensData {

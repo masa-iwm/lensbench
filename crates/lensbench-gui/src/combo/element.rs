@@ -72,19 +72,8 @@ pub(super) fn element_settings(
     let st = st.as_deref();
     // 膜の欄で選べる、系の設定で定義した膜と登録した膜の一覧の名前
     let coats = crate::coat_defs::candidates(combo.coatings.keys());
-    // 群の欄の補完の候補（組合せにある群の名前）。今の要素の群は除く（打っている途中の名前が候補に出ない）
-    let mut groups: Vec<String> = Vec::new();
-    for q in combo
-        .all()
-        .iter()
-        .filter(|l| **l != step.loc)
-        .filter_map(|l| combo.get(l))
-    {
-        let g = q.group.trim();
-        if !g.is_empty() && !groups.iter().any(|n| n == g) {
-            groups.push(g.to_string());
-        }
-    }
+    // 群の欄の補完の候補（ほかの要素の群の道: 外の群だけのものも）。今の要素は除く（打っている途中の名前が候補に出ない）
+    let groups = combo.group_choices(&step.loc);
     let Some(p) = combo.get_mut(&step.loc) else {
         return;
     };
@@ -192,7 +181,7 @@ pub(super) fn element_settings(
     // 要素の群の役割・移動（レイアウトのパネルの「群」と同じ）
     let g = combo
         .get(&step.loc)
-        .map(|p| p.group.trim().to_string())
+        .map(|p| p.group.clone())
         .unwrap_or_default();
     if detail == Detail::Full && !g.is_empty() {
         ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, Some(&g)));

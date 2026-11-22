@@ -514,7 +514,7 @@ type Item = (Pick, Option<(f64, String, String)>);
 
 /// ブロックの並びを要素の並びにする（群は要素の group、分岐のある BS は口の先）。branch は BS の口の先の並び
 fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> {
-    let items = items(bs, groups, "")?;
+    let items = items(bs, groups, &[])?;
     let n = items.len();
     let mut out = Vec::new();
     for (k, (mut p, air)) in items.into_iter().enumerate() {
@@ -540,8 +540,8 @@ fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> 
     Ok(out)
 }
 
-/// ブロックの並びを（要素, 後の空気）の並びに。群の中は group を付けて平らにする
-fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> {
+/// ブロックの並びを（要素, 後の空気）の並びに。群の中は群の道（外から内）を付けて平らにする（入れ子の群も）
+fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &[String]) -> R<Vec<Item>> {
     let mut out: Vec<Item> = Vec::new();
     for b in bs {
         match b["type"].as_str() {
@@ -560,16 +560,18 @@ fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> 
                     || b["tilt"]
                         .as_array()
                         .is_some_and(|a| a.iter().any(|x| f(x, 0.0) != 0.0));
-                if !group.is_empty() || id.is_empty() || moved || b["on"] == false {
+                if id.is_empty() || moved || b["on"] == false {
                     return Err(format!("group {id}"));
                 }
                 if groups.iter().any(|g| g.name == id) {
                     return Err(format!("group {id} twice"));
                 }
+                let mut path = group.to_vec();
+                path.push(id.clone());
                 let inner = items(
                     b["blocks"].as_array().map_or(&[][..], |a| &a[..]),
                     groups,
-                    &id,
+                    &path,
                 )?;
                 if inner.is_empty() || inner.last().is_some_and(|x| x.1.is_some()) {
                     return Err(format!("group {id} ends with air"));
@@ -587,7 +589,7 @@ fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> 
             }
             _ => {
                 let mut p = elem_or_raw(b, groups)?;
-                p.group = group.to_string();
+                p.group = group.to_vec();
                 out.push((p, None));
             }
         }

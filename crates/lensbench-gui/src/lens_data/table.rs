@@ -90,6 +90,7 @@ impl View {
             self.sel_span,
             c.rows,
             c.blocks,
+            c.groups,
         )
     }
 }

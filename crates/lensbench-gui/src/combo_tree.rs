@@ -675,8 +675,8 @@ fn go(
     used: &mut std::collections::BTreeSet<String>,
     out: &mut Vec<Value>,
 ) {
-    // 要素ごとに（群の名前、ブロック、後の空気）
-    let mut parts: Vec<(String, Value, Option<Value>)> = Vec::new();
+    // 要素ごとに（群の道、ブロック、後の空気）
+    let mut parts: Vec<Part> = Vec::new();
     for (i, p) in list.iter().enumerate() {
         let mut loc = prefix.to_vec();
         loc.push(i);
@@ -699,12 +699,12 @@ fn go(
                 b[key] = Value::Array(v);
             }
             // 分岐のある BS は並びの最後
-            parts.push((String::new(), b, None));
+            parts.push((Vec::new(), b, None));
             break;
         }
         // 分岐の中の往路を戻る鏡の後は、BS へ戻る（後の空気は置かない）
         if p.kind == ElemKind::Mirror && p.mirror().back && !prefix.is_empty() {
-            parts.push((String::new(), b, None));
+            parts.push((Vec::new(), b, None));
             continue;
         }
         let mut air = json!({ "type": "air", "t": p.air });
@@ -714,34 +714,54 @@ fn go(
         if !p.air_medium.trim().is_empty() {
             air["medium"] = json!(p.air_medium.trim());
         }
-        let g = p.group.trim();
-        let g = if g.is_empty() || cx.names.iter().any(|n| n == g) {
-            String::new()
-        } else {
-            g.to_string()
-        };
+        // 要素の名前と同じ名前は群にしない
+        let g: Vec<String> = p
+            .group
+            .iter()
+            .filter(|g| !cx.names.iter().any(|n| n == *g))
+            .cloned()
+            .collect();
         parts.push((g, b, Some(air)));
     }
+    wrap(&parts, 0, cx, used, out);
+}
+
+/// 要素ごとの（群の道、ブロック、後の空気）
+type Part = (Vec<String>, Value, Option<Value>);
+
+/// 群の道の段 depth で、続く同じ名前の要素を群のブロックにして out へ（中はその次の段で入れ子に）。群の最後の
+/// 要素の後の空気は群の外。同じ名前の群は最初の続きだけ（離れた続きはその段を群にせず、内側の段は見る）
+fn wrap(
+    parts: &[Part],
+    depth: usize,
+    cx: &Cx,
+    used: &mut std::collections::BTreeSet<String>,
+    out: &mut Vec<Value>,
+) {
     let mut i = 0;
     while i < parts.len() {
-        let g = parts[i].0.clone();
+        let g = parts[i].0.get(depth).cloned();
         let e = (i..parts.len())
-            .find(|&j| parts[j].0 != g)
+            .find(|&j| parts[j].0.get(depth) != g.as_ref())
             .unwrap_or(parts.len());
-        if g.is_empty() || !used.insert(g.clone()) {
+        let Some(g) = g else {
             for (_, b, air) in &parts[i..e] {
                 out.push(b.clone());
                 out.extend(air.clone());
             }
             i = e;
             continue;
+        };
+        if !used.insert(g.clone()) {
+            wrap(&parts[i..e], depth + 1, cx, used, out);
+            i = e;
+            continue;
         }
         let mut inner = Vec::new();
-        for (j, (_, b, air)) in parts[i..e].iter().enumerate() {
-            inner.push(b.clone());
-            if i + j + 1 < e {
-                inner.extend(air.clone());
-            }
+        wrap(&parts[i..e], depth + 1, cx, used, &mut inner);
+        let tail = parts[e - 1].2.clone();
+        if tail.is_some() {
+            inner.pop();
         }
         let mut b = json!({ "type": "group", "id": g, "blocks": inner });
         if let Some(d) = cx.groups.iter().find(|d| d.name == g) {
@@ -753,7 +773,7 @@ fn go(
             }
         }
         out.push(b);
-        out.extend(parts[e - 1].2.clone());
+        out.extend(tail);
         i = e;
     }
 }

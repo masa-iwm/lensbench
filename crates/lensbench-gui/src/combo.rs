@@ -384,8 +384,9 @@ pub(crate) struct Pick {
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
     pub ports: [Branch; 3],
-    /// 群の名前（続く同じ名前の要素を 1 つの群のブロックにする。空なら群に入れない）
-    pub group: String,
+    /// 入っている群の名前（外から内。続く同じ名前の要素を群のブロックにし入れ子に。空は群なし、前の版の文字 1 つも読む）
+    #[serde(deserialize_with = "crate::combo_groups::group_path")]
+    pub group: Vec<String>,
     /// edits・ops を付けたときの面の並びの印（[`Pick::surf_sig`]）。面の数・順・元が変わったら上書きを外す
     #[serde(skip_serializing_if = "String::is_empty")]
     pub edits_for: String,
@@ -440,7 +441,7 @@ impl Default for Pick {
             state_stop: BTreeMap::new(),
             mc_picks: Vec::new(),
             mc_rank: BTreeMap::new(),
-            group: String::new(),
+            group: Vec::new(),
             edits_for: String::new(),
             id: String::new(),
             air_id: String::new(),
@@ -2315,19 +2316,13 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
 }
 
 /// 群の役割と移動。群の名前は要素の設定の「群」で付ける。状態を選んでいれば移動はその状態の値。
-/// only は 1 つの群だけ（面の表の要素の設定）
-fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) {
-    let mut names: Vec<String> = Vec::new();
+/// only はその群だけ（面の表の要素の設定: 要素の入っている群）
+fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&[String]>) {
+    let mut names = combo.group_names();
     let ids: Vec<String> = combo.ids_all().into_iter().map(|x| x.1).collect();
-    for p in combo.all().iter().filter_map(|l| combo.get(l)) {
-        let g = p.group.trim();
-        if !g.is_empty() && !names.iter().any(|n| n == g) {
-            names.push(g.to_string());
-        }
-    }
     crate::state_table::drop_unused_groups(combo, &names);
     if let Some(o) = only {
-        names.retain(|n| n == o);
+        names.retain(|n| o.contains(n));
     }
     if names.is_empty() {
         return;
@@ -2491,9 +2486,14 @@ pub(crate) fn onoff_ui(
     }
     // 群
     ui.label(RichText::new(tr("Group")).color(weak));
-    crate::widgets::name_edit::name_edit(ui, &mut p.group, 60.0, tr("Off"), groups, |_| true, "").on_hover_text(tr(
-        "Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)",
+    // 入れ子の群は外から内へ「/」で区切る（G1/G2）
+    let mut text = p.group.join("/");
+    let r = crate::widgets::name_edit::name_edit(ui, &mut text, 60.0, tr("Off"), groups, |_| true, "").on_hover_text(tr(
+        "Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel). Nested groups go from outer to inner separated by / (G1/G2). In Lens Data, select surfaces with Shift and right-click to make a group",
     ));
+    if r.changed() {
+        p.group = crate::combo_groups::group_path_of(&text);
+    }
     if p.kind == ElemKind::ZmxRange {
         zgroups_ui(ui, p, weak);
     }

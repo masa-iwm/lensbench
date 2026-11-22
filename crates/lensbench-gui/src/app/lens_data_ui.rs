@@ -102,7 +102,20 @@ impl Core {
             ld_combo::read_only(rows, &spans, picks, lead, j, col)
         };
         let overridden = |j: usize, col: Col| ld_combo::overridden(rows, &spans, picks, j, col);
+        // 群（要素の名前と同じ名前は群にしない）と、解除で消える役割・移動
+        let groups: Vec<(String, Option<String>)> = self
+            .doc
+            .combo
+            .group_names()
+            .into_iter()
+            .filter(|g| !ids.contains(g))
+            .map(|g| {
+                let lost = self.doc.combo.group_settings(&g);
+                (g, lost)
+            })
+            .collect();
         let ctx = lens_data::Ctx {
+            groups: &groups,
             glasses: &self.ld_glasses,
             glasses_loaded: self.browser.loaded && !self.browser.glasses_pending,
             rows,

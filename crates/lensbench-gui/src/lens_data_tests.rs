@@ -617,6 +617,7 @@ fn drive_glasses(
             note: None,
             glasses,
             glasses_loaded: true,
+            groups: &[],
         };
         // 修飾キーは押しているキーのもの（表は i.modifiers を見る）
         let modifiers = events

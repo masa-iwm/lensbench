@@ -369,8 +369,8 @@ fn groups_wrap_runs_and_move_by_state() {
         ..Default::default()
     };
     c.picks[0].air = 10.0;
-    c.picks[1].group = "G1".into();
-    c.picks[2].group = "G1".into();
+    c.picks[1].group = vec!["G1".into()];
+    c.picks[2].group = vec!["G1".into()];
     c.picks[1].air = 3.0;
     c.picks[2].air = 30.0;
     c.states.push("tele".into());
@@ -428,8 +428,8 @@ fn groups_split_runs_and_element_names() {
         picks: (0..4).map(|_| Pick::new(ElemKind::Lens)).collect(),
         ..Default::default()
     };
-    c.picks[0].group = "G".into();
-    c.picks[2].group = "G".into();
+    c.picks[0].group = vec!["G".into()];
+    c.picks[2].group = vec!["G".into()];
     let v = c.project();
     let types: Vec<&str> = v["blocks"]
         .as_array()
@@ -439,8 +439,8 @@ fn groups_split_runs_and_element_names() {
         .collect();
     assert_eq!(types.iter().filter(|t| **t == "group").count(), 1);
     let id = c.ids()[1].clone();
-    c.picks[2].group = String::new();
-    c.picks[0].group = id;
+    c.picks[2].group = Vec::new();
+    c.picks[0].group = vec![id];
     let v = c.project();
     assert!(!v["blocks"]
         .as_array()
@@ -467,7 +467,7 @@ fn stale_group_shift_is_not_written() {
         state_shift: [("tele".to_string(), 1.0)].into(),
         ..Default::default()
     });
-    c.picks[0].group = id;
+    c.picks[0].group = vec![id];
     let v = c.project();
     assert!(v["states"][0]["set"].as_object().unwrap().is_empty());
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));

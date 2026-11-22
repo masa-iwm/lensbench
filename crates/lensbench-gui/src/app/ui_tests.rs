@@ -593,7 +593,7 @@ fn nested_group_rows_keep_their_height() {
     let mut want = app.c.doc.combo.clone();
     assert!(want.picks.len() >= 3, "{}", want.picks.len());
     for p in want.picks.iter_mut().take(3) {
-        p.group = "G1".into();
+        p.group = vec!["G1".into()];
     }
     let e = edit::Edit::between(&app.c.doc.combo, &want).expect("changed");
     app.update(Msg::Edit(e));
@@ -642,6 +642,106 @@ fn nested_group_rows_keep_their_height() {
         .bounding_box()
         .unwrap();
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
+}
+
+/// レンズデータの表から群にする・群を解除する: Shift で選んだ範囲を右クリックの欄（Shift+F10）の「群にする」で群に、
+/// 群の中を選ぶと入れ子に。要素の途中で切れる範囲は断る。元に戻すで戻り、群を解除すると中の要素は残る
+#[test]
+fn make_and_remove_groups_from_the_table() {
+    let _g = serial();
+    let mut h = harness(a0());
+    let ids = h.state().c.doc.combo.ids();
+    assert!(ids.len() >= 3, "{ids:?}");
+    let span = |h: &Harness<'static, App>, id: &str| {
+        let b = h
+            .state()
+            .c
+            .sys
+            .ld_blocks
+            .iter()
+            .find(|b| b.name == id)
+            .cloned()
+            .expect(id);
+        [
+            *b.surfs.iter().min().unwrap(),
+            *b.surfs.iter().max().unwrap(),
+        ]
+    };
+    let paths = |h: &Harness<'static, App>| -> Vec<String> {
+        h.state()
+            .c
+            .doc
+            .combo
+            .picks
+            .iter()
+            .map(|p| p.group.join("/"))
+            .collect()
+    };
+    // 要素 1・2 の面を Shift で選び、Shift+F10 の欄で群 G1 にする
+    let (s1, s2) = (span(&h, &ids[1]), span(&h, &ids[2]));
+    h.get_by_label(&format!("Surface {} Thickness", s1[0]))
+        .click();
+    h.run_steps(2);
+    for _ in s1[0]..s2[1] {
+        h.press_key_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+        h.run_steps(1);
+    }
+    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.run_steps(2);
+    h.get_by_label("Group name").type_text("G1");
+    h.run_steps(1);
+    h.get_by_label("Make group").click();
+    settle(&mut h);
+    assert_eq!(paths(&h)[1..3], ["G1", "G1"], "{}", h.state().test_state());
+    assert_eq!(paths(&h)[0], "");
+    let g1 = h
+        .state()
+        .c
+        .sys
+        .ld_blocks
+        .iter()
+        .position(|b| b.name == "G1")
+        .expect("G1 block");
+    // 群の中の要素 2 だけを群 G2 に（入れ子）
+    let s2 = span(&h, &ids[2]);
+    h.state_mut()
+        .update(Msg::LensData(lens_data::Act::MakeGroup {
+            span: s2,
+            name: "G2".into(),
+        }));
+    settle(&mut h);
+    assert_eq!(paths(&h)[1..3], ["G1", "G1/G2"]);
+    let blocks = &h.state().c.sys.ld_blocks;
+    let g2 = blocks.iter().find(|b| b.name == "G2").expect("G2 block");
+    let mut up = g2.parent;
+    while let Some(i) = up.filter(|&i| i != g1) {
+        up = blocks[i].parent;
+    }
+    assert_eq!(up, Some(g1), "G2 is inside G1");
+    // 要素の途中で切れる範囲は断り、組合せを変えない
+    let s0 = span(&h, &ids[0]);
+    if s0[1] > s0[0] {
+        h.state_mut()
+            .update(Msg::LensData(lens_data::Act::MakeGroup {
+                span: [s0[0] + 1, s0[1]],
+                name: "X".into(),
+            }));
+        settle(&mut h);
+        assert!(h.state().c.status.error, "{}", h.state().test_state());
+        assert!(paths(&h).iter().all(|p| !p.contains('X')));
+    }
+    // 元に戻すで入れ子の前へ
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    settle(&mut h);
+    assert_eq!(paths(&h)[1..3], ["G1", "G1"], "{}", h.state().test_state());
+    // 群を解除: 中の要素は残り、群のブロックは消える
+    let n = h.state().c.doc.combo.picks.len();
+    h.state_mut()
+        .update(Msg::LensData(lens_data::Act::Ungroup("G1".into())));
+    settle(&mut h);
+    assert!(paths(&h).iter().all(|p| p.is_empty()));
+    assert_eq!(h.state().c.doc.combo.picks.len(), n);
+    assert!(!h.state().c.sys.ld_blocks.iter().any(|b| b.name == "G1"));
 }
 
 /// ファイル > 最近のファイル: 長いパスでも 1 件 1 行（親のフォルダとファイルの名前）で、フルパスはホバーで

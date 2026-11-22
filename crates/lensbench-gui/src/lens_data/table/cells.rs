@@ -125,6 +125,15 @@ pub(super) fn block_cell(
                         .sense(Sense::click()),
                 )
                 .on_hover_text(hint);
+            // 群の名前の右クリック: 群を解除
+            if c.groups.iter().any(|g| g.0 == b.name) {
+                r.context_menu(|ui| {
+                    if ui.button(trf("Ungroup {}", &[&b.name])).clicked() {
+                        out.acts.push(Act::Ungroup(b.name.clone()));
+                        ui.close_menu();
+                    }
+                });
+            }
             if v.tree && r.clicked() {
                 out.toggle = Some(b.name.clone());
             }

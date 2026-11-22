@@ -97,10 +97,10 @@ fn doc_peek_reads_gui_and_blocks() {
         peek("P8_catalog_two.json")["combo"]["picks"][0]["part"],
         "PCX-100"
     );
-    // 組合せで書けない（入れ子の群）なら combo は無い
+    // 組合せで書けない（偏心した群）なら combo は無い
     lensbench_core::vfs::write(&f, r#"{"wavelengths": [{"um": 0.55}], "aperture": {"type": "epd", "value": 2},
-        "blocks": [{"type": "group", "id": "A", "blocks": [{"type": "group", "id": "B", "blocks": [
-            {"type": "lens", "stop": true, "source": {"surfaces": [{"radius": 20, "t": 3, "glass": "N-BK7"}, {"radius": -20}]}}]}]},
+        "blocks": [{"type": "group", "id": "A", "decenter": [1, 0], "blocks": [
+            {"type": "lens", "stop": true, "source": {"surfaces": [{"radius": 20, "t": 3, "glass": "N-BK7"}, {"radius": -20}]}}]},
             {"type": "air", "t": 9}]}"#)
     .unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();

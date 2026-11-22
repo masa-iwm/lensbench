@@ -324,6 +324,45 @@ impl Core {
                     }
                 }
             }
+            Act::MakeGroup { span, name } => {
+                // 範囲にすっかり入る要素（要素の途中で切れる範囲は断る。要素の外の行は見ない）
+                let mut ks: Vec<usize> = Vec::new();
+                for (k, s) in spans.iter().enumerate() {
+                    let Some(s) = s else { continue };
+                    let inside = span[0] <= s[0] && s[1] <= span[1];
+                    let overlap = s[0] <= span[1] && span[0] <= s[1];
+                    if overlap && !inside {
+                        let id = ids.get(k).cloned().unwrap_or_default();
+                        self.fail(trf(
+                            "The range cuts element {} (select whole elements to make a group)",
+                            &[&id],
+                        ));
+                        return;
+                    }
+                    if inside {
+                        ks.push(k);
+                    }
+                }
+                let chain = self.doc.combo.chain();
+                let locs: Vec<_> = match (ks.first(), ks.last()) {
+                    (Some(&a), Some(&b)) => (a..=b)
+                        .filter_map(|k| chain.get(k).map(|s| s.loc.clone()))
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                if let Err(e) = self.doc.combo.make_group(&locs, &name) {
+                    self.fail(e);
+                } else if !self.s.auto_build {
+                    self.build_combo(self.doc.combo.project());
+                }
+            }
+            Act::Ungroup(name) => {
+                if let Err(e) = self.doc.combo.ungroup(&name) {
+                    self.fail(e);
+                } else if !self.s.auto_build {
+                    self.build_combo(self.doc.combo.project());
+                }
+            }
             Act::DropPick { after, pick } => {
                 // 面 after を持つ要素の後（要素の外の面なら、その面より前の要素の後）
                 let at = spans
