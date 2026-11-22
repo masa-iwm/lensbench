@@ -4,6 +4,9 @@ use super::*;
 use crate::newton2;
 use crate::tol::{aim_scale, AIM_FAIL, AIM_LINE_MIN, AIM_STEP, AIM_TOL};
 
+/// 1 本も解けなかった束を主光線から継続法で解き直す本数の上限（[`System::aim`]。1 本・数本だけを追う光線のため）
+const LONE_MAX: usize = 16;
+
 impl System {
     /// 光線の狙いで光線がたどる長さの目安 [mm]（[`crate::tol::aim_scale`] の丸めの下限）: 物体面（有限のとき）から
     /// 絞りまでの厚さの大きさの和と、その間の面の半径の最大
@@ -309,7 +312,9 @@ impl System {
         // 1 本も解けなかった（1 本だけ・数本だけを追うときに多い）: 隣の解けた光線が無いので、主光線（瞳の中心）を解いて
         // そこから継続法で解き直す。超広角の系では、近軸の初期値から始めると絞りまで届かない縁の光線が、まとめて追えば
         // 隣から解けるのに、1 本で追うと解けずに止まっていた（相対照度の縁の光線）
-        if good.is_empty() && !bad.is_empty() {
+        // 本数の多い束（瞳の格子など）で 1 本も解けないときはしない（届かない視野の数十万本を 1 本ずつ継続法で
+        // 解き直すと数分かかる。束の光線は隣どうしで解けるので、1 本も解けないのは届かない視野）
+        if good.is_empty() && !bad.is_empty() && n <= LONE_MAX {
             let c0 = tgt([0.0, 0.0]);
             let [chief] = solve(1, &|_| AimStart::new(c0, sh, None, sh))[..] else {
                 unreachable!()
