@@ -130,3 +130,87 @@ fn matches_opticstudio_make_thermal() {
         }
     }
 }
+
+/// 面タイプのパラメータ（OpticStudio 2026 R1.01 の Make Thermal の規則）: Odd Asphere の r^k の係数は s^(1−k)、Irregular の偏心と
+/// Zs・Za・Zc は s 倍で傾き・角度はそのまま、Tilted の tan はそのまま（s = 1 + α ΔT。形だけを見るので面は鏡にして TCE を与える）
+#[test]
+fn surface_type_parameters_follow_opticstudio() {
+    let head = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\nGCAT SCHOTT\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n";
+    let sys = |surf1: &str| {
+        let txt = format!(
+            "{head}SURF 1\n  STOP\n{surf1}  DISZ -40\n  GLAS MIRROR 0 0 1.5 4.0E+1 0 0 0 0 0 0\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        );
+        let raw = zmx::parse_text(&txt).unwrap();
+        let opt = LoadOptions {
+            cfg: 1,
+            catalog_dirs: vec![root().join("tests/glass")],
+            ..Default::default()
+        };
+        let mut s = zmx::build(&raw, &opt, &[], None).unwrap();
+        // 鏡はレンズデータの TCE（N-BK7 の 7.1e-6 と同じ）
+        s.set_param(Param::new(1, Kind::Tce), 7.1).unwrap();
+        s
+    };
+    let spec = ThermalSpec {
+        temps: vec![-30.0, 70.0],
+        pressures: vec![],
+    };
+    let check = |s: &System, want: &[(u8, Option<f64>)]| {
+        let out = make_thermal(s, 1, &spec).unwrap();
+        let cf = out.system.configs().unwrap();
+        let a = s.temperature;
+        let tce = 7.1e-6;
+        for &(i, e) in want {
+            let p = Param::new(1, Kind::Asph(i));
+            let row = cf.rows.iter().find(|r| r.param == p);
+            match e {
+                None => assert!(row.is_none(), "parm {}", i + 1),
+                Some(e) => {
+                    let row = row.unwrap_or_else(|| panic!("no row of parm {}", i + 1));
+                    let v = row.values[0];
+                    for (k, t) in [-30.0, 70.0].iter().enumerate() {
+                        let g: f64 = 1.0 + tce * (t - a);
+                        let want = v * g.powf(e);
+                        assert!(
+                            (row.values[k + 1] - want).abs() <= 1e-12 * want.abs(),
+                            "parm {} at {t}: {} vs {want}",
+                            i + 1,
+                            row.values[k + 1]
+                        );
+                    }
+                }
+            }
+        }
+        out.warnings
+    };
+    let odd = sys("  TYPE ODDASPHE\n  CURV 0.02\n  CONI -0.5\n  PARM 1 1e-3\n  PARM 2 1e-4\n  PARM 3 1e-5\n  PARM 4 1e-6\n  PARM 8 1e-10\n");
+    let w = check(
+        &odd,
+        &[
+            (0, Some(0.0)),
+            (1, Some(-1.0)),
+            (2, Some(-2.0)),
+            (7, Some(-7.0)),
+        ],
+    );
+    assert!(w.iter().all(|x| !x.contains("not scaled")), "{w:?}");
+    let irr = sys("  TYPE IRREGULA\n  CURV 0.02\n  PARM 1 0.1\n  PARM 2 -0.2\n  PARM 3 1\n  PARM 4 2\n  PARM 5 0.01\n  PARM 6 0.02\n  PARM 7 0.03\n  PARM 8 30\n");
+    check(
+        &irr,
+        &[
+            (0, Some(1.0)),
+            (1, Some(1.0)),
+            (2, None),
+            (3, None),
+            (4, Some(1.0)),
+            (5, Some(1.0)),
+            (6, Some(1.0)),
+            (7, None),
+        ],
+    );
+    let tilt = sys("  TYPE TILTSURF\n  PARM 1 0.01\n  PARM 2 0.02\n");
+    check(&tilt, &[(0, None), (1, None)]);
+}

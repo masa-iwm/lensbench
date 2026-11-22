@@ -9,8 +9,10 @@
 //!   面はレンズデータの TCE の列。温度差 ΔT は元の系の温度から
 //! - 曲率 c / (1 + α ΔT)、非球面（偶数次）の r^(2n) の係数 × (1 + α ΔT)^(1 − 2n)、円錐係数はそのまま。半直径・機械半径・
 //!   チップゾーンは × (1 + α ΔT)。ガラスの厚さは × (1 + α ΔT)（そのガラスの α）
+//! - 面タイプのパラメータ（2026 R1.01 で 10 種を確かめた）は [`asph_exponent`]。表に置けないもの（トロイダル面・Binary 2・
+//!   Fresnel の曲率と係数、Zernike の項など）は変えずに注意を出す
 //! - 空気の間隔は、間隔の前後の面の半直径の縁を結ぶ薄い円筒のスペーサー（α は間隔の面のレンズデータの TCE）とみる。
-//!   スペーサーの長さ（縁から縁）が × (1 + α_m ΔT)。縁の高さは、半直径の小さい方の面はスペーサーの α_m で、大きい方は
+//!   スペーサーの長さ（縁から縁）が × (1 + α_m ΔT)。縁の高さは、半直径の小さい方の面（像面までは前の面）はスペーサーの α_m で、大きい方は
 //!   その面のガラスの α で変わる。中心の厚さは縁の長さと、その高さでの温度の後の矢高から決める
 //!
 //! 熱のピックアップ（元の系を変えると追いかける）は作らず、作った時の値を表に書く。
@@ -19,7 +21,7 @@ use crate::error::Result;
 use crate::invalid;
 use crate::material::Material;
 use crate::param::{Kind, Param};
-use crate::shape::Shape;
+use crate::surface::{SurfType, Surface};
 use crate::system::System;
 
 /// 熱の構成の設定
@@ -154,6 +156,13 @@ pub fn make_thermal(s: &System, base: usize, spec: &ThermalSpec) -> Result<Therm
         if d.ignore || d.is_coord_break() || !lens[j] {
             continue;
         }
+        // 曲率を表に置けない面（Tilted は形に効かない。トロイダル面・Binary 2 は lensbench の表に置けない）
+        if s0.check_param(Param::new(j, Kind::Curv)).is_err() {
+            if d.c != 0.0 {
+                warnings.push(format!("surface {j}: the curvature is not scaled (it can't be a configuration row of this surface type)"));
+            }
+            continue;
+        }
         rows.push((
             Param::new(j, Kind::Curv),
             dts.iter().map(|dt| d.c / (1.0 + al[j] * dt)).collect(),
@@ -179,7 +188,12 @@ pub fn make_thermal(s: &System, base: usize, spec: &ThermalSpec) -> Result<Therm
             let sb = |h: f64| if lens[b] { sag(&s0, b, h) } else { 0.0 };
             let e0 = d.t - sf(hf) + sb(hb);
             // 縁の高さの α: 半直径の小さい方はスペーサーの α
-            let (xf, xb) = if hf <= hb { (am, al[b]) } else { (al[j], am) };
+            // （像面までの間隔は、像面の半直径によらず面の縁がスペーサーに載る。OpticStudio 2026 R1.01 で確かめた）
+            let (xf, xb) = if b == img || hf <= hb {
+                (am, al[b])
+            } else {
+                (al[j], am)
+            };
             dts.iter()
                 .map(|dt| {
                     let (gf, gb) = (1.0 + al[j] * dt, 1.0 + al[b] * dt);
@@ -201,25 +215,34 @@ pub fn make_thermal(s: &System, base: usize, spec: &ThermalSpec) -> Result<Therm
         if d.ignore || d.is_coord_break() || !lens[j] {
             continue;
         }
-        match d.shape() {
-            Shape::EvenAsphere(_) => {
-                // Asph(i) は r^(2(i + 1)) の係数（.zmx の PARM i + 1）
-                for i in 0..8u8 {
-                    let par = Param::new(j, Kind::Asph(i));
-                    let Ok(v) = s0.get_param(par) else { continue };
-                    let e = 1.0 - 2.0 * (i as f64 + 1.0);
-                    rows.push((
-                        par,
-                        dts.iter()
-                            .map(|dt| v * (1.0 + al[j] * dt).powf(e))
-                            .collect(),
-                    ));
+        // 面タイプのパラメータ（asph の i 番目）: 形の長さが全部 (1 + α ΔT) 倍になる z_T(h) = g z(h / g) の倍率
+        let n_asph = d.asph().len().min(8);
+        let mut lost = false;
+        for i in 0..n_asph as u8 {
+            let Some(e) = asph_exponent(d.typ(), i as usize) else {
+                continue;
+            };
+            let par = Param::new(j, Kind::Asph(i));
+            let Ok(v) = s0.get_param(par) else {
+                if d.asph()[i as usize] != 0.0 {
+                    lost = true;
                 }
-            }
-            Shape::Conic { .. } | Shape::Plane => {}
-            _ => warnings.push(format!(
-                "surface {j}: only the curvature and size of this surface type are scaled"
-            )),
+                continue;
+            };
+            rows.push((
+                par,
+                dts.iter()
+                    .map(|dt| v * (1.0 + al[j] * dt).powf(e))
+                    .collect(),
+            ));
+        }
+        if lost {
+            warnings.push(format!(
+                "surface {j}: the surface type parameters are not scaled (they can't be configuration rows of this surface type)"
+            ));
+        }
+        if let Some(w) = unscaled(d, j) {
+            warnings.push(w);
         }
         rows.push((Param::new(j, Kind::Semi), scaled(d.semi.abs(), al[j])));
         rows.push((
@@ -254,4 +277,48 @@ pub fn make_thermal(s: &System, base: usize, spec: &ThermalSpec) -> Result<Therm
     }
     let system = out.config(1)?;
     Ok(Thermal { system, warnings })
+}
+
+/// 面タイプ t のパラメータ asph[i]（.zmx の PARM i + 1。トロイダル面は表に置けないので使わない）の、(1 + α ΔT) の何乗を掛けるか。
+/// 変えないものは None（OpticStudio 2026 R1.01 の Make Thermal と同じ）
+fn asph_exponent(t: SurfType, i: usize) -> Option<f64> {
+    let n = i as f64 + 1.0;
+    match t {
+        // r^(2n) の係数
+        SurfType::EvenAsph
+        | SurfType::Binary2
+        | SurfType::Fresnel
+        | SurfType::CylFresnel
+        | SurfType::ZernikeStd
+        | SurfType::ZernikeFringe
+        | SurfType::GridSag => Some(1.0 - 2.0 * n),
+        // r^n の係数
+        SurfType::OddAsph => Some(1.0 - n),
+        // 偏心 x・y と Zs・Za・Zc（半直径で正規化した ρ の項の大きさ）は長さ、傾き・角度は変えない
+        SurfType::Irregular => matches!(i, 0 | 1 | 4 | 5 | 6).then_some(1.0),
+        // Tilted の tan は変えない
+        _ => None,
+    }
+}
+
+/// 熱の構成で伸び縮みさせられない面 j のパラメータの注意（OpticStudio は伸び縮みさせるが、lensbench の多重構成の表に置けないもの）
+fn unscaled(d: &Surface, j: usize) -> Option<String> {
+    Some(match d.typ() {
+        SurfType::Toroidal => format!(
+            "surface {j}: the radius of rotation and the aspheric terms of the toroidal surface are not scaled"
+        ),
+        SurfType::ZernikeStd | SurfType::ZernikeFringe => format!(
+            "surface {j}: the Zernike terms and their normalization radius and decenter are not scaled"
+        ),
+        SurfType::GridSag => {
+            format!("surface {j}: the Zernike terms and the grid of the grid sag surface are not scaled")
+        }
+        SurfType::Binary2 => {
+            format!("surface {j}: the normalization radius of the binary 2 phase is not scaled")
+        }
+        SurfType::User | SurfType::UserShape => {
+            format!("surface {j}: the parameters of the user-defined surface are not scaled")
+        }
+        _ => return None,
+    })
 }

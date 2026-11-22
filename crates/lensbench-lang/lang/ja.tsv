@@ -2590,7 +2590,13 @@ surface {j}: a model glass has no TCE (taken as 0)	面 {j}: モデルガラス�
 turned on adjust index to the environment (the glass indices follow the temperature and pressure)	屈折率を環境に合わせる設定を入れました（硝材の屈折率は温度・気圧に従います）
 coordinate breaks are left as they are (their thickness doesn't expand)	座標ブレークはそのままです（厚みは伸び縮みしません）
 surface {j}: the thickness can't be expanded (the sag at the semi-diameter is undefined)	面 {j}: 厚みを伸び縮みさせられません（クリア半径の矢高が決まりません）
-surface {j}: only the curvature and size of this surface type are scaled	面 {j}: この面タイプは曲率と大きさだけを伸び縮みさせます
+surface {j}: the curvature is not scaled (it can't be a configuration row of this surface type)	面 {j}: 曲率は伸び縮みさせません（この面タイプでは多重構成の行に置けません）
+surface {j}: the surface type parameters are not scaled (they can't be configuration rows of this surface type)	面 {j}: 面タイプのパラメータは伸び縮みさせません（この面タイプでは多重構成の行に置けません）
+surface {j}: the radius of rotation and the aspheric terms of the toroidal surface are not scaled	面 {j}: トロイダル面の回転半径と非球面の係数は伸び縮みさせません
+surface {j}: the Zernike terms and their normalization radius and decenter are not scaled	面 {j}: Zernike の項と正規化半径・偏心は伸び縮みさせません
+surface {j}: the Zernike terms and the grid of the grid sag surface are not scaled	面 {j}: Grid Sag の Zernike の項とグリッドは伸び縮みさせません
+surface {j}: the normalization radius of the binary 2 phase is not scaled	面 {j}: Binary 2 の位相の正規化半径は伸び縮みさせません
+surface {j}: the parameters of the user-defined surface are not scaled	面 {j}: ユーザー定義の面のパラメータは伸び縮みさせません
 removed the solve of surface {j} {} (the value of the original system is kept)	面 {j} の {} のソルブを外しました（値は元のシステムのまま）
 starts must be 1 or more	starts は 1 以上
 keep must be 1 or more	keep は 1 以上
