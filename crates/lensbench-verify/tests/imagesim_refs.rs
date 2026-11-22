@@ -1,4 +1,4 @@
-//! OpticStudio 2026 R1.01 の Image Simulation の出力（tests/refs/<系>/imagesim_os/、入力は tests/refs/imagesim_src/）との照合。
+//! OpticStudio 2026 R1.01 の Image Simulation の出力（tests/refs/<系>/imagesim_os/、入力は tests/imagesim_src/）との照合。
 //! OS から数値は取れず 8 bit の PNG だけなので、試験の図の点（元の 1 画素、64 画素ごと）ごとに、重心と明るさの和を比べる
 //! （既定の画素・Oversampling なし・中心の視野 1 の設定だけ）。
 //!
@@ -53,7 +53,10 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
         ..Default::default()
     };
     let s = zmx::load_with(&refs.join(sys).join("system.zmx"), &opt).unwrap();
+    // 入力の画像は系の基準のフォルダ（tests/refs の下は全部が系）の外に置く
     let (w, h, mut ch) = png(&refs
+        .parent()
+        .unwrap()
         .join("imagesim_src")
         .join(meta["input_image"].as_str().unwrap()));
     let rgb = meta["wavelength_mode"]

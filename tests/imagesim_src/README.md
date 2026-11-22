@@ -1,7 +1,8 @@
 # Image Simulation references (#937)
 
 Input test patterns for the OpticStudio Image Simulation references in
-`../A0/imagesim_os/` and `../D0/imagesim_os/`.
+`../refs/A0/imagesim_os/` and `../refs/D0/imagesim_os/`.
+They live outside `tests/refs/` because every folder there is a system (tests walk them and open `system.zmx`).
 The references come from OpticStudio 2026 R1.01 (26.1.1), run through the standalone ZOS-API.
 
 ## Inputs (512 x 512, `[row, col]`, row 0 = top)

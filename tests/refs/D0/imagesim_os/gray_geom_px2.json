@@ -3,7 +3,7 @@
  "run": "gray_geom_px2",
  "opticstudio": "2026 R1.01 (26.1.1), ZOS-API standalone",
  "input_image": "lb937_gray.png",
- "input_image_note": "run with the 24-bit BMP of the same pixels; PNG copy in ../../imagesim_src/",
+ "input_image_note": "run with the 24-bit BMP of the same pixels; PNG copy in ../../../imagesim_src/",
  "wavelength_mode": "primary",
  "wavelengths_um": [
   0.4861327,
