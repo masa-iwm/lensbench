@@ -339,29 +339,56 @@ impl System {
         if !bad.is_empty() && !good.is_empty() {
             let pts: Vec<[f64; 2]> = (0..n).map(|i| [px[i], py[i]]).collect();
             let all = NearGrid::new(&pts, &(0..n).collect::<Vec<_>>());
-            // 光線ごとの最近接の（別の）光線までの距離
-            let gap: Vec<f64> = bad
-                .iter()
-                .map(|&i| {
-                    all.nearest(&pts, pts[i], Some(i))
-                        .map_or(f64::INFINITY, |(_, d)| d)
-                })
-                .collect();
-            let mut gap_of = vec![0.0; n];
-            for (&i, &g) in bad.iter().zip(&gap) {
-                gap_of[i] = g;
+            // 光線ごとの最近接の（別の）光線までの距離（解けた・解けなかった光線とも。2 本以上あるので有限）
+            let gap_one = |i: usize| all.nearest(&pts, pts[i], Some(i)).map_or(0.0, |x| x.1);
+            let gap: Vec<f64> = if n >= PAR_MIN_RAYS && !crate::par::sequential() {
+                (0..n)
+                    .into_par_iter()
+                    .with_min_len(PAR_CHUNK)
+                    .map(scoped(gap_one))
+                    .collect()
+            } else {
+                (0..n).map(gap_one).collect()
+            };
+            // 縁とみなす距離の上限（下の 1.5 · max(間隔) の最大）
+            let reach = 1.5 * gap.iter().fold(0.0f64, |m, &g| m.max(g));
+            // 解けなかった光線ごとの、reach 以内で最も近い解けた光線（同じ距離なら番号の小さい方）。初めは全部の解けた
+            // 光線から、あとは新しく解けた光線だけで更新する（縁かどうかは reach 以内の最近接で決まるので、毎回全部の
+            // 解けた光線から最近接を引き直すのと同じ。以前は 1 周ごとに全部の光線の最近接を引き直し、瞳の格子の数百万本で
+            // 届かない領域が広いと、遠い最近接の探索と周の数で数十分かかっていた）
+            let near0 = NearGrid::new(&pts, &good);
+            let first = |i: usize| near0.nearest_within(&pts, pts[i], reach);
+            let mut cur: Vec<Option<(usize, f64)>> = vec![None; n];
+            let c0: Vec<Option<(usize, f64)>> =
+                if bad.len() >= PAR_MIN_RAYS && !crate::par::sequential() {
+                    bad.par_iter()
+                        .copied()
+                        .with_min_len(PAR_CHUNK)
+                        .map(scoped(first))
+                        .collect()
+                } else {
+                    bad.iter().map(|&i| first(i)).collect()
+                };
+            for (&i, c) in bad.iter().zip(c0) {
+                cur[i] = c;
             }
-            let gap_good = |j: usize| all.nearest(&pts, pts[j], Some(j)).map_or(0.0, |x| x.1);
+            // 0: まだ試していない解けなかった光線、1: 解けた、2: 縁として解き直して失敗した（もう試さない）
+            let mut state = vec![1u8; n];
+            for &i in &bad {
+                state[i] = 0;
+            }
+            let bad_grid = NearGrid::new(&pts, &bad);
+            let mut cand = bad;
             loop {
-                let near = NearGrid::new(&pts, &good);
-                let mut front = Vec::new();
-                let mut rest = Vec::new();
-                for &i in &bad {
-                    match near.nearest(&pts, pts[i], None) {
-                        Some((j, d)) if d <= 1.5 * gap_of[i].max(gap_good(j)) => front.push((i, j)),
-                        _ => rest.push(i),
-                    }
-                }
+                let front: Vec<(usize, usize)> = cand
+                    .iter()
+                    .filter_map(|&i| match cur[i] {
+                        Some((j, d)) if state[i] == 0 && d <= 1.5 * gap[i].max(gap[j]) => {
+                            Some((i, j))
+                        }
+                        _ => None,
+                    })
+                    .collect();
                 if front.is_empty() {
                     break;
                 }
@@ -381,19 +408,39 @@ impl System {
                 } else {
                     front.iter().map(redo).collect()
                 };
-                let mut solved = 0;
+                let mut new = Vec::new();
                 for (&(i, _), r) in front.iter().zip(re) {
+                    // 失敗した縁の光線はもう試さない（次の縁は新しく解けた光線の隣）
+                    state[i] = 2;
                     if let Some(v) = r {
                         out[i] = (v, false, false);
-                        good.push(i);
-                        solved += 1;
+                        state[i] = 1;
+                        new.push(i);
                     }
                 }
-                if solved == 0 {
+                if new.is_empty() {
                     break;
                 }
-                // 失敗した縁の光線はもう試さない（次の縁は新しく解けた光線の隣）
-                bad = rest;
+                // 新しく解けた光線の reach 以内の、まだ試していない光線の最近接を更新し、次の縁の候補にする
+                let mut next = Vec::new();
+                for &g in &new {
+                    bad_grid.within(&pts, pts[g], reach, |i, d| {
+                        if state[i] != 0 {
+                            return;
+                        }
+                        let better = match cur[i] {
+                            None => true,
+                            Some((bj, bd)) => d < bd || (d == bd && g < bj),
+                        };
+                        if better {
+                            cur[i] = Some((g, d));
+                        }
+                        next.push(i);
+                    });
+                }
+                next.sort_unstable();
+                next.dedup();
+                cand = next;
             }
         }
         for (i, (v, f, _)) in out.into_iter().enumerate() {
