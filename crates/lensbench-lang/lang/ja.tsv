@@ -796,6 +796,12 @@ coating {n} has layers or a table and also a model or measured table; use one of
 coating table {c} has no data	コーティングの表 {c} にデータがありません
 measured table key {k} is not coating|medium before|medium after	実測表のキー {k} が コーティング|前の媒質|後の媒質 の形ではありません
 coating model {c} has neither transmission nor mirror data	コーティングのモデル {c} に透過のデータもミラーのデータもありません
+coating {c} is a user coating and also has layers, a table, a model or a measured table; use one of them	コーティング {c} はユーザー定義のコーティングで、層・表・モデル・実測表もあります。どれか 1 つにしてください
+user coating {c}: {x}	ユーザー定義のコーティング {c}: {x}
+example wavelengths {wls:?} are not positive numbers	確かめる波長 {wls:?} が正の数ではありません
+{at}: the coefficients are not finite ({c:?})	{at}: 係数が有限の数ではありません（{c:?}）
+{at}: |r|² + |t|² is more than 1 ({c:?})	{at}: |r|² + |t|² が 1 を超えています（{c:?}）
+{at}: s and p differ at normal incidence ({c:?})	{at}: 垂直入射で s と p が違います（{c:?}）
 coating material {m}: the wavelengths are not positive and ascending	コーティングの材料 {m}: 波長が正の昇順になっていません
 coating material {m}: n must be positive and k ≤ 0 (absorption is k < 0)	コーティングの材料 {m}: n は正、k は 0 以下にしてください（吸収は k < 0）
 coating {c}: the thickness {} of layer {} is not a number ≥ 0	コーティング {c}: 厚み {}（層 {}）が 0 以上の数ではありません

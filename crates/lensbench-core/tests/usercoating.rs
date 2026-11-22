@@ -330,3 +330,156 @@ fn coat_choices_list_every_source_in_order() {
     let (s0, _, _) = with_coat("EXT_AR", None);
     assert!(names(&s0).is_empty());
 }
+
+/// 膜なしのフレネルを計算で返す利用者の膜（同梱の膜なしと同じ約束: パワーで規格化、反射の p は反射の後で反転）。
+/// 鏡は理想膜 I.90 と同じ −√0.1
+#[derive(Debug)]
+struct UserFresnel;
+
+impl lensbench_core::usercoating::CoatingModel for UserFresnel {
+    fn coefs(
+        &self,
+        x: &lensbench_core::usercoating::CoatInput,
+    ) -> Result<lensbench_core::usercoating::CoatCoefs> {
+        use lensbench_core::usercoating::{CoatCoefs, CoatPath};
+        if x.path == CoatPath::Mirror {
+            let r = C64::new(-(0.1f64).sqrt(), 0.0);
+            return Ok(CoatCoefs {
+                rs: r,
+                rp: r,
+                ..Default::default()
+            });
+        }
+        let (n0, ns, c0) = (x.n1, x.n2, x.cos1);
+        let s0 = ((1.0 - c0) * (1.0 + c0)).max(0.0).sqrt();
+        let q = n0 * s0 / ns;
+        let cs = (1.0 - q * q).sqrt();
+        let rt = |e0: f64, es: f64| {
+            let r = (e0 - es) / (e0 + es);
+            let t = 2.0 * e0 / (e0 + es) * (es / e0).sqrt();
+            (C64::new(r, 0.0), C64::new(t, 0.0))
+        };
+        let (rs, ts) = rt(n0 * c0, ns * cs);
+        let (rp, tp) = rt(n0 / c0, ns / cs);
+        Ok(CoatCoefs { rs, rp, ts, tp })
+    }
+    fn doc(&self) -> String {
+        "test: bare Fresnel".into()
+    }
+}
+
+/// 利用者の膜は膜の一覧から名前で引け、種類は user、係数は同梱の膜なし（透過・屈折面での反射）・理想膜（鏡）と同じ。
+/// 約束の確かめ（check_coatings）を通り、層の並びと同じ名前なら誤り。明示して読んだモデルがあればそちらが勝つ
+#[test]
+fn a_user_coating_matches_the_bare_interface() {
+    use lensbench_core::system::{FieldSel, PolIn};
+    let mut set = CoatingSet::new();
+    set.add_user("USER_BARE", Arc::new(UserFresnel));
+    check_coatings(&set).unwrap();
+    let mut bad = set.clone();
+    bad.add_layers("USER_BARE", Vec::new());
+    assert!(check_coatings(&bad).is_err());
+    let mut e = Ext::default();
+    e.add_coating_catalog("USERS", set);
+    let e = Arc::new(e);
+
+    let (s, j, key) = with_coat("user_bare", None);
+    let (bare, _, bare_key) = with_coat("-", None);
+    let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+    let trace = |s: &System, c: &Coatings| {
+        s.try_trace_pol(
+            FieldSel::Index(2),
+            &[0.0, 0.7, -0.3],
+            &[0.9, -0.2, 0.5],
+            None,
+            PolIn::new(&[x], c),
+        )
+        .unwrap()
+    };
+    let want = trace(&bare, &Coatings::for_system(&bare).unwrap());
+    let w = s.primary;
+    let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
+    ext::with(e.clone(), || {
+        let c = Coatings::for_system(&s).unwrap();
+        assert_eq!(c.kind(&key), CoatKind::User);
+        assert_eq!(CoatKind::User.name(), "user");
+        let got = trace(&s, &c);
+        for (a, b) in got.e.iter().flatten().zip(want.e.iter().flatten()) {
+            for k in 0..3 {
+                assert!((a[k] - b[k]).norm() < 1e-13, "{a:?} {b:?}");
+            }
+        }
+        // 屈折面での反射（ゴーストの経路）も膜なしと同じ
+        let cb = Coatings::for_system(&bare).unwrap();
+        let r = |c: &Coatings, k: &str| {
+            c.prepare(&s, &format!("{k}|R"), s.wavelengths[w], n1, n2)
+                .unwrap()
+                .eval(0.3)
+                .unwrap()
+        };
+        let (a, b) = (r(&c, &key), r(&cb, &bare_key));
+        assert!((a[0] - b[0]).norm() < 1e-14 && (a[1] - b[1]).norm() < 1e-14);
+        // 鏡
+        let m = c
+            .prepare(&s, "user_bare|AIR|MIRROR", s.wavelengths[w], 1.0, 1.0)
+            .unwrap()
+            .eval(0.4)
+            .unwrap();
+        assert!((m[0] - C64::new(-(0.1f64).sqrt(), 0.0)).norm() < 1e-15);
+    });
+
+    // 膜のフォルダの明示のモデルが一覧の利用者の膜に勝つ
+    let d = tmp("user-explicit");
+    std::fs::write(d.join("m.lbcm"), lbcm("user_bare")).unwrap();
+    ext::with(e, || {
+        let mut c = Coatings::for_system(&s).unwrap();
+        c.load_file(&d.join("m.lbcm")).unwrap();
+        assert_eq!(c.kind(&key), CoatKind::Model);
+    });
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 約束を守らない利用者の膜は check_coating_model が誤りにする（エネルギー・垂直入射の s と p）
+#[test]
+fn the_check_rejects_broken_user_coatings() {
+    use lensbench_core::usercoating::{
+        check_coating_model, CoatCoefs, CoatInput, CoatPath, CoatingModel,
+    };
+    #[derive(Debug)]
+    struct Gain;
+    impl CoatingModel for Gain {
+        fn coefs(&self, _: &CoatInput) -> Result<CoatCoefs> {
+            let one = C64::new(1.0, 0.0);
+            Ok(CoatCoefs {
+                rs: one,
+                rp: one,
+                ts: one,
+                tp: one,
+            })
+        }
+    }
+    #[derive(Debug)]
+    struct SplitNormal;
+    impl CoatingModel for SplitNormal {
+        fn coefs(&self, x: &CoatInput) -> Result<CoatCoefs> {
+            let t = C64::new(
+                if x.path == CoatPath::Transmit {
+                    0.9
+                } else {
+                    0.0
+                },
+                0.0,
+            );
+            Ok(CoatCoefs {
+                ts: t,
+                tp: t * 0.9,
+                ..Default::default()
+            })
+        }
+    }
+    assert!(check_coating_model(&UserFresnel).is_ok());
+    let e = check_coating_model(&Gain).unwrap_err().to_string();
+    assert!(e.contains("more than 1"), "{e}");
+    let e = check_coating_model(&SplitNormal).unwrap_err().to_string();
+    assert!(e.contains("normal incidence"), "{e}");
+}

@@ -36,6 +36,7 @@ fn the_coatings_are_found() {
     let cat = table.find_coating("example_ar").unwrap();
     assert_eq!(cat.name, "EXAMPLE_COATINGS");
     check_coatings(cat.set()).unwrap();
+    assert_eq!(table.find_coating("example_nd50").unwrap().name, "EXAMPLE_COATINGS");
     let dir = std::env::temp_dir().join(format!("example-layers-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("MY_AR.layers");

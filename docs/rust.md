@@ -114,7 +114,7 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   よい。システムファイルにはカタログの名前だけを書き（hash は空）、カタログを足していないプロセスで読むとカタログが
   無い誤り。.zmx に書くと GCAT にカタログの名前が入るが、OpticStudio には無い（書き出しの注意に挙げる）。`check_material` で約束を確かめられる
 - `lensbench_core::usercoating`（SDK では `lensbench_sdk::coating`）: 膜のカタログに外から足す口。膜の中身は今ある型の
-  `CoatingSet`（層の並びとその材料 `mate`・`coat`、TABLE の `table`、特性行列のモデル `models`、実測表 `measured`。
+  `CoatingSet`（層の並びとその材料 `mate`・`coat`、TABLE の `table`、特性行列のモデル `models`、実測表 `measured`、係数を計算で返す膜 `user`。
   `CoatingSet::parse_dat` で COATING.DAT の形式の文から作れる）。2 つの口がある:
   - **膜の一覧**: `Extensions::coating_catalog(名前, 膜の組)`（拡張の表では `add_coating_catalog`）。中の膜は .zmx の
     面の膜の名前で引く（大文字小文字は問わない）。2 つの一覧に同じ名前の膜があると `Extensions` を入れる時の誤り
@@ -126,7 +126,14 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   .zmx の膜ファイル（COATING.DAT）の COAT・TABLE → 膜のフォルダのファイル → 共有の置き場。拡張を入れると、同じ .zmx
   でも COATING.DAT の同じ名前の膜が一覧の膜に替わる。一覧の膜と同じ名前の膜がほかにあれば注意を返す（`Coatings::notes`、
   CLI の `coatings` の `notes`。どの膜を一覧から入れたかは `registered_coatings`）。一覧の層の材料が膜ファイルの同じ名前の
-  材料と違えば `<材料>@<一覧の名前>` に替えて入れる。膜の計算は同梱の膜と同じ（利用者が係数を計算する膜はまだ無い）。
+  材料と違えば `<材料>@<一覧の名前>` に替えて入れる。膜の計算は同梱の膜と同じ。
+  - **係数を計算で返す膜**: `CoatingModel`（`coefs(&CoatInput) → CoatCoefs`: 波長・前後の屈折率・入射角の cos・
+    透過/鏡/屈折面での反射・基板の側から入るかを受けて rs・rp・ts・tp を返す）を `CoatingSet::add_user(名前, モデル)` で
+    膜の組に入れ、一覧か膜のファイル形式から名前で引く。約束は同梱の膜と同じ（パワーで規格化した複素振幅、各側で
+    p = s × k、伝搬の位相なし、反射の p は反射の後で反転）。偏光追跡・ghost・干渉など膜を使う所は全部同じ経路を通る。
+    `check_coating_model`（`check_coatings` も呼ぶ）で有限・|r|² + |t|² ≤ 1・垂直入射で s と p が同じを確かめる。
+    CLI の `coatings` の種類は `user`（注記はモデルの `doc`）。光線ごとに呼ぶので重い計算は避ける
+
   `check_coatings` で約束（膜の名前・材料の行・層の厚さ・表の角度の昇順など）を確かめられる。Python からは
   `lensbench.register_coating_catalog(名前, files=[…], dat=…)` で同じ表に一覧を足せる。GUI の膜の欄の補完の候補にも一覧の膜が出る
 

@@ -511,6 +511,7 @@ fn kinds() {
         auto_measured: Vec::new(),
         registered: Vec::new(),
         auto_stacks: Vec::new(),
+        user: HashMap::new(),
         notes: Vec::new(),
     };
     assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);

@@ -5,7 +5,9 @@
 //! （`src/bin/cli.rs`・`src/bin/gui.rs`・下の `py`・`web`）。
 
 use lensbench_sdk::analysis::{Analysis, Cx, Meta};
-use lensbench_sdk::coating::{CoatingSet, CoatingSource, Layer};
+use lensbench_sdk::coating::{
+    CoatCoefs, CoatInput, CoatPath, CoatingModel, CoatingSet, CoatingSource, Layer, C64,
+};
 use lensbench_sdk::material::MaterialModel;
 use lensbench_sdk::plugin::{
     Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance, Kind, ParamSpec,
@@ -156,10 +158,12 @@ impl MaterialModel for Cauchy {
 
 // ------------------------------------------------------------------------------------------ 膜
 
-/// 膜の一覧 EXAMPLE_COATINGS: 1/4 波長の MgF2 の単層反射防止膜 EXAMPLE_AR（基準波長での光学的な厚さ 0.25 波長）。
-/// .zmx の面の膜の名前に EXAMPLE_AR と書けば、COATING.DAT・膜のフォルダより先にこれを引く
+/// 膜の一覧 EXAMPLE_COATINGS: 1/4 波長の MgF2 の単層反射防止膜 EXAMPLE_AR（基準波長での光学的な厚さ 0.25 波長）と、
+/// 係数を計算で返す膜 EXAMPLE_ND50（[`Nd50`]）。.zmx の面の膜の名前に EXAMPLE_AR と書けば、COATING.DAT・膜のフォルダより先に
+/// これを引く
 pub fn example_coatings() -> CoatingSet {
     let mut s = CoatingSet::new();
+    s.add_user("EXAMPLE_ND50", Arc::new(Nd50));
     s.add_material("EXAMPLE_MGF2", vec![[0.4, 1.38, 0.0], [1.0, 1.375, 0.0]]);
     s.add_layers(
         "EXAMPLE_AR",
@@ -170,6 +174,28 @@ pub fn example_coatings() -> CoatingSet {
         }],
     );
     s
+}
+
+/// 係数を計算で返す膜: 反射のない、強度透過率 50 % の吸収膜（ND フィルタ。角度・波長・偏光によらない、位相なし）。
+/// 鏡に付けると反射 0（光を全部吸う）
+#[derive(Debug)]
+pub struct Nd50;
+
+impl CoatingModel for Nd50 {
+    fn coefs(&self, x: &CoatInput) -> Result<CoatCoefs> {
+        let t = C64::new(0.5f64.sqrt(), 0.0);
+        Ok(match x.path {
+            CoatPath::Transmit => CoatCoefs {
+                ts: t,
+                tp: t,
+                ..Default::default()
+            },
+            _ => CoatCoefs::default(),
+        })
+    }
+    fn doc(&self) -> String {
+        "example: absorbing ND, T = 50 %, no reflection".into()
+    }
 }
 
 /// 膜のファイル形式 `.layers`: 1 行に 1 層、`屈折率 厚さ[µm]`（入射側から、分散・吸収なし。`#` から行末は注記）。

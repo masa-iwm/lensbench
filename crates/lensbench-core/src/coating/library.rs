@@ -61,6 +61,8 @@ pub enum CoatKind {
     Measured,
     /// 特性行列モデル（[`CoatModel`]）
     Model,
+    /// 係数を計算で返す利用者の膜（[`crate::usercoating::CoatingModel`]）
+    User,
     /// 膜ファイルになく、実測表もない（暗号化された膜など）
     Missing,
 }
@@ -74,6 +76,7 @@ impl CoatKind {
             CoatKind::Table => "table",
             CoatKind::Measured => "measured",
             CoatKind::Model => "model",
+            CoatKind::User => "user",
             CoatKind::Missing => "missing",
         }
     }
@@ -116,6 +119,8 @@ pub struct Coatings {
     pub measured: HashMap<String, Measured>,
     /// 膜の名前 → 特性行列モデル
     pub models: HashMap<String, CoatModel>,
+    /// 膜の名前 → 係数を計算で返す利用者の膜（登録した一覧・膜のファイル形式から）
+    pub user: HashMap<String, std::sync::Arc<dyn crate::usercoating::CoatingModel>>,
     /// 透過の位相の約束
     pub phase: PhaseConvention,
     /// TABLE 膜の垂直入射の扱い
@@ -235,6 +240,7 @@ impl Coatings {
             file,
             measured: HashMap::new(),
             models: HashMap::new(),
+            user: HashMap::new(),
             phase: PhaseConvention::default(),
             table_normal: TableNormal::default(),
             auto: Vec::new(),
@@ -349,6 +355,14 @@ impl Coatings {
             .find(|(k, _)| k.eq_ignore_ascii_case(coat))
         {
             self.models.insert(coat.to_string(), m.clone());
+            hit = true;
+        }
+        if let Some((_, m)) = set.user.iter().find(|(k, _)| k.eq_ignore_ascii_case(coat)) {
+            self.user.insert(coat.to_string(), m.clone());
+            // 自動で入れた利用者の膜は、明示して読んだモデル・実測表に負ける（層の並びと同じ扱い）
+            if auto && !self.auto_stacks.iter().any(|c| c == coat) {
+                self.auto_stacks.push(coat.to_string());
+            }
             hit = true;
         }
         for (key, m) in &set.measured {
@@ -553,6 +567,8 @@ impl Coatings {
             CoatKind::Ideal
         } else if self.file.coat.contains_key(coat) {
             CoatKind::Stack
+        } else if self.user.contains_key(coat) {
+            CoatKind::User
         } else if !k.is_reflect() && self.measured.contains_key(key) {
             CoatKind::Measured
         } else if self.models.get(coat).is_some_and(|m| {
@@ -617,6 +633,7 @@ impl Coatings {
             if explicit {
                 self.file.coat.remove(&coat);
                 self.file.table.remove(&coat);
+                self.user.remove(&coat);
             } else {
                 keep.push(coat);
             }

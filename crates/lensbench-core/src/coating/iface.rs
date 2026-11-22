@@ -150,6 +150,23 @@ impl Coatings {
                     ),
                 };
             }
+            CoatKind::User => {
+                let path = if to_mirror {
+                    crate::usercoating::CoatPath::Mirror
+                } else if reflect {
+                    crate::usercoating::CoatPath::Reflect
+                } else {
+                    crate::usercoating::CoatPath::Transmit
+                };
+                Kind::User {
+                    name: coat.to_string(),
+                    model: self.user[coat].clone(),
+                    path,
+                    n2: if to_mirror { f64::NAN } else { n2 },
+                    // 膜は空気の側に付いているとみなす（層の並びの膜と同じ）
+                    from_substrate: !to_mirror && k.after_is_air(),
+                }
+            }
             CoatKind::Measured => {
                 let m = &self.measured[key];
                 let Some(w) = m.wavelengths.iter().position(|&v| (v - wl).abs() <= 1e-9) else {
@@ -285,6 +302,15 @@ pub(in crate::coating) enum Kind {
         bmax: f64,
         b2: (f64, f64),
         sp: Box<[[Spline; 9]; 2]>,
+    },
+    /// 係数を計算で返す利用者の膜
+    User {
+        name: String,
+        model: std::sync::Arc<dyn crate::usercoating::CoatingModel>,
+        path: crate::usercoating::CoatPath,
+        /// 反対側の媒質の屈折率（鏡は NaN）
+        n2: f64,
+        from_substrate: bool,
     },
     /// モデルの鏡: 基準の媒質での r（この波長、β² の点ごと、偏光ごと）。β² の有理関数で補間する
     /// （高い β では導波の共鳴で、β 方向にも鋭く変わる）
@@ -705,6 +731,27 @@ impl Iface {
                     return Ok([p, p]);
                 }
                 [C64::from_polar(v(a).sqrt(), v(b).to_radians()), p]
+            }
+            Kind::User {
+                name,
+                model,
+                path,
+                n2,
+                from_substrate,
+            } => {
+                use crate::usercoating::{CoatInput, CoatPath};
+                let x = CoatInput::new(self.wl, self.n1, *n2, c0, *path, *from_substrate);
+                let c = model.coefs(&x).map_err(|e| match e {
+                    Error::Invalid(m) => Error::Invalid(format!("coating {name}: {m}")),
+                    Error::NotImplemented(m) => {
+                        Error::NotImplemented(format!("coating {name}: {m}"))
+                    }
+                    e => e,
+                })?;
+                match path {
+                    CoatPath::Transmit => [c.ts, c.tp],
+                    _ => [c.rs, c.rp],
+                }
             }
             Kind::Measured {
                 key,

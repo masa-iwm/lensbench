@@ -75,12 +75,15 @@ pub mod material {
 }
 
 /// 膜のカタログ: 膜のファイル形式（拡張子ごとの読み手）と、名前つきの膜の一覧。膜の中身は層の並びとその材料・TABLE・
-/// 特性行列のモデル・実測表。同じ名前の膜の引く順は `lensbench_core::usercoating` の文書
+/// 特性行列のモデル・実測表・係数を計算で返す膜（`CoatingModel`）。同じ名前の膜の引く順は `lensbench_core::usercoating` の文書
 pub mod coating {
     pub use lensbench_core::coating::{
         parse_measured, parse_models, CoatModel, CoatingFile, Layer, Measured, Table, C64,
     };
-    pub use lensbench_core::usercoating::{check_coatings, CoatingSet, CoatingSource};
+    pub use lensbench_core::usercoating::{
+        check_coating_model, check_coatings, CoatCoefs, CoatInput, CoatPath, CoatingModel,
+        CoatingSet, CoatingSource,
+    };
 }
 
 /// レンズカタログの形式

@@ -4,7 +4,7 @@
 `lensbench-sdk` を git のタグ（または rev）の参照に替えます。
 
 - `src/lib.rs`: 足すもの（配列のプラグイン `example_gain`、解析 `example-chief` と GUI の見せ方、面の形 `example_saddle`
-  （種類 USERSHAPE）、材料のカタログ `EXAMPLE`、膜の一覧 `EXAMPLE_COATINGS`（膜 `EXAMPLE_AR`）と膜のファイル形式
+  （種類 USERSHAPE）、材料のカタログ `EXAMPLE`、膜の一覧 `EXAMPLE_COATINGS`（層の膜 `EXAMPLE_AR` と係数を計算で返す膜 `EXAMPLE_ND50`）と膜のファイル形式
   `.layers`、Python の関数 `example_double`）を `extensions()` 1 つにまとめる
 - `src/bin/cli.rs`・`src/bin/gui.rs`: それを渡す exe の入口
 - `src/lib.rs` の `web`: Web 版の入口（wasm32 だけ）

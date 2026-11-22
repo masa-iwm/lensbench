@@ -205,3 +205,52 @@ fn coating_notes_in_interference_and_plugin() {
     });
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 係数を計算で返す膜（利用者の膜）は、系の膜の一覧で種類 user・注記がモデルの doc になる
+#[test]
+fn a_user_coating_is_listed_as_user() {
+    use lensbench_core::coating::C64;
+    use lensbench_core::usercoating::{CoatCoefs, CoatInput, CoatingModel, CoatingSet};
+    #[derive(Debug)]
+    struct Half;
+    impl CoatingModel for Half {
+        fn coefs(&self, _: &CoatInput) -> lensbench_core::Result<CoatCoefs> {
+            let t = C64::new(0.5f64.sqrt(), 0.0);
+            Ok(CoatCoefs {
+                ts: t,
+                tp: t,
+                ..Default::default()
+            })
+        }
+        fn doc(&self) -> String {
+            "half".into()
+        }
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let opt = lensbench_formats::zmx::LoadOptions {
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let mut s =
+        lensbench_formats::zmx::load_with(&root.join("examples/lenses/LB/BCX-50.zmx"), &opt)
+            .unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].coat = "TEST_USER_HALF".into();
+        Ok(())
+    })
+    .unwrap();
+    let mut set = CoatingSet::new();
+    set.add_user("TEST_USER_HALF", Arc::new(Half));
+    let mut e = Ext::default();
+    e.add_coating_catalog("TEST_USER", set);
+    ext::with(Arc::new(e), || {
+        let c = lensbench_engine::load::coat_interfaces(&s, &[]).unwrap();
+        let it = c
+            .list
+            .iter()
+            .find(|v| v["key"].as_str().unwrap().starts_with("TEST_USER_HALF|"))
+            .unwrap();
+        assert_eq!(it["kind"], "user", "{it}");
+        assert_eq!(it["note"], "half", "{it}");
+    });
+}

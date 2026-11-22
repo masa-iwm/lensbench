@@ -22,6 +22,10 @@
 ### Rust の API
 - `ShapeInstance` に既定つきの `phase`・`jones`、`SurfaceInstance` に既定つきの `jones` を足した（壊れる変更ではない。
   実装しなければ今までどおり）。`trace::PolSurf` に欄 `user_jones` が増えた（欄をすべて書いて作っていると組めなくなる）。
+- SDK の `lensbench_sdk::coating` に係数を計算で返す膜の口（`CoatingModel`・`CoatInput`・`CoatCoefs`・`CoatPath`・
+  `check_coating_model`）を足した（壊れる変更ではない）。
+- `lensbench_core::coating::Coatings` に欄 `user`、`CoatKind` に `User` が増えた。欄をすべて書いて作っている・`CoatKind` を
+  漏れなく match していると組めなくなる。`CoatingSet` にも欄 `user` が増えた（`non_exhaustive` なので外からは作り方は変わらない）。
 
 ## v0.7.0 の後・v0.8.0 まで
 

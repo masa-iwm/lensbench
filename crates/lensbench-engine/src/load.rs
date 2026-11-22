@@ -598,6 +598,12 @@ pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> lensbench_core::Result
                 it["note"] = json!(m.note);
             }
         }
+        if kind == coating::CoatKind::User {
+            let coat = k.split('|').next().unwrap_or("");
+            if let Some(d) = c.user.get(coat).map(|m| m.doc()).filter(|d| !d.is_empty()) {
+                it["note"] = json!(d);
+            }
+        }
         v.push(it);
         if kind.needs_table() && !need.contains(k) {
             need.push(k.clone());
