@@ -333,7 +333,7 @@ use answer::surfaces_view;
 pub use answer::Answer;
 mod request;
 mod run;
-pub use request::{AnalyzeReq, GetReq, LoadHistory, LoadReq, Request};
+pub use request::{AnalyzeReq, GetReq, LoadHistory, LoadReq, Request, ThermalReq};
 #[path = "session_hist.rs"]
 mod hist;
 

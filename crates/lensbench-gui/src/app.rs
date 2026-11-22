@@ -27,6 +27,7 @@ mod result;
 mod save_as;
 mod status;
 mod sys_copy;
+mod thermal_ui;
 mod tick;
 use doc_loc::DocLoc;
 use panels::Panels;
@@ -365,6 +366,8 @@ struct Core {
     /// 組合せ（GUI が持つ文書）と、カタログから足す位置
     doc: crate::combo_doc::ComboDoc,
     folders_open: bool,
+    /// 熱の構成を作って書き出す窓（開いていれば）
+    thermal: Option<thermal_ui::ThermalDlg>,
     help_open: bool,
     save_layout_open: bool,
     /// 答えを待っている「はい・いいえ」の確かめ（[`Core::ask`]）
@@ -966,11 +969,6 @@ impl Core {
             let r = c.s.rays.export_req(layout, p.display().to_string());
             c.call(Tag::LayoutExport, Call::LayoutExport(Box::new(r)));
         });
-    }
-
-    fn write_zmx(&mut self) {
-        let d = crate::files::FileDialog::new().add_filter("Zemax", &["zmx"]);
-        self.save_as(d, |c, p| c.call(Tag::Write, Call::Write { path: p }));
     }
 
     /// 値の変更を送る（計算中なら終わってからまとめて）
@@ -2623,6 +2621,7 @@ impl Core {
             browser,
             doc,
             folders_open: false,
+            thermal: None,
             help_open: false,
             save_layout_open: false,
             ask: None,

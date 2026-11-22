@@ -1755,6 +1755,10 @@ Stop with an error when a ZPL macro solve of a .zmx can't be solved (by default 
 a macro solve can't be solved (strict macros): {e}	解けないマクロのソルブがあります（厳密な読込）: {e}
 {n} macro solves can't be solved (strict macros); the first: {e}	解けないマクロのソルブが {n} 個あります（厳密な読込）。最初のもの: {e}
 File to write (.json or .zmx)	エクスポートするファイル（.json か .zmx）
+Make thermal configurations (OpticStudio's Make Thermal)	熱の構成を作る（OpticStudio の Make Thermal）
+Configuration 1 is the system as it is, and one configuration is added for each temperature of --temps with the temperature, pressure, curvatures, thicknesses, aspheric coefficients and sizes expanded by the TCE of the glasses and of the air spaces (the TCE column of the surface). Writes the system with the multi-configuration table to --out (.json or .zmx)	構成 1 は今のシステムで、--temps の温度ごとに構成を 1 つ足す。足した構成の温度・気圧と、硝材と空気の間隔（面の TCE の列）の線膨張係数で伸び縮みさせた曲率・厚み・非球面係数・大きさを多重構成の表に書き、--out（.json か .zmx）にエクスポートする
+Temperatures of the added configurations [°C] (comma-separated)	足す構成の温度 [°C]（カンマ区切り）
+Pressures of the added configurations [atm] (comma-separated, as many as the temperatures; the system pressure if omitted)	足す構成の気圧 [atm]（カンマ区切り、温度と同じ数。省くとシステムの気圧）
 Write the system to .zmx (an expanded project, etc.)	システムを .zmx にエクスポート（プロジェクトの展開など）
 With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)	--beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
 .zmx multi-configurations (from 1, comma-separated, all for every one)	.zmx の多重構成（1 始まり、カンマ区切り、all で全部）
@@ -2550,6 +2554,18 @@ Vignetting plot (OpticStudio's Vignetting Plot): for points steps of the normali
 surface {j} has no ray record	面 {j} に光線の記録がありません
 no ray of the pupil has a transmission	瞳の光線に透過率がありません
 field {}	視野 {}
+# thermal configurations (Make Thermal)
+give one or more temperatures	温度を 1 つ以上与えてください
+{} pressures for {} temperatures	気圧が {} 個、温度が {} 個です（同じ数にしてください）
+temperature {t} °C	温度 {t} °C
+pressure {p} atm	気圧 {p} atm
+surface {j}: no TCE for {name} (taken as 0)	面 {j}: {name} の TCE がありません（0 とします）
+surface {j}: a model glass has no TCE (taken as 0)	面 {j}: モデルガラスには TCE がありません（0 とします）
+turned on adjust index to the environment (the glass indices follow the temperature and pressure)	屈折率を環境に合わせる設定を入れました（硝材の屈折率は温度・気圧に従います）
+coordinate breaks are left as they are (their thickness doesn't expand)	座標ブレークはそのままです（厚みは伸び縮みしません）
+surface {j}: the thickness can't be expanded (the sag at the semi-diameter is undefined)	面 {j}: 厚みを伸び縮みさせられません（クリア半径の矢高が決まりません）
+surface {j}: only the curvature and size of this surface type are scaled	面 {j}: この面タイプは曲率と大きさだけを伸び縮みさせます
+removed the solve of surface {j} {} (the value of the original system is kept)	面 {j} の {} のソルブを外しました（値は元のシステムのまま）
 starts must be 1 or more	starts は 1 以上
 keep must be 1 or more	keep は 1 以上
 spread must be a positive number ({})	spread は正の数に（{}）

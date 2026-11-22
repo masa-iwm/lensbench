@@ -732,6 +732,13 @@ class System:
     def macro_warnings(self) -> list[str]:
         """ZPL Macro Solves fixed at their saved values without solving (no macro, unsupported commands and so on), with the reasons"""
 
+    def make_thermal(self, temps: Sequence[float], pressures: Sequence[float] | None = None) -> tuple[System, list[str]]:
+        """Thermal configurations (OpticStudio's Make Thermal): a new system whose configuration 1 is this system (its current
+        configuration) and one configuration per temperature of temps [°C] (pressures [atm], as many, or the system pressure)
+        with the curvatures, thicknesses, aspheric coefficients and sizes expanded by the TCE of the glasses and of the air spaces
+        (the TCE column of the surface). Returns (system, warnings)
+        """
+
     def mech_check(self, fields: Sequence[int] | None = None, waves: Sequence[int] | None = None, grid: int = 21) -> _MechCheck:
         """Vignetting by the mechanical parts (mechanics of the project). The same as the CLI's `mech-check`.
 

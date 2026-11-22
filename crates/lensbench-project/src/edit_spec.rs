@@ -422,6 +422,13 @@ pub enum EditOp {
     },
     /// 表の行 param の構成 k の写しをやめる
     RemoveConfigPickup { param: String, k: usize },
+    /// 熱の構成を作る（OpticStudio の Make Thermal、[`lensbench_core::thermal`]）。今の構成を構成 1 にし、temps の温度
+    /// [°C] ごとに構成を足す。pressures は足す構成の気圧 [atm]（省くと今の気圧）
+    MakeThermal {
+        temps: Vec<Num>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pressures: Vec<Num>,
+    },
 }
 
 impl EditOp {
@@ -441,6 +448,7 @@ impl EditOp {
                 | RemoveConfig { .. }
                 | SetConfigPickup { .. }
                 | RemoveConfigPickup { .. }
+                | MakeThermal { .. }
         )
     }
 

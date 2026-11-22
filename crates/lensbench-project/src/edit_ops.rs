@@ -31,6 +31,8 @@
 //!   （構成ごとの材料の名前） ／ `set_config_coatings` param（`N.coating`）, names（構成ごとの膜の名前、空は膜なし） ／
 //!   `add_config_row` param（どの構成も今の値）／
 //!   `remove_config_row` param ／ `set_config` k
+//! - `make_thermal` temps（足す構成の温度 [°C]）, pressures（足す構成の気圧 [atm]、省くと今の気圧）: 熱の構成を作る
+//!   （OpticStudio の Make Thermal、[`lensbench_core::thermal`]）
 //!
 //! 値: 数・数の並び・文字列・真偽。aperture は {"type": "circular", "max": 3, …} か null。
 //! JSON に書けない inf は {"$f": "inf"}（系ファイルと同じ）
@@ -629,6 +631,8 @@ fn leaves_semi_unread(op: &EditOp) -> bool {
         | O::AddMech { .. }
         | O::SetMech { .. }
         | O::RemoveMech { .. } => true,
+        // 半直径を読んで表に書く
+        O::MakeThermal { .. } => false,
         _ => op.is_config(),
     }
 }
@@ -877,6 +881,16 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
         O::RemoveConfigPickup { param, k } => {
             let p = t.param(param).map_err(e)?;
             t.remove_config_pickup(p, *k).map_err(e)?;
+        }
+        O::MakeThermal { temps, pressures } => {
+            let spec = lensbench_core::thermal::ThermalSpec {
+                temps: temps.iter().map(|x| x.0).collect(),
+                pressures: pressures.iter().map(|x| x.0).collect(),
+            };
+            let base = t.configs().map_or(1, |c| c.active);
+            let th = lensbench_core::thermal::make_thermal(t, base, &spec).map_err(e)?;
+            *t = th.system;
+            notes.extend(th.warnings);
         }
     }
     Ok(())

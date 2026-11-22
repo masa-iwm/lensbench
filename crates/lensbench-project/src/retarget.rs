@@ -221,7 +221,8 @@ impl Retarget {
             | SetConfigCount { .. }
             | SetConfig { .. }
             | InsertConfig { .. }
-            | RemoveConfig { .. } => {}
+            | RemoveConfig { .. }
+            | MakeThermal { .. } => {}
         }
         debug_assert!(self.pair.iter().flatten().all(|&p| p < self.len));
         Ok(o)

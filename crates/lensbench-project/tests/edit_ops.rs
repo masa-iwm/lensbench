@@ -569,3 +569,33 @@ fn ops_semi_once_matches_one_by_one() {
     let (a, b) = float(&ops);
     assert_eq!(surfs(&a), surfs(&b));
 }
+
+/// 熱の構成の操作は make_thermal と同じ系を作り、その注意を返す
+#[test]
+fn make_thermal_op_matches_core() {
+    use lensbench_core::thermal::{make_thermal, ThermalSpec};
+    let s0 = a0();
+    let spec = ThermalSpec {
+        temps: vec![-20.0, 60.0],
+        pressures: vec![1.0, 0.5],
+    };
+    let want = make_thermal(&s0, 1, &spec).unwrap();
+    let mut s = s0.clone();
+    let notes = edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "make_thermal", "temps": [-20, 60], "pressures": [1, 0.5]}]),
+    )
+    .unwrap();
+    assert_eq!(notes, want.warnings);
+    let (a, b) = (s.configs().unwrap(), want.system.configs().unwrap());
+    assert_eq!((a.n, a.active), (3, 1));
+    assert_eq!(a.rows.len(), b.rows.len());
+    for (x, y) in a.rows.iter().zip(&b.rows) {
+        assert_eq!((x.param, &x.values), (y.param, &y.values));
+    }
+    assert!(s.adjust_index);
+    // 温度が無ければ断り、系は変えない
+    let mut s = s0.clone();
+    assert!(edit_ops::apply_json(&mut s, &json!([{"op": "make_thermal", "temps": []}])).is_err());
+    assert!(s.configs().is_none());
+}

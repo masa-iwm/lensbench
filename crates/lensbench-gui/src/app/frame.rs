@@ -156,6 +156,7 @@ impl App {
             self.c.cat_save_window(ctx);
         }
         self.c.fill_window(ctx);
+        self.c.thermal_window(ctx);
         self.save_layout_window(ctx);
         // 別の窓で出た確かめはその窓に出す（窓が閉じていれば本体に）
         #[cfg(target_arch = "wasm32")]

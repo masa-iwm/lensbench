@@ -29,5 +29,5 @@ pub use session::{
     tolerance_cancel, tolerance_progress, AnalyzeReq, Answer, Arrays, Bin, BrowseReq, CadStepReq,
     CallError, CatalogAddReq, CatalogEditReq, CatalogFillReq, Data, Files, GetReq, LayoutExportReq,
     LayoutReq, LoadHistory, LoadReq, PluginInput, PluginReq, PluginValue, Request, SearchReq,
-    Session, TraceReq,
+    Session, ThermalReq, TraceReq,
 };

@@ -64,6 +64,7 @@ pub mod system;
 pub mod tansag;
 #[cfg(test)]
 mod test_zmx;
+pub mod thermal;
 pub mod tol;
 pub mod trace;
 pub mod trig;

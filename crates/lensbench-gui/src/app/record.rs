@@ -100,6 +100,7 @@ impl Rec {
             | Msg::Reload
             | Msg::RunAll
             | Msg::WriteZmx
+            | Msg::MakeThermal
             | Msg::Save(_)
             | Msg::Add(_)
             | Msg::Focus(_)

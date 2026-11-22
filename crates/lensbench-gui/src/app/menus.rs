@@ -65,6 +65,11 @@ impl App {
             "write zmx export",
             Msg::WriteZmx,
         );
+        push(
+            tr("Make thermal configurations…").into(),
+            "thermal temperature make zmx",
+            Msg::MakeThermal,
+        );
         push(tr("Save (Ctrl+S)").into(), "save ctrl+s", Msg::Save(false));
         push(
             tr("Save As… (Ctrl+Shift+S)").into(),
@@ -369,6 +374,19 @@ impl App {
             {
                 ui.close_menu();
                 *cmd = Some(Msg::WriteZmx);
+            }
+            if ui
+                .add_enabled(
+                    self.c.sys.summary.is_some(),
+                    egui::Button::new(tr("Make thermal configurations…")),
+                )
+                .on_hover_text(tr(
+                    "Writes a .zmx with configurations at other temperatures (OpticStudio's Make Thermal)",
+                ))
+                .clicked()
+            {
+                ui.close_menu();
+                *cmd = Some(Msg::MakeThermal);
             }
             let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
             let save_label = tr("Save (Ctrl+S)");

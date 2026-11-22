@@ -76,7 +76,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `history` | （下の節） | （下の節） |
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
-| `write` | `path` | 今のシステムを .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意） |
+| `write` | `path`・`thermal` | 今のシステムを .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意）。`thermal` に `{"temps": [-20, 60], "pressures": [1, 1]}`（pressures は省略可）を与えると、熱の構成を作ったシステムを書く（読み込んだシステムは変えない、[書き出し](export.md) の make-thermal） |
 | `save` | `path` | 今のシステム（`set`・`edit` の後）をシステムファイル（.json）に書く。`written`・`system_hash`・`notes`（値が同じカタログのファイルが見つからず hash を書けないカタログ） |
 | `save_project` | （下の節） | （下の節） |
 | `write_back` | （下の節） | （下の節） |
@@ -241,6 +241,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `remove_config` | k（構成が 1 つになると表を消す） |
 | `set_config_pickup` | param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる） |
 | `remove_config_pickup` | param・k |
+| `make_thermal` | temps（足す構成の温度 [°C]）・pressures（足す構成の気圧 [atm]、省くと今の気圧）。今の構成を構成 1 にして熱の構成を作る（[書き出し](export.md) の make-thermal） |
 | `set_config` | k（表の操作でない操作・`set` で表の行の値を変えると、今の構成の列も変わる） |
 | `set_system_data` | data（`system_data` の data と同じ形で、書いた項目だけ変える。波長・視野の数も変えられる） |
 | `set_surface_data` | surface・data（`surface_data` の data と同じ形で、書いた項目だけ変える。開口 ap・前後の傾き偏心 before・after・面タイプの形のデータ zern grid bin2 cylf grin もここで。stop・mirror・n は変えない）。開口は `{"type": "circular", "max": 3}` か null、inf は `{"$f": "inf"}` |

@@ -123,3 +123,10 @@ pub(crate) fn tolerance_brief(out: &Value) -> Value {
     }
     out
 }
+
+/// .zmx に書けなかったもの（[`lensbench_formats::zmx_write::write_notes`]）を標準エラーに出す
+pub(crate) fn warn_notes(notes: Vec<String>) {
+    for n in notes {
+        eprintln!("{}", lensbench_core::i18n::warning(n));
+    }
+}

@@ -11,6 +11,7 @@ use lensbench_analysis::{Analyses, Analysis, DynAnalysis};
 /// CLI のサブコマンド（解析の登録簿の外のもの）の名前。拡張の解析はこの名前を使えない（CLI の試験で clap の定義と突き合わせる）
 pub const RESERVED: &[&str] = &[
     "convert",
+    "make-thermal",
     "zmx",
     "optimize",
     "tolerance",

@@ -24,6 +24,7 @@
 
 ### 変更履歴
 
+- **2.5**: 熱の構成を作る `System.make_thermal(temps, pressures=None)`（OpticStudio の Make Thermal。新しいシステムと注意の list を返す）を追加。
 - **2.4**: `System.optimize` に大域の探索（`starts`・`seed`・`keep`・`spread`）とガラスの置き換え（`glass`）の引数を足した。
   返り値の dict に、回したときだけ `global_search`・`glass` のキーが付く（[最適化](optimize.md)）。
 - **2.3**: 多重構成の表の材料・コーティングの行を名前で書く `System.set_config_names(spec, names)`（spec は `N.material` か `N.coating`、

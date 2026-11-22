@@ -85,10 +85,25 @@ pub(super) fn run(
             v["changed"] = json!(names);
             v
         }
-        // 系を .zmx に書き出す（別アプリに渡す）
-        Request::Write { path } => {
+        // 系を .zmx に書き出す（別アプリに渡す）。thermal なら今の構成から熱の構成を作って（読み込んだ系は変えない）
+        Request::Write { path, thermal } => {
             let (s, _) = sess.current()?;
-            let notes = zmx_write::save(&sess.files.check_path(&path, true)?, &s)?;
+            let mut warnings = Vec::new();
+            let s = match thermal {
+                Some(t) => {
+                    let spec = lensbench_core::thermal::ThermalSpec {
+                        temps: t.temps,
+                        pressures: t.pressures,
+                    };
+                    let base = s.configs().map_or(1, |c| c.active);
+                    let th = lensbench_core::thermal::make_thermal(&s, base, &spec)?;
+                    warnings = th.warnings;
+                    std::sync::Arc::new(th.system)
+                }
+                None => s,
+            };
+            let mut notes = zmx_write::save(&sess.files.check_path(&path, true)?, &s)?;
+            notes.splice(0..0, warnings);
             json!({ "written": path, "notes": notes })
         }
         // 系の編集: ops の操作の列を順に当てる（どれかが失敗すれば系は変えない）

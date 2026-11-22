@@ -863,6 +863,33 @@
             "k"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "熱の構成を作る（OpticStudio の Make Thermal、[`lensbench_core::thermal`]）。今の構成を構成 1 にし、temps の温度\n[°C] ごとに構成を足す。pressures は足す構成の気圧 [atm]（省くと今の気圧）",
+          "properties": {
+            "op": {
+              "const": "make_thermal",
+              "type": "string"
+            },
+            "pressures": {
+              "items": {
+                "$ref": "#/$defs/Num"
+              },
+              "type": "array"
+            },
+            "temps": {
+              "items": {
+                "$ref": "#/$defs/Num"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "temps"
+          ],
+          "type": "object"
         }
       ]
     },

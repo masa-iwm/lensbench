@@ -18,6 +18,8 @@ pub(super) enum Msg {
     Reload,
     RunAll,
     WriteZmx,
+    /// 熱の構成を作って .zmx に書き出す窓を開く
+    MakeThermal,
     /// 保存（true は名前を付けて保存）
     Save(bool),
     Add(Kind),
@@ -366,6 +368,7 @@ impl App {
             Msg::Reload => self.c.reload(),
             Msg::RunAll => self.run_all(false),
             Msg::WriteZmx => self.c.write_zmx(),
+            Msg::MakeThermal => self.c.open_thermal(),
             Msg::Save(as_new) => self.c.save(as_new),
             // 1 枚だけのパネルは、あれば表に出す
             Msg::Add(k) if k.single() => self.update_state(Msg::FocusKind(k)),

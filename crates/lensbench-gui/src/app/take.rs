@@ -226,7 +226,19 @@ impl Core {
                 return None;
             }
             // take の頭で分けて回すので来ない
-            Tag::Write | Tag::Refresh | Tag::Gets => {}
+            Tag::Refresh | Tag::Gets => {}
+            // 書き出しの注意（.zmx に書けなかったもの・熱の構成の注意）
+            Tag::Write => {
+                let notes: Vec<String> = v["notes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
+                    .collect();
+                if !notes.is_empty() {
+                    text = notes.join("\n");
+                }
+            }
             Tag::LayoutExport => {
                 text = trf(
                     "Exported the layout to {}",

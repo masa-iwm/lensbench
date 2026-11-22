@@ -16,6 +16,7 @@ mod edit;
 mod errors;
 pub mod ext;
 mod interference;
+mod many;
 mod mtfs;
 use mtfs::{field_axis, mtf_dict, sweep_dict};
 mod names;
@@ -1727,6 +1728,29 @@ impl PySystem {
         Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
+    /// Thermal configurations (OpticStudio's Make Thermal): a new system whose configuration 1 is this system (its current
+    /// configuration) and one configuration per temperature of temps [°C] (pressures [atm], as many, or the system pressure)
+    /// with the curvatures, thicknesses, aspheric coefficients and sizes expanded by the TCE of the glasses and of the air spaces
+    /// (the TCE column of the surface). Returns (system, warnings)
+    #[pyo3(signature = (temps, pressures=None))]
+    fn make_thermal(
+        &self,
+        temps: Vec<f64>,
+        pressures: Option<Vec<f64>>,
+    ) -> PyResult<(PySystem, Vec<String>)> {
+        let s = self.sys();
+        let base = s.configs().map_or(1, |c| c.active);
+        let spec = lensbench_core::thermal::ThermalSpec {
+            temps,
+            pressures: pressures.unwrap_or_default(),
+        };
+        let t = lensbench_core::thermal::make_thermal(&s, base, &spec).map_err(err)?;
+        Ok((
+            PySystem::new(t.system, self.coat_files.clone(), self.coat_cell()),
+            t.warnings,
+        ))
+    }
+
     /// Switch the current system to configuration k
     fn set_config(&self, k: usize) -> PyResult<()> {
         self.mutate(|s| {
@@ -2645,77 +2669,6 @@ impl PySystem {
     }
 }
 
-/// Trace many systems together in one call. Returns a list of dicts, one per system,
-/// each bit for bit the same as `systems[i].trace(field, px, py, ...)` (for any number of threads).
-///
-/// The arguments are as in System.trace, the same for all systems (grad parameter names are resolved per system).
-/// Parallel over both systems and rays, so all cores are used even with few rays per system.
-/// threads is the total number of threads (1 for sequential)
-#[pyfunction]
-#[pyo3(signature = (systems, field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false))]
-#[allow(clippy::too_many_arguments)]
-fn trace_many<'py>(
-    gil: Python<'py>,
-    systems: Vec<Py<PySystem>>,
-    field: Option<FieldArg>,
-    px: PyArrayLike1<'py, f64, AllowTypeChange>,
-    py: PyArrayLike1<'py, f64, AllowTypeChange>,
-    waves: Option<Vec<usize>>,
-    last: Option<usize>,
-    record: RecArg,
-    pol: Option<PolArg>,
-    pol_phase: bool,
-    globals: bool,
-    object: Option<ObjArg>,
-    grad: Option<Vec<String>>,
-    threads: Option<usize>,
-    pupil: &str,
-    dz: Option<f64>,
-    land: bool,
-) -> PyResult<Vec<Bound<'py, PyDict>>> {
-    let (px, pyv) = (floats(&px), floats(&py));
-    let n = px.len();
-    // 系ごとの準備（引数の検査・膜の読み込みは GIL のあるうちに）
-    let mut jobs = Vec::with_capacity(systems.len());
-    for p in &systems {
-        let me = p.get();
-        let s = me.sys();
-        let pre = Prep::new(&s, field.clone(), object.clone(), pupil, n, pyv.len())?;
-        let o = TraceOpts::new(
-            &s,
-            waves.clone(),
-            last,
-            record.clone(),
-            pol.clone(),
-            pol_phase,
-            globals,
-            grad.clone(),
-            threads,
-            dz,
-            land,
-        )?;
-        let coat = match o.pw {
-            Some(_) => Some(me.coatings(&s)?),
-            None => None,
-        };
-        jobs.push((s, pre, o, coat));
-    }
-    let outs = gil.detach(|| {
-        with_threads(threads, || {
-            lensbench_core::par::map(&jobs, |(s, pre, o, coat)| {
-                compute(s, coat.as_deref(), &pre.launch(&px, &pyv), n, o)
-            })
-        })
-    });
-    let mut res = Vec::with_capacity(jobs.len());
-    for ((s, pre, o, _), out) in jobs.iter().zip(outs) {
-        let d = to_dict(gil, s, o, out.map_err(err)?)?;
-        pre.finish(&d)?;
-        res.push(d);
-    }
-    Ok(res)
-}
-
 /// The value returned by `__reduce__`: (function to rebuild, (system bytes, coating files, glass catalog folders))
 type Reduced<'py> = (
     Bound<'py, PyAny>,
@@ -2739,7 +2692,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 4);
+pub const API_VERSION: (u32, u32) = (2, 5);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める
@@ -2762,7 +2715,7 @@ pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     lensbench_core::init_from_env();
     errors::register(m)?;
     m.add_class::<PySystem>()?;
-    m.add_function(wrap_pyfunction!(trace_many, m)?)?;
+    m.add_function(wrap_pyfunction!(many::trace_many, m)?)?;
     m.add_function(wrap_pyfunction!(_system_from_state, m)?)?;
     m.add_function(wrap_pyfunction!(run_settings, m)?)?;
     m.add_function(wrap_pyfunction!(progress, m)?)?;

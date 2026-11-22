@@ -34,6 +34,10 @@
 - **近軸ガウスビーム**（`gaussian-beam`、OpticStudio の Paraxial Gaussian Beam 相当）: ウエストの半径・面 1 からの距離・M² で与えたビームを近軸の
   ABCD 行列で運び、各面の後のビーム半径・ウエスト・ウエストの位置・曲率半径・広がり角・レイリー長（基本モードと M² の混合モード）を出す。
   CLI・serve・Python（`System.analyze("gaussian-beam", ...)`）・GUI（光軸に沿ったビーム半径の図）。OpticStudio 26.1 と表示の 6 桁で一致
+- **熱の構成**（OpticStudio の Make Thermal）: CLI `make-thermal --temps -20,60 --out t.zmx`・GUI の「ファイル > 熱の構成を作る…」・
+  Python `System.make_thermal`・serve の `write` の `thermal` と `edit` の `make_thermal`。構成 1 を今のシステムにし、温度ごとに温度・気圧と、
+  線膨張係数で伸び縮みさせた曲率・厚さ（空気の間隔は縁を結ぶスペーサーの式）・偶数次非球面の係数・半直径・機械半径・チップゾーンを
+  多重構成の表に書く。屈折率を環境に合わせる設定を入れる。OpticStudio 2026 R1.01 の表と A0・E0 の全部の行が 1e-12 で一致
 - **最適化の大域の探索**: `optimize --starts N` は始点を変えて最適化を N 回（並列に）繰り返し、評価関数の良い解を残す
   （範囲のある変数は範囲の中から一様に、無い変数は今の値のまわりから。`--seed` で再現でき、途中で止められる）。結果に残した解の一覧
   `global_search` が付く。serve・Python（`starts`・`seed`・`keep`・`spread`、API 2.4）・GUI の最適化のパネル（「グローバルサーチと硝材置換」）からも使える

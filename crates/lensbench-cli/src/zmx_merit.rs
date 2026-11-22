@@ -1,6 +1,6 @@
 //! `optimize --zmx-merit`: .zmx に保存したメリットファンクションを最適化の項にする
 
-use crate::{overlay_systems, warn_notes, AppError, Common, ConfigSel};
+use crate::{overlay_systems, text_out::warn_notes, AppError, Common, ConfigSel};
 use lensbench_core::System;
 use lensbench_formats::zmx::merit::MeritRow;
 use serde_json::Value;

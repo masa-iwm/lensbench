@@ -21,7 +21,9 @@ mod error;
 mod help_json;
 mod progress;
 mod text_out;
+mod thermal_cmd;
 pub(crate) use error::AppError;
+use text_out::warn_notes;
 mod coat_cmd;
 use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
@@ -150,6 +152,7 @@ enum Cmd {
         #[arg(long, short)]
         out: PathBuf,
     },
+    MakeThermal(thermal_cmd::MakeThermalArgs),
     /// Write the system to .zmx (an expanded project, etc.)
     ///
     /// With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)
@@ -809,6 +812,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 }),
             )
         }
+        Cmd::MakeThermal(a) => (a.c.json, thermal_cmd::make_thermal(&a)?),
         Cmd::Zmx { c, sel, out } => {
             let systems = overlay_systems(&c, &sel)?;
             let v: Vec<System> = systems.iter().map(|x| x.1.clone()).collect();
@@ -1501,12 +1505,5 @@ pub fn main() -> ExitCode {
             error::report("lensbench", &e);
             ExitCode::from(e.exit_code())
         }
-    }
-}
-
-/// .zmx に書けなかったもの（[`zmx_write::write_notes`]）を標準エラーに出す
-fn warn_notes(notes: Vec<String>) {
-    for n in notes {
-        eprintln!("{}", lensbench_core::i18n::warning(n));
     }
 }

@@ -137,6 +137,19 @@ def test_glass_catalog():
     s.set_material(st + 1, "N-BK7")
 
 
+def test_make_thermal():
+    s = lb.System.load(str(REFS / "A0" / "system.zmx"), glass_dirs=GLASS)
+    t, warns = s.make_thermal([-20.0, 60.0], [1.0, 0.5])
+    assert t.config_count == 3 and s.config_count == 1
+    rows = dict(t.configs())
+    assert rows["temp"] == [20.0, -20.0, 60.0] and rows["pres"] == [1.0, 1.0, 0.5]
+    # N-SK16 の厚さは TCE 6.3e-6 で伸び縮みする（OpticStudio の Make Thermal と同じ）
+    assert rows["1.t"][1] == pytest.approx(3.5 * (1 - 40 * 6.3e-6), rel=1e-12)
+    assert any("solve" in w for w in warns)
+    with pytest.raises(Exception):
+        s.make_thermal([20.0], [1.0, 1.0])
+
+
 def test_configs_and_original_unchanged():
     s = lb.System.load(str(REFS / "A0" / "system.zmx"), glass_dirs=GLASS)
     base = s.trace(2, np.array([0.0]), np.array([0.7]))

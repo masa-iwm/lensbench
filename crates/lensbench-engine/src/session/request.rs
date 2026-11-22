@@ -84,6 +84,15 @@ impl AnalyzeReq {
     }
 }
 
+/// `write` の熱の構成（[`lensbench_core::thermal::ThermalSpec`]）: 足す構成の温度 [°C] と気圧 [atm]（空なら今の気圧）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThermalReq {
+    pub temps: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pressures: Vec<f64>,
+}
+
 /// 1 つの要求
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "snake_case")]
@@ -108,9 +117,11 @@ pub enum Request {
     Set {
         values: Vec<(String, f64)>,
     },
-    /// 系を .zmx に書き出す
+    /// 系を .zmx に書き出す（thermal を与えれば、熱の構成を作った系を）
     Write {
         path: PathBuf,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thermal: Option<ThermalReq>,
     },
     /// 系の編集の操作を順に当てる
     Edit {
@@ -312,6 +323,13 @@ impl Request {
             },
             "write" => Request::Write {
                 path: path_of(p, "write needs path")?,
+                thermal: match &p["thermal"] {
+                    Value::Null => None,
+                    v => Some(
+                        serde_json::from_value(v.clone())
+                            .map_err(|e| RpcErr::params(format!("thermal: {e}")))?,
+                    ),
+                },
             },
             "edit" => Request::Edit {
                 ops: lensbench_project::edit_ops::parse(&p["ops"]).map_err(RpcErr::params)?,
@@ -590,6 +608,10 @@ mod tests {
             ("get", json!({ "params": ["3.t", "4.c"] })),
             ("set", json!({ "values": { "3.t": 10.0 } })),
             ("write", json!({ "path": "a.zmx" })),
+            (
+                "write",
+                json!({ "path": "a.zmx", "thermal": { "temps": [-20, 60], "pressures": [1, 0.5] } }),
+            ),
             (
                 "edit",
                 json!({ "ops": [{ "op": "set_stop", "surface": 1 }] }),
