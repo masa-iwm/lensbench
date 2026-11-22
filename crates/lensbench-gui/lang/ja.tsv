@@ -1923,7 +1923,6 @@ Pupil aberration [{}]	瞳の収差 [{}]
 Compensation	補償のしかた
 Optimize (DLS)	最適化（DLS）
 Paraxial focus	近軸の焦点
-None	なし
 Paraxial focus keeps the paraxial image distance by the thickness before the image (the compensators are not used); None evaluates without compensation	近軸の焦点: 像面の前の厚みで近軸の像の位置を保つ（コンペンセータは使わない）。なし: 補償せずに評価する
 Inverse sensitivity	逆感度
 Limit (criterion value)	上限（評価の値）
