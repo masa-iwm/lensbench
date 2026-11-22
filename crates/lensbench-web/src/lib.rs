@@ -257,6 +257,21 @@ mod web {
     }
 
     #[cfg(feature = "gui")]
+    /// 試験用の口: 種類 kind（`"LensData"` など）のパネルを別の窓に出す（出したら true）。起動確認が、文書のパネルの
+    /// 別の窓が元のタブの写しを持ち、操作を元のタブへ送ることを確かめる
+    #[wasm_bindgen]
+    pub fn test_detach_panel(kind: &str) -> bool {
+        lensbench_gui::web_test_detach_panel(kind)
+    }
+
+    #[cfg(feature = "gui")]
+    /// 試験用の口: 操作（別の窓から元のタブへ送る形の JSON）をパネルから出したように入れる（入れたら true）
+    #[wasm_bindgen]
+    pub fn test_send(op: &str) -> bool {
+        lensbench_gui::web_test_send(op)
+    }
+
+    #[cfg(feature = "gui")]
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {

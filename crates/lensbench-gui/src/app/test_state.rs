@@ -38,6 +38,10 @@ impl App {
             "status_error": c.status.error,
             "analyses": analyses,
             "calc_window": self.is_calc_window(),
+            // 組合せ（写しを持つ別の窓は元のタブの写し）: 要素の数・前の絞りの間隔・版
+            "combo": { "picks": c.doc.combo.picks.len(), "stop_gap": c.doc.combo.stop_gap },
+            "copy_ready": c.popup_doc.copies.recv.ready(),
+            "hist": c.undo_list(true).len(),
         })
     }
 
@@ -47,6 +51,33 @@ impl App {
         return self.calc.is_some();
         #[cfg(not(target_arch = "wasm32"))]
         false
+    }
+
+    /// 試験用: 種類 kind（[`Kind`] の JSON。`"LensData"` など）のパネルを別の窓に出す（無ければ足して出す。出したら true）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn test_detach_panel(&mut self, kind: &str) -> bool {
+        let Ok(k) = serde_json::from_str::<Kind>(kind) else {
+            return false;
+        };
+        let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
+        let id = match self.pane_of(same) {
+            Some(id) => id,
+            None => self.add_pane(k),
+        };
+        self.detach(id);
+        true
+    }
+
+    /// 試験用: 操作（写しを持つ別の窓から元のタブへ送る形の JSON）をパネルから出したように列に入れる（入れたら true）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn test_send(&mut self, op: &str) -> bool {
+        match serde_json::from_str::<copy_panel::Fwd>(op) {
+            Ok(f) => {
+                self.c.msgs.push(f.into_msg());
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     /// 試験用: ドックの最初の解析のパネルを別の窓に出す（出したら true）

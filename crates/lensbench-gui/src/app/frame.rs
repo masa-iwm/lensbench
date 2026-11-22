@@ -173,7 +173,7 @@ impl App {
 }
 
 /// 窓に落としたファイルとキーの操作（パネルを描く前）
-fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
+pub(super) fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
     let mut out = Vec::new();
     // 窓に落としたファイル
     let dropped = ctx.input(|i| i.raw.dropped_files.iter().find_map(crate::files::dropped));

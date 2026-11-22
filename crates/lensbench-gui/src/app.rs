@@ -35,6 +35,7 @@ use result::AnaRes;
 use sys_copy::SysCopy;
 mod analysis_ui;
 mod calc_panel;
+mod copy_panel;
 mod lens_data_ui;
 mod take;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -395,7 +396,7 @@ struct Core {
     fails: u64,
     /// まだ当てていない外への作用（計算の要求など）
     fx: msg::Fx,
-    /// Web 版（元のタブ）: 解析のパネルを出した別の窓に写す系
+    /// Web 版: 写しを持つ別の窓に写す系・組合せ（元のタブ）と、受けた写し（別の窓）
     popup_doc: calc_panel::PopupDoc,
     /// 最後に組合せを変えて系を作り直した時刻（動かしている間は解析を待たせる）
     combo_edit: Option<web_time::Instant>,
@@ -1054,15 +1055,6 @@ impl Core {
         }
         self.call(Tag::Configs, Call::Configs);
         self.rerun = Some(false);
-    }
-
-    /// 面の表と要約を 1 つの要求で読み直す（途中の状態を見せない）。系を変える要求に
-    /// 付けて読み直す途中（[`Core::call_refreshing`]）なら頼まない
-    fn refresh(&mut self) {
-        if self.bundled_refresh {
-            return;
-        }
-        self.calc_refreshing(Tag::Refresh, Value::Null);
     }
 
     /// 組合せのレイアウト図と要素の操作（id はパネル。図を画像でコピーするときの切り出しに使う）

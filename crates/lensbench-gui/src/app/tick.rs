@@ -107,8 +107,20 @@ impl App {
             self.run_all(live);
         }
         self.c.flush_set();
-        let focus = ctx.memory(|m| m.focused());
-        let busy = ctx.input(|i| i.pointer.any_down()) || focus.is_some();
+        // Web 版の別の窓: 組合せは元のタブの写し。手直し・作り直し・焦点合わせは元のタブがする
+        if self.c.popup_doc.copies.follower {
+            self.c.doc.sync();
+            return;
+        }
+        let mut focus = ctx.memory(|m| m.focused());
+        let mut busy = ctx.input(|i| i.pointer.any_down()) || focus.is_some();
+        // Web 版: 写しを持つ別の窓で欄を書き換えている間も、元に戻す段を区切らない
+        for (id, (b, f)) in &self.c.popup_doc.copies.busy {
+            busy |= *b;
+            if focus.is_none() {
+                focus = f.map(|f| egui::Id::new(("copy-window", *id, f)));
+            }
+        }
         let dropped = self.c.tidy_combo();
         // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない）
         let census = self.c.doc.combo.census();
@@ -161,9 +173,16 @@ impl App {
         }
         self.logic(ctx);
         self.web_tabs(ctx);
+        // 写しを持つ別の窓から届いた操作も当てて、変わった写しを送る
+        if !self.c.msgs.is_empty() {
+            self.dispatch_queued(ctx);
+            self.flush_fx(ctx);
+            self.web_tabs(ctx);
+        }
     }
 
-    /// Web 版（元のタブ）: 別の窓に出したパネルを別の窓で開き、元のタブで描いた画面を送る。
+    /// Web 版（元のタブ）: 別の窓に出したパネルを別の窓で開き、写しを持つ窓には系・組合せ・履歴の写しを、ほかの窓には
+    /// 元のタブで描いた画面を送る。写しを持つ窓でした操作は、ここで操作の列に入れて元のタブで当てる。
     /// 窓を閉じたらドックに戻す
     #[cfg(target_arch = "wasm32")]
     pub(super) fn web_tabs(&mut self, ctx: &egui::Context) {
@@ -176,8 +195,8 @@ impl App {
             .retain(|id, _| self.windows.iter().any(|w| w.pane.id == *id));
         for w in &self.windows {
             let id = w.pane.id;
-            // 解析のパネルは別の窓が自分で計算する
-            let calc = matches!(w.pane.kind, Kind::Analysis(_));
+            // 写しを持つパネル（解析・文書のパネル）は別の窓が自分で計算して描く
+            let calc = copy_panel::copies(&w.pane.kind);
             if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, w.size, calc) {
                 self.c.fail(tr("The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page"));
             }
@@ -192,9 +211,25 @@ impl App {
                         }
                     }
                     self.c.popup_restarted(id);
+                    self.c.popup_doc.copies.sync.restart(id);
                 }
                 Ev::Flat(id) => self.c.popup_wants_flat(id),
                 Ev::Resend(id) => self.c.popup_restarted(id),
+                Ev::Recopy(id) => self.c.popup_doc.copies.sync.restart(id),
+                Ev::Busy(id, busy, focus) => {
+                    self.c.popup_doc.copies.busy.insert(id, (busy, focus));
+                }
+                Ev::Ops(id, ops) => {
+                    for op in ops {
+                        match serde_json::from_value::<copy_panel::Fwd>(op) {
+                            Ok(f) => self.c.msgs.push(f.into_msg()),
+                            Err(e) => self.c.fail(format!(
+                                "{} {id}: {e}",
+                                tr("Could not apply an operation from another window")
+                            )),
+                        }
+                    }
+                }
                 Ev::Pane(id, v) => {
                     let p = serde_json::from_value::<Pane>(v)
                         .ok()
@@ -214,6 +249,7 @@ impl App {
                         .input(&v);
                 }
                 Ev::Gone(id) => {
+                    self.c.popup_doc.copies.busy.remove(&id);
                     self.hosts.remove(&id);
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
@@ -235,6 +271,35 @@ impl App {
             .filter(|id| t.is_calc(*id))
             .collect();
         self.c.send_popup_doc(t, &calc);
+        // 文書のパネルの別の窓に、組合せ（と履歴のパネルには元に戻す段）の写しを送る
+        let open: Vec<u64> = self.windows.iter().map(|w| w.pane.id).collect();
+        self.c.popup_doc.copies.sync.retain(&open);
+        self.c
+            .popup_doc
+            .copies
+            .busy
+            .retain(|id, _| open.contains(id));
+        for w in &self.windows {
+            let id = w.pane.id;
+            if !t.is_calc(id) || !copy_panel::needs_combo(&w.pane.kind) {
+                continue;
+            }
+            let c = &mut self.c;
+            if let Some(v) = c
+                .popup_doc
+                .copies
+                .sync
+                .combo_for(id, c.doc.rev, &c.doc.combo)
+            {
+                t.send_copy(id, &json!({ "combo": v }));
+            }
+            if w.pane.kind == Kind::History {
+                let h = copy_panel::HistCopy::of(c);
+                if let Some(v) = c.popup_doc.copies.sync.hist_for(id, h) {
+                    t.send_copy(id, &json!({ "hist": v }));
+                }
+            }
+        }
         // 別の窓のパネル: 元のタブで描いて、変わった画面を送る（解析のパネルも同じ）
         let App {
             c, windows, hosts, ..

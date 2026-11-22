@@ -151,6 +151,30 @@ if (!process.env.NO_POPUP) {
     }
   }
 }
+// 文書のパネル（レンズデータ）を別の窓に出すと、その窓は元のタブの組合せと系の写しを持って自分で描き、窓での操作は
+// 元のタブが当てて（元に戻す段も元のタブに積む）写しで窓に戻る
+if (!process.env.NO_POPUP) {
+  const before = await settle("別の窓を出す前", s => s.system);
+  const popupP = context.waitForEvent("page", { timeout: 60000 });
+  const moved = await page.evaluate(async () => (await import("./lensbench_web.js")).test_detach_panel('"LensData"'));
+  for (let i = 0; i < 5; i++) await page.mouse.move(300 + 10 * i, 320);
+  const popup = moved ? await popupP.catch(() => null) : null;
+  if (!popup) errors.push(`文書のパネルの別の窓が開かない（${JSON.stringify(await state())}）`);
+  else {
+    watch(popup, "文書の窓: ");
+    await popup.waitForFunction(() => !document.getElementById("msg"), null, { timeout: 120000 }).catch(() => {});
+    const p0 = await settle("文書の窓が写しを受ける",
+      s => s.calc_window && s.copy_ready && s.system && s.combo.picks === before.combo.picks, 120000, popup);
+    const gap2 = Math.round((p0.combo.stop_gap + 1.25) * 100) / 100;
+    const op = JSON.stringify({ op: "edit", ops: [{ path: ["stop_gap"], value: gap2 }] });
+    const sent = await popup.evaluate(async o => (await import("./lensbench_web.js")).test_send(o), op);
+    if (!sent) errors.push("文書の窓: 操作を入れられない");
+    for (let i = 0; i < 3; i++) await popup.mouse.move(200 + 10 * i, 200);
+    const m1 = await settle("元のタブが窓の操作を当てる", s => s.combo.stop_gap === gap2);
+    if (!(m1.hist > before.hist)) errors.push(`元のタブに元に戻す段が積まれない（${before.hist} → ${m1.hist}）`);
+    await settle("窓に当てた結果が写しで戻る", s => s.combo.stop_gap === gap2, 60000, popup);
+  }
+}
 console.log(`画面が止まった最長 ${gap.toFixed(0)} ms`);
 await page.screenshot({ path: shot });
 await browser.close();

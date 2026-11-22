@@ -272,6 +272,28 @@ pub fn web_test_detach_analysis() -> bool {
     })
 }
 
+/// Web 版の試験用の口: 種類 kind（`"LensData"` など）のパネルを別の窓に出す（scripts/web_smoke.mjs）
+#[cfg(target_arch = "wasm32")]
+pub fn web_test_detach_panel(kind: &str) -> bool {
+    with_test_app(|a| a.test_detach_panel(kind))
+}
+
+/// Web 版の試験用の口: 操作（別の窓から元のタブへ送る形の JSON）をパネルから出したように入れる（scripts/web_smoke.mjs）
+#[cfg(target_arch = "wasm32")]
+pub fn web_test_send(op: &str) -> bool {
+    with_test_app(|a| a.test_send(op))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn with_test_app(f: impl FnOnce(&mut app::App) -> bool) -> bool {
+    TEST_APP.with(|t| {
+        t.borrow()
+            .upgrade()
+            .and_then(|a| a.try_borrow_mut().ok().map(|mut a| f(&mut a)))
+            .unwrap_or(false)
+    })
+}
+
 /// eframe に渡す画面。中身は [`web_bg`] とも分け合う（裏に回ったタブで別の窓の分を描く）
 #[cfg(target_arch = "wasm32")]
 struct Shell(std::rc::Rc<std::cell::RefCell<app::App>>);

@@ -37,6 +37,8 @@ pub(super) struct PopupDoc {
     /// 別の窓: 系を変える要求が通らなかった（写しを読めなかったと元のタブへ知らせる）
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     failed: bool,
+    /// 文書のパネルの別の窓に写す組合せ・履歴・見え方（[`super::copy_panel`]）
+    pub(super) copies: super::copy_panel::Copies,
 }
 
 /// 別の窓に送った系
@@ -300,6 +302,7 @@ impl App {
     /// 別の窓（解析のパネル）として始める。パネルと系は元のタブから届く
     pub(super) fn start_calc(&mut self, ctx: &egui::Context, id: u64, sid: String) {
         self.calc = Some(crate::web_tabs::Calc::new(ctx, id, sid));
+        self.c.popup_doc.copies.follower = true;
         self.dock = egui_dock::DockState::new(Vec::new());
         self.windows.clear();
         self.apply_dock_translations();
@@ -313,6 +316,7 @@ impl App {
         };
         let mut flat = None;
         let mut resend = false;
+        let mut recopy = false;
         for e in k.events(ctx) {
             match e {
                 CalcEv::Pane(v) => {
@@ -328,14 +332,30 @@ impl App {
                     }
                     resend |= !self.c.open_popup_doc(&how, b);
                 }
+                CalcEv::Copy(v) => {
+                    let c = &mut self.c;
+                    if v["combo"].is_object()
+                        && !c.popup_doc.copies.recv.combo(&mut c.doc.combo, &v["combo"])
+                    {
+                        recopy = true;
+                    }
+                    if let Ok(h) =
+                        serde_json::from_value::<super::copy_panel::HistCopy>(v["hist"].clone())
+                    {
+                        c.popup_doc.copies.recv.hist = Some((h, web_time::Instant::now()));
+                    }
+                }
             }
         }
         if let Some(f) = flat {
             self.calc_flat = f;
         }
-        if resend {
-            if let Some(k) = &self.calc {
+        if let Some(k) = &self.calc {
+            if resend {
                 k.ask_resend();
+            }
+            if recopy {
+                k.ask_recopy();
             }
         }
         self.logic(ctx);
@@ -345,10 +365,28 @@ impl App {
                 k.ask_flat();
             }
         }
-        let (closed, waiting) = match &self.calc {
-            Some(k) => (k.closed, self.c.sys.summary.is_none()),
+        let kind = self
+            .dock
+            .iter_all_tabs()
+            .next()
+            .map(|(_, p)| p.kind.clone());
+        // 解析のパネルは系の写しを、文書のパネルは組合せの写し（履歴のパネルは段の一覧）を受けるまで待つ
+        let waiting = match &kind {
+            None => true,
+            Some(Kind::History) => self.c.popup_doc.copies.recv.hist.is_none(),
+            Some(k) if super::copy_panel::needs_combo(k) => !self.c.popup_doc.copies.recv.ready(),
+            Some(_) => self.c.sys.summary.is_none(),
+        };
+        let closed = match &self.calc {
+            Some(k) => k.closed,
             None => return,
         };
+        // キーの操作（元に戻す・保存など）も元のタブへ送る（窓に落としたファイルは元のタブに無いので開かない）
+        let keys: Vec<Msg> = super::frame::input_msgs(ctx)
+            .into_iter()
+            .filter(|m| !matches!(m, Msg::OpenFile(_)))
+            .collect();
+        self.c.msgs.extend(keys);
         let title = self
             .dock
             .iter_all_tabs()
@@ -399,8 +437,20 @@ impl App {
         if c.ask.is_some() {
             c.ask_ui(ctx);
         }
-        // この窓で当てるのは解析の計算だけ
-        self.c.msgs.retain(|m| matches!(m, Msg::Analyze(_)));
+        // この窓で当てるのは文書を変えない操作だけ。文書を変える操作は元のタブへ送り、当てた結果が写しで戻る
+        let ops: Vec<Value> = self
+            .c
+            .msgs
+            .iter()
+            .filter_map(super::copy_panel::Fwd::from_msg)
+            .filter_map(|f| serde_json::to_value(f).ok())
+            .collect();
+        let focus = ctx.memory(|m| m.focused());
+        let busy = ctx.input(|i| i.pointer.any_down()) || focus.is_some();
+        if let Some(k) = self.calc.as_mut() {
+            k.send_ops(ops, busy, focus.map(|f| f.value()));
+        }
+        self.c.msgs.retain(super::copy_panel::local);
         self.dispatch_queued(ctx);
         let pane = self
             .dock

@@ -1,10 +1,12 @@
 //! Web 版: パネルをブラウザの別の窓（ポップアップ）に出す（ネイティブの「別の窓」の代わり）。
 //!
 //! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別の窓で開く。
-//!   - 解析以外のパネル: 元のタブがそのパネルを別の egui の画面（[`Host`]）で描いて網を送り、別の窓（[`Viewer`]）は
-//!     網を描いて入力を返すだけ
-//!   - 解析のパネル（`&calc=1`）: 別の窓（[`Calc`]）が自分の計算の Web Worker を持ち、元のタブから系の写しと
-//!     パネルの設定を受けて自分で計算して描く。元のタブが裏に回ってブラウザに止められても、別の窓の解析は動く
+//!   - 写しを持つパネル（`&calc=1`。解析・システム・系の設定・レンズデータ・多重構成・履歴）: 別の窓（[`Calc`]）が
+//!     自分の計算の Web Worker を持ち、元のタブから系の写しとパネルの設定（解析以外は組合せと履歴の写しも）を受けて
+//!     自分で計算して描く。窓でした操作は元のタブへ送り、元のタブが当てる。元のタブが裏に回ってブラウザに止められても、
+//!     別の窓は描ける
+//!   - ほかのパネル（最適化・公差など長い計算を元のタブで回すもの）: 元のタブがそのパネルを別の egui の画面（[`Host`]）で
+//!     描いて網を送り、別の窓（[`Viewer`]）は網を描いて入力を返すだけ
 //! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない。
 //!   画面のバイト列だけは、元のタブが開いた窓（`window.open` の戻り）へ `postMessage` で直に送り、バッファを
 //!   写さずに渡す（transfer。BroadcastChannel は写すうえ、共有の口だと別の窓すべてがほかの窓の画面まで受ける）。
@@ -13,10 +15,12 @@
 //!     `{sid, from, bye}`（閉じた。pagehide で送る）
 //!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
 //!     `{sid, to, ack}`（入力を受けたが画面は変わらない）、`{sid, closed}`（元のタブを閉じた）
-//!   - 解析のパネル: 窓 → 元 `{sid, from, hello}`（パネルの設定が届くまで 1 秒ごと）・`{sid, from}`（2 秒ごと）・
-//!     `{sid, from, pane}`（パネルの設定を変えた）・`{sid, from, flat}`（写した文書を読めなかった）・`{sid, from, bye}`、
+//!   - 写しを持つパネル: 窓 → 元 `{sid, from, hello}`（パネルの設定が届くまで 1 秒ごと）・`{sid, from}`（2 秒ごと）・
+//!     `{sid, from, pane}`（パネルの設定を変えた）・`{sid, from, flat}`（写した文書を読めなかった）・
+//!     `{sid, from, busy, focus, ops}`（窓でした操作と、ポインタを押しているか・入力を受けている欄。変わったときも）・`{sid, from, recopy}`（組合せの写しが続かなかった）・`{sid, from, bye}`、
 //!     元 → 窓 `{sid, to, pane}`（hello への返事）と系の写し（`LBD1` の頭、`postMessage` で直に。系を変えるたび。
-//!     元のタブが読んだ文書のファイルと読み方・その後の変更。写せなければ平たい系ファイル）
+//!     元のタブが読んだ文書のファイルと読み方・その後の変更。写せなければ平たい系ファイル）、組合せと履歴の写し
+//!     （`LBC1` の頭、`{combo}`・`{hist}` の JSON。変わったとき）
 //! - 元のタブが裏に回るとブラウザはその画面（requestAnimationFrame）を止めるが、メッセージは届くので、
 //!   別の窓の入力・計算の結果を合図に元のタブが描いて送る（[`crate::web_bg`]）。それでも返事が
 //!   3 秒より長く無ければ（ブラウザがタブごと止めたときなど）、窓にその旨と「元の窓を前へ」を出す
@@ -164,6 +168,8 @@ impl Drop for Frames {
 const FRAME: &[u8; 4] = b"LBR1";
 /// 系の写しのバイト列の印（頭の後に、JSON の長さ u32・JSON（読み方と変更）・ファイルの中身）
 const DOC: &[u8; 4] = b"LBD1";
+/// 組合せ・履歴の写しのバイト列の印（頭の後に JSON）
+const COPY: &[u8; 4] = b"LBC1";
 
 /// 別の窓に送るバイト列の頭（印 4 バイト、sid の長さ u8・sid、宛先のパネル id u64）
 fn frame_head(magic: &[u8; 4], sid: &str, to: u64) -> Vec<u8> {
@@ -205,6 +211,12 @@ pub(crate) enum Ev {
     Flat(u64),
     /// 別の窓の解析のパネルに届いた写しが前のものと続かなかった（全部を送り直す）
     Resend(u64),
+    /// 写しを持つ別の窓でした操作（[`crate::app`] の送る操作の JSON）
+    Ops(u64, Vec<Value>),
+    /// 写しを持つ別の窓に届いた組合せの写しが続かなかった（全部を送り直す）
+    Recopy(u64),
+    /// 写しを持つ別の窓で、ポインタを押しているか欄が入力を受けているか、その欄（元に戻す段の区切りに使う）
+    Busy(u64, bool, Option<u64>),
 }
 
 struct Open {
@@ -335,6 +347,15 @@ impl Tabs {
                 if m["resend"].as_bool() == Some(true) {
                     out.push(Ev::Resend(id));
                 }
+                if let Some(b) = m["busy"].as_bool() {
+                    out.push(Ev::Busy(id, b, m["focus"].as_u64()));
+                }
+                if let Some(ops) = m["ops"].as_array() {
+                    out.push(Ev::Ops(id, ops.clone()));
+                }
+                if m["recopy"].as_bool() == Some(true) {
+                    out.push(Ev::Recopy(id));
+                }
             }
         }
         for (id, o) in &self.open {
@@ -381,6 +402,11 @@ impl Tabs {
         let j = how.to_string();
         let n = (j.len() as u32).to_le_bytes();
         self.post_bytes(id, DOC, &[&n, j.as_bytes(), bytes]);
+    }
+
+    /// 写しを持つ別の窓に、組合せ・履歴の写し（`{combo}`・`{hist}` の JSON）を送る
+    pub(crate) fn send_copy(&mut self, id: u64, v: &Value) {
+        self.post_bytes(id, COPY, &[v.to_string().as_bytes()]);
     }
 
     /// 解析のパネルの別の窓に、パネル（[`crate::layout::Pane`] の JSON）を送る
@@ -865,6 +891,8 @@ pub(crate) enum CalcEv {
     Pane(Value),
     /// 系の写し（読み方と変更の JSON、読むファイルの中身）
     Doc(Value, Vec<u8>),
+    /// 組合せ・履歴の写し（`{combo}`・`{hist}` の JSON）
+    Copy(Value),
 }
 
 /// 別の窓（解析のパネル）: 元のタブから系とパネルの設定を受ける口。計算と描くのは画面（`App`）が自分で
@@ -881,6 +909,8 @@ pub(crate) struct Calc {
     pane: Option<Value>,
     /// ブラウザのタブの題に出したパネルの名前
     title: String,
+    /// 最後に送った、ポインタを押しているか・入力を受けている欄
+    busy: (bool, Option<u64>),
 }
 
 impl Calc {
@@ -898,6 +928,7 @@ impl Calc {
             hello: f64::NEG_INFINITY,
             pane: None,
             title: String::new(),
+            busy: (false, None),
         }
     }
 
@@ -917,6 +948,14 @@ impl Calc {
             return out;
         };
         for b in self.frames.as_ref().map(Frames::take).unwrap_or_default() {
+            if let Some((sid, to, rest)) = split_head(COPY, &b) {
+                if sid == self.sid && to == self.id {
+                    if let Ok(v) = serde_json::from_slice::<Value>(rest) {
+                        out.push(CalcEv::Copy(v));
+                    }
+                }
+                continue;
+            }
             let Some((sid, to, rest)) = split_head(DOC, &b) else {
                 continue;
             };
@@ -968,6 +1007,30 @@ impl Calc {
     pub(crate) fn ask_resend(&self) {
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "from": self.id, "resend": true }));
+        }
+    }
+
+    /// 窓でした操作を元のタブへ送る（元のタブが当てる）。busy はポインタを押しているか欄が入力を受けているか、focus は
+    /// その欄（元のタブは、窓の欄を離れるまでの書き換えを 1 段の元に戻すにまとめる）。操作が無くても、busy・focus が
+    /// 変わったら送る
+    pub(crate) fn send_ops(&mut self, ops: Vec<Value>, busy: bool, focus: Option<u64>) {
+        if self.closed || (ops.is_empty() && self.busy == (busy, focus)) {
+            return;
+        }
+        self.busy = (busy, focus);
+        let mut m = json!({ "sid": self.sid, "from": self.id, "busy": busy, "focus": focus });
+        if !ops.is_empty() {
+            m["ops"] = ops.into();
+        }
+        if let Some(c) = &self.chan {
+            c.post(&m);
+        }
+    }
+
+    /// 届いた組合せの写しが前のものと続かなかったと元のタブへ知らせる（全部を送り直してもらう）
+    pub(crate) fn ask_recopy(&self) {
+        if let Some(c) = &self.chan {
+            c.post(&json!({ "sid": self.sid, "from": self.id, "recopy": true }));
         }
     }
 

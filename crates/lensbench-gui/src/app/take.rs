@@ -4,6 +4,15 @@ use super::*;
 use crate::worker::Answer;
 
 impl Core {
+    /// 面の表と要約を 1 つの要求で読み直す（途中の状態を見せない）。系を変える要求に
+    /// 付けて読み直す途中（[`Core::call_refreshing`]）なら頼まない
+    pub(super) fn refresh(&mut self) {
+        if self.bundled_refresh {
+            return;
+        }
+        self.calc_refreshing(Tag::Refresh, Value::Null);
+    }
+
     pub(super) fn take(&mut self, mut d: Done) {
         // 別の窓に写す系（下の行・解析の印は変えない）
         if d.tag == Tag::PopupDoc {

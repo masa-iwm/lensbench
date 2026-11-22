@@ -332,6 +332,10 @@ impl Core {
 
     /// 元に戻す（back）・やり直すことができるか
     pub(super) fn can_undo(&self, back: bool) -> bool {
+        // Web 版の別の窓: 元のタブの段の写し
+        if let Some((h, _)) = &self.popup_doc.copies.recv.hist {
+            return h.can[usize::from(!back)];
+        }
         self.combo_hist.can(&self.doc.combo, self.doc.rev, back)
             || if back {
                 !self.docs.hist.is_empty(true)
@@ -342,6 +346,9 @@ impl Core {
 
     /// 元に戻す・やり直す段の名前（元に戻す段は新しい順、やり直す段は次の順）。文書の中の段の後に、文書を替えた段
     pub(super) fn undo_list(&self, back: bool) -> Vec<Step> {
+        if let Some((h, got)) = &self.popup_doc.copies.recv.hist {
+            return h.steps(back, *got);
+        }
         let mut out = self.combo_hist.list(back);
         let doc = if back || self.doc_redo_ok() {
             self.docs.hist.top(back)

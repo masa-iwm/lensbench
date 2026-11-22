@@ -1172,6 +1172,7 @@ A combination is saved with the combination in a project .json (opening it resto
 System (.zmx / .json)	システム（.zmx・.json）
 Combinations (open as a combination)	組合せ（開くと組合せに戻る）
 The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page	ブラウザが別のタブ・ウィンドウを開くのを止めました（ポップアップを許すと、パネルを別のタブ・ウィンドウに出せます）。本体の中のウィンドウに出します
+Could not apply an operation from another window	別のウィンドウからの操作を当てられませんでした
 The main tab was closed, so this panel cannot be used. Please close this window.	元のタブを閉じたので、このパネルは使えません。このウィンドウを閉じてください。
 The main tab was closed, so this panel no longer follows the system	元のタブを閉じたので、このパネルはシステムの変更を受けません
 Showing a copy without the original file, so states, configurations, beam paths and coating files are not available	元のファイルなしの写しを表示しているので、状態・構成・ビームの経路・コーティングのファイルは使えません
