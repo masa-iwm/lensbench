@@ -51,6 +51,8 @@ pub struct Psf {
     pub enclosed: f64,
     /// 標本不足・格子の外の光量の注意（空なら問題なし）
     pub warnings: Vec<String>,
+    /// Huygens PSF の和を計算した装置（`cpu` か `gpu: アダプタの名前`）。FFT PSF は None
+    pub device: Option<String>,
 }
 
 /// 瞳の隣り合う標本の位相差の注意のしきい値 [rad]
@@ -496,6 +498,7 @@ fn psf_once(
         phase_step: step,
         enclosed,
         warnings: sampling_warnings("PSF", np, step, enclosed),
+        device: None,
     })
 }
 

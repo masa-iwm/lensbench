@@ -48,6 +48,8 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
   強度は厳密な和と 5e-7 倍程度で合う。RTX 3060 で CPU の既定の 10 倍以上速い）。CPU で動くアダプタ（WARP・llvmpipe）は使わない。
   `--device cpu` で CPU に固定、`--device gpu` は CPU で動くアダプタでも GPU の経路を使う（照合用。使えなければ CPU で計算して `warnings` に書く）。
   `--exact` はいつも CPU。バックエンドは環境変数 `WGPU_BACKEND`（`vulkan`・`dx12`・`metal`）で選べる。Web 版は CPU だけ。
+  結果の `device` に和を計算した装置（`cpu` か `gpu: アダプタの名前`、Python の dict も同じ鍵、GUI は計算時間の横）を出す。
+  `--device auto` で使う GPU は `lensbench devices` で確かめられる（`gpu` が null なら CPU で計算する）。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
 - OpticStudio 26.1 との照合は `tests/refs/<システム>/mtf_family.json`・`psf_os.npz`（24 本、許容差と理由は `crates/lensbench-verify/src/mtf_refs.rs`）。
 - Python は `System.mtf`（`method="fft"`・`each_wave=True`・`axes=`・`polarization=`）・`mtf_focus`・`mtf_field`・`rms`（`vs=`）・`psf`・`geo_mtf`・`huygens_psf`・`huygens_mtf`。

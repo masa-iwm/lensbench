@@ -32,6 +32,7 @@ pub const RESERVED: &[&str] = &[
     "watch",
     "run",
     "plugins",
+    "devices",
     "verify",
 ];
 

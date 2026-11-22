@@ -175,5 +175,8 @@ pub(crate) fn psf_dict(py: Python<'_>, p: Psf) -> PyResult<Bound<'_, PyDict>> {
     d.set_item("phase_step", p.phase_step)?;
     d.set_item("enclosed", p.enclosed)?;
     d.set_item("warnings", p.warnings)?;
+    if let Some(dev) = p.device {
+        d.set_item("device", dev)?;
+    }
     Ok(d)
 }

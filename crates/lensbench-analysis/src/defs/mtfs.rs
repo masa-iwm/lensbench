@@ -81,6 +81,9 @@ pub struct MtfOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
     pub mtf: Vec<MtfRow>,
+    /// huygens-mtf の和を計算した装置: cpu か「gpu: アダプタの名前」（視野で違えば , で並べる）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
 }
 
 pub(super) struct Mtf;
@@ -151,6 +154,7 @@ impl Analysis for Mtf {
             unit: freq_unit(s),
             method: None,
             mtf: v,
+            device: None,
         })
     }
 }
@@ -531,21 +535,22 @@ impl Analysis for HuygensMtf {
             exact: p.exact,
             device: p.device,
         };
-        let mut v = Vec::new();
+        let (mut v, mut dev) = (Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
             let f = FieldSel::Index(i);
-            v.push(MtfRow::of(
-                i,
-                huygens::huygens_mtf_axes(s, f, Waves::all_or(w), o, &fs, pa, p.axes.core())?,
-            ));
+            let (m, d) =
+                huygens::huygens_mtf_device(s, f, Waves::all_or(w), o, &fs, pa, p.axes.core())?;
+            huygens::push_device(&mut dev, Some(&d));
+            v.push(MtfRow::of(i, m));
         }
         Ok(MtfOut {
             unit: freq_unit(s),
             method: Some("huygens".into()),
             mtf: v,
+            device: Some(dev.join(", ")),
         })
     }
 }

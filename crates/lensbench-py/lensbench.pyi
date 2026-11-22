@@ -93,6 +93,7 @@ class _MtfResult(_MtfResultBase, total=False):
     """Keys present under conditions"""
     waves: list[int]
     warnings: list[str]
+    device: str
 
 
 class _ThroughFocusMtf(TypedDict):
@@ -114,7 +115,7 @@ class _FieldMtf(TypedDict):
     field_value: NDArray[np.float64]
 
 
-class _PsfResult(TypedDict):
+class _PsfResultBase(TypedDict):
     """PSF (psf, huygens_psf). i is [y][x]; intensity is 1 at the center for the same pupil without aberrations"""
     x: NDArray[np.float64]
     y: NDArray[np.float64]
@@ -128,6 +129,11 @@ class _PsfResult(TypedDict):
     phase_step: float
     enclosed: float
     warnings: list[str]
+
+
+class _PsfResult(_PsfResultBase, total=False):
+    """Keys present under conditions"""
+    device: str
 
 
 class _Cardinal(TypedDict):
@@ -678,14 +684,14 @@ class System:
         """The hash of the system ("sha256:…", the same as the system file). Stamp it on analysis results to check later that the system is the same"""
 
     def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, axes: str = "field", exact: bool = False, device: str = "auto") -> _MtfResult:
-        """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
+        """Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf, plus device as in huygens_psf.
         axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
         exact=True uses the exact sum of huygens_psf (several times slower); device is as in huygens_psf.
         """
 
     def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None, exact: bool = False, device: str = "auto") -> _PsfResult:
         """Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
-        The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
+        The returned dict has the same form as psf, plus device (where the sum was computed: "cpu", or "gpu: " and the adapter name); x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
         By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid (the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid; the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak); exact=True sums every sample exactly at every image point (several times slower).
         device is where the sum is computed when exact is False: "auto" (default; a GPU if one is present, otherwise the CPU), "cpu", or "gpu" (the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak).
         """

@@ -88,10 +88,14 @@ fn gpu_matches_the_exact_sum() {
             },
         )
         .unwrap();
+        assert_eq!(exact.device.as_deref(), Some("cpu"));
         if fell_back(&gpu.warnings) {
             eprintln!("case {k}: {:?}", gpu.warnings);
+            assert_eq!(gpu.device.as_deref(), Some("cpu"));
             continue;
         }
+        let dev = gpu.device.as_deref().unwrap_or("");
+        assert!(dev.starts_with("gpu: "), "case {k}: {dev}");
         let d = exact
             .i
             .data()

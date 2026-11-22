@@ -87,6 +87,9 @@ pub enum HuygensDevice {
     Gpu,
 }
 
+/// `gpu` 機能を付けて組んだか（false なら Huygens の和はいつも CPU）
+pub const GPU_SUPPORT: bool = cfg!(feature = "gpu");
+
 /// 使える GPU の名前（[`HuygensDevice::Auto`] で使うもの）。無い・`gpu` 機能なしで組んだなら None
 pub fn gpu_name() -> Option<String> {
     #[cfg(feature = "gpu")]
@@ -115,14 +118,14 @@ struct GpuInput<'a> {
     pts: &'a [V3],
 }
 
-/// GPU で和を求める。None なら使わない（CPU で計算する）。誤りで CPU に戻るときは note に理由を入れる
-/// （[`HuygensDevice::Gpu`] のときだけ）
+/// GPU で和を求める（値と使ったアダプタの名前）。None なら使わない（CPU で計算する）。誤りで CPU に戻るときは
+/// note に理由を入れる（[`HuygensDevice::Gpu`] のときだけ）
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn gpu_sum(
     device: HuygensDevice,
     x: &GpuInput<'_>,
     note: &mut Option<String>,
-) -> Result<Option<Vec<f64>>> {
+) -> Result<Option<(Vec<f64>, String)>> {
     if device == HuygensDevice::Cpu {
         return Ok(None);
     }
@@ -181,7 +184,7 @@ fn gpu_sum(
             phase: &phase,
         };
         match g.huygens(reference, src, &pts, &lensbench_core::par::cancelled) {
-            Ok(v) => Ok(Some(v)),
+            Ok(v) => Ok(Some((v, g.name().to_string()))),
             Err(lensbench_gpu::Error::Cancelled) => {
                 lensbench_core::par::check_cancel()?;
                 Ok(None)
@@ -543,6 +546,8 @@ fn huygens_once(
 
     let mut tot = vec![0.0; pts.len()];
     let mut gpu_note: Option<String> = None;
+    // 和を計算した装置（波長ごと。GPU のアダプタの名前か None = CPU）
+    let mut used: Vec<Option<String>> = Vec::new();
     let (mut nrm, mut wsum) = (0.0, 0.0);
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for (&wi, &((ia, ib), (a, b))) in ws.iter().zip(&slopes) {
@@ -788,7 +793,8 @@ fn huygens_once(
                 .map(|[r, i]| C64::new(r.iter().sum(), i.iter().sum()).norm_sqr())
                 .collect()
         };
-        let iw: Vec<f64> = if let Some(v) = gpu_iw {
+        used.push(gpu_iw.as_ref().map(|(_, n)| n.clone()));
+        let iw: Vec<f64> = if let Some((v, _)) = gpu_iw {
             v
         } else if let Some(blk) = block {
             let origins: Vec<(usize, usize)> = (0..ni)
@@ -872,7 +878,36 @@ fn huygens_once(
         phase_step: step,
         enclosed,
         warnings,
+        device: Some(device_label(&used)),
     })
+}
+
+/// 視野ごとの装置の表示 d（[`device_label`]、`, ` 区切り）の項目を、まだ無ければ v に足す
+pub(crate) fn push_device(v: &mut Vec<String>, d: Option<&str>) {
+    for t in d.into_iter().flat_map(|d| d.split(", ")) {
+        if !v.iter().any(|x| x == t) {
+            v.push(t.to_string());
+        }
+    }
+}
+
+/// 和を計算した装置の表示: `cpu` か `gpu: アダプタの名前`（波長で違えば `, ` で並べる。重複は除く）
+pub(crate) fn device_label(used: &[Option<String>]) -> String {
+    let mut v: Vec<String> = Vec::new();
+    for u in used {
+        let t = match u {
+            Some(n) => format!("gpu: {n}"),
+            None => "cpu".to_string(),
+        };
+        if !v.contains(&t) {
+            v.push(t);
+        }
+    }
+    if v.is_empty() {
+        "cpu".into()
+    } else {
+        v.join(", ")
+    }
 }
 
 /// PSF の格子の離散フーリエ変換の絶対値（球欠 = x、子午 = y の周波数）。DC で 1。
@@ -1014,6 +1049,19 @@ pub fn huygens_mtf_axes(
     extra: Option<&dyn PupilAmp>,
     axes: MtfAxes,
 ) -> Result<Mtf> {
+    huygens_mtf_device(s, field, w, o, freqs, extra, axes).map(|(m, _)| m)
+}
+
+/// [`huygens_mtf_axes`] と、和を計算した装置（[`Psf::device`] と同じ表示）
+pub fn huygens_mtf_device(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    o: HuygensOpts,
+    freqs: &[f64],
+    extra: Option<&dyn PupilAmp>,
+    axes: MtfAxes,
+) -> Result<(Mtf, String)> {
     let w = w.one();
     let p = huygens_psf_with(s, field, Waves::all_or(w), o, extra)?;
     // 像の格子の一部で強度が決まらない（像面の矢高が求まらない点）PSF の MTF は、どの周波数も決まらない。
@@ -1023,10 +1071,11 @@ pub fn huygens_mtf_axes(
         invalid!("Huygens MTF: the PSF intensity is undefined at {off} image grid points (the image surface sag can't be found there); reduce the image grid or spacing");
     }
     let TanSag { tan, sag } = psf_mtf_dir(&p, freqs, mtf_tangential(s, field, axes)?);
-    Ok(Mtf {
+    let m = Mtf {
         freqs: freqs.to_vec(),
         tan,
         sag,
         cutoff: mtf_cutoff_axes(s, field, w.unwrap_or(s.primary), axes)?,
-    })
+    };
+    Ok((m, p.device.unwrap_or_else(|| "cpu".into())))
 }

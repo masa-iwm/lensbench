@@ -1925,6 +1925,7 @@ Don't write a log file	ログのファイルを書かない
 Python script to run	実行する Python スクリプト
 Arguments for the script (sys.argv[1:])	スクリプトに渡す引数（sys.argv[1:]）
 List the bundled plugins (detectors, analyses) and describe their inputs and outputs	同梱のプラグイン（検出器・解析）の一覧と入出力の説明
+Show the GPU that the Huygens PSF and MTF use with device auto (none means they compute on the CPU)	device auto のとき Huygens PSF・MTF が使う GPU を出す（無ければ CPU で計算する）
 Check plugins and analysis parts against reference data	プラグイン・解析部品を基準データと照合する
 Give a description (*.verify.json) or a folder containing them. Exit code 1 if any check fails	記述（*.verify.json）かそれを含むフォルダを与える。通らない照合があれば終了コード 1
 Description file or folder (folders are searched all the way down for *.verify.json)	記述のファイルかフォルダ（フォルダは下まで *.verify.json を探す）

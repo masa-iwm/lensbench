@@ -489,6 +489,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Show the GPU that the Huygens PSF and MTF use with device auto (none means they compute on the CPU)
+    Devices {
+        /// Print JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Check plugins and analysis parts against reference data
     ///
     /// Give a description (*.verify.json) or a folder containing them. Exit code 1 if any check fails
@@ -758,6 +764,13 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
         // 記述の中のパス（基準データ・系）を serve の --root で確かめられないので、コマンドラインからだけ
         Cmd::Verify { .. } => return Err("verify is only available from the command line".into()),
         Cmd::Plugins { json } => (json, help_json::localize_docs(plugins_json(), json)),
+        Cmd::Devices { json } => (
+            json,
+            serde_json::json!({
+                "gpu_support": lensbench_analysis::huygens::GPU_SUPPORT,
+                "gpu": lensbench_analysis::huygens::gpu_name(),
+            }),
+        ),
         Cmd::Analysis(a) => {
             let s = load(&a.c)?;
             let def = analyses()

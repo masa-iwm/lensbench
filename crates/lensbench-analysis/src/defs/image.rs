@@ -352,6 +352,9 @@ pub struct PsfOut {
     pub axes: Vec<PsfAxes>,
     pub sampling: Vec<PsfSampling>,
     pub warnings: Vec<String>,
+    /// huygens の和を計算した装置: cpu か「gpu: アダプタの名前」（視野で違えば , で並べる）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
 }
 
 pub(super) struct Psf;
@@ -371,6 +374,7 @@ impl Analysis for Psf {
         let w = wave(s, p.wave)?;
         let (mut v, mut axes, mut warn, mut samp) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let mut dev: Vec<String> = Vec::new();
         if p.exact && !p.huygens {
             lensbench_core::invalid!("setting exact is for the Huygens PSF (give huygens too)");
         }
@@ -401,6 +405,7 @@ impl Analysis for Psf {
                 };
                 psf::psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
             }?;
+            crate::huygens::push_device(&mut dev, r.device.as_deref());
             axes.push(PsfAxes {
                 field: i + 1,
                 center: [r.center.0, r.center.1],
@@ -442,6 +447,7 @@ impl Analysis for Psf {
             axes,
             sampling: samp,
             warnings: warn,
+            device: (!dev.is_empty()).then(|| dev.join(", ")),
         })
     }
 }

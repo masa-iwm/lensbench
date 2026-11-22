@@ -97,6 +97,35 @@ fn off_axis_close_to_fft_psf() {
     }
 }
 
+/// 結果に和を計算した装置が入る（CPU に固定なら cpu、FFT PSF は無し）
+#[test]
+fn result_names_the_device() {
+    let s = load("D0");
+    let f = FieldSel::Index(0);
+    let o = HuygensOpts {
+        pupil: Some(32),
+        image: 32,
+        pixel: None,
+        exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
+    };
+    let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    assert_eq!(p.device.as_deref(), Some("cpu"));
+    let (_, d) = lensbench_analysis::huygens::huygens_mtf_device(
+        &s,
+        f,
+        Waves::One(s.primary),
+        o,
+        &[0.0, 10.0],
+        None,
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(d, "cpu");
+    let q = psf::psf(&s, f, Waves::One(s.primary), PsfOpts::default()).unwrap();
+    assert_eq!(q.device, None);
+}
+
 #[test]
 fn perfect_lens_gives_diffraction_limit() {
     // D0 は理想レンズ（F/5）。正規化瞳で振幅が一様なので、瞳の縁の向きの余弦が tan の分だけ詰まり、

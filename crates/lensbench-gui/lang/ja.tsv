@@ -1134,6 +1134,7 @@ CSV	CSV
 Compute this analysis with the current settings (F5 computes all open analyses)	この解析を今の設定で計算する（F5 は開いている解析すべて）
 Help	ヘルプ
 Show the raw result JSON (same as the CLI --json)	結果の JSON をそのまま見る（CLI の --json と同じ形）
+Where the Huygens sum was computed (CPU or GPU)	Huygens の和を計算した装置（CPU か GPU）
 Show the result as a figure (a table if there is no figure)	結果を図で見る（図の無い解析は表）
 Show the result as tables and a tree	結果を表と木で見る
 Manual	マニュアル

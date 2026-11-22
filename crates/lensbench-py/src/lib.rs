@@ -2583,7 +2583,7 @@ impl PySystem {
     }
 
     /// Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
-    /// The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
+    /// The returned dict has the same form as psf, plus device (where the sum was computed: "cpu", or "gpu: " and the adapter name); x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
     /// By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid (the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid; the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak); exact=True sums every sample exactly at every image point (several times slower).
     /// device is where the sum is computed when exact is False: "auto" (default; a GPU if one is present, otherwise the CPU), "cpu", or "gpu" (the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak).
     #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None, exact=false, device="auto"))]
@@ -2610,7 +2610,7 @@ impl PySystem {
         interference::psf_dict(py, p)
     }
 
-    /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf.
+    /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf, plus device as in huygens_psf.
     /// axes is "field" (default; tangential along the field direction) or "pupil" (tangential along the pupil y, as in OpticStudio's FFT MTF); they differ only for fields with an x component.
     /// exact=True uses the exact sum of huygens_psf (several times slower); device is as in huygens_psf.
     #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, pixel=None, threads=None, axes="field", exact=false, device="auto"))]
@@ -2634,14 +2634,16 @@ impl PySystem {
         let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
         let o = mtfs::huygens_opts(pupil, image, pixel, exact, device)?;
-        let m = py
+        let (m, dev) = py
             .detach(|| {
                 with_threads(threads, || {
-                    huygens::huygens_mtf_axes(&s, f, w, o, &fs, None, ax)
+                    huygens::huygens_mtf_device(&s, f, w, o, &fs, None, ax)
                 })
             })
             .map_err(err)?;
-        mtf_dict(py, &m)
+        let d = mtf_dict(py, &m)?;
+        d.set_item("device", dev)?;
+        Ok(d)
     }
 
     /// Image simulation (as OpticStudio's Image Simulation): places image ((height, width) gray or (height, width, 3) RGB, row 0 at the top = field +y)

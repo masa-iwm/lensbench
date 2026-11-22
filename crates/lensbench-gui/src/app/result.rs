@@ -116,6 +116,11 @@ impl Core {
                     .small()
                     .color(weak),
             );
+            // Huygens の和を計算した装置（cpu か gpu: アダプタの名前）
+            if let Some(d) = v["device"].as_str() {
+                ui.label(RichText::new(d).small().color(weak))
+                    .on_hover_text(tr("Where the Huygens sum was computed (CPU or GPU)"));
+            }
             if r.cmd != cfg.cmd {
                 ui.label(
                     RichText::new(tr("(result of the previous analysis)"))

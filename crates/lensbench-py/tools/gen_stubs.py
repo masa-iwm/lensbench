@@ -59,7 +59,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
     "_MtfResult": (
         "Diffraction MTF (mtf, geo_mtf, huygens_mtf). tangential and sagittal are [wavelength][frequency] (each_wave) or [frequency]",
         {"freqs": F64, "tangential": F64, "sagittal": F64, "cutoff": "_TanSag"},
-        {"waves": "list[int]", "warnings": "list[str]"},
+        {"waves": "list[int]", "warnings": "list[str]", "device": "str"},
     ),
     "_ThroughFocusMtf": ("Through-focus MTF ([frequency][dz])",
                          {"freqs": F64, "dz": F64, "tangential": F64, "sagittal": F64, "warnings": "list[str]"}, {}),
@@ -71,7 +71,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
         {"x": F64, "y": F64, "i": F64, "center": "tuple[float, float]", "plane": "str", "axes": "list[list[float]]",
          "pixel": "tuple[float, float]", "peak": "float", "pupil": "int", "phase_step": "float",
          "enclosed": "float", "warnings": "list[str]"},
-        {},
+        {"device": "str"},
     ),
     "_Cardinal": ("Cardinal points (distances in mm)", {k: "float" for k in (
         "n_object", "n_image", "efl", "f_object", "f_image", "focal_object", "principal_object",
