@@ -12,6 +12,7 @@ mod cardinal;
 mod common;
 mod determinism;
 mod dispersion_range;
+mod double_pass_os;
 mod edit;
 mod elements_refs;
 mod fermat;

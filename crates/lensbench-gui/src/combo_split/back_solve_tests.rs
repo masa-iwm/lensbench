@@ -33,3 +33,31 @@ fn a_solve_on_a_return_face_folds_into_the_returning_mirror() {
         q.surface
     );
 }
+
+/// OpticStudio で作ったダブルパス（tests/double_pass/os_dp_*.zmx）: 往きの玉と往路を戻る鏡（傾けた鏡は座標ブレークの
+/// 傾きを鏡の傾きに）にまとまる。戻りの後のダミー面とその厚さのソルブは面の並びに残る（split の中で元の系と同じことも
+/// 確かめる）
+#[test]
+fn opticstudio_double_pass_samples_fold_into_the_returning_mirror() {
+    let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let glass = vec![root.join("tests/glass")];
+    for (f, tilt) in [("os_dp_singlet.zmx", 2.0), ("os_dp_return_solve.zmx", 0.0)] {
+        let c = Combo::from_zmx(&root.join("tests/double_pass").join(f), &glass, &[]).unwrap();
+        let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+        assert_eq!(
+            kinds,
+            [ElemKind::Lens, ElemKind::Mirror, ElemKind::Surfaces],
+            "{f}"
+        );
+        assert!(c.picks[1].mirror().back, "{f}");
+        assert_eq!(c.picks[1].tilt[0], tilt, "{f}");
+        assert!(
+            c.picks[2]
+                .ops
+                .iter()
+                .any(|o| matches!(o, SurfaceOp::AddSolve(_))),
+            "{f}: {:?}",
+            c.picks[2].ops
+        );
+    }
+}
