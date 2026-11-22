@@ -461,6 +461,7 @@ pub const SYSTEM_KEYS: &[&str] = &[
     "adjust_index",
     "glrs",
     "ropd",
+    "aim_pupil",
     "coating_file",
     "apodization",
 ];
@@ -532,6 +533,15 @@ pub(crate) fn set_system_data(
     }
     if !(n.temperature.is_finite() && n.pressure.is_finite()) {
         return Err("temperature and pressure must be numbers".into());
+    }
+    if !n
+        .aim_pupil
+        .shift
+        .iter()
+        .chain(&n.aim_pupil.compress)
+        .all(|v| v.is_finite())
+    {
+        return Err("ray aiming pupil shift and compress must be numbers".into());
     }
     if let lensbench_core::pupil::Apodization::Gaussian(g) = n.apodization {
         if !(g.is_finite() && g >= 0.0) {

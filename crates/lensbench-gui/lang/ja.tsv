@@ -1590,6 +1590,11 @@ Parameter {} pickup value {}	パラメータ {} のピックアップの値 {}
 Apodization type	アポダイゼーションの種類
 Apodization factor	アポダイゼーションの係数
 OPD reference	OPD の基準
+Pupil shift X	瞳のずれ X
+Pupil shift Y	瞳のずれ Y
+Pupil shift Z	瞳のずれ Z
+Pupil compress X	瞳の圧縮 X
+Pupil compress Y	瞳の圧縮 Y
 Row {} {}	{} 行目の{}
 Copy	コピー
 Insert row above	上に行を挿入

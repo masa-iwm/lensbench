@@ -878,6 +878,8 @@ fn kind_of(
                 "APDF" => ("apod".to_string(), 1.0),
                 "RAAM" => ("aiming".to_string(), 1.0),
                 "OPDR" => ("ropd".to_string(), 1.0),
+                "PSHX" | "PSHY" | "PSHZ" => (mop.to_ascii_lowercase(), unit),
+                "PSCX" | "PSCY" => (mop.to_ascii_lowercase(), 1.0),
                 o => return Err(format!("the multi-configuration operand {o} of row {k}")),
             };
             m.insert("type".into(), json!("param"));

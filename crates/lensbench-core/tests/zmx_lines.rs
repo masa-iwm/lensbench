@@ -928,3 +928,74 @@ THIC 2 1 40 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 2 2 11 {b} 0 \"\" 0\n"
         zmx_write::write_notes(&s)
     );
 }
+
+/// 光線エイミングの瞳のずれ・圧縮（PUSH ずれ z・y・x・視野で倍率・圧縮 x・y、RAIM の 10 番目は自動のずれ。OpticStudio 2026 R1.01
+/// で実測）を読み書きし、多重構成の PSHX〜PSCY を表と構成を選んだ読込の両方に入れる。追跡には効かない。インチの系のずれは mm に
+#[test]
+fn aim_pupil_shift_and_compress() {
+    let mce = "MNUM 2 1\n\
+PSHX 0 1 0.5 0 0 0 1 1 1 0 0 \"\" 0\nPSHX 0 2 0.75 0 0 0 1 1 1 0 0 \"\" 0\n\
+PSCY 0 1 -0.2 0 0 0 1 1 1 0 0 \"\" 0\nPSCY 0 2 -0.3 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let base = lens("  TYPE STANDARD\n  CURV 0.01\n").replace(
+        "PWAV 1\n",
+        "PWAV 1\nRAIM 0 2 1 1 0 0 0 0 0 0\nPUSH 2 1 0.5 1 0.1 -0.2\n",
+    );
+    let plain = build(&base);
+    let s = build(&(base.clone() + mce));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let ap = plain.aim_pupil;
+    assert_eq!(ap.shift, [0.5, 1.0, 2.0]);
+    assert_eq!(ap.compress, [0.1, -0.2]);
+    assert!(ap.scale_by_field && ap.auto_shift == Some(false));
+    // 追跡には効かない
+    let none = build(&base.replace("PUSH 2 1 0.5 1 0.1 -0.2\n", ""));
+    same_rays(&plain, &none, &[0.0, 0.7, -1.0], &[1.0, 0.3, 0.0], 1e-300);
+    let c = s.configs().unwrap();
+    let names: Vec<String> = c.rows.iter().map(|r| r.param.name()).collect();
+    assert_eq!(names, ["pshx", "pscy"]);
+    assert_eq!(c.rows[0].values, vec![0.5, 0.75]);
+    assert_eq!(s.config(2).unwrap().aim_pupil.shift[0], 0.75);
+    // 構成 2 を選んで読んでも入る
+    let raw = zmx::parse_text(&(base.clone() + mce)).unwrap();
+    let d = zmx::build(
+        &raw,
+        &zmx::LoadOptions {
+            cfg: 2,
+            ..Default::default()
+        },
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(d.aim_pupil.shift[0], 0.75);
+    assert_eq!(d.aim_pupil.compress[1], -0.3);
+    // 書いて読み直す
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("RAIM 0 2 1 1 0 0 0 0 0 0"), "{w}");
+    assert!(w.contains("PUSH 2 1 0.5 1 0.1 -0.2"), "{w}");
+    let back = build(&w);
+    assert_eq!(back.aim_pupil, s.aim_pupil);
+    assert_eq!(back.configs(), s.configs());
+    // インチの系: ずれは mm に、圧縮はそのまま
+    let inch = build(&base.replacen("UNIT MM", "UNIT IN", 1));
+    assert_eq!(inch.aim_pupil.shift, [0.5 * 25.4, 25.4, 2.0 * 25.4]);
+    assert_eq!(inch.aim_pupil.compress, [0.1, -0.2]);
+    // 多重構成の行のずれも mm に（表と構成を選んだ読込）、圧縮はそのまま
+    let txt = (base.clone() + mce).replacen("UNIT MM", "UNIT IN", 1);
+    let inch2 = build(&txt);
+    let rows = &inch2.configs().unwrap().rows;
+    assert_eq!(rows[0].values, vec![0.5 * 25.4, 0.75 * 25.4]);
+    assert_eq!(rows[1].values, vec![-0.2, -0.3]);
+    let d = zmx::build(
+        &zmx::parse_text(&txt).unwrap(),
+        &zmx::LoadOptions {
+            cfg: 2,
+            ..Default::default()
+        },
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(d.aim_pupil.shift[0], 0.75 * 25.4);
+    assert_eq!(d.aim_pupil.compress[1], -0.3);
+}

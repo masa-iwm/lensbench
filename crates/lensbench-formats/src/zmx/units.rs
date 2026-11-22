@@ -14,17 +14,15 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         "METER" | "M" => 1000.0,
         u => notimpl!("lens unit {u} (mm, cm, in, m)"),
     };
-    // 光線エイミングの瞳のずらし（RAIM の 5〜7 番目、長さ。lensbench の書く RAIM 0 種類 1 1 0 0 0 … の 0 0 0）は換算を確かめていないので止める
-    if let Some(a) = raw.sysl.get("RAIM").and_then(|v| v.first()) {
-        if a.iter()
-            .skip(4)
-            .take(3)
-            .any(|x| fv(x).unwrap_or(0.0) != 0.0)
-        {
-            notimpl!("ray aiming pupil shift in lens unit {unit}");
+    let mut r = raw.clone();
+    // 光線エイミングの瞳のずれ（PUSH の 1〜3 番目、長さ。4 番目の視野で倍率と 5・6 番目の圧縮は比）
+    if let Some(v) = r.sysl.get_mut("PUSH").and_then(|v| v.first_mut()) {
+        for x in v.iter_mut().take(3) {
+            if let Ok(y) = fv(x) {
+                *x = format!("{:.17e}", y * f);
+            }
         }
     }
-    let mut r = raw.clone();
     let len = |v: &mut f64| *v *= f;
     for (k, sf) in r.surfs.iter_mut().enumerate() {
         let typ = sf.typ.clone().unwrap_or_else(|| "STANDARD".into());
@@ -184,7 +182,7 @@ pub(super) fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
     for (op, p1, c, v, rest) in r.mce.iter_mut() {
         let k = match op.as_str() {
             "THIC" | "SDIA" | "APMX" | "APMN" | "APDX" | "APDY" | "CBDX" | "CBDY" | "CADX"
-            | "CADY" | "MCSD" | "CHZN" => f,
+            | "CADY" | "MCSD" | "CHZN" | "PSHX" | "PSHY" | "PSHZ" => f,
             "CRVT" => 1.0 / f,
             "XFIE" | "YFIE" if matches!(fltp_of(*c), 1..=3) => f,
             // 入射瞳径・浮動の絞りの半径は長さ、F 値・NA・コーン角はそのまま

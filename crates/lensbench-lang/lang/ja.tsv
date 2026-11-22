@@ -508,7 +508,6 @@ zmx surface {}: line {} is not supported	zmx の面 {}: 行 {} は未対応
 zmx surface {}: non-sequential objects (NSOH) are not supported (a non-sequential or mixed-mode system)	zmx の面 {}: 非順次の物体（NSOH）は未対応（非順次・混合モードのシステム）
 {what} {v} (an integer {lo} to {hi})	{what} {v}（{lo}〜{hi} の整数）
 lens unit {u} (mm, cm, in, m)	レンズ単位 {u}（mm・cm・in・m）
-ray aiming pupil shift in lens unit {unit}	レンズ単位 {unit} の光線エイミングの瞳のずらし
 surface {k}: extra data in lens unit {unit}	面 {k}: レンズ単位 {unit} の拡張データ
 surface {k}: parameter pickup offset in lens unit {unit}	面 {k}: レンズ単位 {unit} のパラメータのピックアップのオフセット
 multi-configuration PRAM {p1}: bad surface or PARM number	多重構成の PRAM {p1}: 面か PARM の番号が不正

@@ -39,6 +39,7 @@ pub(crate) fn prescription(s: &System) -> lensbench_core::Result<Prescription> {
         floating_clip: s.floating_clip,
         glrs: s.glrs,
         ropd: s.ropd,
+        aim_pupil: s.aim_pupil,
         apodization: s.apodization,
         coating_file: s
             .coating_file

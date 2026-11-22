@@ -841,6 +841,12 @@ pub struct Project {
     /// OPD の基準（.zmx の ROPD。省略は 2: 出射瞳の参照球）
     #[serde(default = "two_i64", skip_serializing_if = "is_two_i64")]
     pub ropd: i64,
+    /// 光線エイミングの瞳のずれ・圧縮（.zmx の PUSH と RAIM の 10 番目。追跡には効かない）。省略は全部 0
+    #[serde(
+        default,
+        skip_serializing_if = "lensbench_core::system::AimPupil::is_default"
+    )]
+    pub aim_pupil: lensbench_core::system::AimPupil,
     /// 定義した視野以外の点のケラレ係数の求め方（`"continuous"`・`"opticstudio"`。省略は連続）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<lensbench_core::system::VigInterp>,

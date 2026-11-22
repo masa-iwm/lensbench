@@ -375,3 +375,50 @@ pub enum ObjSpec {
     Dir(V3),
     Point([f64; 2]),
 }
+
+/// 光線エイミングの瞳のずれ・圧縮（[`super::Prescription::aim_pupil`]）。追跡には使わない
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+pub struct AimPupil {
+    /// 瞳のずれ x・y・z（レンズ単位）
+    #[serde(default)]
+    pub shift: [f64; 3],
+    /// 瞳の圧縮 x・y
+    #[serde(default)]
+    pub compress: [f64; 2],
+    /// ずれを視野で倍率する（Scale Pupil Shift Factors By Field）
+    #[serde(default)]
+    pub scale_by_field: bool,
+    /// ずれを自動で求める（Automatic pupil shifting）。None は書いていない（.zmx に書くときは 1）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_shift: Option<bool>,
+}
+
+impl AimPupil {
+    pub fn is_default(&self) -> bool {
+        *self == AimPupil::default()
+    }
+
+    /// 多重構成の行の値（0〜2 ずれ x・y・z、3・4 圧縮 x・y）
+    pub fn value(&self, i: u8) -> f64 {
+        match i {
+            0..=2 => self.shift[i as usize],
+            _ => self.compress[(i as usize - 3).min(1)],
+        }
+    }
+
+    pub fn set(&mut self, i: u8, v: f64) {
+        match i {
+            0..=2 => self.shift[i as usize] = v,
+            _ => self.compress[(i as usize - 3).min(1)] = v,
+        }
+    }
+}

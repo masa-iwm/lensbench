@@ -72,7 +72,7 @@
 
 - 表に読むオペランド: THIC・CRVT・CONN・PRAM（偶数次非球面の係数・Zernike の係数・座標ブレークの値など）・SDIA・IGNR・APMX・APMN・APDX・APDY・APTP・
   CBDX〜CBTZ・CBOR・CADX〜CATZ・CAOR・MIND・MABB・MDPG・TCEX・MCSD・CHZN・GLSS・COTN・CSP1・CSP2・TSP1〜TSP3・PSP1〜PSP3、
-  システムの値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR
+  システムの値の WAVE・WLWT・PRWV・APER・SATP・STPS・FLTP・XFIE・YFIE・FLWT・FVDX・FVDY・FVCX・FVCY・FTAN・TEMP・PRES・AFOC・APDT・APDF・RAAM・OPDR・PSHX・PSHY・PSHZ・PSCX・PSCY
 - 名前を読み替えるもの: FVAN は FTAN（同じ値）、古い名前の PAR1〜PAR8 は PRAM の PARM 1〜8、面の範囲の無視 IGNM は面ごとの IGNR
 - モデルガラスでない面の MIND・MABB・MDPG、ソルブもピックアップも無い面の CSP・TSP・PSP は OpticStudio でも効かないので表に入れない
 - 構成のピックアップ（セルごとの元の構成・倍率・オフセット）は表の行のピックアップ（`picks`）に読み、書き出す。一括の指定 PUCN も読む。
@@ -90,7 +90,8 @@
 
 | 行 | lensbench が書く値 | 意味（OpticStudio） |
 |---|---|---|
-| `RAIM 0 種類 1 1 0 0 0 0 0 1` | 種類のほかは既定 | #2 エイミング、#3 不明、#4 Ray Aiming Cache（欄がないとオフ）、#5 GRIN の開口の検査、#6 Robust、#7〜#9 表示・OPD の設定、#10 瞳のずらしを自動で求める（欄がないとエイミングの種類で既定が変わる） |
+| `RAIM 0 種類 1 1 0 0 0 0 0 自動` | 種類と自動の瞳のずれのほかは既定 | #2 エイミング、#3 不明、#4 Ray Aiming Cache（欄がないとオフ）、#5 GRIN の開口の検査、#6 Robust、#7〜#9 表示・OPD の設定、#10 瞳のずらしを自動で求める（欄がないとエイミングなしの系で 1・ありの系で 0） |
+| `PUSH z y x 倍率 cx cy` | 0 でないときだけ | 光線エイミングの瞳のずれ z・y・x（レンズ単位）・視野で倍率（Scale Pupil Shift Factors By Field）・瞳の圧縮 x・y。システムの `aim_pupil` に読み書きする。OpticStudio 2026 R1.01 ではエイミングの初めの値で、エイミングなしでは使わず、ありでも収まった光線は変わらない（実測）ので、lensbench の追跡も使わない |
 | `FTYP 種類 テレセン 視野数 波長数 正規化 0 Afocal 視野数` | #6 は 0 | #6 Iterate Solves When Updating、#8 は視野の数（#3 と同じ） |
 | `GLRS 面 0` | #2 は 0 | #2 F/# の求め方（0 光線で求める） |
 | `CURV 曲率 種類 値 0 0 ""` | | #2 0 固定・1 変数・2〜11 ソルブ・4 ピックアップ・12 マクロ |
@@ -103,5 +104,5 @@
 | `SPID 幅 本数 0` | | スパイダー開口。#1 腕の全幅、#2 腕の本数。開口の偏心は別の行 `OBDC x y` |
 | `HIDE 0 0 0 0 0 1 0 0 0 0 0 0 0` | 無視する面だけ | #6 Ignore This Surface。ほかは描画の設定（行がないと全部 0） |
 
-書かない行: `POLS`（ないと非偏光・Jx 0・Jy 1）、`SDMA`（ないと Fast Semi-Diameters がオン、余裕 0）、`MIRR`（ないとミラーの基板 Curved・厚み 0）、
-`PUSH`（瞳のずらし。ないと 0）。どれも OpticStudio の既定と同じ。材料の Offset のずれ（#10・#11 が 0 でない）は、ずれの式を確かめていないので読込で止める。
+書かない行: `POLS`（ないと非偏光・Jx 0・Jy 1）、`SDMA`（ないと Fast Semi-Diameters がオン、余裕 0）、`MIRR`（ないとミラーの基板 Curved・厚み 0）。
+どれも OpticStudio の既定と同じ。材料の Offset のずれ（#10・#11 が 0 でない）は、ずれの式を確かめていないので読込で止める。

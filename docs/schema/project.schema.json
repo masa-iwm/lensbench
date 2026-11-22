@@ -276,6 +276,53 @@
       ],
       "description": "面の後の傾き・偏心"
     },
+    "AimPupil": {
+      "description": "光線エイミングの瞳のずれ・圧縮（[`super::Prescription::aim_pupil`]）。追跡には使わない",
+      "properties": {
+        "auto_shift": {
+          "description": "ずれを自動で求める（Automatic pupil shifting）。None は書いていない（.zmx に書くときは 1）",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "compress": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "瞳の圧縮 x・y",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "scale_by_field": {
+          "default": false,
+          "description": "ずれを視野で倍率する（Scale Pupil Shift Factors By Field）",
+          "type": "boolean"
+        },
+        "shift": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "瞳のずれ x・y・z（レンズ単位）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "Aiming": {
       "description": "光線エイミング。JSON の名前は \"off\"・\"paraxial\"・\"real\"",
       "enum": [
@@ -4542,6 +4589,10 @@
         "string",
         "null"
       ]
+    },
+    "aim_pupil": {
+      "$ref": "#/$defs/AimPupil",
+      "description": "光線エイミングの瞳のずれ・圧縮（.zmx の PUSH と RAIM の 10 番目。追跡には効かない）。省略は全部 0"
     },
     "aiming": {
       "$ref": "#/$defs/Aiming",

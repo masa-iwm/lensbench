@@ -30,6 +30,9 @@ pub(crate) struct SysExtra {
     pub apodization: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ropd: Option<Value>,
+    /// 光線エイミングの瞳のずれ・圧縮（プロジェクトの aim_pupil をそのまま）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aim_pupil: Option<Value>,
     /// 定義した視野以外の点のケラレ係数の求め方（プロジェクトの vig_interp。既定の連続は書かない）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<VigInterp>,
@@ -66,6 +69,10 @@ impl SysExtra {
                 .get("ropd")
                 .filter(|g| !g.is_null() && **g != json!(2))
                 .cloned(),
+            aim_pupil: v
+                .get("aim_pupil")
+                .filter(|g| !g.is_null() && **g != json!({}))
+                .cloned(),
             vig_interp,
         })
     }
@@ -92,6 +99,9 @@ impl SysExtra {
         }
         if let Some(g) = &self.ropd {
             v["ropd"] = g.clone();
+        }
+        if let Some(g) = &self.aim_pupil {
+            v["aim_pupil"] = g.clone();
         }
         if let Some(g) = self.vig_interp {
             v["vig_interp"] = json!(g);

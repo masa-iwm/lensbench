@@ -52,6 +52,7 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
                 "floating_clip" => json!(true),
                 "apodization" => json!("uniform"),
                 "ropd" => json!(2),
+                "aim_pupil" => json!({}),
                 "environment" => {
                     json!({ "temperature_c": 20.0, "pressure_atm": 1.0, "adjust_index": false })
                 }
@@ -156,6 +157,9 @@ fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> {
     }
     if s.ropd != 2 {
         p["ropd"] = json!(s.ropd);
+    }
+    if !s.aim_pupil.is_default() {
+        p["aim_pupil"] = serde_json::to_value(s.aim_pupil).map_err(|e| e.to_string())?;
     }
     // GLRS はブロックの面で書く（前に要素を足しても同じ面を指す）。ブロックの面は座標ブレークを数えないので、
     // 座標ブレーク・物体面・像面は系の面の番号のまま

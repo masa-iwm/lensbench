@@ -415,6 +415,11 @@ pub(super) fn apply_config_values(ops: &Ops, rx: &mut lensbench_core::system::Pr
     if let Some(v) = num("OPDR", 0) {
         rx.ropd = v as i64;
     }
+    for (i, op) in ["PSHX", "PSHY", "PSHZ", "PSCX", "PSCY"].iter().enumerate() {
+        if let Some(v) = num(op, 0) {
+            rx.aim_pupil.set(i as u8, v);
+        }
+    }
     for ((op, p1), v) in ops {
         let (Some(k), Ok(j), Ok(v)) = (surface_table_kind(op), usize::try_from(*p1), fv(v)) else {
             continue;
@@ -463,6 +468,11 @@ fn system_kind(op: &str, p1: i64) -> Option<lensbench_core::param::Kind> {
         "APDF" => Kind::Apod,
         "RAAM" => Kind::Aiming,
         "OPDR" => Kind::Ropd,
+        "PSHX" => Kind::AimPupil(0),
+        "PSHY" => Kind::AimPupil(1),
+        "PSHZ" => Kind::AimPupil(2),
+        "PSCX" => Kind::AimPupil(3),
+        "PSCY" => Kind::AimPupil(4),
         _ => return None,
     })
 }

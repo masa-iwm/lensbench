@@ -109,6 +109,9 @@ pub enum Kind {
     Aiming,
     /// OPD の基準（OpticStudio の番号 0〜3、.zmx の ROPD と同じ）。多重構成の行（.zmx の OPDR）。最適化の変数には使えない
     Ropd,
+    /// 光線エイミングの瞳のずれ x・y・z（0〜2）と圧縮 x・y（3・4）。名前は pshx・pshy・pshz・pscx・pscy。多重構成の行
+    /// （.zmx の PSHX〜PSCY）。追跡には効かない（[`crate::system::AimPupil`]）。最適化の変数には使えない
+    AimPupil(u8),
     /// 視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。
     /// 最適化の変数には使えない
     FieldX(u8),
@@ -227,6 +230,11 @@ impl Kind {
             "apod" => Kind::Apod,
             "aiming" => Kind::Aiming,
             "ropd" => Kind::Ropd,
+            "pshx" => Kind::AimPupil(0),
+            "pshy" => Kind::AimPupil(1),
+            "pshz" => Kind::AimPupil(2),
+            "pscx" => Kind::AimPupil(3),
+            "pscy" => Kind::AimPupil(4),
             "coating" | "coat" => Kind::Coating,
             _ => {
                 let num = |p: &str| l.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
@@ -323,6 +331,9 @@ impl Kind {
             Kind::Apod => "apod".into(),
             Kind::Aiming => "aiming".into(),
             Kind::Ropd => "ropd".into(),
+            Kind::AimPupil(i) => {
+                ["pshx", "pshy", "pshz", "pscx", "pscy"][(*i as usize).min(4)].into()
+            }
             Kind::FieldX(i) => format!("fx{}", *i as usize + 1),
             Kind::FieldY(i) => format!("fy{}", *i as usize + 1),
             Kind::FieldW(i) => format!("fwt{}", *i as usize + 1),
@@ -462,6 +473,7 @@ impl Kind {
                 | Kind::Apod
                 | Kind::Aiming
                 | Kind::Ropd
+                | Kind::AimPupil(_)
                 | Kind::FieldX(_)
                 | Kind::FieldY(_)
                 | Kind::FieldW(_)
@@ -761,6 +773,7 @@ impl System {
             Kind::Apod => return Ok(self.apodization.factor()),
             Kind::Aiming => return Ok(self.aiming.os_code() as f64),
             Kind::Ropd => return Ok(self.ropd as f64),
+            Kind::AimPupil(i) => return Ok(self.aim_pupil.value(i)),
             Kind::FieldX(i) => return Ok(self.fields[i as usize].x),
             Kind::FieldY(i) => return Ok(self.fields[i as usize].y),
             Kind::FieldW(i) => return Ok(self.fields[i as usize].w),
@@ -1320,6 +1333,7 @@ impl System {
                 }
                 Kind::Aiming => rx.aiming = Aiming::from_os_code(v as i64),
                 Kind::Ropd => rx.ropd = v as i64,
+                Kind::AimPupil(i) => rx.aim_pupil.set(i, v),
                 Kind::FieldX(i) => rx.fields[i as usize].x = v,
                 Kind::FieldY(i) => rx.fields[i as usize].y = v,
                 Kind::FieldW(i) => rx.fields[i as usize].w = v,

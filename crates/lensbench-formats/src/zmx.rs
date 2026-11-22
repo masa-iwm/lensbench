@@ -24,12 +24,12 @@ const HARMLESS: &[&str] = &[
     "SCOL",
 ];
 const MCE_HANDLED: &[&str] = &[
-    "THIC", "IGNR", "APMX", "SDIA", "MCSD", "CHZN", "STPS", "SATP", "APER", "TELE", "CRVT", "CONN",
-    "WAVE", "GLSS", "XFIE", "YFIE", "MOFF", "LTTL", "PRAM", "WLWT", "PRWV", "FLWT", "FLTP", "TEMP",
-    "PRES", "AFOC", "APDT", "APDF", "RAAM", "OPDR", "APMN", "APDX", "APDY", "APTP", "CBDX", "CBDY",
-    "CBTX", "CBTY", "CBTZ", "CBOR", "CADX", "CADY", "CATX", "CATY", "CATZ", "CAOR", "MIND", "MABB",
-    "MDPG", "TCEX", "FVDX", "FVDY", "FVCX", "FVCY", "FVAN", "FTAN", "COTN", "CSP1", "CSP2", "TSP1",
-    "TSP2", "TSP3", "PSP1", "PSP2", "PSP3",
+    "PSHX", "PSHY", "PSHZ", "PSCX", "PSCY", "THIC", "IGNR", "APMX", "SDIA", "MCSD", "CHZN", "STPS",
+    "SATP", "APER", "TELE", "CRVT", "CONN", "WAVE", "GLSS", "XFIE", "YFIE", "MOFF", "LTTL", "PRAM",
+    "WLWT", "PRWV", "FLWT", "FLTP", "TEMP", "PRES", "AFOC", "APDT", "APDF", "RAAM", "OPDR", "APMN",
+    "APDX", "APDY", "APTP", "CBDX", "CBDY", "CBTX", "CBTY", "CBTZ", "CBOR", "CADX", "CADY", "CATX",
+    "CATY", "CATZ", "CAOR", "MIND", "MABB", "MDPG", "TCEX", "FVDX", "FVDY", "FVCX", "FVCY", "FVAN",
+    "FTAN", "COTN", "CSP1", "CSP2", "TSP1", "TSP2", "TSP3", "PSP1", "PSP2", "PSP3",
     // 構成のピックアップの一括の指定。OpticStudio は下の行のセルごとのピックアップに開いて書くので、それを読む
     "PUCN",
     // 光線追跡に効かない: 構成の名前（MCOM）・最適化での構成の重み（CWGT）
@@ -421,7 +421,7 @@ pub fn document(
     let aperture = values::aperture_kind(raw, &ops, &mut sf)?;
     let fields = values::fields(raw, &ops, &waves.ftyp)?;
     let set = values::settings(raw, dirs, base)?;
-    let s = System::new(
+    let mut s = System::new(
         sf,
         waves.wl,
         waves.wwt,
@@ -434,6 +434,11 @@ pub fn document(
         set.aiming,
         glasses.map,
     )?;
+    // 光線エイミングの瞳のずれ・圧縮（多重構成の表の書いていない構成の値に使うので先に入れる）
+    s.edit_raw(|rx| {
+        rx.aim_pupil = set.aim_pupil;
+        Ok(())
+    })?;
     // 多重構成の表（表せなければ構成 cfg だけを読んだと知らせる）
     let solves = macros::solves(raw);
     let mut config_notes = Vec::new();

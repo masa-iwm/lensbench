@@ -75,6 +75,7 @@
 | `apodtype`・`apod` | アポダイゼーションの種類（0〜2: 一様・ガウス・cos³）とガウスの係数 | `APDT`・`APDF` |
 | `aiming` | 光線エイミング（0〜2: なし・近軸・実光線） | `RAAM` |
 | `ropd` | OPD の基準（0〜3、.zmx の ROPD と同じ） | `OPDR` |
+| `pshx`・`pshy`・`pshz`・`pscx`・`pscy` | 光線エイミングの瞳のずれ x・y・z（レンズ単位）と圧縮 x・y（システムの `aim_pupil`。追跡には効かない） | `PSHX`〜`PSCY` |
 
 ## 玉・群のパラメータ
 

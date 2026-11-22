@@ -97,6 +97,7 @@ pub(crate) fn system(
     s.adjust_index = p.adjust_index;
     s.glrs = p.glrs;
     s.ropd = p.ropd;
+    s.aim_pupil = p.aim_pupil;
     s.apodization = p.apodization;
     s.afocal = p.afocal;
     s.afocal_unit = p.afocal_unit;

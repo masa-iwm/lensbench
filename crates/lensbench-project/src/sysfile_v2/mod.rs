@@ -128,6 +128,12 @@ pub struct Prescription {
     /// OPD の基準（.zmx の ROPD）
     #[serde(default = "ropd2", skip_serializing_if = "is_ropd2")]
     pub ropd: i64,
+    /// 光線エイミングの瞳のずれ・圧縮（.zmx の PUSH と RAIM の 10 番目。追跡には効かない）
+    #[serde(
+        default,
+        skip_serializing_if = "lensbench_core::system::AimPupil::is_default"
+    )]
+    pub aim_pupil: lensbench_core::system::AimPupil,
     /// 瞳のアポダイゼーション（.zmx の GFAC。FFT PSF・Huygens・回折 MTF の瞳の振幅）
     #[serde(default, skip_serializing_if = "is_default")]
     pub apodization: lensbench_core::pupil::Apodization,

@@ -161,7 +161,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 #### `system_data`
 
 - params: なし
-- result: システム全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。core のシステムの serde の形
+- result: システム全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・aim_pupil・coating_file。core のシステムの serde の形
 
 #### `analyze`
 

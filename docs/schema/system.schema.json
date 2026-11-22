@@ -330,6 +330,67 @@
       ],
       "description": "面の後の傾き・偏心"
     },
+    "AimPupil": {
+      "description": "光線エイミングの瞳のずれ・圧縮（[`super::Prescription::aim_pupil`]）。追跡には使わない",
+      "properties": {
+        "auto_shift": {
+          "description": "ずれを自動で求める（Automatic pupil shifting）。None は書いていない（.zmx に書くときは 1）",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "compress": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "瞳の圧縮 x・y",
+          "items": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "$ref": "#/$defs/NonFinite"
+              }
+            ]
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "scale_by_field": {
+          "default": false,
+          "description": "ずれを視野で倍率する（Scale Pupil Shift Factors By Field）",
+          "type": "boolean"
+        },
+        "shift": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "瞳のずれ x・y・z（レンズ単位）",
+          "items": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "$ref": "#/$defs/NonFinite"
+              }
+            ]
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "Aiming": {
       "description": "光線エイミング。JSON の名前は \"off\"・\"paraxial\"・\"real\"",
       "enum": [
@@ -1804,6 +1865,22 @@
         },
         {
           "additionalProperties": false,
+          "description": "光線エイミングの瞳のずれ x・y・z（0〜2）と圧縮 x・y（3・4）。名前は pshx・pshy・pshz・pscx・pscy。多重構成の行\n（.zmx の PSHX〜PSCY）。追跡には効かない（[`crate::system::AimPupil`]）。最適化の変数には使えない",
+          "properties": {
+            "AimPupil": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "AimPupil"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "視野 i の x・y・重み（0 始まり、名前は fx1・fy1・fwt1 から）。多重構成の行（.zmx の XFIE・YFIE・FLWT）。\n最適化の変数には使えない",
           "properties": {
             "FieldX": {
@@ -2486,6 +2563,10 @@
         "afocal_unit": {
           "$ref": "#/$defs/AfocalUnit",
           "description": "アフォーカル像空間の角度の単位"
+        },
+        "aim_pupil": {
+          "$ref": "#/$defs/AimPupil",
+          "description": "光線エイミングの瞳のずれ・圧縮（.zmx の PUSH と RAIM の 10 番目。追跡には効かない）"
         },
         "aiming": {
           "$ref": "#/$defs/Aiming",

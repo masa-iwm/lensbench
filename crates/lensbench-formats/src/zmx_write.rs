@@ -101,7 +101,29 @@ fn write_header(s: &System, coat_file: &str) -> Result<String> {
         Aiming::Paraxial => 1,
         Aiming::Real => 2,
     };
-    w(&mut o, format!("RAIM 0 {aim} 1 1 0 0 0 0 0 1"));
+    // RAIM の 10 番目は自動の瞳のずれ、PUSH は瞳のずれ z・y・x・視野で倍率・圧縮 x・y（OpticStudio 2026 R1.01 で実測）
+    let ap = &s.aim_pupil;
+    w(
+        &mut o,
+        format!(
+            "RAIM 0 {aim} 1 1 0 0 0 0 0 {}",
+            ap.auto_shift.unwrap_or(true) as u8
+        ),
+    );
+    if !ap.is_default() {
+        w(
+            &mut o,
+            format!(
+                "PUSH {} {} {} {} {} {}",
+                f(ap.shift[2]),
+                f(ap.shift[1]),
+                f(ap.shift[0]),
+                ap.scale_by_field as u8,
+                f(ap.compress[0]),
+                f(ap.compress[1])
+            ),
+        );
+    }
     let ft = match s.field_type {
         FieldType::Angle => 0,
         FieldType::ObjH => 1,

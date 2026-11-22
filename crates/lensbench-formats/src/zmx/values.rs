@@ -231,6 +231,7 @@ pub(super) fn fields(raw: &Raw, ops: &Ops, ftyp: &[i64]) -> Result<Fields> {
 /// そのほかの系の設定
 pub(super) struct Settings {
     pub aiming: Aiming,
+    pub aim_pupil: lensbench_core::system::AimPupil,
     pub glrs: usize,
     pub ropd: i64,
     pub coating_file: Option<PathBuf>,
@@ -251,6 +252,18 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
         raw.surfs.len().max(1),
     )?;
     let ropd = sys_f(raw, "ROPD", 0, 2.0)? as i64;
+    // 瞳のずれ・圧縮: PUSH ずれ z・y・x、視野で倍率、圧縮 x・y。自動のずれは RAIM の 10 番目（欄が無ければ書いていないとして
+    // 持つ。OpticStudio 2026 R1.01 は、エイミングなしの系で 1・ありの系で 0 とする）
+    let push = |i: usize| sys_f(raw, "PUSH", i, 0.0);
+    let aim_pupil = lensbench_core::system::AimPupil {
+        shift: [push(2)?, push(1)?, push(0)?],
+        compress: [push(4)?, push(5)?],
+        scale_by_field: push(3)? != 0.0,
+        auto_shift: match sys_str(raw, "RAIM", 9) {
+            Some(v) => Some(fv(v)? != 0.0),
+            None => None,
+        },
+    };
     let mut cofn = None;
     for a in raw.sysl.get("COFN").into_iter().flatten() {
         if a.first().map(|s| s.as_str()) == Some("QF") {
@@ -271,6 +284,7 @@ pub(super) fn settings(raw: &Raw, dirs: &[PathBuf], base: Option<&Path>) -> Resu
         .unwrap_or_default();
     Ok(Settings {
         aiming,
+        aim_pupil,
         glrs,
         ropd,
         coating_file,

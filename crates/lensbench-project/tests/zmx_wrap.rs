@@ -261,6 +261,8 @@ fn zmx_project_keeps_apodization_ropd_and_afocal_unit() {
     s.edit(|r| {
         r.apodization = lensbench_core::pupil::Apodization::Gaussian(1.5);
         r.ropd = 3;
+        r.aim_pupil.shift = [0.5, 1.0, 2.0];
+        r.aim_pupil.compress[1] = -0.2;
         r.afocal = true;
         r.afocal_unit = lensbench_core::system::AfocalUnit::Milliradians;
         Ok(())
@@ -271,6 +273,8 @@ fn zmx_project_keeps_apodization_ropd_and_afocal_unit() {
     assert_eq!(p["afocal"], "mr");
     assert_eq!(p["apodization"], serde_json::json!({ "gaussian": 1.5 }));
     assert_eq!(p["ropd"], 3);
+    assert_eq!(p["aim_pupil"]["shift"], serde_json::json!([0.5, 1.0, 2.0]));
+    assert_eq!(t.aim_pupil, s.aim_pupil);
     lensbench_project::same_system(&s, &t).unwrap();
     // 無限遠系でなければ単位は効かないので比べない
     let mut s = s0;

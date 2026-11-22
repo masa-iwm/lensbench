@@ -88,7 +88,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 定義した視野以外の点のケラレ係数の求め方は `"vig_interp"`（`"continuous"`（既定、視野の間で連続）・`"opticstudio"`（OpticStudio と同じ、視野の間で段差。x ≠ 0 の視野があると補間せず物理座標で最も近い視野の係数を使う。OpticStudio 2026 R1.01 で Remove Vignetting Factors を切ると、A6 の視野 0.86 で相対照度が 0.85→0.47 と跳ぶ）。
   システムファイルの同じ名前の項目と同じ）。
 - 瞳の振幅の分布は `"apodization"`（`"uniform"`（既定）・`{"gaussian": G}`・`"cosine_cubed"`。.zmx の GFAC と同じ）、OPD の基準は
-  `"ropd"`（既定 2。.zmx の ROPD と同じ）。
+  `"ropd"`（既定 2。.zmx の ROPD と同じ）、光線エイミングの瞳のずれ・圧縮は `"aim_pupil": {"shift": [x, y, z], "compress": [x, y],
+  "scale_by_field": false, "auto_shift": true}`（省略は全部 0。.zmx の PUSH と RAIM の 10 番目と同じ。追跡には効かない）。
 - 温度・気圧は `"environment": {"temperature_c": 25, "pressure_atm": 1, "adjust_index": true}`（省略で 20 °C・1 atm・補正なし。
   .zmx の ENVD と同じ）。ガラスの屈折率はこの環境で計算し、インポートした .zmx の環境と違えば注意を出す。
 - 知らないキー（綴りの違いなど）はエラーにする。GUI は自分の編集の状態を `gui` に残す。
