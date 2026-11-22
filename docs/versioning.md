@@ -36,11 +36,13 @@ lensbench の版の番号の決まり（開発者向け）。変更の記録は 
 
 ## 変更の記録
 
-- 利用者に見える変更は、その Pull Request で `CHANGELOG.md` の開発中の版の節（「互換が切れる所」「結果が変わる所」「変えたもの」
-  「足したもの」「速さ」「直した所」）に行を足す。PR の本文の「利用者に見える変更」と CHANGELOG の差分が合うかをレビューで見る。
-  `CHANGELOG.md` は git の merge=union でまとめるので、ほかの PR と同じ所に足しても衝突しないが、行の書き換え・移動は前の行が黙って
-  残ることがある（マージの前に差分を見る）。
-- リリースのときは開発中の節の見出しを版にする。その節が GitHub の Releases の本文になる（`scripts/release_notes.py`。リリース候補は開発中の節を出す）。
+- 利用者に見える変更は、その Pull Request で `changelog.d/` に断片のファイル `<名前>.<節>.md` を 1 つ足す（`CHANGELOG.md` は
+  直接書き換えない。並行の PR が同じ所に足して衝突しないように）。節は `breaking`（互換が切れる所）・`results`（結果が変わる所）・
+  `changed`（変えたもの）・`added`（足したもの）・`perf`（速さ）・`fixed`（直した所）・`known`（既知の問題）。書き方は
+  `changelog.d/README.md`。PR の本文の「利用者に見える変更」と断片が合うかをレビューで見る。まとめた形は `python3 scripts/changelog.py preview`。
+- リリースのときは版上げの PR で `python3 scripts/changelog.py collect X.Y.Z --date YYYY-MM-DD` を回し、断片を開発中の節へまとめて
+  見出しを版にする（断片は消える）。その節が GitHub の Releases の本文になる（`scripts/release_notes.py`。リリース候補は開発中の節に
+  まだまとめていない断片を足して出す）。
   本文はリリースを作るときに 1 度だけ書く（もうあるリリースの本文は書き換えない）。手で動かしたときは、動かした ref の
   `CHANGELOG.md` を読む。`CHANGELOG.md` の中の相対リンクは Releases の本文では切れるので、リンクは URL で書く。
 - X を上げるリリースには「互換が切れる所」と「結果が変わる所」を書く。互換が切れる変更の細かい移し方は [壊れる変更](changes.md) に。

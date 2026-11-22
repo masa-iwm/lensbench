@@ -1,7 +1,7 @@
 *.npz binary
 *.zmx -text
 *.AGF -text
-# 変更の記録は並行の PR が同じ節の末尾に行を足すので、手元の git merge（main の取り込み）では両方の行を残す。
-# GitHub の PR の衝突の判定・マージのボタンはこれを見ない（衝突と出たら手元で main を取り込んで push する）
-CHANGELOG.md merge=union
+# 壊れる変更の説明は並行の PR が同じ節の末尾に行を足すので、手元の git merge（main の取り込み）では両方の行を残す。
+# GitHub の PR の衝突の判定・マージのボタンはこれを見ない（衝突と出たら手元で main を取り込んで push する）。
+# CHANGELOG.md は版上げの PR だけが書き換える（PR ごとの変更は changelog.d/ の断片）ので union にしない
 docs/changes.md merge=union
