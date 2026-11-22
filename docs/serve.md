@@ -241,7 +241,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `add_config_row` | param（どの構成も今の値。材料・コーティングの行は今の名前）、 `remove_config_row` param |
 | `insert_config` | at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups） |
 | `remove_config` | k（構成が 1 つになると表を消す） |
-| `set_config_pickup` | param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる） |
+| `set_config_pickup` | param・k・from・row（省略可）・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。row を書くと表の別の行 row（同じ量の種類の行、例 `T2` → `T3`）の構成 from（k と同じでもよい）の値から写す。OpticStudio が拾うのは上の行・前か同じ構成からだけなので、ほかは .zmx に値だけ書く。ピックアップの構成の値を直接変えると外れる） |
 | `remove_config_pickup` | param・k |
 | `make_thermal` | temps（足す構成の温度 [°C]）・pressures（足す構成の気圧 [atm]、省くと今の気圧）。今の構成を構成 1 にして熱の構成を作る（[書き出し](export.md) の make-thermal） |
 | `set_config` | k（表の操作でない操作・`set` で表の行の値を変えると、今の構成の列も変わる） |

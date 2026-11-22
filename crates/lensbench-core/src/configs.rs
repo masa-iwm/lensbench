@@ -33,7 +33,9 @@ pub struct ConfigRow {
     pub picks: Vec<ConfigPick>,
 }
 
-/// 多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）
+/// 多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）。row があれば、構成 from の値は
+/// 同じ表の別の行 row のもの（OpticStudio の構成のピックアップの元の行。同じ量の種類の行だけ。row なら from は k と同じでもよい。
+/// OpticStudio は上の行・前か同じ構成からだけ拾うので、ほかは .zmx に値だけ書く）
 #[derive(
     Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
@@ -44,6 +46,9 @@ pub struct ConfigPick {
     pub scale: f64,
     #[serde(default)]
     pub offset: f64,
+    /// 元の行（同じ表の行のパラメータ）。省くと同じ行
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<Param>,
 }
 
 fn one() -> f64 {
@@ -58,12 +63,68 @@ pub(crate) fn is_yes(b: &bool) -> bool {
     *b
 }
 
+impl Configs {
+    /// 全部の行のピックアップの値を求め直す（別の行からのものも。元がピックアップでも、行・構成の並びの順によらず）
+    pub fn resolve_picks(&mut self) {
+        let total: usize = self.rows.iter().map(|r| r.picks.len()).sum();
+        for _ in 0..=total {
+            let mut changed = false;
+            for i in 0..self.rows.len() {
+                let before = self.rows[i].values.clone();
+                self.rows[i].resolve_picks();
+                for j in 0..self.rows[i].picks.len() {
+                    let p = self.rows[i].picks[j];
+                    let Some(src) = p.row else { continue };
+                    let Some(v) = self
+                        .rows
+                        .iter()
+                        .find(|r| r.param == src)
+                        .and_then(|r| r.values.get(p.from.wrapping_sub(1)))
+                        .copied()
+                    else {
+                        continue;
+                    };
+                    if let Some(x) = self.rows[i].values.get_mut(p.k.wrapping_sub(1)) {
+                        *x = v * p.scale + p.offset;
+                    }
+                }
+                changed |= self.rows[i].values != before;
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    /// ピックアップをたどると (行 p, 構成 k) に戻るか（自分の行のピックアップの元・別の行の元をたどる）
+    fn pick_loops(&self, p: Param, k: usize) -> bool {
+        let mut at = (p, k);
+        let total: usize = self.rows.iter().map(|r| r.picks.len()).sum();
+        for _ in 0..=total {
+            let Some(q) = self
+                .rows
+                .iter()
+                .find(|r| r.param == at.0)
+                .and_then(|r| r.pick(at.1))
+            else {
+                return false;
+            };
+            at = (q.row.unwrap_or(at.0), q.from);
+            if at == (p, k) {
+                return true;
+            }
+        }
+        true
+    }
+}
+
 impl ConfigRow {
-    /// ピックアップの値を元の構成から求め直す（ピックアップの元がピックアップでも、並びの順によらず）
+    /// 同じ行からのピックアップの値を元の構成から求め直す（ピックアップの元がピックアップでも、並びの順によらず）。
+    /// 別の行からのピックアップは [`Configs::resolve_picks`]
     pub fn resolve_picks(&mut self) {
         for _ in 0..=self.picks.len() {
             let mut changed = false;
-            for p in &self.picks {
+            for p in self.picks.iter().filter(|p| p.row.is_none()) {
                 if let (Some(&v), true) = (self.values.get(p.from - 1), p.k <= self.values.len()) {
                     let x = v * p.scale + p.offset;
                     if self.values[p.k - 1] != x {
@@ -233,14 +294,13 @@ impl System {
             // 材料・膜の番号は行ごとに付け直すので、ピックアップは番号ではなく名前で比べられない。外す
             picks.clear();
         }
-        let mut row = ConfigRow {
+        c.rows.push(ConfigRow {
             param: p,
             values,
             names,
             picks,
-        };
-        row.resolve_picks();
-        c.rows.push(row);
+        });
+        c.resolve_picks();
         let mut s = self.clone();
         s.rx_mut().configs = Some(c);
         let (k, n) = s
@@ -272,10 +332,25 @@ impl System {
                     r.picks.retain(|p| p.k != k + 1);
                 }
             }
-            // 今の構成を元にするピックアップの値も変わる（今の構成でない列なので系はそのまま）
-            r.resolve_picks();
         }
+        // 今の構成を元にするピックアップの値も変わる。同じ行からのものは今の構成でない列なので系はそのままだが、別の行からの
+        // ものは今の構成の列のこともあるので、その値を系に入れる（入れないと次に合わせるときに系の古い値で外れる）
+        c.resolve_picks();
+        let ch: Vec<(Param, f64)> = c
+            .rows
+            .iter()
+            .filter(|r| !r.has_names() && r.pick(k + 1).is_some_and(|q| q.row.is_some()))
+            .filter_map(|r| {
+                let v = *r.values.get(k)?;
+                (self.get_param(r.param).ok()? != v).then_some((r.param, v))
+            })
+            .collect();
         self.rx_mut().configs = Some(c);
+        if !ch.is_empty() {
+            if let Ok(t) = self.with_params(&ch) {
+                *self = t;
+            }
+        }
     }
 
     /// 構成を位置 at（1 始まり、1〜n+1）に挿入する。値は構成 from（挿入前の番号）の値。pickup なら各行の新しい構成を
@@ -308,10 +383,16 @@ impl System {
                     from: src,
                     scale: 1.0,
                     offset: 0.0,
+                    row: None,
                 });
             } else if let Some(q) = r.picks.iter().find(|p| p.k == src).copied() {
-                // 元がピックアップなら、新しい構成も同じ元のピックアップ
-                r.picks.push(ConfigPick { k: at, ..q });
+                // 元がピックアップなら、新しい構成も同じ元のピックアップ（別の行の同じ構成からのものは、新しい構成の列から）
+                let from = if q.row.is_some() && q.from == src {
+                    at
+                } else {
+                    q.from
+                };
+                r.picks.push(ConfigPick { k: at, from, ..q });
             }
         }
         c.n += 1;
@@ -362,41 +443,63 @@ impl System {
         scale: f64,
         offset: f64,
     ) -> Result<()> {
+        self.set_config_pickup_from(p, k, None, from, scale, offset)
+    }
+
+    /// [`Self::set_config_pickup`] と同じだが、row があれば元の値は表の別の行 row の構成 from の値（OpticStudio の
+    /// 構成のピックアップの元の行。row は p と同じ量の種類の行だけ、名前の行は不可。row なら from は k と同じでもよい。
+    /// OpticStudio が拾わない下の行・後の構成からのものは .zmx に値だけ書く）
+    pub fn set_config_pickup_from(
+        &mut self,
+        p: Param,
+        k: usize,
+        row: Option<Param>,
+        from: usize,
+        scale: f64,
+        offset: f64,
+    ) -> Result<()> {
         let Some(c) = &self.configs else {
             invalid!("only one configuration");
         };
         let n = c.n;
-        if k == 0 || k > n || from == 0 || from > n || k == from {
+        let row = row.filter(|&q| q != p);
+        if k == 0 || k > n || from == 0 || from > n || (k == from && row.is_none()) {
             invalid!("configuration pickup {from} → {k} (1 to {n}, another configuration)");
         }
         if !scale.is_finite() || !offset.is_finite() {
             invalid!("configuration pickup scale or offset");
         }
         let mut c = c.clone();
+        if let Some(q) = row {
+            // どの行・構成からでもよい（OpticStudio 2026 R1.01 は上の行・前か同じ構成からだけ拾い、ほかは固定に戻すので、
+            // .zmx にはそれ以外のものを値だけ書く。11/22 masa 決定）
+            let Some(src) = c.rows.iter().find(|r| r.param == q) else {
+                invalid!("no row {} in the table", q.name());
+            };
+            if q.kind != p.kind || src.has_names() {
+                invalid!(
+                    "configuration pickup from row {} to row {} (only from a row of the same kind of value, not a name)",
+                    q.name(),
+                    p.name()
+                );
+            }
+        }
         let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
             invalid!("no row {} in the table", p.name());
         };
-        let mut picks = r.picks.clone();
-        picks.retain(|q| q.k != k);
-        picks.push(ConfigPick {
+        r.picks.retain(|q| q.k != k);
+        r.picks.push(ConfigPick {
             k,
             from,
             scale,
             offset,
+            row,
         });
         // 循環（k が元をたどって k に戻る）は不可
-        let mut at = from;
-        for _ in 0..=picks.len() {
-            match picks.iter().find(|q| q.k == at) {
-                Some(q) if q.from == k => {
-                    invalid!("configuration pickups go round in a loop ({k})")
-                }
-                Some(q) => at = q.from,
-                None => break,
-            }
+        if c.pick_loops(p, k) {
+            invalid!("configuration pickups go round in a loop ({k})")
         }
-        r.picks = picks;
-        r.resolve_picks();
+        c.resolve_picks();
         let active = c.active;
         let mut s = self.clone();
         s.rx_mut().configs = Some(c);
@@ -429,6 +532,10 @@ impl System {
         c.rows.retain(|r| r.param != p);
         if c.rows.len() == n0 {
             invalid!("no row {} in the table", p.name());
+        }
+        // 消した行を元にする別の行のピックアップは、値を残して外す
+        for r in &mut c.rows {
+            r.picks.retain(|q| q.row != Some(p));
         }
         Ok(())
     }
@@ -565,7 +672,18 @@ impl System {
                 );
             }
             for p in &r.picks {
-                if p.k == 0 || p.k > c.n || p.from == 0 || p.from > c.n || p.k == p.from {
+                let src_ok = p.row.is_none_or(|q| {
+                    q != r.param
+                        && q.kind == r.param.kind
+                        && c.rows.iter().any(|x| x.param == q && !x.has_names())
+                });
+                if p.k == 0
+                    || p.k > c.n
+                    || p.from == 0
+                    || p.from > c.n
+                    || (p.k == p.from && p.row.is_none())
+                    || !src_ok
+                {
                     invalid!(
                         "multi-configuration row {} pickup {} → {}",
                         r.param.name(),

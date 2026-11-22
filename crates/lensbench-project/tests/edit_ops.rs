@@ -487,6 +487,108 @@ fn config_insert_remove_and_pickups() {
 
 /// 操作の列は自動の半直径を最後に 1 回だけ求め直す。結果は 1 つずつ当てたときと同じ。
 /// 半直径から曲率を取るピックアップがある（半直径が追跡に効く）ときは操作ごとに求め直すので、それも同じ
+/// 別の行からの構成のピックアップ（OpticStudio の元の行）: 同じ量の種類の行から、同じ構成からでもよい。元の行の値に追従し、
+/// 循環・違う種類の行は不可。面を挿入すると元の行の面の番号も付け替え、元の行を消すと値を残して外れる
+#[test]
+fn config_pickup_from_another_row() {
+    let mut s = a0();
+    let vals = |s: &lensbench_core::System, p: &str| {
+        let p = s.param(p).unwrap();
+        let c = s.configs().unwrap();
+        c.rows.iter().find(|r| r.param == p).unwrap().values.clone()
+    };
+    edit_ops::apply_json(
+        &mut s,
+        &json!([
+            {"op": "set_config_count", "n": 2},
+            {"op": "set_config_row", "param": "1.t", "values": [5.0, 6.0]},
+            {"op": "set_config_row", "param": "2.t", "values": [1.0, 1.0]},
+            {"op": "set_config_row", "param": "2.c", "values": [0.01, 0.02]},
+            {"op": "set_config_pickup", "param": "2.t", "k": 1, "row": "1.t", "from": 1, "scale": 2.0, "offset": 1.0},
+            {"op": "set_config_pickup", "param": "2.t", "k": 2, "row": "1.t", "from": 2},
+        ]),
+    )
+    .unwrap();
+    assert_eq!(vals(&s, "2.t"), vec![11.0, 6.0]);
+    assert_eq!(s.surfaces[2].t, 11.0);
+    // 元の行の値を変えると追従する
+    edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "set_config_row", "param": "1.t", "values": [4.0, 7.0]}]),
+    )
+    .unwrap();
+    assert_eq!(vals(&s, "2.t"), vec![9.0, 7.0]);
+    // 今の構成（1）の元の行の値を系で変えると、今の構成のピックアップの先の値も系に入り、次に合わせても外れない
+    edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "set_param", "param": "1.t", "value": 3.0}]),
+    )
+    .unwrap();
+    s.sync_active_config();
+    assert_eq!(vals(&s, "2.t"), vec![7.0, 7.0]);
+    assert_eq!(s.surfaces[2].t, 7.0);
+    edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "set_param", "param": "3.t", "value": 3.0}]),
+    )
+    .unwrap();
+    s.sync_active_config();
+    assert_eq!(vals(&s, "2.t"), vec![7.0, 7.0]);
+    let p2 = s.param("2.t").unwrap();
+    let n_picks = |s: &lensbench_core::System| {
+        let c = s.configs().unwrap();
+        c.rows.iter().find(|r| r.param == p2).unwrap().picks.len()
+    };
+    assert_eq!(n_picks(&s), 2);
+    edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "set_config_row", "param": "1.t", "values": [4.0, 7.0]}]),
+    )
+    .unwrap();
+    // 循環（1.t 構成 1 ← 2.t 構成 1 ← 1.t 構成 1）・違う種類の行・表に無い行は不可
+    for bad in [
+        json!({"op": "set_config_pickup", "param": "1.t", "k": 1, "row": "2.t", "from": 1}),
+        json!({"op": "set_config_pickup", "param": "2.t", "k": 1, "row": "2.c", "from": 1}),
+        json!({"op": "set_config_pickup", "param": "2.t", "k": 1, "row": "3.t", "from": 1}),
+    ] {
+        assert!(
+            edit_ops::apply_json(&mut s, &json!([bad])).is_err(),
+            "{bad}"
+        );
+    }
+    // 面 1 の前に面を挿入すると、行も元の行も面の番号がずれる
+    let mut t = s.clone();
+    t.insert_surface(1, lensbench_core::surface::Surface::default())
+        .unwrap();
+    let c = t.configs().unwrap();
+    let r = c
+        .rows
+        .iter()
+        .find(|r| r.param == t.param("3.t").unwrap())
+        .unwrap();
+    assert!(
+        r.picks
+            .iter()
+            .all(|q| q.row == Some(t.param("2.t").unwrap())),
+        "{:?}",
+        r.picks
+    );
+    // 元の行を消すと値を残して外れる
+    edit_ops::apply_json(
+        &mut s,
+        &json!([{"op": "remove_config_row", "param": "1.t"}]),
+    )
+    .unwrap();
+    let c = s.configs().unwrap();
+    let r = c
+        .rows
+        .iter()
+        .find(|r| r.param == s.param("2.t").unwrap())
+        .unwrap();
+    assert!(r.picks.is_empty());
+    assert_eq!(r.values, vec![9.0, 7.0]);
+}
+
 #[test]
 fn ops_semi_once_matches_one_by_one() {
     let s0 = a0();

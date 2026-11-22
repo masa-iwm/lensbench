@@ -901,7 +901,7 @@
       "type": "object"
     },
     "ConfigPick": {
-      "description": "多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）",
+      "description": "多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）。row があれば、構成 from の値は\n同じ表の別の行 row のもの（OpticStudio の構成のピックアップの元の行。同じ量の種類の行だけ。row なら from は k と同じでもよい。\nOpticStudio は上の行・前か同じ構成からだけ拾うので、ほかは .zmx に値だけ書く）",
       "properties": {
         "from": {
           "format": "uint",
@@ -924,6 +924,17 @@
             }
           ],
           "default": 0.0
+        },
+        "row": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "元の行（同じ表の行のパラメータ）。省くと同じ行"
         },
         "scale": {
           "anyOf": [

@@ -876,3 +876,55 @@ SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     let e = zmx::parse_text(&txt).unwrap_err().to_string();
     assert!(e.contains("non-sequential objects (NSOH)"), "{e}");
 }
+
+/// 多重構成の別の行からの構成のピックアップ: 上の行の前か同じ構成からなら表の別の行からのピックアップ。下の行・後の構成からの
+/// ものは OpticStudio 2026 R1.01 と同じく値だけ読み、注意を出す。lensbench では付けられ、書き出しは値だけ
+#[test]
+fn config_pickup_from_another_row_needs_a_row_above() {
+    let mce = |a: &str, b: &str| {
+        format!(
+            "MNUM 2 1\n\
+THIC 1 1 4 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 1 2 5 {a} 0 \"\" 0\n\
+THIC 2 1 40 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 2 2 11 {b} 0 \"\" 0\n"
+        )
+    };
+    // 行 2 構成 2 = 行 1 構成 2 × 2 + 1（種類 3 = 元の構成 2 + 1）
+    let s =
+        build(&(lens("  TYPE STANDARD\n  CURV 0.01\n") + &mce("0 0 0 1 1 1 0", "3 0 0 2 1 2 1")));
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let c = s.configs().unwrap();
+    assert_eq!(c.rows[1].picks.len(), 1);
+    assert_eq!(c.rows[1].picks[0].row, Some(c.rows[0].param));
+    assert_eq!(c.rows[1].values, vec![40.0, 11.0]);
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("THIC 2 2 11 3 0 0 2 1 2 1 0"), "{w}");
+    // 行 1 構成 2 = 行 2 構成 1 × 2 + 1（下の行から）は値だけ
+    let s =
+        build(&(lens("  TYPE STANDARD\n  CURV 0.01\n") + &mce("2 0 0 1 2 2 1", "0 0 0 1 2 1 0")));
+    assert!(s.configs().unwrap().rows.iter().all(|r| r.picks.is_empty()));
+    assert!(
+        s.import_notes
+            .iter()
+            .any(|n| n.contains("from a row below")),
+        "{:?}",
+        s.import_notes
+    );
+    // lensbench では下の行からも付けられ（11/22 masa 決定）、.zmx には値だけ書いて注意を出す
+    let mut s = s;
+    let (p0, p1) = {
+        let c = s.configs().unwrap();
+        (c.rows[0].param, c.rows[1].param)
+    };
+    s.set_config_pickup_from(p0, 2, Some(p1), 1, 2.0, 1.0)
+        .unwrap();
+    assert_eq!(s.configs().unwrap().rows[0].values, vec![4.0, 81.0]);
+    let w = zmx_write::write(&s).unwrap();
+    assert!(w.contains("THIC 1 2 81 0 0 0 1 1 1 0 0"), "{w}");
+    assert!(
+        zmx_write::write_notes(&s)
+            .iter()
+            .any(|n| n.contains("only the values of the configuration pickups")),
+        "{:?}",
+        zmx_write::write_notes(&s)
+    );
+}

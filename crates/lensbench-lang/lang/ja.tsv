@@ -1699,7 +1699,8 @@ the multi-configuration table of a system with moved lenses or groups can't be w
 multi-configuration row {} can't be written to .zmx	多重構成の行 {} は .zmx に書けません
 only the values of the configuration pickups of multi-configuration row {} were written	多重構成の行 {} の構成のピックアップは値だけ書きました
 multi-configuration row {} configuration {}: {why}	多重構成の行 {} の構成 {}: {why}
-the configuration pickup from row {} was read as its value	行 {} からの構成のピックアップは値として読みました
+multi-configuration row {} {} configuration {}: the configuration pickup from row {} {} was read as its value	多重構成の行 {} {} の構成 {}: 行 {} {} からの構成のピックアップは値として読みました
+multi-configuration row {op} {p1} configuration {c}: the configuration pickup from a row below or a later configuration was read as its value (OpticStudio reads it as fixed)	多重構成の行 {op} {p1} の構成 {c}: 下の行・後の構成からの構成のピックアップは値として読みました（OpticStudio も固定として読みます）
 the solve of kind {t} (a thermal pickup or another one) was read as its value	種類 {t} のソルブ（熱のピックアップなど）は値として読みました
 multi-configuration row {op} {p1}: surface {k} has no solve or pickup it sets (OpticStudio does not use it either); not kept in the table	多重構成の行 {op} {p1}: 面 {k} には、この行が設定するソルブ・ピックアップがありません（OpticStudio も使いません）。表には入れません
 lens and group moves were written as coordinate breaks (the surface numbers change)	レンズ・群の動きは座標ブレークに展開して書きました（面の番号が変わります）

@@ -870,12 +870,14 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
             param,
             k,
             from,
+            row,
             scale,
             offset,
         } => {
             let p = t.param(param).map_err(e)?;
+            let row = row.as_deref().map(|r| t.param(r)).transpose().map_err(e)?;
             let (scale, offset) = (scale.map_or(1.0, |x| x.0), offset.map_or(0.0, |x| x.0));
-            t.set_config_pickup(p, *k, *from, scale, offset)
+            t.set_config_pickup_from(p, *k, row, *from, scale, offset)
                 .map_err(e)?;
         }
         O::RemoveConfigPickup { param, k } => {

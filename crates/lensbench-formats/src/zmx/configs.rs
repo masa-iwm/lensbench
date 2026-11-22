@@ -19,8 +19,11 @@ pub(super) fn config_table(
 ) -> lensbench_core::Result<lensbench_core::configs::Configs> {
     use lensbench_core::configs::{ConfigPick, ConfigRow, Configs};
     use lensbench_core::param::{Kind, Param};
+    type Key = (String, i64, i64);
     type Row = (String, i64, i64, Vec<Option<String>>, Vec<ConfigPick>);
     let mut rows: Vec<Row> = Vec::new();
+    // 別の行からのピックアップ（先の行の鍵, ピックアップ, 元の行の鍵）。表の行ができてから元の行のパラメータにする
+    let mut cross: Vec<(Key, ConfigPick, Key)> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
         let parm = if op == "PRAM" || op.starts_with("PSP") {
             rest.get(1)
@@ -42,13 +45,41 @@ pub(super) fn config_table(
         if (1..=n as i64).contains(c) {
             rows[i].3[*c as usize - 1] = Some(v.clone());
             rows[i].4.retain(|q| q.k != *c as usize);
-            if let Some(q) = config_pick(rest, *c, n)? {
-                rows[i].4.push(q);
+            let own: Key = (op.clone(), *p1, parm);
+            cross.retain(|(d, q, _)| !(*d == own && q.k == *c as usize));
+            // 元の行（1 始まり、空の行 BLNK も数える）が自分の行でなければ別の行から。OpticStudio 2026 R1.01 は上の行・
+            // 前か同じ構成からだけ拾い、ほかは固定に戻す（下の行からのものは値だけ読み注意）
+            let src_no = rest.get(4).and_then(|x| x.parse::<usize>().ok());
+            let src = src_no
+                .and_then(|r| raw.mce_rows.get(r.wrapping_sub(1)))
+                .filter(|k| **k != own)
+                .cloned();
+            let own_no = raw.mce_rows.iter().position(|k| *k == own).map(|i| i + 1);
+            // 元の構成は種類の欄（元の構成 + 1）で決まる（元の構成の欄より種類が勝つ、OpticStudio 2026 R1.01）
+            let kind = rest
+                .first()
+                .and_then(|x| x.parse::<i64>().ok())
+                .unwrap_or(0);
+            if src.is_some() && kind >= 2 && (src_no > own_no || kind - 1 > *c) {
+                notes.push(format!(
+                    "multi-configuration row {op} {p1} configuration {c}: the configuration pickup from a row below or a later configuration was read as its value (OpticStudio reads it as fixed)"
+                ));
+                continue;
+            }
+            if let Some(q) = config_pick(rest, *c, n, src.is_some())? {
+                match src {
+                    Some(k) => cross.push((own, q, k)),
+                    None => rows[i].4.push(q),
+                }
             }
         }
     }
     let mut out = Vec::new();
+    // 表の数の行の鍵とパラメータ（別の行からのピックアップの元・先）
+    let mut keys: Vec<(Key, Param)> = Vec::new();
     for (op, p1, parm, raw_vals, picks) in rows {
+        let key: Key = (op.clone(), p1, parm);
+        let crossed = cross.iter().any(|(d, ..)| *d == key);
         let vals: Vec<Option<f64>> = raw_vals
             .iter()
             .map(|v| v.as_deref().and_then(|x| fv(x).ok()))
@@ -66,7 +97,7 @@ pub(super) fn config_table(
             raw_vals.iter().cloned().zip(vals.iter().copied()).collect();
         // 構成のピックアップのある行は、値が同じでもつながりを残す
         let changes = both.iter().any(|v| !same(v, &both[0]));
-        let varies = changes || !picks.is_empty();
+        let varies = changes || !picks.is_empty() || crossed;
         let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
         if let ("COTN", Some(j), true) = (op.as_str(), surf, varies) {
             // 膜の行: 書いていない構成は今の膜
@@ -147,6 +178,7 @@ pub(super) fn config_table(
                     out.retain(|r| r.param != p);
                     out.push(numeric_row(p, &vals, now, picks));
                 }
+                keys.push((key, p));
                 continue;
             }
             // モデルガラスでない面の行は OpticStudio も使わない（材料はカタログのまま）
@@ -187,6 +219,7 @@ pub(super) fn config_table(
                 };
                 out.retain(|r| r.param != p);
                 out.push(numeric_row(p, &vals, now, picks));
+                keys.push((key, p));
             }
             None if changes
                 && !matches!(op.as_str(), "MCOM" | "CWGT" | "MOFF" | "LTTL" | "PUCN") =>
@@ -196,11 +229,35 @@ pub(super) fn config_table(
             None => {}
         }
     }
-    Ok(Configs {
+    // 別の行からのピックアップ: 元の行が表の同じ量の種類の数の行なら表のピックアップに、そうでなければ値だけ読む
+    // （違う演算子の行からのものは OpticStudio も黙って固定に戻す。変わらない元の行は表に無いが、値はファイルの値で同じ）
+    let param_of = |k: &Key| keys.iter().rev().find(|(x, _)| x == k).map(|(_, p)| *p);
+    for (dst, mut q, src) in cross {
+        let (Some(d), sp) = (param_of(&dst), param_of(&src)) else {
+            continue;
+        };
+        let in_table = |p: Param| out.iter().any(|r| r.param == p);
+        match sp.filter(|&sp| sp.kind == d.kind && in_table(sp) && in_table(d)) {
+            Some(sp) => {
+                q.row = Some(sp);
+                if let Some(r) = out.iter_mut().find(|r| r.param == d) {
+                    r.picks.retain(|x| x.k != q.k);
+                    r.picks.push(q);
+                }
+            }
+            None => notes.push(format!(
+                "multi-configuration row {} {} configuration {}: the configuration pickup from row {} {} was read as its value",
+                dst.0, dst.1, q.k, src.0, src.1
+            )),
+        }
+    }
+    let mut c = Configs {
         n,
         active,
         rows: out,
-    })
+    };
+    c.resolve_picks();
+    Ok(c)
 }
 
 /// 数の行。書いていない構成の値は今の系の値 now。構成のピックアップの値は元の構成から求め直す
@@ -221,11 +278,12 @@ fn numeric_row(
     r
 }
 
-/// 多重構成の行の構成 c のセルの構成のピックアップ（[`super::parse`] で自分の行からのものだけにした欄）
+/// 多重構成の行の構成 c のセルの構成のピックアップ（元の行は呼ぶ側で見る。other_row なら元の構成は c でもよい）
 fn config_pick(
     rest: &[String],
     c: i64,
     n: usize,
+    other_row: bool,
 ) -> lensbench_core::Result<Option<lensbench_core::configs::ConfigPick>> {
     let Some(t) = rest
         .first()
@@ -235,7 +293,7 @@ fn config_pick(
         return Ok(None);
     };
     let from = usize::try_from(t - 1).unwrap_or(0);
-    if from == 0 || from > n || from as i64 == c {
+    if from == 0 || from > n || (from as i64 == c && !other_row) {
         invalid!(
             "configuration {c}: configuration pickup from {from} (1 to {n}, another configuration)"
         );
@@ -246,6 +304,7 @@ fn config_pick(
         from,
         scale: num(5)?,
         offset: num(6)?,
+        row: None,
     }))
 }
 

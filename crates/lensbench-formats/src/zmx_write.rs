@@ -12,6 +12,9 @@ use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{After, Aperture, Bire, Material, SurfType, Tilt};
 use lensbench_core::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
 
+mod configs;
+use configs::{config_notes, config_op, config_pick_unwritable, config_row_numbers};
+
 /// 数値を読み戻しで同じ値になる表記で（Rust の最短表記）
 fn f(v: f64) -> String {
     if v.is_infinite() {
@@ -802,7 +805,8 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     // 多重構成の表（MCE）。書ける行だけ（[`config_op`]）
     if let Some(c) = &s.configs {
         w(&mut o, format!("MNUM {} {}", c.n, c.active));
-        // 行の番号（1 始まり、構成のピックアップの元の行の欄）
+        // 行の番号（1 始まり、構成のピックアップの元の行の欄）。書かない行は数えない
+        let row_no = config_row_numbers(s, c);
         let mut row = 0;
         for r in &c.rows {
             row += 1;
@@ -836,10 +840,23 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             for (k, &v) in r.values.iter().enumerate() {
                 let v = conv(v);
                 // 構成のピックアップ: 種類（元の構成 + 1）・元の構成・元の行・倍率・オフセット（半径の行は曲率で書けないので値だけ）
+                // 別の行からのものは上の行・前か同じ構成からだけ（OpticStudio 2026 R1.01 はほかを固定に戻す。値だけ書く）
+                let src_row = |q: &lensbench_core::configs::ConfigPick| match q.row {
+                    None => Some(row),
+                    Some(p) => row_no
+                        .iter()
+                        .find(|(x, _)| *x == p)
+                        .map(|(_, n)| *n)
+                        .filter(|&n| n < row && q.from <= q.k),
+                };
                 let (t, from, src, sc, off) = match r.pick(k + 1) {
-                    Some(q) if !config_pick_unwritable(r) => {
-                        (q.from + 1, q.from, row, q.scale, conv(q.offset))
-                    }
+                    Some(q) if !config_pick_unwritable(r) && src_row(q).is_some() => (
+                        q.from + 1,
+                        q.from,
+                        src_row(q).unwrap_or(row),
+                        q.scale,
+                        conv(q.offset),
+                    ),
                     _ => (0, 1, 1, 1.0, 0.0),
                 };
                 w(
@@ -856,124 +873,6 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         }
     }
     Ok(o.replace('\n', "\r\n"))
-}
-
-/// 多重構成の表の行の .zmx の演算子: (演算子, 番号 1, PARM の番号, 値の換算)。書けない行は None
-type ConfigOp = (&'static str, usize, Option<u8>, fn(f64) -> f64);
-fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
-    use lensbench_core::param::Kind;
-    let id: fn(f64) -> f64 = |v| v;
-    let n = |i: u8| i as usize + 1;
-    match p.kind {
-        Kind::Wave(i) => return Some(("WAVE", n(i), None, id)),
-        Kind::WaveW(i) => return Some(("WLWT", n(i), None, id)),
-        Kind::FieldX(i) => return Some(("XFIE", n(i), None, id)),
-        Kind::FieldY(i) => return Some(("YFIE", n(i), None, id)),
-        Kind::FieldW(i) => return Some(("FLWT", n(i), None, id)),
-        Kind::FieldVig(i, j) => {
-            return Some((
-                ["FVDX", "FVDY", "FVCX", "FVCY", "FTAN"][j as usize],
-                n(i),
-                None,
-                id,
-            ))
-        }
-        Kind::Primary => return Some(("PRWV", 0, None, id)),
-        Kind::Aper => return Some(("APER", 0, None, id)),
-        Kind::ApertureType => return Some(("SATP", 0, None, id)),
-        Kind::Stop => return Some(("STPS", 0, None, id)),
-        Kind::FieldType => return Some(("FLTP", 0, None, id)),
-        Kind::Temp => return Some(("TEMP", 0, None, id)),
-        Kind::Pres => return Some(("PRES", 0, None, id)),
-        Kind::Afocal => return Some(("AFOC", 0, None, id)),
-        Kind::ApodType => return Some(("APDT", 0, None, id)),
-        Kind::Apod => return Some(("APDF", 0, None, id)),
-        Kind::Aiming => return Some(("RAAM", 0, None, id)),
-        Kind::Ropd => return Some(("OPDR", 0, None, id)),
-        _ => {}
-    }
-    let d = s.surfaces.get(p.surface()?)?;
-    Some(match p.kind {
-        Kind::Thick => ("THIC", p.index(), None, id),
-        Kind::Semi => ("SDIA", p.index(), None, id),
-        Kind::Ignore => ("IGNR", p.index(), None, id),
-        Kind::ApMax => ("APMX", p.index(), None, id),
-        Kind::ApMin => ("APMN", p.index(), None, id),
-        Kind::ApDx => ("APDX", p.index(), None, id),
-        Kind::ApDy => ("APDY", p.index(), None, id),
-        Kind::ApType => ("APTP", p.index(), None, id),
-        Kind::BeforeOrder => ("CBOR", p.index(), None, id),
-        Kind::AfterOrder => ("CAOR", p.index(), None, id),
-        Kind::ModelNd => ("MIND", p.index(), None, id),
-        Kind::ModelVd => ("MABB", p.index(), None, id),
-        Kind::ModelDpgf => ("MDPG", p.index(), None, id),
-        Kind::Tce => ("TCEX", p.index(), None, id),
-        Kind::MechSemi => ("MCSD", p.index(), None, id),
-        Kind::ChipZone => ("CHZN", p.index(), None, id),
-        Kind::CurvSolve(i) => (["CSP1", "CSP2"][i as usize], p.index(), None, id),
-        Kind::ThickSolve(i) => (["TSP1", "TSP2", "TSP3"][i as usize], p.index(), None, id),
-        Kind::ParmSolve(n, i) => (["PSP1", "PSP2", "PSP3"][i as usize], p.index(), Some(n), id),
-        Kind::Before(i) => (
-            ["CBDX", "CBDY", "CBTX", "CBTY", "CBTZ"][i as usize],
-            p.index(),
-            None,
-            id,
-        ),
-        Kind::After(i) => (
-            ["CADX", "CADY", "CATX", "CATY", "CATZ"][i as usize],
-            p.index(),
-            None,
-            id,
-        ),
-        Kind::Curv => ("CRVT", p.index(), None, id),
-        Kind::Radius => ("CRVT", p.index(), None, |r| {
-            if r == 0.0 {
-                0.0
-            } else {
-                1.0 / r
-            }
-        }),
-        Kind::Conic => ("CONN", p.index(), None, id),
-        Kind::Asph(i) if d.typ() == SurfType::EvenAsph => ("PRAM", p.index(), Some(i + 1), id),
-        k if d.typ() == SurfType::CoordBrk => {
-            let i = k.tilt_index()?;
-            ("PRAM", p.index(), Some(i as u8 + 1), id)
-        }
-        _ => return None,
-    })
-}
-
-/// 構成のピックアップを .zmx に書けない行（材料・膜の名前の行、半径の行は曲率の行になるので倍率・オフセットが違う）
-fn config_pick_unwritable(r: &lensbench_core::configs::ConfigRow) -> bool {
-    r.is_material() || r.is_coating() || r.param.kind == lensbench_core::param::Kind::Radius
-}
-
-/// 多重構成の表のうち .zmx に書けない行の注意
-fn config_notes(s: &System) -> Vec<String> {
-    let Some(c) = &s.configs else {
-        return Vec::new();
-    };
-    if s.units.iter().any(|u| u.moved()) {
-        return vec![
-            "the multi-configuration table of a system with moved lenses or groups can't be written to .zmx (the surface numbers change)".to_string(),
-        ];
-    }
-    let mut out = Vec::new();
-    for r in &c.rows {
-        if config_op(s, r.param).is_none() {
-            out.push(format!(
-                "multi-configuration row {} can't be written to .zmx",
-                r.param.name()
-            ));
-        }
-        if !r.picks.is_empty() && config_pick_unwritable(r) {
-            out.push(format!(
-                "only the values of the configuration pickups of multi-configuration row {} were written",
-                r.param.name()
-            ));
-        }
-    }
-    out
 }
 
 /// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く。系に書いた膜の表（[`System::coat_tables`](lensbench_core::system::Prescription::coat_tables)）を使う面があれば、

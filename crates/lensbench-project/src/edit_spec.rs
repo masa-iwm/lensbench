@@ -410,11 +410,14 @@ pub enum EditOp {
     },
     /// 構成 k を外す
     RemoveConfig { k: usize },
-    /// 表の行 param の構成 k を構成 from から写す（× scale + offset）
+    /// 表の行 param の構成 k を構成 from から写す（× scale + offset）。row があれば表の別の行 row（同じ量の種類の行）の
+    /// 構成 from から写す（OpticStudio の構成のピックアップの元の行。OpticStudio が拾わない下の行・後の構成からのものは .zmx に値だけ書く）
     SetConfigPickup {
         param: String,
         k: usize,
         from: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        row: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         scale: Option<Num>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

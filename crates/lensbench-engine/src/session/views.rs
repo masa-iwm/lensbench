@@ -501,6 +501,7 @@ mod tests {
                     from: 1,
                     scale: 1.0,
                     offset: 0.5,
+                    row: None,
                 }],
             }],
             zmx_cfgs: 1,

@@ -179,8 +179,13 @@ impl Retarget {
             | SetConfigCoatings { param, .. }
             | AddConfigRow { param }
             | RemoveConfigRow { param }
-            | SetConfigPickup { param, .. }
             | RemoveConfigPickup { param, .. } => *param = self.param(param)?,
+            SetConfigPickup { param, row, .. } => {
+                *param = self.param(param)?;
+                if let Some(r) = row {
+                    *r = self.param(r)?;
+                }
+            }
             SetSystemData { data } => {
                 if let Some(g) = data.get("glrs").and_then(|v| v.as_u64()) {
                     data.insert("glrs".into(), self.surf(g as usize)?.into());

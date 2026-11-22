@@ -858,6 +858,22 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
             }
             !used
         });
+        // 消した行を元にする別の行のピックアップは、値を残して外す
+        let gone = |q: &Param| match q.target {
+            Target::Unit(u) => unit_map.get(u).copied().flatten().is_none(),
+            Target::System => false,
+            Target::Surf(k) => k == j,
+        };
+        for r in c.rows.iter_mut() {
+            r.picks.retain(|q| !q.row.as_ref().is_some_and(gone));
+            for q in r.picks.iter_mut() {
+                if let Some(Target::Unit(u)) = q.row.as_mut().map(|x| &mut x.target) {
+                    if let Some(Some(k)) = unit_map.get(*u) {
+                        *u = *k;
+                    }
+                }
+            }
+        }
         for r in c.rows.iter_mut() {
             if let Target::Unit(u) = &mut r.param.target {
                 if let Some(Some(k)) = unit_map.get(*u) {
@@ -939,6 +955,11 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
         for r in c.rows.iter_mut() {
             if let Target::Surf(k) = &mut r.param.target {
                 *k = mm(*k);
+            }
+            for q in r.picks.iter_mut() {
+                if let Some(Target::Surf(k)) = q.row.as_mut().map(|x| &mut x.target) {
+                    *k = mm(*k);
+                }
             }
         }
     }
