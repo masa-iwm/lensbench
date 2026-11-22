@@ -374,8 +374,9 @@ pub fn grid_field(s: &System, u: f64, v: f64) -> Result<(f64, f64)> {
 }
 
 /// 視野 h の主光線の像面の点 p と、基準 r からの線形の予測 p_r + J (t − t_r) の差 d を、長さと予測の変位
-/// Δ = J (t − t_r) に対する % で返す。動径は |d|（符号は d·Δ の符号）と |d| / |Δ|、x・y はその成分 d_x と d_x / Δ_x
-/// （Δ の成分が 0 なら % は 0）。OpticStudio の DISG・DISA（26.1 で実測）
+/// Δ = J (t − t_r) に対する % で返す。動径は |d| と |d| / |Δ|、x・y はその成分 |d_x| と |d_x| / |Δ_x|（Δ の成分が 0 なら
+/// % は 0）。符号は実際の変位 e = p − p_r が Δ より長い（成分は絶対値が大きい）とき正。OpticStudio の DISG・DISA
+/// （26.1 で実測、e が Δ と逆の向きのとき・アフォーカル像空間の倒立の系は 2026 R1.01 で実測）
 pub fn distortion_against(
     s: &System,
     w: usize,
@@ -390,14 +391,17 @@ pub fn distortion_against(
         j[0][0] * dt[0] + j[0][1] * dt[1],
         j[1][0] * dt[0] + j[1][1] * dt[1],
     ];
-    let d = [p[0] - r.p[0] - del[0], p[1] - r.p[1] - del[1]];
+    let e = [p[0] - r.p[0], p[1] - r.p[1]];
+    let d = [e[0] - del[0], e[1] - del[1]];
+    // 符号は実際の変位 e が予測の変位 Δ より長いとき正（糸巻き）
     let (v, n) = match comp {
         DistComp::Radial => (
-            d[0].hypot(d[1]).copysign(d[0] * del[0] + d[1] * del[1]),
+            d[0].hypot(d[1])
+                .copysign(e[0].hypot(e[1]) - del[0].hypot(del[1])),
             del[0].hypot(del[1]),
         ),
-        DistComp::X => (d[0], del[0]),
-        DistComp::Y => (d[1], del[1]),
+        DistComp::X => (d[0].abs().copysign(e[0].abs() - del[0].abs()), del[0].abs()),
+        DistComp::Y => (d[1].abs().copysign(e[1].abs() - del[1].abs()), del[1].abs()),
     };
     let pct = if n != 0.0 { 100.0 * v / n } else { 0.0 };
     if !v.is_finite() || !pct.is_finite() {

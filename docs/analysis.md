@@ -85,6 +85,8 @@ OpticStudio の収差図に当たる解析。どれも評価関数の演算子�
   アフォーカル像空間では点を像空間の光線の向きの tan（l/n・m/n、`unit` が `tan`）で、理想の点を近軸の角倍率から出す（OpticStudio と同じ）。
 - アフォーカル像空間の像面湾曲・色の焦点ずれ・グリッド歪曲と瞳の収差の扇は、OpticStudio 2026 R1.01 の出力（`tests/aber_os_080`。ケプラー式の
   望遠鏡、A0・E0）と出力の桁で合う（`crates/lensbench-analysis/tests/aber080.rs`。視度は中心差分と片側の差分の違いで 5e-7 ほど）。
+  歪曲は、倒立（ケプラー式）と正立（ガリレオ式）の望遠鏡の F-Tan・F-Theta を 3 波長の 101 点で、OpticStudio 2026 R1.01 の表（1e-8 % に丸め）と
+  1e-7 % で合わせてある。評価関数の DIST（Surf 0）・DISG・DIMX・DISC・DISA も 1e-8 で一致（[最適化](optimize.md)）
 - `seidel`（Seidel Coefficients・Seidel Diagram 相当）: 面ごとの 3 次収差の和 S_I〜S_V [レンズ単位]（Welford の定義）、1 次の色収差 C_L（軸上）・
   C_T（倍率、最短と最長の波長の屈折率の差から。符号は OpticStudio の CLA・CTR と同じ）、波面収差の係数 W040・W131・W222・W220・W311 [波]（SPHA・COMA・ASTI・FCUR・DIST）。
   ミラーの無い回転対称のシステムだけ。
