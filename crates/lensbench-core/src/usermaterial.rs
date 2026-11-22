@@ -98,6 +98,8 @@ impl MaterialCatalog {
                     ld: m.range(),
                     it: m.transmittance(),
                     props: None,
+                    status: None,
+                    no_substitute: false,
                 };
                 (g.name.clone(), g)
             })

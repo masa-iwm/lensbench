@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 
 use super::{int_list, small_edit, OptPanel};
 use crate::i18n::{tr, trf};
+use lensbench_design::glass_sub::{RESIST_NAMES, STATUS_NAMES};
 use lensbench_engine::session::views::OptimizeView;
 
 /// ガラスの置き換えの設定（する設定で面があるとき）
@@ -34,7 +35,90 @@ pub(super) fn glass_params(p: &OptPanel) -> Result<Option<Value>, String> {
     if p.glass_passes != g.passes {
         o["passes"] = json!(p.glass_passes);
     }
+    let num = |label: &str, t: &str| -> Result<Option<f64>, String> {
+        let t = t.trim();
+        if t.is_empty() {
+            return Ok(None);
+        }
+        t.parse::<f64>()
+            .ok()
+            .filter(|x| x.is_finite())
+            .map(Some)
+            .ok_or_else(|| trf("{}: not a number ({})", &[&label, &t]))
+    };
+    if let Some(x) = num(tr("Max relative cost"), &p.glass_max_cost)? {
+        o["max_cost"] = json!(x);
+    }
+    for (k, t) in RESIST_NAMES.iter().zip(&p.glass_max_resist) {
+        if let Some(x) = num(&k.to_ascii_uppercase(), t)? {
+            o[format!("max_{k}")] = json!(x);
+        }
+    }
+    if p.glass_status.iter().any(|x| *x) {
+        let st: Vec<&str> = STATUS_NAMES
+            .iter()
+            .zip(&p.glass_status)
+            .filter(|(_, on)| **on)
+            .map(|(n, _)| *n)
+            .collect();
+        o["status"] = json!(st);
+    }
+    let ex: Vec<&str> = p
+        .glass_exclude
+        .split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .collect();
+    if !ex.is_empty() {
+        o["exclude"] = json!(ex);
+    }
+    if p.glass_nd_step != g.nd_step {
+        o["nd_step"] = json!(p.glass_nd_step);
+    }
+    if p.glass_vd_step != g.vd_step {
+        o["vd_step"] = json!(p.glass_vd_step);
+    }
+    if let Some(x) = num(tr("ΔPgF step"), &p.glass_dpgf_step)? {
+        o["dpgf_step"] = json!(x);
+    }
     Ok(Some(o))
+}
+
+/// 設定の JSON の glass から絞り込みと近さの欄を読む
+pub(super) fn load_glass_filter(n: &mut OptPanel, g: &Value) {
+    let txt = |v: &Value| v.as_f64().map(|x| x.to_string()).unwrap_or_default();
+    n.glass_max_cost = txt(&g["max_cost"]);
+    for (k, t) in RESIST_NAMES.iter().zip(n.glass_max_resist.iter_mut()) {
+        *t = txt(&g[format!("max_{k}")]);
+    }
+    let st: Vec<String> = g["status"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(|x| x.trim().to_ascii_lowercase())
+                .collect()
+        })
+        .unwrap_or_default();
+    for (on, name) in n.glass_status.iter_mut().zip(STATUS_NAMES) {
+        *on = st.iter().any(|x| x == name);
+    }
+    n.glass_exclude = g["exclude"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    if let Some(x) = g["nd_step"].as_f64() {
+        n.glass_nd_step = x;
+    }
+    if let Some(x) = g["vd_step"].as_f64() {
+        n.glass_vd_step = x;
+    }
+    n.glass_dpgf_step = txt(&g["dpgf_step"]);
 }
 
 pub(super) fn search_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
@@ -72,6 +156,38 @@ pub(super) fn search_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             ui.label(tr("Max passes"));
             ui.add(crate::widgets::Num::new(&mut p.glass_passes).range(1..=20));
         });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("Max relative cost"))
+                .on_hover_text(tr("Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. Glasses without the value are kept"));
+            small_edit(ui, &mut p.glass_max_cost, 50.0, "");
+            for (k, t) in RESIST_NAMES.iter().zip(p.glass_max_resist.iter_mut()) {
+                ui.label(k.to_ascii_uppercase());
+                small_edit(ui, t, 36.0, "");
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("Catalog status"))
+                .on_hover_text(tr("Candidates: only glasses of the checked statuses. None checked: all. Glasses without a status are kept"));
+            let labels = [tr("Standard"), tr("Preferred"), tr("Obsolete"), tr("Special"), tr("Melt")];
+            for (on, l) in p.glass_status.iter_mut().zip(labels) {
+                ui.checkbox(on, l);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("Excluded glasses"))
+                .on_hover_text(tr("Glasses never used as candidates (comma-separated; NAME@CATALOG for one catalog's glass). A current glass that fails the filter is always replaced"));
+            small_edit(ui, &mut p.glass_exclude, 200.0, "N-LASF9, F2@OHARA");
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("Closeness steps"))
+                .on_hover_text(tr("Candidates are the nearest in (Δnd / nd step)² + (Δvd / vd step)² (+ (ΔPgF / ΔPgF step)² when given)"));
+            ui.label("nd");
+            ui.add(crate::widgets::Num::new(&mut p.glass_nd_step).range(1e-6..=1.0).max_decimals(5));
+            ui.label("vd");
+            ui.add(crate::widgets::Num::new(&mut p.glass_vd_step).range(1e-6..=1000.0).max_decimals(4));
+            ui.label(tr("ΔPgF step"));
+            small_edit(ui, &mut p.glass_dpgf_step, 60.0, tr("None"));
+        });
         ui.label(
             RichText::new(tr(
                 "To apply a substituted glass, its catalog must be one of the system's glass catalogs.",
@@ -94,6 +210,13 @@ pub(super) fn result_ui(
             "Global search: {} start points ({} could not be traced), best from start {}",
             &[&g.ran, &g.failed, &g.best_start],
         ));
+        if g.skipped > 0 {
+            ui.label(
+                RichText::new(trf("{} start points were not run (stopped)", &[&g.skipped]))
+                    .small()
+                    .color(weak),
+            );
+        }
         egui::Grid::new("opt_res_global")
             .striped(true)
             .show(ui, |ui| {
@@ -136,7 +259,19 @@ pub(super) fn result_ui(
                     }
                     ui.end_row();
                     for c in &g.changes {
-                        ui.label(format!("{}", c.surface));
+                        match &c.configs {
+                            Some(k) => ui.label(trf(
+                                "{} (configurations {})",
+                                &[
+                                    &c.surface,
+                                    &k.iter()
+                                        .map(|x| x.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
+                                ],
+                            )),
+                            None => ui.label(format!("{}", c.surface)),
+                        };
                         ui.monospace(&c.from);
                         ui.monospace(&c.to);
                         ui.monospace(format!("{:.5}", c.nd));
@@ -149,7 +284,8 @@ pub(super) fn result_ui(
     }
 }
 
-/// 結果のガラスの置き換えで変わった面の (面, 材料)。before なら置き換える前の材料
+/// 結果のガラスの置き換えで変わった面の (面, 材料)。before なら置き換える前の材料。材料が構成で違う面は最初の構成の
+/// 置き換え（最初の構成を置き換えなかった面は出さない）
 pub(crate) fn result_glasses(r: &OptimizeView, before: bool) -> Vec<(usize, String)> {
     let Some(g) = &r.glass else {
         return Vec::new();
@@ -157,6 +293,9 @@ pub(crate) fn result_glasses(r: &OptimizeView, before: bool) -> Vec<(usize, Stri
     let mut out: Vec<(usize, String)> = Vec::new();
     for c in &g.changes {
         if out.iter().any(|(j, _)| *j == c.surface) {
+            continue;
+        }
+        if c.configs.as_ref().is_some_and(|k| !k.contains(&1)) {
             continue;
         }
         let m = if before {
@@ -170,4 +309,13 @@ pub(crate) fn result_glasses(r: &OptimizeView, before: bool) -> Vec<(usize, Stri
         out.push((c.surface, m));
     }
     out
+}
+
+/// ガラスの置き換えで 0 にした、変数でない dn・disp の値 (名前, 値)。before なら置き換える前の値、でなければ 0
+pub(crate) fn result_resets(r: &OptimizeView, before: bool) -> Vec<(String, f64)> {
+    r.glass
+        .iter()
+        .flat_map(|g| &g.reset)
+        .map(|(n, x)| (n.clone(), if before { *x } else { 0.0 }))
+        .collect()
 }

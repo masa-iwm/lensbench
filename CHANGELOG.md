@@ -68,7 +68,12 @@
 - **ガラスの置き換え**: `optimize --glass-surfaces 1,3,6 --glass-catalog SCHOTT` は最適化の後に、面の硝材をカタログの実在の硝材から選ぶ。
   モデルガラスや dn・disp を変数にして動かした面は近い実在の硝材に置き換え、実在の硝材は評価関数が良くなるときだけ入れ替える
   （面ごとに nd・vd の近い候補を、変数を最適化し直して比べる）。結果に置き換えの記録 `glass` が付く。serve・Python（`glass`）・GUI からも使え、
-  GUI の「システムに反映」は選んだ硝材も当てる
+  GUI の「システムに反映」は選んだ硝材も当て、置き換えた面の dn・disp を 0 にする。候補は OpticStudio のガラス置換のテンプレートと同じく
+  相対価格・耐性の等級（CR・FR・SR・AR・PR）の上限・カタログの状態（標準・推奨・廃止・特殊・溶解）・除く硝材の名前で絞れ
+  （`--glass-max-cost`・`--glass-max-cr` …・`--glass-status`・`--glass-exclude`。カタログの Exclude Substitution の印の硝材は使わない）、
+  近さの nd・vd の刻みと ΔPgF の刻みも変えられる（`--glass-nd-step`・`--glass-vd-step`・`--glass-dpgf-step`）。多重構成で面の材料が構成によって
+  違えば、同じ材料の構成の組ごとに置き換え、serve の `apply` は多重構成の表の材料の行の欄を書き換える。大域の探索を止めたときに始めなかった
+  始点の数を `global_search` の `skipped` に
 
 ### 直した所
 

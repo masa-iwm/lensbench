@@ -30,7 +30,8 @@
   `Extensions::coating_catalog` と同じ表。[ライブラリ（Rust）](rust.md) の `lensbench_core::usercoating`）。系は膜を一度だけ読むので、使う系を読む前に登録する。
 - **2.5**: 熱の構成を作る `System.make_thermal(temps, pressures=None)`（OpticStudio の Make Thermal。新しいシステムと注意の list を返す）を追加。
 - **2.4**: `System.optimize` に大域の探索（`starts`・`seed`・`keep`・`spread`）とガラスの置き換え（`glass`）の引数を足した。
-  返り値の dict に、回したときだけ `global_search`・`glass` のキーが付く（[最適化](optimize.md)）。
+  返り値の dict に、回したときだけ `global_search`・`glass` のキーが付く（[最適化](optimize.md)）。`glass` の dict は候補の絞り込み
+  （`max_cost`・`max_cr` …・`status`・`exclude`）と近さの刻み（`nd_step`・`vd_step`・`dpgf_step`）も受ける
 - **2.3**: 多重構成の表の材料・コーティングの行を名前で書く `System.set_config_names(spec, names)`（spec は `N.material` か `N.coating`、
   コーティングの名前の空はコーティングなし）と、構成ごとの名前を読む `System.config_names(spec)` を追加。`configs()` の材料・コーティングの行の値は名前の番号。
 - **2.2**: `huygens_psf`・`huygens_mtf` の既定の計算を速い近似（像のグリッドの区画ごとに位相と振幅を 2 次式で）にした。強度は前と

@@ -24,9 +24,15 @@ pub struct Glass {
     /// カタログの性質（AGF の ED・OD の行）。無ければ None
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub props: Option<GlassProps>,
+    /// カタログの状態（AGF の NM の 8 番目: 0 標準・1 推奨・2 廃止・3 特殊・4 溶解）。書いていなければ None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u8>,
+    /// ガラスの置き換えの候補にしない（AGF の NM の 7 番目、OpticStudio の Exclude Substitution）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_substitute: bool,
 }
 
-/// カタログのガラスの性質（AGF の ED の行の熱膨張係数・比重・ΔPgF、OD の行の相対価格）
+/// カタログのガラスの性質（AGF の ED の行の熱膨張係数・比重・ΔPgF、OD の行の相対価格と耐性の等級）
 #[derive(
     Debug,
     Clone,
@@ -44,8 +50,19 @@ pub struct GlassProps {
     pub density: f64,
     /// 部分分散比の偏差 ΔPgF（ED の 4 番目）
     pub dpgf: f64,
-    /// 相対価格（OD の 1 番目。書いていなければ 0）
+    /// 相対価格（OD の 1 番目。書いていなければ 0、カタログに値が無ければ負（-1））
     pub cost: f64,
+    /// 耐性の等級（OD の 2〜6 番目: 耐候性 CR・耐汚染性 FR・耐酸性 SR・耐アルカリ性 AR・耐リン酸塩性 PR）。
+    /// 書いていない・値が無い（負）なら None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resist: Option<[Option<f64>; 5]>,
+}
+
+impl GlassProps {
+    /// 相対価格（カタログに値が無ければ None）
+    pub fn cost(&self) -> Option<f64> {
+        (self.cost > 0.0).then_some(self.cost)
+    }
 }
 
 impl Glass {
@@ -342,6 +359,13 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
                     ld: None,
                     it: Vec::new(),
                     props: None,
+                    // 7・8 番目（ガラスの置き換えから除く・状態）。読めなければ書いていないものとする
+                    no_substitute: t.get(6).and_then(|v| v.parse::<f64>().ok()) == Some(1.0),
+                    status: t
+                        .get(7)
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .filter(|x| x.fract() == 0.0 && (0.0..=4.0).contains(x))
+                        .map(|x| x as u8),
                 });
             }
             "CD" => {
@@ -373,7 +397,15 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
             }
             "OD" if t.len() >= 2 => {
                 if let Some(g) = cur.as_mut() {
-                    g.props.get_or_insert_with(GlassProps::default).cost = loose(t[1]);
+                    let p = g.props.get_or_insert_with(GlassProps::default);
+                    p.cost = loose(t[1]);
+                    let r = |k: usize| {
+                        t.get(k)
+                            .and_then(|v| v.parse::<f64>().ok())
+                            .filter(|x| x.is_finite() && *x >= 0.0)
+                    };
+                    let v = [r(2), r(3), r(4), r(5), r(6)];
+                    p.resist = v.iter().any(Option::is_some).then_some(v);
                 }
             }
             "LD" if t.len() >= 3 => {
@@ -628,6 +660,29 @@ mod tests {
         assert_eq!(t["TESTG@TEST"], t["TESTG"]);
         assert_eq!(t["TESTG@TEST#2"], t["TESTG"]);
         assert_eq!(missing, vec!["TESTG@OTHER".to_string()]);
+    }
+    /// NM の置き換えから除く印・状態と、OD の相対価格・耐性の等級（-1 は値なし）
+    #[test]
+    fn status_and_order_data() {
+        let txt = "NM A 2 0 1.5 60 1 2 0\nCD 1.0 0.006 0.2 0.02 1.0 100\nOD 1.4 2 -1 3.2 1 1\n\
+                   NM B 2 0 1.5 60\nCD 1.0 0.006 0.2 0.02 1.0 100\nOD -1 -1 -1 -1 -1 -1\n\
+                   NM C 2 0 1.5 60 0 9\nCD 1.0 0.006 0.2 0.02 1.0 100\n";
+        let t = parse_agf(txt, "T").unwrap();
+        let (a, b, c) = (&t["A"], &t["B"], &t["C"]);
+        assert!(a.no_substitute && !b.no_substitute && !c.no_substitute);
+        assert_eq!((a.status, b.status, c.status), (Some(2), None, None));
+        let pa = a.props.unwrap();
+        assert_eq!(pa.cost(), Some(1.4));
+        assert_eq!(
+            pa.resist,
+            Some([Some(2.0), None, Some(3.2), Some(1.0), Some(1.0)])
+        );
+        let pb = b.props.unwrap();
+        assert_eq!((pb.cost(), pb.resist), (None, None));
+        assert!(c.props.is_none());
+        // 同梱のカタログの状態の欄は使わない
+        let s = builtin::catalog("SCHOTT").unwrap();
+        assert!(s.values().all(|g| g.status.is_none()));
     }
     #[test]
     fn air_index_reasonable() {

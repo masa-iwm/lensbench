@@ -806,7 +806,11 @@ class System:
         in their range, others within ±spread × max(|value|, typical size) of the value, by the random seed) in parallel, and the best keep distinct solutions are kept.
         glass is a dict {"surfaces": [1, 3], "catalogs": ["SCHOTT"], "candidates": 8, "passes": 2} for glass substitution after the optimization: the glass of each surface
         is chosen among the candidates nearest in nd and vd to its current medium, re-optimizing the variables for each (model glasses and surfaces with dn/disp are always
-        replaced by a real glass, real glasses only when the merit improves; catalogs default to the glasses loaded for the system).
+        replaced by a real glass, real glasses only when the merit improves; catalogs default to the glasses loaded for the system). The candidates can be narrowed like
+        OpticStudio's glass substitution template: max_cost (relative cost), max_cr, max_fr, max_sr, max_ar, max_pr (resistance classes), status (a list of "standard",
+        "preferred", "obsolete", "special", "melt") and exclude (glass names, "NAME@CATALOG" for one catalog); glasses without the value are kept, glasses marked
+        "exclude substitution" in the catalog are never used, and a current glass that fails the filter is always replaced. nd_step (0.01), vd_step (1) and dpgf_step (None)
+        weigh the closeness (Δnd/nd_step)² + (Δvd/vd_step)² (+ (ΔPgF/dpgf_step)²). Where the surface's material differs between configurations, each group of configurations with the same material is substituted separately.
 
         terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
         the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
@@ -819,8 +823,9 @@ class System:
         Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
         iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
         inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others),
-        global_search (with starts ≥ 2: ran, failed, best_start, solutions with start, merit and x, best first), glass (with glass: changes with surface, from, to, target_nd,
-        target_vd, nd, vd and merit; materials as (surface, name); tried; merit_before)
+        global_search (with starts ≥ 2: ran, failed, skipped (starts not begun because it was stopped), best_start, solutions with start, merit and x, best first), glass (with glass: changes with surface, from, to, target_nd,
+        target_vd, nd, vd, merit and configs (positions in the given configurations, from 1, only when not all); materials as (surface, name) of the first configuration; config_materials as (surface, names per configuration) where they differ;
+        reset as (parameter, value) of the fixed dn/disp set to 0; tried; merit_before)
         """
 
     def pickups(self) -> list[_Pickup]:

@@ -201,7 +201,7 @@ enum Cmd {
         #[command(flatten)]
         dls: search_cmd::DlsArgs,
         #[command(flatten)]
-        search: search_cmd::SearchArgs,
+        search: Box<search_cmd::SearchArgs>,
         /// .zmx to write the optimized system to
         #[arg(long, short)]
         out: Option<PathBuf>,

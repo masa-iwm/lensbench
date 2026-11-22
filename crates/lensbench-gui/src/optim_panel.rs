@@ -19,7 +19,7 @@ mod search;
 mod sheets;
 use kinds::{defaults, type_hint};
 use lensbench_engine::session::views::{OptimizeView, TermValue};
-pub(crate) use search::result_glasses;
+pub(crate) use search::{result_glasses, result_resets};
 
 /// 項のキーの値の書き方
 #[derive(Clone, Copy, PartialEq)]
@@ -476,6 +476,16 @@ pub(crate) struct OptPanel {
     pub glass_catalogs: String,
     pub glass_candidates: usize,
     pub glass_passes: usize,
+    /// ガラスの置き換えの候補の絞り込み: 相対価格・耐性の等級（CR・FR・SR・AR・PR）の上限（空は上限なし）・使う状態
+    /// （標準・推奨・廃止・特殊・溶解。どれも選ばなければすべて）・除く硝材（カンマ区切り）
+    pub glass_max_cost: String,
+    pub glass_max_resist: [String; 5],
+    pub glass_status: [bool; 5],
+    pub glass_exclude: String,
+    /// 近さの nd・vd の刻みと ΔPgF の刻み（空は ΔPgF を見ない）
+    pub glass_nd_step: f64,
+    pub glass_vd_step: f64,
+    pub glass_dpgf_step: String,
     /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）
     pub undo_glass: Option<Vec<(usize, String)>>,
     /// 構成（.zmx の構成番号か状態の名前、カンマ区切り。空は開いている系だけ）
@@ -520,6 +530,8 @@ impl OptPanel {
             spread: d.spread,
             glass_candidates: g.candidates,
             glass_passes: g.passes,
+            glass_nd_step: g.nd_step,
+            glass_vd_step: g.vd_step,
             new_term: "paraxial".into(),
             ..Default::default()
         }
@@ -698,6 +710,7 @@ impl OptPanel {
             if let Some(x) = g["passes"].as_u64() {
                 n.glass_passes = x as usize;
             }
+            search::load_glass_filter(&mut n, g);
         }
         if let Some(a) = p["configs"].as_array() {
             n.configs = a.iter().map(text_of).collect::<Vec<_>>().join(", ");

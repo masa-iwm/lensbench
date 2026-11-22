@@ -111,6 +111,39 @@ pub struct SearchArgs {
     /// Glass substitution: maximum number of passes over the surfaces
     #[arg(long = "glass-passes", default_value_t = GLASS.passes)]
     pub glass_passes: usize,
+    /// Glass substitution: highest relative cost of a candidate (the catalog's OD line; glasses without a cost are kept)
+    #[arg(long = "glass-max-cost")]
+    pub glass_max_cost: Option<f64>,
+    /// Glass substitution: highest climatic resistance class CR of a candidate (glasses without the value are kept)
+    #[arg(long = "glass-max-cr")]
+    pub glass_max_cr: Option<f64>,
+    /// Glass substitution: highest stain resistance class FR
+    #[arg(long = "glass-max-fr")]
+    pub glass_max_fr: Option<f64>,
+    /// Glass substitution: highest acid resistance class SR
+    #[arg(long = "glass-max-sr")]
+    pub glass_max_sr: Option<f64>,
+    /// Glass substitution: highest alkali resistance class AR
+    #[arg(long = "glass-max-ar")]
+    pub glass_max_ar: Option<f64>,
+    /// Glass substitution: highest phosphate resistance class PR
+    #[arg(long = "glass-max-pr")]
+    pub glass_max_pr: Option<f64>,
+    /// Glass substitution: catalog statuses allowed for candidates (comma-separated: standard, preferred, obsolete, special, melt; glasses without a status are kept). Default: all
+    #[arg(long = "glass-status", value_delimiter = ',')]
+    pub glass_status: Vec<String>,
+    /// Glass substitution: glasses never used as candidates (comma-separated names; NAME@CATALOG for one catalog's glass)
+    #[arg(long = "glass-exclude", value_delimiter = ',')]
+    pub glass_exclude: Vec<String>,
+    /// Glass substitution: closeness (Δnd / nd-step)² + (Δvd / vd-step)²: the step of nd
+    #[arg(long = "glass-nd-step", default_value_t = GLASS.nd_step)]
+    pub glass_nd_step: f64,
+    /// Glass substitution: the step of vd in the closeness
+    #[arg(long = "glass-vd-step", default_value_t = GLASS.vd_step)]
+    pub glass_vd_step: f64,
+    /// Glass substitution: also add (ΔPgF / step)² to the closeness
+    #[arg(long = "glass-dpgf-step")]
+    pub glass_dpgf_step: Option<f64>,
 }
 
 static OPT: std::sync::LazyLock<lensbench_design::dls_spec::OptimizeParams> =
@@ -121,6 +154,22 @@ static GLASS: std::sync::LazyLock<lensbench_design::dls_spec::GlassParams> =
 impl SearchArgs {
     /// 設定の型の欄（starts・seed・keep・spread・glass）に入れる
     pub fn fill(&self, op: &mut lensbench_design::dls_spec::OptimizeParams) -> Result<(), String> {
+        let filters = self.glass_max_cost.is_some()
+            || [
+                self.glass_max_cr,
+                self.glass_max_fr,
+                self.glass_max_sr,
+                self.glass_max_ar,
+                self.glass_max_pr,
+            ]
+            .iter()
+            .any(Option::is_some)
+            || !self.glass_status.is_empty()
+            || !self.glass_exclude.is_empty()
+            || self.glass_dpgf_step.is_some();
+        if self.glass_surfaces.is_empty() && filters {
+            return Err("the --glass-* candidate settings need --glass-surfaces (the surfaces to substitute glass on)".into());
+        }
         if self.glass_surfaces.is_empty() && !self.glass_catalogs.is_empty() {
             return Err(
                 "--glass-catalog needs --glass-surfaces (the surfaces to substitute glass on)"
@@ -137,6 +186,17 @@ impl SearchArgs {
                 catalogs: self.glass_catalogs.clone(),
                 candidates: self.glass_candidates,
                 passes: self.glass_passes,
+                max_cost: self.glass_max_cost,
+                max_cr: self.glass_max_cr,
+                max_fr: self.glass_max_fr,
+                max_sr: self.glass_max_sr,
+                max_ar: self.glass_max_ar,
+                max_pr: self.glass_max_pr,
+                status: self.glass_status.clone(),
+                exclude: self.glass_exclude.clone(),
+                nd_step: self.glass_nd_step,
+                vd_step: self.glass_vd_step,
+                dpgf_step: self.glass_dpgf_step,
             });
         }
         Ok(())

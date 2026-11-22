@@ -38,8 +38,13 @@ impl Core {
                     }
                     self.p.opt.undo_glass = Some(op::result_glasses(&r, true));
                 }
-                if self.apply_values(&op::result_values(&r, false)) {
-                    self.p.opt.undo = Some(op::result_values(&r, true));
+                // 置き換えた面の固定の dn・disp は 0 に（serve の apply と同じ）
+                let mut vals = op::result_values(&r, false);
+                vals.extend(op::result_resets(&r, false));
+                if self.apply_values(&vals) {
+                    let mut undo = op::result_values(&r, true);
+                    undo.extend(op::result_resets(&r, true));
+                    self.p.opt.undo = Some(undo);
                 }
             }
             Action::Undo => {

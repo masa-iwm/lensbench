@@ -87,6 +87,8 @@ pub struct GlobalResult {
     pub ran: usize,
     /// 追跡できずに捨てた始点の数
     pub failed: usize,
+    /// 中断で始めなかった始点の数（ran・failed のどちらにも数えない）
+    pub skipped: usize,
     /// 中断で止めた
     pub cancelled: bool,
 }
@@ -189,7 +191,8 @@ pub fn global_search(p: &Problem, o: &GlobalOpts) -> Result<GlobalResult> {
         }
         Some((i, xs, r))
     });
-    let cancelled = par::cancelled() || runs.iter().any(Option::is_none);
+    let skipped = runs.iter().filter(|r| r.is_none()).count();
+    let cancelled = par::cancelled() || skipped > 0;
     let mut ran = 0;
     let mut failed = 0;
     let mut ok: Vec<(usize, Vec<f64>, DlsResult)> = Vec::new();
@@ -243,6 +246,7 @@ pub fn global_search(p: &Problem, o: &GlobalOpts) -> Result<GlobalResult> {
         solutions,
         ran,
         failed,
+        skipped,
         cancelled,
     })
 }

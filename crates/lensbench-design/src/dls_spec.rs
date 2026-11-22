@@ -4,7 +4,7 @@
 //! ここから取り（Python は試験で突き合わせる）、serve は JSON をこの型に読む。
 
 use lensbench_analysis::sweep::RmsRef;
-use lensbench_core::param::Param;
+use lensbench_core::param::{Kind, Param};
 use lensbench_core::{Error, Result, System};
 use lensbench_optim::zoom::{TargetMethod, ZoomSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts, JacMode, ParaxQ, Problem, Var};
@@ -422,6 +422,69 @@ pub struct GlassParams {
     /// 面を一巡する回数の上限
     #[schemars(extend("x-min" = 1))]
     pub passes: usize,
+    /// 候補の相対価格の上限（AGF の OD の 1 番目。値の無い硝材は除かない）
+    pub max_cost: Option<f64>,
+    /// 候補の耐候性 CR の等級の上限（AGF の OD の 2 番目。値の無い硝材は除かない）
+    pub max_cr: Option<f64>,
+    /// 耐汚染性 FR の等級の上限（OD の 3 番目）
+    pub max_fr: Option<f64>,
+    /// 耐酸性 SR の等級の上限（OD の 4 番目）
+    pub max_sr: Option<f64>,
+    /// 耐アルカリ性 AR の等級の上限（OD の 5 番目）
+    pub max_ar: Option<f64>,
+    /// 耐リン酸塩性 PR の等級の上限（OD の 6 番目）
+    pub max_pr: Option<f64>,
+    /// 使ってよいカタログの状態（"standard"・"preferred"・"obsolete"・"special"・"melt"。空ならすべて。状態の無い硝材は除かない）
+    #[serde(deserialize_with = "seq")]
+    pub status: Vec<String>,
+    /// 候補から除く硝材の名前（大文字小文字は問わない。`名前@カタログ` ならそのカタログのものだけ）
+    #[serde(deserialize_with = "seq")]
+    pub exclude: Vec<String>,
+    /// 近さ (Δnd / nd_step)² + (Δvd / vd_step)² の nd の刻み
+    #[schemars(extend("exclusiveMinimum" = 0))]
+    pub nd_step: f64,
+    /// 近さの vd の刻み
+    #[schemars(extend("exclusiveMinimum" = 0))]
+    pub vd_step: f64,
+    /// 近さに (ΔPgF / dpgf_step)² を足す（省けば ΔPgF は見ない）
+    pub dpgf_step: Option<f64>,
+}
+
+impl GlassParams {
+    /// 候補の絞り込み
+    pub fn filter(&self) -> Result<crate::glass_sub::GlassFilter> {
+        let status = if self.status.is_empty() {
+            None
+        } else {
+            Some(
+                self.status
+                    .iter()
+                    .map(|x| crate::glass_sub::GlassFilter::status_of(x))
+                    .collect::<Result<Vec<u8>>>()?,
+            )
+        };
+        Ok(crate::glass_sub::GlassFilter {
+            max_cost: self.max_cost,
+            max_resist: [
+                self.max_cr,
+                self.max_fr,
+                self.max_sr,
+                self.max_ar,
+                self.max_pr,
+            ],
+            status,
+            exclude: self.exclude.clone(),
+        })
+    }
+
+    /// 近さの刻み
+    pub fn closeness(&self) -> crate::glass_sub::Closeness {
+        crate::glass_sub::Closeness {
+            nd_step: self.nd_step,
+            vd_step: self.vd_step,
+            dpgf_step: self.dpgf_step,
+        }
+    }
 }
 
 impl Default for GlassParams {
@@ -431,6 +494,17 @@ impl Default for GlassParams {
             catalogs: Vec::new(),
             candidates: 8,
             passes: 2,
+            max_cost: None,
+            max_cr: None,
+            max_fr: None,
+            max_sr: None,
+            max_ar: None,
+            max_pr: None,
+            status: Vec::new(),
+            exclude: Vec::new(),
+            nd_step: 0.01,
+            vd_step: 1.0,
+            dpgf_step: None,
         }
     }
 }
@@ -457,8 +531,12 @@ pub struct GlassRun {
     pub changes: Vec<crate::glass_sub::GlassChange>,
     /// 評価した候補の数
     pub tried: usize,
-    /// 面ごとの最後の材料の名前（置き換える面の順）
+    /// 面ごとの最後の材料の名前（置き換える面の順。最初の構成の材料）
     pub materials: Vec<(usize, String)>,
+    /// 最後の材料が構成で違う面の、構成ごとの材料の名前（問題の構成の順）
+    pub config_materials: Vec<(usize, Vec<String>)>,
+    /// 置き換えた面の、変数でない屈折率のずれ・分散の変化（"5.dn" など）と置き換える前の値。置き換えで 0 にした
+    pub reset: Vec<(String, f64)>,
     /// 置き換える前の評価関数の値
     pub merit_before: f64,
 }
@@ -527,6 +605,8 @@ impl OptimizeParams {
                 candidates: gp.candidates,
                 passes: gp.passes,
                 local: o,
+                filter: gp.filter()?,
+                closeness: gp.closeness(),
             };
             let merit_before = result.merit;
             let g = match lensbench_core::par::with_progress(None, || {
@@ -555,10 +635,44 @@ impl OptimizeParams {
                 .iter()
                 .map(|&j| (j, g.problem.configs[0].surfaces[j].mat.name()))
                 .collect();
+            let config_materials = gp
+                .surfaces
+                .iter()
+                .filter_map(|&j| {
+                    let v: Vec<String> = g
+                        .problem
+                        .configs
+                        .iter()
+                        .map(|c| c.surfaces[j].mat.name())
+                        .collect();
+                    v.iter().any(|m| *m != v[0]).then_some((j, v))
+                })
+                .collect();
+            // 置き換えた面の固定の dn・disp（変数のものは結果の値で当たる）
+            let mut reset = Vec::new();
+            let s0 = &p.configs[0];
+            for j in gp
+                .surfaces
+                .iter()
+                .filter(|j| g.changes.iter().any(|c| c.surface == **j))
+            {
+                for (k, v) in [("dn", s0.surfaces[*j].dn), ("disp", s0.surfaces[*j].disp)] {
+                    let var = p.vars.iter().any(|x| {
+                        !x.param.kind.is_unit()
+                            && x.param.index() == *j
+                            && x.param.kind == if k == "dn" { Kind::Dn } else { Kind::Disp }
+                    });
+                    if v != 0.0 && !var {
+                        reset.push((format!("{j}.{k}"), v));
+                    }
+                }
+            }
             glass = Some(GlassRun {
                 changes: g.changes,
                 tried: g.tried,
                 materials,
+                config_materials,
+                reset,
                 merit_before,
             });
             if !glass.as_ref().is_some_and(|x| x.changes.is_empty()) {

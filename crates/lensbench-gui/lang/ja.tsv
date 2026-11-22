@@ -1857,6 +1857,23 @@ Surfaces to substitute	置換する面
 System glasses	システムの硝材
 Candidates per surface	面ごとの候補の数
 Max passes	巡回の上限
+Max relative cost	相対価格の上限
+Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. Glasses without the value are kept	候補: カタログの値（相対価格と耐性の等級）の上限。空は上限なし。値の無い硝材は除きません
+Catalog status	カタログの状態
+Candidates: only glasses of the checked statuses. None checked: all. Glasses without a status are kept	候補: 選んだ状態の硝材だけ。どれも選ばなければすべて。状態の無い硝材は除きません
+Preferred	推奨
+Obsolete	廃止
+Special	特殊
+Melt	溶解
+Excluded glasses	除く硝材
+Glasses never used as candidates (comma-separated; NAME@CATALOG for one catalog's glass). A current glass that fails the filter is always replaced	候補にしない硝材（カンマ区切り。名前@カタログ でそのカタログのものだけ）。絞り込みに合わない今の硝材は必ず置き換えます
+Closeness steps	近さの刻み
+Candidates are the nearest in (Δnd / nd step)² + (Δvd / vd step)² (+ (ΔPgF / ΔPgF step)² when given)	候補は (Δnd / nd の刻み)² + (Δvd / vd の刻み)²（ΔPgF の刻みを入れれば + (ΔPgF / ΔPgF の刻み)²）の近い順
+ΔPgF step	ΔPgF の刻み
+None	なし
+{}: not a number ({})	{}: 数ではありません（{}）
+{} start points were not run (stopped)	止めたので {} 個の始点は回していません
+{} (configurations {})	{}（構成 {}）
 To apply a substituted glass, its catalog must be one of the system's glass catalogs.	置換した硝材をシステムに適用するには、そのカタログがシステムの硝材カタログに入っている必要があります。
 Global search: {} start points ({} could not be traced), best from start {}	グローバルサーチ: 始点 {}（追跡できなかったもの {}）、最良は始点 {} から
 Solution	解

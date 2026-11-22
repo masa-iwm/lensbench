@@ -50,7 +50,12 @@ pub fn catalog(name: &str) -> Option<Glasses> {
         C[i].get_or_init(|| {
             let (f, t) = FILES[i];
             // 同梱のデータは試験（below）で読めることを確かめている
-            Arc::new(super::parse_agf(t, f.trim_end_matches(".AGF")).unwrap_or_default())
+            let mut g = super::parse_agf(t, f.trim_end_matches(".AGF")).unwrap_or_default();
+            // 同梱の AGF の NM の状態の欄は作るスクリプトが一律に書いた値で、メーカーの状態ではない
+            for x in g.values_mut() {
+                x.status = None;
+            }
+            Arc::new(g)
         })
         .clone(),
     )

@@ -240,7 +240,9 @@ pub(super) fn optimize(
         .iter()
         .map(|v| cur_idx.is_some_and(|c| v.configs.as_ref().is_none_or(|cs| cs.contains(&c))))
         .collect();
-    // 置き換えた面の最後の材料（置き換えの記録のある面。同じ硝材でも dn・disp を 0 にしたものを含む）
+    // 置き換えた面の最後の材料（置き換えの記録のある面。同じ硝材でも dn・disp を 0 にしたものを含む）。材料が構成で
+    // 違う面は、読み込んだ系の構成（無ければ最初の構成）の材料
+    let mat_idx = cur_idx.unwrap_or(0);
     let glass_changes: Vec<(usize, String)> = run
         .glass
         .as_ref()
@@ -248,10 +250,27 @@ pub(super) fn optimize(
             g.materials
                 .iter()
                 .filter(|(j, _)| g.changes.iter().any(|c| c.surface == *j))
-                .cloned()
+                .map(|(j, m)| {
+                    let per = g.config_materials.iter().find(|(k, _)| k == j);
+                    let m = per.and_then(|(_, v)| v.get(mat_idx)).unwrap_or(m);
+                    (*j, m.clone())
+                })
                 .collect()
         })
         .unwrap_or_default();
+    // 問題の構成 i の読み込んだ系の構成の番号（1 から。.zmx で構成の番号を並べたときと、構成を省いたとき）
+    let cfg_number = |i: usize| -> Option<usize> {
+        if op.configs.is_empty() {
+            return (i == 0).then(|| active_cfg(&cur, &spec));
+        }
+        if is_project(&spec.file) {
+            return (Some(i) == cur_idx).then(|| active_cfg(&cur, &spec));
+        }
+        let b = op.configs.get(i)?;
+        b.as_u64()
+            .map(|x| x as usize)
+            .or_else(|| b.as_str().and_then(|x| x.trim().parse().ok()))
+    };
     let mut applied = false;
     if op.apply {
         let ch: Vec<(lensbench_core::param::Param, f64)> = prob
@@ -263,14 +282,29 @@ pub(super) fn optimize(
             .map(|((v, &x), _)| (v.param, x))
             .collect();
         // 置き換えた硝材は読み込んだ系のガラスの表に同じものがあるときだけ当てられる（別のカタログから選んだときは当てない）
-        let missing: Vec<&str> = glass_changes
+        let mut missing: Vec<&str> = Vec::new();
+        // 最後の材料（構成ごとのものも）のうち置き換えで入れた硝材
+        let finals: Vec<&str> = run
+            .glass
             .iter()
-            .filter(|(_, m)| {
-                let picked = run.problem.configs[0].glasses.get(m.as_str());
-                picked.is_none() || cur.glasses.get(m.as_str()) != picked
+            .flat_map(|g| {
+                g.materials.iter().map(|(_, m)| m.as_str()).chain(
+                    g.config_materials
+                        .iter()
+                        .flat_map(|(_, v)| v.iter().map(String::as_str)),
+                )
             })
-            .map(|(_, m)| m.as_str())
             .collect();
+        for c in run.glass.iter().flat_map(|g| &g.changes) {
+            let m = c.to.as_str();
+            if !finals.contains(&m) {
+                continue;
+            }
+            let picked = run.problem.configs.iter().find_map(|s| s.glasses.get(m));
+            if (picked.is_none() || cur.glasses.get(m) != picked) && !missing.contains(&m) {
+                missing.push(m);
+            }
+        }
         if !missing.is_empty() {
             notes.push(format!(
                 "the result was not applied: the substituted glasses {} are not in the system's glass catalogs (add the catalogs to the system first)",
@@ -280,10 +314,40 @@ pub(super) fn optimize(
             use lensbench_project::edit_spec::{EditOp, Num, Ref};
             let mut ops = Vec::new();
             for (j, m) in &glass_changes {
-                ops.push(EditOp::SetMaterial {
-                    surface: Ref::Index(*j),
-                    material: m.clone(),
+                // 多重構成の表に面の材料の行があれば、その行の置き換えた構成の欄を書き換える（面の表の材料は行が上書きする）
+                let row = cur.configs().and_then(|c| {
+                    c.rows
+                        .iter()
+                        .find(|r| {
+                            r.param
+                                == lensbench_core::param::Param::new(
+                                    *j,
+                                    lensbench_core::param::Kind::Material,
+                                )
+                        })
+                        .map(|r| (c.n, r))
                 });
+                if let (Some((n, row)), Some(g)) = (row, run.glass.as_ref()) {
+                    let mut names = (1..=n)
+                        .map(|k| row.name_at(k).map(str::to_string))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let per = g.config_materials.iter().find(|(k, _)| k == j);
+                    for i in 0..run.problem.configs.len() {
+                        let mi = per.and_then(|(_, v)| v.get(i)).unwrap_or(m);
+                        if let Some(k) = cfg_number(i).filter(|k| (1..=n).contains(k)) {
+                            names[k - 1] = mi.clone();
+                        }
+                    }
+                    ops.push(EditOp::SetConfigMaterials {
+                        param: format!("{j}.material"),
+                        names,
+                    });
+                } else {
+                    ops.push(EditOp::SetMaterial {
+                        surface: Ref::Index(*j),
+                        material: m.clone(),
+                    });
+                }
                 // 置き換えた面の屈折率のずれ・分散の変化は 0 に（set_material は残す）
                 for k in ["dn", "disp"] {
                     let q = cur.param(&format!("{j}.{k}"))?;

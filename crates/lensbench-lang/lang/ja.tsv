@@ -2593,7 +2593,7 @@ candidates must be 1 or more	candidates は 1 以上
 passes must be 1 or more	passes は 1 以上
 surface {j} to substitute glass on (1 to {})	硝材を置き換える面 {j}（1〜{}）
 surface {j} given twice	面 {j} が 2 回あります
-surface {j}: no candidate glass covers the system wavelengths	面 {j}: システムの波長をすべて含む候補の硝材がありません
+surface {j}: no candidate glass passes the filter and covers the system wavelengths	面 {j}: 絞り込みに合い、システムの波長をすべて含む候補の硝材がありません
 surface {j}: no candidate glass could be traced and optimized	面 {j}: 追跡・最適化できる候補の硝材がありません
 the result was not applied: the substituted glasses {} are not in the system's glass catalogs (add the catalogs to the system first)	結果をシステムに当てませんでした。置き換えた硝材 {} がシステムの硝材カタログにありません（先にカタログをシステムに追加してください）
 Global search: number of start points (the current values are the first). Each start is optimized locally (in parallel) and the best solutions are kept. Variables with both bounds are drawn uniformly in their range, others within ±--spread of their size. 0 or 1: local optimization only	グローバルサーチ: 始点の数（最初は今の値）。始点ごとにローカルの最適化を（並列に）かけ、良い解を残す。両側に範囲のある変数は範囲の中から一様に、ほかは大きさの ±--spread の中から選ぶ。0・1 はローカルの最適化だけ
@@ -2648,3 +2648,7 @@ wave: wavelength numbers are from 1	wave: 波長の番号は 1 から
 the paraxial stop radius is 0	近軸の絞りの半径が 0 です
 the chief ray (wavelength {}) stopped	主光線（波長 {}）が止まりました
 the paraxial focus is on the image surface (wavelength {})	近軸の焦点が像面の上にあります（波長 {}）
+the closeness steps (nd_step, vd_step, dpgf_step) must be positive	近さの刻み（nd_step・vd_step・dpgf_step）は正の数
+no candidate glass passes the filter	絞り込みに合う候補の硝材がありません
+the --glass-* candidate settings need --glass-surfaces (the surfaces to substitute glass on)	--glass-* の候補の設定には --glass-surfaces（硝材を置き換える面）が要ります
+glass status {name} (one of {})	硝材の状態 {name}（{} のどれか）

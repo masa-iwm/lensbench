@@ -137,6 +137,9 @@ pub struct GlobalView {
     /// 回した始点の数・追跡できずに捨てた数
     pub ran: usize,
     pub failed: usize,
+    /// 止めたので始めなかった始点の数（ran・failed のどちらにも数えない）
+    #[serde(default)]
+    pub skipped: usize,
     /// 最良の解の始点の番号（0 は今の値）
     pub best_start: usize,
     /// 残した解（評価関数の良い順。x は変数の並び）
@@ -158,8 +161,14 @@ pub struct SolutionView {
 pub struct GlassView {
     /// 置き換えた面（置き換えた順）
     pub changes: Vec<GlassChangeView>,
-    /// 置き換える面ごとの最後の材料 (面, 名前)
+    /// 置き換える面ごとの最後の材料 (面, 名前)。多重構成では最初の構成の材料
     pub materials: Vec<(usize, String)>,
+    /// 最後の材料が構成で違う面の、構成ごとの材料 (面, 名前の並び)。無ければ省く
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config_materials: Vec<(usize, Vec<String>)>,
+    /// 置き換えで 0 にした、変数でない屈折率のずれ・分散の変化 (名前 "5.dn" など, 前の値)。無ければ省く
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reset: Vec<(String, f64)>,
     /// 評価した候補の数
     pub tried: usize,
     /// 置き換える前（最適化の後）の評価関数の値
@@ -183,6 +192,9 @@ pub struct GlassChangeView {
     pub vd: f64,
     #[serde(deserialize_with = "nan_for_null_1")]
     pub merit: f64,
+    /// 置き換えた構成（問題に渡した構成の順で 1 から。面の材料が構成で違うときの組）。すべての構成なら省く
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configs: Option<Vec<usize>>,
 }
 
 impl GlassView {
@@ -201,9 +213,15 @@ impl GlassView {
                     nd: c.nd,
                     vd: c.vd,
                     merit: c.merit,
+                    configs: c
+                        .configs
+                        .as_ref()
+                        .map(|v| v.iter().map(|k| k + 1).collect()),
                 })
                 .collect(),
             materials: g.materials.clone(),
+            config_materials: g.config_materials.clone(),
+            reset: g.reset.clone(),
             tried: g.tried,
             merit_before: g.merit_before,
         }
@@ -216,6 +234,7 @@ impl GlobalView {
         GlobalView {
             ran: g.ran,
             failed: g.failed,
+            skipped: g.skipped,
             best_start: g.best_start,
             solutions: g
                 .solutions

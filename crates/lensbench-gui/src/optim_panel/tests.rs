@@ -236,3 +236,88 @@ fn result_glasses_first_and_last() {
     );
     assert!(result_glasses(&OptimizeView::default(), false).is_empty());
 }
+
+/// ガラスの置き換えの候補の絞り込みと近さの刻みを保存し、読み戻せる。数でない上限は誤り
+#[test]
+fn glass_filter_settings_round_trip() {
+    let mut p = OptPanel::new();
+    p.glass_on = true;
+    p.glass_surfaces = "3".into();
+    let v = p.params().unwrap();
+    for k in [
+        "max_cost",
+        "max_cr",
+        "status",
+        "exclude",
+        "nd_step",
+        "dpgf_step",
+    ] {
+        assert!(v["glass"].get(k).is_none(), "{k}");
+    }
+    p.glass_max_cost = "2.5".into();
+    p.glass_max_resist[0] = "2".into();
+    p.glass_max_resist[4] = "3".into();
+    p.glass_status = [true, true, false, false, false];
+    p.glass_exclude = "N-LASF9, F2@OHARA".into();
+    p.glass_nd_step = 0.02;
+    p.glass_dpgf_step = "0.005".into();
+    let v = p.params().unwrap();
+    let d: lensbench_design::dls_spec::OptimizeParams = serde_json::from_value(v.clone()).unwrap();
+    let g = d.glass.unwrap();
+    assert_eq!(
+        (g.max_cost, g.max_cr, g.max_fr, g.max_pr),
+        (Some(2.5), Some(2.0), None, Some(3.0))
+    );
+    assert_eq!(g.status, vec!["standard", "preferred"]);
+    assert_eq!(g.exclude, vec!["N-LASF9", "F2@OHARA"]);
+    assert_eq!(
+        (g.nd_step, g.vd_step, g.dpgf_step),
+        (0.02, 1.0, Some(0.005))
+    );
+    let mut q = OptPanel::new();
+    q.set_params(&v).unwrap();
+    assert_eq!(q.glass_max_cost, "2.5");
+    assert_eq!(q.glass_max_resist, ["2", "", "", "", "3"].map(String::from));
+    assert_eq!(q.glass_status, p.glass_status);
+    assert_eq!(q.glass_exclude, "N-LASF9, F2@OHARA");
+    assert_eq!(
+        (q.glass_nd_step, q.glass_dpgf_step.as_str()),
+        (0.02, "0.005")
+    );
+    p.glass_max_cost = "x".into();
+    assert!(p.params().is_err());
+}
+
+/// 構成ごとの置き換え: 最初の構成を置き換えなかった面は当てない。固定の dn・disp は 0 にし、元に戻すときは前の値
+#[test]
+fn result_glasses_configs_and_resets() {
+    use lensbench_engine::session::views::{GlassChangeView, GlassView};
+    let r = OptimizeView {
+        glass: Some(GlassView {
+            changes: vec![
+                GlassChangeView {
+                    surface: 3,
+                    from: "1.7,30".into(),
+                    to: "N-F2".into(),
+                    configs: Some(vec![2]),
+                    ..Default::default()
+                },
+                GlassChangeView {
+                    surface: 6,
+                    from: "N-SK16".into(),
+                    to: "N-SK14".into(),
+                    configs: Some(vec![1, 3]),
+                    ..Default::default()
+                },
+            ],
+            materials: vec![(3, "F2".into()), (6, "N-SK14".into())],
+            reset: vec![("6.dn".into(), 0.01)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert_eq!(result_glasses(&r, false), vec![(6, "N-SK14".to_string())]);
+    assert_eq!(result_glasses(&r, true), vec![(6, "N-SK16".to_string())]);
+    assert_eq!(result_resets(&r, false), vec![("6.dn".to_string(), 0.0)]);
+    assert_eq!(result_resets(&r, true), vec![("6.dn".to_string(), 0.01)]);
+}

@@ -295,3 +295,72 @@ fn optimize_global_and_glass_apply() {
     let bad = json!({"vars": vars, "glass": {"surfaces": [2]}});
     assert!(sv.call("optimize", &bad, None).is_err());
 }
+
+/// 多重構成の表に面の材料の行があるとき: 材料が構成で違えば組ごとに置き換え、apply は行の置き換えた構成の欄を書き換える
+#[test]
+fn optimize_glass_config_material_row() {
+    let sv = Session::new();
+    load(&sv, "tests/refs/A0/system.zmx", None);
+    call(
+        &sv,
+        "edit",
+        json!({ "ops": [
+            { "op": "set_config_count", "n": 3 },
+            { "op": "set_config_materials", "param": "3.material", "names": ["F2", "1.7,30", "F2"] },
+        ] }),
+    );
+    let vars: Vec<Value> = [1, 2, 6, 7]
+        .iter()
+        .map(|j| json!({"name": format!("{j}.c"), "lo": -0.08, "hi": 0.08}))
+        .collect();
+    let p = json!({
+        "vars": vars,
+        "configs": [1, 2],
+        "glass": {"surfaces": [3], "candidates": 2, "passes": 1, "exclude": ["N-SK16"]},
+        "apply": true,
+    });
+    let r = call(&sv, "optimize", p);
+    let gl = &r["glass"];
+    let ch = gl["changes"].as_array().unwrap();
+    // 構成 2 のモデルガラスは必ず置き換える（構成 2 だけの組）
+    let c2 = ch
+        .iter()
+        .find(|c| c["configs"] == json!([2]))
+        .expect("config 2");
+    assert_eq!(c2["from"], json!("1.7,30"));
+    let to2 = c2["to"].as_str().unwrap().to_string();
+    assert_ne!(to2, "N-SK16");
+    // 構成 1 の材料は F2 のままか、構成 1 だけの置き換え
+    let to1 = ch
+        .iter()
+        .find(|c| c["configs"] == json!([1]))
+        .map_or("F2".to_string(), |c| c["to"].as_str().unwrap().to_string());
+    // 構成ごとの最後の材料は、違うときだけ
+    if to1 == to2 {
+        assert!(gl.get("config_materials").is_none(), "{gl}");
+    } else {
+        assert_eq!(gl["config_materials"], json!([[3, [to1, to2]]]), "{gl}");
+    }
+    assert_eq!(r["applied"], json!(true), "{r}");
+    // 行の構成 1・2 の欄が置き換わり、問題に入れなかった構成 3 は F2 のまま
+    let t = call(&sv, "config_table", json!({}));
+    let row = t["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["param"] == "3.material")
+        .unwrap()
+        .clone();
+    let names: Vec<String> = row["values"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            row["names"][v.as_f64().unwrap() as usize]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(names, [to1, to2, "F2".to_string()], "{row}");
+}
