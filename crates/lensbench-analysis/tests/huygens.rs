@@ -110,6 +110,7 @@ fn perfect_lens_gives_diffraction_limit() {
         image: 256,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     assert!((h.tan[0] - 1.0).abs() < 1e-12 && (h.sag[0] - 1.0).abs() < 1e-12);
@@ -149,6 +150,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         image: 128,
         pixel: Some(d),
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let hp = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let c0 = 64;
@@ -179,6 +181,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         image: 256,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs).unwrap();
     for (k, &q) in fs.iter().enumerate() {
@@ -197,6 +200,7 @@ fn rejects_bad_grids() {
         image: 16,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
     // 像の格子が瞳の標本の周期を超える
@@ -205,6 +209,7 @@ fn rejects_bad_grids() {
         image: 64,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
 }
@@ -219,6 +224,7 @@ fn huygens_mtf_above_nyquist_is_nan() {
         image: 64,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let ny = 0.5 / p.pixel.0;
@@ -237,6 +243,7 @@ fn huygens_points_outside_the_image_surface_are_nan() {
         image: 64,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     // 半径が格子の幅の 1/4 の球面の像面: 格子の外側の点は球の外
@@ -307,6 +314,7 @@ fn skew_fields_match_huygens() {
         image: 64,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let f1 = FieldSel::Index(1);
     let mut worst = Vec::new();
@@ -409,6 +417,7 @@ fn expand_is_close_to_the_exact_sum() {
             image,
             pixel,
             exact: true,
+            device: lensbench_analysis::huygens::HuygensDevice::Cpu,
         };
         let exact = huygens_psf(s, f, w, o).unwrap();
         let fast = huygens_psf(s, f, w, HuygensOpts { exact: false, ..o }).unwrap();
@@ -430,6 +439,7 @@ fn expand_keeps_nan_outside_the_image_surface() {
         image: 64,
         pixel: None,
         exact: true,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let r = 16.0 * p0.pixel.0;

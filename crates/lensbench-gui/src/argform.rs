@@ -275,6 +275,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "image") => "Image grid",
         (_, "pixel") => "Image grid spacing",
         (_, "exact") => "Exact sum (slow)",
+        (_, "device") => "Compute on",
         ("psf", "plane") => "Grid plane",
         (_, "diff_limit") => "Apply diffraction limit",
         (_, "beam1") => "Beam 1 (sample)",

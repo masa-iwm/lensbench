@@ -478,6 +478,7 @@ Huygens PSF	Huygens PSF
 Image grid	像のグリッドサイズ
 Image grid spacing	像のグリッドの間隔
 Exact sum (slow)	厳密な和（遅い）
+Compute on	計算する場所
 Grid plane	グリッドの面
 Apply diffraction limit	回折限界をかける
 Beam 1 (sample)	光束 1（試料）

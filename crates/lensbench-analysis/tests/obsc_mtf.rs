@@ -64,6 +64,7 @@ fn huygens_central_obscuration() {
         image: 128,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let r = huygens_mtf(&s, FieldSel::Index(0), Waves::All, o, &fr).unwrap();
     for (i, &f) in fr.iter().enumerate() {

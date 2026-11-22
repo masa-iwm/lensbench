@@ -1,0 +1,19 @@
+[package]
+name = "lensbench-gpu"
+description = "GPU (wgpu compute shader) kernels of lensbench: the Huygens PSF sum in single precision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+# 注意: Cargo.lock の gpu-allocator は windows 0.62.2（wgpu-hal と同じ版）を指すこと。cargo が wry・tao の 0.61 を
+# 選ぶと Windows で wgpu-hal（DX12）が組めない（lock の gpu-allocator の行を手で直す）
+# ネイティブだけ（Vulkan・DX12・Metal）。GLES は compute shader が無い環境が多いので入れない。Web 版（WebGPU）は後で
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu = { version = "30.0.2", default-features = false, features = ["std", "parking_lot", "dx12", "metal", "vulkan", "wgsl"] }
+pollster = "1.0.3"
+bytemuck = "1.25.2"

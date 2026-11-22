@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use crate::analysis::{self, MtfMethod, ZernKind};
 use crate::ghost;
-use crate::huygens::{self, HuygensOpts};
+use crate::huygens::{self, HuygensDevice, HuygensOpts};
 use crate::interference::{self, PupilOpts};
 use crate::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use crate::psf::{self, PsfOpts, PsfPlane};
@@ -227,6 +227,9 @@ impl Analysis {
         let exact = || {
             p("exact", Flag, b(false), "", "Sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)")
         };
+        let device = || {
+            p("device", ch(&["auto", "cpu", "gpu"]), st("auto"), "", "Where to compute the Huygens sum: auto (default; a GPU if one is present, otherwise the CPU), cpu, or gpu (use the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak). Not used with exact")
+        };
         match self {
             Analysis::Spot => vec![
                 wave(),
@@ -283,7 +286,7 @@ impl Analysis {
                     "Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)",
                 ),
             ],
-            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel(), exact()],
+            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel(), exact(), device()],
             Analysis::Rms => vec![
                 wave(),
                 p(
@@ -313,7 +316,7 @@ impl Analysis {
                     "Multiply by the diffraction limit",
                 ),
             ],
-            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel(), exact()],
+            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel(), exact(), device()],
             Analysis::Pop => vec![
                 wave(),
                 p(
@@ -769,6 +772,12 @@ impl Plugin for Analysis {
                     image: r.count("image", d.count("image")?)?,
                     pixel,
                     exact: r.flag("exact", d.flag("exact")?)?,
+                    device: match r.str("device", d.str("device")?)?.as_str() {
+                        "auto" => HuygensDevice::Auto,
+                        "cpu" => HuygensDevice::Cpu,
+                        "gpu" => HuygensDevice::Gpu,
+                        x => invalid!("setting device must be auto, cpu or gpu ({x})"),
+                    },
                 };
                 if *self == Analysis::HuygensPsf {
                     Prepared::HuygensPsf { wave, opts }

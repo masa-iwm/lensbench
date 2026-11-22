@@ -84,6 +84,7 @@ fn huygens_psf_matches_opticstudio() {
             image: nx,
             pixel: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
             exact: false,
+            device: lensbench_analysis::huygens::HuygensDevice::Cpu,
         };
         let p = huygens_psf(
             &s,
@@ -129,6 +130,7 @@ fn huygens_mtf_matches_opticstudio() {
             image: it["image"].as_u64().unwrap() as usize,
             pixel: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
             exact: false,
+            device: lensbench_analysis::huygens::HuygensDevice::Cpu,
         };
         let fs = nums(&it["freqs"]);
         let m = huygens_mtf(

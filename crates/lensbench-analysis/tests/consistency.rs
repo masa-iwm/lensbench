@@ -216,6 +216,7 @@ fn undersampling_is_reported() {
         image: 32,
         pixel: None,
         exact: false,
+        device: lensbench_analysis::huygens::HuygensDevice::Cpu,
     };
     let coarse = psf::psf(&s, f0, Waves::All, fixed(16)).unwrap();
     let hc = huygens_psf(&s, f0, Waves::All, hfixed(16)).unwrap();

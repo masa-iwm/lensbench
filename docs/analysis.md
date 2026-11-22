@@ -44,6 +44,10 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
   （`tests/huygens_refs`、許容差と理由は `crates/lensbench-analysis/tests/huygens_refs.rs`）。OS の自動の Huygens MTF は像の格子が狭く、低周波が高く出る。
   既定は速い近似（像の格子の区画ごとに瞳の各標本の位相と振幅を 2 次式で近似し、区画は位相の差が 1e-6 rad 以下になる大きさを自動で選ぶ。
   強度は厳密な和と収差のない中心の値の 1e-7 倍程度で合う）。厳密な和は `--exact`（数倍遅い）。
+  GPU（Vulkan・DX12・Metal）があれば、近似の代わりに GPU で全部の点を単精度で足す（`--device auto`、既定。位相が大きくならない書き方で、
+  強度は厳密な和と 5e-7 倍程度で合う。RTX 3060 で CPU の既定の 10 倍以上速い）。CPU で動くアダプタ（WARP・llvmpipe）は使わない。
+  `--device cpu` で CPU に固定、`--device gpu` は CPU で動くアダプタでも GPU の経路を使う（照合用。使えなければ CPU で計算して `warnings` に書く）。
+  `--exact` はいつも CPU。バックエンドは環境変数 `WGPU_BACKEND`（`vulkan`・`dx12`・`metal`）で選べる。Web 版は CPU だけ。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
 - OpticStudio 26.1 との照合は `tests/refs/<システム>/mtf_family.json`・`psf_os.npz`（24 本、許容差と理由は `crates/lensbench-verify/src/mtf_refs.rs`）。
 - Python は `System.mtf`（`method="fft"`・`each_wave=True`・`axes=`・`polarization=`）・`mtf_focus`・`mtf_field`・`rms`（`vs=`）・`psf`・`geo_mtf`・`huygens_psf`・`huygens_mtf`。

@@ -47,6 +47,8 @@ pub struct HuygensOpts {
     /// 位相で 1e-6 rad・振幅で 1e-6 倍以下になるように選ぶ（確かめるのは格子の四隅と中央の区画だけで、全部の
     /// 区画の保証ではない。強度の差は照合の系で収差のない中心の値の 2e-7 倍以下）。合う区画が無ければ厳密に計算する
     pub exact: bool,
+    /// 和を計算する場所（[`HuygensDevice`]）。exact が true なら使わない（いつも CPU の厳密な和）
+    pub device: HuygensDevice,
 }
 
 impl Default for HuygensOpts {
@@ -56,7 +58,147 @@ impl Default for HuygensOpts {
             image: 128,
             pixel: None,
             exact: false,
+            device: HuygensDevice::Auto,
         }
+    }
+}
+
+/// Huygens の和（光源 × 像の点）を計算する場所。GPU は単精度（位相を小さく保つ書き方で、強度の差は照合の系で
+/// 収差のない中心の値の 5e-7 倍ほど。CPU の既定の展開と同じ程度）。GPU は `gpu` 機能を付けて組んだときだけ
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum HuygensDevice {
+    /// GPU があれば GPU（CPU で動くアダプタ（WARP・llvmpipe）は使わない）、無ければ CPU の既定の展開
+    #[default]
+    Auto,
+    /// いつも CPU
+    Cpu,
+    /// CPU で動くアダプタでも GPU の経路を使う（試験・照合用）。アダプタが無い・誤りなら CPU で計算して注意を出す
+    Gpu,
+}
+
+/// 使える GPU の名前（[`HuygensDevice::Auto`] で使うもの）。無い・`gpu` 機能なしで組んだなら None
+pub fn gpu_name() -> Option<String> {
+    #[cfg(feature = "gpu")]
+    {
+        lensbench_gpu::gpu(false).map(|g| g.name().to_string())
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        None
+    }
+}
+
+/// GPU の和の入力（[`gpu_sum`]）
+struct GpuInput<'a> {
+    sphere: Sphere,
+    /// 平面の基準の点（主光線の像点）と主光線の向き
+    pc: V3,
+    kc: V3,
+    kn: f64,
+    q: [&'a [f64]; 3],
+    /// 球: 光源から中心へ、平面: 光線の向き
+    a: [&'a [f64]; 3],
+    f: &'a [f64],
+    ph0: &'a [f64],
+    pts: &'a [V3],
+}
+
+/// GPU で和を求める。None なら使わない（CPU で計算する）。誤りで CPU に戻るときは note に理由を入れる
+/// （[`HuygensDevice::Gpu`] のときだけ）
+#[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
+fn gpu_sum(
+    device: HuygensDevice,
+    x: &GpuInput<'_>,
+    note: &mut Option<String>,
+) -> Result<Option<Vec<f64>>> {
+    if device == HuygensDevice::Cpu {
+        return Ok(None);
+    }
+    #[cfg(feature = "gpu")]
+    {
+        let forced = device == HuygensDevice::Gpu;
+        let Some(g) = lensbench_gpu::gpu(forced) else {
+            if forced {
+                *note = Some("Huygens PSF: no GPU adapter; computed on the CPU".into());
+            }
+            return Ok(None);
+        };
+        let ns = x.f.len();
+        let [qx, qy, qz] = x.q;
+        let [ax, ay, az] = x.a;
+        let (reference, dir, phase, origin) = match x.sphere {
+            Some((c0, rr, sg)) => {
+                // 光源から中心への向き a = C − Q（|a| = R）、位相は定数 kσR を除いた 2πW
+                let dir: Vec<[f64; 3]> = (0..ns).map(|j| [ax[j], ay[j], az[j]]).collect();
+                let phase: Vec<f64> = x.ph0.iter().map(|p| p - x.kn * sg * rr).collect();
+                (
+                    lensbench_gpu::Reference::Sphere {
+                        radius: rr,
+                        ksg: x.kn * sg,
+                    },
+                    dir,
+                    phase,
+                    c0,
+                )
+            }
+            None => {
+                // 向きは主光線との差 k − k₀、位相に kn k·(Q − P₀) を入れる（kn k₀·(P − P₀) は全部の光源に共通なので落とす）
+                let dir: Vec<[f64; 3]> = (0..ns)
+                    .map(|j| [ax[j] - x.kc[0], ay[j] - x.kc[1], az[j] - x.kc[2]])
+                    .collect();
+                let phase: Vec<f64> = (0..ns)
+                    .map(|j| {
+                        let kq = ax[j] * (qx[j] - x.pc[0])
+                            + ay[j] * (qy[j] - x.pc[1])
+                            + az[j] * (qz[j] - x.pc[2]);
+                        x.ph0[j] + x.kn * kq
+                    })
+                    .collect();
+                (
+                    lensbench_gpu::Reference::Plane { kn: x.kn },
+                    dir,
+                    phase,
+                    x.pc,
+                )
+            }
+        };
+        let pts: Vec<[f64; 3]> = x.pts.iter().map(|p| sub(*p, origin)).collect();
+        let src = lensbench_gpu::Sources {
+            dir: &dir,
+            amp: x.f,
+            phase: &phase,
+        };
+        match g.huygens(reference, src, &pts, &lensbench_core::par::cancelled) {
+            Ok(v) => Ok(Some(v)),
+            Err(lensbench_gpu::Error::Cancelled) => {
+                lensbench_core::par::check_cancel()?;
+                Ok(None)
+            }
+            Err(e) => {
+                if forced {
+                    *note = Some(format!("Huygens PSF: {e}; computed on the CPU"));
+                }
+                Ok(None)
+            }
+        }
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        if device == HuygensDevice::Gpu {
+            *note = Some("Huygens PSF: built without GPU support; computed on the CPU".into());
+        }
+        Ok(None)
     }
 }
 
@@ -399,6 +541,7 @@ fn huygens_once(
     let h = 2.0 / np as f64;
 
     let mut tot = vec![0.0; pts.len()];
+    let mut gpu_note: Option<String> = None;
     let (mut nrm, mut wsum) = (0.0, 0.0);
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for (&wi, &((ia, ib), (a, b))) in ws.iter().zip(&slopes) {
@@ -547,8 +690,28 @@ fn huygens_once(
             fit_quad(&b.amp, h as f64, &mut b.camp);
             true
         };
+        // GPU（展開の代わり。厳密な和は CPU のまま）
+        let gpu_iw = if o.exact {
+            None
+        } else {
+            gpu_sum(
+                o.device,
+                &GpuInput {
+                    sphere,
+                    pc,
+                    kc,
+                    kn,
+                    q: [&qx, &qy, &qz],
+                    a: [&ax, &ay, &az],
+                    f: &qf,
+                    ph0: &ph0,
+                    pts: &pts,
+                },
+                &mut gpu_note,
+            )?
+        };
         // 区画の一辺: 格子の四隅と中央の区画で、7 点でない点の 2 次式と厳密な値の差が許容に入る一番大きい候補
-        let block = if !o.exact {
+        let block = if !o.exact && gpu_iw.is_none() {
             let mut b = ExpandBuf::default();
             let (mut tp, mut ta) = (Vec::new(), Vec::new());
             EXPAND_BLOCKS.iter().copied().find(|&blk| {
@@ -624,7 +787,9 @@ fn huygens_once(
                 .map(|[r, i]| C64::new(r.iter().sum(), i.iter().sum()).norm_sqr())
                 .collect()
         };
-        let iw: Vec<f64> = if let Some(blk) = block {
+        let iw: Vec<f64> = if let Some(v) = gpu_iw {
+            v
+        } else if let Some(blk) = block {
             let origins: Vec<(usize, usize)> = (0..ni)
                 .step_by(blk)
                 .flat_map(|y0| (0..ni).step_by(blk).map(move |x0| (x0, y0)))
@@ -688,6 +853,7 @@ fn huygens_once(
     let peak = i.iter().flatten().cloned().fold(0.0, f64::max);
     let enclosed = encl / wsum;
     let mut warnings = crate::psf::sampling_warnings("Huygens PSF", np, step, enclosed);
+    warnings.extend(gpu_note);
     if off_surface > 0 {
         warnings.push(format!(
             "Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts} image grid points (outside the surface shape); their intensity is NaN",

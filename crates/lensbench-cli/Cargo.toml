@@ -16,6 +16,11 @@ autobins = false
 [lints]
 workspace = true
 
+[features]
+default = ["gpu"]
+# Huygens の和を GPU で（wgpu。GPU が無ければ CPU）
+gpu = ["lensbench-analysis/gpu"]
+
 [lib]
 name = "lensbench_cli"
 path = "src/main.rs"

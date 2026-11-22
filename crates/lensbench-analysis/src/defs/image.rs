@@ -1,6 +1,6 @@
 //! RMS の掃引・PSF
 
-use crate::huygens::{self, HuygensOpts};
+use crate::huygens::{self, HuygensDevice, HuygensOpts};
 use crate::psf::{self, PsfOpts, PsfPlane};
 use crate::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::pupil::PupilAmp;
@@ -267,6 +267,8 @@ pub(super) struct PsfParams {
     pub pixel: Option<f64>,
     /// Huygens PSF only: sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)
     pub exact: bool,
+    /// Huygens PSF only: where to compute the Huygens sum: auto (default; a GPU if one is present, otherwise the CPU), cpu, or gpu (use the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak). Not used with exact
+    pub device: HuygensDevice,
     /// Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)
     pub plane: Plane,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
@@ -283,6 +285,7 @@ impl Default for PsfParams {
             image: 128,
             pixel: None,
             exact: false,
+            device: HuygensDevice::Auto,
             plane: Plane::Image,
             polarization: false,
         }
@@ -371,6 +374,9 @@ impl Analysis for Psf {
         if p.exact && !p.huygens {
             lensbench_core::invalid!("setting exact is for the Huygens PSF (give huygens too)");
         }
+        if p.device != HuygensDevice::Auto && !p.huygens {
+            lensbench_core::invalid!("setting device is for the Huygens PSF (give huygens too)");
+        }
         for i in fields(s, p.field)? {
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
@@ -380,6 +386,7 @@ impl Analysis for Psf {
                     image: p.image,
                     pixel: p.pixel,
                     exact: p.exact,
+                    device: p.device,
                 };
                 huygens::huygens_psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
             } else {

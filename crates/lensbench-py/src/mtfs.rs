@@ -1,6 +1,6 @@
 //! MTF の結果の dict と、設定の文字列の読み取り（lib.rs から分けた）
 
-use lensbench_analysis::{analysis, sweep};
+use lensbench_analysis::{analysis, huygens, sweep};
 use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
@@ -63,4 +63,32 @@ pub(crate) fn sweep_dict<'py>(
     d.set_item("sagittal", g(&m.sag))?;
     d.set_item("warnings", m.warnings.clone())?;
     Ok(d)
+}
+
+/// Huygens PSF・MTF の設定。device は和を計算する場所（"auto"・"cpu"・"gpu"、[`huygens::HuygensDevice`]）
+pub(crate) fn huygens_opts(
+    pupil: Option<usize>,
+    image: usize,
+    pixel: Option<f64>,
+    exact: bool,
+    device: &str,
+) -> PyResult<huygens::HuygensOpts> {
+    use huygens::HuygensDevice;
+    let device = match device {
+        "auto" => HuygensDevice::Auto,
+        "cpu" => HuygensDevice::Cpu,
+        "gpu" => HuygensDevice::Gpu,
+        d => {
+            return Err(value_err(format!(
+                "device must be \"auto\", \"cpu\" or \"gpu\" ({d})"
+            )))
+        }
+    };
+    Ok(huygens::HuygensOpts {
+        pupil,
+        image,
+        pixel,
+        exact,
+        device,
+    })
 }

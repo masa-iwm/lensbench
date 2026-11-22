@@ -22,6 +22,11 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 schemars = "1"
 rayon = "1"
 rustfft = "6"
+# Huygens の和を GPU で（gpu 機能。配る CLI・GUI・Python は既定で有効）
+lensbench-gpu = { path = "../lensbench-gpu", optional = true }
+
+[features]
+gpu = ["dep:lensbench-gpu"]
 
 [dev-dependencies]
 ndarray = "0.16"

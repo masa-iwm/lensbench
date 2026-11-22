@@ -15,8 +15,10 @@ workspace = true
 [features]
 # Windows のアプリ内のブラウザ（wry・tao。webview.rs）。切ると品ページは既定のブラウザで開く。
 # CI の Windows のテストは --no-default-features で切る（windows クレート一式をテストのビルドに乗せない）
-default = ["webview"]
+default = ["webview", "gpu"]
 webview = ["dep:wry", "dep:tao"]
+# Huygens の和を GPU で（wgpu。GPU が無ければ CPU）
+gpu = ["lensbench-analysis/gpu"]
 
 [lib]
 name = "lensbench_gui"

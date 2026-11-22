@@ -1,7 +1,7 @@
 //! 回折 MTF・スルーフォーカス・フィールド MTF・幾何 MTF・Huygens MTF
 
 use crate::analysis::{self, MtfMethod};
-use crate::huygens::{self, HuygensOpts};
+use crate::huygens::{self, HuygensDevice, HuygensOpts};
 use crate::{psf, sweep};
 use lensbench_core::Waves;
 use lensbench_core::{Error, FieldSel, Result};
@@ -482,6 +482,8 @@ pub(super) struct HuygensMtfParams {
     pub pixel: Option<f64>,
     /// Sum every pupil sample exactly at every image point (several times slower). By default each pupil sample's phase and amplitude are approximated by a quadratic over small blocks of the image grid; the block size is chosen so that the phase differs from the exact value by at most 1e-6 rad, checked on the corner and center blocks of the grid (the intensity typically agrees with the exact sum to 1e-7 of the unaberrated peak)
     pub exact: bool,
+    /// Where to compute the Huygens sum: auto (default; a GPU if one is present, otherwise the CPU), cpu, or gpu (use the GPU path even on a software adapter; falls back to the CPU with a warning). The GPU sums in single precision (the intensity agrees with the exact sum to about 5e-7 of the unaberrated peak). Not used with exact
+    pub device: HuygensDevice,
     /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
     pub polarization: bool,
     /// Tangential and sagittal directions: field (default; tangential along the field direction, the physical tangential plane) or pupil (tangential along the pupil y and sagittal along x, as in OpticStudio's FFT MTF). They differ only for fields with an x component
@@ -500,6 +502,7 @@ impl Default for HuygensMtfParams {
             image: 128,
             pixel: None,
             exact: false,
+            device: HuygensDevice::Auto,
             polarization: false,
             axes: MtfDirs::Field,
         }
@@ -526,6 +529,7 @@ impl Analysis for HuygensMtf {
             image: p.image,
             pixel: p.pixel,
             exact: p.exact,
+            device: p.device,
         };
         let mut v = Vec::new();
         for i in fields(s, p.field)? {

@@ -131,6 +131,19 @@ def test_psf(b0):
         b0.psf(1, plane="x")
 
 
+def test_huygens_device(b0):
+    # GPU の経路（CPU で動くアダプタでも。無ければ注意を出して CPU）は CPU の厳密な和と合う
+    e = b0.huygens_psf(1, wave=2, pupil=32, image=32, exact=True)
+    g = b0.huygens_psf(1, wave=2, pupil=32, image=32, device="gpu")
+    assert np.max(np.abs(e["i"] - g["i"])) < 1e-6
+    c = b0.huygens_psf(1, wave=2, pupil=32, image=32, device="cpu")
+    assert not any("computed on the CPU" in w for w in c["warnings"])
+    with pytest.raises(ValueError):
+        b0.huygens_psf(1, device="x")
+    with pytest.raises(ValueError):
+        b0.huygens_mtf(1, [0.0], device="x")
+
+
 def test_geo_mtf(b0):
     g = b0.geo_mtf(2, [0.0, 50.0], diff_limit=True)
     assert g["tangential"][0] == pytest.approx(1.0, abs=1e-14)

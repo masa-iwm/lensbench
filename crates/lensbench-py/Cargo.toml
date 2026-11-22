@@ -26,8 +26,10 @@ doctest = false
 [features]
 # 拡張モジュールの入口（PyInit_lensbench）を作る。別の拡張モジュールに組み込むときは
 # default-features = false にして、その側の #[pymodule] から init_module を呼ぶ
-default = ["module"]
+default = ["module", "gpu"]
 module = []
+# Huygens の和を GPU で（wgpu。GPU が無ければ CPU）
+gpu = ["lensbench-analysis/gpu"]
 
 [dependencies]
 lensbench-formats = { path = "../lensbench-formats" }

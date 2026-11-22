@@ -9,6 +9,7 @@ mod consistency;
 mod gauss;
 mod ghost;
 mod huygens;
+mod huygens_gpu;
 mod huygens_refs;
 mod obsc_mtf;
 mod plugin_system;
