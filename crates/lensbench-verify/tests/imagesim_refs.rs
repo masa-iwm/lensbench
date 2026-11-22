@@ -72,10 +72,10 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
             st["PSFXPoints"].as_u64().unwrap() as usize,
             st["PSFYPoints"].as_u64().unwrap() as usize,
         ),
-        aberrations: if st["Aberrations"] == "None" {
-            Aberrations::None
-        } else {
-            Aberrations::Diffraction
+        aberrations: match st["Aberrations"].as_str().unwrap() {
+            "None" => Aberrations::None,
+            "Geometric" => Aberrations::Geometric,
+            _ => Aberrations::Diffraction,
         },
         relative_illumination: st["UseRelativeIllumination"].as_bool().unwrap(),
         wave: (!rgb).then(|| meta["primary_wavelength"].as_u64().unwrap() as usize - 1),

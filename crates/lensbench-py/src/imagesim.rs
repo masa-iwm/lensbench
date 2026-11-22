@@ -63,8 +63,13 @@ pub(crate) fn run<'py>(
     };
     let aberrations = match a.aberrations.as_str() {
         "diffraction" => Aberrations::Diffraction,
+        "geometric" => Aberrations::Geometric,
         "none" => Aberrations::None,
-        x => return Err(value_err(format!("aberrations {x:?}: diffraction or none"))),
+        x => {
+            return Err(value_err(format!(
+                "aberrations {x:?}: diffraction, geometric or none"
+            )))
+        }
     };
     let channel_waves = match a.rgb_waves {
         Some(r) if r.iter().all(|&x| x >= 1) => Some(r.map(|x| x - 1)),

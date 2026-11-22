@@ -2727,8 +2727,8 @@ Full height of the source image in field units (√2 × the largest field if omi
 PSF grid points across the image in x (the PSF is interpolated between them)	画像の x 方向の PSF のグリッド点の数（間は PSF を補間）
 PSF grid points across the image in y	画像の y 方向の PSF のグリッド点の数
 Distortion and relative illumination grid points on a side	歪曲・相対照度のグリッドの一辺の点の数
-Aberrations: diffraction (FFT PSF at each PSF grid point) or none (distortion and relative illumination only)	収差: diffraction（PSF のグリッド点ごとの FFT PSF）か none（歪曲と相対照度だけ）
-Pupil grid side of the PSF (automatic if omitted)	PSF の瞳のグリッドの一辺（省略で自動）
+Aberrations: diffraction (FFT PSF at each PSF grid point), geometric (ray density of a pupil grid at each PSF grid point) or none (distortion and relative illumination only)	収差: diffraction（PSF のグリッド点ごとの FFT PSF）、geometric（PSF のグリッド点ごとの瞳のグリッドの光線の密度）か none（歪曲と相対照度だけ）
+Pupil grid side of the PSF (automatic if omitted; 64 for the geometric PSF)	PSF の瞳のグリッドの一辺（省略で自動。幾何 PSF は 64）
 Image grid side of the PSF before it is binned to detector pixels	検出器の画素にまとめる前の PSF の像のグリッドの一辺
 Detector pixel size [lens units] (the on-axis image of one source pixel if omitted)	検出器の画素の大きさ [レンズ単位]（省略で元の 1 画素の軸上の像の大きさ）
 Detector width [pixels] (same as the source if omitted)	検出器の幅 [画素]（省略で元の画像と同じ）

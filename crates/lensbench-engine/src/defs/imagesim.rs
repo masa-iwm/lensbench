@@ -18,6 +18,8 @@ pub(super) enum Aber {
     /// 回折 PSF
     #[default]
     Diffraction,
+    /// 幾何 PSF
+    Geometric,
 }
 
 /// 像の模擬の設定
@@ -38,9 +40,9 @@ pub(super) struct ImageSimParams {
     /// Distortion and relative illumination grid points on a side
     #[schemars(extend("x-min" = 2))]
     pub map_grid: usize,
-    /// Aberrations: diffraction (FFT PSF at each PSF grid point) or none (distortion and relative illumination only)
+    /// Aberrations: diffraction (FFT PSF at each PSF grid point), geometric (ray density of a pupil grid at each PSF grid point) or none (distortion and relative illumination only)
     pub aberrations: Aber,
-    /// Pupil grid side of the PSF (automatic if omitted)
+    /// Pupil grid side of the PSF (automatic if omitted; 64 for the geometric PSF)
     pub pupil: Option<usize>,
     /// Image grid side of the PSF before it is binned to detector pixels
     #[schemars(extend("x-min" = 8))]
@@ -183,6 +185,7 @@ impl Analysis for ImageSim {
             aberrations: match p.aberrations {
                 Aber::None => Aberrations::None,
                 Aber::Diffraction => Aberrations::Diffraction,
+                Aber::Geometric => Aberrations::Geometric,
             },
             relative_illumination: p.relative_illumination,
             channel_waves,

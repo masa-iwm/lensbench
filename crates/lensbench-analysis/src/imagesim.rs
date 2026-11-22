@@ -29,6 +29,8 @@ pub enum Aberrations {
     /// 回折 PSF（FFT PSF）
     #[default]
     Diffraction,
+    /// 幾何 PSF（瞳の格子の光線の像面の点の密度。OpticStudio の Aberrations = Geometric）
+    Geometric,
 }
 
 /// 像の模擬の設定
@@ -40,7 +42,7 @@ pub struct ImageSimOpts {
     pub psf_grid: (usize, usize),
     /// 歪曲・相対照度の格子の一辺（元の画像の範囲に等間隔、端を含む）
     pub map_grid: usize,
-    /// PSF の瞳の格子（None で自動）
+    /// PSF の瞳の格子（None で自動。幾何 PSF は [`GEO_PUPIL`]）
     pub pupil: Option<usize>,
     /// PSF の格子の一辺（FFT PSF の像の格子。検出器の画素に積分する前）
     pub psf_points: usize,
@@ -306,6 +308,10 @@ pub fn image_sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSi
                         return Ok(None);
                     }
                     let h = grid_field(k % gx, k / gx, gx, gy);
+                    if o.aberrations == Aberrations::Geometric {
+                        let n = o.pupil.unwrap_or(GEO_PUPIL);
+                        return geo_kernel(s, FieldSel::Norm(h.0, h.1), w, n, pixel).map(Some);
+                    }
                     let p = psf(
                         s,
                         FieldSel::Norm(h.0, h.1),
@@ -456,6 +462,54 @@ fn splat_box(img: &mut [f64], w: usize, h: usize, cx: f64, cy: f64, side: f64, e
             img[y * w + x] += e * wx * wy;
         }
     }
+}
+
+/// 幾何 PSF の瞳の格子の一辺の既定
+pub const GEO_PUPIL: usize = 64;
+
+/// 幾何 PSF の核（OpticStudio の Aberrations = Geometric）: 瞳の正方格子（一辺 n の各区間の中心、円の中）の波長 w の
+/// 光線が像面に当たる点を、主波長の主光線の像点を中心に検出器の画素へ配る（重みは系のアポダイゼーションの強度、
+/// けられた光線は除く）。和を 1 にした奇数の一辺の核
+fn geo_kernel(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    n: usize,
+    pixel: f64,
+) -> Result<(usize, Vec<f64>)> {
+    if n < 2 {
+        invalid!("image simulation: geometric PSF pupil grid {n}");
+    }
+    let c = s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?;
+    if !c.traced(0) {
+        invalid!("image simulation: the chief ray doesn't reach the image (geometric PSF)");
+    }
+    let c0 = (c.rays[0].xyz[0], c.rays[0].xyz[1]);
+    let (px, py) = lensbench_core::opd::pupil_grid(n);
+    let t = s.try_trace(field, &px, &py, Some(w), None, false)?;
+    let wts = crate::analysis::apodized(s, field, &px, &py, &vec![1.0; px.len()])?;
+    let pts: Vec<(f64, f64, f64)> = (0..px.len())
+        .filter(|&i| t.traced(i) && wts[i] > 0.0)
+        .map(|i| (t.rays[i].xyz[0] - c0.0, t.rays[i].xyz[1] - c0.1, wts[i]))
+        .filter(|p| p.0.is_finite() && p.1.is_finite())
+        .collect();
+    if pts.is_empty() {
+        invalid!("image simulation: no ray of the pupil reaches the image (geometric PSF)");
+    }
+    let half = pts
+        .iter()
+        .fold(0.0f64, |a, p| a.max(p.0.abs()).max(p.1.abs()));
+    let r = (half / pixel).ceil() as usize + 1;
+    let m = 2 * r + 1;
+    let mut k = vec![0.0; m * m];
+    for &(x, y, wt) in &pts {
+        splat(&mut k, m, m, x / pixel + r as f64, r as f64 - y / pixel, wt);
+    }
+    let tot: f64 = k.iter().sum();
+    for v in &mut k {
+        *v /= tot;
+    }
+    Ok((m, k))
 }
 
 /// FFT PSF の格子を検出器の画素（大きさ pixel）の核に積分する（各標本を双線形に置く。和を 1 に）。

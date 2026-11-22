@@ -28,7 +28,11 @@ fn gray(w: usize, h: usize, f: impl Fn(usize, usize) -> f64) -> SimImage {
 #[test]
 fn uniform_image_is_one_on_axis() {
     let s = load("A0");
-    for ab in [Aberrations::None, Aberrations::Diffraction] {
+    for ab in [
+        Aberrations::None,
+        Aberrations::Diffraction,
+        Aberrations::Geometric,
+    ] {
         let o = ImageSimOpts {
             field_height: 10.0,
             psf_grid: (3, 3),
@@ -200,4 +204,69 @@ fn point_image_has_no_comb() {
             "{row:?}"
         );
     }
+}
+
+/// 幾何 PSF: 点（1 画素）の像の明るさの和は収差なしと同じで、重心のまわりの広がり（RMS）はスポットの RMS
+/// （[`lensbench_analysis::analysis::spot`]、重心から）に、検出器の画素と元の 1 画素の像の分を足したものに近い
+#[test]
+fn geometric_psf_spreads_like_the_spot() {
+    let s = load("A0");
+    let w = s.primary;
+    // 軸上の点だけの元の画像（視野の高さ 2 度の 33 × 33）
+    let src = gray(33, 33, |i, j| if i == 16 && j == 16 { 1.0 } else { 0.0 });
+    let sp = lensbench_analysis::analysis::spot(
+        &s,
+        lensbench_core::system::FieldSel::Norm(0.0, 0.0),
+        lensbench_core::Waves::One(w),
+        20,
+    )
+    .unwrap();
+    let pixel = sp.rms_centroid / 8.0;
+    let base = ImageSimOpts {
+        field_height: 2.0,
+        psf_grid: (1, 1),
+        map_grid: 5,
+        relative_illumination: false,
+        pixel: Some(pixel),
+        size: Some((161, 161)),
+        wave: Some(w),
+        pupil: Some(256),
+        ..Default::default()
+    };
+    let run = |ab| {
+        image_sim(
+            &s,
+            &src,
+            &ImageSimOpts {
+                aberrations: ab,
+                ..base.clone()
+            },
+        )
+        .unwrap()
+    };
+    let (none, geo) = (run(Aberrations::None), run(Aberrations::Geometric));
+    let moments = |r: &lensbench_analysis::imagesim::ImageSimOut| {
+        let (w, im) = (r.image.width, &r.image.channels[0]);
+        let (mut t, mut sx, mut sy) = (0.0, 0.0, 0.0);
+        for (k, &v) in im.iter().enumerate() {
+            t += v;
+            sx += v * (k % w) as f64;
+            sy += v * (k / w) as f64;
+        }
+        let (cx, cy) = (sx / t, sy / t);
+        let mut m2 = 0.0;
+        for (k, &v) in im.iter().enumerate() {
+            m2 += v * (((k % w) as f64 - cx).powi(2) + ((k / w) as f64 - cy).powi(2));
+        }
+        (t, (m2 / t).sqrt() * r.pixel)
+    };
+    let ((t0, r0), (t1, r1)) = (moments(&none), moments(&geo));
+    assert!((t1 / t0 - 1.0).abs() < 1e-9, "sum {t1} vs {t0}");
+    // 収差なしの広がり（画素・元の画素の像）を 2 乗で引く
+    let rms = (r1 * r1 - r0 * r0).sqrt();
+    assert!(
+        (rms / sp.rms_centroid - 1.0).abs() < 0.05,
+        "geometric PSF rms {rms} vs spot {}",
+        sp.rms_centroid
+    );
 }
