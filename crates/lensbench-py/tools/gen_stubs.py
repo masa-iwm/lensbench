@@ -82,7 +82,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
          "merit": "float", "history": "list[float]", "iterations": "int", "evals": "int", "stop": "str",
          "note": "str | None", "inactive": "list[str]", "term_values0": "list[float]", "term_values": "list[float]",
          "term_value_kinds": "list[str]"},
-        {},
+        {"global_search": "dict[str, Any]", "glass": "dict[str, Any]"},
     ),
     "_Rms": ("Result of System.rms at one point (without vs)", {k: "float" for k in ("spot", "spot_x", "spot_y", "wfe", "strehl")}, {}),
     "_RmsSweep": ("Result of System.rms with vs (field, focus, wavelength) (per point of x)",

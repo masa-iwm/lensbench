@@ -26,6 +26,13 @@
 - **近軸ガウスビーム**（`gaussian-beam`、OpticStudio の Paraxial Gaussian Beam 相当）: ウエストの半径・面 1 からの距離・M² で与えたビームを近軸の
   ABCD 行列で運び、各面の後のビーム半径・ウエスト・ウエストの位置・曲率半径・広がり角・レイリー長（基本モードと M² の混合モード）を出す。
   CLI・serve・Python（`System.analyze("gaussian-beam", ...)`）・GUI（光軸に沿ったビーム半径の図）。OpticStudio 26.1 と表示の 6 桁で一致
+- **最適化の大域の探索**: `optimize --starts N` は始点を変えて最適化を N 回（並列に）繰り返し、評価関数の良い解を残す
+  （範囲のある変数は範囲の中から一様に、無い変数は今の値のまわりから。`--seed` で再現でき、途中で止められる）。結果に残した解の一覧
+  `global_search` が付く。serve・Python（`starts`・`seed`・`keep`・`spread`、API 2.4）・GUI の最適化のパネル（「グローバルサーチと硝材置換」）からも使える
+- **ガラスの置き換え**: `optimize --glass-surfaces 1,3,6 --glass-catalog SCHOTT` は最適化の後に、面の硝材をカタログの実在の硝材から選ぶ。
+  モデルガラスや dn・disp を変数にして動かした面は近い実在の硝材に置き換え、実在の硝材は評価関数が良くなるときだけ入れ替える
+  （面ごとに nd・vd の近い候補を、変数を最適化し直して比べる）。結果に置き換えの記録 `glass` が付く。serve・Python（`glass`）・GUI からも使え、
+  GUI の「システムに反映」は選んだ硝材も当てる
 
 ### 直した所
 

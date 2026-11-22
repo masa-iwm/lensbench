@@ -151,7 +151,7 @@ class _Cardinal(TypedDict):
     ffl: float
 
 
-class _OptimizeResult(TypedDict):
+class _OptimizeResultBase(TypedDict):
     """Result of System.optimize"""
     system: System
     names: list[str]
@@ -168,6 +168,12 @@ class _OptimizeResult(TypedDict):
     term_values0: list[float]
     term_values: list[float]
     term_value_kinds: list[str]
+
+
+class _OptimizeResult(_OptimizeResultBase, total=False):
+    """Keys present under conditions"""
+    global_search: dict[str, Any]
+    glass: dict[str, Any]
 
 
 class _Rms(TypedDict):
@@ -772,12 +778,18 @@ class System:
     def object_of(self, field: _Field) -> list[float]:
         """The object of a field (number or (hx, hy)): an object point (x, y) [mm] for a finite object, a direction (l, m, n) at infinity"""
 
-    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None, qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False) -> _OptimizeResult:
+    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None, qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False, starts: int = 0, seed: int = 1, keep: int = 5, spread: float = 0.5, glass: Any = None) -> _OptimizeResult:
         """Return the system optimized by damped least squares (DLS) (the original system is not changed). vars is a list of variables, each "7.t" or
         ("7.t", lower, upper) (None for no bound on that side). The default merit function merit is "spot" (RMS spot) or "wavefront" (RMS wavefront),
         over all fields (field weights) and wavelengths. None for only the terms. jac is "auto" (analytic for terms with 16 or more analytic columns, central differences for the others),
         "fd" (all central differences) or "forward" (all forward differences, half the traces of central differences). qr solves each step by QR instead of the normal equations, gtol stops when the largest cosine between the residuals and a variable's column is below it (0: no test), active_set fixes variables a step would take out of range at the bound.
         stopped_as_vignetted drops stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation.
+
+        starts of 2 or more runs a global search: the optimization is repeated from starts start points (the current values first; variables with both bounds drawn uniformly
+        in their range, others within ±spread × max(|value|, typical size) of the value, by the random seed) in parallel, and the best keep distinct solutions are kept.
+        glass is a dict {"surfaces": [1, 3], "catalogs": ["SCHOTT"], "candidates": 8, "passes": 2} for glass substitution after the optimization: the glass of each surface
+        is chosen among the candidates nearest in nd and vd to its current medium, re-optimizing the variables for each (model glasses and surfaces with dn/disp are always
+        replaced by a real glass, real glasses only when the merit improves; catalogs default to the glasses loaded for the system).
 
         terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
         the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
@@ -789,7 +801,9 @@ class System:
 
         Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
         iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
-        inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others)
+        inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others),
+        global_search (with starts ≥ 2: ran, failed, best_start, solutions with start, merit and x, best first), glass (with glass: changes with surface, from, to, target_nd,
+        target_vd, nd, vd and merit; materials as (surface, name); tried; merit_before)
         """
 
     def pickups(self) -> list[_Pickup]:

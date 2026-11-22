@@ -70,3 +70,74 @@ impl VarArg {
         }
     }
 }
+
+/// optimize の glass（dict）を設定の型に
+pub(crate) fn glass_arg(
+    g: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<lensbench_design::dls_spec::GlassParams>> {
+    let Some(g) = g else {
+        return Ok(None);
+    };
+    serde_json::from_value(crate::pyjson::from_py(g)?)
+        .map(Some)
+        .map_err(|e| err(lensbench_core::Error::Invalid(format!("glass: {e}"))))
+}
+
+/// optimize の返り値の dict（"system" の他）: 変数・評価関数・項の値と、回したときの global_search・glass
+pub(crate) fn result_dict<'py>(
+    py: Python<'py>,
+    s: &System,
+    p: &optim::Problem,
+    run: &lensbench_design::dls_spec::OptimizeRun,
+    n_default: usize,
+    users: &[Arc<userterm::PyUserTerm>],
+    threads: Option<usize>,
+) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+    use lensbench_engine::session::views::{GlassView, GlobalView};
+    use pyo3::types::PyDictMethods;
+    let r = &run.result;
+    let pair = |t: &optim::TermValue| (t.value(), t.kind_name());
+    let tv = |q: &optim::Problem, x: &[f64]| -> PyResult<(Vec<f64>, Vec<&str>)> {
+        let v = py
+            .detach(|| lensbench_core::with_threads(threads, || q.term_values(x)))
+            .map_err(err);
+        userterm::raise_user_errors(users)?;
+        Ok(v?[n_default..].iter().map(pair).unzip())
+    };
+    let ((tv0, _), (tv1, kinds)) = (tv(p, &r.x0)?, tv(&run.problem, &r.x)?);
+    let d = pyo3::types::PyDict::new(py);
+    let names: Vec<String> = p.vars.iter().map(|v| s.param_name(v.param)).collect();
+    // 外した dn・disp の変数（ガラスの置き換え）は inactive に数えない
+    let inactive: Vec<usize> = (0..p.vars.len())
+        .filter(|&q| {
+            run.problem
+                .vars
+                .iter()
+                .position(|u| *u == p.vars[q])
+                .is_some_and(|i| r.inactive.contains(&i))
+        })
+        .collect();
+    d.set_item("names", names)?;
+    d.set_item("x0", r.x0.clone())?;
+    d.set_item("x", run.x.clone())?;
+    d.set_item("merit0", r.merit0)?;
+    d.set_item("merit", r.merit)?;
+    d.set_item("history", r.history.clone())?;
+    d.set_item("iterations", r.iterations)?;
+    d.set_item("evals", r.evals)?;
+    d.set_item("stop", r.stop.as_str())?;
+    d.set_item("note", r.note.clone())?;
+    d.set_item("inactive", inactive)?;
+    d.set_item("term_values0", tv0)?;
+    d.set_item("term_values", tv1)?;
+    d.set_item("term_value_kinds", kinds)?;
+    if let Some(g) = &run.global {
+        let v = serde_json::to_value(GlobalView::from_result(g)).unwrap_or_default();
+        d.set_item("global_search", crate::pyjson::to_py(py, &v)?)?;
+    }
+    if let Some(g) = &run.glass {
+        let v = serde_json::to_value(GlassView::from_run(g)).unwrap_or_default();
+        d.set_item("glass", crate::pyjson::to_py(py, &v)?)?;
+    }
+    Ok(d)
+}

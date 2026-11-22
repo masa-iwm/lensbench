@@ -92,6 +92,11 @@ mod fd;
 mod trace;
 use trace::{launch_of, trace_ok, trace_pupil_cols, trace_pupil_rec};
 
+/// 種類ごとの変数の目安の大きさ（大域の探索の振り幅・同じ解の判定）
+pub(crate) fn typical_of(k: Kind) -> f64 {
+    typical(k)
+}
+
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
 

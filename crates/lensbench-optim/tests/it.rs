@@ -6,6 +6,7 @@
 mod aber_figs;
 mod aber_os;
 mod common;
+mod global;
 mod optim;
 mod optim_terms;
 mod zoom;

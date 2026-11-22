@@ -12,6 +12,7 @@
 pub mod coat_design;
 pub mod coat_fit;
 pub mod dls_spec;
+pub mod glass_sub;
 pub mod merit;
 pub mod merit_zmx;
 pub mod montecarlo;

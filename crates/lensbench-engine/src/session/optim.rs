@@ -166,14 +166,15 @@ pub(super) fn config_system(
 
 /// 最適化。params は [`lensbench_design::dls_spec::OptimizeParams`]（CLI の optimize・Python の optimize と同じ設定の型）:
 /// vars・merit・terms・reference・rings・iters・jac と、configs（構成の番号か状態の名前の並び。省けば読み込んだ系だけ。
-/// 項・変数の構成の番号はこの並びの順）・apply（最適化した値を読み込んだ系に set する。読み込んだ系の構成に効く変数だけ）
+/// 項・変数の構成の番号はこの並びの順）・apply（最適化した値を読み込んだ系に set する。読み込んだ系の構成に効く変数だけ）。
+/// starts（2 以上で大域の探索）・seed・keep・spread と glass（ガラスの置き換え）も。apply はガラスの置き換えの材料も当てる
+/// （選んだ硝材が読み込んだ系のガラスの表にあるときだけ。無ければ何も当てず notes に書く）
 ///
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
 pub(super) fn optimize(
     sess: &Session,
     mut op: lensbench_design::dls_spec::OptimizeParams,
 ) -> Result<views::OptimizeView, RpcErr> {
-    use lensbench_optim as optim;
     let Current {
         sys: cur,
         spec,
@@ -216,21 +217,22 @@ pub(super) fn optimize(
         .problem(systems)
         .map_err(|e| RpcErr::params(e.to_string()))?;
     prob.check()?;
-    let o = op.dls_opts();
     let m0 = prob.merit(&prob.x0()?)?;
     let job = Job {
         history: vec![m0],
         ..Default::default()
     };
-    let r = run_job(&sess.opt_run, job, || optim::dls(&prob, &o))?;
+    let run = run_job(&sess.opt_run, job, || op.run_in(&prob, &spec.glass_dir))?;
+    let r = &run.result;
     let names: Vec<String> = prob
         .vars
         .iter()
         .map(|v| prob.configs[0].param_name(v.param))
         .collect();
+    // 前は元の問題、後は最後の問題（ガラスの置き換えで材料が変わり、dn・disp の変数が外れることがある）
     let (tv0, pc0) = prob.term_values_contrib(&r.x0)?;
-    let (tv, pc) = prob.term_values_contrib(&r.x)?;
-    let rays = prob.ray_counts(&r.x)?;
+    let (tv, pc) = run.problem.term_values_contrib(&r.x)?;
+    let rays = run.problem.ray_counts(&r.x)?;
     let stop = r.stop.as_str();
     // 読み込んだ系に当てられる変数（読み込んだ系の構成に効くもの）
     let applicable: Vec<bool> = prob
@@ -238,17 +240,77 @@ pub(super) fn optimize(
         .iter()
         .map(|v| cur_idx.is_some_and(|c| v.configs.as_ref().is_none_or(|cs| cs.contains(&c))))
         .collect();
+    // 置き換えた面の最後の材料（置き換えの記録のある面。同じ硝材でも dn・disp を 0 にしたものを含む）
+    let glass_changes: Vec<(usize, String)> = run
+        .glass
+        .as_ref()
+        .map(|g| {
+            g.materials
+                .iter()
+                .filter(|(j, _)| g.changes.iter().any(|c| c.surface == *j))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
     let mut applied = false;
     if op.apply {
         let ch: Vec<(lensbench_core::param::Param, f64)> = prob
             .vars
             .iter()
-            .zip(&r.x)
+            .zip(&run.x)
             .zip(&applicable)
             .filter(|(_, &a)| a)
             .map(|((v, &x), _)| (v.param, x))
             .collect();
-        if !ch.is_empty() {
+        // 置き換えた硝材は読み込んだ系のガラスの表に同じものがあるときだけ当てられる（別のカタログから選んだときは当てない）
+        let missing: Vec<&str> = glass_changes
+            .iter()
+            .filter(|(_, m)| {
+                let picked = run.problem.configs[0].glasses.get(m.as_str());
+                picked.is_none() || cur.glasses.get(m.as_str()) != picked
+            })
+            .map(|(_, m)| m.as_str())
+            .collect();
+        if !missing.is_empty() {
+            notes.push(format!(
+                "the result was not applied: the substituted glasses {} are not in the system's glass catalogs (add the catalogs to the system first)",
+                missing.join(", ")
+            ));
+        } else if !glass_changes.is_empty() {
+            use lensbench_project::edit_spec::{EditOp, Num, Ref};
+            let mut ops = Vec::new();
+            for (j, m) in &glass_changes {
+                ops.push(EditOp::SetMaterial {
+                    surface: Ref::Index(*j),
+                    material: m.clone(),
+                });
+                // 置き換えた面の屈折率のずれ・分散の変化は 0 に（set_material は残す）
+                for k in ["dn", "disp"] {
+                    let q = cur.param(&format!("{j}.{k}"))?;
+                    if cur.get_param(q)? != 0.0 && !ch.iter().any(|(p, _)| *p == q) {
+                        ops.push(EditOp::SetParam {
+                            param: format!("{j}.{k}"),
+                            value: Num(0.0),
+                        });
+                    }
+                }
+            }
+            for (q, v) in &ch {
+                ops.push(EditOp::SetParam {
+                    param: cur.param_name(*q),
+                    value: Num(*v),
+                });
+            }
+            let mut n = (*cur).clone();
+            lensbench_project::edit_ops::apply(&mut n, &ops).map_err(RpcErr::app)?;
+            *sess.pending_apply.lock_ok() = Some(PendingApply {
+                base: cur.clone(),
+                sys: n,
+                spec,
+                change: Change::Edit(ops),
+            });
+            applied = true;
+        } else if !ch.is_empty() {
             let n = cur.with_params(&ch)?;
             let rec = ch
                 .iter()
@@ -281,18 +343,20 @@ pub(super) fn optimize(
         .collect();
     let v = views::OptimizeView {
         names,
-        x0: r.x0,
-        x: r.x,
+        x0: r.x0.clone(),
+        x: run.x.clone(),
         applicable,
         applied,
         merit0: r.merit0,
         merit: r.merit,
-        history: r.history,
+        history: r.history.clone(),
         iterations: r.iterations,
         evals: r.evals,
         stop: stop.to_string(),
         terms,
         notes,
+        global_search: run.global.as_ref().map(views::GlobalView::from_result),
+        glass: run.glass.as_ref().map(views::GlassView::from_run),
     };
     Ok(v)
 }

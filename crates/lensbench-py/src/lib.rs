@@ -36,6 +36,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
+use lensbench_analysis::huygens;
 use lensbench_analysis::polgrid::{self, PolGrid};
 use lensbench_analysis::{analysis, psf, sweep};
 use lensbench_core::catalog::LensCatalog;
@@ -51,7 +52,6 @@ use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple};
-use {lensbench_analysis::huygens, lensbench_optim as optim};
 
 /// Coating tables and models used when coatings= is omitted: the environment variable LENSBENCH_COATINGS (OS path separator, `lensbench run --coatings`)
 fn env_coatings() -> Vec<PathBuf> {
@@ -2196,6 +2196,12 @@ impl PySystem {
     /// "fd" (all central differences) or "forward" (all forward differences, half the traces of central differences). qr solves each step by QR instead of the normal equations, gtol stops when the largest cosine between the residuals and a variable's column is below it (0: no test), active_set fixes variables a step would take out of range at the bound.
     /// stopped_as_vignetted drops stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation.
     ///
+    /// starts of 2 or more runs a global search: the optimization is repeated from starts start points (the current values first; variables with both bounds drawn uniformly
+    /// in their range, others within ±spread × max(|value|, typical size) of the value, by the random seed) in parallel, and the best keep distinct solutions are kept.
+    /// glass is a dict {"surfaces": [1, 3], "catalogs": ["SCHOTT"], "candidates": 8, "passes": 2} for glass substitution after the optimization: the glass of each surface
+    /// is chosen among the candidates nearest in nd and vd to its current medium, re-optimizing the variables for each (model glasses and surfaces with dn/disp are always
+    /// replaced by a real glass, real glasses only when the merit improves; catalogs default to the glasses loaded for the system).
+    ///
     /// terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
     /// the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
     /// obsn, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
@@ -2206,8 +2212,10 @@ impl PySystem {
     ///
     /// Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
     /// iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
-    /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others)
-    #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None, qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false))]
+    /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others),
+    /// global_search (with starts ≥ 2: ran, failed, best_start, solutions with start, merit and x, best first), glass (with glass: changes with surface, from, to, target_nd,
+    /// target_vd, nd, vd and merit; materials as (surface, name); tried; merit_before)
+    #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None, qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false, starts=0, seed=1, keep=5, spread=0.5, glass=None))]
     #[allow(clippy::too_many_arguments)]
     fn optimize<'py>(
         &self,
@@ -2224,8 +2232,14 @@ impl PySystem {
         gtol: f64,
         active_set: bool,
         stopped_as_vignetted: bool,
+        starts: usize,
+        seed: u64,
+        keep: usize,
+        spread: f64,
+        glass: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
+        let glass = optargs::glass_arg(glass.as_ref())?;
         let (mut p, users, n_default) = opt_problem(
             py,
             &s,
@@ -2238,45 +2252,27 @@ impl PySystem {
             &self.coat_files,
         )?;
         p.stopped_as_vignetted = stopped_as_vignetted;
-        let o = lensbench_design::dls_spec::DlsChoice {
+        let op = lensbench_design::dls_spec::OptimizeParams {
+            iters,
             qr,
             gtol,
             active_set,
-        }
-        .opts(iters);
-        let r = interruptible(py, || with_threads(threads, || optim::dls(&p, &o)))?;
-        userterm::raise_user_errors(&users)?;
-        let r = r.map_err(err)?;
-        let pair = |t: &optim::TermValue| (t.value(), t.kind_name());
-        let tv = |x: &[f64]| -> PyResult<(Vec<f64>, Vec<&str>)> {
-            let v = py
-                .detach(|| with_threads(threads, || p.term_values(x)))
-                .map_err(err);
-            userterm::raise_user_errors(&users)?;
-            Ok(v?[n_default..].iter().map(pair).unzip())
+            starts,
+            seed,
+            keep,
+            spread,
+            glass,
+            ..Default::default()
         };
-        let ((tv0, _), (tv1, kinds)) = (tv(&r.x0)?, tv(&r.x)?);
-        let d = PyDict::new(py);
-        let names: Vec<String> = p.vars.iter().map(|v| s.param_name(v.param)).collect();
-        let sys = r.systems.into_iter().next().unwrap();
+        let run = interruptible(py, || with_threads(threads, || op.run(&p)))?;
+        userterm::raise_user_errors(&users)?;
+        let run = run.map_err(err)?;
+        let d = optargs::result_dict(py, &s, &p, &run, n_default, &users, threads)?;
+        let sys = run.result.systems[0].clone();
         d.set_item(
             "system",
             PySystem::new(sys, self.coat_files.clone(), self.coat_cell()),
         )?;
-        d.set_item("names", names)?;
-        d.set_item("x0", r.x0)?;
-        d.set_item("x", r.x)?;
-        d.set_item("merit0", r.merit0)?;
-        d.set_item("merit", r.merit)?;
-        d.set_item("history", r.history)?;
-        d.set_item("iterations", r.iterations)?;
-        d.set_item("evals", r.evals)?;
-        d.set_item("stop", r.stop.as_str())?;
-        d.set_item("note", r.note)?;
-        d.set_item("inactive", r.inactive)?;
-        d.set_item("term_values0", tv0)?;
-        d.set_item("term_values", tv1)?;
-        d.set_item("term_value_kinds", kinds)?;
         Ok(d)
     }
 
@@ -2750,7 +2746,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 3);
+pub const API_VERSION: (u32, u32) = (2, 4);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

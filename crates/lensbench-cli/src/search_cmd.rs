@@ -84,6 +84,96 @@ pub struct DlsArgs {
     pub stopped_as_vignetted: bool,
 }
 
+/// 大域の探索とガラスの置き換え（optimize）
+#[derive(Args)]
+pub struct SearchArgs {
+    /// Global search: number of start points (the current values are the first). Each start is optimized locally (in parallel) and the best solutions are kept. Variables with both bounds are drawn uniformly in their range, others within ±--spread of their size. 0 or 1: local optimization only
+    #[arg(long, default_value_t = OPT.starts)]
+    pub starts: usize,
+    /// Global search: random seed (the same seed gives the same start points)
+    #[arg(long, default_value_t = OPT.seed)]
+    pub seed: u64,
+    /// Global search: number of solutions to keep (best first; the same solution once)
+    #[arg(long, default_value_t = OPT.keep)]
+    pub keep: usize,
+    /// Global search: spread of variables without bounds, relative to max(|value|, typical size of the kind)
+    #[arg(long, default_value_t = OPT.spread)]
+    pub spread: f64,
+    /// Glass substitution: surfaces whose glass is chosen from catalog glasses after the optimization (comma-separated, e.g. "1,3,6"). Model glasses and surfaces with dn/disp are replaced by the nearest real glass; real glasses are swapped only when the merit improves
+    #[arg(long = "glass-surfaces", value_delimiter = ',')]
+    pub glass_surfaces: Vec<usize>,
+    /// Glass substitution: glass catalogs to choose from (e.g. SCHOTT; more than one allowed). Default: the glasses loaded for the system
+    #[arg(long = "glass-catalog")]
+    pub glass_catalogs: Vec<String>,
+    /// Glass substitution: candidates compared per surface (nearest in nd and vd to the current medium)
+    #[arg(long = "glass-candidates", default_value_t = GLASS.candidates)]
+    pub glass_candidates: usize,
+    /// Glass substitution: maximum number of passes over the surfaces
+    #[arg(long = "glass-passes", default_value_t = GLASS.passes)]
+    pub glass_passes: usize,
+}
+
+static OPT: std::sync::LazyLock<lensbench_design::dls_spec::OptimizeParams> =
+    std::sync::LazyLock::new(Default::default);
+static GLASS: std::sync::LazyLock<lensbench_design::dls_spec::GlassParams> =
+    std::sync::LazyLock::new(Default::default);
+
+impl SearchArgs {
+    /// 設定の型の欄（starts・seed・keep・spread・glass）に入れる
+    pub fn fill(&self, op: &mut lensbench_design::dls_spec::OptimizeParams) -> Result<(), String> {
+        if self.glass_surfaces.is_empty() && !self.glass_catalogs.is_empty() {
+            return Err(
+                "--glass-catalog needs --glass-surfaces (the surfaces to substitute glass on)"
+                    .into(),
+            );
+        }
+        op.starts = self.starts;
+        op.seed = self.seed;
+        op.keep = self.keep;
+        op.spread = self.spread;
+        if !self.glass_surfaces.is_empty() {
+            op.glass = Some(lensbench_design::dls_spec::GlassParams {
+                surfaces: self.glass_surfaces.clone(),
+                catalogs: self.glass_catalogs.clone(),
+                candidates: self.glass_candidates,
+                passes: self.glass_passes,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// optimize の結果の変数の行（名前・前・後・動かさなかったか）。ガラスの置き換えで外した dn・disp の変数は動かさなかったに数えない
+pub fn vars_json(
+    s: &lensbench_core::System,
+    p: &lensbench_optim::Problem,
+    run: &lensbench_design::dls_spec::OptimizeRun,
+) -> Vec<serde_json::Value> {
+    let r = &run.result;
+    let last = |q: usize| run.problem.vars.iter().position(|u| *u == p.vars[q]);
+    p.vars
+        .iter()
+        .enumerate()
+        .map(|(q, v)| {
+            serde_json::json!({
+                "name": s.param_name(v.param), "x0": r.x0[q], "x": run.x[q],
+                "inactive": last(q).is_some_and(|i| r.inactive.contains(&i)),
+            })
+        })
+        .collect()
+}
+
+/// optimize の結果に大域の探索（global_search）とガラスの置き換え（glass）を足す（回したときだけ）
+pub fn add_search_json(run: &lensbench_design::dls_spec::OptimizeRun, out: &mut serde_json::Value) {
+    use lensbench_engine::session::views::{GlassView, GlobalView};
+    if let Some(g) = &run.global {
+        out["global_search"] = serde_json::to_value(GlobalView::from_result(g)).unwrap_or_default();
+    }
+    if let Some(g) = &run.glass {
+        out["glass"] = serde_json::to_value(GlassView::from_run(g)).unwrap_or_default();
+    }
+}
+
 #[derive(Args)]
 pub struct SwapArgs {
     /// Project file (.json)

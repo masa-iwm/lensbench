@@ -2543,6 +2543,31 @@ Vignetting plot (OpticStudio's Vignetting Plot): for points steps of the normali
 surface {j} has no ray record	面 {j} に光線の記録がありません
 no ray of the pupil has a transmission	瞳の光線に透過率がありません
 field {}	視野 {}
+starts must be 1 or more	starts は 1 以上
+keep must be 1 or more	keep は 1 以上
+spread must be a positive number ({})	spread は正の数に（{}）
+surface {j}: no glass to substitute (mirror, coordinate break or GRIN)	面 {j}: 置き換える硝材がありません（ミラー・座標ブレーク・GRIN）
+surface {j}: the medium is air	面 {j}: 媒質が空気です
+no candidate glasses: name the glass catalogs to choose from	候補の硝材がありません。選ぶ硝材カタログを指定してください
+glass catalogs not found: {}	硝材カタログが見つかりません: {}
+no candidate glasses in {}	{} に候補の硝材がありません
+no surfaces to substitute glass on	硝材を置き換える面がありません
+candidates must be 1 or more	candidates は 1 以上
+passes must be 1 or more	passes は 1 以上
+surface {j} to substitute glass on (1 to {})	硝材を置き換える面 {j}（1〜{}）
+surface {j} given twice	面 {j} が 2 回あります
+surface {j}: no candidate glass covers the system wavelengths	面 {j}: システムの波長をすべて含む候補の硝材がありません
+surface {j}: no candidate glass could be traced and optimized	面 {j}: 追跡・最適化できる候補の硝材がありません
+the result was not applied: the substituted glasses {} are not in the system's glass catalogs (add the catalogs to the system first)	結果をシステムに当てませんでした。置き換えた硝材 {} がシステムの硝材カタログにありません（先にカタログをシステムに追加してください）
+Global search: number of start points (the current values are the first). Each start is optimized locally (in parallel) and the best solutions are kept. Variables with both bounds are drawn uniformly in their range, others within ±--spread of their size. 0 or 1: local optimization only	グローバルサーチ: 始点の数（最初は今の値）。始点ごとにローカルの最適化を（並列に）かけ、良い解を残す。両側に範囲のある変数は範囲の中から一様に、ほかは大きさの ±--spread の中から選ぶ。0・1 はローカルの最適化だけ
+Global search: random seed (the same seed gives the same start points)	グローバルサーチ: 乱数シード（同じシードなら同じ始点）
+Global search: number of solutions to keep (best first; the same solution once)	グローバルサーチ: 残す解の数（良い順、同じ解は 1 つ）
+Global search: spread of variables without bounds, relative to max(|value|, typical size of the kind)	グローバルサーチ: 範囲のない変数を振る幅（max(|値|, 種類ごとの目安の大きさ) に対する比）
+Glass substitution: surfaces whose glass is chosen from catalog glasses after the optimization (comma-separated, e.g. "1,3,6"). Model glasses and surfaces with dn/disp are replaced by the nearest real glass; real glasses are swapped only when the merit improves	硝材置換: 最適化の後に硝材をカタログの硝材から選ぶ面（カンマ区切り、例 "1,3,6"）。モデルガラスと dn・disp のある面は近い実在の硝材に置き換え、実在の硝材はメリットファンクションが良くなるときだけ入れ替える
+Glass substitution: glass catalogs to choose from (e.g. SCHOTT; more than one allowed). Default: the glasses loaded for the system	硝材置換: 選ぶ硝材カタログ（例 SCHOTT、複数可）。省けばシステムに読み込んだ硝材
+Glass substitution: candidates compared per surface (nearest in nd and vd to the current medium)	硝材置換: 面ごとに比べる候補の数（今の媒質に nd・vd の近い順）
+Glass substitution: maximum number of passes over the surfaces	硝材置換: 面を巡回する回数の上限
+--glass-catalog needs --glass-surfaces (the surfaces to substitute glass on)	--glass-catalog には --glass-surfaces（硝材を置き換える面）が必要です
 Waist radius of the embedded Gaussian beam (1/e² intensity, in object space; the mixed-mode beam is √M² times larger)	埋め込みのガウスビームのウエストの半径（強度 1/e²、物体空間。混合モードのビームは √M² 倍）
 Distance from surface 1 to the waist (positive if the waist is after surface 1)	面 1 からウエストまでの距離（ウエストが面 1 より後なら正）
 M² factor of the beam (1 for a pure Gaussian)	ビームの M²（純粋なガウスビームは 1）

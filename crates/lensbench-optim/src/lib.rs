@@ -44,16 +44,18 @@
 //! （[`DlsOpts::active_set`] なら、範囲を出る変数を境界に固定して残りを解き直す）。
 //!
 //! 複数の構成（[`Problem::configs`]、多重構成・ズームの各状態）を同時に扱える。変数ごとに効く構成を選べる
-//! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
-//! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
+//! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロ・大域の探索（[`global`]、始点を
+//! 変えて回す）は、この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
 
 #![warn(unreachable_pub)]
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 mod dls;
+pub mod global;
 mod pupil;
 pub mod zoom;
 pub mod zplm;
 
 pub use dls::*;
+pub use global::{global_search, GlobalOpts, GlobalResult, Solution};

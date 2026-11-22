@@ -15,9 +15,11 @@ use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 mod kinds;
+mod search;
 mod sheets;
 use kinds::{defaults, type_hint};
 use lensbench_engine::session::views::{OptimizeView, TermValue};
+pub(crate) use search::result_glasses;
 
 /// 項のキーの値の書き方
 #[derive(Clone, Copy, PartialEq)]
@@ -463,6 +465,19 @@ pub(crate) struct OptPanel {
     pub gtol: f64,
     pub active_set: bool,
     pub stopped_as_vignetted: bool,
+    /// 大域の探索: 始点の数（0・1 は局所の最適化だけ）・乱数の種・残す解の数・範囲の無い変数を振る幅
+    pub starts: usize,
+    pub seed: u64,
+    pub keep: usize,
+    pub spread: f64,
+    /// ガラスの置き換え: するか・面の番号（カンマ区切り）・候補のカタログ（カンマ区切り、空は系のガラス）・候補の数・周の数
+    pub glass_on: bool,
+    pub glass_surfaces: String,
+    pub glass_catalogs: String,
+    pub glass_candidates: usize,
+    pub glass_passes: usize,
+    /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）
+    pub undo_glass: Option<Vec<(usize, String)>>,
     /// 構成（.zmx の構成番号か状態の名前、カンマ区切り。空は開いている系だけ）
     pub configs: String,
     pub new_var: String,
@@ -488,6 +503,7 @@ impl OptPanel {
     pub(crate) fn new() -> OptPanel {
         // 既定値は設定の型（CLI・serve・Python と同じ）
         let d = lensbench_design::dls_spec::OptimizeParams::default();
+        let g = lensbench_design::dls_spec::GlassParams::default();
         OptPanel {
             merit: d.merit.to_string(),
             rings: d.rings,
@@ -498,6 +514,12 @@ impl OptPanel {
             gtol: d.gtol,
             active_set: d.active_set,
             stopped_as_vignetted: d.stopped_as_vignetted,
+            starts: d.starts,
+            seed: d.seed,
+            keep: d.keep,
+            spread: d.spread,
+            glass_candidates: g.candidates,
+            glass_passes: g.passes,
             new_term: "paraxial".into(),
             ..Default::default()
         }
@@ -601,6 +623,18 @@ impl OptPanel {
         if self.gtol != d.gtol {
             p["gtol"] = json!(self.gtol);
         }
+        // 大域の探索は始点が 2 以上のときだけ書く（種・解の数・幅も）
+        if self.starts >= 2 {
+            p["starts"] = json!(self.starts);
+            p["seed"] = json!(self.seed);
+            p["keep"] = json!(self.keep);
+            if self.spread != d.spread {
+                p["spread"] = json!(self.spread);
+            }
+        }
+        if let Some(g) = search::glass_params(self)? {
+            p["glass"] = g;
+        }
         Ok(p)
     }
 
@@ -635,6 +669,35 @@ impl OptPanel {
         }
         if let Some(x) = p["gtol"].as_f64() {
             n.gtol = x;
+        }
+        if let Some(x) = p["starts"].as_u64() {
+            n.starts = x as usize;
+        }
+        if let Some(x) = p["seed"].as_u64() {
+            n.seed = x;
+        }
+        if let Some(x) = p["keep"].as_u64() {
+            n.keep = x as usize;
+        }
+        if let Some(x) = p["spread"].as_f64() {
+            n.spread = x;
+        }
+        if let Some(g) = p.get("glass").filter(|g| g.is_object()) {
+            n.glass_on = true;
+            n.glass_surfaces = g["surfaces"]
+                .as_array()
+                .map(|a| a.iter().map(text_of).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
+            n.glass_catalogs = g["catalogs"]
+                .as_array()
+                .map(|a| a.iter().map(text_of).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
+            if let Some(x) = g["candidates"].as_u64() {
+                n.glass_candidates = x as usize;
+            }
+            if let Some(x) = g["passes"].as_u64() {
+                n.glass_passes = x as usize;
+            }
         }
         if let Some(a) = p["configs"].as_array() {
             n.configs = a.iter().map(text_of).collect::<Vec<_>>().join(", ");
@@ -943,13 +1006,19 @@ pub(crate) fn ui(
                 ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
             }
             if let Some(h) = progress {
-                ui.label(trf(
-                    "Iteration {}: merit {}",
-                    &[
-                        &(h.len().saturating_sub(1)),
-                        &fmt_g(*h.last().unwrap_or(&f64::NAN)),
-                    ],
-                ));
+                // 大域の探索は始点が終わるたびに、それまでの最良の値
+                let label = if p.starts >= 2 {
+                    "Start {} of {}: best merit {}"
+                } else {
+                    "Iteration {}: merit {}"
+                };
+                let n = h.len().saturating_sub(1);
+                let m = fmt_g(*h.last().unwrap_or(&f64::NAN));
+                ui.label(if p.starts >= 2 {
+                    trf(label, &[&n, &p.starts, &m])
+                } else {
+                    trf(label, &[&n, &m])
+                });
                 history_plot(ui, h);
             } else if let Some(r) = p.result.clone() {
                 egui::CollapsingHeader::new(RichText::new(tr("Result")).strong())
@@ -967,6 +1036,9 @@ pub(crate) fn ui(
                 });
                 section(ui, "opt_settings_sec", tr("Settings"), |ui| {
                     settings_ui(ui, p, weak)
+                });
+                section(ui, "opt_search_sec", tr("Global search and glass substitution"), |ui| {
+                    search::search_ui(ui, p, weak)
                 });
             });
         });
@@ -1337,6 +1409,7 @@ fn result_ui(
                 ui.end_row();
             }
         });
+    search::result_ui(ui, r, &v, weak);
     let extra: Vec<&TermValue> = r.terms.iter().filter(|t| !t.default).collect();
     if !extra.is_empty() {
         egui::Grid::new("opt_res_terms")
@@ -1373,7 +1446,10 @@ fn result_ui(
             acts.push(Action::Apply);
         }
         if ui
-            .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo apply")))
+            .add_enabled(
+                p.undo.is_some() || p.undo_glass.is_some(),
+                egui::Button::new(tr("Undo apply")),
+            )
             .clicked()
         {
             acts.push(Action::Undo);

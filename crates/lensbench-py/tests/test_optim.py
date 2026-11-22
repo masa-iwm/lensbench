@@ -60,6 +60,35 @@ def test_optimize_dls_options():
         s.optimize(v, gtol=-1.0)
 
 
+def test_optimize_global_and_glass():
+    """大域の探索（starts）とガラスの置き換え（glass）: 結果の鍵と、CLI と同じ値"""
+    s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
+    v = [(f"{j}.c", -0.08, 0.08) for j in (1, 2, 3, 4, 6, 7)]
+    g = s.optimize(v, starts=6, seed=2, keep=3, stopped_as_vignetted=True)
+    sr = g["global_search"]
+    assert sr["ran"] == 6 and 1 <= len(sr["solutions"]) <= 3
+    assert sr["solutions"][0]["merit"] == g["merit"]
+    assert all(a["merit"] <= b["merit"] for a, b in zip(sr["solutions"], sr["solutions"][1:]))
+    assert "glass" not in g
+    # 種が同じなら同じ結果
+    assert s.optimize(v, starts=6, seed=2, keep=3, stopped_as_vignetted=True)["x"] == g["x"]
+    # 凹の硝材を dn・disp で動かしてから、同梱の SCHOTT の実在の硝材へ寄せる
+    w = v + [("3.dn", -0.05, 0.05), ("3.disp", -0.2, 0.2)]
+    r = s.optimize(w, glass={"surfaces": [3], "catalogs": ["SCHOTT"], "candidates": 4})
+    gl = r["glass"]
+    assert gl["changes"][0]["surface"] == 3 and gl["changes"][0]["from"] == "F2"
+    assert gl["materials"][0][0] == 3
+    assert r["x"][-2:] == [0.0, 0.0]
+    assert r["system"].get_param("3.dn") == 0.0
+    with pytest.raises(ValueError):
+        s.optimize(v, glass={"surfaces": [3], "no_such_key": 1})
+    c = cli("optimize", zmx("A0"), *sum((["--var", f"{n}={lo}:{hi}"] for n, lo, hi in w), []),
+            "--glass-surfaces", "3", "--glass-catalog", "SCHOTT", "--glass-candidates", "4")
+    # CLI は --glass-dir（試験の SCHOTT は 4 種だけ）から先に探す
+    assert c["glass"]["materials"][0][1] in ("N-SK16", "F2", "N-BK7", "N-LAK9")
+    assert c["vars"][-1]["x"] == 0.0
+
+
 def test_cli_optimize(tmp_path):
     out = tmp_path / "opt.zmx"
     c = cli("optimize", zmx("A0"), "--var", "8.t", "--var", "6.c=0:0.05", "--out", str(out))

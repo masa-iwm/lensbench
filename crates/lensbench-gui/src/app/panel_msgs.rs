@@ -29,11 +29,23 @@ impl Core {
                     );
                     return;
                 }
+                // 置き換えた硝材を先に（値の変更が面の並びを作り直す前に）
+                let glasses = op::result_glasses(&r, false);
+                if !glasses.is_empty() {
+                    // 材料を当てられなければ値も当てない（硝材を替えずに、替えた前提の値だけ入るのを防ぐ）
+                    if !self.apply_materials(&glasses) {
+                        return;
+                    }
+                    self.p.opt.undo_glass = Some(op::result_glasses(&r, true));
+                }
                 if self.apply_values(&op::result_values(&r, false)) {
                     self.p.opt.undo = Some(op::result_values(&r, true));
                 }
             }
             Action::Undo => {
+                if let Some(g) = self.p.opt.undo_glass.take() {
+                    self.apply_materials(&g);
+                }
                 if let Some(u) = self.p.opt.undo.take() {
                     self.apply_values(&u);
                 }

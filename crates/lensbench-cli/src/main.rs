@@ -197,6 +197,8 @@ enum Cmd {
         jac: Jac,
         #[command(flatten)]
         dls: search_cmd::DlsArgs,
+        #[command(flatten)]
+        search: search_cmd::SearchArgs,
         /// .zmx to write the optimized system to
         #[arg(long, short)]
         out: Option<PathBuf>,
@@ -933,9 +935,9 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             iters,
             jac,
             dls,
+            search,
             out,
         } => {
-            use lensbench_optim as optim;
             let s = load(&c)?;
             let mut specs: Vec<Value> = Vec::new();
             let mut systems = vec![s.clone()];
@@ -970,7 +972,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             for v in specs.iter_mut() {
                 lensbench_engine::Files::Any.check_terms(v)?;
             }
-            let op = OptimizeParams {
+            let mut op = OptimizeParams {
                 vars: VarSpec::parse_all(&vars).map_err(AppError::usage_of)?,
                 merit,
                 terms: specs,
@@ -984,40 +986,35 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 stopped_as_vignetted: dls.stopped_as_vignetted,
                 ..OptimizeParams::default()
             };
+            search.fill(&mut op).map_err(AppError::usage)?;
             let (p, n_default) = op.problem(systems).map_err(e)?;
             p.check().map_err(e)?;
-            let o = op.dls_opts();
-            let r = progress::with(c.json, || optim::dls(&p, &o)).map_err(e)?;
+            let run = progress::with(c.json, || op.run_in(&p, &c.glass_dir)).map_err(e)?;
+            let r = &run.result;
             if let Some(path) = &out {
                 let rows = zmx_merit::rows_to_write(zmx_rows, &op.terms[n_zmx..], &r.systems);
                 warn_notes(zmx_write::save_with_merit(path, &r.systems[0], &rows).map_err(e)?);
             }
             let stop = r.stop.as_str();
-            let vs: Vec<Value> = p
-                .vars
-                .iter()
-                .enumerate()
-                .map(|(q, v)| json!({ "name": s.param_name(v.param), "x0": r.x0[q], "x": r.x[q], "inactive": r.inactive.contains(&q) }))
-                .collect();
+            let vs = search_cmd::vars_json(&s, &p, &run);
             if let Some(n) = &r.note {
                 eprintln!("{}", lensbench_core::i18n::warning(n));
             }
             // 足した項の値（最適化の前と後）
             let tv0 = p.term_values(&r.x0).map_err(e)?;
-            let tv = p.term_values(&r.x).map_err(e)?;
+            let tv = run.problem.term_values(&r.x).map_err(e)?;
             let ts: Vec<Value> = op
                 .terms
                 .iter()
                 .enumerate()
                 .map(|(i, v)| json!({ "term": v, "value0": tv0[n_default + i].value(), "value": tv[n_default + i].value(), "value_kind": tv[n_default + i].kind_name() }))
                 .collect();
-            (
-                c.json,
-                json!({
-                    "merit": merit.as_str(), "merit0": r.merit0, "merit_final": r.merit, "iterations": r.iterations,
-                    "evals": r.evals, "stop": stop, "note": r.note, "vars": vs, "terms": ts, "history": r.history,
-                }),
-            )
+            let mut out_v = json!({
+                "merit": merit.as_str(), "merit0": r.merit0, "merit_final": r.merit, "iterations": r.iterations,
+                "evals": r.evals, "stop": stop, "note": r.note, "vars": vs, "terms": ts, "history": r.history,
+            });
+            search_cmd::add_search_json(&run, &mut out_v);
+            (c.json, out_v)
         }
         Cmd::Tolerance {
             c,

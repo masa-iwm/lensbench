@@ -188,6 +188,25 @@ impl Core {
         true
     }
 
+    /// 面の材料を組合せの要素に当てる（ガラスの置き換えの結果）。当てられなければ false
+    pub(super) fn apply_materials(&mut self, mats: &[(usize, String)]) -> bool {
+        if mats.is_empty() {
+            return false;
+        }
+        let ids = self.doc.combo.span_ids();
+        let lead = self.doc.combo.lead_stop();
+        let spans = lens_data::elem_spans(&ids, &self.sys.elem_blocks, lead, &self.sys.ld_rows);
+        for (j, m) in mats {
+            if !self.combo_surface_edit(&spans, *j, "material", json!(m)) {
+                return false;
+            }
+        }
+        if !self.s.auto_build {
+            self.build_combo(self.doc.combo.project());
+        }
+        true
+    }
+
     /// 組合せの系の設定
     pub(super) fn sysset_ui(&mut self, ui: &mut Ui) {
         self.ask_folders();

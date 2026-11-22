@@ -394,6 +394,73 @@ pub struct OptimizeParams {
     pub active_set: bool,
     /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り）
     pub stopped_as_vignetted: bool,
+    /// 大域の探索の始点の数（今の値の始点を含む。0・1 は局所の最適化だけ）
+    pub starts: usize,
+    /// 大域の探索の乱数の種
+    pub seed: u64,
+    /// 大域の探索で残す解の数
+    #[schemars(extend("x-min" = 1))]
+    pub keep: usize,
+    /// 大域の探索で範囲の無い変数を振る幅（目安の大きさ max(|値|, 種類ごとの目安) に対する比）
+    pub spread: f64,
+    /// ガラスの置き換え（省けばしない）。最適化（大域の探索）の後に、面の硝材をカタログの硝材から選ぶ
+    pub glass: Option<GlassParams>,
+}
+
+/// ガラスの置き換えの設定（[`OptimizeParams::glass`]、[`crate::glass_sub`]）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct GlassParams {
+    /// 置き換える面の番号
+    pub surfaces: Vec<usize>,
+    /// 候補のカタログ（"SCHOTT" など。省けば系の読み込んだガラス）
+    #[serde(deserialize_with = "seq")]
+    pub catalogs: Vec<String>,
+    /// 面ごとに比べる候補の数（今の実効の nd・vd に近い順）
+    #[schemars(extend("x-min" = 1))]
+    pub candidates: usize,
+    /// 面を一巡する回数の上限
+    #[schemars(extend("x-min" = 1))]
+    pub passes: usize,
+}
+
+impl Default for GlassParams {
+    fn default() -> Self {
+        GlassParams {
+            surfaces: Vec::new(),
+            catalogs: Vec::new(),
+            candidates: 8,
+            passes: 2,
+        }
+    }
+}
+
+/// [`OptimizeParams::run`] の結果
+#[derive(Debug, Clone)]
+pub struct OptimizeRun {
+    /// 最後の問題（ガラスの置き換えで dn・disp の変数を外したもの。構成は最適化した系）
+    pub problem: Problem,
+    /// 最良の局所の最適化の結果（x0・merit0 は今の値のもので元の問題の変数の並び）。x は最後の問題の変数の並び
+    /// （元の問題の変数の並びの値は [`OptimizeRun::x`]）
+    pub result: lensbench_optim::DlsResult,
+    /// 元の問題の変数ごとの最後の値（ガラスの置き換えで外した dn・disp は 0）
+    pub x: Vec<f64>,
+    /// 大域の探索の結果（回したとき）
+    pub global: Option<lensbench_optim::GlobalResult>,
+    /// ガラスの置き換えの記録（回したとき）
+    pub glass: Option<GlassRun>,
+}
+
+/// ガラスの置き換えの記録
+#[derive(Debug, Clone)]
+pub struct GlassRun {
+    pub changes: Vec<crate::glass_sub::GlassChange>,
+    /// 評価した候補の数
+    pub tried: usize,
+    /// 面ごとの最後の材料の名前（置き換える面の順）
+    pub materials: Vec<(usize, String)>,
+    /// 置き換える前の評価関数の値
+    pub merit_before: f64,
 }
 
 impl Default for OptimizeParams {
@@ -412,11 +479,113 @@ impl Default for OptimizeParams {
             gtol: 0.0,
             active_set: false,
             stopped_as_vignetted: false,
+            starts: 0,
+            seed: 1,
+            keep: 5,
+            spread: 0.5,
+            glass: None,
         }
     }
 }
 
 impl OptimizeParams {
+    /// 大域の探索の設定（starts が 2 以上のとき）
+    pub fn global_opts(&self) -> Option<lensbench_optim::GlobalOpts> {
+        (self.starts >= 2).then(|| lensbench_optim::GlobalOpts {
+            starts: self.starts,
+            keep: self.keep,
+            seed: self.seed,
+            spread: self.spread,
+            local: self.dls_opts(),
+        })
+    }
+
+    /// 最適化を回す: 局所の最適化か大域の探索（[`OptimizeParams::starts`]）、続けてガラスの置き換え（[`OptimizeParams::glass`]）。
+    /// 進み具合は、局所の最適化なら反復ごと、大域の探索なら始点ごとに知らせる（ガラスの置き換えは知らせない）
+    pub fn run(&self, p: &Problem) -> Result<OptimizeRun> {
+        self.run_in(p, &[])
+    }
+
+    /// [`OptimizeParams::run`]。ガラスの置き換えの候補のカタログを、フォルダ glass_dirs（の後に既定のフォルダ）から探す
+    pub fn run_in(&self, p: &Problem, glass_dirs: &[std::path::PathBuf]) -> Result<OptimizeRun> {
+        let o = self.dls_opts();
+        let (mut result, global) = match self.global_opts() {
+            Some(g) => {
+                let r = lensbench_optim::global_search(p, &g)?;
+                (r.best.clone(), Some(r))
+            }
+            None => (lensbench_optim::dls(p, &o)?, None),
+        };
+        let mut problem = p.clone();
+        let mut glass = None;
+        let cancelled = result.stop == lensbench_optim::Stop::Cancelled;
+        if let (Some(gp), false) = (&self.glass, cancelled) {
+            let pool = crate::glass_sub::candidate_pool(&p.configs[0], &gp.catalogs, glass_dirs)?;
+            let go = crate::glass_sub::GlassSubOpts {
+                surfaces: gp.surfaces.clone(),
+                glasses: pool,
+                candidates: gp.candidates,
+                passes: gp.passes,
+                local: o,
+            };
+            let merit_before = result.merit;
+            let g = match lensbench_core::par::with_progress(None, || {
+                crate::glass_sub::substitute(p, &result.x, &go)
+            }) {
+                Ok(g) => g,
+                // 止めたら置き換える前の結果を返す
+                Err(Error::Cancelled) => {
+                    result.stop = lensbench_optim::Stop::Cancelled;
+                    let x = result.x.clone();
+                    return Ok(OptimizeRun {
+                        problem,
+                        result,
+                        x,
+                        global,
+                        glass: None,
+                    });
+                }
+                Err(e) => return Err(e),
+            };
+            let mut r = g.result;
+            r.x0 = result.x0.clone();
+            r.merit0 = result.merit0;
+            let materials = gp
+                .surfaces
+                .iter()
+                .map(|&j| (j, g.problem.configs[0].surfaces[j].mat.name()))
+                .collect();
+            glass = Some(GlassRun {
+                changes: g.changes,
+                tried: g.tried,
+                materials,
+                merit_before,
+            });
+            if !glass.as_ref().is_some_and(|x| x.changes.is_empty()) {
+                result = r;
+                problem = g.problem;
+            }
+        }
+        let x = p
+            .vars
+            .iter()
+            .map(|v| {
+                problem
+                    .vars
+                    .iter()
+                    .position(|u| u == v)
+                    .map_or(0.0, |i| result.x[i])
+            })
+            .collect();
+        Ok(OptimizeRun {
+            problem,
+            result,
+            x,
+            global,
+            glass,
+        })
+    }
+
     /// 問題を作る（変数・既定の評価関数・terms の項・ヤコビアン）。返す数は既定の評価関数の項の数
     /// （terms の項はその後ろ）。呼び手は返した後に項を足してから [`Problem::check`] する
     pub fn problem(&self, systems: Vec<System>) -> Result<(Problem, usize)> {

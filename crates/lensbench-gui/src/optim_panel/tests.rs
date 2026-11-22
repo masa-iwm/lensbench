@@ -170,3 +170,69 @@ fn combo_edits() {
     assert!(combo_edit("lens1.tx", 1.0).is_err());
     assert!(combo_edit("3.dx", 1.0).is_err());
 }
+
+/// 大域の探索（始点が 2 以上のときだけ）とガラスの置き換えの設定を保存し、読み戻せる。設定の型として読める
+#[test]
+fn search_settings_round_trip() {
+    let mut p = OptPanel::new();
+    let v = p.params().unwrap();
+    for k in ["starts", "seed", "keep", "spread", "glass"] {
+        assert!(v.get(k).is_none(), "{k}");
+    }
+    p.starts = 12;
+    p.seed = 7;
+    p.keep = 3;
+    p.glass_on = true;
+    // 面が無ければ誤り
+    assert!(p.params().is_err());
+    p.glass_surfaces = "1, 3,6".into();
+    p.glass_catalogs = "SCHOTT, OHARA".into();
+    p.glass_candidates = 5;
+    let v = p.params().unwrap();
+    let d: lensbench_design::dls_spec::OptimizeParams = serde_json::from_value(v.clone()).unwrap();
+    assert_eq!((d.starts, d.seed, d.keep), (12, 7, 3));
+    let g = d.glass.unwrap();
+    assert_eq!(g.surfaces, vec![1, 3, 6]);
+    assert_eq!(g.catalogs, vec!["SCHOTT", "OHARA"]);
+    assert_eq!((g.candidates, g.passes), (5, 2));
+    let mut q = OptPanel::new();
+    q.set_params(&v).unwrap();
+    assert_eq!((q.starts, q.seed, q.keep), (12, 7, 3));
+    assert!(q.glass_on);
+    assert_eq!(q.glass_surfaces, "1, 3, 6");
+    assert_eq!(q.glass_catalogs, "SCHOTT, OHARA");
+    assert_eq!(q.glass_candidates, 5);
+}
+
+/// 結果の置き換えた硝材: 面ごとに最後の材料、元に戻すときは最初の材料
+#[test]
+fn result_glasses_first_and_last() {
+    use lensbench_engine::session::views::{GlassChangeView, GlassView};
+    let ch = |j: usize, from: &str, to: &str| GlassChangeView {
+        surface: j,
+        from: from.into(),
+        to: to.into(),
+        ..Default::default()
+    };
+    let r = OptimizeView {
+        glass: Some(GlassView {
+            changes: vec![
+                ch(1, "1.6,58", "N-SK16"),
+                ch(3, "F2", "N-F2"),
+                ch(1, "N-SK16", "N-SK14"),
+            ],
+            materials: vec![(1, "N-SK14".into()), (3, "N-F2".into())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert_eq!(
+        result_glasses(&r, false),
+        vec![(1, "N-SK14".to_string()), (3, "N-F2".to_string())]
+    );
+    assert_eq!(
+        result_glasses(&r, true),
+        vec![(1, "1.6,58".to_string()), (3, "F2".to_string())]
+    );
+    assert!(result_glasses(&OptimizeView::default(), false).is_empty());
+}

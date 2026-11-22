@@ -123,6 +123,111 @@ pub struct OptimizeView {
     /// 項ごとの値（既定の評価関数の項が先）
     pub terms: Vec<TermValue>,
     pub notes: Vec<String>,
+    /// 大域の探索（starts が 2 以上）の結果
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_search: Option<GlobalView>,
+    /// ガラスの置き換え（glass）の結果
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glass: Option<GlassView>,
+}
+
+/// 大域の探索の結果（[`OptimizeView::global_search`]）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GlobalView {
+    /// 回した始点の数・追跡できずに捨てた数
+    pub ran: usize,
+    pub failed: usize,
+    /// 最良の解の始点の番号（0 は今の値）
+    pub best_start: usize,
+    /// 残した解（評価関数の良い順。x は変数の並び）
+    pub solutions: Vec<SolutionView>,
+}
+
+/// 大域の探索で残した解
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SolutionView {
+    pub start: usize,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit: f64,
+    #[serde(deserialize_with = "nan_for_null")]
+    pub x: Vec<f64>,
+}
+
+/// ガラスの置き換えの結果（[`OptimizeView::glass`]）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GlassView {
+    /// 置き換えた面（置き換えた順）
+    pub changes: Vec<GlassChangeView>,
+    /// 置き換える面ごとの最後の材料 (面, 名前)
+    pub materials: Vec<(usize, String)>,
+    /// 評価した候補の数
+    pub tried: usize,
+    /// 置き換える前（最適化の後）の評価関数の値
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit_before: f64,
+}
+
+/// 1 つの面の置き換え
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GlassChangeView {
+    pub surface: usize,
+    pub from: String,
+    pub to: String,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub target_nd: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub target_vd: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub nd: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub vd: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit: f64,
+}
+
+impl GlassView {
+    /// 置き換えの記録から
+    pub fn from_run(g: &lensbench_design::dls_spec::GlassRun) -> GlassView {
+        GlassView {
+            changes: g
+                .changes
+                .iter()
+                .map(|c| GlassChangeView {
+                    surface: c.surface,
+                    from: c.from.clone(),
+                    to: c.to.clone(),
+                    target_nd: c.target_nd,
+                    target_vd: c.target_vd,
+                    nd: c.nd,
+                    vd: c.vd,
+                    merit: c.merit,
+                })
+                .collect(),
+            materials: g.materials.clone(),
+            tried: g.tried,
+            merit_before: g.merit_before,
+        }
+    }
+}
+
+impl GlobalView {
+    /// 大域の探索の結果から
+    pub fn from_result(g: &lensbench_optim::GlobalResult) -> GlobalView {
+        GlobalView {
+            ran: g.ran,
+            failed: g.failed,
+            best_start: g.best_start,
+            solutions: g
+                .solutions
+                .iter()
+                .map(|s| SolutionView {
+                    start: s.start,
+                    merit: s.merit,
+                    x: s.x.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// 評価関数の項の値（最適化の前と後）

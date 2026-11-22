@@ -4,6 +4,7 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる
 
 mod coat_fit;
+mod glass_sub;
 mod montecarlo;
 mod schema;
 mod swap;
