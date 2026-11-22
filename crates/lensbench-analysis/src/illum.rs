@@ -15,25 +15,79 @@ use lensbench_core::system::{FieldSel, Launch, System};
 /// 縁の点の数の既定（面積はリチャードソン外挿で 1/n⁴ の誤差、照合の系で 128 と 512 の差が 1e-7 以下）
 pub const RIM_POINTS: usize = 128;
 
-/// 視野 h・正規化瞳座標 p の光線の像面の点 (x, y) と向き（像面の局所座標、けられ係数なし）。止まったか、けられたら None
-fn ray(s: &System, h: (f64, f64), p: (f64, f64), w: usize) -> Result<Option<(f64, f64, V3)>> {
+/// 届いた光線: 正規化視野 h、正規化瞳座標 p、入射瞳の座標 v（[`System::pupil_ray`]）
+#[derive(Clone, Copy)]
+struct Near {
+    h: (f64, f64),
+    p: [f64; 2],
+    v: [f64; 2],
+}
+
+/// 視野 h・正規化瞳座標 p の光線の入射瞳の座標を、近くの届いた光線 n から、視野と瞳座標を一緒に少しずつ動かして
+/// （継続法、各点は [`System::aim_pupil_near`]）解く。1 歩で解けなければ刻みを半分にし、1/16 より小さくなったら None
+fn aim_from(s: &System, n: &Near, h: (f64, f64), p: [f64; 2], w: usize) -> Option<[f64; 2]> {
+    let lerp = |a: f64, b: f64, t: f64| if t >= 1.0 { b } else { a + t * (b - a) };
+    let (mut from, mut v) = (s.object_spec(n.h.0, n.h.1).ok()?, n.v);
+    let (mut t, mut dt) = (0.0f64, 1.0f64);
+    while t < 1.0 {
+        let tn = if dt >= 1.0 - t { 1.0 } else { t + dt };
+        let hn = (lerp(n.h.0, h.0, tn), lerp(n.h.1, h.1, tn));
+        let pn = [lerp(n.p[0], p[0], tn), lerp(n.p[1], p[1], tn)];
+        let r = s
+            .object_spec(hn.0, hn.1)
+            .ok()
+            .and_then(|spec| s.aim_pupil_near(from, v, spec, pn, w).map(|vn| (spec, vn)));
+        match r {
+            Some((spec, vn)) => {
+                (from, v) = (spec, vn);
+                t = tn;
+                dt *= 2.0;
+            }
+            None => {
+                dt *= 0.5;
+                if dt < 1.0 / 16.0 {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(v)
+}
+
+/// 視野 h・正規化瞳座標 p の光線の像面の点 (x, y) と向き（像面の局所座標、けられ係数なし）。止まったか、けられたら None。
+///
+/// near は続けて追う近くの届いた光線（同じ縁の点のニュートン法・二分法の、1 つ前の届いた光線。初めは主光線）で、
+/// そこから視野と瞳座標を少しずつ動かしてエイミングし（[`aim_from`]）、届いたらこの光線にする。超広角の系では
+/// 近軸の入射瞳から始めると光線が絞りまで届かず、光線ごとに主光線を軸上から継続法で解き直していた（届かない
+/// 探りの点では特に遅く、解けるはずの縁の光線を届かないとすることもあった）。近くの光線からたどれなければ届かない
+/// とする。届いた光線は絞りの点 p を通る実光線（収束の幅はエイミングと同じ）。near が無いとき（主光線）は
+/// [`System::aim_pupil`] で解く。near は縁の点ごとに持つので、結果はスレッド数によらない
+fn ray(
+    s: &System,
+    h: (f64, f64),
+    p: (f64, f64),
+    w: usize,
+    near: &mut Option<Near>,
+) -> Result<Option<(f64, f64, V3)>> {
     // 視野の範囲の外（ニュートン法の途中）は届かない光線として扱い、呼ぶ側の二分法に回す
     let Ok(spec) = s.object_spec(h.0, h.1) else {
         return Ok(None);
     };
-    let l = Launch::Pupil {
-        spec,
-        signed: false,
-        px: &[p.0],
-        py: &[p.1],
-        vig: Some([0.0; 5]),
-        hxy: Some(h),
+    let q = [p.0, p.1];
+    let v = match *near {
+        Some(n) => aim_from(s, &n, h, q, w),
+        None => s.aim_pupil(spec, q, w),
     };
-    let t = s.trace_launch(&l, w, None, false);
+    let Some(v) = v else {
+        return Ok(None);
+    };
+    let (p0, k0) = s.pupil_ray(spec, v);
+    let t = s.trace_launch(&Launch::Rays { p: &[p0], k: &[k0] }, w, None, false);
     let r = &t.rays[0];
     if r.status.surf().is_some() || r.vig != 0 || !r.xyz[0].is_finite() {
         return Ok(None);
     }
+    *near = Some(Near { h, p: q, v });
     Ok(Some((r.xyz[0], r.xyz[1], r.lmn)))
 }
 
@@ -48,11 +102,12 @@ fn ray_to(
     h: &mut (f64, f64),
     p: (f64, f64),
     w: usize,
+    near: &mut Option<Near>,
 ) -> Result<Option<V3>> {
     // 正規化視野の刻み（像面の位置の視野での微分）
     const D: f64 = 1e-6;
     let tol = 1e-13 * (1.0 + x0.0.abs().max(x0.1.abs()));
-    let Some(mut r) = ray(s, *h, p, w)? else {
+    let Some(mut r) = ray(s, *h, p, w, near)? else {
         return Ok(None);
     };
     for _ in 0..40 {
@@ -61,9 +116,9 @@ fn ray_to(
             return Ok(Some(r.2));
         }
         // 前進差分、届かなければ後退差分
-        let col = |dh: (f64, f64)| -> Result<Option<(f64, f64)>> {
+        let mut col = |dh: (f64, f64)| -> Result<Option<(f64, f64)>> {
             for sgn in [1.0, -1.0] {
-                if let Some(q) = ray(s, (h.0 + sgn * dh.0, h.1 + sgn * dh.1), p, w)? {
+                if let Some(q) = ray(s, (h.0 + sgn * dh.0, h.1 + sgn * dh.1), p, w, near)? {
                     return Ok(Some(((q.0 - r.0) / (sgn * D), (q.1 - r.1) / (sgn * D))));
                 }
             }
@@ -88,7 +143,7 @@ fn ray_to(
         let mut t = 1.0;
         let next = loop {
             let hn = (h.0 - t * dh.0, h.1 - t * dh.1);
-            if let Some(q) = ray(s, hn, p, w)? {
+            if let Some(q) = ray(s, hn, p, w, near)? {
                 break Some((hn, q));
             }
             t *= 0.5;
@@ -106,24 +161,29 @@ fn ray_to(
 }
 
 /// 像点 x0 に届く光束の、瞳の向き a の縁の光線の向き（けられたら瞳の半径を縮めて境目を探す）
-fn rim_dir(s: &System, x0: (f64, f64), h0: (f64, f64), a: f64, w: usize) -> Result<V3> {
+fn rim_dir(s: &System, x0: (f64, f64), h0: (f64, f64), c0: Near, a: f64, w: usize) -> Result<V3> {
     let (c, sn) = (a.cos(), a.sin());
     let mut h = h0;
-    if let Some(k) = ray_to(s, x0, &mut h, (c, sn), w)? {
+    // 近くの届いた光線（[`ray`]）。初めは主光線、二分法では届いた半径の下端の光線から
+    let mut near = Some(c0);
+    if let Some(k) = ray_to(s, x0, &mut h, (c, sn), w, &mut near)? {
         return Ok(k);
     }
     // 半径の二分法（中心は届く）
     let (mut lo, mut hi) = (0.0, 1.0);
     let mut best = None;
     let mut hl = h0;
+    let mut near_lo = c0;
     for _ in 0..40 {
         let m = 0.5 * (lo + hi);
         let mut hm = hl;
-        match ray_to(s, x0, &mut hm, (m * c, m * sn), w)? {
+        let mut near = Some(near_lo);
+        match ray_to(s, x0, &mut hm, (m * c, m * sn), w, &mut near)? {
             Some(k) => {
                 lo = m;
                 hl = hm;
                 best = Some(k);
+                near_lo = near.expect("届いた光線");
             }
             None => hi = m,
         }
@@ -149,9 +209,11 @@ pub fn exit_cone(s: &System, field: FieldSel, w: usize, n: usize) -> Result<f64>
         invalid!("wavelength {w} (of {})", s.wavelengths.len());
     }
     let h0 = s.field_sel_norm(field, w)?;
-    let Some(c) = ray(s, h0, (0.0, 0.0), w)? else {
+    let mut v0 = None;
+    let Some(c) = ray(s, h0, (0.0, 0.0), w, &mut v0)? else {
         invalid!("the chief ray doesn't reach the image");
     };
+    let v0 = v0.expect("届いた光線の入射瞳の座標");
     let x0 = (c.0, c.1);
     // 像面の x0 での接平面の正規直交基底 e1（x 寄り）・e2
     let img = &s.surfaces[s.image()];
@@ -168,7 +230,7 @@ pub fn exit_cone(s: &System, field: FieldSel, w: usize, n: usize) -> Result<f64>
     let ks: Vec<usize> = (0..n).collect();
     let pts = lensbench_core::par::try_map(&ks, |&k| -> Result<(f64, f64)> {
         let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
-        let d = rim_dir(s, x0, h0, a, w)?;
+        let d = rim_dir(s, x0, h0, v0, a, w)?;
         Ok((dot(d, e1), dot(d, e2)))
     })?;
     let area = |step: usize| -> f64 {

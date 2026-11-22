@@ -151,6 +151,50 @@ impl System {
         (st, fail)
     }
 
+    /// 物体 spec・入射瞳の座標 v（光線エイミングの未知数と同じ: 近軸の入射瞳の面の上の点 [mm]、物体の座標系）の光線の
+    /// 開始位置・方向（大域。[`Launch::Rays`] で追う）。[`Launch::Pupil`] の光線は、瞳座標を [`Self::aim_pupil`] で
+    /// v に直したもの
+    pub fn pupil_ray(&self, spec: ObjSpec, v: [f64; 2]) -> (V3, V3) {
+        StartGeom::new(self, spec).ray(v[0], v[1])
+    }
+
+    /// 物体 spec・正規化瞳座標 p（けられ係数・符号の反転なし）の光線の入射瞳の座標（[`Self::pupil_ray`]。エイミングは
+    /// 系の設定どおりで、[`Launch::Pupil`] と同じ）。エイミングで解けなければ None
+    pub fn aim_pupil(&self, spec: ObjSpec, p: [f64; 2], w: usize) -> Option<[f64; 2]> {
+        let l = Launch::Pupil {
+            spec,
+            signed: false,
+            px: &[p[0]],
+            py: &[p[1]],
+            vig: Some([0.0; 5]),
+            hxy: None,
+        };
+        let (st, fail) = self.launch_starts(&l, w);
+        match st {
+            Starts::Pupil { ex, ey, .. } if !fail[0] => Some([ex[0], ey[0]]),
+            _ => None,
+        }
+    }
+
+    /// [`Self::aim_pupil`] で、近くの光線（物体 from・入射瞳の座標 v0。隣の視野・瞳の点）から解く（近くの光線を 1 本ずつ
+    /// 続けて追う解析で、光線ごとに主光線の継続法から解き直さないため）。解けなければ None（そのときは
+    /// [`Self::aim_pupil`] で解き直す）。エイミングの無い系は近軸の入射瞳の点
+    pub fn aim_pupil_near(
+        &self,
+        from: ObjSpec,
+        v0: [f64; 2],
+        spec: ObjSpec,
+        p: [f64; 2],
+        w: usize,
+    ) -> Option<[f64; 2]> {
+        if self.aiming == Aiming::Off {
+            let epd = self.paraxial().epd;
+            return Some([p[0] * epd / 2.0, p[1] * epd / 2.0]);
+        }
+        let (rx, ry) = self.stop_radius();
+        self.aim_near(from, v0, spec, [p[0] * rx, p[1] * ry], w)
+    }
+
     /// [`Self::launch_rays`] で、瞳座標の光線は開始位置・方向をまだ求めない（追跡の組の中で求める）
     pub(super) fn launch_starts(&self, l: &Launch, w: usize) -> (Starts, Vec<bool>) {
         match *l {

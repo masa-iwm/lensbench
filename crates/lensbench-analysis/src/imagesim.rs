@@ -13,7 +13,7 @@
 //! かける。相対照度は歪曲による面積の変化を含むので、それ以上は割らない。OpticStudio と同じく検出器の画素の大きさに依らない）。
 //! グレーの画像は重みのある全波長（波長の重みで足す）か 1 波長、RGB はチャンネルごとに 1 波長。
 
-use crate::illum::relative_illumination;
+use crate::illum::exit_cone;
 use crate::psf::{psf, PsfOpts, PsfPlane};
 use lensbench_core::error::Result;
 use lensbench_core::invalid;
@@ -223,12 +223,18 @@ pub fn image_sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSi
     };
     let mut pos = vec![(0.0, 0.0); m * m];
     let mut ri = vec![1.0; m * m];
+    // 軸上の光束は格子の点ごとに求め直さない（[`relative_illumination`] と同じ値）
+    let a0 = if o.relative_illumination {
+        exit_cone(s, FieldSel::Norm(0.0, 0.0), s.primary, 64)?
+    } else {
+        1.0
+    };
     for b in 0..m {
         for a in 0..m {
             let h = grid_field(a, b, m, m);
             pos[b * m + a] = chief(h)?;
             if o.relative_illumination {
-                ri[b * m + a] = relative_illumination(s, FieldSel::Norm(h.0, h.1), s.primary, 64)?;
+                ri[b * m + a] = exit_cone(s, FieldSel::Norm(h.0, h.1), s.primary, 64)? / a0;
             }
         }
     }

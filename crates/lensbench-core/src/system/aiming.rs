@@ -402,6 +402,65 @@ impl System {
         }
     }
 
+    /// 物体 spec の、絞り面の局所座標の点 t を通る光線の入射瞳の座標を、近くの光線（物体 from・入射瞳の座標 v0。
+    /// 隣の視野・瞳の点）から、差分のヤコビアンのニュートン法で解く（収束の幅は [`Self::aim`] と同じ。主光線の
+    /// 継続法・解き直しはしない）。初期値は、近くの光線が面 1 の頂点の面（物体の座標系の z = 0）を通る点を、spec の
+    /// 向きで通る光線（入射瞳の座標をそのままにして物体だけを変えると、超広角の系では光線の通る所が大きく動き、
+    /// 届く範囲の縁の光線は届かなくなる）。それで解けなければ v0 から。解けなければ None
+    pub(super) fn aim_near(
+        &self,
+        from: ObjSpec,
+        v0: [f64; 2],
+        spec: ObjSpec,
+        t: [f64; 2],
+        w: usize,
+    ) -> Option<[f64; 2]> {
+        let (rx, ry) = self.stop_radius();
+        let plan = batch::Plan::new(self, self.frames(), w, self.stop(), false);
+        let rmax = aim_scale([0.0; 2], (rx, ry), self.aim_len());
+        let h = AIM_STEP * v0[0].abs().max(v0[1].abs()).max(1.0);
+        let geom = StartGeom::new(self, spec);
+        let v1 = if from == spec {
+            v0
+        } else {
+            // 近くの光線の z = 0 の点 c（物体の座標系）
+            let (p0, k0) = StartGeom::new(self, from).ray(v0[0], v0[1]);
+            let (q, kk) = (mtv(&geom.r0, sub(p0, geom.o1)), mtv(&geom.r0, k0));
+            let c = add(q, scale(kk, -q[2] / kk[2]));
+            // spec の向き（物体の座標系）で c を通る光線の、入射瞳の面 z の点
+            let d = match geom.kind {
+                super::launch::StartKind::Dir(d) => mtv(&geom.r0, d),
+                super::launch::StartKind::Point(o) => sub(c, mtv(&geom.r0, sub(o, geom.o1))),
+            };
+            let e = add(c, scale(d, (geom.z - c[2]) / d[2]));
+            if e[0].is_finite() && e[1].is_finite() {
+                [e[0], e[1]]
+            } else {
+                v0
+            }
+        };
+        let at_stop = |v: [f64; 2]| -> [f64; 2] {
+            let (p, k) = geom.ray(v[0], v[1]);
+            let r = batch::trace_one_plain(&plan, p, k);
+            if r.status.surf().is_some() {
+                return [f64::NAN; 2];
+            }
+            [r.xyz[0], r.xyz[1]]
+        };
+        // 1 歩が絞りまで届かなければ歩幅を半分に（届く範囲の縁の近くの光線）
+        let nw = newton2::Newton2 {
+            tol: AIM_TOL * rmax,
+            max_it: crate::aim::MAX_IT,
+            diff: newton2::Diff::fwd(h),
+            line: newton2::Line::Finite { min: AIM_LINE_MIN },
+        };
+        let solve = |v: [f64; 2]| {
+            let a = nw.solve(at_stop, v, t);
+            (a.err() <= AIM_FAIL * rmax).then_some(a.v)
+        };
+        solve(v1).or_else(|| if v1 != v0 { solve(v0) } else { None })
+    }
+
     /// 主光線（絞りの中心を通る光線）の入射瞳の座標を、物体（視野の角度・物点）を軸上から少しずつ動かす継続法で解く。
     /// 近軸の入射瞳から始めると絞りに届かない超広角の系の光線エイミングの初期値に使う。解けなければ None
     pub(super) fn aim_chief_continuation(&self, spec: ObjSpec, w: usize) -> Option<[f64; 2]> {
