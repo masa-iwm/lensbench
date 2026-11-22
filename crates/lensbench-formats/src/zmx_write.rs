@@ -694,7 +694,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 ),
             },
         }
-        // チップゾーン（0 なら書かない）と機械的な半直径（固定は 1、自動は値 0 で OpticStudio が計算し直す）。半直径を
+        // チップゾーン（0 なら書かない）と機械的な半直径（固定は 1、自動は 0 で OpticStudio が計算し直す）。半直径を
         // 固定した玉の面で開口のない面は、MEMA の行があっても OpticStudio・lensbench の読込で浮動開口になる
         if d.chip_zone != 0.0 {
             w(&mut o, format!("  OEMA {} 0 0 0 1 \"\"", f(d.chip_zone)));
@@ -720,7 +720,9 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 ),
             ),
             (None, Some(m)) => w(&mut o, format!("  MEMA {} 1 0 0 1 \"\"", f(m))),
-            (None, None) => w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string()),
+            // 自動も今の値を書く（OpticStudio と同じ。OpticStudio 2026 R1.01 の読込は、機械半径のピックアップを元の面の
+            // MEMA の値 × 倍率とクリア半径で確かめ、0 ならピックアップを外す）
+            (None, None) => w(&mut o, format!("  MEMA {} 0 0 0 1 \"\"", f(s.lens_radius(k)))),
         }
         match d.ap {
             Aperture::None => {}

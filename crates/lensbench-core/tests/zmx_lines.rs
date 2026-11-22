@@ -516,7 +516,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
 }
 
 /// 機械半径のピックアップ（OpticStudio 2026 R1.01 の実測: MEMA 値 2 元の面 0 倍率、値は元の面の機械半径の表示の値 × 倍率）。
-/// 読み書きで保たれ、元の面の機械半径に追従する。機械半径の自動・固定・ピックアップ以外のソルブは自動にして注意を出す
+/// 読み書きで保たれ、元の面の機械半径に追従する。自動の機械半径は今の値で書く。機械半径の自動・固定・ピックアップ以外のソルブは自動にして注意を出す
 #[test]
 fn mechanical_semi_diameter_pickup() {
     use lensbench_core::edit::SurfValue;
@@ -541,6 +541,8 @@ SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     // 書いて読み直しても同じ
     let w = zmx_write::write(&s).unwrap();
     assert!(w.contains("  MEMA 24 2 1 0 2 \"\""), "{w}");
+    // 自動の機械半径も今の値（玉の半径）を書く（OpticStudio と同じ。0 だと OpticStudio はその面からのピックアップを外す）
+    assert!(w.contains("  MEMA 12 0 0 0 1 \"\""), "{w}");
     let b = build(&w);
     assert_eq!(b.pickups, s.pickups);
     assert_eq!(b.surfaces[3].mech_semi, Some(24.0));
