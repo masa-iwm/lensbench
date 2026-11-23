@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.11/project.schema.json",
  "name": "P17 three-group zoom (variator G2, compensator G3)",
  "wavelengths": [{"um": 0.5875618}],
  "aperture": {"type": "epd", "value": 4},

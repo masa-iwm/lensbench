@@ -1,5 +1,5 @@
 {
-  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
+  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.11/project.schema.json",
   "format": "lensbench-project",
   "format_version": 1,
   "name": "C1 二枚のカタログレンズ",

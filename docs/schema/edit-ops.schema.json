@@ -1053,7 +1053,7 @@
       ]
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.10/edit-ops.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.11/edit-ops.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "items": {
     "$ref": "#/$defs/EditOp"

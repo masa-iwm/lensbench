@@ -4860,7 +4860,7 @@
       "type": "object"
     }
   },
-  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.10/system.schema.json",
+  "$id": "https://masa-iwm.github.io/lensbench/schema/v0.11/system.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "系ファイル（[`crate::sysfile`]）の形。スキーマを作るためだけの型（読み書きは sysfile が Value で行う）",
   "properties": {

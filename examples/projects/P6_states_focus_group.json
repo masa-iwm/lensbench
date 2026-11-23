@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.11/project.schema.json",
  "name": "P6 states with a focus group and a removable lens",
  "glass_catalogs": [
   "SCHOTT"
