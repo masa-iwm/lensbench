@@ -204,6 +204,9 @@ const AFOCAL_UNITS: [AfocalUnit; 6] = [
 /// 浮動開口の欄の説明
 pub(crate) const FLOATING_CLIP_HINT: &str = "Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)";
 
+/// 機構部品の欄の説明
+pub(crate) const MECH_CLIP_HINT: &str = "Rays leaving the bores of the mechanical parts (tubes, cage plates, mounts) are vignetted in all analyses and stop at the part in the layout. Uncheck to see the vignetting only in the mechanical vignetting analysis; the layout then draws the rays faint after the part";
+
 /// 状態ごとに変えられる系の値（プロジェクトの状態の `project`）。絞りの位置・硝材カタログは全部の状態で共通
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -424,6 +427,9 @@ impl Combo {
         }
         if !self.floating_clip {
             v["floating_clip"] = json!(false);
+        }
+        if !self.mech_clip {
+            v["mech_clip"] = json!(false);
         }
         let cats: Vec<&str> = self
             .glass_catalogs

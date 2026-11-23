@@ -24,6 +24,8 @@
 
 ### 変更履歴
 
+- **2.11**: 機構部品で光線をけるかの設定 `System.mech_clip`（既定 True。プロジェクト・系ファイルの `mech_clip`）を追加。
+  True なら光線の追跡（すべての解析）で機構部品の穴の外に出た光線をける。機構部品の無い系では何も変わらない
 - **2.10**: プロジェクトの光束（`beams`）: `System.beams(path)`（光束の一覧の dict の list）・`System.load_beams(path, beams=None, all=False, ...)`
   （光束の名前 → System の dict。それぞれ `load(path, state=名前)` と同じ）・`System.beam_table(path, field=1, wave=None, grid=21, reference=None, all=False, ...)`
   （光束の表。CLI の `beams`・serve の解析 `beams` と同じ）

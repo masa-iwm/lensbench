@@ -462,10 +462,14 @@ fn scene3d_json(s: &System, sc: &lensbench_export::scene::Scene, mech_detail: bo
         .iter()
         .filter(|r| r.points.len() >= 2)
         .map(|r| {
-            json!({
+            let mut o = json!({
                 "field": r.field + 1, "wave": r.wave + 1, "cfg": r.cfg, "px": r.px, "py": r.py,
                 "pts": r.points.iter().map(|q| q.map(r4)).collect::<Vec<_>>(),
-            })
+            });
+            if let Some(k) = r.faint {
+                o["faint"] = json!(k);
+            }
+            o
         })
         .collect();
     let fr = s.frames();
@@ -537,10 +541,15 @@ fn scene_json(s: &System, sc: &lensbench_export::scene::Scene, plane: Plane) -> 
         .iter()
         .filter(|r| r.points.len() >= 2)
         .map(|r| {
-            json!({
+            let mut o = json!({
                 "field": r.field + 1, "wave": r.wave + 1, "cfg": r.cfg, "px": r.px, "py": r.py, "vig": r.vig, "err": r.err,
                 "pts": r.points.iter().map(|&q| pr(q)).collect::<Vec<_>>(),
-            })
+            });
+            // 機構部品に切られる点の位置（mech_clip が切ならそこから後ろを薄く、入なら光線はそこで終わる）
+            if let Some(k) = r.faint {
+                o["faint"] = json!(k);
+            }
+            o
         })
         .collect();
     // 機構部品: 輪の壁の断面の四角

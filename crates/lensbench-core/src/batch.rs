@@ -156,6 +156,8 @@ pub struct Plan<'a> {
     /// Fresnel・Cylinder Fresnel の面の光路長の基準点（面の番号ごとの局所座標 (x, y)。空か範囲外なら頂点）。
     /// 追跡ごとに違う（同じ視野・波長の主光線の交点）ので、面ごとの準備とは別に持つ（[`Plan::with_fresnel_ref`]）
     fres_ref: Vec<[f64; 2]>,
+    /// 光線をける機構部品（大域座標の部品の原点・列が軸の回転、穴）。空なら見ない（[`Plan::with_mech`]）
+    mech: Vec<(V3, M3, Vec<crate::mech::Bore>)>,
 }
 
 /// 系に持つ追跡の準備（(波長, 最後の面, Floating 開口でけるか), 面ごとの準備）の並び
@@ -204,7 +206,21 @@ impl<'a> Plan<'a> {
             ext_any: steps.iter().any(|s| s.ext != ExtStep::None),
             steps,
             fres_ref: Vec::new(),
+            mech: Vec::new(),
         }
+    }
+
+    /// 系の機構部品の穴の外に出た光線をける（面と面の間の線分を [`crate::mech::segment_clipped`] で見る。
+    /// 物体面から最初の面までの区間は見ない）。座標の決まらない部品は飛ばす
+    pub(crate) fn with_mech(mut self, fr: &Frames) -> Self {
+        self.mech = self
+            .sys
+            .mechanics
+            .iter()
+            .filter(|p| !p.bores.is_empty())
+            .filter_map(|p| p.frame_in(fr).ok().map(|(o, r)| (o, r, p.bores.clone())))
+            .collect();
+        self
     }
 
     /// Fresnel の面の光路長の基準点を与える（面の番号ごと）

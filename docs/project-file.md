@@ -88,6 +88,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - クリア半径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。
+  機構部品（`mechanics`）の穴の外の光線をけないようにするには `"mech_clip": false`（既定はける。下の「機構部品と品の形」）。
 - 定義した視野以外の点のケラレ係数の求め方は `"vig_interp"`（`"continuous"`（既定、視野の間で連続）・`"opticstudio"`（OpticStudio と同じ、視野の間で段差。x ≠ 0 の視野があると補間せず物理座標で最も近い視野の係数を使う。OpticStudio 2026 R1.01 で Remove Vignetting Factors を切ると、A6 の視野 0.86 で相対照度が 0.85→0.47 と跳ぶ）。
   システムファイルの同じ名前の項目と同じ）。
 - 瞳の振幅の分布は `"apodization"`（`"uniform"`（既定）・`{"gaussian": G}`・`"cosine_cubed"`。.zmx の GFAC と同じ）、OPD の基準は
@@ -255,10 +256,19 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z", "max_diameter"}`（`max_diameter` は上下から挟むホルダー（バー型・ジョー型）のように径を選ばない部品の入る径の上限で、`diameter`〜`max_diameter` の素子が入る。保持径が太すぎる確認はしない）・`front_thread`・`back_thread`・`outline`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
   `{"name", "catalog", "item", "at": {"block": id, "surface": i}, "offset": [dx, dy, dz], "tilt": [tx, ty]}`（`catalog`・`item` の
   代わりに `mech` をその場で書いても、`at` にシステムの面の番号 `{"surface": n}` だけでもよい）で、ブロックの面の局所座標に置く。
-  光学系の位置は変えず、光線の追跡にも効かない。`lensbench mech-check` は瞳の格子の光線を面 1 から追い、面と面の間の直線が
-  穴（円柱）の z の範囲で半径の外に出たら切れたとして、部品ごと・視野と波長ごとに切れた割合（`clipped_pct`、ほかで先に切れた
-  光線も数える）と最初に切った割合（`first_pct`）、システムの開口で切れた割合、通った割合を出す。例は `examples/projects/P19_tube_cage.json`。
-  Python は `System.mech_check()`（同じ dict）。
+  光学系の位置は変えない。面と面の間の直線が穴（円柱）の z の範囲で半径の外に出た光線を切る（物体面から面 1 までの区間は見ない。
+  GRIN の媒質の中は端の点を結ぶ直線で見る）。
+- 機構部品で光線をけるか: システムの設定 `"mech_clip"`（既定 true）。true なら光線の追跡（スポット・収差図・MTF・相対照度・
+  フットプリント・ケラレの割合などすべての解析）で部品の穴の外に出た光線をけり、けられた面はその区間の終わりの面として数える。
+  光線エイミングは部品を見ない。レイアウト図（2D・3D・書き出し）の光線は部品に切られる点で終わる。false なら追跡では切らず、
+  けられは `mech-check` だけで見る。レイアウト図では光線を最後まで描き、部品に切られる点から後ろを薄く描く（serve の `layout` の光線の
+  `faint` はその点の番号）。機構部品の無い系では何も変わらない。システムファイル・状態の `project`・serve の `set_system_data`・
+  Python の `System.mech_clip`・GUI のシステムの設定でも変えられる。
+- `lensbench mech-check` は設定によらず、瞳の格子の光線を面 1 から部品で切らずに追い、視野と波長ごとに、どこでも切れずに通った割合
+  （`passed_pct`）、部品より先にシステムの開口で切れた割合（`optical_pct`）、追跡が止まった割合（`failed_pct`）、部品ごとに最初に切った割合
+  （`first_pct`、光の通る順で最初）を出す。この 4 つの合計は 100 %。部品ごとの、穴の外に出た光線の割合（`clipped_pct`、ほかで先に
+  切れた光線も数える）も出す。`mech_clip` は設定の値。例は `examples/projects/P19_tube_cage.json`（20° の光線はチューブとケージ板で
+  全部切れる）。Python は `System.mech_check()`（`failed_pct`・`mech_clip` の無い dict）。GUI の「機構のケラレ」は行が視野・波長の 1 枚の表。
 - 枠付きの品: ユーザーカタログの品に `frame`（`mech` と同じ形。z は枠の端から光の進む向き、`holds.seat_z` はガラスの前面の位置）を
   書くと、`blocks`（ガラスだけ）をプロジェクトに `user` のブロックで置いたとき、枠がガラスの最初の面に機構部品（名前は「ブロック id の枠」、
   保持する素子はその品の面）として付き、`mech-check` のケラレ・当たりと描画に入る。品ページの STEP を測ると（GUI の補う窓）、

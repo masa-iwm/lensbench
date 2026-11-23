@@ -299,7 +299,13 @@ fn negative_zero_is_the_same_surface() {
 #[test]
 fn lens_edge_vignetting_survives_a_zmx_round_trip() {
     let p = project("P19_tube_cage.json");
-    let s = expand(&p, &env(), &ExpandOpts::default()).unwrap().system;
+    let mut s = expand(&p, &env(), &ExpandOpts::default()).unwrap().system;
+    // 機構部品は .zmx に書かないので、部品でけない系で比べる（玉の縁のけられだけ）
+    s.edit(|r| {
+        r.mech_clip = false;
+        Ok(())
+    })
+    .unwrap();
     let dir = std::env::temp_dir().join(format!("lb_p19zmx_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("p19.zmx");

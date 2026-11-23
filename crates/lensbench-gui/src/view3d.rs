@@ -15,7 +15,8 @@ use crate::theme;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scene3 {
     pub meshes: Vec<Mesh3>,
-    /// 光線の色の番号（1 始まり。視野、構成を重ねたときは構成）と点
+    /// 光線の色の番号（1 始まり。視野、構成を重ねたときは構成。機構部品に切られた後ろの部分は
+    /// [`crate::layout_rays::FAINT`] の印付き）と点
     pub rays: Vec<(usize, Vec<[f32; 3]>)>,
     /// 場面の真ん中と、それを囲む球の半径
     pub center: [f32; 3],
@@ -84,7 +85,7 @@ impl Scene3 {
             .collect();
         let rays: Vec<(usize, Vec<[f32; 3]>)> = arr(&v["rays"])
             .iter()
-            .map(|r| {
+            .flat_map(|r| {
                 let c = crate::layout_rays::ray_class(
                     r,
                     v["color"].as_str().unwrap_or_default(),
@@ -100,7 +101,7 @@ impl Scene3 {
                         ])
                     })
                     .collect();
-                (c, pts)
+                crate::layout_rays::split_faint(r, c, pts)
             })
             .collect();
         let mut lo = [f32::INFINITY; 3];
@@ -356,7 +357,9 @@ pub(crate) fn show(
     // 光線は玉と前後が入れ替わるよう、短く切って並べる
     let piece = sc.radius / 40.0;
     for (f, pts) in &sc.rays {
-        let col = theme::series(f.saturating_sub(1)).gamma_multiply(0.85);
+        let (f, faint) = crate::layout_rays::class_of(*f);
+        let col =
+            theme::series(f.saturating_sub(1)).gamma_multiply(if faint { 0.25 } else { 0.85 });
         for w in pts.windows(2) {
             let (a, b) = (to_view(w[0]), to_view(w[1]));
             let len =

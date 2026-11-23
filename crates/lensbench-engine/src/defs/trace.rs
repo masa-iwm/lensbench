@@ -477,7 +477,7 @@ impl Analysis for MechCheck {
         Meta {
             name: "mech-check",
             about: "Mechanical part vignetting: fraction of rays outside the part bores",
-            help: "Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength",
+            help: "Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength. Per field and wavelength, passed + optical + failed + the first clip of each part add up to 100 %",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &MechCheckParams) -> Result<Value> {
@@ -523,6 +523,7 @@ impl Analysis for MechCheck {
                 json!({
                     "field": r.field + 1, "wave": r.wave + 1,
                     "rays": r.launched, "failed": r.failed,
+                    "failed_pct": pct(r.failed, r.launched),
                     "optical_pct": pct(r.optical, r.launched),
                     "passed_pct": pct(r.passed, r.launched),
                     "parts": s.mechanics.iter().enumerate().map(|(k, m)| json!({
@@ -544,7 +545,12 @@ impl Analysis for MechCheck {
                 })
             })
             .collect();
-        Ok(json!({ "pupil_rays": px.len(), "parts": parts, "results": rows, "fit": fit }))
+        // mech_clip: ほかの解析でも部品で光線をけるか（系の設定）。各行の passed・optical・failed と部品ごとの first の
+        // 割合を足すと 100 %
+        Ok(json!({
+            "pupil_rays": px.len(), "mech_clip": s.mech_clip,
+            "parts": parts, "results": rows, "fit": fit,
+        }))
     }
 }
 

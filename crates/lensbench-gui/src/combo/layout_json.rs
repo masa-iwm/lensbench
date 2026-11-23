@@ -41,3 +41,26 @@ pub(super) fn pts(v: &Value) -> Vec<[f64; 2]> {
         })
         .unwrap_or_default()
 }
+
+/// 要素ごとの面の範囲（[`super::LayoutData::spans_for`]）。blocks は serve の `blocks`、stop は絞りの面（表の行から
+/// 引けるので、レイアウト図の結果を作らずに引ける）
+pub(crate) fn spans_in(
+    blocks: &[(String, Vec<[usize; 2]>)],
+    stop: Option<usize>,
+    ids: &[String],
+    lead_stop: bool,
+) -> Vec<Option<[usize; 2]>> {
+    let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
+    let mut prev = if lead_stop { stop } else { None };
+    for id in ids {
+        // 空の id（OFF の要素）は系に無い
+        let s = (!id.is_empty())
+            .then(|| super::LayoutData::block_after(blocks, id, prev, ids))
+            .flatten();
+        if let Some(s) = s {
+            prev = Some(s[1]);
+        }
+        v.push(s);
+    }
+    v
+}

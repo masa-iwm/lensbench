@@ -598,6 +598,16 @@ def test_floating_clip_setting():
     assert lb.System.from_json(s.to_json()).floating_clip is False
     assert "floating_clip" not in json.loads(lb.System.load(zmx("A5"), glass_dirs=GLASS).to_json())["system"]
 
+
+def test_mech_clip_setting():
+    s = lb.System.load(zmx("A5"), glass_dirs=GLASS)
+    assert s.mech_clip is True
+    s.mech_clip = False
+    assert s.mech_clip is False
+    assert json.loads(s.to_json())["system"]["mech_clip"] is False
+    assert lb.System.from_json(s.to_json()).mech_clip is False
+    assert "mech_clip" not in json.loads(lb.System.load(zmx("A5"), glass_dirs=GLASS).to_json())["system"]
+
 PICKUP_ZMX = """VERS 260327 42
 MODE SEQ
 UNIT MM X W X CM MR CPMM

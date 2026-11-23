@@ -2838,6 +2838,10 @@
           },
           "type": "array"
         },
+        "mech_clip": {
+          "description": "機構部品の穴の外に出た光線をけるか",
+          "type": "boolean"
+        },
         "mechanics": {
           "description": "機構部品",
           "items": {

@@ -456,6 +456,7 @@ pub const SYSTEM_KEYS: &[&str] = &[
     "afocal",
     "afocal_unit",
     "floating_clip",
+    "mech_clip",
     "temperature",
     "pressure",
     "adjust_index",
@@ -478,8 +479,9 @@ pub fn system_data(s: &System) -> lensbench_core::Result<Value> {
             .iter()
             .filter_map(|k| match (o.get(*k), *k) {
                 (Some(x), _) => Some((k.to_string(), x.clone())),
-                // 既定（ける）は系ファイルに書かない
+                // 既定（ける）は系ファイルに書かない（floating_clip・mech_clip）
                 (None, "floating_clip") => Some((k.to_string(), Value::Bool(true))),
+                (None, "mech_clip") => Some((k.to_string(), Value::Bool(true))),
                 (None, "apodization") => Some((k.to_string(), Value::String("uniform".into()))),
                 (None, "aim_pupil" | "input_pol") => Some((k.to_string(), serde_json::json!({}))),
                 _ => None,

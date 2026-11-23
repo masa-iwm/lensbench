@@ -1468,6 +1468,8 @@ Fold	開閉
 Current	今の値
 Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…	硝材 {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で追加できます
 Vignette rays outside fixed semi-diameters	クリア半径を固定した面の外の光線をケラレとする
+Vignette rays at mechanical parts	機構部品の穴の外の光線をケラレとする
+Rays leaving the bores of the mechanical parts (tubes, cage plates, mounts) are vignetted in all analyses and stop at the part in the layout. Uncheck to see the vignetting only in the mechanical vignetting analysis; the layout then draws the rays faint after the part	機構部品（チューブ・ケージプレート・マウント）の穴の外に出た光線を、すべての解析でケラレとし、レイアウト図でも部品で止めます。外すと、ケラレは機構のケラレの解析だけで見ます。レイアウト図では部品より後ろの光線を薄く描きます
 Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)	浮動開口（.zmx の FLAP など）。オフにするとクリア半径でケラレない（クリア半径でケラレない従来のモデルと比べるとき）
 The system changed after the optimization started, so the result was not applied (optimize again)	最適化を始めた後にシステムが変わったので当てません（もう一度最適化してください）
 Show panel: {}	パネルを出す: {}
@@ -1975,6 +1977,17 @@ Turn back at	折り返し
 Two or more beams are named {}	光束 {} が 2 つ以上あります
 Which forward pass through the lens (from 0)	レンズを往路で何回目に通るか（0 から）
 Pass	回
+The other analyses also vignette rays at the mechanical parts (system setting).	ほかの解析でも機構部品で光線をケラレとしています（システムの設定）。
+The other analyses do not vignette rays at the mechanical parts (system setting). The layout draws the clipped rays faint.	ほかの解析では機構部品で光線をケラレとしていません（システムの設定）。レイアウト図では切られる光線を薄く描きます。
+Passes [%]	通る [%]
+Aperture [%]	開口 [%]
+Stopped [%]	止まる [%]
+Rays reaching the image without being vignetted anywhere	どこでもケラレずに像面まで届く光線
+Rays vignetted by an aperture of the optical surfaces before any part	どの部品より先に、光学面の開口でケラレる光線
+Rays that missed a surface or were totally reflected	面に当たらない・全反射で止まった光線
+Rays this part clips first (along the light path)	この部品が最初に切る光線（光の通る順）
+Rays leaving this part's bore: {} % (also counting rays clipped earlier by another part or an aperture)	この部品の穴の外に出る光線: {} %（ほかの部品・開口で先に切れた光線も数える）
+Fit of the parts	部品の収まり
 Mechanical part	機構部品
 {}: length {} mm	{}: 長さ {} mm
 , bore {} mm	、内径 {} mm

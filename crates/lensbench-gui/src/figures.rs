@@ -188,6 +188,7 @@ pub(crate) fn show(
             crate::plots::geo_mtf(ui, out, prev, id, gen, &mut st.mtf_prev);
             true
         }
+        "mech-check" => crate::mech_table::show(ui, id, v),
         "interference" => interference(ui, id, v),
         "pop" => pop(ui, id, gen, v),
         "image-sim" => image_sim(ui, id, gen, v),

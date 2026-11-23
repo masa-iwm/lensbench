@@ -830,6 +830,15 @@ class System:
         part, other, surface, value [mm] and message.
         """
 
+    @property
+    def mech_clip(self) -> bool:
+        """Whether rays leaving the bores of the mechanical parts (mechanics of the project) are vignetted in the ray trace (default True).
+        Set False to see the vignetting only with mech_check. No effect without mechanical parts
+        """
+
+    @mech_clip.setter
+    def mech_clip(self, value: bool) -> None: ...
+
     def merit_jacobian(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, jac: str = "auto", threads: int | None = None, terms: Any = None) -> tuple[Any, Any]:
         """Return the residuals r of the optimization merit and the Jacobian J ([residual][variable]) at the current variable values (for running the iterations yourself.
         Arguments as in optimize; terms work too). The merit is the square root of Σ r² / Σ weights. Residuals are in term order

@@ -62,7 +62,11 @@ pub struct MechPart {
 impl MechPart {
     /// 部品の座標系（大域座標の原点と、列が軸の回転行列）
     pub fn frame(&self, s: &System) -> Result<(V3, M3)> {
-        let fr = s.frames();
+        self.frame_in(s.frames())
+    }
+
+    /// 座標系 `fr` での部品の座標系（[`MechPart::frame`]）
+    pub fn frame_in(&self, fr: &crate::system::Frames) -> Result<(V3, M3)> {
         let Some(f) = fr.surf.get(self.surface).copied().flatten() else {
             return Err(Error::Invalid(format!(
                 "mechanism {}: no coordinates of surface {} (object, ignored or out of range)",
@@ -487,6 +491,19 @@ pub fn vignetting(
     px: &[f64],
     py: &[f64],
 ) -> Result<Vec<MechVig>> {
+    // 部品で切る設定でも、部品の判定はここで数える（追跡では切らない）
+    let off;
+    let s = if s.mech_clip {
+        let mut c = s.clone();
+        c.edit(|p| {
+            p.mech_clip = false;
+            Ok(())
+        })?;
+        off = c;
+        &off
+    } else {
+        s
+    };
     let img = s.image();
     let frames: Vec<(V3, M3)> = parts.iter().map(|p| p.frame(s)).collect::<Result<_>>()?;
     let mut out = Vec::new();
@@ -550,30 +567,93 @@ fn first_clip(
     pts: &[(usize, V3)],
     parts: &[MechPart],
     frames: &[(V3, M3)],
-    hit: &[Option<usize>],
+    _hit: &[Option<usize>],
 ) -> Option<(usize, usize)> {
-    let j = hit.iter().flatten().min().copied()?;
-    let cands: Vec<usize> = (0..parts.len()).filter(|&k| hit[k] == Some(j)).collect();
-    if cands.len() == 1 {
-        return Some((cands[0], j));
+    clip_point(pts, parts, frames).map(|c| (c.part, c.surface))
+}
+
+/// 光線が最初に部品の穴の外に出る所（[`clip_point`]）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClipPoint {
+    /// 部品の番号
+    pub part: usize,
+    /// その区間の終わりの面
+    pub surface: usize,
+    /// 区間の終わりの点の、点の並びでの位置
+    pub index: usize,
+    /// 穴の外に出る点（大域座標）。穴の端の面で外にいればその面の上、途中で出れば穴の壁の上
+    pub point: V3,
+}
+
+/// 部品の座標の線分 a → b が穴の外に出る最初の助変数（0〜1）。出なければ None
+fn exit_param(a: V3, b: V3, bore: &Bore) -> Option<f64> {
+    if !segment_clipped(a, b, bore) {
+        return None;
     }
-    // 同じ区間で複数: 区間を細かく刻んで、先に穴の外に出る部品
-    let s = pts.iter().position(|x| x.0 == j)?;
-    let (a, b) = (pts[s - 1].1, pts[s].1);
-    let n = 256;
-    for q in 0..n {
-        let (t0, t1) = (q as f64 / n as f64, (q + 1) as f64 / n as f64);
-        let p0 = add(a, crate::math::scale(sub(b, a), t0));
-        let p1 = add(a, crate::math::scale(sub(b, a), t1));
-        for &k in &cands {
-            let (o, m) = frames[k];
-            let (u, v) = (mtv(&m, sub(p0, o)), mtv(&m, sub(p1, o)));
-            if parts[k].bores.iter().any(|bo| segment_clipped(u, v, bo)) {
-                return Some((k, j));
-            }
+    let (z0, z1) = (bore.z0.min(bore.z1), bore.z0.max(bore.z1));
+    let dz = b[2] - a[2];
+    let (t0, t1) = if dz.abs() < 1e-300 {
+        (0.0, 1.0)
+    } else {
+        let (ta, tb) = ((z0 - a[2]) / dz, (z1 - a[2]) / dz);
+        (ta.min(tb).max(0.0), ta.max(tb).min(1.0))
+    };
+    let r2 = bore.radius * bore.radius;
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let at = |t: f64| (a[0] + t * dx).powi(2) + (a[1] + t * dy).powi(2);
+    if at(t0) > r2 * (1.0 + 1e-12) {
+        return Some(t0);
+    }
+    // |a + t d|² = r² の大きい方の根（区間の始まりは内側なので、外へ出るのは大きい根）
+    let qa = dx * dx + dy * dy;
+    let qb = 2.0 * (a[0] * dx + a[1] * dy);
+    let qc = a[0] * a[0] + a[1] * a[1] - r2;
+    let disc = qb * qb - 4.0 * qa * qc;
+    if qa > 0.0 && disc >= 0.0 {
+        let t = (-qb + disc.sqrt()) / (2.0 * qa);
+        if t.is_finite() {
+            return Some(t.clamp(t0, t1));
         }
     }
-    Some((cands[0], j))
+    Some(t1)
+}
+
+/// 光の通る順の点の並び `pts`（面の番号, 大域座標）で、光線が最初に部品の穴の外に出る所。
+/// 同じ区間で複数の部品が切るなら、区間の中で先に出る部品
+pub fn clip_point(
+    pts: &[(usize, V3)],
+    parts: &[MechPart],
+    frames: &[(V3, M3)],
+) -> Option<ClipPoint> {
+    for (s, seg) in pts.windows(2).enumerate() {
+        let mut best: Option<(f64, usize)> = None;
+        for (k, (p, (o, m))) in parts.iter().zip(frames).enumerate() {
+            let u = mtv(m, sub(seg[0].1, *o));
+            let v = mtv(m, sub(seg[1].1, *o));
+            for bo in &p.bores {
+                if let Some(t) = exit_param(u, v, bo) {
+                    if best.is_none_or(|(bt, _)| t < bt) {
+                        best = Some((t, k));
+                    }
+                }
+            }
+        }
+        if let Some((t, k)) = best {
+            let (a, b) = (seg[0].1, seg[1].1);
+            return Some(ClipPoint {
+                part: k,
+                surface: seg[1].0,
+                index: s + 1,
+                point: add(a, crate::math::scale(sub(b, a), t)),
+            });
+        }
+    }
+    None
+}
+
+/// 系の部品の座標系（座標の決まらない部品はエラー）
+pub fn frames(s: &System, parts: &[MechPart]) -> Result<Vec<(V3, M3)>> {
+    parts.iter().map(|p| p.frame(s)).collect()
 }
 
 /// 瞳の正方格子（一辺 `n` 本、-1〜1）のうち単位円の中の点 (px, py)（[`crate::pupil::PupilGrid::Linear`] の

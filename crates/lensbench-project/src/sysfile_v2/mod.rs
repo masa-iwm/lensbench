@@ -122,6 +122,9 @@ pub struct Prescription {
     /// 浮動開口（半直径を固定した面）の外の光線をけるか
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub floating_clip: bool,
+    /// 機構部品の穴の外に出た光線をけるか
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub mech_clip: bool,
     /// 大域座標の基準の面（.zmx の GLRS）
     #[serde(default = "glrs1", skip_serializing_if = "is_one")]
     pub glrs: usize,

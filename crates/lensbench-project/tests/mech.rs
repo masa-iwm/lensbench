@@ -529,3 +529,96 @@ fn square_outline_reaches_corners() {
     assert_eq!(v["mechanics"][0]["mech"]["outline"], "square");
     assert!(v["mechanics"][1]["mech"].get("outline").is_none());
 }
+
+/// 系の設定 mech_clip を変えた系
+fn with_mech_clip(s: &lensbench_core::System, on: bool) -> lensbench_core::System {
+    let mut c = s.clone();
+    c.edit(|p| {
+        p.mech_clip = on;
+        Ok(())
+    })
+    .unwrap();
+    c
+}
+
+/// 部品で切る設定（既定）: 追跡でけった光線とその面が、mech-check の最初に切った区間（clip_point）と同じ。
+/// 切ると追跡では切れない
+#[test]
+fn trace_clips_like_mech_check() {
+    let (px, py) = pupil(21);
+    for mech in [
+        r#"{"name": "front", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 8}]}, "at": {"block": "stop"}, "offset": [0, 0, 5]},
+           {"name": "back", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 7}]}, "at": {"block": "L1", "surface": 1}, "offset": [0, 0, 2]}"#,
+        r#"{"name": "tube", "mech": {"bores": [{"z0": 5, "z1": 35, "diameter": 11}], "length": 30, "outer_diameter": 14}, "at": {"block": "stop"}, "tilt": [1.5, 0]}"#,
+    ] {
+        let s = system(mech, None);
+        assert!(s.mech_clip, "既定はける");
+        let off = with_mech_clip(&s, false);
+        let frames = lensbench_core::mech::frames(&s, &s.mechanics).unwrap();
+        for f in [0, 1] {
+            let v = vignetting(&s, &s.mechanics, &[f], &[0], &px, &py).unwrap();
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, true)
+                .unwrap();
+            let u = off
+                .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, true)
+                .unwrap();
+            assert!(u.rays.iter().all(|r| r.vig == 0), "切なら追跡では切れない");
+            let cut = t.rays.iter().filter(|r| r.vig != 0).count();
+            assert_eq!(cut, px.len() - v[0].passed, "視野 {f}");
+            for (i, r) in u.rays.iter().enumerate() {
+                let pts: Vec<(usize, [f64; 3])> = u
+                    .rec
+                    .iter()
+                    .filter(|q| q.surf >= 1)
+                    .map(|q| (q.surf, q.entry(i).p))
+                    .collect();
+                let c = lensbench_core::mech::clip_point(&pts, &s.mechanics, &frames);
+                assert!(r.status.is_ok());
+                assert_eq!(t.rays[i].vig, c.map_or(0, |c| c.surface), "光線 {i}");
+                // 切れる点は穴の壁か端の面の上（部品の座標で半径 ≥ 穴の半径）
+                if let Some(c) = c {
+                    let (o, m) = frames[c.part];
+                    let q = lensbench_core::math::mtv(&m, lensbench_core::math::sub(c.point, o));
+                    let rr = s.mechanics[c.part]
+                        .bores
+                        .iter()
+                        .map(|b| b.radius)
+                        .fold(f64::MAX, f64::min);
+                    assert!(q[0].hypot(q[1]) >= rr - 1e-9, "{q:?}");
+                }
+            }
+        }
+    }
+}
+
+/// P19（チューブとケージ板）: 部品で切る設定なら 20° の光線は全部けられ、0°・10° はけられない。切なら部品ではけない
+#[test]
+fn p19_twenty_degrees_is_vignetted_by_the_parts() {
+    let path = root().join("examples/projects/P19_tube_cage.json");
+    let p = Project::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let env = Env::for_file(&path, &[root().join("tests/glass")], None);
+    let s = expand(&p, &env, &ExpandOpts::default()).unwrap().system;
+    let (px, py) = pupil(21);
+    let off = with_mech_clip(&s, false);
+    for (f, all_cut) in [(0, false), (1, false), (2, true)] {
+        let t = s
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
+        let cut = t.rays.iter().filter(|r| r.vig != 0).count();
+        assert_eq!(cut, if all_cut { px.len() } else { 0 }, "視野 {f}");
+        let u = off
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
+        // 切なら、けられるのは光学面の開口だけ（mech-check の、部品より先に開口で切れた光線と、部品で切れた後に
+        // 開口でも切れる光線）。部品で切れる光線の一部は開口を通って像面に届く
+        let v = vignetting(&s, &s.mechanics, &[f], &[0], &px, &py).unwrap();
+        let reach = u.rays.iter().filter(|r| r.vig == 0).count();
+        assert!(reach >= v[0].passed, "視野 {f}");
+        if !all_cut {
+            assert_eq!(reach, px.len(), "視野 {f}");
+        } else {
+            assert!(reach > 0, "切なら 20° の一部は像面に届く");
+        }
+    }
+}

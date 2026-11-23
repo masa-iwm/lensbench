@@ -19,7 +19,7 @@ use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 use layout_json::pts;
-pub(crate) use layout_json::{block_back_spans, block_spans};
+pub(crate) use layout_json::{block_back_spans, block_spans, spans_in};
 use paths::path_select;
 pub(crate) use solved_gap::SolvedGap;
 mod ap_shape;
@@ -915,6 +915,9 @@ pub(crate) struct Combo {
     /// 浮動開口（半直径を固定した面）の外の光線をけるか（プロジェクトの floating_clip）。既定（ける）は書かない
     #[serde(skip_serializing_if = "Clone::clone")]
     pub floating_clip: bool,
+    /// 機構部品の穴の外に出た光線を解析でもけるか（プロジェクトの mech_clip）。既定（ける）は書かない
+    #[serde(skip_serializing_if = "Clone::clone")]
+    pub mech_clip: bool,
     /// BS を通る順の透過 T・反射 R の並び（プロジェクトの path。足りない文字は BS の既定の口）
     pub path: String,
     /// 硝材カタログ（AGF の名前、前ほど優先。プロジェクトの glass_catalogs）
@@ -992,6 +995,7 @@ impl Default for Combo {
             aiming: Aiming::Off,
             afocal: None,
             floating_clip: true,
+            mech_clip: true,
             path: String::new(),
             glass_catalogs: vec!["SCHOTT".into()],
             states: Vec::new(),
@@ -1280,7 +1284,8 @@ pub(crate) struct LayoutData {
     pub plates: Vec<(String, usize, Vec<[f64; 2]>)>,
     /// 機構部品の名前と、壁の断面の四角
     pub mechs: Vec<(String, Vec<Vec<[f64; 2]>>)>,
-    /// 光線の色の番号（1 始まり。視野、構成を重ねたときは構成）と点
+    /// 光線の色の番号（1 始まり。視野、構成を重ねたときは構成。機構部品に切られた後ろの部分は
+    /// [`crate::layout_rays::FAINT`] の印付き）と点
     pub rays: Vec<(usize, Vec<[f64; 2]>)>,
     /// 重ねた構成の名前（2 つ以上のとき光線は構成ごとの色）
     pub configs: Vec<String>,
@@ -1371,9 +1376,9 @@ impl LayoutData {
                 .collect(),
             rays: arr("rays")
                 .iter()
-                .map(|r| {
+                .flat_map(|r| {
                     let c = crate::layout_rays::ray_class(r, color, by_cfg);
-                    (c, pts(&r["pts"]))
+                    crate::layout_rays::split_faint(r, c, pts(&r["pts"]))
                 })
                 .collect(),
             configs,
@@ -1452,8 +1457,9 @@ impl LayoutData {
             return;
         }
         let len = 0.5 * d;
-        for (_, p) in &mut self.rays {
-            if p.len() < 2 {
+        for (c, p) in &mut self.rays {
+            // 機構部品に切られた後ろの部分は物点から始まらない
+            if p.len() < 2 || crate::layout_rays::class_of(*c).1 {
                 continue;
             }
             let (a, b) = (p[0], p[1]);
@@ -3262,26 +3268,3 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
 #[cfg(test)]
 #[path = "combo_tests.rs"]
 mod tests;
-
-/// 要素ごとの面の範囲（[`LayoutData::spans_for`]）。blocks は serve の `blocks`、stop は絞りの面（表の行から
-/// 引けるので、レイアウト図の結果を作らずに引ける）
-pub(crate) fn spans_in(
-    blocks: &[(String, Vec<[usize; 2]>)],
-    stop: Option<usize>,
-    ids: &[String],
-    lead_stop: bool,
-) -> Vec<Option<[usize; 2]>> {
-    let mut v: Vec<Option<[usize; 2]>> = Vec::with_capacity(ids.len());
-    let mut prev = if lead_stop { stop } else { None };
-    for id in ids {
-        // 空の id（OFF の要素）は系に無い
-        let s = (!id.is_empty())
-            .then(|| LayoutData::block_after(blocks, id, prev, ids))
-            .flatten();
-        if let Some(s) = s {
-            prev = Some(s[1]);
-        }
-        v.push(s);
-    }
-    v
-}

@@ -836,6 +836,10 @@ pub struct Project {
     /// 浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub floating_clip: bool,
+    /// 機構部品（`mechanics`）の穴の外に出た光線を、解析の光線追跡でもけるか（既定はける。false ならけられは
+    /// 機構のケラレの解析だけで見て、レイアウト図では切られる点から後ろを薄く描く）
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub mech_clip: bool,
     /// 瞳の振幅の分布（`"uniform"`・`{"gaussian": G}`・`"cosine_cubed"`。省略は一様）
     #[serde(default, skip_serializing_if = "is_uniform")]
     pub apodization: lensbench_core::pupil::Apodization,

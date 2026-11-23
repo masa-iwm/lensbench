@@ -4911,6 +4911,10 @@
       },
       "type": "array"
     },
+    "mech_clip": {
+      "description": "機構部品（`mechanics`）の穴の外に出た光線を、解析の光線追跡でもけるか（既定はける。false ならけられは\n機構のケラレの解析だけで見て、レイアウト図では切られる点から後ろを薄く描く）",
+      "type": "boolean"
+    },
     "mechanics": {
       "description": "機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う",
       "items": {

@@ -50,6 +50,7 @@ pub fn zmx_project(cfgs: &[System], path: &str) -> lensbench_core::Result<Value>
             let d = match key.as_str() {
                 "telecentric" => json!(false),
                 "floating_clip" => json!(true),
+                "mech_clip" => json!(true),
                 "apodization" => json!("uniform"),
                 "ropd" => json!(2),
                 "aim_pupil" => json!({}),
@@ -156,6 +157,9 @@ pub(crate) fn settings(s: &System, path: &str) -> lensbench_core::Result<Value> 
     }
     if !s.floating_clip {
         p["floating_clip"] = json!(false);
+    }
+    if !s.mech_clip {
+        p["mech_clip"] = json!(false);
     }
     if s.apodization != lensbench_core::pupil::Apodization::Uniform {
         p["apodization"] = serde_json::to_value(s.apodization).map_err(|e| e.to_string())?;

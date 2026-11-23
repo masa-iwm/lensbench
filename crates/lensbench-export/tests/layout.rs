@@ -875,3 +875,55 @@ fn unfolded_return_lens_keeps_its_shape() {
         }
     }
 }
+
+/// 機構部品に切られる光線: 部品で切る設定（既定）なら切られる点で終わり、切なら最後まで描いて切られる点から
+/// 後ろを薄く（P19 の 20°）。0° は切られない。2D の書き出しは薄い部分を別の線にする
+#[test]
+fn rays_clipped_by_mechanics_stop_or_turn_faint() {
+    let on = project("P19_tube_cage");
+    let off = project_with("P19_tube_cage", |t| {
+        t.replacen("\"fields\"", "\"mech_clip\": false, \"fields\"", 1)
+    });
+    assert!(on.mech_clip && !off.mech_clip);
+    let opt = Options {
+        fields: Some(vec![0, 2]),
+        ..Options::default()
+    };
+    let a = scene::build(&on, &opt).unwrap();
+    let b = scene::build(&off, &opt).unwrap();
+    assert_eq!(a.rays.len(), b.rays.len());
+    // 部品の穴の最小の半径（チューブ 11.5・ケージ板 11）
+    let rmin = on
+        .mechanics
+        .iter()
+        .flat_map(|m| m.bores.iter().map(|b| b.radius))
+        .fold(f64::MAX, f64::min);
+    let mut cut = 0;
+    for (x, y) in a.rays.iter().zip(&b.rays) {
+        if x.field == 0 {
+            assert_eq!((x.faint, y.faint), (None, None));
+            assert_eq!(x.points, y.points);
+            continue;
+        }
+        let k = y.faint.expect("20° は部品に切られる");
+        assert_eq!(
+            x.faint,
+            Some(x.points.len() - 1),
+            "入なら切られる点で終わる"
+        );
+        assert!(y.points.len() > k + 1, "切なら後ろも描く");
+        assert_eq!(x.points[..], y.points[..=k]);
+        // 切られる点は軸から穴の半径より外
+        let p = y.points[k];
+        assert!(p[0].hypot(p[1]) >= rmin - 1e-9, "{p:?}");
+        cut += 1;
+    }
+    assert!(cut > 0);
+    let thin = |sc: &scene::Scene| {
+        d2::shapes(sc, &Options2D::default())
+            .iter()
+            .filter(|s| s.layer == d2::Layer::Rays)
+            .count()
+    };
+    assert_eq!(thin(&b), thin(&a) + cut);
+}

@@ -556,6 +556,9 @@ impl System {
         };
         // 面ごとの準備（光線によらない量）は 1 回だけ
         let mut plan = batch::Plan::new(self, fr, w, last, clip);
+        if self.mech_clip && !self.mechanics.is_empty() {
+            plan = plan.with_mech(fr);
+        }
         if let Some(r) = fres_ref {
             plan = plan.with_fresnel_ref(r);
         }

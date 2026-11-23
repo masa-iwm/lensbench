@@ -40,6 +40,7 @@ pub(crate) struct SysForm {
     pub aiming: Aiming,
     pub afocal: Option<AfocalUnit>,
     pub floating_clip: bool,
+    pub mech_clip: bool,
     pub env: Environment,
     /// 定義した視野以外の点のケラレ係数を OpticStudio と同じ求め方にする（既定は連続）
     pub vig_os: bool,
@@ -76,6 +77,7 @@ impl SysForm {
             aiming: c.aiming,
             afocal: c.afocal.as_deref().and_then(AfocalUnit::from_code),
             floating_clip: c.floating_clip,
+            mech_clip: c.mech_clip,
             env: c.extra.environment.unwrap_or_default(),
             vig_os: c.extra.vig_interp == Some(VigInterp::OpticStudio),
         }
@@ -96,6 +98,7 @@ impl SysForm {
         c.aiming = self.aiming;
         c.afocal = self.afocal.map(|u| u.code().to_ascii_lowercase());
         c.floating_clip = self.floating_clip;
+        c.mech_clip = self.mech_clip;
         c.extra.environment = (self.env != Environment::default()).then_some(self.env);
         c.extra.vig_interp = self.vig_os.then_some(VigInterp::OpticStudio);
     }
@@ -200,6 +203,10 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                 tr("Vignette rays outside fixed semi-diameters"),
             )
             .on_hover_text(tr(super::FLOATING_CLIP_HINT));
+            ui.end_row();
+            ui.label("");
+            ui.checkbox(&mut f.mech_clip, tr("Vignette rays at mechanical parts"))
+                .on_hover_text(tr(super::MECH_CLIP_HINT));
             ui.end_row();
         });
     ui.separator();

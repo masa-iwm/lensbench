@@ -179,15 +179,22 @@ pub fn shapes(sc: &Scene, o: &Options2D) -> Vec<Shape> {
             ColorBy::Wave => palette(r.wave),
             ColorBy::Config => palette(r.cfg),
         };
-        v.push(Shape {
-            layer: Layer::Rays,
-            pts: r.points.iter().map(|&p| pr(p)).collect(),
-            closed: false,
-            fill: None,
-            stroke: c,
-            width: 1.0,
-            name: ray_name(sc, r),
-        });
+        // 機構部品に切られた後ろは薄く
+        let (solid, faint) = r.split_faint();
+        for (pts, stroke) in [(solid, c), (faint, c.faint(crate::scene::FAINT))] {
+            if pts.len() < 2 {
+                continue;
+            }
+            v.push(Shape {
+                layer: Layer::Rays,
+                pts: pts.iter().map(|&p| pr(p)).collect(),
+                closed: false,
+                fill: None,
+                stroke,
+                width: 1.0,
+                name: ray_name(sc, r),
+            });
+        }
     }
     v
 }

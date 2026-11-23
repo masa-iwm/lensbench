@@ -244,9 +244,56 @@ pub(crate) fn ray_class(r: &Value, color: &str, by_cfg: bool) -> usize {
     }
 }
 
+/// 光線の色の番号に足す印: 機構部品に切られた後ろの、薄く描く部分（[`split_faint`]）
+pub(crate) const FAINT: usize = 1 << 20;
+
+/// 光線の色の番号（[`FAINT`] の印を除く）と、薄く描くか
+pub(crate) fn class_of(c: usize) -> (usize, bool) {
+    (c & !FAINT, c & FAINT != 0)
+}
+
+/// serve の光線 `r` の点を、機構部品に切られる点（`faint`）の前後に分ける。後ろの部分は色の番号に
+/// [`FAINT`] の印を付ける（切られる点は両方に入る）
+pub(crate) fn split_faint<T: Clone>(r: &Value, class: usize, pts: Vec<T>) -> Vec<(usize, Vec<T>)> {
+    match r["faint"].as_u64().map(|k| k as usize) {
+        Some(k) if k + 1 < pts.len() => {
+            let back = pts[k..].to_vec();
+            let mut front = pts;
+            front.truncate(k + 1);
+            let mut v = Vec::new();
+            if front.len() >= 2 {
+                v.push((class, front));
+            }
+            v.push((class | FAINT, back));
+            v
+        }
+        _ => vec![(class, pts)],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_faint_keeps_the_cut_point_in_both() {
+        let r = serde_json::json!({ "faint": 1 });
+        let v = split_faint(&r, 2, vec![0, 1, 2, 3]);
+        assert_eq!(v, vec![(2, vec![0, 1]), (2 | FAINT, vec![1, 2, 3])]);
+        assert_eq!(class_of(v[1].0), (2, true));
+        // 印が無い・最後の点なら分けない
+        assert_eq!(
+            split_faint(&serde_json::json!({}), 1, vec![0, 1]),
+            vec![(1, vec![0, 1])]
+        );
+        assert_eq!(split_faint(&r, 1, vec![0, 1]), vec![(1, vec![0, 1])]);
+        // 最初の点で切られる光線は全部薄く
+        let z = serde_json::json!({ "faint": 0 });
+        assert_eq!(
+            split_faint(&z, 1, vec![0, 1]),
+            vec![(1 | FAINT, vec![0, 1])]
+        );
+    }
 
     #[test]
     fn apply_default_adds_nothing() {

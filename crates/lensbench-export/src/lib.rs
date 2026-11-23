@@ -26,6 +26,11 @@ impl Rgb {
     pub fn hex(self) -> String {
         format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
     }
+    /// 白に寄せた薄い色（機構部品に切られた後ろの光線。`k` は元の色の割合）
+    pub fn faint(self, k: f64) -> Rgb {
+        let f = |v: u8| (v as f64 * k + 255.0 * (1.0 - k)).round().clamp(0.0, 255.0) as u8;
+        Rgb(f(self.0), f(self.1), f(self.2))
+    }
     pub fn linear(self) -> [f32; 3] {
         // sRGB → 線形（glTF の色は線形）
         [self.0, self.1, self.2].map(|v| {

@@ -505,6 +505,7 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
     };
     c.afocal = v["afocal"].as_str().map(str::to_string);
     c.floating_clip = v["floating_clip"].as_bool().unwrap_or(true);
+    c.mech_clip = v["mech_clip"].as_bool().unwrap_or(true);
     c.extra = crate::combo::SysExtra::read(v)?;
     Ok(())
 }

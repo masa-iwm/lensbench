@@ -573,6 +573,9 @@ pub struct RayPath {
     pub err: usize,
     /// 重ね描きの構成（0 始まり、[`overlay`] の並びの番号。1 つの系の場面は 0）
     pub cfg: usize,
+    /// 機構部品に切られる点の、`points` での位置。系の `mech_clip` が切なら、そこから後ろを薄く描く
+    /// （入なら光線はその点で終わる）。None は部品に切られない
+    pub faint: Option<usize>,
 }
 
 /// 機構部品の形: 部品の座標系（原点・列が軸）と、軸のまわりの輪 [z0, z1, 内側の半径, 外側の半径]
@@ -586,6 +589,19 @@ pub struct MechShape {
     /// 詳しい形の STEP のファイルと、裏返して置くか（[`crate::detail`]）
     pub step: Option<(String, bool)>,
 }
+
+impl RayPath {
+    /// 濃く描く点と薄く描く点（機構部品に切られる点から後ろ。点は両方に入る）。薄い所がなければ後ろは空
+    pub fn split_faint(&self) -> (&[V3], &[V3]) {
+        match self.faint {
+            Some(k) if k < self.points.len() => (&self.points[..=k], &self.points[k..]),
+            _ => (&self.points[..], &[]),
+        }
+    }
+}
+
+/// 機構部品に切られた後ろの光線の色の割合（[`crate::Rgb::faint`]）
+pub const FAINT: f64 = 0.3;
 
 impl MechShape {
     pub fn to_global(&self, p: V3) -> V3 {
@@ -781,10 +797,27 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
     let (px, py) = pupil(opt.fan, opt.rays);
     let mut rays = Vec::new();
     let mut reach = vec![0.0f64; s.surfaces.len()];
+    // 機構部品の座標系（座標の決まらない部品があれば、部品で切る点を求めない）
+    let mframes = lensbench_core::mech::frames(s, &s.mechanics).ok();
     let mut trace_into = |fi: usize, w: usize, px: &[f64], py: &[f64], keep: bool| -> Result<()> {
         let t = s.try_trace(FieldSel::Index(fi), px, py, Some(w), Some(last), true)?;
         for i in 0..px.len() {
             let r = &t.rays[i];
+            // 機構部品に最初に切られる所（面 1 からの点で求める。mech-check と同じ）
+            let cut = match &mframes {
+                Some(mf) if keep && !mf.is_empty() && r.status.surf().is_none() => {
+                    let raw: Vec<(usize, V3)> = t
+                        .rec
+                        .iter()
+                        .filter(|rs| rs.surf >= 1 && (r.vig == 0 || rs.surf <= r.vig))
+                        .map(|rs| (rs.surf, rs.entry(i).p))
+                        .take_while(|q| q.1.iter().all(|v| v.is_finite()))
+                        .collect();
+                    lensbench_core::mech::clip_point(&raw, &s.mechanics, mf)
+                }
+                _ => None,
+            };
+            let mut faint = None;
             let mut pts = Vec::new();
             // 点ごとに、座標ブレーク（光線の通らない座標の置き換え）の点か
             let mut cbs = Vec::new();
@@ -801,6 +834,19 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                 if r.vig != 0 && *j > r.vig {
                     break;
                 }
+                // 部品に切られる点（この面で終わる区間の途中）。部品で切る設定なら光線はそこで終わる
+                if let Some(c) = cut.filter(|c| c.surface == *j) {
+                    if *j > first.max(1) {
+                        pts.push(maps[*j].0.point(c.point));
+                        cbs.push(false);
+                        faint = Some(pts.len() - 1);
+                    } else {
+                        faint = Some(0);
+                    }
+                    if s.mech_clip {
+                        break;
+                    }
+                }
                 reach[*j] = reach[*j].max(e.xyz[0].hypot(e.xyz[1]));
                 // 展開した図では座標ブレークの点を飛ばす（光線の延長の上の点で、戻って見える）
                 let cb = s.surfaces[*j].is_coord_break();
@@ -809,7 +855,12 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                     cbs.push(cb);
                 }
             }
-            drop_virtual_points(&mut pts, &cbs);
+            let kept = drop_virtual_points(&mut pts, &cbs);
+            // 除いた点の分だけ詰める（切られる点そのものは座標ブレークでないので残る）
+            let faint = faint.map(|k| {
+                kept.get(..k)
+                    .map_or(k, |v| v.iter().filter(|&&x| x).count())
+            });
             if keep {
                 rays.push(RayPath {
                     field: fi,
@@ -820,6 +871,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                     vig: r.vig,
                     err: r.status.code(),
                     cfg: 0,
+                    faint,
                 });
             }
         }
@@ -1277,9 +1329,9 @@ pub fn face_section_xz(f: &Face, n: usize) -> Vec<V3> {
 /// 光線の線から、座標ブレークの点のうち、前後の点を結ぶ直線の上で前の点より後ろに戻る点（光線の延長の上の交点）を除く。
 /// 平板の BS の口の座標は軸上で板の厚さの所にあり、傾いた板の縁の側では光線が実際に通った裏面より手前になるため。
 /// 光の通る面（負の厚さで戻るダミー面も含む）の点は除かない
-fn drop_virtual_points(pts: &mut Vec<V3>, cbs: &[bool]) {
+fn drop_virtual_points(pts: &mut Vec<V3>, cbs: &[bool]) -> Vec<bool> {
     if pts.len() < 3 || cbs.len() != pts.len() {
-        return;
+        return Vec::new();
     }
     let mut keep = vec![true; pts.len()];
     let mut prev = 0;
@@ -1308,6 +1360,7 @@ fn drop_virtual_points(pts: &mut Vec<V3>, cbs: &[bool]) {
         k += 1;
         keep[k - 1]
     });
+    keep
 }
 
 #[cfg(test)]

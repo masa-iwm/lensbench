@@ -848,11 +848,14 @@ fn paint(
     // 光線（視野ごとの色）
     for (f, p) in &d.rays {
         let line: Vec<Pos2> = p.iter().map(|&q| xf.to(q)).collect();
+        // 機構部品に切られた後ろ（部品で切らない設定のとき）は薄く
+        let (f, faint) = crate::layout_rays::class_of(*f);
+        let a = if faint { 0.25 } else { 0.85 };
         painter.add(egui::Shape::line(
             line,
             Stroke::new(
                 1.0_f32,
-                theme::series(f.saturating_sub(1)).gamma_multiply(0.85),
+                theme::series(f.saturating_sub(1)).gamma_multiply(a),
             ),
         ));
     }

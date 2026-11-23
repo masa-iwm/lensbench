@@ -247,6 +247,8 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
     let mut grin_k0: [Option<V3>; N] = [None; N];
     // 異常光の道を進む板の中の光線（光線の向きは kl、光路長を数える屈折率 nprev は m·kl）
     let mut ext: [Option<ExtLane>; N] = [None; N];
+    // 機構部品を見るときの、前の面の交点（大域座標）
+    let mut mprev: [V3; N] = [[f64::NAN; 3]; N];
     for (ri, st) in plan.steps.iter().enumerate() {
         let j = st.j;
         let d = &sys.surfaces[j];
@@ -471,6 +473,24 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 });
                 e.scale(a);
             }
+        }
+        // 機構部品の穴: 前の面の交点からこの面の交点までの線分（大域座標）。面の開口より手前で切る
+        if !plan.mech.is_empty() {
+            let mut out = [false; N];
+            for i in 0..N {
+                let b = add(st.f.o, mv(&st.f.r, get(&pl, i)));
+                out[i] = ri > 0
+                    && err[i] == 0.0
+                    && vig[i] == 0.0
+                    && plan.mech.iter().any(|(o, m, bores)| {
+                        let (u, w) = (mtv(m, sub(mprev[i], *o)), mtv(m, sub(b, *o)));
+                        bores
+                            .iter()
+                            .any(|bo| crate::mech::segment_clipped(u, w, bo))
+                    });
+                mprev[i] = b;
+            }
+            vig = mark(vig, V::B::from_fn(|i| out[i]), jf);
         }
         // 開口
         let clip = match d.ap {

@@ -110,6 +110,13 @@ pub struct Prescription {
         skip_serializing_if = "crate::configs::is_yes"
     )]
     pub floating_clip: bool,
+    /// 機構部品（[`System::mechanics`]）の穴の外に出た光線をけるか（既定はける。OpticStudio には機構部品が無いので、
+    /// .zmx には穴の両端の円形開口の面にして書く）。光線エイミングの追跡は見ない
+    #[serde(
+        default = "crate::configs::yes",
+        skip_serializing_if = "crate::configs::is_yes"
+    )]
+    pub mech_clip: bool,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
     /// だけ使う（lensbench-analysis の `sweep::RmsOpts::field_wave`）
     #[serde(skip)]
@@ -141,7 +148,8 @@ pub struct Prescription {
     /// 玉・群（[`crate::units`]）。剛体の動きは座標系にかける
     #[serde(default)]
     pub units: Vec<crate::units::Unit>,
-    /// 機構部品（[`crate::mech`]）。光線の追跡には効かず、ケラレの確認と描画だけに使う
+    /// 機構部品（[`crate::mech`]）。[`System::mech_clip`] なら光線の追跡で穴の外の光線をける。切ならケラレの確認と
+    /// 描画だけに使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<crate::mech::MechPart>,
     /// 多重構成の表（[`crate::edit`]）。None なら構成は 1 つ
@@ -473,6 +481,7 @@ impl System {
             afocal_unit: AfocalUnit::Milliradians,
             vig_interp: VigInterp::Continuous,
             floating_clip: true,
+            mech_clip: true,
             field_wave: None,
             coating_file: None,
             coat_tables: HashMap::new(),

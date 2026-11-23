@@ -430,13 +430,14 @@ fn example_projects_expand_and_all_rays_pass() {
                         .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
                         .unwrap();
                     for i in 0..px.len() {
-                        // 玉の縁（半直径を固定した玉の面の浮動開口）でけられるのは物理的に正しい（P19 の視野 3）
+                        // 玉の縁（半直径を固定した玉の面の浮動開口）や機構部品（mech_clip）でけられるのは
+                        // 物理的に正しい（P19 の視野 3）
                         let r = &t.rays[i];
                         let edge = r.status.is_ok()
-                            && matches!(
+                            && (matches!(
                                 s.surfaces.get(r.vig).map(|d| d.ap),
                                 Some(lensbench_core::surface::Aperture::Floating { .. })
-                            );
+                            ) || (s.mech_clip && !s.mechanics.is_empty() && r.vig != 0));
                         assert!(
                             t.ok(i) || edge,
                             "{} {st:?} 視野 {f} 波長 {w} 瞳 ({}, {})",

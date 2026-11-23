@@ -856,6 +856,7 @@ fn expand_body(
     s.pressure = envr.pressure_atm;
     s.adjust_index = envr.adjust_index;
     s.floating_clip = p.floating_clip;
+    s.mech_clip = p.mech_clip;
     s.apodization = p.apodization;
     s.ropd = p.ropd;
     (s.aim_pupil, s.input_pol, s.glass_template) = (p.aim_pupil, p.input_pol, p.glass_template);

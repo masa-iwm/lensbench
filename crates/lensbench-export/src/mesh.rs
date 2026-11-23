@@ -395,7 +395,7 @@ pub fn meshes(sc: &Scene, o: &Options3D, tube_r: Option<f64>) -> Vec<Mesh> {
     }
     v.extend(sc.mechs.iter().map(|m| mech_mesh(m, o)));
     // 光線は色ごとに 1 つの網
-    let mut groups: Vec<(usize, Mesh)> = Vec::new();
+    let mut groups: Vec<((usize, bool), Mesh)> = Vec::new();
     for r in &sc.rays {
         if r.points.len() < 2 {
             continue;
@@ -405,31 +405,46 @@ pub fn meshes(sc: &Scene, o: &Options3D, tube_r: Option<f64>) -> Vec<Mesh> {
             ColorBy::Wave => r.wave,
             ColorBy::Config => r.cfg,
         };
-        let gi = match groups.iter().position(|(k, _)| *k == key) {
-            Some(i) => i,
-            None => {
-                let name = match o.color {
-                    ColorBy::Field => format!("rays F{}", key + 1),
-                    ColorBy::Wave => format!("rays W{}", key + 1),
-                    ColorBy::Config => match sc.configs.get(key) {
-                        Some(c) => format!("rays {c}"),
-                        None => format!("rays C{}", key + 1),
-                    },
-                };
-                groups.push((key, Mesh::new(&name, MeshKind::Ray, palette(key))));
-                groups.len() - 1
+        // 機構部品に切られた後ろは薄い色の別の網
+        let (solid, faint) = r.split_faint();
+        for (pts, light) in [(solid, false), (faint, true)] {
+            if pts.len() < 2 {
+                continue;
             }
-        };
-        let m = &mut groups[gi].1;
-        match tube_r {
-            Some(t) => tube(m, &r.points, t),
-            None => {
-                let base = m.pos.len() as u32;
-                for &p in &r.points {
-                    m.vert(p, [0.0; 3]);
+            let gi = match groups.iter().position(|(k, _)| *k == (key, light)) {
+                Some(i) => i,
+                None => {
+                    let name = match o.color {
+                        ColorBy::Field => format!("rays F{}", key + 1),
+                        ColorBy::Wave => format!("rays W{}", key + 1),
+                        ColorBy::Config => match sc.configs.get(key) {
+                            Some(c) => format!("rays {c}"),
+                            None => format!("rays C{}", key + 1),
+                        },
+                    };
+                    let (name, color) = if light {
+                        (
+                            format!("{name} clipped"),
+                            palette(key).faint(crate::scene::FAINT),
+                        )
+                    } else {
+                        (name, palette(key))
+                    };
+                    groups.push(((key, light), Mesh::new(&name, MeshKind::Ray, color)));
+                    groups.len() - 1
                 }
-                for i in 0..r.points.len() as u32 - 1 {
-                    m.lines.push([base + i, base + i + 1]);
+            };
+            let m = &mut groups[gi].1;
+            match tube_r {
+                Some(t) => tube(m, pts, t),
+                None => {
+                    let base = m.pos.len() as u32;
+                    for &p in pts {
+                        m.vert(p, [0.0; 3]);
+                    }
+                    for i in 0..pts.len() as u32 - 1 {
+                        m.lines.push([base + i, base + i + 1]);
+                    }
                 }
             }
         }

@@ -18,6 +18,7 @@ pub mod ext;
 mod imagesim;
 mod interference;
 mod many;
+mod mech;
 mod mtfs;
 use mtfs::{field_axis, mtf_dict, sweep_dict};
 mod names;
@@ -1093,6 +1094,23 @@ impl PySystem {
         })
     }
 
+    /// Whether rays leaving the bores of the mechanical parts (mechanics of the project) are vignetted in the ray trace (default True).
+    /// Set False to see the vignetting only with mech_check. No effect without mechanical parts
+    #[getter]
+    fn mech_clip(&self) -> bool {
+        self.sys().mech_clip
+    }
+
+    #[setter]
+    fn set_mech_clip(&self, on: bool) -> PyResult<()> {
+        self.mutate(|s| {
+            s.edit_raw(|r| {
+                r.mech_clip = on;
+                Ok(())
+            })
+        })
+    }
+
     /// Cardinal points (like OpticStudio's Cardinal Points). wave is a wavelength number (from 1; primary wavelength if omitted).
     ///
     /// The paraxial system from surface 1 to the surface before the image (Y-Z plane). Object-space positions are from the vertex of surface 1 and image-space positions from the
@@ -1151,113 +1169,7 @@ impl PySystem {
         waves: Option<Vec<usize>>,
         grid: usize,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.sys();
-        if s.mechanics.is_empty() {
-            return Err(value_err(
-                "no mechanical parts (write them in the project mechanics)",
-            ));
-        }
-        if grid < 2 {
-            return Err(value_err("grid must be 2 or more"));
-        }
-        let nf = s.fields.len();
-        let fs: Vec<usize> = match fields {
-            Some(v) => v
-                .into_iter()
-                .map(|f| {
-                    if f == 0 || f > nf {
-                        Err(index_err(format!("no field {f} (1 to {nf})")))
-                    } else {
-                        Ok(f - 1)
-                    }
-                })
-                .collect::<PyResult<_>>()?,
-            None => (0..nf).collect(),
-        };
-        let ws: Vec<usize> = match waves {
-            Some(v) => v
-                .into_iter()
-                .map(|w| wave_index(&s, w))
-                .collect::<PyResult<_>>()?,
-            None => (0..s.wavelengths.len()).collect(),
-        };
-        let (px, py_) = lensbench_core::mech::pupil_grid(grid);
-        let v = py
-            .detach(|| lensbench_core::mech::vignetting(&s, &s.mechanics, &fs, &ws, &px, &py_))
-            .map_err(err)?;
-        let pct = |n: usize, d: usize| {
-            if d == 0 {
-                0.0
-            } else {
-                100.0 * n as f64 / d as f64
-            }
-        };
-        let d = PyDict::new(py);
-        d.set_item("pupil_rays", px.len())?;
-        let parts = pyo3::types::PyList::empty(py);
-        for (k, p) in s.mechanics.iter().enumerate() {
-            let e = PyDict::new(py);
-            e.set_item("name", &p.name)?;
-            e.set_item("surface", p.surface)?;
-            e.set_item(
-                "clipped_max_pct",
-                v.iter()
-                    .map(|r| pct(r.clipped[k], r.launched))
-                    .fold(0.0, f64::max),
-            )?;
-            e.set_item(
-                "first_max_pct",
-                v.iter()
-                    .map(|r| pct(r.first[k], r.launched))
-                    .fold(0.0, f64::max),
-            )?;
-            let bores = pyo3::types::PyList::empty(py);
-            for b in &p.bores {
-                let x = PyDict::new(py);
-                x.set_item("z0", b.z0)?;
-                x.set_item("z1", b.z1)?;
-                x.set_item("diameter", 2.0 * b.radius)?;
-                bores.append(x)?;
-            }
-            e.set_item("bores", bores)?;
-            parts.append(e)?;
-        }
-        d.set_item("parts", parts)?;
-        let rows = pyo3::types::PyList::empty(py);
-        for r in &v {
-            let e = PyDict::new(py);
-            e.set_item("field", r.field + 1)?;
-            e.set_item("wave", r.wave + 1)?;
-            e.set_item("rays", r.launched)?;
-            e.set_item("failed", r.failed)?;
-            e.set_item("optical_pct", pct(r.optical, r.launched))?;
-            e.set_item("passed_pct", pct(r.passed, r.launched))?;
-            let ps = pyo3::types::PyList::empty(py);
-            for (k, p) in s.mechanics.iter().enumerate() {
-                let x = PyDict::new(py);
-                x.set_item("name", &p.name)?;
-                x.set_item("clipped_pct", pct(r.clipped[k], r.launched))?;
-                x.set_item("first_pct", pct(r.first[k], r.launched))?;
-                ps.append(x)?;
-            }
-            e.set_item("parts", ps)?;
-            rows.append(e)?;
-        }
-        d.set_item("results", rows)?;
-        let fit = pyo3::types::PyList::empty(py);
-        for f in lensbench_core::mech::fit_check(&s, &s.mechanics).map_err(err)? {
-            let e = PyDict::new(py);
-            e.set_item("kind", f.kind)?;
-            e.set_item("error", f.error)?;
-            e.set_item("part", &s.mechanics[f.part].name)?;
-            e.set_item("other", f.other.map(|o| s.mechanics[o].name.clone()))?;
-            e.set_item("surface", f.surface)?;
-            e.set_item("value", f.value)?;
-            e.set_item("message", &f.message)?;
-            fit.append(e)?;
-        }
-        d.set_item("fit", fit)?;
-        Ok(d)
+        mech::mech_check(py, &self.sys(), fields, waves, grid)
     }
 
     /// Coupling efficiency into a single-mode fiber (like OpticStudio's FICL). The source is the object point source (local [mm] on the object surface), the receiver the local point receiver on the image surface,
@@ -2737,7 +2649,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 10);
+pub const API_VERSION: (u32, u32) = (2, 11);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

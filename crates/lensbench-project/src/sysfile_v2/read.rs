@@ -105,6 +105,7 @@ pub(crate) fn system(
     s.afocal_unit = p.afocal_unit;
     s.vig_interp = p.vig_interp;
     s.floating_clip = p.floating_clip;
+    s.mech_clip = p.mech_clip;
     s.coating_file = p.coating_file.map(PathBuf::from);
     s.coat_tables = p.coat_tables.into_iter().collect();
     s.pickups = p.pickups;
