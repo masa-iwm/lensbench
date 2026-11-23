@@ -213,10 +213,13 @@ impl Cam {
     }
 }
 
-/// 図の中の 3D 表示。クリックで選んだ要素（`owner` が面の範囲から決める番号）を返す（何もない所なら Some(None)）
+/// 図の中の 3D 表示。クリックで選んだ要素（`owner` が面の範囲から決める番号）を返す（何もない所なら Some(None)）。
+/// `full` はパネルいっぱいの図（素のホイールで拡大縮小。[`crate::widgets::NavOpts::full`]）
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn show(
     ui: &mut Ui,
     resp: &egui::Response,
+    full: bool,
     sc: &Scene3,
     configs: &[String],
     owner: &dyn Fn([usize; 2]) -> Option<usize>,
@@ -231,9 +234,7 @@ pub(crate) fn show(
     let id = resp.id.with("lensbench-view3d");
     let mut cam: Cam = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     // 操作
-    let pan_mode = ui.input(|i| i.modifiers.shift)
-        || resp.dragged_by(egui::PointerButton::Secondary)
-        || resp.dragged_by(egui::PointerButton::Middle);
+    let pan_mode = ui.input(|i| i.modifiers.shift) || resp.dragged_by(egui::PointerButton::Middle);
     let inner = rect.shrink(16.0);
     // 全体が入る倍率: 全体表示のときの向きで箱の 8 つの角を画面へ写した広がりで決め、回す間は変えない
     // （系を直して場面の箱が変わったときも決め直す）
@@ -242,10 +243,21 @@ pub(crate) fn show(
     }
     cam.refit(sc);
     let base = cam.scale(inner.size(), sc.half, sc.radius) / cam.zoom;
-    // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom）。左ドラッグは回す（Shift+左は移動）
-    // 右上の＋・－・囲んで拡大（Ctrl＋左ドラッグでも）は図の中心で拡大する
-    let pz = crate::widgets::pan_zoom(ui, resp, false);
-    if resp.dragged() && !crate::widgets::box_zooming(ui, resp) {
+    // 拡大・移動・全体表示・戻るはほかの図と同じ操作（widgets::pan_zoom）。左ドラッグは回す（Shift+左は移動）、
+    // 矢印は回す。右下の＋・－・囲んで拡大（Ctrl＋左ドラッグでも）は図の中心で拡大する
+    let opts = crate::widgets::NavOpts {
+        full,
+        arrows: false,
+        ..crate::widgets::NavOpts::FIGURE
+    };
+    let pz = crate::widgets::pan_zoom(ui, resp, opts);
+    // 戻る・進むはこのフレームのほかの操作を当てない。回すドラッグも戻れるように始めに覚える
+    let swapped = crate::widgets::fig_nav::history(ui, resp, &pz, &mut cam);
+    if !swapped && resp.drag_started() && !pz.changes() {
+        crate::widgets::fig_nav::history_push(ui, resp, &cam);
+    }
+    if swapped {
+    } else if resp.dragged() && !crate::widgets::box_zooming(ui, resp) {
         let d = resp.drag_delta();
         if pan_mode || pz.pan != egui::Vec2::ZERO {
             cam.pan += d / (base * cam.zoom * sc.radius);
@@ -257,15 +269,20 @@ pub(crate) fn show(
         // 囲んで拡大: 囲んだ所の中心を図の中心へ
         cam.pan += pz.pan / (base * cam.zoom * sc.radius);
     }
-    if pz.at.is_some() {
+    if pz.at.is_some() && !swapped {
         cam.zoom = (cam.zoom * pz.zoom).clamp(0.05, 200.0);
     }
-    if pz.reset {
+    if pz.reset && !swapped {
         cam = Cam::default();
     }
-    if resp.has_focus() {
+    let keys = (resp.hovered() || resp.has_focus())
+        && ui.memory(|m| m.focused().is_none_or(|f| f == resp.id));
+    if keys {
         ui.input(|i| {
             let st = 0.15;
+            if !i.modifiers.is_none() {
+                return;
+            }
             if i.key_pressed(Key::ArrowLeft) {
                 cam.yaw -= st;
             }
@@ -277,15 +294,6 @@ pub(crate) fn show(
             }
             if i.key_pressed(Key::ArrowDown) {
                 cam.pitch = (cam.pitch + st).clamp(-1.55, 1.55);
-            }
-            if i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals) {
-                cam.zoom *= 1.25;
-            }
-            if i.key_pressed(Key::Minus) {
-                cam.zoom /= 1.25;
-            }
-            if i.key_pressed(Key::Home) {
-                cam = Cam::default();
             }
         });
     }
@@ -456,7 +464,11 @@ pub(crate) fn show(
     painter.text(
         rect.right_bottom() - Vec2::new(10.0, 8.0),
         egui::Align2::RIGHT_BOTTOM,
-        tr("Drag to rotate, Shift- or right-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset"),
+        tr(if full {
+            "Drag to rotate, Shift- or middle-drag to pan, wheel or pinch to zoom, double-click to reset, right-click for more"
+        } else {
+            "Drag to rotate, Shift- or middle-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset, right-click for more"
+        }),
         egui::FontId::proportional(10.5),
         weak,
     );

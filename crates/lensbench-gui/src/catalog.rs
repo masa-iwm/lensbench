@@ -1865,7 +1865,7 @@ fn glass_map(
     let r = resp.rect;
     let rect = egui::Rect::from_min_max(r.min + vec2(40.0, 22.0), r.max - vec2(12.0, 32.0));
     // 操作（描く前に範囲を決める）。操作はほかの図と同じ（widgets::pan_zoom）。左ドラッグでも移動する
-    view.apply(&crate::widgets::pan_zoom(ui, &resp, true), rect);
+    view.navigate(ui, &resp, rect);
     let MapView { vd0, vd1, nd0, nd1 } = *view;
     let vis = ui.visuals();
     painter.rect_filled(resp.rect, 2.0, vis.extreme_bg_color);

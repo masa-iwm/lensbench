@@ -111,7 +111,15 @@ fn spot_view(
     view: (f32, egui::Vec2),
     s0: f32,
 ) -> (f32, egui::Vec2) {
-    let pz = crate::widgets::pan_zoom(ui, resp, true);
+    let opts = crate::widgets::NavOpts {
+        left_pans: true,
+        ..crate::widgets::NavOpts::FIGURE
+    };
+    let pz = crate::widgets::pan_zoom(ui, resp, opts);
+    let mut shown = view;
+    if crate::widgets::fig_nav::history(ui, resp, &pz, &mut shown) {
+        return shown;
+    }
     if pz.reset {
         return (1.0, egui::Vec2::ZERO);
     }

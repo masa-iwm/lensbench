@@ -27,13 +27,18 @@ impl MapView {
 
     /// (vd, nd) を中心に factor 倍に拡大する（1 より小さければ縮小）。全体より広くはしない
     pub(crate) fn zoom(&mut self, vd: f64, nd: f64, factor: f64) {
-        if !(factor.is_finite() && factor > 0.0) {
+        self.zoom2(vd, nd, factor, factor);
+    }
+
+    /// 横を fx 倍、縦を fy 倍に拡大（Ctrl＋Shift／Alt＋ホイールは片方だけ）
+    pub(crate) fn zoom2(&mut self, vd: f64, nd: f64, fx: f64, fy: f64) {
+        if !(fx.is_finite() && fx > 0.0 && fy.is_finite() && fy > 0.0) {
             return;
         }
         let f = Self::FULL;
         let (fw, fh) = (f.vd0 - f.vd1, f.nd1 - f.nd0);
-        let w = ((self.vd0 - self.vd1) / factor).clamp(Self::MIN_VD, fw);
-        let h = ((self.nd1 - self.nd0) / factor).clamp(Self::MIN_ND, fh);
+        let w = ((self.vd0 - self.vd1) / fx).clamp(Self::MIN_VD, fw);
+        let h = ((self.nd1 - self.nd0) / fy).clamp(Self::MIN_ND, fh);
         // 指した点が画面上で動かないように
         let a = (self.vd0 - vd) / (self.vd0 - self.vd1);
         let b = (nd - self.nd0) / (self.nd1 - self.nd0);
@@ -91,6 +96,20 @@ impl MapView {
     /// 図の上の操作 pz（[`crate::widgets::pan_zoom`]）を、点を描く所 rect（画面）の範囲に当てる。囲んで拡大は、
     /// 囲んだ枠（rect の外は切る）をそのまま見える範囲にする（縦横は別に決まる。移動を先にすると全体表示では
     /// 全体の外へ出せず効かない）
+    /// 図の上の操作を読んで当てる（ほかの図と同じ widgets::pan_zoom。左ドラッグでも移動、パネルいっぱいの図なので素の
+    /// ホイールでも拡大縮小。戻る・進むも）
+    pub(crate) fn navigate(&mut self, ui: &egui::Ui, resp: &egui::Response, rect: egui::Rect) {
+        let opts = crate::widgets::NavOpts {
+            left_pans: true,
+            full: true,
+            ..crate::widgets::NavOpts::FIGURE
+        };
+        let pz = crate::widgets::pan_zoom(ui, resp, opts);
+        if !crate::widgets::fig_nav::history(ui, resp, &pz, self) {
+            self.apply(&pz, rect);
+        }
+    }
+
     pub(crate) fn apply(&mut self, pz: &crate::widgets::PanZoom, rect: egui::Rect) {
         if pz.reset {
             *self = Self::FULL;
@@ -114,7 +133,7 @@ impl MapView {
         }
         if let Some(p) = pz.at {
             let (v, n) = self.at(rect, p);
-            self.zoom(v, n, pz.zoom as f64);
+            self.zoom2(v, n, pz.zoom_xy.x as f64, pz.zoom_xy.y as f64);
         }
     }
 
@@ -190,8 +209,8 @@ mod tests {
             zoom: 3.0,
             at: Some(rect.center()),
             pan: rect.center() - pos2(200.0, 150.0),
-            reset: false,
             area: Some(Rect::from_min_max(pos2(100.0, 100.0), pos2(300.0, 200.0))),
+            ..PanZoom::NONE
         };
         v.apply(&pz, rect);
         for (got, want) in [(v.vd0, 85.0), (v.vd1, 65.0), (v.nd0, 1.9), (v.nd1, 2.0)] {
@@ -217,10 +236,9 @@ mod tests {
         v.apply(
             &PanZoom {
                 zoom: 2.0,
+                zoom_xy: Vec2::splat(2.0),
                 at: Some(rect.center()),
-                pan: Vec2::ZERO,
-                reset: false,
-                area: None,
+                ..PanZoom::NONE
             },
             rect,
         );

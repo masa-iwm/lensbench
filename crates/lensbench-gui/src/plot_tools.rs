@@ -51,8 +51,9 @@ fn pending_id(resp: &egui::Response) -> egui::Id {
 }
 
 /// グラフ（egui_plot）を図（[`crate::widgets::pan_zoom`]）と同じ操作で描く: Ctrl（⌘）＋ホイールかピンチ＝ポインタの所で
-/// 拡大縮小（素のホイールはパネルのスクロール）、左・中・右ドラッグと Space+左ドラッグ＝移動、
-/// 右下の道具（＋・－・囲んで拡大・全体。右上は凡例）、Ctrl（⌘）+左ドラッグ＝囲んで拡大、ダブルクリック・Home＝全体。
+/// 拡大縮小（素のホイールはパネルのスクロール）、左・中ドラッグと Space+左ドラッグ＝移動、
+/// 右下の道具（＋・－・囲んで拡大・全体。右上は凡例）、Ctrl（⌘）+左ドラッグ＝囲んで拡大、ダブルクリック・Home＝全体、
+/// 右クリック＝メニュー（軸の範囲を数で決めるなど）。
 /// `free_axes` なら横軸・縦軸の目盛りの上の Ctrl（⌘）＋ホイールでその軸だけ拡大縮小し、
 /// 目盛りの上のドラッグでその軸だけ動かす（縦横比を固定した図は false）。egui_plot の既定の操作は切る
 pub fn nav<R>(
@@ -61,6 +62,16 @@ pub fn nav<R>(
     free_axes: bool,
     body: impl FnOnce(&mut PlotUi) -> R,
 ) -> PlotResponse<R> {
+    nav_with(ui, plot, free_axes, body).0
+}
+
+/// [`nav`] と同じに描き、右クリックのメニューで「データをコピー」を選んだら true も返す
+pub(crate) fn nav_with<R>(
+    ui: &mut Ui,
+    plot: Plot,
+    free_axes: bool,
+    body: impl FnOnce(&mut PlotUi) -> R,
+) -> (PlotResponse<R>, bool) {
     let plot = plot
         .allow_drag(false)
         .allow_zoom(false)
@@ -87,10 +98,22 @@ pub fn nav<R>(
     });
     let (outer, r) = (scope.response.rect, scope.inner);
     // 道具は右下に（egui_plot の凡例は右上、カーソルの値は左上に出る）。拡大縮小は Ctrl（⌘）＋ホイールかピンチ
-    let pz = crate::widgets::pan_zoom(ui, &r.response, true);
+    let opts = crate::widgets::NavOpts {
+        left_pans: true,
+        graph: true,
+        ..crate::widgets::NavOpts::FIGURE
+    };
+    let pz = crate::widgets::pan_zoom(ui, &r.response, opts);
     let mut t = r.transform;
     let before = *t.bounds();
-    let mut pending = if pz.reset { Some(Pending::Fit) } else { None };
+    let mut shown = before;
+    let mut pending = if crate::widgets::fig_nav::history(ui, &r.response, &pz, &mut shown) {
+        Some(Pending::Bounds(shown))
+    } else if pz.reset {
+        Some(Pending::Fit)
+    } else {
+        None
+    };
     if pending.is_none() {
         if let Some(a) = pz.area {
             // 囲んだ枠をそのまま範囲に（縦横を別に決める。縦横比を固定した図は egui_plot が広げて合わせる）
@@ -105,7 +128,12 @@ pub fn nav<R>(
                 t.translate_bounds((-pz.pan.x as f64, -pz.pan.y as f64));
             }
             if let Some(at) = pz.at {
-                t.zoom(egui::Vec2::splat(pz.zoom), at);
+                let z = if free_axes {
+                    pz.zoom_xy
+                } else {
+                    egui::Vec2::splat(pz.zoom)
+                };
+                t.zoom(z, at);
             }
         }
         if free_axes {
@@ -115,13 +143,113 @@ pub fn nav<R>(
             pending = Some(Pending::Bounds(*t.bounds()));
         }
     }
+    if pz.menu == Some(crate::widgets::FigMenu::AxisRange) {
+        AxisEdit::open(ui, &r.response, before);
+    }
+    if let Some(b) = AxisEdit::show(ui, &r.response) {
+        crate::widgets::fig_nav::history_push(ui, &r.response, &before);
+        pending = Some(Pending::Bounds(b));
+    }
     if let Some(pd) = pending {
         ui.ctx()
             .data_mut(|d| d.insert_temp(pending_id(&r.response), pd));
         ui.ctx().request_repaint();
     }
     crate::widgets::paint_zoom_tools(ui, &r.response);
-    r
+    (r, pz.menu == Some(crate::widgets::FigMenu::CopyData))
+}
+
+/// 軸の範囲を数で決める小窓（右クリックのメニューの「軸の範囲…」。グラフごとに egui の一時データ）
+#[derive(Clone, Default)]
+struct AxisEdit {
+    /// 横の最小・最大、縦の最小・最大（打った文字）
+    v: [String; 4],
+    /// 読めない・最小が最大以上
+    bad: bool,
+}
+
+impl AxisEdit {
+    fn id(resp: &egui::Response) -> egui::Id {
+        resp.id.with("axis_edit")
+    }
+
+    fn open(ui: &Ui, resp: &egui::Response, b: PlotBounds) {
+        let e = AxisEdit {
+            v: [b.min()[0], b.max()[0], b.min()[1], b.max()[1]].map(fmt),
+            bad: false,
+        };
+        ui.data_mut(|d| d.insert_temp(Self::id(resp), e));
+    }
+
+    /// 開いていれば小窓を出し、「適用」で読めた範囲を返す
+    fn show(ui: &Ui, resp: &egui::Response) -> Option<PlotBounds> {
+        let id = Self::id(resp);
+        let mut e: AxisEdit = ui.data(|d| d.get_temp(id))?;
+        let (mut open, mut out, mut close) = (true, None, false);
+        egui::Window::new(crate::i18n::tr("Axis range"))
+            .id(id.with("win"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_pos(resp.rect.center())
+            .show(ui.ctx(), |ui| {
+                egui::Grid::new(id.with("grid")).show(ui, |ui| {
+                    ui.label("");
+                    ui.label(crate::i18n::tr("Min"));
+                    ui.label(crate::i18n::tr("Max"));
+                    ui.end_row();
+                    for (k, name) in ["Horizontal axis", "Vertical axis"].into_iter().enumerate() {
+                        ui.label(crate::i18n::tr(name));
+                        for j in 0..2 {
+                            let i = 2 * k + j;
+                            let te = egui::TextEdit::singleline(&mut e.v[i]).desired_width(90.0);
+                            let r = ui.add(te);
+                            let what = if j == 0 { "Min" } else { "Max" };
+                            let label =
+                                format!("{} {}", crate::i18n::tr(name), crate::i18n::tr(what));
+                            crate::widgets::name_field(&r, &label, &e.v[i]);
+                        }
+                        ui.end_row();
+                    }
+                });
+                if e.bad {
+                    ui.colored_label(
+                        ui.visuals().error_fg_color,
+                        crate::i18n::tr("Enter numbers with min < max"),
+                    );
+                }
+                ui.horizontal(|ui| {
+                    if ui.button(crate::i18n::tr("Apply")).clicked() {
+                        let n: Vec<Option<f64>> =
+                            e.v.iter()
+                                .map(|s| {
+                                    s.trim()
+                                        .replace(',', ".")
+                                        .parse()
+                                        .ok()
+                                        .filter(|v: &f64| v.is_finite())
+                                })
+                                .collect();
+                        match (n[0], n[1], n[2], n[3]) {
+                            (Some(x0), Some(x1), Some(y0), Some(y1)) if x0 < x1 && y0 < y1 => {
+                                out = Some(PlotBounds::from_min_max([x0, y0], [x1, y1]));
+                                e.bad = false;
+                            }
+                            _ => e.bad = true,
+                        }
+                    }
+                    close = ui.button(crate::i18n::tr("Close")).clicked();
+                });
+            });
+        ui.data_mut(|d| {
+            if open && !close {
+                d.insert_temp(id, e);
+            } else {
+                d.remove::<AxisEdit>(id);
+            }
+        });
+        out
+    }
 }
 
 /// 目盛りの帯（グラフの枠の下＝横軸、左＝縦軸）の上のホイールとドラッグ: その軸だけ拡大縮小・移動
@@ -208,7 +336,7 @@ fn show_on(
     let weak = crate::theme::weak_text(ui.visuals());
     let mut series = Vec::new();
     // 既定の近くの点の座標の札は出さない（カーソルの値の一覧と重なる）
-    let r = nav(ui, plot.label_formatter(|_| None), true, |p| {
+    let (r, copy) = nav_with(ui, plot.label_formatter(|_| None), true, |p| {
         body(p, &mut series);
         // カーソルの線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
         p.response()
@@ -217,6 +345,9 @@ fn show_on(
             .flatten()
             .map(|q: PlotPoint| if axis == 0 { q.x } else { q.y })
     });
+    if copy {
+        ui.ctx().copy_text(csv(&series));
+    }
     if let Some(v) = r.inner.filter(|_| !series.is_empty()) {
         let fr = *r.transform.frame();
         let seg = if axis == 0 {
@@ -236,6 +367,22 @@ fn show_on(
         }
         readout(ui, fr, if axis == 0 { "x" } else { "y" }, v, unit, &series);
     }
+}
+
+/// 曲線の点の CSV（1 行 1 点: 曲線の名前・横・縦）
+fn csv(series: &[Series]) -> String {
+    let mut s = String::from("series,x,y\n");
+    for c in series {
+        let name = if c.name.contains([',', '"', '\n']) {
+            format!("\"{}\"", c.name.replace('"', "\"\""))
+        } else {
+            c.name.clone()
+        };
+        for [x, y] in &c.pts {
+            s.push_str(&format!("{name},{x},{y}\n"));
+        }
+    }
+    s
 }
 
 /// カーソルの軸の値と、各曲線の値をグラフの左上に出す
@@ -300,5 +447,98 @@ mod tests {
         assert_eq!(interp(&q, 0.25), Some(1.5));
         assert_eq!(fmt(0.123456), "0.12346");
         assert_eq!(fmt(123.456), "123.46");
+    }
+
+    /// 右クリックのメニューの「軸の範囲…」: 小窓に今の範囲が入り、打って「適用」すると次のフレームの範囲になる。
+    /// 「データをコピー」は曲線の点を CSV で写す
+    #[test]
+    fn context_menu_sets_axis_range_and_copies_data() {
+        use egui_kittest::kittest::Queryable;
+        let _g = crate::serve_lock();
+        crate::i18n::set(crate::i18n::Lang::En);
+        let mut h = egui_kittest::Harness::builder()
+            .allow_missing_glyphs()
+            .with_accessibility_check(false)
+            .with_size(egui::vec2(600.0, 400.0))
+            .build_ui_state(
+                |ui, st: &mut (Option<PlotBounds>, egui::Rect)| {
+                    let plot = Plot::new("cm").width(400.0).height(300.0);
+                    show(ui, plot, "", |p, s| {
+                        let pts = [[0.0, 0.0], [10.0, 5.0]];
+                        p.line(egui_plot::Line::new("L", pts.to_vec()));
+                        s.push(Series::new("L", Color32::RED, &pts));
+                        st.0 = Some(p.plot_bounds());
+                        st.1 = p.response().rect;
+                    });
+                },
+                (None, egui::Rect::NOTHING),
+            );
+        h.run_steps(3);
+        let right_click = |h: &mut egui_kittest::Harness<'_, (Option<PlotBounds>, egui::Rect)>| {
+            let p = h.state().1.center();
+            h.hover_at(p);
+            for pressed in [true, false] {
+                h.event(egui::Event::PointerButton {
+                    pos: p,
+                    button: egui::PointerButton::Secondary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                });
+                h.run_steps(1);
+            }
+            h.run_steps(2);
+        };
+        right_click(&mut h);
+        h.get_by_label("Axis range…").click_accesskit();
+        h.run_steps(3);
+        for (name, v) in [
+            ("Horizontal axis Min", "2"),
+            ("Horizontal axis Max", "4"),
+            ("Vertical axis Min", "-1"),
+            ("Vertical axis Max", "1"),
+        ] {
+            h.get_by_label(name).focus();
+            h.run_steps(1);
+            h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+            h.get_by_label(name).type_text(v);
+            h.run_steps(1);
+        }
+        h.get_by_label("Apply").click_accesskit();
+        h.run_steps(4);
+        let b = h.state().0.unwrap();
+        assert_eq!((b.min(), b.max()), ([2.0, -1.0], [4.0, 1.0]));
+        // 最小が最大以上なら当てずに誤りを出す
+        h.get_by_label("Vertical axis Max").focus();
+        h.run_steps(1);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.get_by_label("Vertical axis Max").type_text("-5");
+        h.run_steps(1);
+        h.get_by_label("Apply").click_accesskit();
+        h.run_steps(3);
+        h.get_by_label("Enter numbers with min < max");
+        assert_eq!(h.state().0.unwrap().max(), [4.0, 1.0]);
+        h.get_by_label("Close").click_accesskit();
+        h.run_steps(2);
+        assert!(h.query_by_label("Apply").is_none());
+        // データをコピー
+        right_click(&mut h);
+        h.get_by_label("Copy data (CSV)").click_accesskit();
+        h.run_steps(1);
+        let copied = h.output().platform_output.commands.iter().any(|c| {
+            matches!(c, egui::OutputCommand::CopyText(t) if t.starts_with("series,x,y\nL,0,0\n"))
+        });
+        assert!(copied, "{:?}", h.output().platform_output.commands);
+    }
+
+    #[test]
+    fn csv_has_one_row_per_point_and_quotes_names() {
+        let s = [
+            Series::new("a", Color32::RED, &[[0.0, 1.0], [2.0, 3.5]]),
+            Series::new("x, \"y\"", Color32::RED, &[[1.0, -1.0]]),
+        ];
+        assert_eq!(
+            csv(&s),
+            "series,x,y\na,0,1\na,2,3.5\n\"x, \"\"y\"\"\",1,-1\n"
+        );
     }
 }

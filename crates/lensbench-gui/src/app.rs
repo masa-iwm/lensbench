@@ -1072,7 +1072,7 @@ impl Core {
                             "Sections after mirror/BS folds laid out along the original axis (moves along the axis only)",
                         )),
                         ViewPlane::D3 => r.on_hover_text(tr(
-                            "Drag to rotate, Shift- or right-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset",
+                            "Drag to rotate, Shift- or middle-drag to pan, wheel or pinch to zoom, double-click to reset, right-click for more",
                         )),
                         _ => r,
                     };
@@ -2073,18 +2073,18 @@ impl App {
 impl App {
     /// 画面の写しが届いたら、頼んだ図の所を切り出して写す・PNG で保存する
     fn take_shot(&mut self, ctx: &egui::Context) {
-        let Some((id, copy, cmd)) = self.c.shot.clone() else {
+        let app = self.c.shot.clone();
+        let app = app.map(|(id, c, n)| (self.c.fig_rects.get(&id).copied(), c, n));
+        let Some((r, copy, cmd)) = crate::widgets::fig_nav::shot_or(ctx, app) else {
             return;
         };
-        let img = crate::image_util::take_screenshot(ctx);
-        let Some(img) = img else {
+        let Some(img) = crate::image_util::take_screenshot(ctx) else {
             return;
         };
         self.c.shot = None;
-        let Some(r) = self.c.fig_rects.get(&id).copied() else {
-            return;
-        };
-        let Some(part) = crate::image_util::crop_image(&img, r, ctx.pixels_per_point()) else {
+        crate::widgets::fig_nav::clear_shot(ctx);
+        let ppp = ctx.pixels_per_point();
+        let Some(part) = r.and_then(|r| crate::image_util::crop_image(&img, r, ppp)) else {
             return;
         };
         if copy {

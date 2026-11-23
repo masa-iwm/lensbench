@@ -145,16 +145,26 @@ fn float_menu_closes() {
     assert!(close);
 }
 
-/// 図の操作: Ctrl（⌘）＋ホイールはポインタの所で拡大して外のスクロールに渡さない（素のホイールは渡す）、中・右ドラッグは移動、左は left_pans のときだけ
+/// 図の操作: Ctrl（⌘）＋ホイールはポインタの所で拡大して外のスクロールに渡さない（素のホイールは渡す。パネルいっぱいの図は
+/// 素のホイールでも拡大）、中ドラッグは移動（右はメニュー）、左は left_pans のときだけ
 #[test]
 fn pan_zoom_reads_input() {
     let mut b = Bench::new();
     let pz = Cell::new(None);
     let left_pans = Cell::new(false);
+    let full = Cell::new(false);
     let rest = Cell::new(Vec2::ZERO);
     let body = |ui: &mut Ui| {
         let (_, resp) = ui.allocate_exact_size(egui::vec2(300.0, 300.0), Sense::click_and_drag());
-        pz.set(Some(super::pan_zoom(ui, &resp, left_pans.get())));
+        pz.set(Some(super::pan_zoom(
+            ui,
+            &resp,
+            super::NavOpts {
+                left_pans: left_pans.get(),
+                full: full.get(),
+                ..super::NavOpts::FIGURE
+            },
+        )));
         rest.set(ui.input(|i| i.smooth_scroll_delta));
     };
     let at = Pos2::new(100.0, 100.0);
@@ -201,10 +211,32 @@ fn pan_zoom_reads_input() {
         b.frame(Vec::new(), &body);
     }
     assert!(zoomed);
+    // パネルいっぱいの図は素のホイールでも拡大し、外へ渡さない
+    full.set(true);
+    b.frame(
+        vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, 120.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers: Modifiers::NONE,
+        }],
+        &body,
+    );
+    let mut zoomed = false;
+    for _ in 0..10 {
+        let z = pz.get().unwrap();
+        zoomed |= z.zoom > 1.0 && z.at == Some(at);
+        assert_eq!(rest.get(), Vec2::ZERO, "ホイールを外へ渡さない");
+        b.frame(Vec::new(), &body);
+    }
+    assert!(zoomed, "素のホイールで拡大");
+    full.set(false);
     // ドラッグ: ボタンごと
     for (button, left, pans) in [
         (PointerButton::Middle, false, true),
-        (PointerButton::Secondary, false, true),
+        // 右ボタンはメニュー（移動しない）
+        (PointerButton::Secondary, false, false),
         (PointerButton::Primary, false, false),
         (PointerButton::Primary, true, true),
     ] {
@@ -295,7 +327,11 @@ fn pan_zoom_box_and_buttons() {
         let (r, resp) = ui.allocate_exact_size(egui::vec2(300.0, 300.0), Sense::click_and_drag());
         rect.set(r);
         // 左ドラッグで移動する図でも、囲む間は移動しない
-        pz.set(Some(super::pan_zoom(ui, &resp, true)));
+        let opts = super::NavOpts {
+            left_pans: true,
+            ..super::NavOpts::FIGURE
+        };
+        pz.set(Some(super::pan_zoom(ui, &resp, opts)));
         boxing.set(super::box_zooming(ui, &resp));
         super::paint_zoom_tools(ui, &resp);
     };
@@ -464,7 +500,7 @@ fn plot_nav_axis_wheel_and_drag() {
     // 枠の中: 両方
     let both = wheel(&mut b, fr.center());
     assert!(both.width() < y_only.width() * 0.95 && both.height() < y_only.height() * 0.95);
-    // 右ドラッグは移動（範囲の幅は変わらない）
+    // 中ドラッグは移動（範囲の幅は変わらない。右はメニュー）
     let at = fr.center();
     b.t += 1.0;
     b.frame(vec![Event::PointerMoved(at)], &body);
@@ -480,7 +516,7 @@ fn plot_nav_axis_wheel_and_drag() {
         b.frame(
             vec![Event::PointerButton {
                 pos: p,
-                button: PointerButton::Secondary,
+                button: PointerButton::Middle,
                 pressed,
                 modifiers: Modifiers::NONE,
             }],
@@ -566,13 +602,7 @@ fn plot_nav_axis_wheel_and_drag() {
     let pz = Cell::new(None);
     let body2 = |ui: &mut Ui| {
         body(ui);
-        pz.set(Some(super::PanZoom {
-            zoom: 1.0,
-            at: None,
-            pan: Vec2::ZERO,
-            reset: false,
-            area: None,
-        }));
+        pz.set(Some(super::PanZoom::NONE));
     };
     left_drag(&mut b, p0, p1, &pz, &body2);
     b.mods = Modifiers::NONE;
@@ -761,4 +791,127 @@ fn name_edit_completes_and_checks_glass() {
     ne::set_glasses(&b.ctx, std::sync::Arc::new(g));
     b.frame(Vec::new(), &glass);
     assert!(!ne::take_glass_request(&b.ctx));
+}
+
+/// 図のキー（ポインタが図の上）: ＋・－は図の中心で拡大縮小、0・F・Home は全体、矢印は移動、Backspace・Alt＋←→ は
+/// 戻る・進む。keys が false の図（レイアウト図で要素を選んでいる間）は Home だけ
+#[test]
+fn pan_zoom_keys() {
+    let mut b = Bench::new();
+    let pz = Cell::new(super::PanZoom::NONE);
+    let keys = Cell::new(true);
+    let rect = Cell::new(Rect::NOTHING);
+    let body = |ui: &mut Ui| {
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(300.0, 200.0), Sense::click_and_drag());
+        rect.set(r);
+        let opts = super::NavOpts {
+            keys: keys.get(),
+            ..super::NavOpts::FIGURE
+        };
+        pz.set(super::pan_zoom(ui, &resp, opts));
+    };
+    b.frame(vec![Event::PointerMoved(Pos2::new(100.0, 100.0))], &body);
+    let press = |b: &mut Bench, k: Key, m: Modifiers| {
+        // 修飾キーは egui の入力の modifiers で見る（RawInput の出来事で入れる）
+        b.mods = m;
+        b.frame(
+            vec![Event::Key {
+                key: k,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: m,
+            }],
+            &body,
+        );
+        b.mods = Modifiers::NONE;
+        pz.get()
+    };
+    let z = press(&mut b, Key::Plus, Modifiers::SHIFT);
+    assert!(z.zoom > 1.0 && z.at == Some(rect.get().center()), "{z:?}");
+    assert!(press(&mut b, Key::Minus, Modifiers::NONE).zoom < 1.0);
+    assert!(press(&mut b, Key::F, Modifiers::NONE).reset);
+    assert!(press(&mut b, Key::Num0, Modifiers::NONE).reset);
+    assert!(
+        press(&mut b, Key::ArrowRight, Modifiers::NONE).pan.x < 0.0,
+        "右の先を見る"
+    );
+    assert!(press(&mut b, Key::ArrowUp, Modifiers::NONE).pan.y > 0.0);
+    assert!(press(&mut b, Key::Backspace, Modifiers::NONE).back);
+    assert!(press(&mut b, Key::ArrowLeft, Modifiers::ALT).back);
+    assert!(press(&mut b, Key::ArrowRight, Modifiers::ALT).forward);
+    // Ctrl＋0 は egui の画面の倍率なので図は受けない
+    assert!(!press(&mut b, Key::Num0, Modifiers::COMMAND).reset);
+    keys.set(false);
+    assert!(press(&mut b, Key::Plus, Modifiers::SHIFT).at.is_none());
+    assert_eq!(
+        press(&mut b, Key::ArrowRight, Modifiers::NONE).pan,
+        Vec2::ZERO
+    );
+    assert!(press(&mut b, Key::Home, Modifiers::NONE).reset);
+    // ポインタが図の外ならキーを受けない
+    keys.set(true);
+    b.frame(vec![Event::PointerMoved(Pos2::new(590.0, 390.0))], &body);
+    assert!(press(&mut b, Key::Plus, Modifiers::SHIFT).at.is_none());
+}
+
+/// 戻る・進む: 操作の始めに前の表示を覚え、戻ると前の表示、進むと戻る前の表示。続けて動かす間（0.5 秒以内）は 1 つ
+#[test]
+fn view_history_back_and_forward() {
+    let mut b = Bench::new();
+    let view = Cell::new(0_i32);
+    let next = Cell::new(super::PanZoom::NONE);
+    let body = |ui: &mut Ui| {
+        let (_, resp) = ui.allocate_exact_size(egui::vec2(100.0, 100.0), Sense::click_and_drag());
+        let pz = next.replace(super::PanZoom::NONE);
+        let mut v = view.get();
+        if !super::fig_nav::history(ui, &resp, &pz, &mut v) && pz.changes() {
+            v += 1;
+        }
+        view.set(v);
+    };
+    let pan = super::PanZoom {
+        pan: Vec2::new(5.0, 0.0),
+        ..super::PanZoom::NONE
+    };
+    // 1 つ目の操作（3 フレーム続けて動かす）→ 0 を覚えて 3 に
+    for _ in 0..3 {
+        next.set(pan);
+        b.frame(vec![], &body);
+    }
+    assert_eq!(view.get(), 3);
+    // 間を空けて 2 つ目の操作 → 3 を覚えて 4 に
+    b.t += 1.0;
+    next.set(pan);
+    b.frame(vec![], &body);
+    assert_eq!(view.get(), 4);
+    let back = super::PanZoom {
+        back: true,
+        ..super::PanZoom::NONE
+    };
+    let fwd = super::PanZoom {
+        forward: true,
+        ..super::PanZoom::NONE
+    };
+    for (pz, want) in [
+        (back, 3),
+        (back, 0),
+        (back, 0),
+        (fwd, 3),
+        (fwd, 4),
+        (fwd, 4),
+    ] {
+        next.set(pz);
+        b.frame(vec![], &body);
+        assert_eq!(view.get(), want, "{:?}", (pz.back, pz.forward));
+    }
+    // 戻ってから動かすと進む先は消える
+    next.set(back);
+    b.frame(vec![], &body);
+    b.t += 1.0;
+    next.set(pan);
+    b.frame(vec![], &body);
+    next.set(fwd);
+    b.frame(vec![], &body);
+    assert_eq!(view.get(), 4, "3 から動かして 4。進む先は無い");
 }

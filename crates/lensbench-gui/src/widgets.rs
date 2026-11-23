@@ -7,6 +7,7 @@ use crate::i18n::trf;
 
 pub(crate) mod cell;
 pub(crate) mod choices;
+pub(crate) mod fig_nav;
 pub(crate) mod menu;
 pub(crate) mod name_edit;
 pub(crate) mod num;
@@ -94,9 +95,14 @@ pub(crate) fn json_num(v: &Value) -> Option<f64> {
     }
 }
 
-/// 図・グラフの上の拡大・移動の操作（1 フレーム分）。図（レイアウト・スポット・ガラスマップ）も解析のグラフも同じ操作:
-/// Ctrl（Mac は ⌘）＋ホイールかピンチ＝ポインタの所で拡大縮小（素のホイールはパネルのスクロール）、中・右ドラッグと
-/// Space+左ドラッグ＝移動、ダブルクリック・Home＝全体。右下の道具（ポインタが図の上にあるとき。右上はグラフの凡例）＝
+pub(crate) use fig_nav::{FigMenu, NavOpts};
+
+/// 図・グラフの上の拡大・移動の操作（1 フレーム分）。図（レイアウト・スポット・ガラスマップ・3D）も解析のグラフも同じ操作:
+/// Ctrl（Mac は ⌘）＋ホイールかピンチ＝ポインタの所で拡大縮小（Ctrl＋Shift は横だけ、Ctrl＋Alt は縦だけ）。素のホイールは
+/// パネルいっぱいの図（[`NavOpts::full`]）では拡大縮小、スクロールの中の図ではスクロール（拡大の仕方を一瞬出す）。
+/// 中ドラッグと Space+左ドラッグ＝移動、ダブルクリック・Home・0・F＝全体、＋・－＝拡大縮小、矢印＝移動、
+/// Backspace・Alt＋← / Alt＋→＝前の表示に戻る / 進む（[`fig_nav::history`]）。右クリック＝メニュー（全体・戻る・進む・
+/// 画像を写す・保存、グラフは軸の範囲・データを写す）。右下の道具（ポインタが図の上にあるとき。右上はグラフの凡例）＝
 /// ＋・－（押すたびに [`ZOOM_STEP`] 倍）・囲んで拡大・全体。囲んで拡大は Ctrl（⌘）＋左ドラッグでも
 ///
 /// 図は `pan` を先に足し、それから `at` を中心に `zoom` 倍する（囲んで拡大は、囲んだ所の中心を図の中心へ動かして拡大する）
@@ -104,6 +110,9 @@ pub(crate) fn json_num(v: &Value) -> Option<f64> {
 pub(crate) struct PanZoom {
     /// 拡大の倍率（1 は変えない、1 より大きいと拡大）
     pub zoom: f32,
+    /// 横・縦の拡大の倍率（Ctrl＋Shift／Alt＋ホイールでは片方だけ。ほかは zoom と同じ）。縦横を別に決められる
+    /// 図（グラフ・ガラスマップ）はこちらを使う
+    pub zoom_xy: Vec2,
     /// 拡大の中心（画面の座標）
     pub at: Option<Pos2>,
     /// 移動（画面の px）
@@ -112,6 +121,31 @@ pub(crate) struct PanZoom {
     pub reset: bool,
     /// 囲んで拡大で囲んだ枠（画面）。縦横を別に決められる図（ガラスマップ）は pan・zoom の代わりにこれを使う
     pub area: Option<egui::Rect>,
+    /// 前の表示に戻る・進む（[`fig_nav::history`] で当てる）
+    pub back: bool,
+    pub forward: bool,
+    /// 右クリックのメニューで選んだ、描く側がする操作
+    pub menu: Option<FigMenu>,
+}
+
+impl PanZoom {
+    /// 何もしない操作
+    pub(crate) const NONE: PanZoom = PanZoom {
+        zoom: 1.0,
+        zoom_xy: Vec2::splat(1.0),
+        at: None,
+        pan: Vec2::ZERO,
+        reset: false,
+        area: None,
+        back: false,
+        forward: false,
+        menu: None,
+    };
+
+    /// 表示を変えるか（戻る・進む・メニューは除く）
+    pub(crate) fn changes(&self) -> bool {
+        self.at.is_some() || self.pan != Vec2::ZERO || self.reset || self.area.is_some()
+    }
 }
 
 /// ＋・－のボタン 1 回の倍率
@@ -181,11 +215,11 @@ pub(crate) fn box_zooming(ui: &Ui, resp: &Response) -> bool {
     box_state(ui, resp).drag.is_some()
 }
 
-/// 移動のドラッグ中か（中・右ドラッグ、Space+左ドラッグ、`left_pans` なら左ドラッグも。囲んで拡大の間は除く）
+/// 移動のドラッグ中か（中ドラッグ、Space+左ドラッグ、`left_pans` なら左ドラッグも。囲んで拡大の間は除く。
+/// 右ボタンはメニュー）
 pub(crate) fn pan_zoom_pans(ui: &Ui, resp: &Response, left_pans: bool) -> bool {
     let space = ui.input(|i| i.key_down(egui::Key::Space));
     resp.dragged_by(egui::PointerButton::Middle)
-        || resp.dragged_by(egui::PointerButton::Secondary)
         || (resp.dragged_by(egui::PointerButton::Primary)
             && (left_pans || space)
             && !box_zooming(ui, resp))
@@ -196,26 +230,21 @@ pub(crate) fn zoom_to_box(rect: egui::Rect, b: egui::Rect) -> Option<PanZoom> {
     if b.width() < 4.0 || b.height() < 4.0 {
         return None;
     }
+    let zoom = (rect.width() / b.width()).min(rect.height() / b.height());
     Some(PanZoom {
-        zoom: (rect.width() / b.width()).min(rect.height() / b.height()),
+        zoom,
+        zoom_xy: Vec2::splat(zoom),
         at: Some(rect.center()),
         pan: rect.center() - b.center(),
-        reset: false,
         area: Some(b),
+        ..PanZoom::NONE
     })
 }
 
-/// `resp`（click_and_drag で取った図の場所）の上の操作を読む。`left_pans` は左ドラッグでも移動する図
-/// （ガラスマップ・グラフなど、左ドラッグにほかの役が無いもの）。素のホイールは外のスクロールに残し、Ctrl（⌘）＋ホイール・
-/// ピンチで拡大したら外に渡さない。右下の道具と囲んだ枠は、図を描いた後に [`paint_zoom_tools`] で描く
-pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
-    let mut out = PanZoom {
-        zoom: 1.0,
-        at: None,
-        pan: Vec2::ZERO,
-        reset: false,
-        area: None,
-    };
+/// `resp`（click_and_drag で取った図の場所）の上の操作を読む（決め事は [`NavOpts`]）。拡大したホイールは外のスクロールに
+/// 渡さない。右下の道具・囲んだ枠・案内は、図を描いた後に [`paint_zoom_tools`] で描く
+pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, opts: NavOpts) -> PanZoom {
+    let mut out = PanZoom::NONE;
     let rect = resp.rect;
     let mut st = box_state(ui, resp);
     if tools_shown(ui, resp, &st) {
@@ -232,6 +261,7 @@ pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
                         } else {
                             1.0 / ZOOM_STEP
                         };
+                        out.zoom_xy = Vec2::splat(out.zoom);
                         out.at = Some(rect.center());
                     }
                     Tool::Area => st.armed = !st.armed,
@@ -267,17 +297,22 @@ pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
         }
     }
     ui.data_mut(|d| d.insert_temp(box_id(resp), st));
-    if st.drag.is_none() && pan_zoom_pans(ui, resp, left_pans) {
+    if st.drag.is_none() && pan_zoom_pans(ui, resp, opts.left_pans) {
         out.pan = resp.drag_delta();
     }
-    out.reset |=
-        resp.double_clicked() || (resp.hovered() && ui.input(|i| i.key_pressed(egui::Key::Home)));
+    out.reset |= resp.double_clicked();
+    fig_nav::read_keys(ui, resp, opts, &mut out);
     if let Some(p) = resp.hover_pos() {
         if let Some(f) = take_wheel_zoom(ui) {
             out.zoom = f;
+            out.zoom_xy = ui.input(|i| i.zoom_delta_2d());
             out.at = Some(p);
+        } else {
+            fig_nav::plain_wheel(ui, resp, opts, &mut out);
         }
     }
+    fig_nav::context_menu(resp, opts, &mut out);
+    fig_nav::tick_shot(ui, resp);
     if (st.armed || st.drag.is_some()) && ui.rect_contains_pointer(rect) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
@@ -302,12 +337,17 @@ fn tool_tip(t: Tool) -> &'static str {
         Tool::In => crate::i18n::tr("Zoom in"),
         Tool::Out => crate::i18n::tr("Zoom out"),
         Tool::Area => crate::i18n::tr("Zoom to area: drag a box (also Ctrl+drag, ⌘+drag on Mac)"),
-        Tool::Fit => crate::i18n::tr("Fit all (also Home, or double-click an empty spot)"),
+        Tool::Fit => crate::i18n::tr("Fit all (also Home, 0 or F, or double-click an empty spot)"),
     }
 }
 
 /// [`pan_zoom`] の右上の道具と、囲んでいる枠を描く（図を描いた後に呼ぶ）
 pub(crate) fn paint_zoom_tools(ui: &Ui, resp: &Response) {
+    // 図の画像を写す間は道具・案内を描かない
+    if fig_nav::pending_shot(ui.ctx()).is_some_and(|s| s.fig == resp.id) {
+        return;
+    }
+    fig_nav::paint_hint(ui, resp);
     let st = box_state(ui, resp);
     let p = ui.painter_at(resp.rect);
     if let Some((p0, p1)) = st.drag.filter(|_| !st.cancelled) {

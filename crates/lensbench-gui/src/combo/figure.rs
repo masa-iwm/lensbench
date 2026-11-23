@@ -16,13 +16,24 @@ fn panning(ui: &Ui, resp: &egui::Response) -> bool {
     crate::widgets::pan_zoom_pans(ui, resp, false)
 }
 
-/// 2D の図の拡大縮小・移動・全体表示。操作はほかの図と同じ [`crate::widgets::pan_zoom`]:
-/// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、右上の
-/// ＋・－・囲んで拡大（Ctrl＋左ドラッグでも）、Home キー・何も無い所のダブルクリック（[`interact`]）・「全体」で
-/// 全体表示。inner は図を描く所（画面。全体表示のときの中心はその中心）
+/// 2D の図の拡大縮小・移動・全体表示・戻る。操作はほかの図と同じ [`crate::widgets::pan_zoom`]（レイアウトのパネルの
+/// 図なので素のホイールでも拡大縮小）: 中ボタン・Space＋左のドラッグで移動、右下の＋・－・囲んで拡大（Ctrl＋左ドラッグ
+/// でも）、Home キー・何も無い所のダブルクリック（[`interact`]）・「全体」で全体表示。＋・－・0・F・矢印・Backspace は
+/// 要素も寸法も選んでいない間だけ（選んでいる間は矢印などが要素・寸法を動かす）。inner は図を描く所（画面。
+/// 全体表示のときの中心はその中心）
 fn navigate(ui: &mut Ui, inner: Rect, resp: &egui::Response, view: &mut View) {
     let fit_center = inner.center();
-    let mut pz = crate::widgets::pan_zoom(ui, resp, false);
+    let opts = crate::widgets::NavOpts {
+        full: true,
+        keys: view.sel.is_none() && view.dim.is_none() && view.edit.is_none(),
+        ..crate::widgets::NavOpts::FIGURE
+    };
+    let mut pz = crate::widgets::pan_zoom(ui, resp, opts);
+    let mut shown = (view.zoom_log, view.pan);
+    if crate::widgets::fig_nav::history(ui, resp, &pz, &mut shown) {
+        (view.zoom_log, view.pan) = shown;
+        return;
+    }
     // 囲んで拡大は、余白を除いた描く所いっぱいに広げる（図の場所全体で決めると囲んだ所の端が切れる）
     if let Some(z) = pz.area.and_then(|b| crate::widgets::zoom_to_box(inner, b)) {
         pz = z;
@@ -66,7 +77,9 @@ pub(super) fn figure(
         };
         view.axes.clear();
         view.mids.clear();
-        if let Some(k) = crate::view3d::show(ui, resp, sc, &d.configs, &owner, view.sel, accent) {
+        if let Some(k) =
+            crate::view3d::show(ui, resp, view.nav, sc, &d.configs, &owner, view.sel, accent)
+        {
             view.set_sel(k);
             view.dim = None;
         }

@@ -408,7 +408,8 @@ no coating	コーティングなし
 View plane	表示面
 Unfolded	展開
 Sections after mirror/BS folds laid out along the original axis (moves along the axis only)	ミラー・BS で折れた後の区間を、折れる前の光軸の延長に並べ直した図（光軸に沿う操作だけ）
-Drag to rotate, Shift- or right-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset	ドラッグで回す・Shift か右ドラッグで動かす・Ctrl（Mac は ⌘）＋ホイールかピンチで拡大・ダブルクリックで戻す
+Drag to rotate, Shift- or middle-drag to pan, wheel or pinch to zoom, double-click to reset, right-click for more	ドラッグで回す・Shift か中ドラッグで動かす・ホイールかピンチで拡大・ダブルクリックで戻す・右クリックでほかの操作
+Drag to rotate, Shift- or middle-drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, double-click to reset, right-click for more	ドラッグで回す・Shift か中ドラッグで動かす・Ctrl（Mac は ⌘）＋ホイールかピンチで拡大・ダブルクリックで戻す・右クリックでほかの操作
 The CLI arguments as JSON (_ in keys becomes -; see analyze in docs/serve.md). Overrides the fields	CLI と同じ引数を JSON で（キーの _ は -。docs/serve.md の analyze）。欄の値より優先
 Save JSON…	JSON に保存…
 Load JSON…	JSON を読み込む…
@@ -1120,7 +1121,7 @@ Position too	位置も
 Also lock the position (drag, keys, decenter, tilt) and the air after	位置（図のドラッグ・キー・偏心・チルト）と後の空気も変えられないようにする
 The gap after an element locked with its position cannot change	位置もロックした要素の後の間隔は変えられません
 Fit	全体
-Fit all (also Home, or double-click an empty spot)	全体を表示（Home・何も無い所のダブルクリックでも）
+Fit all (also Home, 0 or F, or double-click an empty spot)	全体を表示（Home・0・F・何も無い所のダブルクリックでも）
 Zoom in	拡大
 Zoom out	縮小
 Zoom to area: drag a box (also Ctrl+drag, ⌘+drag on Mac)	囲んで拡大: 枠をドラッグ（Ctrl＋ドラッグでも。Mac は ⌘＋ドラッグ）
@@ -2020,6 +2021,18 @@ Replaces the lens selected in the layout figure with this lens. Its id, the gaps
 The held element does not fit the holding diameter	保持する要素が保持径に入りません
 ⇄ Replace {}	⇄ {} を差し替え
 {} has no catalog file	{} にカタログのファイルがありません
+Ctrl+wheel (⌘ on Mac) or pinch to zoom	Ctrl＋ホイール（Mac は ⌘）かピンチで拡大縮小
+Back to the previous view	前の表示に戻る
+Forward	進む
+Axis range…	軸の範囲…
+Copy image	画像をコピー
+Save image…	画像を保存…
+Copy data (CSV)	データをコピー（CSV）
+Fit all	全体を表示
+Axis range	軸の範囲
+Horizontal axis	横軸
+Vertical axis	縦軸
+Enter numbers with min < max	最小 < 最大 の数を入れてください
 Glass only in the states	硝材は状態だけに
 Writes the substituted glass only as overrides of the states, leaving the base system (no state open) as it is. Unchecked, the base system takes the new glass of the state for the base configuration	置き換えた硝材を状態の上書きにだけ書き、基本のシステム（状態を開いていないシステム）はそのままにします。外すと、基本のシステムは基本の構成の状態の新しい硝材になります
 Surface {}: the glass was written only to the states (the earlier glass of a state that follows the base system is unknown)	面 {}: 硝材は状態にだけ書きました（基本のシステムに従う状態の前の硝材が分からないため）
