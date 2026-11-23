@@ -732,3 +732,57 @@ fn shifted_parts_become_decentered_apertures_tilted_ones_are_noted() {
     assert_eq!(notes.len(), 2, "{notes:?}");
     assert_eq!(b.surfaces.len(), tilted.surfaces.len());
 }
+
+/// 穴の端が面の頂点の上にあっても、前後の隙間の一方に書いて同じ光線をける。どちらの隙間かは穴の向きでなく
+/// 縁の矢高の向きで決まる（凸の前の面は前の隙間の終わり、凹の後ろの面は後ろの隙間の始まり、どちらも空気）。
+/// 向きの取り違えは粗い瞳では見えないので、瞳 101 と直径を数通り
+#[test]
+fn bore_ends_on_a_vertex_go_to_one_gap() {
+    let (px, py) = pupil(101);
+    // 穴 20〜40 は L1 の前の面の頂点（40）まで、44〜60 は後ろの面の頂点（44）から
+    for (z0, z1, front) in [(20, 40, true), (44, 60, false)] {
+        for dia in [8.6, 9.0, 9.4, 9.8] {
+            let bore = format!(r#"{{"z0": {z0}, "z1": {z1}, "diameter": {dia}}}"#);
+            let s = system(
+                &format!(
+                    r#"{{"name": "tube", "mech": {{"bores": [{bore}]}}, "at": {{"block": "stop"}}}}"#
+                ),
+                None,
+            );
+            let (a, notes) = lensbench_core::mech::as_apertures(&s).unwrap();
+            assert!(notes.is_empty(), "{notes:?}");
+            let ix: Vec<usize> = (0..a.surfaces.len())
+                .filter(|&i| a.surfaces[i].comment.starts_with("MECH "))
+                .collect();
+            assert_eq!(ix.len(), 2, "{bore}");
+            for &i in &ix {
+                assert_eq!(
+                    a.surfaces[i].mat,
+                    lensbench_core::surface::Material::Air,
+                    "{bore}"
+                );
+            }
+            // 前の面: 頂点の端は前の隙間の終わり（厚さ 0）。後ろの面: 後ろの隙間の始まり（次の端まで 16）
+            if front {
+                assert!(a.surfaces[ix[1]].t.abs() < 1e-9, "{bore}");
+            } else {
+                assert!((a.surfaces[ix[0]].t - 16.0).abs() < 1e-9, "{bore}");
+            }
+            let mut cut = 0;
+            for f in [0, 1] {
+                let t0 = s
+                    .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, false)
+                    .unwrap();
+                let t1 = a
+                    .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, false)
+                    .unwrap();
+                let v0: Vec<bool> = t0.rays.iter().map(|r| r.vig != 0).collect();
+                let v1: Vec<bool> = t1.rays.iter().map(|r| r.vig != 0).collect();
+                let diff = v0.iter().zip(&v1).filter(|(x, y)| x != y).count();
+                assert_eq!(diff, 0, "{bore} 視野 {f}");
+                cut += v0.iter().filter(|&&x| x).count();
+            }
+            assert!(cut > 0, "{bore}");
+        }
+    }
+}

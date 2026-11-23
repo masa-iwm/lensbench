@@ -748,14 +748,70 @@ struct EndPlane {
     label: String,
 }
 
+/// 穴の端の平面が面の頂点の上にあって前後 2 つの隙間に入るとき、どちらに置くかを決める。lensbench の判定
+/// （[`segment_clipped`]）で頂点の平面を横切るのは、穴の向きに依らず、穴の縁での面の矢高が光の進む向き
+/// （前の隙間の厚さの向き）に出ていれば面の前の線分、逆なら後ろの線分なので、前の隙間の終わりか後ろの隙間の
+/// 始まりの一方を残す（平らな面は後ろの隙間の始まり）。縁の矢高の向きがそろわない面は決めない（印として
+/// gap = usize::MAX の端を 2 つ返す）。鏡と隣り合わない 2 つの隙間はそのまま返す
+fn on_vertex(
+    s: &System,
+    gaps: &[(usize, V3, [V3; 3], f64, usize)],
+    mut hits: Vec<EndPlane>,
+) -> Vec<EndPlane> {
+    if hits.len() != 2 {
+        return hits;
+    }
+    hits.sort_by_key(|e| e.gap);
+    let (a, b) = (&hits[0], &hits[1]);
+    let ga = gaps.iter().find(|g| g.0 == a.gap);
+    let d = &s.surfaces[b.gap];
+    let undecided = |mut h: Vec<EndPlane>| {
+        for e in &mut h {
+            e.gap = usize::MAX;
+        }
+        h
+    };
+    if ga.map(|g| g.4) != Some(b.gap) || d.is_mirror() {
+        return hits;
+    }
+    let (Some(ga), Some(axk)) = (ga, gaps.iter().find(|g| g.0 == b.gap).map(|g| g.2[2])) else {
+        return undecided(hits);
+    };
+    if ga.3 == 0.0 {
+        return undecided(hits);
+    }
+    // 面の局所の z を光の進む向き（前の隙間の軸 × 厚さの符号）に直す
+    let k = dot(axk, ga.2[2]) * ga.3.signum();
+    let tol = 1e-12 * (1.0 + b.radius);
+    let h: Vec<f64> = (0..16)
+        .map(|i| {
+            let th = i as f64 * std::f64::consts::TAU / 16.0;
+            let (x, y) = (b.dx + b.radius * th.cos(), b.dy + b.radius * th.sin());
+            crate::freeform::sag_xy(d, x, y).0 * k
+        })
+        .collect();
+    if h.iter().any(|v| !v.is_finite()) {
+        undecided(hits)
+    } else if h.iter().all(|&v| v <= tol) {
+        hits.remove(0);
+        hits
+    } else if h.iter().all(|&v| v >= -tol) {
+        hits.truncate(1);
+        hits
+    } else {
+        undecided(hits)
+    }
+}
+
 /// 機構部品の穴を、穴の両端（z0・z1）の平面に置いた円形開口（半径 = 穴の半径）のダミー面にした系と注意
 /// （OpticStudio には機構部品が無いので、.zmx に書くときに使う）。面は端の平面が通る隙間（前の面の軸に沿う隙間で、
 /// 部品の軸が隙間の軸と平行なもの）に入れて隙間の厚さを分ける。偏心は開口の偏心にする。返す系に機構部品は無い。
 ///
 /// 面と面の間の直線の上の x² + y² の最大は z の範囲の端なので、穴の中に光学面が無い隙間では端の 2 面の判定は
 /// [`segment_clipped`] と同じ。穴の中に光学面があると（玉を保持する部品）、その面の交点での判定は落ちる。
-/// 置けない端（部品が隙間の軸に対して傾いている・どの隙間にも無い・2 つ以上の隙間にある・厚さがソルブか
-/// ピックアップで決まる隙間・多重構成の系）は書かずに注意を返す
+/// 端が面の頂点の上にあれば前後の隙間の一方に置く（`on_vertex`）。置けない端（部品が隙間の軸に対して
+/// 傾いている・どの隙間にも無い・頂点の上で面の矢高の向きがそろわない・鏡の頂点の上などで 2 つ以上の隙間に
+/// ある・厚さがソルブかピックアップで決まる隙間・多重構成の系）は書かずに注意を返す
 pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
     let mut notes = Vec::new();
     let mut out = s.clone();
@@ -769,8 +825,8 @@ pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
         ));
     } else {
         let fr = s.frames();
-        // 前の面と次の面が共軸につながる隙間（物体面の後ろは見ない）: (前の面, 原点, 局所の x・y・z 軸, 厚さ)
-        let mut gaps: Vec<(usize, V3, [V3; 3], f64)> = Vec::new();
+        // 前の面と次の面が共軸につながる隙間（物体面の後ろは見ない）: (前の面, 原点, 局所の x・y・z 軸, 厚さ, 次の面)
+        let mut gaps: Vec<(usize, V3, [V3; 3], f64, usize)> = Vec::new();
         let idx: Vec<usize> = (1..=s.image())
             .filter(|&j| !s.surfaces[j].ignore && fr.surf[j].is_some())
             .collect();
@@ -789,7 +845,7 @@ pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
                     .iter()
                     .any(|q| q.surf == j && q.kind.param_kind() == crate::param::Kind::Thick);
             if t.is_finite() && norm(sub(end, fk.o)) < 1e-9 * (1.0 + t.abs()) && fixed {
-                gaps.push((j, fj.o, ax, t));
+                gaps.push((j, fj.o, ax, t, k));
             }
         }
         let mut planes: Vec<EndPlane> = Vec::new();
@@ -804,7 +860,7 @@ pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
                     let hits: Vec<EndPlane> = gaps
                         .iter()
                         .filter(|g| dot(n, g.2[2]).abs() > 1.0 - 1e-9)
-                        .filter_map(|&(j, a, ax, t)| {
+                        .filter_map(|&(j, a, ax, t, _)| {
                             let v = sub(q, a);
                             let d = dot(v, ax[2]);
                             let inside = if t >= 0.0 {
@@ -822,10 +878,15 @@ pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
                             })
                         })
                         .collect();
+                    let hits = on_vertex(s, &gaps, hits);
                     match hits.len() {
                         1 => planes.extend(hits),
                         0 => notes.push(format!(
                             "the bore end {} of mechanical part {} was not written (no surface gap along the part axis holds it)",
+                            z, p.name
+                        )),
+                        _ if hits.iter().any(|e| e.gap == usize::MAX) => notes.push(format!(
+                            "the bore end {} of mechanical part {} was not written (it lies on the vertex of a surface that crosses its plane)",
                             z, p.name
                         )),
                         _ => notes.push(format!(
