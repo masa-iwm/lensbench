@@ -32,6 +32,8 @@ pub struct FitOptions {
     pub d_max: f64,
     /// BMAX を決める ψ の補間誤差の上限 [rad]
     pub tol_psi: f64,
+    /// モデルの補間の点の数（[`CoatModel::order`]。0 は従来、4〜12 は波長・β² とも近い p 点の多項式）
+    pub order: usize,
 }
 
 impl Default for FitOptions {
@@ -39,6 +41,7 @@ impl Default for FitOptions {
         FitOptions {
             d_max: 20.0,
             tol_psi: 1e-4,
+            order: 0,
         }
     }
 }
@@ -301,9 +304,45 @@ fn mirror_d(air: &Measured, refm: &Measured, opt: &FitOptions) -> f64 {
     minimize(&cost, opt.d_max, 0.01, 1e-8)
 }
 
-/// ψ の補間から BMAX
-fn bmax_of(betas: &[f64], psi: &[f64], wl: f64, tol: f64) -> f64 {
+/// 点 xs の多項式で x の値（Lagrange）
+fn lagrange(xs: &[f64], ys: &[f64], x: f64) -> f64 {
+    let mut v = 0.0;
+    for (i, (&xi, &yi)) in xs.iter().zip(ys).enumerate() {
+        let mut w = 1.0;
+        for (j, &xj) in xs.iter().enumerate() {
+            if j != i {
+                w *= (x - xj) / (xi - xj);
+            }
+        }
+        v += w * yi;
+    }
+    v
+}
+
+/// ψ の補間から BMAX。1 つおきの点から残りの点を予測し、差が tol を超える手前まで。
+/// order が 0 なら β² の not-a-knot スプライン（読み手の従来の補間）、p なら近い p 点の β² の多項式
+fn bmax_of(betas: &[f64], psi: &[f64], wl: f64, tol: f64, order: usize) -> f64 {
     let k = 2.0 * PI / wl;
+    if order > 0 {
+        let ev: Vec<usize> = (0..betas.len()).step_by(2).collect();
+        if ev.len() < order {
+            return betas[betas.len() - 1];
+        }
+        let x: Vec<f64> = ev.iter().map(|&j| betas[j] * betas[j]).collect();
+        let y: Vec<f64> = ev.iter().map(|&j| psi[j]).collect();
+        let mut i = 1;
+        while i < betas.len() {
+            // 予測する点の前後にある偶数番の点から、近い p 点
+            let c = i / 2 + 1;
+            let s = c.saturating_sub(order / 2).min(ev.len() - order);
+            let q = betas[i] * betas[i];
+            if (k * (lagrange(&x[s..s + order], &y[s..s + order], q) - psi[i])).abs() > tol {
+                return betas[i - 1];
+            }
+            i += 2;
+        }
+        return betas[betas.len() - 1];
+    }
     let mut i = 1;
     while i + 1 < betas.len() {
         let ev: Vec<usize> = (0..=i + 1)
@@ -357,10 +396,17 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
             betas.len()
         );
     }
+    if opt.order != 0 && !lensbench_core::coating::MODEL_ORDER_RANGE.contains(&opt.order) {
+        invalid!(
+            "coating fit: the interpolation order {} is not 0 or 4 to 12",
+            opt.order
+        );
+    }
     let bf: Vec<f64> = betas.iter().map(|&b| b as f64 / 1e9).collect();
     let mut model = CoatModel {
         d,
         bmax: f64::INFINITY,
+        order: opt.order,
         ..Default::default()
     };
     for &w in &waves {
@@ -384,7 +430,9 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
                 psis[j][pol] = phi * wl / (2.0 * PI);
             }
             let ps: Vec<f64> = psis.iter().map(|p| p[pol]).collect();
-            model.bmax = model.bmax.min(bmax_of(&bf, &ps, wl, opt.tol_psi));
+            model.bmax = model
+                .bmax
+                .min(bmax_of(&bf, &ps, wl, opt.tol_psi, opt.order));
         }
         model.wavelengths.push(wl);
         model.m.push(rows);

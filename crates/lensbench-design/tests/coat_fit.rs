@@ -17,7 +17,7 @@ fn a0() -> System {
 
 #[test]
 fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
-    use lensbench_core::coating::format_models;
+    use lensbench_core::coating::{format_models, format_models_bin};
     use lensbench_core::coating::{parse_models, CoatingFile, Measured};
     use lensbench_design::coat_fit::{fit_model, FitOptions};
     let s = a0();
@@ -145,8 +145,56 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
         "fitted model vs stack: max {worst:.1e}, BMAX {}",
         rep.model.bmax
     );
+    // 補間の点の数 8（ORDER 8）で当てても膜の重なりと合い、BMAX も ψ の発散の手前
+    let r8 = fit_model(
+        &t,
+        &FitOptions {
+            order: 8,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(r8.model.order, 8);
+    assert!(
+        r8.model.bmax > 1.2 && r8.model.bmax < 1.38,
+        "BMAX {}",
+        r8.model.bmax
+    );
+    let t8 = format_models(&[("Z8", &r8.model)]);
+    assert!(t8.contains("ORDER 8"));
+    let mut c3 = Coatings {
+        file: c.file.clone(),
+        ..Default::default()
+    };
+    c3.models.extend(parse_models(&t8).unwrap());
+    let mut w8 = 0.0f64;
+    for (k, km, n1, n2, amax) in [
+        ("AR2|AIR|1.5,0.0", "Z8|AIR|1.5,0.0", 1.0, 1.5, 80.0),
+        ("AR2|1.5,0.0|AIR", "Z8|1.5,0.0|AIR", 1.5, 1.0, 40.0),
+        ("MIR|1.6,0.0|MIRROR", "Z8|1.6,0.0|MIRROR", 1.6, 0.0, 70.0),
+    ] {
+        let f = c3.prepare(&s, k, wl, n1, n2).unwrap();
+        let g = c3.prepare(&s, km, wl, n1, n2).unwrap();
+        for i in 0..=40 {
+            let th = (amax * i as f64 / 40.0f64).to_radians();
+            let (a, b) = (f.eval(th).unwrap(), g.eval(th).unwrap());
+            w8 = w8.max((a[0] - b[0]).norm().max((a[1] - b[1]).norm()));
+        }
+    }
+    assert!(w8 < 1e-5, "ORDER 8 vs stack {w8:e}");
+    assert!(format_models_bin(&[("Z8", &r8.model)])
+        .unwrap()
+        .starts_with(b"LBCM 4\n"));
+    // 0 か 4〜12 でない点の数は誤り
+    assert!(fit_model(
+        &t,
+        &FitOptions {
+            order: 3,
+            ..Default::default()
+        }
+    )
+    .is_err());
     // バイナリ（LBCM 3）で書いて読み直すと、値は刻み（透過 1e-9、鏡 1e-12）の半分しか変わらず、係数もほぼ同じ
-    use lensbench_core::coating::format_models_bin;
     use lensbench_core::coating::{parse_models_bin, MODEL_BIN_HEADER};
     let bin = format_models_bin(&[("ZX", &rep.model)]).unwrap();
     assert!(bin.starts_with(MODEL_BIN_HEADER));

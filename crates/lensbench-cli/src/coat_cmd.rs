@@ -88,6 +88,9 @@ pub(crate) struct CoatModelArgs {
     /// Upper limit of the ψ interpolation error that sets BMAX [rad]
     #[arg(long, default_value_t = 1e-4)]
     tol_psi: f64,
+    /// Interpolation order of the model (0: the former, 4 neighboring wavelengths and a spline along β²; 4 to 12: polynomials through that many neighboring points along 1/λ and β², the ORDER line). 8 needs fewer points for the same accuracy
+    #[arg(long, default_value_t = 0)]
+    order: usize,
     /// Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)
     #[arg(long)]
     note: Option<String>,
@@ -155,6 +158,7 @@ pub(crate) fn coat_model(a: &CoatModelArgs) -> lensbench_core::Result<Value> {
     }
     let opt = FitOptions {
         tol_psi,
+        order: a.order,
         ..Default::default()
     };
     let mut models = Vec::new();

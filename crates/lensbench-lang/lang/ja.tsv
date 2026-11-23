@@ -2823,3 +2823,5 @@ Reference wavelength [µm] for layers whose thickness is in waves (the primary w
 Note to put in the model (NOTE; shown by `lensbench coatings`)	モデルに入れる注記（NOTE。`lensbench coatings` に出る）
 warning: {c}: the difference between the grid points is {worst:.1e}, above --tol {tol:.1e}, after making the grid finer {n} times (raise --max-refine or --tol)	注意: {c}: グリッドを {n} 回細かくしても、グリッドの間の差が {worst:.1e} で --tol {tol:.1e} を超えています（--max-refine か --tol を大きくしてください）
 Upper limit of the times the grid is made finer	グリッドを細かくし直す回数の上限
+Interpolation order of the model (0: the former, 4 neighboring wavelengths and a spline along β²; 4 to 12: polynomials through that many neighboring points along 1/λ and β², the ORDER line). 8 needs fewer points for the same accuracy	モデルの補間の点の数（0: 従来の、近い 4 波長と β² のスプライン。4〜12: 1/λ・β² とも近いその数の点の多項式で、ORDER 行）。8 なら同じ精度で点が少なくて済む
+coating fit: the interpolation order {} is not 0 or 4 to 12	コーティングのフィッティング: 補間の点の数 {} が 0 か 4〜12 ではありません
