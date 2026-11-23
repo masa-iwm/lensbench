@@ -1,1 +1,0 @@
-- GUI: the card of a selected mechanical part in the layout now shows, per field and wavelength, the share of rays that pass and that the part clips first (all clipped in brackets), plus the fit notes of that part, from the "Mechanical vignetting" analysis; mechanical parts can also be selected by clicking them in the 3D view, which shows the same card
