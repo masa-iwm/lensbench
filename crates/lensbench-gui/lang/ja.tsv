@@ -2019,3 +2019,4 @@ Replaces the item with another part of the same kind; placement, held elements, 
 Replaces the lens selected in the layout figure with this lens. Its id, the gaps before and after, its group and its place are kept (undo with Ctrl+Z)	レイアウト図で選択しているレンズをこのレンズに差し替えます。id・前後の間隔・群・置き方はそのままです（Ctrl+Z で元に戻せます）
 The held element does not fit the holding diameter	保持する要素が保持径に入りません
 ⇄ Replace {}	⇄ {} を差し替え
+{} has no catalog file	{} にカタログのファイルがありません

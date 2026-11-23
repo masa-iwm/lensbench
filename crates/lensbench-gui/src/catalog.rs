@@ -1218,7 +1218,7 @@ impl Browser {
                     } else if ui.button(tr("➕ Add to combination")).clicked() {
                         self.add_pick(doc, r);
                     }
-                    if let Some(a) = replace::replace_ui(ui, doc, r) {
+                    if let Some(a) = replace::replace_ui(ui, doc, r, &self.lenses) {
                         self.pending = Some(a);
                     }
                     self.fit_ui(ui, doc, r);

@@ -361,3 +361,49 @@ fn change_item_candidates_are_same_kind() {
     let names: Vec<(&str, Option<bool>)> = c.iter().map(|x| (x.1.as_str(), x.3)).collect();
     assert_eq!(names, [("CP-A", Some(true)), ("CP-B", Some(false))]);
 }
+
+/// 一覧の「⇄ 差し替え」で機構部品を替えたとき、保持する要素が新しい品の保持径に入らなければ知らせに ⚠。
+/// カタログのファイルの無い行は誤り
+#[test]
+fn replace_mech_from_list_warns_when_held_element_does_not_fit() {
+    let _g = serial();
+    let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let dir = ex.join("projects");
+    let v: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("P19_tube_cage.json")).unwrap())
+            .unwrap();
+    let combo = crate::combo::Combo::from_project(&v, &dir).unwrap();
+    let row = |hold: f64, src: Option<&str>| LensRow {
+        part: "T-X".into(),
+        source: src.map(str::to_string),
+        kind: RowKind::Mech,
+        raw: json!({ "mech": { "holds": { "diameter": hold } } }),
+        ..Default::default()
+    };
+    // L1 は径 25.4。保持径 12.7 の品には入らない、25.4 なら入る
+    for (r, warn) in [
+        (row(12.7, Some("/x/c.json")), Some(true)),
+        (row(25.4, Some("/x/c.json")), Some(false)),
+        (row(25.4, None), None),
+    ] {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(600.0, 200.0))
+            .build_ui_state(
+                |ui, st: &mut (ComboDoc, LensRow, Option<Action>)| {
+                    crate::combo::mech::select(ui.ctx(), Some("tube"));
+                    if let Some(a) = replace::replace_ui(ui, &mut st.0, &st.1, &[]) {
+                        st.2 = Some(a);
+                    }
+                },
+                (ComboDoc::new(combo.clone()), r, None),
+            );
+        h.run_steps(2);
+        h.get_by_label("⇄ Replace tube").click();
+        h.run_steps(2);
+        match (&h.state().2, warn) {
+            (Some(Action::Notice(t)), Some(w)) => assert_eq!(t.contains('⚠'), w, "{t}"),
+            (Some(Action::Fail(_)), None) => {}
+            (a, w) => panic!("{a:?} {w:?}"),
+        }
+    }
+}

@@ -201,8 +201,9 @@ pub(super) fn held_diameters(
             let id = m.holds.first()?;
             let p = c.el(ids.iter().position(|x| x == id)?)?;
             let d = match p.kind {
+                // 自作の玉は面の表があれば面の半径の最大、無ければ（面を書かない簡単な玉）玉の半径
                 crate::combo::ElemKind::Lens => {
-                    2.0 * p.surfs.iter().map(|r| r.semi).fold(0.0, f64::max)
+                    2.0 * p.surfs.iter().map(|r| r.semi).fold(p.semi, f64::max)
                 }
                 crate::combo::ElemKind::Catalog => {
                     lenses

@@ -186,6 +186,9 @@ impl ComboDoc {
         if r.kind != RowKind::Mech {
             return Err(tr("Only a mechanical part can replace a mechanical part").into());
         }
+        let Some(cat) = r.source.clone() else {
+            return Err(trf("{} has no catalog file", &[&r.part]));
+        };
         let m = self
             .combo
             .mechanics
@@ -196,7 +199,7 @@ impl ComboDoc {
             "Replaced {} with {}",
             &[&format!("{name} ({})", m.item), &r.part],
         );
-        m.catalog = r.source.clone().unwrap_or_default();
+        m.catalog = cat;
         m.item = r.part.clone();
         Ok(msg)
     }
