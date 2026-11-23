@@ -1,4 +1,4 @@
-//! 膜の道具のコマンド（coat-design・coat-model・coat-kinks・coat-compact）
+//! 膜の道具のコマンド（coat-design・coat-model・coat-kinks・coat-compact・coat-from-layers）
 
 use super::*;
 
@@ -710,4 +710,105 @@ pub(crate) fn coatings(a: &CoatingsArgs) -> Result<Value, AppError> {
         "configurations": cfgs,
         "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
     }))
+}
+
+// `coat-from-layers` の引数（main.rs を大きくしないようここに置く）
+#[derive(clap::Args)]
+pub(crate) struct CoatFromLayersArgs {
+    /// Coating file (COATING.DAT format) with the layers (COAT) and the materials (MATE)
+    file: PathBuf,
+    /// Coatings to make (comma-separated)
+    #[arg(long)]
+    coat: String,
+    /// Model to write (LBCM 4)
+    #[arg(long, short)]
+    out: PathBuf,
+    /// Wavelength range [µm] (two values, comma-separated)
+    #[arg(long, default_value = "0.4,0.7")]
+    wl: String,
+    /// Upper limit of β for transmission (the grid is uniform in β² from 0)
+    #[arg(long, default_value_t = 1.4)]
+    beta_max: f64,
+    /// Interpolation order (points of the polynomial along 1/λ and β², 4 to 12)
+    #[arg(long, default_value_t = 8)]
+    order: usize,
+    /// Largest difference of the coefficients allowed between the grid points (the grid is made finer until it holds)
+    #[arg(long, default_value_t = 1e-5)]
+    tol: f64,
+    /// Also make the mirror table, with this index of the medium in front (the last layer is taken as the substrate, as for mirrors in the coating file)
+    #[arg(long)]
+    mirror_ref: Option<f64>,
+    /// Reference wavelength [µm] for layers whose thickness is in waves (the primary wavelength of the system)
+    #[arg(long, default_value_t = 0.55)]
+    primary: f64,
+    /// Upper limit of the times the grid is made finer
+    #[arg(long, default_value_t = 12)]
+    max_refine: usize,
+    /// Note to put in the model (NOTE; shown by `lensbench coatings`)
+    #[arg(long)]
+    note: Option<String>,
+    /// Output JSON
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+pub(crate) fn coat_from_layers(a: &CoatFromLayersArgs) -> lensbench_core::Result<Value> {
+    use lensbench_core::coating::{format_models_bin, model_from_coat, CoatGridSpec, CoatingFile};
+    let wl: Vec<f64> =
+        a.wl.split(',')
+            .map(|x| x.trim().parse::<f64>().map_err(|_| format!("--wl: {x}")))
+            .collect::<Result<_, _>>()?;
+    let [w0, w1] = wl[..] else {
+        return Err(format!("--wl: {}", a.wl).into());
+    };
+    let file = CoatingFile::load(&a.file).map_err(|e| e.at(a.file.display()))?;
+    let spec = CoatGridSpec {
+        wl: (w0, w1),
+        beta_max: a.beta_max,
+        order: a.order,
+        tol: a.tol,
+        mirror_ref: a.mirror_ref,
+        primary: a.primary,
+        max_refine: a.max_refine,
+    };
+    let mut models = Vec::new();
+    let mut rep = Vec::new();
+    for c in a.coat.split(',').map(str::trim).filter(|c| !c.is_empty()) {
+        let (mut m, r) = model_from_coat(&file, c, &spec)?;
+        if !r.converged {
+            let worst = [r.err_wave, r.err_beta, r.mirror_err_wave, r.mirror_err_beta]
+                .into_iter()
+                .fold(0.0, f64::max);
+            let tol = a.tol;
+            let n = a.max_refine;
+            eprintln!(
+                "{}",
+                lensbench_core::i18n::tr(&format!(
+                    "warning: {c}: the difference between the grid points is {worst:.1e}, above --tol {tol:.1e}, after making the grid finer {n} times (raise --max-refine or --tol)"
+                ))
+            );
+        }
+        if let Some(n) = &a.note {
+            m.note = n.clone();
+        }
+        rep.push(json!({
+            "coat": c,
+            "wavelengths": r.wavelengths,
+            "betas": r.betas,
+            "mirror_wavelengths": r.mirror_wavelengths,
+            "mirror_betas": r.mirror_betas,
+            "err_wave": r.err_wave,
+            "err_beta": r.err_beta,
+            "mirror_err_wave": r.mirror_err_wave,
+            "mirror_err_beta": r.mirror_err_beta,
+            "converged": r.converged,
+            "refined": r.refined,
+            "kinks_um": r.kinks,
+        }));
+        models.push((c.to_string(), m));
+    }
+    let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
+    let bytes = format_models_bin(&e).map_err(|x| x.to_string())?;
+    lensbench_core::vfs::write(&a.out, &bytes).map_err(|x| format!("{}: {x}", a.out.display()))?;
+    Ok(json!({ "out": a.out.display().to_string(), "bytes": bytes.len(), "models": rep }))
 }

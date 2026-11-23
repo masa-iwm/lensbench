@@ -28,6 +28,7 @@ pub const RESERVED: &[&str] = &[
     "layout",
     "coat-model",
     "coat-compact",
+    "coat-from-layers",
     "coat-design",
     "serve",
     "watch",

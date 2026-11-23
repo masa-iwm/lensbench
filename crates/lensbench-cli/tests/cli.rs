@@ -1508,3 +1508,70 @@ fn glass_catalogs_next_to_the_exe_are_used() {
     std::fs::remove_dir_all(&dir).ok();
     assert!(!err.contains("built-in catalog"), "{err}");
 }
+
+#[test]
+fn coat_from_layers_writes_lbcm4() {
+    let dir = std::env::temp_dir().join(format!("lensbench-cli-cfl-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("BS3.lbcb");
+    let o = out.to_str().unwrap();
+    let (ok, js, err) = run(&[
+        "coat-from-layers",
+        "tests/splitter/LBBS.DAT",
+        "--coat",
+        "BS3",
+        "-o",
+        o,
+        "--mirror-ref",
+        "1.0",
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&js).unwrap();
+    let m = &v["models"][0];
+    assert_eq!(m["coat"], "BS3");
+    for k in ["err_wave", "err_beta", "mirror_err_wave", "mirror_err_beta"] {
+        assert!(m[k].as_f64().unwrap() <= 1e-5, "{k} {m}");
+    }
+    assert!(m["mirror_wavelengths"].as_u64().unwrap() > 0);
+    let b = std::fs::read(&out).unwrap();
+    assert!(b.starts_with(b"LBCM 4\n"));
+    // 書いたモデルは coat-compact でそのまま読める
+    let (ok, _, err) = run(&[
+        "coat-compact",
+        o,
+        "-o",
+        dir.join("c.lbcb").to_str().unwrap(),
+    ]);
+    assert!(ok, "{err}");
+    assert_eq!(m["converged"], true);
+    // 細かくし直す回数の上限で届かなければ警告し、JSON にも出す
+    let (ok, js, err) = run(&[
+        "coat-from-layers",
+        "tests/splitter/LBBS.DAT",
+        "--coat",
+        "BS3",
+        "-o",
+        o,
+        "--tol",
+        "1e-14",
+        "--max-refine",
+        "0",
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&js).unwrap();
+    assert_eq!(v["models"][0]["converged"], false);
+    assert!(err.contains("--max-refine"), "{err}");
+    // 無いコーティングは誤り
+    let (ok, _, err) = run(&[
+        "coat-from-layers",
+        "tests/splitter/LBBS.DAT",
+        "--coat",
+        "NONE",
+        "-o",
+        o,
+    ]);
+    assert!(!ok && err.contains("NONE"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

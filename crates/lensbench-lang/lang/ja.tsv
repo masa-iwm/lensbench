@@ -2807,3 +2807,19 @@ coating model from layers: the total thickness changes with the wavelength	層�
 coating model from layers: the characteristic matrix is not finite at {wl} µm, β {b}	層から作るコーティングのモデル: {wl} µm・β {b} で特性行列が有限ではありません
 coating model from layers: the mirror wavelengths or β are not ascending, or there are fewer than 4 β points	層から作るコーティングのモデル: ミラーの波長か β が昇順でない、または β が 4 点より少ないです
 coating model from layers: the mirror β {b} is not below the reference index {}	層から作るコーティングのモデル: ミラーの β {b} が基準の屈折率 {} より小さくありません
+coating {coat} is not in the coating file (COAT)	コーティング {coat} がコーティングのファイル（COAT）にありません
+coating material {name} is not in the coating file (MATE); glass materials can't be used here	コーティングの材料 {name} がコーティングのファイル（MATE）にありません。ここでは硝材は使えません
+Make a coating model (LBCM 4) from the layers of a coating in a coating file, without showing the layers	コーティングファイルのコーティングの層から、層を見せないコーティングのモデル（LBCM 4）を作る
+Computes the characteristic matrices on a grid uniform in 1/λ and β², made finer until the coefficients between the grid points differ by less than --tol. For thick multilayers (tens to hundreds of layers) that the measured models can't hold	1/λ・β² に等間隔のグリッドで特性行列を計算し、グリッドの間の係数の差が --tol より小さくなるまでグリッドを細かくする。実測のモデルでは扱えない厚い多層のコーティング（数十〜数百層）向け
+Coating file (COATING.DAT format) with the layers (COAT) and the materials (MATE)	層（COAT）と材料（MATE）のあるコーティングファイル（COATING.DAT 形式）
+Coatings to make (comma-separated)	作るコーティング（カンマ区切り）
+Model to write (LBCM 4)	出力するモデル（LBCM 4）
+Wavelength range [µm] (two values, comma-separated)	波長の範囲 [µm]（2 つの値、カンマ区切り）
+Upper limit of β for transmission (the grid is uniform in β² from 0)	透過の β の上限（グリッドは β² で 0 から等間隔）
+Interpolation order (points of the polynomial along 1/λ and β², 4 to 12)	補間の点の数（1/λ・β² の多項式の点、4〜12）
+Largest difference of the coefficients allowed between the grid points (the grid is made finer until it holds)	グリッドの間で許す係数の差の最大（満たすまでグリッドを細かくする）
+Also make the mirror table, with this index of the medium in front (the last layer is taken as the substrate, as for mirrors in the coating file)	ミラーの表も作る（値は手前の媒質の屈折率。コーティングファイルのミラーと同じく最後の層を基板とみる）
+Reference wavelength [µm] for layers whose thickness is in waves (the primary wavelength of the system)	厚みが波長単位の層の基準波長 [µm]（システムの主波長）
+Note to put in the model (NOTE; shown by `lensbench coatings`)	モデルに入れる注記（NOTE。`lensbench coatings` に出る）
+warning: {c}: the difference between the grid points is {worst:.1e}, above --tol {tol:.1e}, after making the grid finer {n} times (raise --max-refine or --tol)	注意: {c}: グリッドを {n} 回細かくしても、グリッドの間の差が {worst:.1e} で --tol {tol:.1e} を超えています（--max-refine か --tol を大きくしてください）
+Upper limit of the times the grid is made finer	グリッドを細かくし直す回数の上限

@@ -25,7 +25,7 @@ mod thermal_cmd;
 pub(crate) use error::AppError;
 use text_out::warn_notes;
 mod coat_cmd;
-use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
+use coat_cmd::{coat_compact, coat_design, coat_from_layers, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
 mod config_sel;
@@ -403,6 +403,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Make a coating model (LBCM 4) from the layers of a coating in a coating file, without showing the layers
+    ///
+    /// Computes the characteristic matrices on a grid uniform in 1/λ and β², made finer until the coefficients between the grid points differ by less than --tol. For thick multilayers (tens to hundreds of layers) that the measured models can't hold
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
+    CoatFromLayers(coat_cmd::CoatFromLayersArgs),
     /// Fit a multilayer to a spectral curve (reflectance, transmittance) and write an approximate coating (`.lbcs`, the coating file format)
     ///
     /// The curves are CSV (columns wl_um or wl_nm, angle_deg, pol (s, p, avg), quantity (R, T), value or value_pct, weight; angle_deg, pol, quantity and weight default to 0, avg, R and 1). Put in a coating file folder, it is used by the coating name
@@ -1355,6 +1361,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
         } => (json, coat_kinks(&tables, &key, min_score)?),
         Cmd::CoatModel(a) => (a.json, coat_model(&a)?),
         Cmd::CoatCompact { model, out, json } => (json, coat_compact(&model, &out)?),
+        Cmd::CoatFromLayers(a) => (a.json, coat_from_layers(&a)?),
         Cmd::CoatDesign {
             targets,
             name,
