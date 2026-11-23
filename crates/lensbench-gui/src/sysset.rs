@@ -770,7 +770,7 @@ impl form::Extra for ComboExtra<'_> {
 
 fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let weak = theme::weak_text(ui.visuals());
-    let id = ui.id().with("sysset");
+    let id = ui.scope_id().with("sysset");
     let mut f = form::SysForm::of_combo(c);
     form::ui(ui, &mut f, &mut ComboExtra(c));
     f.apply_to(c);
@@ -853,7 +853,7 @@ fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32)
                 for x in rest {
                     if ui.button(x.as_str()).clicked() {
                         c.glass_catalogs.push(x.clone());
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
             });
@@ -955,8 +955,8 @@ mod tests {
         assert!(c.lead_stop());
         let before = c.clone();
         let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| body(ui, &mut c, &[]));
+        let _ = ctx.run_ui(Default::default(), |root| {
+            egui::CentralPanel::default().show(root, |ui| body(ui, &mut c, &[]));
         });
         assert_eq!(c, before);
         let mut f = form::SysForm::of_combo(&c);

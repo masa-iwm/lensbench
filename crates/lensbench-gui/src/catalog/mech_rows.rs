@@ -293,7 +293,7 @@ fn change_ui(ui: &mut Ui, m: &mut MechPick, lenses: &[LensRow], held: Option<f64
                 if ui.button(label).on_hover_text(hover).clicked() {
                     m.catalog = cat;
                     m.item = item;
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         });

@@ -2,7 +2,7 @@
 //! 絞り込みの状態を確かめる（serve は呼ばない。品は選ばないので断面・STEP の取得は走らない）
 
 use super::*;
-use egui_kittest::kittest::{by, Queryable};
+use egui_kittest::kittest::{by, NodeT as _, Queryable};
 use egui_kittest::Harness;
 
 /// 言語はプロセスで 1 つなので、ほかの画面の試験と重ねない
@@ -61,6 +61,11 @@ fn harness(b: Browser, dirs: (usize, usize)) -> Harness<'static, St> {
 /// 幅 w の画面のブラウザ
 fn harness_w(b: Browser, dirs: (usize, usize), w: f32) -> Harness<'static, St> {
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(w, 900.0))
         .build_ui_state(
             |ui, st: &mut St| {
@@ -97,12 +102,13 @@ fn catalog_tabs_and_buttons() {
     let _g = serial();
     let mut h = harness(loaded(), (2, 1));
     h.get_by_label("Catalog lenses (3)");
-    h.get_by_label("⟳ Reload").click();
+    h.get_by_label("⟳ Reload").click_accesskit();
     h.run_steps(4);
-    h.get_by_label("Folders… (glass 2, lens 1)").click();
+    h.get_by_label("Folders… (glass 2, lens 1)")
+        .click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().acts, ["refresh", "settings"]);
-    h.get_by_label("Glasses (2)").click();
+    h.get_by_label("Glasses (2)").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().b.tab, Tab::Glasses);
 }
@@ -140,7 +146,7 @@ fn catalog_search_and_sign_filter() {
     h.run_steps(4);
     assert_eq!(h.state().b.lens_q.text, "Acme");
     assert_eq!(h.state_mut().b.lens_idx().len(), 2);
-    h.get_by_label("Negative").click();
+    h.get_by_label("Negative").click_accesskit();
     h.run_steps(4);
     let st = h.state_mut();
     let idx = st.b.lens_idx();
@@ -173,7 +179,7 @@ fn catalog_bad_spec_shows_error() {
 fn catalog_glass_map_is_named() {
     let _g = serial();
     let mut h = harness(loaded(), (1, 1));
-    h.get_by_label("Glasses (2)").click();
+    h.get_by_label("Glasses (2)").click_accesskit();
     h.run_steps(4);
     h.get(
         by().role(egui::accesskit::Role::Image)
@@ -192,10 +198,10 @@ fn catalog_glass_rows_stay_short_in_a_narrow_panel() {
     }
     b.set_glasses(g);
     let mut h = harness_w(b, (1, 1), 280.0);
-    h.get_by_label("Glasses (2)").click();
+    h.get_by_label("Glasses (2)").click_accesskit();
     h.run_steps(4);
     let y = |h: &Harness<'static, St>, n: &str| {
-        let r = h.get_by_label(n).bounding_box().unwrap();
+        let r = h.get_by_label(n).accesskit_node().bounding_box().unwrap();
         (r.y0 + r.y1) / 2.0
     };
     let gap = y(&h, "S-BSL7") - y(&h, "N-BK7");
@@ -237,6 +243,8 @@ fn mech_rows_show_item_and_stay_short_when_narrow() {
     let ids = vec!["stop".to_string(), "L1".to_string()];
     for w in [900.0, 320.0] {
         let mut h = Harness::builder()
+            .allow_missing_glyphs()
+            .with_accessibility_check(false)
             .with_size(egui::vec2(w, 600.0))
             .build_ui_state(
                 |ui, ms: &mut Vec<crate::combo::MechPick>| {
@@ -256,11 +264,17 @@ fn mech_rows_show_item_and_stay_short_when_narrow() {
         let rows: Vec<_> = h.query_all_by_label("Seat on element").collect();
         assert_eq!(rows.len(), 3);
         for r in &rows {
-            let b = r.bounding_box().unwrap();
+            let b = r.accesskit_node().bounding_box().unwrap();
             assert!(b.y1 - b.y0 < 30.0, "w {w}: {b:?}");
         }
         // 品番の行から次の部品の品番の行まで（部品 1 つ分の高さ）
-        let y = |n: &str| h.get_by_label(n).bounding_box().unwrap().y0;
+        let y = |n: &str| {
+            h.get_by_label(n)
+                .accesskit_node()
+                .bounding_box()
+                .unwrap()
+                .y0
+        };
         let step = y("CP-30") - y("TUBE-25-30");
         let max = if w > 500.0 { 70.0 } else { 120.0 };
         assert!(step > 0.0 && step < max, "w {w}: {step}");
@@ -295,6 +309,8 @@ fn replace_buttons_swap_the_selected_lens_and_part() {
     let mut doc = ComboDoc::new(combo);
     doc.insert_after = Some(k);
     let mut h = Harness::builder()
+        .allow_missing_glyphs()
+        .with_accessibility_check(false)
         .with_size(egui::vec2(1100.0, 900.0))
         .build_ui_state(
             |ui, st: &mut St| {
@@ -311,7 +327,7 @@ fn replace_buttons_swap_the_selected_lens_and_part() {
             },
         );
     h.run_steps(4);
-    h.get_by_label("⇄ Replace L1").click();
+    h.get_by_label("⇄ Replace L1").click_accesskit();
     h.run_steps(2);
     assert_eq!(h.state().acts, ["notice"]);
     let p = h.state().doc.combo.el(k).unwrap().clone();
@@ -322,7 +338,7 @@ fn replace_buttons_swap_the_selected_lens_and_part() {
     assert!(h.query_by_label("⇄ Replace tube").is_none());
     crate::combo::mech::select(&h.ctx, Some("tube"));
     h.run_steps(2);
-    h.get_by_label("⇄ Replace tube").click();
+    h.get_by_label("⇄ Replace tube").click_accesskit();
     h.run_steps(2);
     let m = &h.state().doc.combo.mechanics[0];
     assert_eq!((m.item.as_str(), m.at.as_str()), ("CP-30", "stop"));
@@ -387,6 +403,8 @@ fn replace_mech_from_list_warns_when_held_element_does_not_fit() {
         (row(25.4, None), None),
     ] {
         let mut h = Harness::builder()
+            .allow_missing_glyphs()
+            .with_accessibility_check(false)
             .with_size(egui::vec2(600.0, 200.0))
             .build_ui_state(
                 |ui, st: &mut (ComboDoc, LensRow, Option<Action>)| {
@@ -398,7 +416,7 @@ fn replace_mech_from_list_warns_when_held_element_does_not_fit() {
                 (ComboDoc::new(combo.clone()), r, None),
             );
         h.run_steps(2);
-        h.get_by_label("⇄ Replace tube").click();
+        h.get_by_label("⇄ Replace tube").click_accesskit();
         h.run_steps(2);
         match (&h.state().2, warn) {
             (Some(Action::Notice(t)), Some(w)) => assert_eq!(t.contains('⚠'), w, "{t}"),

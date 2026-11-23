@@ -26,12 +26,14 @@ impl Bench {
         let raw = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(600.0, 400.0))),
             time: Some(self.t),
-            events,
-            modifiers: self.mods,
+            // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+            events: std::iter::once(egui::Event::ModifiersChanged(self.mods))
+                .chain(events)
+                .collect(),
             ..Default::default()
         };
-        let _ = self.ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| body(ui));
+        let _ = self.ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |ui| body(ui));
         });
     }
 
@@ -73,11 +75,11 @@ fn choices_click_and_hover() {
     let anchor = Rect::from_min_size(Pos2::new(20.0, 20.0), egui::vec2(100.0, 20.0));
     let shown = Cell::new(super::choices::Shown::default());
     let body = |ui: &mut Ui| {
-        shown.set(super::choices::Choices::new(&items, 0).show(ui, egui::Id::new("c"), anchor));
+        shown.set(super::choices::Choices::new(&items, 0).show(ui, egui::Id::unique("c"), anchor));
     };
     b.frame(Vec::new(), &body);
     // 一覧は欄の下に出る。2 行目の真ん中（行の高さは interact_size.y の下限）
-    let row_h = b.ctx.style().spacing.interact_size.y;
+    let row_h = b.ctx.global_style().spacing.interact_size.y;
     let p = Pos2::new(60.0, anchor.bottom() + 8.0 + row_h * 1.5);
     b.click(p, PointerButton::Primary, &body);
     // 離したフレームでクリック
@@ -97,17 +99,17 @@ fn choices_empty() {
     let anchor = Rect::from_min_size(Pos2::new(20.0, 20.0), egui::vec2(100.0, 20.0));
     let mut shown = super::choices::Shown::default();
     b.frame(vec![Event::PointerMoved(Pos2::new(30.0, 52.0))], |ui| {
-        shown = super::choices::Choices::new(&[], 0).show(ui, egui::Id::new("c"), anchor);
+        shown = super::choices::Choices::new(&[], 0).show(ui, egui::Id::unique("c"), anchor);
     });
     assert!(!shown.hovered);
-    // 出した最初のフレームは大きさを測るだけなので 2 フレーム
-    for _ in 0..2 {
+    // 出した最初のフレームは大きさを測るだけ、egui 0.37 はポインタの当たりを前のフレームの窓で決めるので 3 フレーム
+    for _ in 0..3 {
         b.frame(vec![Event::PointerMoved(Pos2::new(30.0, 48.0))], |ui| {
             shown = super::choices::Choices {
                 empty: Some("none"),
                 ..super::choices::Choices::new(&[], 0)
             }
-            .show(ui, egui::Id::new("e"), anchor);
+            .show(ui, egui::Id::unique("e"), anchor);
         });
     }
     assert!(shown.hovered);
@@ -122,7 +124,7 @@ fn float_menu_closes() {
     let run = |b: &mut Bench, events: Vec<Event>, fresh: bool, pick: bool| {
         let mut close = false;
         b.frame(events, |ui| {
-            close = super::menu::float_menu(ui, egui::Id::new("m"), pos, 200.0, fresh, |ui| {
+            close = super::menu::float_menu(ui, egui::Id::unique("m"), pos, 200.0, fresh, |ui| {
                 ui.label("item");
                 pick
             });
@@ -135,7 +137,7 @@ fn float_menu_closes() {
     assert!(run(&mut b, Vec::new(), false, true));
     // 外のクリック（開いたフレームは数えない）
     b.click(Pos2::new(500.0, 350.0), PointerButton::Primary, |ui| {
-        close |= super::menu::float_menu(ui, egui::Id::new("m"), pos, 200.0, false, |ui| {
+        close |= super::menu::float_menu(ui, egui::Id::unique("m"), pos, 200.0, false, |ui| {
             ui.label("item");
             false
         });
@@ -162,6 +164,8 @@ fn pan_zoom_reads_input() {
         vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
             delta: Vec2::new(0.0, 120.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: Modifiers::NONE,
         }],
         &body,
@@ -179,6 +183,8 @@ fn pan_zoom_reads_input() {
         vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
             delta: Vec2::new(0.0, 120.0),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
             modifiers: Modifiers::COMMAND,
         }],
         &body,
@@ -413,7 +419,7 @@ fn plot_nav_axis_wheel_and_drag() {
             .x_axis_label("x")
             .y_axis_label("y");
         let r = crate::plot_tools::nav(ui, plot, true, |p| {
-            p.line(Line::new(vec![[0.0, 0.0], [10.0, 5.0]]));
+            p.line(Line::new("", vec![[0.0, 0.0], [10.0, 5.0]]));
         });
         bounds.set(Some(*r.transform.bounds()));
         frame.set(*r.transform.frame());
@@ -431,6 +437,8 @@ fn plot_nav_axis_wheel_and_drag() {
             vec![Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
                 delta: Vec2::new(0.0, 120.0),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
                 modifiers: mods,
             }],
             &body,
@@ -444,12 +452,13 @@ fn plot_nav_axis_wheel_and_drag() {
     let plain = wheel_with(&mut b, fr.center(), Modifiers::NONE);
     assert_eq!(plain, start, "素のホイールでは拡大しない");
     let wheel = |b: &mut Bench, at: Pos2| wheel_with(b, at, Modifiers::COMMAND);
+    // 目盛りの帯の奥（枠の端から 20）: egui_plot 0.38 は拡大の途中で目盛りの字の高さが変わり、枠の下端が一時 15 ほど下がる
     // 横軸の目盛りの上: 横だけ
-    let x_only = wheel(&mut b, egui::pos2(fr.center().x, fr.bottom() + 8.0));
+    let x_only = wheel(&mut b, egui::pos2(fr.center().x, fr.bottom() + 20.0));
     assert!(x_only.width() < start.width() * 0.95, "{x_only:?}");
     assert!((x_only.height() - start.height()).abs() < 1e-9);
     // 縦軸の目盛りの上: 縦だけ
-    let y_only = wheel(&mut b, egui::pos2(fr.left() - 8.0, fr.center().y));
+    let y_only = wheel(&mut b, egui::pos2(fr.left() - 20.0, fr.center().y));
     assert!((y_only.width() - x_only.width()).abs() < 1e-9);
     assert!(y_only.height() < x_only.height() * 0.95);
     // 枠の中: 両方
@@ -509,7 +518,7 @@ fn plot_nav_axis_wheel_and_drag() {
     );
 
     // 横軸の目盛りの帯の上のドラッグ: 横だけ動く
-    let band = egui::pos2(fr.center().x, fr.bottom() + 8.0);
+    let band = egui::pos2(fr.center().x, fr.bottom() + 20.0);
     b.t += 1.0;
     b.frame(vec![Event::PointerMoved(band)], &body);
     b.frame(
@@ -714,7 +723,7 @@ fn name_edit_completes_and_checks_glass() {
     b.click(rect.get().center(), PointerButton::Primary, &body);
     b.frame(vec![Event::Text("N-".into())], &body);
     b.frame(Vec::new(), &body);
-    let row_h = b.ctx.style().spacing.interact_size.y;
+    let row_h = b.ctx.global_style().spacing.interact_size.y;
     let p = Pos2::new(
         rect.get().left() + 30.0,
         rect.get().bottom() + 8.0 + row_h * 1.5,

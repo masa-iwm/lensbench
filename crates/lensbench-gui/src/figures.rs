@@ -84,7 +84,7 @@ pub(crate) fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
 /// 結果の世代 gen ごとに 1 度だけ作る（図の格子など。毎フレーム JSON から作り直さない）
 pub(crate) fn memo<T: Send + Sync + 'static>(
     ui: &Ui,
-    key: impl std::hash::Hash,
+    key: impl std::hash::Hash + std::fmt::Debug,
     gen: u64,
     f: impl FnOnce() -> T,
 ) -> std::sync::Arc<T> {
@@ -119,7 +119,7 @@ impl<'a> Out<'a> {
     pub(crate) fn get<T: serde::de::DeserializeOwned + Send + Sync + 'static>(
         &self,
         ui: &Ui,
-        key: impl std::hash::Hash,
+        key: impl std::hash::Hash + std::fmt::Debug,
         gen: u64,
     ) -> Option<std::sync::Arc<T>> {
         let (v, t) = (self.v, self.t);
@@ -298,10 +298,7 @@ impl Grid {
                 }
             })
             .collect();
-        ColorImage {
-            size: [self.w, self.h],
-            pixels: px,
-        }
+        ColorImage::new([self.w, self.h], px)
     }
 
     /// 値を k 倍の細かさに双一次で補間する（4 つの隣が有限な所だけ。干渉縞を滑らかに）
@@ -350,7 +347,7 @@ impl Grid {
 #[allow(clippy::too_many_arguments)]
 pub fn heatmap(
     ui: &mut Ui,
-    salt: impl std::hash::Hash,
+    salt: impl std::hash::Hash + std::fmt::Debug,
     g: &Grid,
     c: Cmap,
     lo: f64,
@@ -398,19 +395,26 @@ pub fn heatmap(
             .x_axis_label(xl)
             .y_axis_label(yl)
             .show_grid(false)
-            .label_formatter(|_, p| match g.at(p.x, p.y) {
-                Some(z) => format!(
-                    "x {}\ny {}\n{} {}",
-                    fmt_sig(p.x, 4),
-                    fmt_sig(p.y, 4),
-                    vl,
-                    fmt_sig(z, 4)
-                ),
-                None => format!("x {}\ny {}", fmt_sig(p.x, 4), fmt_sig(p.y, 4)),
+            .label_formatter(|h| {
+                let p = match h {
+                    egui_plot::HoverPosition::NearDataPoint { position, .. }
+                    | egui_plot::HoverPosition::Elsewhere { position } => position,
+                };
+                Some(match g.at(p.x, p.y) {
+                    Some(z) => format!(
+                        "x {}\ny {}\n{} {}",
+                        fmt_sig(p.x, 4),
+                        fmt_sig(p.y, 4),
+                        vl,
+                        fmt_sig(z, 4)
+                    ),
+                    None => format!("x {}\ny {}", fmt_sig(p.x, 4), fmt_sig(p.y, 4)),
+                })
             });
         // 縦横比を固定した図なので、目盛りの上でその軸だけの拡大はしない
         crate::plot_tools::nav(ui, plot, false, |p| {
             p.image(PlotImage::new(
+                "",
                 tex.id(),
                 PlotPoint::new((x0 + x1) / 2.0, (y0 + y1) / 2.0),
                 [(x1 - x0) as f32, (y1 - y0) as f32],
@@ -907,9 +911,8 @@ fn zernike(ui: &mut Ui, id: u64, v: &ZernikeOut) -> bool {
                         .name(format!("Z{}", j + 1))
                 })
                 .collect();
-            BarChart::new(bars)
+            BarChart::new(fname(f as usize), bars)
                 .color(theme::series(f.saturating_sub(1) as usize))
-                .name(fname(f as usize))
         })
         .collect();
     let plot = Plot::new(("zern", id))
@@ -963,7 +966,7 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &MtfFieldOut, prev: Option<&MtfFieldOut>) 
     crate::plot_tools::show(ui, plot, "", |p, reg| {
         for (fr, _, pts) in before {
             p.line(
-                Line::new(pts)
+                Line::new("", pts)
                     .color(col(fr).gamma_multiply(0.35))
                     .style(LineStyle::Dotted { spacing: 4.0 })
                     .width(1.0_f32),
@@ -979,15 +982,14 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &MtfFieldOut, prev: Option<&MtfFieldOut>) 
             );
             reg.push(crate::plot_tools::Series::new(name.clone(), col(fr), &pts));
             p.line(
-                Line::new(pts)
+                Line::new(name, pts)
                     .color(col(fr))
                     .style(if t {
                         LineStyle::Solid
                     } else {
                         LineStyle::Dashed { length: 6.0 }
                     })
-                    .width(1.6_f32)
-                    .name(name),
+                    .width(1.6_f32),
             );
         }
     });
@@ -1055,7 +1057,7 @@ fn mtf_focus(
     crate::plot_tools::show(ui, plot, "", |p, reg| {
         for (q, _, pts) in before {
             p.line(
-                Line::new(pts)
+                Line::new("", pts)
                     .color(col(q).gamma_multiply(0.35))
                     .style(LineStyle::Dotted { spacing: 4.0 })
                     .width(1.0_f32),
@@ -1070,15 +1072,14 @@ fn mtf_focus(
             };
             reg.push(crate::plot_tools::Series::new(name.clone(), col(q), &pts));
             p.line(
-                Line::new(pts)
+                Line::new(name, pts)
                     .color(col(q))
                     .style(if t {
                         LineStyle::Solid
                     } else {
                         LineStyle::Dashed { length: 6.0 }
                     })
-                    .width(1.6_f32)
-                    .name(name),
+                    .width(1.6_f32),
             );
         }
     });
@@ -1159,7 +1160,7 @@ fn rms(ui: &mut Ui, id: u64, v: &RmsOut, prev: Option<&RmsOut>, st: &mut FigStat
     crate::plot_tools::show(ui, plot, "", |p, reg| {
         for (f, pts) in before {
             p.line(
-                Line::new(pts)
+                Line::new("", pts)
                     .color(theme::series(f.saturating_sub(1) as usize).gamma_multiply(0.35))
                     .style(LineStyle::Dotted { spacing: 4.0 })
                     .width(1.0_f32),
@@ -1175,12 +1176,14 @@ fn rms(ui: &mut Ui, id: u64, v: &RmsOut, prev: Option<&RmsOut>, st: &mut FigStat
                 theme::series(f.saturating_sub(1) as usize),
                 &pts,
             ));
-            let mut l = Line::new(pts)
+            let name = if f > 0 {
+                fname(f as usize)
+            } else {
+                String::new()
+            };
+            let l = Line::new(name, pts)
                 .color(theme::series(f.saturating_sub(1) as usize))
                 .width(1.6_f32);
-            if f > 0 {
-                l = l.name(fname(f as usize));
-            }
             p.line(l);
         }
     });
@@ -1323,16 +1326,11 @@ fn pop(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
             theme::series(1),
             &pts(&ys, &iy),
         ));
+        p.line(Line::new(tr("x section"), pts(&xs, &ix)).color(theme::series(0)));
         p.line(
-            Line::new(pts(&xs, &ix))
-                .color(theme::series(0))
-                .name(tr("x section")),
-        );
-        p.line(
-            Line::new(pts(&ys, &iy))
+            Line::new(tr("y section"), pts(&ys, &iy))
                 .color(theme::series(1))
-                .style(LineStyle::Dashed { length: 6.0 })
-                .name(tr("y section")),
+                .style(LineStyle::Dashed { length: 6.0 }),
         );
     });
     true
@@ -1359,7 +1357,7 @@ fn interference(ui: &mut Ui, id: u64, v: &Value) -> bool {
 /// 格子が無ければ false
 pub fn interference_view(
     ui: &mut Ui,
-    salt: impl std::hash::Hash,
+    salt: impl std::hash::Hash + std::fmt::Debug,
     v: &Value,
     info: &str,
     gray_intensity: bool,
@@ -1449,10 +1447,7 @@ fn image_sim(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
             .collect();
         ui.ctx().load_texture(
             format!("image-sim-{id}"),
-            ColorImage {
-                size: [w, h],
-                pixels,
-            },
+            ColorImage::new([w, h], pixels),
             TextureOptions::NEAREST,
         )
     });
@@ -1462,6 +1457,7 @@ fn image_sim(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
         .show_grid(false);
     crate::plot_tools::nav(ui, plot, false, |p| {
         p.image(PlotImage::new(
+            "",
             tex.id(),
             PlotPoint::new(cx, cy),
             [(2.0 * hw) as f32, (2.0 * hh) as f32],

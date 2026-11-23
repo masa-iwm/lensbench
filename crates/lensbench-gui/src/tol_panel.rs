@@ -678,7 +678,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         if ui
             .add_enabled(
                 on,
-                egui::SelectableLabel::new(p.radial_dist == "uniform", tr("Uniform")),
+                egui::Button::selectable(p.radial_dist == "uniform", tr("Uniform")),
             )
             .clicked()
         {
@@ -687,7 +687,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         if ui
             .add_enabled(
                 on,
-                egui::SelectableLabel::new(p.radial_dist == "normal", tr("Normal (radius 2σ)")),
+                egui::Button::selectable(p.radial_dist == "normal", tr("Normal (radius 2σ)")),
             )
             .on_hover_text(tr(
                 "Isotropic 2D normal truncated at the circle; 86% fall within 2σ",
@@ -722,7 +722,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
                     name: u.clone(),
                     preset: "none".into(),
                 });
-                ui.close_menu();
+                ui.close();
             }
         }
     });
@@ -747,7 +747,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
                     name: u.clone(),
                     ..Default::default()
                 });
-                ui.close_menu();
+                ui.close();
             }
         }
     });
@@ -991,9 +991,9 @@ fn comps_ui(
             .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
             .collect();
         crate::plot_tools::nav(ui, plot.y_axis_label(tr("Cumulative [%]")), true, |pu| {
-            pu.line(Line::new(pts).name(tr("Cumulative distribution")));
+            pu.line(Line::new(tr("Cumulative distribution"), pts));
             if let Some(x) = nom {
-                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
+                pu.vline(egui_plot::VLine::new(tr("Nominal"), x));
             }
         });
     } else {
@@ -1002,9 +1002,9 @@ fn comps_ui(
             .map(|(x0, w, c)| egui_plot::Bar::new(x0 + w / 2.0, c as f64).width(w))
             .collect();
         crate::plot_tools::nav(ui, plot.y_axis_label(tr("Trials")), true, |pu| {
-            pu.bar_chart(egui_plot::BarChart::new(bars).name(tr("Histogram")));
+            pu.bar_chart(egui_plot::BarChart::new(tr("Histogram"), bars));
             if let Some(x) = nom {
-                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
+                pu.vline(egui_plot::VLine::new(tr("Nominal"), x));
             }
         });
     }
@@ -1119,9 +1119,9 @@ fn result_ui(
             .x_axis_label(tr("Merit function"))
             .y_axis_label(tr("Cumulative [%]"));
         crate::plot_tools::nav(ui, plot, true, |pu| {
-            pu.line(Line::new(pts).name(tr("Cumulative distribution")));
+            pu.line(Line::new(tr("Cumulative distribution"), pts));
             if let Some(x) = nom_merit {
-                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
+                pu.vline(egui_plot::VLine::new(tr("Nominal"), x));
             }
         });
     }

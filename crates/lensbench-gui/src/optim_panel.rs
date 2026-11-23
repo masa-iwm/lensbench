@@ -1330,7 +1330,7 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
     let plot = Plot::new("opt_history")
         .height(140.0)
         .x_axis_label(tr("Iteration"));
-    crate::plot_tools::nav(ui, plot, true, |pu| pu.line(Line::new(pts)));
+    crate::plot_tools::nav(ui, plot, true, |pu| pu.line(Line::new("", pts)));
 }
 
 /// 評価関数の値の倍率と単位。項がスポット（と重心）だけなら µm、波面・OPD・Zernike だけなら波、ほかは単位なし

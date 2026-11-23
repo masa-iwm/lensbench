@@ -392,7 +392,11 @@ fn probe(id: u64) -> Pane {
 /// ドックの (面, ノード, タブ) にあるパネルの、戻す先を覚える（取り出す前に呼ぶ）
 pub(crate) fn home_of(
     dock: &DockState<Pane>,
-    (s, n, t): (egui_dock::SurfaceIndex, NodeIndex, egui_dock::TabIndex),
+    egui_dock::TabPath {
+        surface: s,
+        node: n,
+        tab: t,
+    }: egui_dock::TabPath,
 ) -> Option<Home> {
     let tree = dock.get_surface(s)?.node_tree()?;
     let tabs = node_at(tree, n)?.tabs()?;
@@ -404,8 +408,8 @@ pub(crate) fn home_of(
     }
     let parent = n.parent()?;
     let (horizontal, fraction) = match node_at(tree, parent)? {
-        egui_dock::Node::Horizontal { fraction, .. } => (true, *fraction),
-        egui_dock::Node::Vertical { fraction, .. } => (false, *fraction),
+        egui_dock::Node::Horizontal(sp) => (true, sp.fraction),
+        egui_dock::Node::Vertical(sp) => (false, sp.fraction),
         _ => return None,
     };
     let sib = if n.is_left() {
@@ -451,7 +455,12 @@ pub(crate) fn home_of(
 pub(crate) fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>) {
     match home {
         Some(Home::With { tab, index }) => {
-            if let Some((s, n, _)) = dock.find_tab(&probe(*tab)) {
+            if let Some(egui_dock::TabPath {
+                surface: s,
+                node: n,
+                ..
+            }) = dock.find_tab(&probe(*tab))
+            {
                 if let Some(node) = dock
                     .get_surface_mut(s)
                     .and_then(|x| x.node_tree_mut())
@@ -460,7 +469,10 @@ pub(crate) fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>
                 {
                     let i = (*index).min(node.tabs_count());
                     node.insert_tab(egui_dock::TabIndex(i), pane);
-                    dock.set_focused_node_and_surface((s, n));
+                    dock.set_focused_node_and_surface(egui_dock::NodePath {
+                        surface: s,
+                        node: n,
+                    });
                     return;
                 }
             }
@@ -471,7 +483,12 @@ pub(crate) fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>
             side,
             fraction,
         }) => {
-            if let Some((s, mut n, _)) = dock.find_tab(&probe(*tab)) {
+            if let Some(egui_dock::TabPath {
+                surface: s,
+                node: mut n,
+                ..
+            }) = dock.find_tab(&probe(*tab))
+            {
                 for _ in 0..*up {
                     n = n.parent().unwrap_or(n);
                 }
@@ -482,12 +499,18 @@ pub(crate) fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>
                     _ => (egui_dock::Split::Below, *fraction),
                 };
                 let [_, new] = dock.split(
-                    (s, n),
+                    egui_dock::NodePath {
+                        surface: s,
+                        node: n,
+                    },
                     split,
                     f.clamp(0.05, 0.95),
                     egui_dock::Node::leaf(pane),
                 );
-                dock.set_focused_node_and_surface((s, new));
+                dock.set_focused_node_and_surface(egui_dock::NodePath {
+                    surface: s,
+                    node: new,
+                });
                 return;
             }
         }
@@ -613,6 +636,89 @@ impl Preset {
     }
 }
 
+/// egui_dock 0.16（lensbench 0.9 まで）で保存した並びの RON を、egui_dock 0.22 の形に書き換える。
+/// 0.22 はノードの `Horizontal(rect: …)`・`Vertical(…)`・`Leaf(…)` を中の構造体で包む（`Leaf((rect: …))`）。
+/// 欄の名前は同じで、増えた欄（`tab_bar_hidden`）は既定の値で読め、消えた欄（`translations`）は読み飛ばされる。
+/// 書き換える所が無ければ None。文字列（パネルの設定の文字）の中は触らない
+pub(crate) fn migrate_dock_016(s: &str) -> Option<String> {
+    fn wrap(s: &str, changed: &mut bool) -> String {
+        let b = s.as_bytes();
+        let mut out = String::with_capacity(s.len() + 64);
+        let mut i = 0;
+        let mut last = 0;
+        while i < b.len() {
+            match b[i] {
+                b'"' => i = skip_str(b, i),
+                b'H' | b'V' | b'L' if i == 0 || !is_ident(b[i - 1]) => {
+                    let name = ["Horizontal", "Vertical", "Leaf"]
+                        .into_iter()
+                        .find(|n| s[i..].starts_with(&format!("{n}(rect:")));
+                    let Some(name) = name else {
+                        i += 1;
+                        continue;
+                    };
+                    let open = i + name.len();
+                    let Some(close) = matching(b, open) else {
+                        i += 1;
+                        continue;
+                    };
+                    out.push_str(&s[last..open]);
+                    out.push_str("((");
+                    out.push_str(&wrap(&s[open + 1..close], changed));
+                    out.push_str("))");
+                    *changed = true;
+                    i = close + 1;
+                    last = i;
+                }
+                _ => i += 1,
+            }
+        }
+        out.push_str(&s[last..]);
+        out
+    }
+    fn is_ident(c: u8) -> bool {
+        c.is_ascii_alphanumeric() || c == b'_'
+    }
+    /// b[i] は `"`。閉じの `"` の次
+    fn skip_str(b: &[u8], mut i: usize) -> usize {
+        i += 1;
+        while i < b.len() {
+            match b[i] {
+                b'\\' => i += 2,
+                b'"' => return i + 1,
+                _ => i += 1,
+            }
+        }
+        i
+    }
+    /// b[open] は `(`。対になる `)` の位置
+    fn matching(b: &[u8], open: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        let mut i = open;
+        while i < b.len() {
+            match b[i] {
+                b'"' => {
+                    i = skip_str(b, i);
+                    continue;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        return (b[i] == b')').then_some(i);
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+    let mut changed = false;
+    let out = wrap(s, &mut changed);
+    changed.then_some(out)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -662,6 +768,33 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// egui_dock 0.16 で保存した並び（lensbench 0.9 までの設定）を書き換えて読める
+    #[test]
+    fn dock_016_layout_migrates() {
+        let old = concat!(
+            r#"(dock:(surfaces:[Main((nodes:[Horizontal(rect:(min:(x:inf,y:inf),max:(x:-inf,y:-inf)),"#,
+            r#"fraction:0.22,fully_collapsed:false,collapsed_leaf_count:0),Leaf(rect:(min:(x:inf,y:inf),"#,
+            r#"max:(x:-inf,y:-inf)),viewport:(min:(x:inf,y:inf),max:(x:-inf,y:-inf)),tabs:[(id:2,kind:System),"#,
+            r#"(id:3,kind:Catalog)],active:(0),scroll:0.0,collapsed:false),Vertical(rect:(min:(x:inf,y:inf),"#,
+            r#"max:(x:-inf,y:-inf)),fraction:0.5,fully_collapsed:false,collapsed_leaf_count:0),Empty,Empty,"#,
+            r#"Leaf(rect:(min:(x:inf,y:inf),max:(x:-inf,y:-inf)),viewport:(min:(x:inf,y:inf),max:(x:-inf,"#,
+            r#"y:-inf)),tabs:[(id:1,kind:Layout)],active:(0),scroll:0.0,collapsed:false),Leaf(rect:(min:"#,
+            r#"(x:inf,y:inf),max:(x:-inf,y:-inf)),viewport:(min:(x:inf,y:inf),max:(x:-inf,y:-inf)),"#,
+            r#"tabs:[(id:4,kind:LensData)],active:(0),scroll:0.0,collapsed:false)],focused_node:Some((6)),"#,
+            r#"collapsed:false,collapsed_leaf_count:0))],focused_surface:None,translations:(tab_context_menu:"#,
+            r#"(close_button:"Close (x)",eject_button:"Eject")))"#,
+            r#",windows:[])"#
+        );
+        assert!(ron::from_str::<Layout>(old).is_err());
+        let new = migrate_dock_016(old).expect("old nodes");
+        let l: Layout = ron::from_str(&new).unwrap();
+        assert_eq!(l.max_id(), 4);
+        assert_eq!(l.dock.iter_all_tabs().count(), 4);
+        // 今の形はそのまま（書き換えない）
+        let now = ron::to_string(&Preset::Analysis.build()).unwrap();
+        assert_eq!(migrate_dock_016(&now), None);
     }
 
     #[test]

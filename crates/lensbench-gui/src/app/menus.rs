@@ -303,11 +303,11 @@ impl App {
     fn file_menu(&mut self, ctx: &egui::Context, ui: &mut Ui, cmd: &mut Option<Msg>) {
         ui.menu_button(tr("File"), |ui| {
             if ui.button(tr("New (Ctrl+N)")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::New);
             }
             if ui.button(tr("Open… (Ctrl+O)")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Open);
             }
             if !self.c.samples.is_empty() {
@@ -334,7 +334,7 @@ impl App {
                         last = Some(g);
                         let name = sample_name(f);
                         if ui.button(name).on_hover_text(f).clicked() {
-                            ui.close_menu();
+                            ui.close();
                             *cmd = Some(Msg::OpenFile(PathBuf::from(f)));
                         }
                     }
@@ -349,7 +349,7 @@ impl App {
                 for f in &self.c.s.recent {
                     let b = egui::Button::new(recent_label(f)).wrap_mode(egui::TextWrapMode::Extend);
                     if ui.add(b).on_hover_text(f).clicked() {
-                        ui.close_menu();
+                        ui.close();
                         *cmd = Some(Msg::OpenFile(PathBuf::from(f)));
                     }
                 }
@@ -361,7 +361,7 @@ impl App {
                 )
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Reload);
             }
             ui.separator();
@@ -372,7 +372,7 @@ impl App {
                 )
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::WriteZmx);
             }
             if ui
@@ -385,7 +385,7 @@ impl App {
                 ))
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::MakeThermal);
             }
             let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
@@ -397,7 +397,7 @@ impl App {
                 ))
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Save(false));
             }
             if ui
@@ -407,7 +407,7 @@ impl App {
                 )
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Save(true));
             }
             ui.separator();
@@ -418,16 +418,16 @@ impl App {
                 ))
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Record);
             }
             if ui.button(tr("Replay recorded operations…")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Replay);
             }
             ui.separator();
             if ui.button(tr("Catalog folders…")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Folders);
             }
             #[cfg(target_arch = "wasm32")]
@@ -446,7 +446,7 @@ impl App {
                     ))
                     .clicked()
                 {
-                    ui.close_menu();
+                    ui.close();
                     self.c.ask(
                         "lensbench",
                         tr("Delete all loaded files and user catalogs kept in the browser?"),
@@ -481,14 +481,14 @@ impl App {
                 .add_enabled(u, egui::Button::new(tr("Undo (Ctrl+Z)")))
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Undo(true, 1));
             }
             if ui
                 .add_enabled(r, egui::Button::new(tr("Redo (Ctrl+Y)")))
                 .clicked()
             {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Undo(false, 1));
             }
             // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
@@ -510,7 +510,7 @@ impl App {
                                     r
                                 };
                                 if r.clicked() {
-                                    ui.close_menu();
+                                    ui.close();
                                     *cmd = Some(Msg::Undo(back, i + 1));
                                 }
                             }
@@ -545,7 +545,7 @@ impl App {
                     .on_hover_text(tr("Single panel; brings it to the front if already open"))
                     .clicked()
                 {
-                    ui.close_menu();
+                    ui.close();
                     *cmd = Some(Msg::Add(k));
                 }
             }
@@ -558,7 +558,7 @@ impl App {
                     }
                     .title();
                     if ui.button(trf("+ {}", &[&t])).clicked() {
-                        ui.close_menu();
+                        ui.close();
                         *cmd = Some(Msg::Add(k));
                     }
                 }
@@ -573,7 +573,7 @@ impl App {
             ui.label(RichText::new(tr("Preset workspaces")).small().color(weak));
             for p in Preset::ALL {
                 if ui.button(p.label()).clicked() {
-                    ui.close_menu();
+                    ui.close();
                     *cmd = Some(Msg::Preset(p));
                 }
             }
@@ -586,7 +586,7 @@ impl App {
             for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
                 ui.horizontal(|ui| {
                     if ui.button(n).clicked() {
-                        ui.close_menu();
+                        ui.close();
                         *cmd = Some(Msg::Layout(i));
                     }
                     if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
@@ -599,7 +599,7 @@ impl App {
             }
             ui.separator();
             if ui.button(tr("Save current workspace…")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::SaveLayout);
             }
         });
@@ -663,7 +663,7 @@ impl App {
             }
             ui.separator();
             if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Help);
             }
         });
@@ -675,13 +675,13 @@ impl App {
         ui.menu_button(tr("Help"), |ui| {
             for (label, page, tip) in HELP_PAGES {
                 if ui.button(tr(label)).on_hover_text(tr(tip)).clicked() {
-                    ui.close_menu();
+                    ui.close();
                     ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
                 }
             }
             ui.separator();
             if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
-                ui.close_menu();
+                ui.close();
                 *cmd = Some(Msg::Help);
             }
             ui.separator();

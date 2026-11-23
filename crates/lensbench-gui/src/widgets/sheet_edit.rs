@@ -63,9 +63,7 @@ pub(super) fn ghost_ui(
     let rect = ui.max_rect();
     let resp = ui.interact(rect, out.tid().with("sheet_new"), Sense::click());
     let name = tr("New row").to_string();
-    resp.widget_info(move || {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
-    });
+    resp.widget_info(move || egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()));
     let hint = if cell.hint.is_empty() {
         tr("Add a row")
     } else {

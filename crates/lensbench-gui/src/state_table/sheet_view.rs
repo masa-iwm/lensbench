@@ -474,7 +474,7 @@ impl Sheet for McSheet<'_> {
             let item = |ui: &mut Ui, label: &str, a: Act| {
                 if ui.button(label).clicked() {
                     self.act(a);
-                    ui.close_menu();
+                    ui.close();
                 }
             };
             item(
@@ -507,7 +507,7 @@ impl Sheet for McSheet<'_> {
         let pk = picks::pick_of(self.c, it, n);
         if it.own(self.c, n) && pk.is_none() && ui.button(tr("Use base value")).clicked() {
             self.act(Act::Clear(row, n.clone()));
-            ui.close_menu();
+            ui.close();
         }
         if !it.locked(self.c) {
             // 同じ持ち主（要素か組合せ）の別の行、組合せの行（系の値・絞り）

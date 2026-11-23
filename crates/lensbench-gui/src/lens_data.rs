@@ -1249,7 +1249,7 @@ fn row_menu(
         .button(tr("Details (aperture, tilt/decenter, shape data)"))
         .clicked();
     if !m.acts.is_empty() || m.insert || m.delete || m.detail {
-        ui.close_menu();
+        ui.close();
     }
     m
 }
@@ -1257,19 +1257,14 @@ fn row_menu(
 /// 左端の帯のアイコンの下に出す欄（押すたびに開く・閉じる、外のクリックで閉じる）
 fn popup(ui: &mut Ui, r: &egui::Response, id: &str, add: impl FnOnce(&mut Ui)) {
     let id = ui.make_persistent_id(id);
-    if r.clicked() {
-        ui.memory_mut(|m| m.toggle_popup(id));
-    }
-    egui::popup::popup_below_widget(
-        ui,
-        id,
-        r,
-        egui::PopupCloseBehavior::CloseOnClickOutside,
-        |ui| {
+    egui::Popup::from_toggle_button_response(r)
+        .id(id)
+        .align(egui::RectAlign::BOTTOM_START)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
             ui.set_min_width(220.0);
             add(ui);
-        },
-    );
+        });
 }
 
 /// 表の状態

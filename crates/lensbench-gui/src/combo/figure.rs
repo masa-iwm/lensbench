@@ -1066,7 +1066,7 @@ fn interact(
     // 移動・囲んで拡大のドラッグは要素を選ぶ・動かす役をしない
     let pan_drag = view.nav && (panning(ui, resp) || crate::widgets::box_zooming(ui, resp));
     // 寸法の数字（Alt なら寸法線も）のドラッグはその間隔を増減する（表のセルの Alt+ドラッグと同じ量）
-    let dd = egui::Id::new("lensbench-dim-drag");
+    let dd = egui::Id::unique("lensbench-dim-drag");
     let dim_hit = h.num.or(h.dim.filter(|_| ui.input(|i| i.modifiers.alt)));
     if let (true, false, Some(g), Some(c)) = (
         resp.drag_started_by(egui::PointerButton::Primary),
@@ -1158,13 +1158,13 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
         if let Some(r) = dims.iter().find(|dm| dm.g == *g).map(|dm| dm.text) {
             let r =
                 Rect::from_center_size(r.center(), egui::vec2(r.width().max(40.0) + 36.0, 20.0));
-            let te_id = egui::Id::new(("lensbench-dim-edit", *g));
+            let te_id = egui::Id::unique(("lensbench-dim-edit", *g));
             let te = ui.put(
                 r,
                 egui::TextEdit::singleline(text)
                     .id(te_id)
                     .font(FontId::monospace(12.0))
-                    .horizontal_align(egui::Align::Center)
+                    .align(egui::Align2::CENTER_TOP)
                     .margin(egui::Margin::symmetric(4, 2)),
             );
             if !*focused || te.gained_focus() {
@@ -1339,7 +1339,7 @@ pub(super) fn type_to_edit(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
             if let Some(e) = view.edit.as_mut() {
                 e.1 = t;
             }
-            let id = egui::Id::new(("lensbench-dim-edit", g)).with("typed");
+            let id = egui::Id::unique(("lensbench-dim-edit", g)).with("typed");
             ui.data_mut(|d| d.insert_temp(id, true));
         }
     }

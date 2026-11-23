@@ -229,7 +229,7 @@ pub(super) fn kbd_menu(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
             let fresh = std::mem::take(&mut st.kbd_fresh);
             let close = crate::widgets::menu::float_menu(
                 ui,
-                ui.id().with("ld_kbd_menu"),
+                ui.scope_id().with("ld_kbd_menu"),
                 pos,
                 340.0,
                 fresh,

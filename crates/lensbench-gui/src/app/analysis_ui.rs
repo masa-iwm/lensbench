@@ -275,7 +275,7 @@ impl Core {
         };
         let mut rerun = false;
         let font = egui::TextStyle::Button.resolve(ui.style());
-        let w = ui.fonts(|f| {
+        let w = ui.fonts_mut(|f| {
             f.layout_no_wrap(format!("{} ●99", tr("⚙ Settings")), font, Color32::WHITE)
                 .size()
                 .x
@@ -288,7 +288,7 @@ impl Core {
         if ui
             .add_sized(
                 [w, ui.spacing().interact_size.y],
-                egui::SelectableLabel::new(cfg.args_open, head),
+                egui::Button::selectable(cfg.args_open, head),
             )
             .on_hover_text(tip)
             .clicked()
@@ -458,7 +458,7 @@ impl Core {
 
     /// 解析の種類の選択: 群に分けた一覧と、打って絞り込む欄（Enter で最初の候補）
     pub(super) fn analysis_picker(ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
-        let fkey = egui::Id::new(("ana-filter", id));
+        let fkey = egui::Id::unique(("ana-filter", id));
         let r = egui::ComboBox::from_id_salt(("cmd", id))
             .selected_text(layout::analysis_label(&cfg.cmd))
             .height(480.0)
@@ -494,7 +494,7 @@ impl Core {
                 if te.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     if let Some((c, _)) = list.first() {
                         cfg.cmd = c.to_string();
-                        ui.memory_mut(|m| m.close_popup());
+                        egui::Popup::close_all(ui.ctx());
                     }
                 }
                 ui.data_mut(|d| d.insert_temp(fkey, q.clone()));

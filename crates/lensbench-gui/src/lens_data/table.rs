@@ -230,7 +230,7 @@ pub(crate) fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     ui.allocate_rect(full, Sense::hover());
     // 幅があるときは帯のアイコンに字も出す（絵だけでは意味が分からない）
     // 記号がフォントに無い（豆腐 □ になる）ときも字を出す
-    let tofu = |t: &&str| !ui.fonts(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
+    let tofu = |t: &&str| !ui.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
     let wide = full.width() >= 760.0 || ICONS.iter().any(tofu);
     // 字を出すときの幅は、いちばん長い字（言語で変わる）に合わせる（訳語が長いと折り返す）
     let strip_w = if wide {
@@ -239,7 +239,7 @@ pub(crate) fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             .iter()
             .filter_map(|t| icon_label(t).map(|l| format!("{t} {}", tr(l))))
             .map(|s| {
-                ui.fonts(|f| {
+                ui.fonts_mut(|f| {
                     f.layout_no_wrap(s, egui::FontId::proportional(12.0), Color32::WHITE)
                         .size()
                         .x
@@ -424,7 +424,7 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
             ui.style_mut().interaction.selectable_labels = false;
             // 面の列の幅は見出しが入る幅から（英語の「Surface」が切れない）
             let surf_w =
-                ui.fonts(|f| {
+                ui.fonts_mut(|f| {
                     f.layout_no_wrap(
                         tr("Surface").into(),
                         egui::TextStyle::Body.resolve(ui.style()),

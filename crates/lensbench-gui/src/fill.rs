@@ -816,7 +816,7 @@ impl FillWin {
         let mut open = self.open;
         let mut req = None;
         egui::Window::new(trf("Complete part — {} {}", &[&r.vendor, &r.part]))
-            .id(egui::Id::new("catalog_fill"))
+            .id(egui::Id::unique("catalog_fill"))
             .open(&mut open)
             .default_width(520.0)
             .show(ctx, |ui| {

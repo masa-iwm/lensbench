@@ -37,7 +37,7 @@ schemars = "1"
 lensbench-cli = { path = "../lensbench-cli", optional = true }
 lensbench-gui = { path = "../lensbench-gui", optional = true }
 lensbench-py = { path = "../lensbench-py", optional = true, default-features = false }
-egui = { version = "0.31", default-features = false, optional = true }
+egui = { version = "0.37", default-features = false, optional = true }
 pyo3 = { version = "0.30", features = ["abi3-py39"], optional = true }
 # ネイティブでは中身の無いライブラリ
 lensbench-web = { path = "../lensbench-web", optional = true, default-features = false }

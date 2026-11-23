@@ -17,7 +17,7 @@ pub(super) fn override_item(ui: &mut Ui, c: &Ctx, j: usize, col: Col) -> Option<
         .on_hover_text(tr("Back to the value of the element"));
     ui.separator();
     if b.clicked() {
-        ui.close_menu();
+        ui.close();
         return Some(Act::DropOverride { j, col });
     }
     None
@@ -263,7 +263,7 @@ pub(super) fn cell_menu(
         acts.push(Act::Ops(ops));
     }
     if !acts.is_empty() {
-        ui.close_menu();
+        ui.close();
     }
     acts
 }

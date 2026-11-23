@@ -993,7 +993,7 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
         let pick = |ui: &mut Ui, it: Item, label: String| {
             if !shown.contains(&it) && ui.button(label).clicked() {
                 *add.borrow_mut() = Some(it);
-                ui.close_menu();
+                ui.close();
             }
         };
         let sys = SysQ::all(c);
@@ -1013,7 +1013,7 @@ fn add_row_menu(ui: &mut Ui, c: &mut Combo, view: &mut View, now: FaceNow) -> bo
         pick(ui, Item::Stop, tr("Stop surface").into());
         if ui.button(tr("Comment row")).clicked() {
             comment.set(true);
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         let locs: Vec<Loc> = c
@@ -1101,7 +1101,7 @@ fn face_menu(ui: &mut Ui, l: &Loc, now: FaceNow, view: &mut View, add: &mut dyn 
         for (f, list) in FACE_FIELDS {
             if ui.button(field_label(f, None)).clicked() {
                 add(face(surf, f, list.then_some(0)));
-                ui.close_menu();
+                ui.close();
             }
         }
     };
@@ -1131,12 +1131,12 @@ fn face_menu(ui: &mut Ui, l: &Loc, now: FaceNow, view: &mut View, add: &mut dyn 
             let ign = format!("{CB_FIELD}ignore");
             if ui.button(field_label(&ign, None)).clicked() {
                 add(face(i, &ign, None));
-                ui.close_menu();
+                ui.close();
             }
             for (k, name) in PLACE.iter().enumerate() {
                 if ui.button(*name).clicked() {
                     add(face(i, &format!("{CB_FIELD}cb"), Some(k)));
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         });
@@ -1413,7 +1413,7 @@ fn pick_menu(
                     row: row.to_string(),
                 };
                 act(Some((src, scale, offset)));
-                ui.close_menu();
+                ui.close();
             }
         }
     };
@@ -1452,7 +1452,7 @@ fn pick_menu(
         });
         if ui.button(tr("Remove pickup")).clicked() {
             act(None);
-            ui.close_menu();
+            ui.close();
         }
     }
 }

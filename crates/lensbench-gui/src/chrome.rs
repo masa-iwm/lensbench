@@ -102,7 +102,11 @@ pub(crate) fn drag_area(ui: &mut Ui) {
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;
     }
-    let r = ui.interact(rect, ui.id().with("title_drag"), Sense::click_and_drag());
+    let r = ui.interact(
+        rect,
+        ui.scope_id().with("title_drag"),
+        Sense::click_and_drag(),
+    );
     if r.double_clicked() {
         let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
         ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!max));
@@ -143,7 +147,7 @@ pub(crate) fn resize_edges(ctx: &egui::Context) {
             i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false),
             i.pointer.hover_pos(),
             i.pointer.primary_pressed(),
-            i.screen_rect(),
+            i.content_rect(),
         )
     });
     if max {

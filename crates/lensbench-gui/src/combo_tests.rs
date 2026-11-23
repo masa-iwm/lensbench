@@ -883,8 +883,8 @@ fn image_space_glass_zmx_fills_the_last_gap() {
         repeat: false,
         modifiers: egui::Modifiers::NONE,
     });
-    let _ = ctx.run(input, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| keys(ui, &mut c, &mut view));
+    let _ = ctx.run_ui(input, |root| {
+        egui::CentralPanel::default().show(root, |ui| keys(ui, &mut c, &mut view));
     });
     assert!(!c.picks[0].reversed);
 }
@@ -929,6 +929,11 @@ fn custom_semi_diameter_can_go_back_to_zero() {
     let _g = crate::serve_lock();
     crate::i18n::set(crate::i18n::Lang::En);
     let mut h = egui_kittest::Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(400.0, 120.0))
         .build_ui_state(
             |ui, st: &mut (f64, bool)| {
@@ -940,7 +945,7 @@ fn custom_semi_diameter_can_go_back_to_zero() {
     h.run_steps(1);
     h.get(by().role(egui::accesskit::Role::SpinButton)).focus();
     h.run_steps(2);
-    h.press_key_modifiers(egui::Modifiers::ALT, egui::Key::ArrowDown);
+    h.key_press_modifiers(egui::Modifiers::ALT, egui::Key::ArrowDown);
     h.run_steps(2);
     assert_eq!(h.state().0, 0.0);
 }

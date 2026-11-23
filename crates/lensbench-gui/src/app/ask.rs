@@ -57,7 +57,7 @@ impl Core {
         };
         let fresh = a.fresh;
         let mut answer = None;
-        let r = egui::Modal::new(egui::Id::new("lensbench-ask")).show(ctx, |ui| {
+        let r = egui::Modal::new(egui::Id::unique("lensbench-ask")).show(ctx, |ui| {
             ui.set_max_width(420.0);
             ui.heading(&a.title);
             ui.add_space(4.0);

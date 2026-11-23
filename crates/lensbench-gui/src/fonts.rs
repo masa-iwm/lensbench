@@ -118,7 +118,7 @@ fn reorder(fam: &mut Vec<String>, ja: bool) -> bool {
 /// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない）
 pub(crate) fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
     let id = egui::FontId::proportional(16.0);
-    if ui.fonts(|f| f.has_glyphs(&id, sym)) {
+    if ui.fonts_mut(|f| f.has_glyphs(&id, sym)) {
         sym
     } else {
         alt
@@ -168,8 +168,8 @@ mod tests {
     #[test]
     fn gux29_glyph_or_falls_back_for_missing_symbols() {
         let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = ctx.run_ui(Default::default(), |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 assert_eq!(glyph_or(ui, "A", "<"), "A");
                 assert_eq!(glyph_or(ui, "\u{E000}", "<"), "<");
             });

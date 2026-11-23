@@ -21,14 +21,14 @@ mod ui_tests;
 /// 要るときだけ呼ばれ、要らない exe では文字列を作らない）。name は egui の Context を握ったまま呼ばれるので、中で
 /// ui・ctx（data・style など）を読まない（読むと止まる）
 pub(crate) fn name_figure(r: &egui::Response, name: impl Fn() -> String) {
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, r.enabled(), name()));
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, r.enabled(), name()));
 }
 
 /// 見出しの無い入力欄（薄い字の例だけのもの）に名前を付ける（AccessKit の木に出て、読み上げ・画面の試験が欄を
 /// 探せる）。egui の TextEdit は薄い字を木に出さないので、その文を名前にし、値は欄の文字のまま
 pub(crate) fn name_field(r: &egui::Response, name: &str, text: &str) {
     r.widget_info(|| {
-        let mut w = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, r.enabled(), name);
+        let mut w = egui::WidgetInfo::labeled(egui::Role::TextInput, r.enabled(), name);
         w.current_text_value = Some(text.to_owned());
         w
     });
@@ -222,7 +222,7 @@ pub(crate) fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
         for (t, b) in tool_rects(rect) {
             let tip = tool_tip(t);
             let r = ui.interact(b, resp.id.with(("zoom_tool", t)), egui::Sense::click());
-            r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
+            r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
             let r = r.on_hover_text(tip);
             if r.clicked() {
                 match t {
@@ -293,7 +293,6 @@ pub(crate) fn take_wheel_zoom(ui: &Ui) -> Option<f32> {
     }
     ui.ctx().input_mut(|i| {
         i.smooth_scroll_delta = Vec2::ZERO;
-        i.raw_scroll_delta = Vec2::ZERO;
     });
     Some(f)
 }

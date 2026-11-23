@@ -15,9 +15,10 @@ fn sq(x0: f32, y0: f32, w: f32) -> Vec<Pos2> {
 #[test]
 fn hits_follow_paint_order() {
     let ctx = egui::Context::default();
-    let _ = ctx.run(Default::default(), |ctx| {
-        let galley = ctx
-            .fonts(|f| f.layout_no_wrap("L1".into(), FontId::proportional(11.0), Color32::WHITE));
+    let _ = ctx.run_ui(Default::default(), |_| {
+        let galley = ctx.fonts_mut(|f| {
+            f.layout_no_wrap("L1".into(), FontId::proportional(11.0), Color32::WHITE)
+        });
         let mark = |k, kind, pos: Pos2, label: Rect| Mark {
             k,
             kind,
@@ -189,14 +190,16 @@ impl Fig {
         let raw = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(900.0, 500.0))),
             time: Some(self.t),
-            modifiers,
-            events,
+            // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+            events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+                .chain(events)
+                .collect(),
             ..Default::default()
         };
         let (combo, view, d) = (&mut self.combo, &mut self.view, &self.d);
         let mut shot = None;
-        let _ = self.ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = self.ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 let (rect, resp) =
                     ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
                 let accent = Color32::from_rgb(10, 120, 250);
@@ -528,7 +531,7 @@ fn folded_labels_follow_view() {
     let sh = f.frame(Vec::new());
     // 折った後の玉の光軸は縦
     assert!(sh.sc.axes[2].y.abs() > 0.9, "{:?}", sh.sc.axes);
-    let area = f.ctx.screen_rect();
+    let area = f.ctx.content_rect();
     let m = sh.sc.marks.iter().find(|m| m.k == 2).unwrap();
     let (x, r) = (m.pos.x, m.r);
     let xs = area.x_range();

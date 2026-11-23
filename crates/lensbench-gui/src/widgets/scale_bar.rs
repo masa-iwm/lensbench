@@ -61,7 +61,7 @@ fn font() -> FontId {
 
 /// 縮尺（文字と棒を合わせた箱）の高さ。文字を組んだ高さから求める（日本語の字体では µ などで行が高くなる）
 pub(crate) fn height(ctx: &egui::Context) -> f32 {
-    let th = ctx.fonts(|f| {
+    let th = ctx.fonts_mut(|f| {
         f.layout_no_wrap("200 µm nm".into(), font(), Color32::WHITE)
             .size()
             .y

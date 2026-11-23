@@ -103,9 +103,9 @@ impl Palette {
             chosen = hits.get(self.sel).map(|i| i.cmd.clone());
             chosen_label = hits.get(self.sel).map(|i| i.label.clone());
         }
-        let screen = ctx.screen_rect();
+        let screen = ctx.content_rect();
         let width = (screen.width() - 32.0).clamp(240.0, 640.0);
-        egui::Area::new(egui::Id::new("palette"))
+        egui::Area::new(egui::Id::unique("palette"))
             .order(egui::Order::Foreground)
             .fade_in(false)
             .fixed_pos(pos_under(screen, self.anchor, width))

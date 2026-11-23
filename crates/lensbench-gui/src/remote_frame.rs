@@ -60,8 +60,16 @@ fn byte_filter(b: u8) -> TextureFilter {
 pub(crate) fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
     let mut b = Vec::with_capacity(64 * 1024);
     b.extend_from_slice(MAGIC);
-    put_u32(&mut b, delta.set.len() as u32);
-    for (id, d) in &delta.set {
+    // egui 0.37 から 1 つのテクスチャに変更がいくつも並ぶ（順に当てる）
+    put_u32(
+        &mut b,
+        delta.set.values().map(|v| v.len()).sum::<usize>() as u32,
+    );
+    for (id, d) in delta
+        .set
+        .iter()
+        .flat_map(|(id, v)| v.iter().map(move |d| (id, d)))
+    {
         put_tex(&mut b, *id);
         match d.pos {
             Some([x, y]) => {
@@ -87,17 +95,18 @@ pub(crate) fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u
             TextureWrapMode::MirroredRepeat => 2,
         });
         b.push(o.mipmap_mode.map_or(0, |f| 1 + filter_byte(f)));
-        match &d.image {
-            ImageData::Color(c) => {
-                b.push(0);
-                for p in &c.pixels {
-                    b.extend_from_slice(&p.to_array());
-                }
-            }
-            ImageData::Font(f) => {
-                // 白の前乗算（r = g = b = a）なので a だけ
-                b.push(1);
-                b.extend(f.srgba_pixels(None).map(|p| p.a()));
+        let ImageData::Color(c) = &d.image;
+        if c.pixels.iter().all(|p| {
+            let [r, g, bl, a] = p.to_array();
+            r == a && g == a && bl == a
+        }) {
+            // フォントのアトラスなど白の前乗算（r = g = b = a）は a だけ
+            b.push(1);
+            b.extend(c.pixels.iter().map(|p| p.a()));
+        } else {
+            b.push(0);
+            for p in &c.pixels {
+                b.extend_from_slice(&p.to_array());
             }
         }
     }
@@ -254,10 +263,7 @@ pub(crate) fn decode(b: &[u8]) -> Result<Frame, String> {
                 wrap_mode: wrap,
                 mipmap_mode: mip,
             },
-            ColorImage {
-                size: [w, h],
-                pixels,
-            },
+            ColorImage::new([w, h], pixels),
         ));
     }
     for _ in 0..r.u32()? {
@@ -314,8 +320,8 @@ mod tests {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0))),
             ..Default::default()
         };
-        let out = ctx.run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let out = ctx.run_ui(input, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 ui.label("lensbench");
                 let _ = ui.button("▶");
             });
@@ -324,12 +330,19 @@ mod tests {
         assert!(!out.textures_delta.set.is_empty());
         let b = encode(&out.textures_delta, &prims);
         let f = decode(&b).unwrap();
-        assert_eq!(f.set.len(), out.textures_delta.set.len());
-        assert_eq!(f.set[0].3.size, out.textures_delta.set[0].1.image.size());
-        // フォントのアトラスは 1 バイト/画素で送っても同じ色に戻る
-        if let ImageData::Font(font) = &out.textures_delta.set[0].1.image {
-            let want: Vec<Color32> = font.srgba_pixels(None).collect();
-            assert_eq!(f.set[0].3.pixels, want);
+        let sent: Vec<(&TextureId, &ImageDelta)> = out
+            .textures_delta
+            .set
+            .iter()
+            .flat_map(|(id, v)| v.iter().map(move |d| (id, d)))
+            .collect();
+        assert_eq!(f.set.len(), sent.len());
+        // フォントのアトラスは 1 バイト/画素で送っても同じ色に戻る（どの画像も画素まで同じ）
+        for ((id, d), g) in sent.iter().zip(&f.set) {
+            assert_eq!(**id, g.0);
+            let ImageData::Color(c) = &d.image;
+            assert_eq!(c.size, g.3.size);
+            assert_eq!(c.pixels, g.3.pixels);
         }
         let meshes: Vec<&Mesh> = prims
             .iter()

@@ -315,8 +315,8 @@ pub(crate) fn spot(
     let body = egui::TextStyle::Body.resolve(ui.style());
     let mono = egui::TextStyle::Monospace.resolve(ui.style());
     let smallf = egui::TextStyle::Small.resolve(ui.style());
-    let label_w = ui.fonts(|fo| {
-        let w = |t: String, f: &egui::FontId| {
+    let label_w = ui.fonts_mut(|fo| {
+        let mut w = |t: String, f: &egui::FontId| {
             fo.layout_no_wrap(t, f.clone(), egui::Color32::WHITE)
                 .size()
                 .x
@@ -480,7 +480,7 @@ pub(crate) const FIELD_LABELS: &str = "lensbench-field-labels";
 /// 視野の名前「視野 2 (0, 14)」を作る関数（座標が分かれば添える）。視野の番号は 1 から
 pub(crate) fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
     let coords: Vec<String> = ui
-        .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
+        .data(|d| d.get_temp(egui::Id::unique(FIELD_LABELS)))
         .unwrap_or_default();
     move |f| match f.checked_sub(1).and_then(|i| coords.get(i)) {
         Some(c) => trf("Field {} {}", &[&f, c]),
@@ -616,7 +616,7 @@ fn mtf_curves(
     crate::plot_tools::show(ui, plot, &unit, |p, reg| {
         for (f, _k, pts) in before {
             p.line(
-                Line::new(pts)
+                Line::new("", pts)
                     .color(theme::series(f.saturating_sub(1)).gamma_multiply(0.35))
                     .style(LineStyle::Dotted { spacing: 4.0 })
                     .width(1.0_f32),
@@ -632,7 +632,7 @@ fn mtf_curves(
             let color = theme::series(f.saturating_sub(1));
             reg.push(crate::plot_tools::Series::new(name.clone(), color, pts));
             p.line(
-                Line::new(pts.clone())
+                Line::new("", pts.clone())
                     .color(color)
                     .style(if t {
                         LineStyle::Solid

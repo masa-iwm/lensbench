@@ -491,12 +491,14 @@ fn sheet_keys_reach_state_values() {
                     egui::vec2(900.0, 500.0),
                 )),
                 time: Some(t),
-                events,
-                modifiers: mods,
+                // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+                events: std::iter::once(egui::Event::ModifiersChanged(mods))
+                    .chain(events)
+                    .collect(),
                 ..Default::default()
             };
-            let _ = ctx.run(raw, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = ctx.run_ui(raw, |root| {
+                egui::CentralPanel::default().show(root, |ui| {
                     super::ui(ui, c, view, &none, &[], &|_, _, _| None);
                 });
             });

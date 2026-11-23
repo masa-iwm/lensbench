@@ -94,7 +94,7 @@ pub(crate) fn input(
         .desired_width(f32::INFINITY)
         .lock_focus(true);
     let te = if right {
-        te.horizontal_align(egui::Align::RIGHT)
+        te.align(egui::Align2::RIGHT_TOP)
     } else {
         te
     };
@@ -138,8 +138,8 @@ mod tests {
             let mut started = false;
             let mut id = None;
             for _ in 0..2 {
-                let _ = ctx.run(Default::default(), |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = ctx.run_ui(Default::default(), |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
                         let (r, _) = input(ui, &mut text, &mut started, all, true, None);
                         id = Some(r.id);
                     });
@@ -148,8 +148,8 @@ mod tests {
             let s = egui::TextEdit::load_state(&ctx, id.unwrap()).unwrap();
             let r = s.cursor.char_range().unwrap();
             let (a, b) = (
-                r.primary.index.min(r.secondary.index),
-                r.primary.index.max(r.secondary.index),
+                r.primary.index.0.min(r.secondary.index.0),
+                r.primary.index.0.max(r.secondary.index.0),
             );
             assert_eq!((a, b), if all { (0, 4) } else { (4, 4) });
             assert!(started);

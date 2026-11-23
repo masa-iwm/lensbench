@@ -136,12 +136,12 @@ impl MechPick {
 
 /// レイアウト図と組合せの機構部品の欄で選んだ部品の名前（egui のメモリ。どちらで選んでも両方で目立つ）
 pub(crate) fn sel_id() -> egui::Id {
-    egui::Id::new("lensbench-mech-sel")
+    egui::Id::unique("lensbench-mech-sel")
 }
 
 /// 図で選んだので、欄のその部品の行まで送る（欄が受け取ったら消す）
 pub(crate) fn scroll_id() -> egui::Id {
-    egui::Id::new("lensbench-mech-sel-scroll")
+    egui::Id::unique("lensbench-mech-sel-scroll")
 }
 
 /// 選んでいる部品の名前
@@ -152,8 +152,12 @@ pub(crate) fn selected(ctx: &egui::Context) -> Option<String> {
 /// 部品を選ぶ（None で外す）
 pub(crate) fn select(ctx: &egui::Context, name: Option<&str>) {
     ctx.data_mut(|d| match name {
-        Some(n) => d.insert_temp(sel_id(), n.to_string()),
-        None => d.remove::<String>(sel_id()),
+        Some(n) => {
+            d.insert_temp(sel_id(), n.to_string());
+        }
+        None => {
+            d.remove::<String>(sel_id());
+        }
     });
 }
 

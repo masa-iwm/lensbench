@@ -153,11 +153,11 @@ pub(crate) fn name_edit<T: Named>(
 }
 
 fn glass_id() -> Id {
-    Id::new("lensbench-glass-names")
+    Id::unique("lensbench-glass-names")
 }
 
 fn want_id() -> Id {
-    Id::new("lensbench-glass-wanted")
+    Id::unique("lensbench-glass-wanted")
 }
 
 /// 画面ごとに App が置くガラスの候補

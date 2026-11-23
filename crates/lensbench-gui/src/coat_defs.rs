@@ -15,12 +15,12 @@ mod curve;
 
 /// 次の描画で膜の定義の欄を開いて見せる（通し確認）
 pub(crate) fn focus(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("lensbench_coat_focus"), true));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("lensbench_coat_focus"), true));
 }
 
 /// [`focus`] を受け取る（一度だけ true）
 pub(crate) fn take_focus(ctx: &egui::Context) -> bool {
-    ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("lensbench_coat_focus")))
+    ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::unique("lensbench_coat_focus")))
         .unwrap_or(false)
 }
 
@@ -132,7 +132,7 @@ pub(crate) fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool
         .small()
         .color(weak),
     );
-    let id = ui.id().with("coat_defs");
+    let id = ui.scope_id().with("coat_defs");
     let mut rename: Option<(String, String)> = None;
     let mut remove = None;
     for (name, spec) in coatings.iter_mut() {
@@ -421,17 +421,12 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
         .x_axis_label(tr("Wavelength [nm]"))
         .y_axis_label(tr("Transmission"));
     crate::plot_tools::nav(ui, plot, true, |pl| {
-        pl.line(
-            Line::new(clip(p0))
-                .color(theme::series(0))
-                .name(trf("{}°", &[&0])),
-        );
+        pl.line(Line::new(trf("{}°", &[&0]), clip(p0)).color(theme::series(0)));
         if !p45.is_empty() {
             pl.line(
-                Line::new(clip(p45))
+                Line::new(trf("{}°", &[&45]), clip(p45))
                     .color(theme::series(1))
-                    .style(LineStyle::Dashed { length: 6.0 })
-                    .name(trf("{}°", &[&45])),
+                    .style(LineStyle::Dashed { length: 6.0 }),
             );
         }
     });

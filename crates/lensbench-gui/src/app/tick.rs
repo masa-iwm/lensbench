@@ -118,7 +118,7 @@ impl App {
         for (id, (b, f)) in &self.c.popup_doc.copies.busy {
             busy |= *b;
             if focus.is_none() {
-                focus = f.map(|f| egui::Id::new(("copy-window", *id, f)));
+                focus = f.map(|f| egui::Id::unique(("copy-window", *id, f)));
             }
         }
         let dropped = self.c.tidy_combo();

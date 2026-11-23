@@ -49,7 +49,7 @@ impl Pick {
 
 /// そのまま持つブロックの欄: JSON を書き換える（読めない JSON は当てずに印を出す）
 pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
-    let id = ui.id().with(("raw", k));
+    let id = ui.scope_id().with(("raw", k));
     let now = serde_json::to_string_pretty(&p.extra).unwrap_or_default();
     let mut text: String = ui
         .data_mut(|d| d.get_temp(id))
@@ -153,9 +153,9 @@ mod tests {
                 )),
                 ..Default::default()
             };
-            let _ = ctx.run(input, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    *base = ui.id().with(("raw", 0usize));
+            let _ = ctx.run_ui(input, |root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    *base = ui.scope_id().with(("raw", 0usize));
                     raw_fields(ui, p, 0)
                 });
             });

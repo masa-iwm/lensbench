@@ -407,7 +407,7 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
                             name: format!("{u}.shift"),
                             ..Default::default()
                         });
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
             });
@@ -510,8 +510,8 @@ fn result_ui(ui: &mut Ui, r: &ZoomView, weak: egui::Color32) {
                 .filter_map(|pt| Some([pt.pos, key(pt, v)?]))
                 .collect();
             let c = theme::series(i);
-            pu.line(Line::new(pts.clone()).name(v).color(c));
-            pu.points(Points::new(pts).radius(3.0_f32).color(c));
+            pu.line(Line::new(v, pts.clone()).color(c));
+            pu.points(Points::new("", pts).radius(3.0_f32).color(c));
         }
     });
     for w in r.warnings.iter().chain(&r.notes) {

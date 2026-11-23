@@ -864,7 +864,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
                         lo: "0".into(),
                         hi: String::new(),
                     });
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         });

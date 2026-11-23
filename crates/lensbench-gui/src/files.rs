@@ -94,6 +94,7 @@ fn file_name_only(n: &str) -> String {
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) const DOWNLOADS: &str = "/downloads";
 /// wasm: 読み込んだファイルを置く場所
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) const UPLOADS: &str = "/uploads";
 
 /// ファイルを開く。`start` のフレームで選び始め、選んだファイルを返す（ネイティブはその場で返す。
@@ -313,15 +314,30 @@ pub(crate) fn take_failed() -> bool {
     FAILED.swap(false, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// 窓に落としたファイルのパス（wasm は中身を `/uploads/` に入れてそのパス）
-pub(crate) fn dropped(f: &egui::DroppedFile) -> Option<PathBuf> {
-    if let Some(p) = &f.path {
-        return Some(p.clone());
+/// 窓に落としたファイルのパス。wasm はブラウザが中身を後から渡すので、ここでは読み始めるだけで None を返し、
+/// `/uploads/` に書けたら [`take_dropped`] で返す（egui 0.37 から落としたファイルの中身は非同期に読む）
+pub(crate) fn dropped(f: &egui::DroppedFileHandle) -> Option<PathBuf> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Some(f.path().to_path_buf())
     }
-    let bytes = f.bytes.as_ref()?;
-    let p = PathBuf::from(UPLOADS).join(file_name_only(&f.name));
-    lensbench_core::vfs::write(&p, &bytes[..]).ok()?;
-    Some(p)
+    #[cfg(target_arch = "wasm32")]
+    {
+        web::read_dropped(f.clone());
+        None
+    }
+}
+
+/// wasm: 窓に落としたファイルを `/uploads/` に書き終えたら、そのパス（一度だけ）。ネイティブは常に None
+pub(crate) fn take_dropped() -> Option<PathBuf> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web::take(web::DROPPED)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
 }
 
 /// wasm: `/downloads/` に書かれたファイルをブラウザのダウンロードにする（毎フレーム呼ぶ）。ネイティブは何もしない
@@ -521,6 +537,27 @@ mod web {
             };
             if let Some(p) = out {
                 DONE.with(|d| d.borrow_mut().insert(id, p));
+            }
+            CTX.with(|c| {
+                if let Some(c) = &*c.borrow() {
+                    c.request_repaint();
+                }
+            });
+        });
+    }
+
+    /// 落としたファイルを選び終わったファイルと同じ表に入れるときの id
+    pub(super) const DROPPED: &str = "lensbench-dropped";
+
+    pub(super) fn read_dropped(f: egui::DroppedFileHandle) {
+        wasm_bindgen_futures::spawn_local(async move {
+            let Ok(bytes) = f.bytes_async().await else {
+                return;
+            };
+            let name = file_name_only(&f.path().to_string_lossy());
+            let p = next_dir().join(name);
+            if lensbench_core::vfs::write(&p, bytes).is_ok() {
+                DONE.with(|d| d.borrow_mut().insert(DROPPED.to_string(), p));
             }
             CTX.with(|c| {
                 if let Some(c) = &*c.borrow() {

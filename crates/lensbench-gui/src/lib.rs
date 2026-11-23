@@ -301,8 +301,8 @@ struct Shell(std::rc::Rc<std::cell::RefCell<app::App>>);
 
 #[cfg(target_arch = "wasm32")]
 impl eframe::App for Shell {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.0.borrow_mut().update(ctx, frame);
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        eframe::App::ui(&mut *self.0.borrow_mut(), ui, frame);
     }
 
     fn auto_save_interval(&self) -> std::time::Duration {

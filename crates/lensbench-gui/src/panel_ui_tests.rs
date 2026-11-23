@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use egui_kittest::kittest::{by, Queryable};
+use egui_kittest::kittest::{by, NodeT as _, Queryable};
 use egui_kittest::Harness;
 use serde_json::Value;
 
@@ -41,6 +41,11 @@ struct St<P, A> {
 fn optim(p: op::OptPanel) -> Harness<'static, St<op::OptPanel, op::Action>> {
     let s = sys();
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 1400.0))
         .build_ui_state(
             move |ui, st: &mut St<op::OptPanel, op::Action>| {
@@ -66,6 +71,11 @@ fn optim(p: op::OptPanel) -> Harness<'static, St<op::OptPanel, op::Action>> {
 fn tol(p: tp::TolPanel) -> Harness<'static, St<tp::TolPanel, tp::Action>> {
     let s = sys();
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 2000.0))
         .build_ui_state(
             move |ui, st: &mut St<tp::TolPanel, tp::Action>| {
@@ -89,7 +99,7 @@ fn tol(p: tp::TolPanel) -> Harness<'static, St<tp::TolPanel, tp::Action>> {
 }
 
 fn is_disabled<S>(h: &Harness<'_, S>, label: &str) -> bool {
-    h.get_by_label(label).is_disabled()
+    h.get_by_label(label).accesskit_node().is_disabled()
 }
 
 /// 変数が無い間は「Optimize」を押せず、理由が出る
@@ -113,12 +123,12 @@ fn optim_add_variable_and_run() {
     edit.focus();
     edit.type_text("3.t");
     h.run_steps(4);
-    h.get_by_label("Add").click();
+    h.get_by_label("Add").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().p.vars.len(), 1);
     assert_eq!(h.state().p.vars[0].name, "3.t");
     assert!(!is_disabled(&h, "Optimize"));
-    h.get_by_label("Optimize").click();
+    h.get_by_label("Optimize").click_accesskit();
     h.run_steps(4);
     let run: Vec<&Value> = h
         .state()
@@ -141,7 +151,7 @@ fn optim_stop_while_running() {
     p.running = true;
     let mut h = optim(p);
     assert!(h.query_by_label("Optimize").is_none());
-    h.get_by_label("Stop").click();
+    h.get_by_label("Stop").click_accesskit();
     h.run_steps(4);
     assert!(matches!(h.state().acts.as_slice(), [op::Action::Stop]));
 }
@@ -152,7 +162,7 @@ fn tol_run_returns_spec() {
     let _g = serial();
     let mut h = tol(tp::TolPanel::default());
     assert!(!is_disabled(&h, "Run tolerancing"));
-    h.get_by_label("Run tolerancing").click();
+    h.get_by_label("Run tolerancing").click_accesskit();
     h.run_steps(4);
     match h.state().acts.as_slice() {
         [tp::Action::Run(v)] => assert_eq!(v["trials"], 100),
@@ -179,7 +189,7 @@ fn tol_invalid_field_disables_run() {
 fn tol_save_and_running() {
     let _g = serial();
     let mut h = tol(tp::TolPanel::default());
-    h.get_by_label("Save settings…").click();
+    h.get_by_label("Save settings…").click_accesskit();
     h.run_steps(4);
     assert!(matches!(h.state().acts.as_slice(), [tp::Action::Save(_)]));
     let p = tp::TolPanel {
@@ -188,7 +198,7 @@ fn tol_save_and_running() {
     };
     let mut h = tol(p);
     assert!(is_disabled(&h, "Save settings…"));
-    h.get_by_label("Stop").click();
+    h.get_by_label("Stop").click_accesskit();
     h.run_steps(4);
     assert!(matches!(h.state().acts.as_slice(), [tp::Action::Stop]));
 }
@@ -215,6 +225,11 @@ fn swap_in(
         .map(|b| (b.to_string(), format!("{b} lens")))
         .collect();
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 2000.0))
         .build_ui_state(
             move |ui, st: &mut St<sp::SwapPanel, sp::Action>| {
@@ -244,14 +259,14 @@ fn swap_add_lens_then_run_and_count() {
     let mut h = swap(sp::SwapPanel::default(), &["L1", "L2"]);
     assert!(is_disabled(&h, "Run search"));
     assert!(is_disabled(&h, "Count sets"));
-    h.get_by_label("Add lens").click();
+    h.get_by_label("Add lens").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().p.slots.len(), 1);
     assert_eq!(h.state().p.slots[0].block, "L1");
     assert!(!is_disabled(&h, "Run search"));
-    h.get_by_label("Count sets").click();
+    h.get_by_label("Count sets").click_accesskit();
     h.run_steps(4);
-    h.get_by_label("Run search").click();
+    h.get_by_label("Run search").click_accesskit();
     h.run_steps(4);
     match h.state().acts.as_slice() {
         [sp::Action::Count(c), sp::Action::Run(r)] => {
@@ -268,7 +283,7 @@ fn swap_add_lens_until_full() {
     let _g = serial();
     let mut h = swap(sp::SwapPanel::default(), &["L1", "L2"]);
     for _ in 0..2 {
-        h.get_by_label("Add lens").click();
+        h.get_by_label("Add lens").click_accesskit();
         h.run_steps(4);
     }
     let names: Vec<&str> = h.state().p.slots.iter().map(|s| s.block.as_str()).collect();
@@ -301,14 +316,14 @@ fn swap_starts_table_and_state_vars() {
     let warn = "Starting points have values for names that are not variables: zz.t";
     assert!(h.query_by_label_contains(warn).is_some());
     h.get_by_label("Clear the columns that are not variables")
-        .click();
+        .click_accesskit();
     h.run_steps(4);
     assert!(h.query_by_label_contains(warn).is_none());
     assert!(h.state().p.starts[0].is_empty());
-    h.get_by_label("Add project values").click();
+    h.get_by_label("Add project values").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().p.starts[1].get("d1.t"), Some(&5.0));
-    h.get_by_label("Add per-state variable").click();
+    h.get_by_label("Add per-state variable").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().p.state_vars[0].name, "L1.shift");
     assert!(h.state().p.new_state_var.is_empty());

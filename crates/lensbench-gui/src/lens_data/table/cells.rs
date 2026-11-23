@@ -7,7 +7,7 @@ pub(super) fn num_cell(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
     let r = &c.rows[j];
     let fold = v.folded(j);
     if let Some((i, a)) = fold {
-        let resp = ui.interact(ui.max_rect(), ui.id().with("ld_num"), Sense::click());
+        let resp = ui.interact(ui.max_rect(), ui.scope_id().with("ld_num"), Sense::click());
         ui.label(RichText::new(format!("{a}–{j}")).monospace().color(v.weak));
         if resp.clicked() || resp.secondary_clicked() {
             out.clicked_any = true;
@@ -34,7 +34,7 @@ pub(super) fn num_cell(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
         rt = rt.strikethrough().color(v.weak);
     }
     // セル全体で受ける（文字の外の空いたところでも右クリック・クリックが効く）
-    let resp = ui.interact(ui.max_rect(), ui.id().with("ld_num"), Sense::click());
+    let resp = ui.interact(ui.max_rect(), ui.scope_id().with("ld_num"), Sense::click());
     ui.label(rt);
     let resp = if r.ignore {
         resp.on_hover_text(tr("This surface is ignored (rays skip it)"))
@@ -71,7 +71,11 @@ pub(super) fn block_cell(
     let blk = v.child_of(j).filter(|&i| Some(i) != v.scope);
     // セル全体（ブロック名の外）: 行を選ぶ・右クリックで行の欄（面の番号の列と同じ）。
     // ブロック名は後に足すので、名前の上はブロックの操作が勝つ
-    let cell = ui.interact(ui.max_rect(), ui.id().with("ld_blk_cell"), Sense::click());
+    let cell = ui.interact(
+        ui.max_rect(),
+        ui.scope_id().with("ld_blk_cell"),
+        Sense::click(),
+    );
     if cell.clicked() || cell.secondary_clicked() {
         out.clicked_any = true;
         let col = st.cur.map_or(Col::R, |x| x.1);
@@ -130,7 +134,7 @@ pub(super) fn block_cell(
                 r.context_menu(|ui| {
                     if ui.button(trf("Ungroup {}", &[&b.name])).clicked() {
                         out.acts.push(Act::Ungroup(b.name.clone()));
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
             }
@@ -193,7 +197,11 @@ fn fold_cell(
         ),
         _ => String::new(),
     };
-    let resp = ui.interact(ui.max_rect(), ui.id().with("ld_fold_cell"), Sense::click());
+    let resp = ui.interact(
+        ui.max_rect(),
+        ui.scope_id().with("ld_fold_cell"),
+        Sense::click(),
+    );
     ui.add(egui::Label::new(RichText::new(text).color(v.weak)).truncate());
     if st.cur == Some((j, col)) {
         ui.painter().rect_stroke(
@@ -374,7 +382,7 @@ fn value_cell(
     let is_cur = st.cur == Some((j, col));
     let ro = v.cell_ro(c, j, col);
     // Alt+ドラッグで数を増減（共通の表と同じ量、widgets::num::drag_value）。離したときに 1 回で決める
-    let dd = egui::Id::new(("ld_num_drag", j, format!("{col:?}")));
+    let dd = egui::Id::unique(("ld_num_drag", j, format!("{col:?}")));
     let drag = ui.data(|d| d.get_temp::<(f64, f32)>(dd));
     let text = match drag {
         Some((x0, dx)) => crate::json_view::fmt_num(crate::widgets::num::drag_value(x0, dx, false)),
@@ -405,7 +413,7 @@ fn value_cell(
     } else {
         Sense::click()
     };
-    let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), sense);
+    let resp = ui.interact(cell_rect, ui.scope_id().with("ld_cell"), sense);
     num_drag(ui, &resp, dd, draggable, &text, drag);
     if let (true, Some((x0, dx))) = (resp.drag_stopped(), drag) {
         let x = crate::widgets::num::drag_value(x0, dx, false);
@@ -416,7 +424,7 @@ fn value_cell(
     // AccessKit の木に名前（面の番号と列）と値を出す（読み上げ・画面の試験がセルを文言で探せる）
     resp.widget_info(|| {
         let mut w = egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
+            egui::Role::Button,
             ro.is_none(),
             trf("Surface {} {}", &[&j, &col.header(Some(&r.typ))]),
         );
@@ -583,11 +591,11 @@ pub(super) fn row_end(
             .pointer_hover_pos()
             .is_some_and(|q| rr.rect.contains(q))
     {
-        let drop_color = rr.ctx.style().visuals.selection.stroke.color;
+        let drop_color = rr.ctx.global_style().visuals.selection.stroke.color;
         rr.ctx
             .layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
-                egui::Id::new("ld_drop"),
+                egui::Id::unique("ld_drop"),
             ))
             .line_segment(
                 [rr.rect.left_bottom(), rr.rect.right_bottom()],

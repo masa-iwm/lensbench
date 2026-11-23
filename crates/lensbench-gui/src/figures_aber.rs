@@ -67,7 +67,7 @@ struct Waves(Vec<f64>);
 impl Waves {
     fn of(ui: &Ui) -> Waves {
         Waves(
-            ui.data(|d| d.get_temp(egui::Id::new(WAVES_UM)))
+            ui.data(|d| d.get_temp(egui::Id::unique(WAVES_UM)))
                 .unwrap_or_default(),
         )
     }
@@ -123,8 +123,9 @@ fn draw(
     dashed: bool,
     name: &str,
 ) {
-    for (k, s) in pts.into_iter().enumerate() {
-        let mut l = Line::new(PlotPoints::from(s))
+    // 同じ名前の線は凡例で 1 つにまとまり、凡例で隠すと全部が隠れる
+    for s in pts {
+        let l = Line::new(name, PlotPoints::from(s))
             .color(col)
             .width(1.6_f32)
             .style(if dashed {
@@ -132,9 +133,6 @@ fn draw(
             } else {
                 LineStyle::Solid
             });
-        if k == 0 {
-            l = l.name(name);
-        }
         p.line(l);
     }
 }
@@ -341,7 +339,7 @@ fn lateral(ui: &mut Ui, id: u64, v: &LatOut) -> bool {
         if v.airy.is_finite() {
             for s in [1.0, -1.0] {
                 p.hline(
-                    HLine::new(s * v.airy)
+                    HLine::new("", s * v.airy)
                         .color(weak_col)
                         .style(LineStyle::Dashed { length: 4.0 }),
                 );
@@ -438,19 +436,14 @@ fn grid(ui: &mut Ui, id: u64, v: &GridOut) -> bool {
                     g.real
                 }
             };
-            let mut first = true;
             for a in 0..n {
                 for row in [true, false] {
                     let line: Vec<[f64; 2]> = (0..n)
                         .map(|b| pt(if row { at(b, a) } else { at(a, b) }))
                         .collect();
-                    let mut l = Line::new(PlotPoints::from(line))
+                    let l = Line::new(name.clone(), PlotPoints::from(line))
                         .color(c)
                         .width(if pick == 0 { 1.0_f32 } else { 1.4 });
-                    if first {
-                        l = l.name(name.clone());
-                        first = false;
-                    }
                     p.line(l);
                 }
             }
@@ -510,9 +503,8 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
                         .name(format!("{label} {name}"))
                 })
                 .collect();
-            BarChart::new(bars)
+            BarChart::new(*name, bars)
                 .color(theme::series(k))
-                .name(*name)
                 .element_formatter(Box::new(|_, _| String::new()))
         })
         .collect();
@@ -567,7 +559,7 @@ fn seidel(ui: &mut Ui, id: u64, v: &SeidelOut) -> bool {
         let hit = at.and_then(|m| hits.iter().find(|h| (m.x - h.0).abs() <= h.1));
         if let Some((x, _, y, text)) = hit {
             let (pos, anchor) = bar_label_at(*x, *y, &p.plot_bounds());
-            p.text(Text::new(pos, egui::RichText::new(text).color(color)).anchor(anchor));
+            p.text(Text::new("", pos, egui::RichText::new(text).color(color)).anchor(anchor));
         }
     });
     true
@@ -645,31 +637,23 @@ fn footprint(ui: &mut Ui, id: u64, v: &FootprintOut) -> bool {
         .x_axis_label(format!("x [{}]", v.unit))
         .y_axis_label(format!("y [{}]", v.unit));
     plot_tools::show(ui, plot, "", |p, _| {
-        for (k, a) in v.aperture.iter().enumerate() {
-            let mut l = Line::new(PlotPoints::from(a.clone()))
+        for a in &v.aperture {
+            let l = Line::new(tr("Aperture"), PlotPoints::from(a.clone()))
                 .color(ap_col)
                 .width(1.2_f32);
-            if k == 0 {
-                l = l.name(tr("Aperture").to_string());
-            }
             p.line(l);
         }
-        let mut named: Vec<usize> = Vec::new();
         for r in &v.rows {
             let col = theme::series(r.field.saturating_sub(1));
-            let mut pts = Points::new(PlotPoints::from(r.points.clone()))
+            let pts = Points::new(fname(r.field), PlotPoints::from(r.points.clone()))
                 .color(col.gamma_multiply(0.8))
                 .radius(1.5_f32)
                 .shape(MarkerShape::Circle);
-            if !named.contains(&r.field) {
-                pts = pts.name(fname(r.field));
-                named.push(r.field);
-            }
             p.points(pts);
             let ex: Vec<f64> = r.edge.iter().map(|q| q[0].unwrap_or(f64::NAN)).collect();
             let ey: Vec<f64> = r.edge.iter().map(|q| q[1].unwrap_or(f64::NAN)).collect();
             for s in segments(&ex, &ey) {
-                p.line(Line::new(PlotPoints::from(s)).color(col).width(1.2_f32));
+                p.line(Line::new("", PlotPoints::from(s)).color(col).width(1.2_f32));
             }
         }
     });
@@ -767,7 +751,7 @@ fn gauss(ui: &mut Ui, id: u64, v: &GaussOut) -> bool {
     plot_tools::show(ui, plot, &v.unit, |p, reg| {
         for r in &v.rows {
             if r.z.is_finite() {
-                p.vline(VLine::new(r.z).color(weak_col).width(0.6_f32));
+                p.vline(VLine::new("", r.z).color(weak_col).width(0.6_f32));
             }
         }
         let up: Vec<Vec<[f64; 2]>> = v.profile.clone();

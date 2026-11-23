@@ -66,7 +66,9 @@ pub fn nav<R>(
         .allow_zoom(false)
         .allow_scroll(false)
         .allow_boxed_zoom(false)
-        .allow_double_click_reset(false);
+        .allow_double_click_reset(false)
+        // egui_plot 0.38 の目盛りのドラッグでの拡大（既定で入る）も切る（目盛りの上の操作は axis_nav）
+        .allow_axis_zoom_drag(false);
     let scope = ui.scope(|ui| {
         plot.show(ui, |p| {
             let id = pending_id(p.response());
@@ -206,7 +208,7 @@ fn show_on(
     let weak = crate::theme::weak_text(ui.visuals());
     let mut series = Vec::new();
     // 既定の近くの点の座標の札は出さない（カーソルの値の一覧と重なる）
-    let r = nav(ui, plot.label_formatter(|_, _| String::new()), true, |p| {
+    let r = nav(ui, plot.label_formatter(|_| None), true, |p| {
         body(p, &mut series);
         // カーソルの線は線の項目にしない（自動の範囲に入ってしまう）。グラフの外にカーソルがあれば出さない
         p.response()

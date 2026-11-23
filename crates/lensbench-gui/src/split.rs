@@ -17,11 +17,16 @@ pub(crate) fn side_by_side(w: f32, h: f32) -> bool {
 /// 残りの領域を 2 つに分けて、前（上・左）と後（下・右）の Ui を返す。
 /// `frac` は前の既定の割合（上下、左右）、`min` は各欄に残す最低の大きさ（領域が足りなければ半分ずつ）。
 /// 境を動かすまでは既定の割合（呼ぶたびに変わってよい）、動かした後はその割合を覚える。
-pub(crate) fn two(ui: &mut Ui, id: impl std::hash::Hash, frac: (f32, f32), min: f32) -> (Ui, Ui) {
+pub(crate) fn two(
+    ui: &mut Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    frac: (f32, f32),
+    min: f32,
+) -> (Ui, Ui) {
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, Sense::hover());
     let side = side_by_side(rect.width(), rect.height());
-    let key = Id::new(("split", id, side));
+    let key = Id::unique(("split", id, side));
     let len = (if side { rect.width() } else { rect.height() } - GAP).max(0.0);
     let lo = min.min(len * 0.5);
     let frac = if side { frac.1 } else { frac.0 };

@@ -44,7 +44,7 @@ pub(super) fn strip_ui(
     ui.spacing_mut().item_spacing.y = 4.0;
     let icon = |ui: &mut Ui, t: &str, on: bool| -> egui::Response {
         // 記号がフォントに無ければ（豆腐 □ になる）字だけにする
-        let has = ui.fonts(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
+        let has = ui.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
         let (text, w) = match icon_label(t).filter(|_| wide || !has) {
             Some(l) if !has => (RichText::new(tr(l)).size(11.0), strip_w.max(40.0) - 4.0),
             Some(l) => (
@@ -60,7 +60,7 @@ pub(super) fn strip_ui(
         );
         // AccessKit の名前は帯の幅・字形に依らず字（Insert など）に（記号だけのボタンに名前が無かった）
         if let Some(l) = icon_label(t) {
-            r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, tr(l)));
+            r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, tr(l)));
         }
         r
     };
@@ -81,7 +81,7 @@ pub(super) fn strip_ui(
             .clicked()
         {
             out.go = Some(0);
-            ui.memory_mut(|m| m.close_popup());
+            egui::Popup::close_all(ui.ctx());
         }
         for (i, b) in c.blocks.iter().enumerate() {
             let mut depth = 0;
@@ -112,7 +112,7 @@ pub(super) fn strip_ui(
                     .clicked()
                 {
                     out.enter = Some(b.name.clone());
-                    ui.memory_mut(|m| m.close_popup());
+                    egui::Popup::close_all(ui.ctx());
                 }
             });
         }
@@ -222,7 +222,7 @@ pub(super) fn strip_ui(
                             .clicked()
                         {
                             out.toggle = Some(name.clone());
-                            ui.memory_mut(|m| m.close_popup());
+                            egui::Popup::close_all(ui.ctx());
                         }
                     }
                     if ui
@@ -235,7 +235,7 @@ pub(super) fn strip_ui(
                         .clicked()
                     {
                         out.enter = Some(name.clone());
-                        ui.memory_mut(|m| m.close_popup());
+                        egui::Popup::close_all(ui.ctx());
                     }
                 });
             }

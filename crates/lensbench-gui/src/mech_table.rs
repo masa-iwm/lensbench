@@ -128,8 +128,8 @@ mod tests {
         });
         let ctx = egui::Context::default();
         let mut shown = (false, true);
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = ctx.run_ui(egui::RawInput::default(), |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 shown = (show(ui, 1, &v), show(ui, 2, &serde_json::json!({"x": 1})));
             });
         });

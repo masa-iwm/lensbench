@@ -629,16 +629,18 @@ fn drive_glasses(
             })
             .unwrap_or_default();
         let input = egui::RawInput {
-            modifiers,
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
                 egui::vec2(1200.0, 700.0),
             )),
-            events,
+            // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+            events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+                .chain(events)
+                .collect(),
             ..Default::default()
         };
-        let _ = ctx.run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |u| {
+        let _ = ctx.run_ui(input, |root| {
+            egui::CentralPanel::default().show(root, |u| {
                 acts.extend(super::ui(u, st, &c).0);
             });
         });

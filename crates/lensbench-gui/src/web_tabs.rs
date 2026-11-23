@@ -578,7 +578,7 @@ impl Host {
         if !self.sized {
             return (None, None);
         }
-        self.ctx.set_style(main.style());
+        self.ctx.set_global_style(main.global_style());
         // 文章のフォントの順を元のタブと同じ言語に（言語を変えたら並べ直す）
         let ja = crate::i18n::is_ja();
         if self.ja != Some(ja) {
@@ -588,8 +588,10 @@ impl Host {
         let mut raw = egui::RawInput {
             screen_rect: Some(self.rect),
             time: Some(now_ms() / 1000.0),
-            modifiers: self.mods,
-            events: std::mem::take(&mut self.events),
+            // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+            events: std::iter::once(egui::Event::ModifiersChanged(self.mods))
+                .chain(std::mem::take(&mut self.events))
+                .collect(),
             focused: true,
             ..Default::default()
         };
@@ -597,8 +599,8 @@ impl Host {
             .entry(egui::ViewportId::ROOT)
             .or_default()
             .native_pixels_per_point = Some(self.ppp);
-        let out = self.ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |u| ui(u));
+        let out = self.ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |u| ui(u));
         });
         let prims = self.ctx.tessellate(out.shapes, out.pixels_per_point);
         let h = crate::remote_frame::mesh_hash(&prims);
@@ -694,7 +696,8 @@ impl Viewer {
         }
     }
 
-    pub(crate) fn update(&mut self, ctx: &egui::Context) {
+    pub(crate) fn update(&mut self, ui: &mut egui::Ui) {
+        let ctx = &ui.ctx().clone();
         let Some(c) = &self.chan else {
             return;
         };
@@ -783,7 +786,7 @@ impl Viewer {
         let t0 = now_ms();
         let stalled = !self.closed && self.got && self.waiting.is_some_and(|w| t0 - w > 3000.0);
         // 上の帯: パネルの名前と「元のタブに戻す」
-        egui::TopBottomPanel::top("remote-bar").show(ctx, |ui| {
+        egui::Panel::top("remote-bar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(&self.title).strong());
                 if ui.small_button(crate::i18n::tr("Back to the main tab")).clicked() {
@@ -804,7 +807,7 @@ impl Viewer {
             });
         });
         // 入力を元のタブへ（帯の下が元のタブで描く所）
-        let rect = ctx.available_rect();
+        let rect = ui.available_rect_before_wrap();
         let (events, ppp, mods) = ctx.input(|i| {
             let events: Vec<egui::Event> = i
                 .raw
@@ -865,13 +868,15 @@ impl Viewer {
         if let Some(r) = self.ime {
             ctx.output_mut(|o| {
                 o.ime = Some(egui::output::IMEOutput {
+                    purpose: Default::default(),
                     rect: r,
                     cursor_rect: r,
+                    should_interrupt_composition: false,
                 })
             });
         }
         if self.meshes.is_empty() {
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 ui.centered_and_justified(|ui| {
                     ui.label(if self.closed {
                         crate::i18n::tr("The main tab was closed, so this panel cannot be used. Please close this window.")

@@ -456,7 +456,7 @@ mod tests {
             d.sync();
             d.rev
         };
-        let (fa, fb) = (Some(egui::Id::new("a")), Some(egui::Id::new("b")));
+        let (fa, fb) = (Some(egui::Id::unique("a")), Some(egui::Id::unique("b")));
         let mut c = Combo::default();
         let r = at(&c);
         h.track(&c, r, false, None);

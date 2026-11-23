@@ -132,8 +132,7 @@ impl Core {
             match result_export_menu(ui, &r.cmd, v, fig_now) {
                 Some(ResOut::Shot(copy)) => {
                     self.shot = Some((id, copy, r.cmd.clone()));
-                    ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                    crate::image_util::request_screenshot(ui.ctx());
                 }
                 Some(ResOut::Save(d, text)) => {
                     match self
@@ -176,10 +175,10 @@ impl Core {
                 )
             })
             .collect();
-        ui.data_mut(|d| d.insert_temp(egui::Id::new(plots::FIELD_LABELS), coords));
+        ui.data_mut(|d| d.insert_temp(egui::Id::unique(plots::FIELD_LABELS), coords));
         // 収差図の波長の色
         let waves = self.waves_um();
-        ui.data_mut(|d| d.insert_temp(egui::Id::new(crate::figures_aber::WAVES_UM), waves));
+        ui.data_mut(|d| d.insert_temp(egui::Id::unique(crate::figures_aber::WAVES_UM), waves));
         // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
         let out = figures::Out::new(v, r.typed.as_ref());
         let prev = r
@@ -236,7 +235,7 @@ impl Core {
                     json_view::show(ui, v);
                 } else if cfg.view == View::Json {
                     // 文字列は結果が変わったときだけ作る。大きい結果は頭だけ見せる（全文はコピー・保存で）
-                    let key = egui::Id::new(("res-json", id));
+                    let key = egui::Id::unique(("res-json", id));
                     let t = match ui.data(|d| d.get_temp::<(u64, std::sync::Arc<String>)>(key)) {
                         Some((r, t)) if r == self.rev => t,
                         _ => {

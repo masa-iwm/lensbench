@@ -1708,7 +1708,7 @@ pub(crate) fn ui(
                 .clicked()
             {
                 act = Some(Act::Catalog);
-                ui.close_menu();
+                ui.close();
             }
             for k in [
                 ElemKind::Lens,
@@ -1721,7 +1721,7 @@ pub(crate) fn ui(
             ] {
                 if ui.button(k.label()).clicked() {
                     insert(combo, view, Pick::new(k));
-                    ui.close_menu();
+                    ui.close();
                 }
             }
             ui.separator();
@@ -1732,7 +1732,7 @@ pub(crate) fn ui(
             for (i, kind) in ZMX.into_iter().enumerate() {
                 if ui.button(trf("{}…", &[&kind.label()])).on_hover_text(hints[i]).clicked() {
                     zmx_start[i] = true;
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         });
@@ -2197,7 +2197,7 @@ const ROLES: [(&str, &str); 4] = [
     ("fixed", n_("Fixed")),
 ];
 
-fn role_combo(ui: &mut Ui, id: impl std::hash::Hash, role: &mut String) {
+fn role_combo(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, role: &mut String) {
     let cur = ROLES
         .iter()
         .find(|r| r.0 == role.as_str())
@@ -3015,7 +3015,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
                             e.mirror_mut().back = true;
                         }
                         b.picks.push(e);
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
             })

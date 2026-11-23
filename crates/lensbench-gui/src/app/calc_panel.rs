@@ -309,8 +309,9 @@ impl App {
     }
 
     /// 別の窓（解析のパネル）の 1 画面: 元のタブから届いたものを入れ、計算の結果を受け、パネルを描く
-    pub(super) fn calc_frame(&mut self, ctx: &egui::Context) {
+    pub(super) fn calc_frame(&mut self, ui: &mut egui::Ui) {
         use crate::web_tabs::CalcEv;
+        let ctx = &ui.ctx().clone();
         let Some(k) = self.calc.as_mut() else {
             return;
         };
@@ -399,7 +400,7 @@ impl App {
             .next()
             .map(|(_, p)| p.title())
             .unwrap_or_default();
-        egui::TopBottomPanel::top("calc-bar").show(ctx, |ui| {
+        egui::Panel::top("calc-bar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(&title).strong());
                 if ui.small_button(tr("Back to the main tab")).clicked() {
@@ -431,7 +432,7 @@ impl App {
             });
         });
         let App { c, dock, .. } = self;
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let pane = dock.iter_all_tabs_mut().next().map(|(_, p)| p);
             match pane {
                 Some(p) if !waiting => c.pane_ui(ui, p),

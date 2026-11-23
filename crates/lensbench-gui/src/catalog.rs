@@ -267,7 +267,7 @@ fn link_button(ui: &mut Ui, url: &str) {
     b.context_menu(|ui| {
         if ui.button(tr("Copy link")).clicked() {
             ui.ctx().copy_text(url.to_string());
-            ui.close_menu();
+            ui.close();
         }
     });
 }
@@ -1417,7 +1417,7 @@ impl Browser {
                 .clicked()
             {
                 filter = true;
-                ui.close_menu();
+                ui.close();
             }
             ui.separator();
             egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
@@ -1428,7 +1428,7 @@ impl Browser {
                         .clicked()
                     {
                         add = Some((*m).clone());
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
             });

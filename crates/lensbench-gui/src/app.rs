@@ -1092,8 +1092,7 @@ impl Core {
                 if let Some(d) = &self.layout_data {
                     if copy_menu(ui, &d.json, true) {
                         self.shot = Some((id, true, "layout".into()));
-                        ui.ctx()
-                            .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                        crate::image_util::request_screenshot(ui.ctx());
                     }
                 }
             });
@@ -1534,7 +1533,7 @@ fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>, missing: &[String]
     ui.horizontal(|ui| {
         start = ui.button(tr("➕ Add folder…")).clicked();
         // パスを打つ・貼る
-        let id = egui::Id::new(("dir-typed", title));
+        let id = egui::Id::unique(("dir-typed", title));
         let mut t: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
         let r = ui.add(
             egui::TextEdit::singleline(&mut t)
@@ -1590,27 +1589,28 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn id(&mut self, tab: &mut Pane) -> egui::Id {
-        egui::Id::new(("pane", tab.id))
+        egui::Id::unique(("pane", tab.id))
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Pane) {
         self.c.pane_ui(ui, tab);
     }
 
-    fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _s: SurfaceIndex, _n: NodeIndex) {
+    fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _path: egui_dock::NodePath) {
         let label = menus::detach_label(cfg!(target_arch = "wasm32"));
         if ui.button(label).clicked() {
             self.to_window.push(tab.id);
-            ui.close_menu();
+            ui.close();
         }
     }
 
-    fn on_close(&mut self, tab: &mut Pane) -> bool {
+    fn on_close(&mut self, tab: &mut Pane) -> egui_dock::tab_viewer::OnCloseResponse {
         self.c.results.remove(&tab.id);
-        true
+        egui_dock::tab_viewer::OnCloseResponse::Close
     }
 
-    fn add_popup(&mut self, ui: &mut Ui, surface: SurfaceIndex, node: NodeIndex) {
+    fn add_popup(&mut self, ui: &mut Ui, path: egui_dock::NodePath) {
+        let (surface, node) = (path.surface, path.node);
         ui.set_min_width(160.0);
         for k in add_kinds() {
             let label = Pane {
@@ -1620,7 +1620,7 @@ impl TabViewer for Viewer<'_> {
             .title();
             if ui.button(label).clicked() {
                 self.added.push((surface, node, k));
-                ui.close_menu();
+                ui.close();
             }
         }
     }
@@ -1820,8 +1820,10 @@ impl App {
             .max_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| NodeIndex(i));
         if let Some(n) = big {
-            self.dock
-                .set_focused_node_and_surface((SurfaceIndex::main(), n));
+            self.dock.set_focused_node_and_surface(egui_dock::NodePath {
+                surface: SurfaceIndex::main(),
+                node: n,
+            });
         }
         self.dock.push_to_focused_leaf(Pane { id, kind });
         id
@@ -1833,9 +1835,10 @@ impl App {
             id,
             kind: Kind::System,
         };
-        if let Some((s, n, t)) = self.dock.find_tab(&probe) {
-            self.dock.set_active_tab((s, n, t));
-            self.dock.set_focused_node_and_surface((s, n));
+        if let Some(path) = self.dock.find_tab(&probe) {
+            // 見つけたばかりの所なので失敗しない
+            let _ = self.dock.set_active_tab(path);
+            self.dock.set_focused_node_and_surface(path.node_path());
         }
     }
 
@@ -1864,7 +1867,7 @@ impl App {
         let (pos, screen, inner, down) = ctx.input(|i| {
             (
                 i.pointer.latest_pos(),
-                i.screen_rect(),
+                i.content_rect(),
                 i.viewport().inner_rect,
                 i.pointer.any_down(),
             )
@@ -1904,9 +1907,9 @@ impl App {
             id,
             kind: Kind::System,
         };
-        if let Some((s, n, t)) = self.dock.find_tab(&probe) {
-            let home = crate::layout::home_of(&self.dock, (s, n, t));
-            if let Some(p) = self.dock.remove_tab((s, n, t)) {
+        if let Some(path) = self.dock.find_tab(&probe) {
+            let home = crate::layout::home_of(&self.dock, path);
+            if let Some(p) = self.dock.remove_tab(path) {
                 self.windows.push(OsWin {
                     pane: p,
                     pos,
@@ -1952,7 +1955,7 @@ impl App {
 
     /// 本体の窓の外へ引きずって離したフロートのパネルを、その場所の別の OS の窓にする
     fn float_out(&mut self, ctx: &egui::Context) {
-        let screen = ctx.screen_rect();
+        let screen = ctx.content_rect();
         let outer = ctx.input(|i| i.viewport().inner_rect);
         let dragging = ctx.input(|i| i.pointer.any_down());
         let mut out = Vec::new();
@@ -2010,10 +2013,9 @@ impl App {
             let c = &mut self.c;
             let mut ret = false;
             let title = w.pane.title();
-            let pid = w.pane.id;
-            let size = w.size;
             let (pane, pos, wsize) = (&mut w.pane, &mut w.pos, &mut w.size);
-            ctx.show_viewport_immediate(vid, b, |ctx, class| {
+            ctx.show_viewport_immediate(vid, b, |ui, class| {
+                let ctx = &ui.ctx().clone();
                 let mut body = |ui: &mut Ui, c: &mut Core, ret: &mut bool| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&title).strong());
@@ -2024,19 +2026,11 @@ impl App {
                     ui.separator();
                     c.pane_ui(ui, pane);
                 };
-                if class == egui::ViewportClass::Embedded {
-                    // 別の窓を作れない環境では本体の中の窓
-                    let mut open = true;
-                    egui::Window::new(title.clone())
-                        .id(egui::Id::new(("embedded", pid)))
-                        .open(&mut open)
-                        .default_size(size)
-                        .show(ctx, |ui| body(ui, c, &mut ret));
-                    if !open {
-                        ret = true;
-                    }
+                if class == egui::ViewportClass::EmbeddedWindow {
+                    // 別の窓を作れない環境では、egui が本体の中の窓（egui::Window）に入れて呼ぶ
+                    body(ui, c, &mut ret);
                 } else {
-                    egui::CentralPanel::default().show(ctx, |ui| body(ui, c, &mut ret));
+                    egui::CentralPanel::default().show(ui, |ui| body(ui, c, &mut ret));
                     let (close, rect) =
                         ctx.input(|i| (i.viewport().close_requested(), i.viewport().outer_rect));
                     if close {
@@ -2082,12 +2076,7 @@ impl App {
         let Some((id, copy, cmd)) = self.c.shot.clone() else {
             return;
         };
-        let img = ctx.input(|i| {
-            i.raw.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
+        let img = crate::image_util::take_screenshot(ctx);
         let Some(img) = img else {
             return;
         };
@@ -2193,29 +2182,30 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = &ui.ctx().clone();
         #[cfg(target_arch = "wasm32")]
         if let Some(v) = self.viewer.as_mut() {
-            v.update(ctx);
+            v.update(ui);
             return;
         }
         #[cfg(target_arch = "wasm32")]
         if self.calc.is_some() {
-            self.calc_frame(ctx);
+            self.calc_frame(ui);
             return self.flush_fx(ctx);
         }
         self.logic(ctx);
         self.c.share_glasses(ctx);
         self.handle_input(ctx);
         self.sync_window_chrome(ctx);
-        self.show_panels(ctx);
+        self.show_panels(ui);
         self.handle_late_input(ctx);
         self.show_dialogs(ctx);
         self.tour_frame(ctx);
         self.flush_fx(ctx);
     }
 
-    /// Web 版は設定（最近のファイル・並びなど）をこまめに残す。eframe 0.31 の Web 版はページを閉じるときに
+    /// Web 版は設定（最近のファイル・並びなど）をこまめに残す。eframe の Web 版は（0.37 でも）ページを閉じるときに
     /// 保存しない（"onbeforeunload" で待つので呼ばれない）
     #[cfg(target_arch = "wasm32")]
     fn auto_save_interval(&self) -> std::time::Duration {
@@ -2597,13 +2587,22 @@ impl Core {
 }
 
 /// 保存した好みと開いていた文書（通し確認では使わない）に、引数のカタログのフォルダを足す
+/// eframe の保存から読む（[`eframe::get_value`] と同じ）。読めなければ、egui_dock 0.16（lensbench 0.9 まで）の
+/// 並び（今の並び・名前を付けた並び）を今の形に書き換えて読み直す（並びが読めないと設定がまるごと既定に戻る）
+fn get_value<T: serde::de::DeserializeOwned>(st: &dyn eframe::Storage, key: &str) -> Option<T> {
+    let s = st.get_string(key)?;
+    ron::from_str(&s)
+        .ok()
+        .or_else(|| ron::from_str(&crate::layout::migrate_dock_016(&s)?).ok())
+}
+
 fn load_settings(cc: &eframe::CreationContext<'_>, args: &Args) -> (Settings, Session) {
     // 通し確認では保存した設定を使わない（引数のフォルダだけ）
     let mut s: Settings = if args.tour.is_some() {
         Settings::default()
     } else {
         cc.storage
-            .and_then(|st| eframe::get_value(st, eframe::APP_KEY))
+            .and_then(|st| get_value(st, eframe::APP_KEY))
             .unwrap_or_default()
     };
     // 開いていた文書と画面の様子。前の版は好みと同じ値に入れていたので、鍵が無ければそこから一度だけ読む
@@ -2612,10 +2611,7 @@ fn load_settings(cc: &eframe::CreationContext<'_>, args: &Args) -> (Settings, Se
         Session::default()
     } else {
         cc.storage
-            .and_then(|st| {
-                eframe::get_value(st, SESSION_KEY)
-                    .or_else(|| eframe::get_value(st, eframe::APP_KEY))
-            })
+            .and_then(|st| get_value(st, SESSION_KEY).or_else(|| get_value(st, eframe::APP_KEY)))
             .unwrap_or_default()
     };
     // Web 版: 解析のパネルを出した別の窓は、開いていた文書・並びを使わない（元のタブから受ける）

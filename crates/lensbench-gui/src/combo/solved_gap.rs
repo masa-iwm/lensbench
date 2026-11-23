@@ -34,7 +34,7 @@ impl SolvedGap {
 
 /// フレームごとの寸法の写し（要素の欄・システムの設定は View を持たないので、egui の文脈から引く）
 fn key() -> egui::Id {
-    egui::Id::new("lensbench-solved-gaps")
+    egui::Id::unique("lensbench-solved-gaps")
 }
 
 impl SolvedGap {

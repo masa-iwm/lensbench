@@ -500,7 +500,7 @@ pub(crate) fn step_text(t: &str, default: &Value, ty: &str, d: f64) -> Option<St
 /// （文字の欄は入力を終えたとき・Enter・数の欄の ↑↓）
 pub(crate) fn form(
     ui: &mut Ui,
-    salt: impl std::hash::Hash + Copy,
+    salt: impl std::hash::Hash + std::fmt::Debug + Copy,
     specs: &[&ArgSpec],
     vals: &mut BTreeMap<String, String>,
 ) -> bool {
@@ -654,7 +654,7 @@ pub(crate) fn form(
                                 // 欄ごとに区別する（ui.id() は兄弟の Ui で同じになる）
                                 let key = format!(
                                     "arg-path-{:?}",
-                                    egui::Id::new(("argpath", salt, &s.name))
+                                    egui::Id::unique(("argpath", salt, &s.name))
                                 );
                                 if let Some(p) =
                                     crate::files::open(&key, start, crate::files::FileDialog::new)
@@ -708,7 +708,7 @@ fn reset_button(ui: &mut Ui, set: bool) -> bool {
 /// 一緒に使えない旗の組を 1 つの選択（既定・旗のどれか）で
 fn choice_group(
     ui: &mut Ui,
-    salt: impl std::hash::Hash + Copy,
+    salt: impl std::hash::Hash + std::fmt::Debug + Copy,
     specs: &[&ArgSpec],
     g: &[usize],
     vals: &mut BTreeMap<String, String>,
@@ -851,6 +851,11 @@ mod tests {
         r.default = json!(3);
         let specs = [w, r];
         let mut h = egui_kittest::Harness::builder()
+            // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+            .allow_missing_glyphs()
+            // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+            // 付けていない欄があるので切る（名前付けは別の Issue）
+            .with_accessibility_check(false)
             .with_size(egui::vec2(600.0, 300.0))
             .build_ui_state(
                 move |ui, vals: &mut BTreeMap<String, String>| {
@@ -862,7 +867,7 @@ mod tests {
         let key = |h: &mut egui_kittest::Harness<'_, BTreeMap<String, String>>,
                    m: egui::Modifiers,
                    k: egui::Key| {
-            h.press_key_modifiers(m, k);
+            h.key_press_modifiers(m, k);
             h.run_steps(2);
         };
         let field = |h: &egui_kittest::Harness<'_, BTreeMap<String, String>>, k: usize| {

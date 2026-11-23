@@ -113,7 +113,7 @@ fn drag(ui: &mut Ui, dv: crate::widgets::Num, busy: &mut bool) {
 /// 共通の欄を描く。ドラッグ中・入力中なら true
 pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
     let weak = theme::weak_text(ui.visuals());
-    let id = ui.id().with("sysform");
+    let id = ui.scope_id().with("sysform");
     let mut busy = false;
 
     // 開口

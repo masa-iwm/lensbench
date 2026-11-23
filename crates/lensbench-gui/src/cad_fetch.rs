@@ -363,7 +363,7 @@ impl CadFetcher {
                     l.context_menu(|ui| {
                         if ui.button(tr("Copy path")).clicked() {
                             ui.ctx().copy_text(path.to_string());
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                     for n in v["store_notes"].as_array().into_iter().flatten() {

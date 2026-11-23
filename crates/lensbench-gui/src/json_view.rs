@@ -132,7 +132,7 @@ fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
         });
         return;
     }
-    let id = ui.id().with((name, depth));
+    let id = ui.scope_id().with((name, depth));
     match v {
         Value::Array(a) => {
             CollapsingHeader::new(trf("{} ({})", &[&name, &a.len()]))

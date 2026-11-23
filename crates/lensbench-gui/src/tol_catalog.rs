@@ -209,7 +209,12 @@ fn cell(ui: &mut Ui, s: &mut String) {
     );
 }
 
-fn bound(ui: &mut Ui, id: impl std::hash::Hash, b: &mut (String, String), ops: &[&str; 2]) {
+fn bound(
+    ui: &mut Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    b: &mut (String, String),
+    ops: &[&str; 2],
+) {
     if b.0.is_empty() {
         b.0 = ops[0].into();
     }

@@ -266,19 +266,14 @@ impl Tour {
     /// 撮影を頼む（一度だけ）
     pub(crate) fn request_shot(&mut self, ctx: &egui::Context) {
         if !self.shooting {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            crate::image_util::request_screenshot(ctx);
             self.shooting = true;
         }
     }
 
     /// 届いた画像を保存して次の段へ。まだ届いていなければ false
     pub(crate) fn take_shot(&mut self, ctx: &egui::Context) -> bool {
-        let img = ctx.input(|i| {
-            i.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
+        let img = crate::image_util::take_screenshot(ctx);
         let Some(img) = img else {
             return false;
         };

@@ -4,7 +4,7 @@
 //! `--tour` は画面を撮るだけで、押した結果を確かめない。ここでは押した後の文書と表の中身を確かめる
 
 use super::*;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT as _, Queryable};
 use egui_kittest::Harness;
 use std::time::{Duration, Instant};
 
@@ -25,6 +25,11 @@ fn serial() -> std::sync::MutexGuard<'static, ()> {
 /// 引数を付けて App を作る（設定は保存先から読まない: 試験の Harness は保存先を持たない）
 fn harness(args: Args) -> Harness<'static, App> {
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 820.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, args));
@@ -56,7 +61,7 @@ fn settle(h: &mut Harness<'static, App>) {
 
 /// 文言で探して押し、要求が片付くまで回す
 fn click(h: &mut Harness<'static, App>, label: &str) {
-    h.get_by_label(label).click();
+    h.get_by_label(label).click_accesskit();
     settle(h);
 }
 
@@ -69,7 +74,7 @@ fn click_icon(h: &mut Harness<'static, App>, sym: &str, word: &str) {
         n.label()
             .is_some_and(|l| l == both || l == word || l == sym)
     }))
-    .click();
+    .click_accesskit();
     settle(h);
 }
 
@@ -172,14 +177,14 @@ fn undo_redo_add_surface() {
     let mut h = harness(Args::default());
     click(&mut h, "+ Add a surface");
     assert_eq!(h.state().c.doc.combo.picks.len(), 1);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert!(
         h.state().c.doc.combo.picks.is_empty(),
         "{}",
         h.state().test_state()
     );
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Y);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
     settle(&mut h);
     assert_eq!(
         h.state().c.doc.combo.picks.len(),
@@ -219,10 +224,11 @@ fn remove_thickness_solve() {
     let j = *solved(&h).last().expect("A0 has a thickness solve");
     let t = h.state().c.sys.ld_rows[j].t;
     // セルは AccessKit の木に「Surface 面 列」の名前で出る
-    h.get_by_label(&format!("Surface {j} Thickness")).click();
+    h.get_by_label(&format!("Surface {j} Thickness"))
+        .click_accesskit();
     h.run_steps(2);
     assert_eq!(h.state().c.p.ld.cur, Some((j, lens_data::Col::T)));
-    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F10);
     h.run_steps(2);
     click(&mut h, "Remove");
     let st = h.state().test_state();
@@ -232,7 +238,7 @@ fn remove_thickness_solve() {
     // 外す操作は serve の書き戻し（write_back）で要素の面の操作になる（要素に分けたときのソルブを外す）
     assert_eq!(solve_ops(&h), n_ops - 1, "{st}");
     // 元に戻すとソルブも戻る
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert!(solved(&h).contains(&j), "{}", h.state().test_state());
 }
@@ -285,9 +291,9 @@ fn layout_solved_gap_is_read_only() {
 fn solve_kind_pick_keeps_menu() {
     let _g = serial();
     let mut h = harness(a0());
-    h.get_by_label("Surface 1 Thickness").click();
+    h.get_by_label("Surface 1 Thickness").click_accesskit();
     h.run_steps(2);
-    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F10);
     h.run_steps(2);
     let kind_btn = |h: &Harness<'static, App>, k: &str| {
         let want = format!("Kind: {k} ");
@@ -300,9 +306,9 @@ fn solve_kind_pick_keeps_menu() {
         egui_kittest::kittest::by()
             .predicate(|n| n.label().is_some_and(|l| l.starts_with("Kind: "))),
     )
-    .click();
+    .click_accesskit();
     h.run_steps(2);
-    h.get_by_label("edge").click();
+    h.get_by_label("edge").click_accesskit();
     h.run_steps(2);
     assert!(kind_btn(&h, "edge"), "{}", h.state().test_state());
     // 一覧は閉じ、欄は残る
@@ -378,14 +384,14 @@ fn ctrl_a_selects_rows_in_the_table() {
     );
     let s0 = state(&h);
     // 表を使っていない: 次の構成
-    h.press_key_modifiers(Modifiers::COMMAND, Key::A);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     settle(&mut h);
     let s1 = state(&h);
     assert_ne!(s1, s0, "{}", h.state().test_state());
     // 表のセルを押した後: 全部の行を選び、構成はそのまま
-    h.get_by_label("Surface 1 Thickness").click();
+    h.get_by_label("Surface 1 Thickness").click_accesskit();
     h.run_steps(2);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::A);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     settle(&mut h);
     assert_eq!(state(&h), s1, "{}", h.state().test_state());
     // 今のセルは最後の行へ（初めの行から最後の行までを選ぶ）
@@ -448,13 +454,13 @@ fn ctrl_shift_tab_cycles_backwards() {
     let mut h = harness(Args::default());
     let focused =
         |h: &mut Harness<'static, App>| h.state_mut().dock.find_active_focused().map(|(_, p)| p.id);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Tab);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Tab);
     h.run_steps(2);
     let a = focused(&mut h);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Tab);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Tab);
     h.run_steps(2);
     assert_ne!(focused(&mut h), a);
-    h.press_key_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Tab);
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Tab);
     h.run_steps(2);
     assert_eq!(focused(&mut h), a);
 }
@@ -552,16 +558,21 @@ fn dialogs_and_analyses_are_effects() {
 fn last_row_of_the_table_is_above_the_details_bar() {
     let _g = serial();
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 560.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, a0()));
     i18n::set(i18n::Lang::En);
     settle(&mut h);
     let n = h.state().c.sys.ld_rows.len() - 1;
-    h.get_by_label("Surface 1 Thickness").click();
+    h.get_by_label("Surface 1 Thickness").click_accesskit();
     h.run_steps(2);
     for _ in 0..n {
-        h.press_key(Key::ArrowDown);
+        h.key_press(Key::ArrowDown);
         h.run_steps(2);
     }
     h.run_steps(4);
@@ -572,10 +583,11 @@ fn last_row_of_the_table_is_above_the_details_bar() {
                 .predicate(|n| n.value().is_some_and(|l| l.contains("Details —"))),
         )
         .next()
-        .and_then(|n| n.bounding_box())
+        .and_then(|n| n.accesskit_node().bounding_box())
         .unwrap();
     let last = h
         .get_by_label(&format!("Surface {n} Type"))
+        .accesskit_node()
         .bounding_box()
         .unwrap();
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
@@ -587,6 +599,11 @@ fn last_row_of_the_table_is_above_the_details_bar() {
 fn nested_group_rows_keep_their_height() {
     let _g = serial();
     let mut h = Harness::builder()
+        // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
+        .allow_missing_glyphs()
+        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
+        // 付けていない欄があるので切る（名前付けは別の Issue）
+        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 820.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, a0()));
@@ -616,7 +633,7 @@ fn nested_group_rows_keep_their_height() {
     let ys: Vec<f64> = (0..=n)
         .filter_map(|k| {
             h.query_by_label(&format!("Surface {k} Type"))
-                .and_then(|x| x.bounding_box())
+                .and_then(|x| x.accesskit_node().bounding_box())
                 .map(|b| b.y0)
         })
         .collect();
@@ -625,10 +642,10 @@ fn nested_group_rows_keep_their_height() {
     for w in ys.windows(2) {
         assert!((w[1] - w[0] - d0).abs() < 0.5, "{ys:?}");
     }
-    h.get_by_label("Surface 1 Thickness").click();
+    h.get_by_label("Surface 1 Thickness").click_accesskit();
     h.run_steps(2);
     for _ in 0..n {
-        h.press_key(Key::ArrowDown);
+        h.key_press(Key::ArrowDown);
         h.run_steps(2);
     }
     h.run_steps(4);
@@ -638,10 +655,11 @@ fn nested_group_rows_keep_their_height() {
                 .predicate(|n| n.value().is_some_and(|l| l.contains("Details —"))),
         )
         .next()
-        .and_then(|n| n.bounding_box())
+        .and_then(|n| n.accesskit_node().bounding_box())
         .unwrap();
     let last = h
         .get_by_label(&format!("Surface {n} Type"))
+        .accesskit_node()
         .bounding_box()
         .unwrap();
     assert!(last.y1 <= bar.y0, "last row {last:?}, bar {bar:?}");
@@ -683,17 +701,19 @@ fn make_and_remove_groups_from_the_table() {
     // 要素 1・2 の面を Shift で選び、Shift+F10 の欄で群 G1 にする
     let (s1, s2) = (span(&h, &ids[1]), span(&h, &ids[2]));
     h.get_by_label(&format!("Surface {} Thickness", s1[0]))
-        .click();
+        .click_accesskit();
     h.run_steps(2);
     for _ in s1[0]..s2[1] {
-        h.press_key_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+        h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
         h.run_steps(1);
     }
-    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F10);
     h.run_steps(2);
-    h.get_by_label("Group name").type_text("G1");
+    let name = h.get_by_label("Group name");
+    name.focus();
+    name.type_text("G1");
     h.run_steps(1);
-    h.get_by_label("Make group").click();
+    h.get_by_label("Make group").click_accesskit();
     settle(&mut h);
     assert_eq!(paths(&h)[1..3], ["G1", "G1"], "{}", h.state().test_state());
     assert_eq!(paths(&h)[0], "");
@@ -734,7 +754,7 @@ fn make_and_remove_groups_from_the_table() {
         assert!(paths(&h).iter().all(|p| !p.contains('X')));
     }
     // 元に戻すで入れ子の前へ
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert_eq!(paths(&h)[1..3], ["G1", "G1"], "{}", h.state().test_state());
     // 群を解除: 中の要素は残り、群のブロックは消える
@@ -765,12 +785,16 @@ fn recent_files_are_one_line() {
     let long = r"D:\work\optics\a-rather-long-folder-name-for-the-test\another-long-folder-name-inside-it\tests\refs\A0\system.zmx";
     h.state_mut().c.s.recent = vec![long.to_string()];
     h.run_steps(2);
-    h.get_by_label("File").click();
+    h.get_by_label("File").click_accesskit();
     h.run_steps(2);
     // 「最近のファイル」は空の文書の案内にもある（メニューの方は後に描く）
     h.get_all_by_label("Recent files").last().unwrap().hover();
     h.run_steps(4);
-    let b = h.get_by_label(r"…\A0\system.zmx").bounding_box().unwrap();
+    let b = h
+        .get_by_label(r"…\A0\system.zmx")
+        .accesskit_node()
+        .bounding_box()
+        .unwrap();
     assert!(b.y1 - b.y0 < 30.0, "{b:?}");
 }
 
@@ -845,7 +869,7 @@ fn field_edits_are_messages() {
     app.update(Msg::Edit(edit::Edit::between(&want, &want2).unwrap()));
     h.run_steps(2);
     assert_eq!(h.state().c.doc.combo.epd, epd0 + 2.0);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert_eq!(
         h.state().c.doc.combo.epd,
@@ -989,11 +1013,11 @@ fn surface_type_change_undoes_in_one_step() {
     let top = h.state().c.combo_hist.list(true)[0].clone();
     assert!(top.title.starts_with("Lens Data: "), "{top:?}");
     assert!(top.tip().contains("EVENASPH"), "{top:?}");
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     settle(&mut h);
     assert_eq!(h.state().c.doc.combo, c0, "{}", h.state().test_state());
     assert_eq!(h.state().c.sys.ld_rows[j].typ, typ0);
-    h.press_key_modifiers(Modifiers::COMMAND, Key::Y);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
     settle(&mut h);
     assert_eq!(h.state().c.doc.combo, c1, "{}", h.state().test_state());
     assert_eq!(h.state().c.sys.ld_rows[j].typ, "EVENASPH");
@@ -1065,6 +1089,7 @@ fn sysset_wave_and_field_cells_edit() {
                 n.label()
                     .is_some_and(|l| l.starts_with(&format!("Row {row} ")) && l.contains(col))
             }))
+            .accesskit_node()
             .bounding_box()
             .unwrap();
         egui::pos2(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32)
@@ -1087,7 +1112,7 @@ fn sysset_wave_and_field_cells_edit() {
         press(h, p);
         h.input_mut().events.push(egui::Event::Text(text.into()));
         h.run_steps(3);
-        h.press_key(Key::Enter);
+        h.key_press(Key::Enter);
         settle(h);
     };
     // 主の波長のチェック（1 行目）を押してから、1 行目の波長を書き換える
@@ -1168,10 +1193,10 @@ fn selecting_cells_changes_nothing() {
         .expect("element 2 surfaces");
     let before = h.state().c.doc.combo.clone();
     h.get_by_label(&format!("Surface {first} Thickness"))
-        .click();
+        .click_accesskit();
     h.run_steps(2);
     for _ in 0..3 {
-        h.press_key_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+        h.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
         h.run_steps(1);
     }
     settle(&mut h);
@@ -1231,6 +1256,7 @@ fn history_panel_jumps_to_a_step() {
             n.label()
                 .is_some_and(|l| l.starts_with(&format!("{title}   ")))
         }))
+        .accesskit_node()
         .bounding_box()
         .is_some()
     };
@@ -1243,7 +1269,7 @@ fn history_panel_jumps_to_a_step() {
         n.label()
             .is_some_and(|l| l.starts_with(&format!("{t2}   ")))
     }))
-    .click();
+    .click_accesskit();
     settle(&mut h);
     assert_eq!(
         h.state().c.doc.combo.epd,
@@ -1259,7 +1285,7 @@ fn history_panel_jumps_to_a_step() {
         egui_kittest::kittest::by()
             .predicate(move |n| n.label().is_some_and(|l| l.starts_with(&format!("{t}   ")))),
     )
-    .click();
+    .click_accesskit();
     settle(&mut h);
     assert_eq!(h.state().c.doc.combo.epd, epd0 + 2.0);
 }

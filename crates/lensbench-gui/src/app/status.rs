@@ -37,7 +37,7 @@ impl App {
             self.c.log_status(hint.clone());
             // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る
             let right_w: f32 = ui
-                .data(|d| d.get_temp(egui::Id::new("status-right-w")))
+                .data(|d| d.get_temp(egui::Id::unique("status-right-w")))
                 .unwrap_or(320.0);
             // 右の数値との間は 16 px 空ける（前は 180 px 引いていて、右に空きがあっても短く切れた）
             let room = (ui.available_width() - right_w - 16.0).max(80.0);
@@ -76,7 +76,7 @@ impl App {
                 self.status_numbers(ui, row_w, weak)
             });
             let w = right.inner;
-            ui.data_mut(|d| d.insert_temp(egui::Id::new("status-right-w"), w));
+            ui.data_mut(|d| d.insert_temp(egui::Id::unique("status-right-w"), w));
         });
         if self.c.status_log_open {
             self.status_log_window(ui.ctx());
@@ -142,7 +142,7 @@ impl App {
             } else {
                 egui::TextStyle::Body.resolve(ui.style())
             };
-            ui.fonts(|f| f.layout_no_wrap(t.to_string(), font, weak).size().x)
+            ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), font, weak).size().x)
         };
         // 行の幅から、右に置いた版の欄（min_rect）と左の状態の文に残す分を引く
         let mut budget = row_w - ui.min_rect().width() - 300.0;
@@ -175,7 +175,7 @@ impl App {
         egui::Window::new(tr("Status history"))
             .open(&mut open)
             .default_width(560.0)
-            .max_height(ctx.screen_rect().height() * 0.6)
+            .max_height(ctx.content_rect().height() * 0.6)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for (t, err, hint) in self.c.status_log.iter().rev() {

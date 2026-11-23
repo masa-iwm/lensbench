@@ -20,12 +20,12 @@ pub(super) fn copy_menu(ui: &mut Ui, v: &Value, fig: bool) -> bool {
     ui.menu_button(tr("Copy ▼"), |ui| {
         if fig && ui.button(tr("Figure as image")).clicked() {
             shot = true;
-            ui.close_menu();
+            ui.close();
         }
         if ui.button(tr("JSON")).clicked() {
             ui.ctx()
                 .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
-            ui.close_menu();
+            ui.close();
         }
         if ui
             .button(tr("Text (tab-separated)"))
@@ -35,11 +35,11 @@ pub(super) fn copy_menu(ui: &mut Ui, v: &Value, fig: bool) -> bool {
             .clicked()
         {
             ui.ctx().copy_text(delimited(&tables(v), '\t'));
-            ui.close_menu();
+            ui.close();
         }
         if ui.button(tr("CSV")).clicked() {
             ui.ctx().copy_text(delimited(&tables(v), ','));
-            ui.close_menu();
+            ui.close();
         }
     });
     shot
@@ -52,7 +52,7 @@ pub(super) fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -
     ui.menu_button(tr("Save ▼"), |ui| {
         for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
             if ui.button(label).clicked() {
-                ui.close_menu();
+                ui.close();
                 let text = if ext == "json" {
                     serde_json::to_string_pretty(v).unwrap_or_default()
                 } else {
@@ -65,7 +65,7 @@ pub(super) fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -
             }
         }
         if fig && ui.button(tr("Figure as image (PNG)…")).clicked() {
-            ui.close_menu();
+            ui.close();
             out = Some(ResOut::Shot(false));
         }
     });

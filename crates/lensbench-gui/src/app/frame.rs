@@ -35,7 +35,7 @@ impl App {
         };
         // 変わったときだけ送る（送ると次のフレームを描くので、毎フレーム送ると何もしていなくても描き続ける）
         let changed = ctx.data_mut(|d| {
-            let k = egui::Id::new("lensbench-title");
+            let k = egui::Id::unique("lensbench-title");
             let same = d.get_temp::<String>(k).is_some_and(|t| t == title);
             if !same {
                 d.insert_temp(k, title.clone());
@@ -63,31 +63,41 @@ impl App {
     }
 
     /// 上の帯・下の行・ドック・別の窓のパネル
-    pub(super) fn show_panels(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("header")
+    pub(super) fn show_panels(&mut self, ui: &mut egui::Ui) {
+        let ctx = &ui.ctx().clone();
+        egui::Panel::top("header")
             .frame(
-                egui::Frame::side_top_panel(&ctx.style())
+                egui::Frame::side_top_panel(&ctx.global_style())
                     .inner_margin(egui::Margin::symmetric(10, 6)),
             )
-            .show(ctx, |ui| self.header(ctx, ui));
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| self.status_bar(ui));
+            .show(ui, |ui| self.header(ctx, ui));
+        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         let mut viewer = Viewer {
             c: &mut self.c,
             to_window: Vec::new(),
             added: Vec::new(),
             dragging: None,
         };
-        let mut style = egui_dock::Style::from_egui(ctx.style().as_ref());
+        let mut style = egui_dock::Style::from_egui(ctx.global_style().as_ref());
         style.tab_bar.corner_radius = egui::CornerRadius::same(6);
         style.tab.tab_body.inner_margin = egui::Margin::same(10);
-        DockArea::new(&mut self.dock)
-            .style(style)
-            .show_add_buttons(true)
-            .show_add_popup(true)
-            .show_leaf_collapse_buttons(false)
-            // フロートの窓を本体の外まで動かせるように（外に置くと別の OS の窓にする）
-            .window_bounds(egui::Rect::EVERYTHING)
-            .show(ctx, &mut viewer);
+        // 残りの広さにドック（egui_dock 0.16 の DockArea::show と同じ、余白なし・透明の枠）
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::central_panel(&ctx.global_style())
+                    .inner_margin(egui::Margin::ZERO)
+                    .fill(egui::Color32::TRANSPARENT),
+            )
+            .show(ui, |ui| {
+                DockArea::new(&mut self.dock)
+                    .style(style)
+                    .show_add_buttons(true)
+                    .show_add_popup(true)
+                    .show_leaf_collapse_buttons(false)
+                    // フロートの窓を本体の外まで動かせるように（外に置くと別の OS の窓にする）
+                    .window_bounds(egui::Rect::EVERYTHING)
+                    .show_inside(ui, &mut viewer);
+            });
         let Viewer {
             to_window,
             added,
@@ -101,7 +111,7 @@ impl App {
             ctx.pointer_latest_pos(),
         ) {
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-            egui::Area::new(egui::Id::new("lensbench-drop-pick"))
+            egui::Area::new(egui::Id::unique("lensbench-drop-pick"))
                 .order(egui::Order::Tooltip)
                 .fixed_pos(q + egui::vec2(14.0, 10.0))
                 .interactable(false)
@@ -121,7 +131,10 @@ impl App {
                 }
             }
             let id = self.c.new_id();
-            self.dock.set_focused_node_and_surface((s, n));
+            self.dock.set_focused_node_and_surface(egui_dock::NodePath {
+                surface: s,
+                node: n,
+            });
             self.dock.push_to_focused_leaf(Pane { id, kind: k });
         }
         for id in to_window {
@@ -176,7 +189,10 @@ impl App {
 pub(super) fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
     let mut out = Vec::new();
     // 窓に落としたファイル
-    let dropped = ctx.input(|i| i.raw.dropped_files.iter().find_map(crate::files::dropped));
+    // 落としたのが何個でも開くのは最初の 1 つ
+    let dropped = ctx
+        .input(|i| i.raw.dropped_files.first().and_then(crate::files::dropped))
+        .or_else(crate::files::take_dropped);
     if let Some(p) = dropped {
         out.push(Msg::OpenFile(p));
     }
@@ -208,7 +224,7 @@ pub(super) fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
         }
     });
     // Ctrl+Z・Ctrl+Y（Ctrl+Shift+Z）: 系の変更を元に戻す・やり直す（入力欄の中では欄の文字の取り消し）
-    if !ctx.wants_keyboard_input() {
+    if !ctx.egui_wants_keyboard_input() {
         let (redo, undo) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::Y)
@@ -225,7 +241,7 @@ pub(super) fn input_msgs(ctx: &egui::Context) -> Vec<Msg> {
 
 /// パネルを描いた後のキーの操作
 fn late_input_msg(ctx: &egui::Context) -> Option<Msg> {
-    if ctx.wants_keyboard_input() {
+    if ctx.egui_wants_keyboard_input() {
         return None;
     }
     let (back, fwd) = ctx.input_mut(|i| {

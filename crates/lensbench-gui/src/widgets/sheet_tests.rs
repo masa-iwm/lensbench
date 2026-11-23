@@ -86,13 +86,15 @@ impl Bench {
         let raw = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(600.0, 400.0))),
             time: Some(self.t),
-            events,
-            modifiers: mods,
+            // egui 0.37 から修飾キーは RawInput の欄でなく出来事で渡す
+            events: std::iter::once(egui::Event::ModifiersChanged(mods))
+                .chain(events)
+                .collect(),
             ..Default::default()
         };
         let (st, rows, ch) = (&mut self.st, &mut self.rows, &mut self.changed);
-        let _ = self.ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = self.ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 *ch |= show(ui, "t", st, rows);
             });
         });
@@ -465,8 +467,8 @@ fn typing_completes_each_char() {
             events,
             ..Default::default()
         };
-        let _ = ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 show(ui, "p", st, sh);
             });
         });
@@ -539,8 +541,8 @@ fn arrow_opens_choices() {
             events,
             ..Default::default()
         };
-        let _ = ctx.run(raw, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = ctx.run_ui(raw, |root| {
+            egui::CentralPanel::default().show(root, |ui| {
                 show(ui, "p", st, sh);
             });
         });

@@ -6,7 +6,7 @@ impl Core {
     pub(super) fn help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.help_open;
         // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール）
-        let screen = ctx.screen_rect();
+        let screen = ctx.content_rect();
         egui::Window::new(tr("Keyboard shortcuts"))
             .open(&mut open)
             .default_width(460.0)

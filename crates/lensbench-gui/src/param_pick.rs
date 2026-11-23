@@ -430,7 +430,7 @@ pub(crate) fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
     let mut pick = |ui: &mut Ui, n: &str, label: String| {
         if ui.button(label).clicked() {
             out = Some(n.to_string());
-            ui.close_menu();
+            ui.close();
         }
     };
     if let Set::Swap { gaps } = set {

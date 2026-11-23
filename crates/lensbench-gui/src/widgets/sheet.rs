@@ -356,8 +356,13 @@ const GRIP_W: f32 = 6.0;
 const ARROW_W: f32 = 14.0;
 
 /// 表を描く。何か書き換えたら true
-pub(crate) fn show(ui: &mut Ui, id: impl Hash, st: &mut SheetState, sh: &mut dyn Sheet) -> bool {
-    let id = egui::Id::new(id);
+pub(crate) fn show(
+    ui: &mut Ui,
+    id: impl Hash + std::fmt::Debug,
+    st: &mut SheetState,
+    sh: &mut dyn Sheet,
+) -> bool {
+    let id = egui::Id::unique(id);
     let (n, m) = (sh.rows(), sh.cols());
     // 最後の行の下の空の行（行 n。左端の列だけ）
     let ghost = sh.new_row(false);
@@ -490,8 +495,12 @@ impl Out {
 }
 
 /// 表の状態を egui の一時の記憶に置いて描く（状態を持つ所の無いフォームの表）。(書き換えたか, 数をドラッグ中か)
-pub(crate) fn show_temp(ui: &mut Ui, id: impl Hash, sh: &mut dyn Sheet) -> (bool, bool) {
-    let id = egui::Id::new(id);
+pub(crate) fn show_temp(
+    ui: &mut Ui,
+    id: impl Hash + std::fmt::Debug,
+    sh: &mut dyn Sheet,
+) -> (bool, bool) {
+    let id = egui::Id::unique(id);
     let mut st: SheetState = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     let changed = show(ui, id, &mut st, sh);
     let busy = st.drag.is_some();
@@ -710,7 +719,7 @@ fn cell_ui(
     let name = trf("Row {} {}", &[&(r + 1), &sh.header(c, Some(r))]);
     let (enabled, value) = (cell.ro.is_none(), cell.text.clone());
     resp.widget_info(move || {
-        let mut w = egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name.clone());
+        let mut w = egui::WidgetInfo::labeled(egui::Role::Button, enabled, name.clone());
         w.current_text_value = Some(value.clone());
         w
     });
@@ -891,11 +900,11 @@ fn cell_ui(
         if cell.ro.is_none() {
             if ui.button(tr("Edit")).clicked() {
                 out.start = Some((r, c, None));
-                ui.close_menu();
+                ui.close();
             }
             if ui.button(tr("Clear")).clicked() {
                 out.set.push((r, c, String::new()));
-                ui.close_menu();
+                ui.close();
             }
             ui.separator();
         }
@@ -912,7 +921,7 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
         .unwrap_or(r..=r);
     if ui.button(tr("Copy")).on_hover_text("Ctrl+C").clicked() {
         out.copy = true;
-        ui.close_menu();
+        ui.close();
     }
     let ins = sh.can_insert();
     if ins
@@ -922,11 +931,11 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
             .clicked()
     {
         out.insert = Some(r);
-        ui.close_menu();
+        ui.close();
     }
     if ins && ui.button(tr("Insert row below")).clicked() {
         out.insert = Some(r + 1);
-        ui.close_menu();
+        ui.close();
     }
     if ui
         .add_enabled(*sel.start() > 0, egui::Button::new(tr("Move up")))
@@ -934,7 +943,7 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
         .clicked()
     {
         out.shift = Some((sel.clone(), -1));
-        ui.close_menu();
+        ui.close();
     }
     if ui
         .add_enabled(
@@ -945,7 +954,7 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
         .clicked()
     {
         out.shift = Some((sel.clone(), 1));
-        ui.close_menu();
+        ui.close();
     }
     if ins
         && ui
@@ -954,7 +963,7 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
             .clicked()
     {
         out.duplicate = Some(sel.clone());
-        ui.close_menu();
+        ui.close();
     }
     let count = sel.end() - sel.start() + 1;
     let label = if count > 1 {
@@ -964,7 +973,7 @@ fn row_menu(ui: &mut Ui, st: &SheetState, sh: &dyn Sheet, out: &mut Out, r: usiz
     };
     if ui.button(label).on_hover_text("Ctrl+Delete").clicked() {
         out.remove = Some(sel);
-        ui.close_menu();
+        ui.close();
     }
 }
 
