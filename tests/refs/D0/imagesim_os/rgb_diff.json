@@ -2,7 +2,7 @@
  "system": "D0",
  "run": "rgb_diff",
  "opticstudio": "2026 R1.01 (26.1.1), ZOS-API standalone",
- "input_image": "lb937_rgb.png",
+ "input_image": "grid_rgb.png",
  "input_image_note": "run with the 24-bit BMP of the same pixels; PNG copy in ../../../imagesim_src/",
  "wavelength_mode": "RGB",
  "wavelengths_um": [
@@ -32,7 +32,7 @@
  "field_type": "Angle",
  "center_field_number": 1,
  "settings": {
-  "InputFile": "lb937_rgb.BMP",
+  "InputFile": "grid_rgb.BMP",
   "FieldHeight": 10.0,
   "Field.GetFieldNumber": 1,
   "Aberrations": "Diffraction",
@@ -76,7 +76,7 @@
   37849,
   38097
  ],
- "seconds_apply": 2.564,
+ "seconds_apply": 1.981,
  "chief_ray_image_height_mm": {
   "columns": [
    "axis",

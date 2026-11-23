@@ -100,7 +100,8 @@ OpticStudio の収差図に当たる解析。どれも評価関数の演算子�
   OpticStudio の既定と同じ）。画素は視野の値に線形に対応し、行 0（上）が +y、列 0（左）が −x。
 - `--field N` で元の画像の中心を視野 N（1 から。OpticStudio の Field）に置き、検出器の中心をその主波長の主光線の像点にする（既定の画素の大きさは
   中心の視野によらず軸上で決める。OpticStudio も同じ）。`--flip-source`（`none`・`top-bottom`・`left-right`・`both`）と `--rotate`（反時計回りに
-  0・90・180・270 度、反転の後）で元の画像を置く前に反転・回転し、`--flip-image` で検出器の像を反転する。
+  0・90・180・270 度、反転の後）で元の画像を置く前に反転・回転し、`--flip-image` で検出器の像を反転する（向きと順は OpticStudio 2026 R1.01 の
+  Flip Source・Rotation・Flip Image と同じ。tests/refs/D0/imagesim_os/ の像で照合）。
 - 主波長の主光線の像点（歪曲）と相対照度は写像の格子（`--map-grid`、既定 17 × 17）で求めて補間し、元の画素の明るさをその像点へ置く。
   `--aberrations diffraction`（既定）は PSF の格子（`--psf-x`・`--psf-y`、既定 5 × 5）の各点の FFT PSF（像面の上、主波長の主光線の像点が中心なので
   倍率色収差を含む）を検出器の画素に積分し、格子点の間は重みで混ぜて FFT で畳み込む。`geometric` は FFT PSF の代わりに幾何 PSF

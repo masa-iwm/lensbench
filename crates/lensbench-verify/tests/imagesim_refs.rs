@@ -15,7 +15,7 @@
 //!   （中心の点は 0.01 px 以内で合い、lensbench の点の位置は D0 の f·tanθ の写像そのもの）。和は視野 10° ほどの角で面積の比
 //!   （sec³θ ≈ 1.05）の分だけ大きい
 
-use lensbench_analysis::imagesim::{image_sim, Aberrations, ImageSimOpts, SimImage};
+use lensbench_analysis::imagesim::{image_sim, Aberrations, Flip, ImageSimOpts, Rotate, SimImage};
 use lensbench_export::image::read_png;
 use lensbench_formats::zmx::{self, LoadOptions};
 use lensbench_verify::zemax_refs::{glass_dirs, refs_dir};
@@ -44,6 +44,51 @@ fn dots(img: &[f64], w: usize) -> Vec<(f64, f64, f64)> {
         }
     }
     out
+}
+
+/// 向きの目印（入力の左上の 8 × 8 の正方形と、上の縁の列 100..123 の棒）が出力のどこに来たか: 4 つの角の
+/// 24 px 角と、縁に沿った 8 か所（各縁の両端から 98..126、深さ 24 px）のうちの最も明るい所。格子の線（32 + 64k）と
+/// 点（64k）は箱に入らない。回転・反転の 8 通りをすべて分ける（正方形の角と棒の位置の組）
+fn marker(img: &[f64], w: usize) -> (usize, usize) {
+    let h = img.len() / w;
+    let sum = |r: std::ops::Range<usize>, c: std::ops::Range<usize>| -> f64 {
+        r.flat_map(|y| c.clone().map(move |x| (y, x)))
+            .map(|(y, x)| img[y * w + x])
+            .sum()
+    };
+    let lo = |n: usize| 0..24.min(n);
+    let hi = |n: usize| n - 24..n;
+    let corners = [
+        sum(lo(h), lo(w)),
+        sum(lo(h), hi(w)),
+        sum(hi(h), lo(w)),
+        sum(hi(h), hi(w)),
+    ];
+    let a = |n: usize| 98..126.min(n);
+    let b = |n: usize| n - 126..n - 98;
+    let bars = [
+        sum(lo(h), a(w)),
+        sum(lo(h), b(w)),
+        sum(hi(h), a(w)),
+        sum(hi(h), b(w)),
+        sum(a(h), lo(w)),
+        sum(b(h), lo(w)),
+        sum(a(h), hi(w)),
+        sum(b(h), hi(w)),
+    ];
+    let arg = |v: &[f64]| (0..v.len()).max_by(|&i, &j| v[i].total_cmp(&v[j])).unwrap();
+    (arg(&corners), arg(&bars))
+}
+
+/// OS の Flip Source・Flip Image の値
+fn flip_of(v: &serde_json::Value) -> Flip {
+    match v.as_str().unwrap_or("None") {
+        "None" => Flip::None,
+        "TopBottom" => Flip::TopBottom,
+        "LeftRight" => Flip::LeftRight,
+        "TopBottomLeftRight" => Flip::Both,
+        x => panic!("flip {x}"),
+    }
 }
 
 fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
@@ -89,6 +134,15 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
             let f = &meta["fields"][n - 1];
             (f[0].as_f64().unwrap(), f[1].as_f64().unwrap())
         },
+        flip_source: flip_of(&st["FlipSource"]),
+        rotate: match st["RotationSource"].as_str().unwrap_or("Rotate_0") {
+            "Rotate_0" => Rotate::R0,
+            "Rotate_90" => Rotate::R90,
+            "Rotate_180" => Rotate::R180,
+            "Rotate_270" => Rotate::R270,
+            x => panic!("rotation {x}"),
+        },
+        flip_image: flip_of(&st["FlipImage"]),
         ..Default::default()
     };
     let r = image_sim(
@@ -127,6 +181,17 @@ fn check(sys: &str, run: &str, fails: &mut Vec<String>) {
         (0.96, 1.06)
     };
     let tol_pos = if off_axis { 1.5 } else { 0.4 };
+    // 向きの目印（回転・反転の約束）
+    let (oc, mc) = pairs[0];
+    let (om, mm) = (
+        marker(&och[oc], ow),
+        marker(&r.image.channels[mc], r.image.width),
+    );
+    if om != mm {
+        fails.push(format!(
+            "{sys} {run}: orientation marker at corner/bar {mm:?} (OS {om:?})"
+        ));
+    }
     for (oc, mc) in pairs {
         let (od, md) = (
             dots(&och[oc], ow),
@@ -158,6 +223,21 @@ fn image_simulation_matches_opticstudio() {
     }
     // 中心の視野が軸の外（D0 の視野 2 = (0, 5°)・視野 4 = (3°, −4°)）
     for run in ["gray_none_f2", "gray_diff_f2", "gray_none_f4"] {
+        check("D0", run, &mut fails);
+    }
+    // 元の画像の回転（反時計回り）・反転と、出力の反転。OS の順は Flip Source → Rotation → 模擬 → Flip Image
+    for run in [
+        "gray_none_rot90",
+        "gray_none_rot180",
+        "gray_none_rot270",
+        "gray_none_fsrc_tb",
+        "gray_none_fsrc_lr",
+        "gray_none_fsrc_tblr",
+        "gray_none_fimg_tb",
+        "gray_none_fimg_lr",
+        "gray_none_fimg_tblr",
+        "gray_none_rot90_fsrc_lr_fimg_tb",
+    ] {
         check("D0", run, &mut fails);
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));

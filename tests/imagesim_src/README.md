@@ -6,12 +6,12 @@ They live outside `tests/refs/` because every folder there is a system (tests wa
 The references come from OpticStudio 2026 R1.01 (26.1.1), run through the standalone ZOS-API.
 
 ## Inputs (512 x 512, `[row, col]`, row 0 = top)
-- `lb937_gray.png`: white on black.
+- `grid_gray.png`: white on black.
   - 1 px grid lines at rows and columns 32 + 64k.
   - 1 px dots at (64j, 64k), j, k = 1..7.
   - An orientation marker: an 8 x 8 square at rows/cols 10..17, plus a bar at rows 10..12, cols 100..123.
-- `lb937_rgb.png`: the same dot grid, with dot (64j, 64k) in channel R/G/B = (j + k) % 3. Same white marker.
-- `lb937_gray127.png`: `lb937_gray` halved (max 127).
+- `grid_rgb.png`: the same dot grid, with dot (64j, 64k) in channel R/G/B = (j + k) % 3. Same white marker.
+- `grid_gray127.png`: `grid_gray` halved (max 127).
 
 OpticStudio was given 24-bit BMPs with identical pixels.
 
@@ -32,6 +32,12 @@ Each `imagesim_os/<run>.json` records:
   - The output has the same pixel count as the input when XPixels/YPixels = 0.
   - The default pixel size is EFL x FieldHeight[rad] / 512 (input rows). Setting that value explicitly gives a bit-identical image.
 - **Orientation:** the output keeps the input orientation, with no flip or transpose. Top = +Y field, right = +X field. This was checked with off-axis centre fields 2 and 4.
+- **Rotation and flips** (D0 `gray_none_rot*`, `_fsrc_*`, `_fimg_*`):
+  - `Rotate_90` turns the source counterclockwise (the marker goes to the bottom-left), `Rotate_270` clockwise, `Rotate_180` to the bottom-right.
+  - `TopBottom` flips rows, `LeftRight` flips columns, and `TopBottomLeftRight` equals `Rotate_180` (pixel-identical outputs).
+  - Flip Source and Rotation change the input before the simulation. Flip Image flips the output bitmap (pixel-identical to the flipped `gray_none`).
+  - Order: Flip Source, then Rotation, then the simulation, then Flip Image (`gray_none_rot90_fsrc_lr_fimg_tb`; the other order would put the marker in another corner).
+- **Edge offset:** markers near the left edge come out 1 px further left and near the bottom edge 1 px lower (top and right do not move); in `gray_none` the square sits at columns 9..16 (input 10..17).
 - **Blur:** with Oversampling None, the PSF is applied at input-pixel resolution. On these systems Diffraction, Geometric and None are identical when the PSF is smaller than one input pixel (D0 everywhere; A0 Geometric = Diffraction). Oversampling X8+ or a small FieldHeight brings out the Airy blur, e.g. D0 `gray_diff_ov8`.
 - **FieldHeight used:** the max field value (A0 20, D0 10), so the image covers only ±10° / ±5°.
 - **Timing:** without oversampling, each run takes 0.1–5 s. D0 Diffraction takes 12.8 s at X8 and 151 s at X16.
