@@ -477,7 +477,9 @@ impl System {
             let Some(mut v) = self.run_macro(m, q.surf)? else {
                 continue;
             };
-            // 負の半直径は絶対値にする（OpticStudio 26.1.1 で実測）。機械半径も同じにする
+            // 負の半直径・機械半径は絶対値にする（OpticStudio 26.1.1 で実測、機械半径は 2026 R1.01 で 11/23 に実測）。
+            // 半直径より小さい機械半径は、OpticStudio では半直径の値の固定に変わる。lensbench は値を残し、玉の半径
+            // （lens_radius）が半直径より小さい値を使わないので、効く大きさは同じ
             if matches!(q.what, Kind::Semi | Kind::MechSemi) {
                 v = v.abs();
             }

@@ -27,8 +27,8 @@
 //! 評価関数とずれ δ・|δ| の相関（[`McResult::correlation`]）も出す。
 //!
 //! 補償のしかた（[`CompMode`]、OpticStudio の公差解析の Comp）: `Optimize` は補償子を評価関数で DLS により合わせ直す
-//! （Optimize All (DLS)）。`Paraxial` は補償子を使わず、像面の前の厚さを近軸の焦点の動きだけ動かして公称の焦点のずれを
-//! 保つ（Paraxial Focus）。`None` は補償しない。
+//! （Optimize All (DLS)）。`Paraxial` は補償子を使わず、像面の前の厚さを置き直して公称の近軸の焦点からのずれを保つ
+//! （Paraxial Focus。像面の前の厚さの公差も打ち消す）。`None` は補償しない。
 //!
 //! 逆感度（[`McSpec::inverse`]、OpticStudio の Inverse Limit・Inverse Increment）: 感度の lo・hi で評価関数が上限
 //! （Limit: 評価関数の値、Increment: 公称からの変化）を超える側だけ、その公差の範囲を上限ちょうどになるまで締める
@@ -679,15 +679,18 @@ fn paraxial_focus_distance(s: &System) -> Result<f64> {
     Ok(z)
 }
 
-/// ずらした系 s の像面の前の厚さを、公称の系 s0 からの近軸の焦点の動きだけ動かした系（OpticStudio の Paraxial Focus）
+/// ずらした系 s の像面の前の厚さを、近軸の焦点からのずれ（厚さ − 焦点までの距離）が公称の系 s0 と同じになるように
+/// 置いた系（OpticStudio の Paraxial Focus）。像面の前の厚さそのものの公差も打ち消す（OpticStudio 2026 R1.01 で
+/// その行の変化が 0 になることを確かめた）
 fn paraxial_focus(s: &System, s0: &System) -> Result<System> {
     let m = s.image() - 1;
-    let dz = paraxial_focus_distance(s)? - paraxial_focus_distance(s0)?;
-    if dz == 0.0 {
+    let p = Param::new(m, Kind::Thick);
+    let defocus0 = s0.get_param(p)? - paraxial_focus_distance(s0)?;
+    let t = paraxial_focus_distance(s)? + defocus0;
+    if t == s.get_param(p)? {
         return Ok(s.clone());
     }
-    let p = Param::new(m, Kind::Thick);
-    s.with_params_fast(&[(p, s.get_param(p)? + dz)])
+    s.with_params_fast(&[(p, t)])
 }
 
 fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {

@@ -263,3 +263,53 @@ fn matches_opticstudio() {
         compare(n, &TOL);
     }
 }
+
+/// 近軸の焦点の補償（Paraxial Focus）は像面の前の厚さ（面 8、TTHI 8 8）の公差を打ち消す。OpticStudio 2026 R1.01 の
+/// 感度（±0.05、評価の変化 "−側 / +側"）: 補償なし −0.00143802 / +0.00189914、Paraxial Focus 0 / 0、
+/// TTHI 2 2 は Paraxial Focus で +0.00023466 / −0.00014259（公称 0.01885881）
+#[test]
+fn paraxial_focus_cancels_the_last_thickness() {
+    let s = load();
+    let sens = |mode: &str| {
+        let v = json!({
+            "preset": "none", "merit": "none", "terms": terms(&s),
+            "tols": [
+                {"label": "TTHI 8 8", "param": "8.t", "lo": -0.05, "hi": 0.05},
+                {"label": "TTHI 2 2", "param": "2.t", "lo": -0.05, "hi": 0.05},
+            ],
+            "compensators": ["8.t"], "comp_mode": mode, "trials": 0,
+        });
+        let spec = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+        let r = run(&spec).unwrap();
+        let out = result_json(&spec, &r, &out_opts(&json!({})).unwrap());
+        let n = out["nominal"]["merit"].as_f64().unwrap();
+        assert!((n - 0.01885881).abs() < 1e-7, "{mode} nominal {n}");
+        let row = |label: &str| {
+            let x = out["sensitivity"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|x| x["label"] == label)
+                .unwrap()
+                .clone();
+            [
+                x["merit_lo"].as_f64().unwrap() - n,
+                x["merit_hi"].as_f64().unwrap() - n,
+            ]
+        };
+        (row("TTHI 8 8"), row("TTHI 2 2"))
+    };
+    let close = |a: [f64; 2], b: [f64; 2], what: &str| {
+        for k in 0..2 {
+            assert!(
+                (a[k] - b[k]).abs() <= 2e-8,
+                "{what}: lensbench {a:?} OS {b:?}"
+            );
+        }
+    };
+    let (last, _) = sens("none");
+    close(last, [-0.00143802, 0.00189914], "none TTHI 8 8");
+    let (last, t2) = sens("paraxial");
+    close(last, [0.0, 0.0], "paraxial TTHI 8 8");
+    close(t2, [0.00023466, -0.00014259], "paraxial TTHI 2 2");
+}
