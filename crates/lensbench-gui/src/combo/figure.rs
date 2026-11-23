@@ -77,11 +77,43 @@ pub(super) fn figure(
         };
         view.axes.clear();
         view.mids.clear();
-        if let Some(k) =
-            crate::view3d::show(ui, resp, view.nav, sc, &d.configs, &owner, view.sel, accent)
-        {
-            view.set_sel(k);
-            view.dim = None;
+        // 機構部品も選べる（組合せの図だけ。2D と同じく欄の品番と選択を分け合う）
+        let mech_sel = combo
+            .is_some()
+            .then(|| super::mech::selected(ui.ctx()))
+            .flatten();
+        let ms = mech_sel.as_deref();
+        use crate::view3d::Click3;
+        match crate::view3d::show(
+            ui, resp, view.nav, sc, &d.configs, &owner, view.sel, ms, accent,
+        ) {
+            Some(Click3::Mech(n)) if combo.is_some() => {
+                let again = ms == Some(n.as_str());
+                super::mech::select(ui.ctx(), (!again).then_some(n.as_str()));
+                if !again {
+                    ui.ctx()
+                        .data_mut(|d| d.insert_temp(super::mech::scroll_id(), true));
+                }
+            }
+            Some(Click3::El(k)) => {
+                view.set_sel(Some(k));
+                view.dim = None;
+            }
+            Some(_) => {
+                view.set_sel(None);
+                view.dim = None;
+            }
+            None => {}
+        }
+        if let Some(m) = ms.and_then(|n| ro.mechanics.iter().find(|m| m.name == n)) {
+            let vis = ui.visuals().clone();
+            mech_card(
+                &ui.painter_at(rect),
+                &vis,
+                rect,
+                &card_lines(ui.ctx(), m),
+                accent,
+            );
         }
         return;
     }
@@ -114,7 +146,7 @@ pub(super) fn figure(
     let ms = (mech_sel.as_deref(), mech_hover.as_deref());
     paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak, ms);
     if let Some(m) = mech_sel.as_deref().and_then(pick) {
-        mech_card(&painter, &vis, rect, &m.card(), accent);
+        mech_card(&painter, &vis, rect, &card_lines(ui.ctx(), m), accent);
     }
     // 縮尺（レイアウトのパネルの図。OpticStudio と同じく左下）
     if view.nav {
@@ -1270,6 +1302,15 @@ pub(super) fn cube_of_prism(pts: &[[f64; 2]]) -> Option<[Vec<[f64; 2]>; 2]> {
     let (c, a, b) = (pts[i], pts[(i + 1) % 3], pts[(i + 2) % 3]);
     let o = [a[0] + b[0] - c[0], a[1] + b[1] - c[1]];
     Some([vec![a, c, b, o], vec![a, b]])
+}
+
+/// 選んだ機構部品の札の行: 品と配置（[`super::mech::MechPick::card`]）に、mech-check のケラレと収まりを足す
+fn card_lines(ctx: &egui::Context, m: &super::mech::MechPick) -> Vec<String> {
+    let mut v = m.card();
+    if let Some(c) = super::mech::check(ctx) {
+        v.extend(super::mech::check_lines(&m.name, &c));
+    }
+    v
 }
 
 /// 選んだ機構部品の説明（図の右下の札。1 行目は名前と品番）

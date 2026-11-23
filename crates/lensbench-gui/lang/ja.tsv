@@ -2036,6 +2036,10 @@ Enter numbers with min < max	最小 < 最大 の数を入れてください
 Glass only in the states	硝材は状態だけに
 Writes the substituted glass only as overrides of the states, leaving the base system (no state open) as it is. Unchecked, the base system takes the new glass of the state for the base configuration	置き換えた硝材を状態の上書きにだけ書き、基本のシステム（状態を開いていないシステム）はそのままにします。外すと、基本のシステムは基本の構成の状態の新しい硝材になります
 Surface {}: the glass was written only to the states (the earlier glass of a state that follows the base system is unknown)	面 {}: 硝材は状態にだけ書きました（基本のシステムに従う状態の前の硝材が分からないため）
+Mechanical vignetting: computing…	機構のケラレ: 計算中…
+Mechanical vignetting: {}	機構のケラレ: {}
+Field, wave: passes / this part first (all) [%]	視野, 波長: 通る / この部品が最初に切る（全部） [%]
+… {} more rows in the "Mechanical vignetting" analysis	… ほか {} 行は解析「機構のケラレ」で
 Where the pupil is vignetted	瞳のどこで切れるか
 Reaches the image	像面まで届く
 Vignetted by an aperture	開口で切れる

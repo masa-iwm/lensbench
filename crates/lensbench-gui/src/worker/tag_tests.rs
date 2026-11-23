@@ -50,6 +50,7 @@ fn every_tag_method_is_answered() {
         Tag::OpenDoc,
         Tag::PopupDoc,
         Tag::Coatings,
+        Tag::MechCheck,
     ];
     for t in &tags {
         let m = t.method().unwrap();

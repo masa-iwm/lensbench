@@ -85,6 +85,8 @@ pub(crate) enum Tag {
     PopupDoc,
     /// レンズデータの膜の列の候補（serve の analyze の coatings の available）
     Coatings,
+    /// 選んだ機構部品の札のケラレと収まり（serve の analyze の mech-check）
+    MechCheck,
 }
 
 /// ユーザーカタログへの操作
@@ -103,7 +105,7 @@ impl Tag {
     pub(crate) fn method(&self) -> Option<&'static str> {
         Some(match self {
             Tag::Load => "load",
-            Tag::Info | Tag::Analyze(_) | Tag::Coatings => "analyze",
+            Tag::Info | Tag::Analyze(_) | Tag::Coatings | Tag::MechCheck => "analyze",
             Tag::Rays(_) | Tag::Focus => "trace",
             Tag::Glasses => "glasses",
             Tag::Lenses => "lenses",
@@ -158,6 +160,7 @@ impl Tag {
                 | Tag::SurfData(_)
                 | Tag::Configs
                 | Tag::Coatings
+                | Tag::MechCheck
                 | Tag::Refresh
                 | Tag::Folders
                 | Tag::PopupDoc

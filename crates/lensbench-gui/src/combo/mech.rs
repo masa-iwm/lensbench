@@ -199,3 +199,72 @@ pub(crate) fn mech_info(it: &UserItem) -> String {
     }
     t
 }
+
+/// 選んだ部品の札に出す mech-check の結果（app が毎フレーム置く。値が Null なら計算中）
+fn check_id() -> egui::Id {
+    egui::Id::unique("lensbench-mech-check")
+}
+
+/// 札に出す mech-check の結果を置く（None は計算中）
+pub(crate) fn put_check(ctx: &egui::Context, v: Option<std::sync::Arc<Value>>) {
+    let v = v.unwrap_or_else(|| std::sync::Arc::new(Value::Null));
+    ctx.data_mut(|d| d.insert_temp(check_id(), v));
+}
+
+/// 札に出す mech-check の結果（まだ置かれていなければ None）
+pub(crate) fn check(ctx: &egui::Context) -> Option<std::sync::Arc<Value>> {
+    ctx.data(|d| d.get_temp(check_id()))
+}
+
+/// 札の行の数の上限（視野×波長が多いとき）
+const CHECK_ROWS: usize = 12;
+
+/// mech-check の結果 v のうち、部品 name の分の札の行: 視野・波長ごとの通る割合とこの部品が最初に切る割合
+/// （解析「機構のケラレ」の表の行と列）、収まりの注意。v が Null なら計算中
+pub(crate) fn check_lines(name: &str, v: &Value) -> Vec<String> {
+    if v.is_null() {
+        return vec![tr("Mechanical vignetting: computing…").to_string()];
+    }
+    if let Some(e) = v["error"].as_str() {
+        return vec![trf("Mechanical vignetting: {}", &[&e])];
+    }
+    let Some(k) = v["parts"]
+        .as_array()
+        .and_then(|a| a.iter().position(|p| p["name"] == name))
+    else {
+        return Vec::new();
+    };
+    let pct = |x: &Value| format!("{:.1}", x.as_f64().unwrap_or(f64::NAN));
+    let rows = v["results"].as_array().cloned().unwrap_or_default();
+    let mut out = vec![tr("Field, wave: passes / this part first (all) [%]").to_string()];
+    for r in rows.iter().take(CHECK_ROWS) {
+        let q = &r["parts"][k];
+        let cut = r["passed_pct"].as_f64().is_some_and(|x| x < 100.0 - 1e-9);
+        out.push(format!(
+            "{}{}, {}: {} / {} ({})",
+            if cut { "⚠ " } else { "" },
+            r["field"],
+            r["wave"],
+            pct(&r["passed_pct"]),
+            pct(&q["first_pct"]),
+            pct(&q["clipped_pct"]),
+        ));
+    }
+    if rows.len() > CHECK_ROWS {
+        out.push(trf(
+            "… {} more rows in the \"Mechanical vignetting\" analysis",
+            &[&(rows.len() - CHECK_ROWS)],
+        ));
+    }
+    for f in v["fit"].as_array().into_iter().flatten() {
+        if f["part"] == name || f["other"] == name {
+            let m = f["message"].as_str().unwrap_or_default();
+            out.push(if f["error"] == true {
+                format!("⚠ {m}")
+            } else {
+                m.to_string()
+            });
+        }
+    }
+    out
+}

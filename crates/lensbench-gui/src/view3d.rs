@@ -38,6 +38,8 @@ pub(crate) enum Kind {
 #[derive(Debug, Clone)]
 pub(crate) struct Mesh3 {
     pub kind: Kind,
+    /// 網の名前（機構部品なら部品の名前）
+    pub name: String,
     pub surfaces: [usize; 2],
     pub pos: Vec<[f32; 3]>,
     pub tris: Vec<[u32; 3]>,
@@ -66,6 +68,7 @@ impl Scene3 {
                         "mech" => Kind::Mech,
                         k => Kind::Plate(k.to_string()),
                     },
+                    name: m["name"].as_str().unwrap_or_default().to_string(),
                     surfaces: [us(&m["surfaces"][0]), us(&m["surfaces"][1])],
                     pos: f
                         .as_chunks::<3>()
@@ -213,7 +216,18 @@ impl Cam {
     }
 }
 
-/// 図の中の 3D 表示。クリックで選んだ要素（`owner` が面の範囲から決める番号）を返す（何もない所なら Some(None)）。
+/// 3D 表示でクリックしたもの
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Click3 {
+    /// 何も無い所
+    Empty,
+    /// 要素（`owner` が面の範囲から決める番号）
+    El(usize),
+    /// 機構部品（名前）
+    Mech(String),
+}
+
+/// 図の中の 3D 表示。クリックしたもの（要素か機構部品か何も無い所）を返す。mech_sel は選んでいる機構部品の名前。
 /// `full` はパネルいっぱいの図（素のホイールで拡大縮小。[`crate::widgets::NavOpts::full`]）
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn show(
@@ -224,8 +238,9 @@ pub(crate) fn show(
     configs: &[String],
     owner: &dyn Fn([usize; 2]) -> Option<usize>,
     sel: Option<usize>,
+    mech_sel: Option<&str>,
     accent: Color32,
-) -> Option<Option<usize>> {
+) -> Option<Click3> {
     let rect = resp.rect;
     let vis = ui.visuals().clone();
     let weak = theme::weak_text(&vis);
@@ -313,7 +328,8 @@ pub(crate) fn show(
 
     // 塗るもの: 三角形と光線の短い線分を、遠い順に
     enum Prim {
-        Tri([Pos2; 3], Color32, Option<usize>),
+        /// 三角形・色・持ち主（要素の番号か機構部品の網の番号）
+        Tri([Pos2; 3], Color32, Owner3),
         Seg([Pos2; 2], Color32),
     }
     let glass = theme::glass_3d(&vis);
@@ -325,14 +341,22 @@ pub(crate) fn show(
         l.map(|x| x / n)
     };
     let mut prims: Vec<(f32, Prim)> = Vec::new();
-    for m in &sc.meshes {
+    for (mi, m) in sc.meshes.iter().enumerate() {
         let k = owner(m.surfaces);
         let selected = k.is_some() && k == sel;
+        let mech_selected = m.kind == Kind::Mech && mech_sel == Some(m.name.as_str());
+        let who = match (&m.kind, k) {
+            (Kind::Mech, _) if !m.name.is_empty() => Owner3::Mech(mi),
+            (Kind::Mech, _) => Owner3::None,
+            (_, Some(k)) => Owner3::El(k),
+            _ => Owner3::None,
+        };
         let (col, alpha) = match &m.kind {
             Kind::Glass if selected => (accent, 0.85),
             Kind::Glass => (glass, 0.5),
             Kind::Mirror => (if selected { accent } else { mirror }, 0.9),
             Kind::Plate(_) => (plate, 0.35),
+            Kind::Mech if mech_selected => (accent, 0.7),
             Kind::Mech => (theme::mech_3d(&vis), 0.45),
         };
         let vs: Vec<[f32; 3]> = m.pos.iter().map(|&p| to_view(p)).collect();
@@ -358,7 +382,7 @@ pub(crate) fn show(
             let depth = (a[2] + b[2] + c[2]) / 3.0;
             prims.push((
                 depth,
-                Prim::Tri([to_screen(a), to_screen(b), to_screen(c)], fill, k),
+                Prim::Tri([to_screen(a), to_screen(b), to_screen(c)], fill, who),
             ));
         }
     }
@@ -479,17 +503,31 @@ pub(crate) fn show(
     let pointer = resp.hover_pos();
     let hit = pointer.and_then(|q| {
         prims.iter().rev().find_map(|(_, p)| match p {
-            Prim::Tri(t, _, k) if in_tri(t, q) => Some(*k),
+            Prim::Tri(t, _, w) if in_tri(t, q) => Some(*w),
             _ => None,
         })
     });
-    if hit.flatten().is_some() {
+    let hit = match hit.unwrap_or(Owner3::None) {
+        Owner3::El(k) => Click3::El(k),
+        Owner3::Mech(i) => Click3::Mech(sc.meshes[i].name.clone()),
+        Owner3::None => Click3::Empty,
+    };
+    if hit != Click3::Empty {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     if resp.clicked() {
-        return Some(hit.flatten());
+        return Some(hit);
     }
     None
+}
+
+/// 3D の三角形の持ち主
+#[derive(Debug, Clone, Copy)]
+enum Owner3 {
+    None,
+    El(usize),
+    /// 機構部品の網（[`Scene3::meshes`] の番号）
+    Mech(usize),
 }
 
 fn in_tri(t: &[Pos2; 3], p: Pos2) -> bool {
@@ -575,5 +613,75 @@ mod tests {
             ],
             Pos2::new(2.0, 2.0)
         ));
+    }
+
+    /// 機構部品の網をクリックすると部品の名前を返し、選んだ部品は網の色で分かる。何も無い所は Empty
+    #[test]
+    fn click_picks_mechanical_part() {
+        // 部品 tube の箱（一辺 20）
+        let cube = |name: &str, kind: &str| {
+            let mut pos = Vec::new();
+            for i in 0..8 {
+                pos.extend(
+                    [(i & 1) as f64, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64]
+                        .map(|x| 20.0 * x - 10.0),
+                );
+            }
+            let tris = [
+                0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0,
+                6, 4, 1, 5, 7, 1, 7, 3,
+            ];
+            json!({ "name": name, "kind": kind, "surfaces": [0, 0], "pos": pos, "tris": tris.to_vec() })
+        };
+        let sc = Scene3::parse(
+            &json!({ "meshes": [cube("tube", "mech")], "rays": [] }),
+            false,
+        );
+        let ctx = egui::Context::default();
+        let size = egui::vec2(400.0, 300.0);
+        let run = |events: Vec<egui::Event>| {
+            let mut out = None;
+            let raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, size)),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run_ui(raw, |root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    let (rect, resp) =
+                        ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+                    let _ = rect;
+                    out = show(
+                        ui,
+                        &resp,
+                        true,
+                        &sc,
+                        &[],
+                        &|_| None,
+                        None,
+                        Some("tube"),
+                        Color32::RED,
+                    );
+                });
+            });
+            out
+        };
+        let press = |at: Pos2, button: egui::PointerButton| {
+            let ev = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button,
+                pressed,
+                modifiers: Default::default(),
+            };
+            vec![egui::Event::PointerMoved(at), ev(true), ev(false)]
+        };
+        let click = |at: Pos2| press(at, egui::PointerButton::Primary);
+        run(Vec::new());
+        let mid = Pos2::new(size.x / 2.0, size.y / 2.0);
+        assert_eq!(run(click(mid)), Some(Click3::Mech("tube".into())));
+        // 右クリックはメニュー: 部品も要素も選ばない
+        assert_eq!(run(press(mid, egui::PointerButton::Secondary)), None);
+        run(vec![egui::Event::PointerMoved(Pos2::new(20.0, 20.0))]);
+        assert_eq!(run(click(Pos2::new(20.0, 20.0))), Some(Click3::Empty));
     }
 }

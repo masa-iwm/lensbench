@@ -110,6 +110,9 @@ impl Core {
         match &d.tag {
             // 系の膜ファイルが読めない: 前に開いた系の膜の候補を残さない
             Tag::Coatings => self.p.ld.coats = Default::default(),
+            Tag::MechCheck => self
+                .sys
+                .took_mech_check(serde_json::json!({ "error": e.to_string() })),
             Tag::Analyze(id) | Tag::Rays(id) => {
                 self.results.entry(*id).or_default().error = Some(e.to_string());
             }
@@ -189,6 +192,10 @@ impl Core {
             Tag::Info => self.sys.info = Some(v),
             Tag::Coatings => {
                 self.p.ld.coats = std::sync::Arc::new(coat_choices(&v));
+                return None;
+            }
+            Tag::MechCheck => {
+                self.sys.took_mech_check(v);
                 return None;
             }
             Tag::Analyze(id) => {

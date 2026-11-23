@@ -11,6 +11,7 @@ impl App {
         let solved = self.c.solved_gaps();
         combo::SolvedGap::store(ctx, solved.clone());
         self.c.p.combo_view.solved = solved;
+        self.c.mech_check_tick(ctx);
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.poll_open();
         self.c.poll_replay();

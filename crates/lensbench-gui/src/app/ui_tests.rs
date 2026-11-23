@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 // ガラスの置き換えの反映（多重構成の材料の行）
 mod glass;
+mod mech_card;
 
 /// リポジトリの根（public/）
 fn root() -> PathBuf {
