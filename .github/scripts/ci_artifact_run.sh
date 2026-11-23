@@ -14,13 +14,16 @@ has() {
   for n in "$@"; do grep -q "\"$n\"" <<< "$names" || return 1; done
 }
 if [ -n "$run" ] && has "$run" "$@"; then echo "$run"; exit 0; fi
-for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=push&status=success&head_sha=$sha" --jq '.workflow_runs[].id'); do
+# 成功した run は API の status=success で絞らず、ここで conclusion を見る
+# （head_sha と status を合わせた問い合わせが、成功した run を返さないことがあった。v0.9.0）
+ok='.workflow_runs[] | select(.conclusion == "success") | .id'
+for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=push&head_sha=$sha" --jq "$ok"); do
   if has "$r" "$@"; then echo "$r"; exit 0; fi
 done
 tree=$(gh api "repos/$REPO/commits/$sha" --jq .commit.tree.sha)
 for head in $(gh api "repos/$REPO/commits/$sha/pulls" --jq '.[].head.sha'); do
   [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
-  for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq '.workflow_runs[].id'); do
+  for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head" --jq "$ok"); do
     if has "$r" "$@"; then echo "$r"; exit 0; fi
   done
 done
