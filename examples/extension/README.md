@@ -15,12 +15,12 @@
 ## リポジトリの外へ写す
 
 公開リポジトリの中では相対パスで組みますが、写した先ではそのパスが無いので、次の 3 つを同じタグ（または rev）に
-そろえます（v0.8.0 の例。v0.8.0 のタグで、写した先の `cargo check` と `cargo check --features gui` が警告なしで通ることを確かめています）。
+そろえます（v0.9.0 の例。v0.9.0 のタグで、写した先の `cargo check` と `cargo check --features gui` が警告なしで通ることを確かめています）。
 
 1. `[dependencies]` と 2 つの `[target.…dependencies]` の `lensbench-sdk` を git の参照に:
-   `lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.8.0" }`（`features` はそのまま）
+   `lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.9.0" }`（`features` はそのまま）
 2. 末尾の `[patch.crates-io]` の `winit`・`branches` も同じ git の参照に（cargo がリポジトリの中から同じ名前の
-   クレートを探します）: `winit = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.8.0" }`
+   クレートを探します）: `winit = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.9.0" }`
 3. 公開リポジトリの同じタグの `rust-toolchain.toml` を、写した先の `Cargo.toml` の隣に写す（SDK は公開の CI と
    同じ Rust の版で組む前提です）
 
