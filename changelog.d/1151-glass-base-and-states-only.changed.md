@@ -1,0 +1,1 @@
+- GUI: applying a glass substitution over several configurations now also changes the base system (no state open) to the new glass of the state for the base configuration, including multi-configuration `.zmx` imports that cannot be split into elements; a "Glass only in the states" check keeps the old behaviour of writing only state overrides

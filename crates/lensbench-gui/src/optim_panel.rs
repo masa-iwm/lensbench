@@ -19,7 +19,7 @@ mod search;
 mod sheets;
 use kinds::{defaults, type_hint};
 use lensbench_engine::session::views::{OptimizeView, TermValue};
-pub(crate) use search::{result_glass_configs, result_resets, GlassApply, GlassUndo};
+pub(crate) use search::{plan_glass, result_glass_configs, result_resets, GlassApply, GlassUndo};
 
 /// 項のキーの値の書き方
 #[derive(Clone, Copy, PartialEq)]
@@ -485,8 +485,9 @@ pub(crate) struct OptPanel {
     pub glass_nd_step: f64,
     pub glass_vd_step: f64,
     pub glass_dpgf_step: String,
-    /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）・走らせたときの構成（状態の名前。空は開いている系）
+    /// 系に当てる前の材料（ガラスの置き換えを当てたとき。元に戻す）・走らせたときの構成（状態の名前。空は開いている系）・置き換えを状態だけに書くか
     pub undo_glass: Option<Vec<GlassUndo>>,
+    pub glass_states_only: bool,
     pub run_configs: Vec<String>,
     /// 構成（.zmx の構成番号か状態の名前、カンマ区切り。空は開いている系だけ）
     pub configs: String,
@@ -1448,26 +1449,7 @@ fn result_ui(
                 .color(weak),
         );
     }
-    ui.horizontal_wrapped(|ui| {
-        if ui
-            .button(tr("Apply to system"))
-            .on_hover_text(tr(
-                "Apply the optimized values to the open system (combination)",
-            ))
-            .clicked()
-        {
-            acts.push(Action::Apply);
-        }
-        if ui
-            .add_enabled(
-                p.undo.is_some() || p.undo_glass.is_some(),
-                egui::Button::new(tr("Undo apply")),
-            )
-            .clicked()
-        {
-            acts.push(Action::Undo);
-        }
-    });
+    search::apply_ui(ui, p, r, acts);
 }
 
 /// 結果の (名前, 値) のうち開いている系に当てられるもの。before なら最適化の前の値

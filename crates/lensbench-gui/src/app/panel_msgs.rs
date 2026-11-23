@@ -38,7 +38,9 @@ impl Core {
                 let glasses = op::result_glass_configs(&r, cfgs.len());
                 if !glasses.is_empty() {
                     // 材料を当てられなければ値も当てない（硝材を替えずに、替えた前提の値だけ入るのを防ぐ）
-                    let Some(undo) = self.apply_glass(&glasses, &cfgs) else {
+                    let Some(undo) =
+                        self.apply_glass(&glasses, &cfgs, self.p.opt.glass_states_only)
+                    else {
                         return;
                     };
                     self.p.opt.undo_glass = Some(undo);

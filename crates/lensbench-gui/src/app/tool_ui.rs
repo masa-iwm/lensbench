@@ -208,16 +208,19 @@ impl Core {
     }
 
     /// ガラスの置き換えの結果 gs（問題の構成 i は状態 states[i]。空は開いている系）を組合せに当てる。当てられなければ
-    /// None、当てたら元に戻す材料。状態があれば、置き換えた状態の材料を書く: 面の材料の上書きのある状態は上書きを、
-    /// 上書きの無い状態（要素の面の材料に従う）がどれも同じ硝材に置き換わったら面の材料を、そうでなければその状態の
-    /// 上書きを（serve の apply が多重構成の材料の行の置き換えた構成の欄を書くのと同じ）
+    /// None、当てたら元に戻す材料。状態があれば、置き換えた状態の材料を書き、states_only でなければ基本の系の面の
+    /// 材料も基本の構成の状態の新しい硝材にする（書き方は [`crate::optim_panel::plan_glass`]）
     pub(super) fn apply_glass(
         &mut self,
         gs: &[crate::optim_panel::GlassApply],
         states: &[String],
+        states_only: bool,
     ) -> Option<Vec<crate::optim_panel::GlassUndo>> {
         let mut undo = Vec::new();
-        if self.apply_glass_into(gs, states, &mut undo).is_some() {
+        if self
+            .apply_glass_into(gs, states, states_only, &mut undo)
+            .is_some()
+        {
             return Some(undo);
         }
         // 途中で当てられなくなったら、それまでに書いた状態の上書きを戻す（半端に替わった組合せを残さない）
@@ -232,6 +235,7 @@ impl Core {
         &mut self,
         gs: &[crate::optim_panel::GlassApply],
         states: &[String],
+        states_only: bool,
         undo: &mut Vec<crate::optim_panel::GlassUndo>,
     ) -> Option<()> {
         use crate::optim_panel::GlassUndo;
@@ -252,6 +256,8 @@ impl Core {
         );
         let mut base: Vec<(usize, String)> = Vec::new();
         let mut base_old: Vec<(usize, String)> = Vec::new();
+        // 基本の系にも書く設定で、状態の上書きだけにした面（系の面の番号）
+        let mut kept: Vec<usize> = Vec::new();
         for g in gs {
             let j = g.surface;
             if probs.is_empty() {
@@ -278,44 +284,50 @@ impl Core {
             let loc = self.doc.combo.chain().get(k)?.loc.clone();
             let p = self.doc.combo.get(&loc)?;
             let own = |n: &str| p.state_edit(n, face, "material").cloned();
-            // 面の材料に従う状態がどれも同じ硝材に置き換わったら面の材料を書く
-            let users: Vec<&String> = self
+            // 面の材料に従う状態と、その .zmx の構成
+            let users: Vec<(String, usize)> = self
                 .doc
                 .combo
                 .states
                 .iter()
                 .filter(|n| own(n).is_none())
+                .map(|n| (n.clone(), p.config_in(Some(n))))
                 .collect();
-            let to_base = users
-                .first()
-                .and_then(|u| hits.iter().find(|h| h.0 == *u))
-                .map(|h| (h.1, h.2));
-            let to_base = to_base.filter(|(_, m)| {
-                users
-                    .iter()
-                    .all(|u| hits.iter().any(|h| h.0 == *u && h.2 == *m))
-            });
-            let mut writes = Vec::new();
-            for (n, _, m) in &hits {
-                let old = own(n);
-                if old.is_some() || to_base.is_none() {
-                    undo.push(GlassUndo::State {
-                        loc: loc.clone(),
-                        face,
-                        state: (*n).clone(),
-                        old,
-                    });
-                    writes.push(((*n).clone(), (*m).clone()));
-                }
+            let hits: Vec<(String, String, String)> = hits
+                .into_iter()
+                .map(|(n, a, b)| (n.clone(), a.clone(), b.clone()))
+                .collect();
+            let plan = crate::optim_panel::plan_glass(&users, &hits, p.zmx().config, states_only);
+            if plan.base_kept {
+                kept.push(j);
             }
-            if let Some((from, m)) = to_base {
-                base.push((j, m.clone()));
-                base_old.push((j, from.clone()));
+            for (n, _) in &plan.writes {
+                undo.push(GlassUndo::State {
+                    loc: loc.clone(),
+                    face,
+                    state: n.clone(),
+                    old: own(n),
+                });
+            }
+            let writes = plan.writes;
+            if let Some((from, m)) = plan.base {
+                base.push((j, m));
+                base_old.push((j, from));
             }
             let p = self.doc.combo.get_mut(&loc)?;
             for (n, m) in writes {
                 p.set_state_edit(&n, face, "material", json!(m));
             }
+        }
+        if !kept.is_empty() {
+            let list: Vec<String> = kept.iter().map(usize::to_string).collect();
+            // 下の行は作り直しの知らせで消えるので、履歴にも残す
+            let msg = trf(
+                "Surface {}: the glass was written only to the states (the earlier glass of a state that follows the base system is unknown)",
+                &[&list.join(", ")],
+            );
+            self.note_history(vec![msg.clone()]);
+            self.info(msg);
         }
         // 面の材料は状態の上書きの後に（材料で要素を分け直すことがある）
         if !base.is_empty() {

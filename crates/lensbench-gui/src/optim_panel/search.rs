@@ -354,3 +354,106 @@ pub(crate) fn result_resets(r: &OptimizeView, before: bool) -> Vec<(String, f64)
         .map(|(n, x)| (n.clone(), if before { *x } else { 0.0 }))
         .collect()
 }
+
+/// 要素の 1 つの面への、ガラスの置き換えの書き方（[`plan_glass`]）
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct GlassPlan {
+    /// 要素の面の材料（基本の系）の (前, 後)。None は面の材料を変えない
+    pub base: Option<(String, String)>,
+    /// 状態の材料の上書き (状態, 材料)
+    pub writes: Vec<(String, String)>,
+    /// 基本の系にも書く設定なのに、状態の上書きだけにした（面の材料に従う状態の前の硝材が分からない）
+    pub base_kept: bool,
+}
+
+/// 状態のある組合せの要素の面への置き換えの書き方。users は面の材料に従う（その面の材料の上書きの無い）状態と
+/// その .zmx の構成の番号（状態の並びの順）、hits は置き換えた状態の (状態, 前, 後)、base_cfg は基本の系の構成の番号。
+/// states_only なら置き換えた状態の上書きだけを書く。そうでなければ基本の系も置き換える: 面の材料を基本の構成の
+/// 状態（面の材料に従う最初のもの）の新しい硝材にし、ほかの状態は上書きで今の（置き換えたならその）硝材のままにする
+pub(crate) fn plan_glass(
+    users: &[(String, usize)],
+    hits: &[(String, String, String)],
+    base_cfg: usize,
+    states_only: bool,
+) -> GlassPlan {
+    let hit = |n: &str| hits.iter().find(|h| h.0 == n);
+    let only_own = |base_kept| GlassPlan {
+        base: None,
+        writes: hits.iter().map(|h| (h.0.clone(), h.2.clone())).collect(),
+        base_kept,
+    };
+    if states_only {
+        return only_own(false);
+    }
+    // 基本の構成で面の材料に従う状態（無ければ、どの状態も上書きを持つので面の材料は変えない）。置き換えて
+    // いなければ基本の系もそのまま
+    let Some(b) = users.iter().find(|u| u.1 == base_cfg) else {
+        return only_own(false);
+    };
+    let Some((_, from, to)) = hit(&b.0) else {
+        return only_own(false);
+    };
+    let mut writes = Vec::new();
+    for (n, cfg) in users {
+        let m = match hit(n) {
+            Some(h) => h.2.clone(),
+            // 置き換えなかった状態は前の硝材で上書き（同じ構成の、置き換えた状態の前の硝材）
+            None => match users
+                .iter()
+                .find(|u| u.1 == *cfg && hit(&u.0).is_some())
+                .and_then(|u| hit(&u.0))
+            {
+                Some(h) => h.1.clone(),
+                None => return only_own(true),
+            },
+        };
+        if m != *to {
+            writes.push((n.clone(), m));
+        }
+    }
+    // 面の材料の上書きを持つ状態は、置き換えたらその上書きを
+    for (n, _, m) in hits {
+        if !users.iter().any(|u| u.0 == *n) {
+            writes.push((n.clone(), m.clone()));
+        }
+    }
+    GlassPlan {
+        base: Some((from.clone(), to.clone())),
+        writes,
+        base_kept: false,
+    }
+}
+
+/// 結果の「システムに反映」「反映を元に戻す」と、ガラスの置き換えを状態だけに書くかのチェック
+pub(super) fn apply_ui(
+    ui: &mut Ui,
+    p: &mut OptPanel,
+    r: &OptimizeView,
+    acts: &mut Vec<super::Action>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button(tr("Apply to system"))
+            .on_hover_text(tr(
+                "Apply the optimized values to the open system (combination)",
+            ))
+            .clicked()
+        {
+            acts.push(super::Action::Apply);
+        }
+        if ui
+            .add_enabled(
+                p.undo.is_some() || p.undo_glass.is_some(),
+                egui::Button::new(tr("Undo apply")),
+            )
+            .clicked()
+        {
+            acts.push(super::Action::Undo);
+        }
+        // ガラスを置き換えたときだけ（状態の無い組合せでは効かない）
+        if r.glass.as_ref().is_some_and(|g| !g.changes.is_empty()) {
+            ui.checkbox(&mut p.glass_states_only, tr("Glass only in the states"))
+                .on_hover_text(tr("Writes the substituted glass only as overrides of the states, leaving the base system (no state open) as it is. Unchecked, the base system takes the new glass of the state for the base configuration"));
+        }
+    });
+}

@@ -340,3 +340,64 @@ fn result_glasses_configs_and_resets() {
     assert_eq!(result_resets(&r, false), vec![("6.dn".to_string(), 0.0)]);
     assert_eq!(result_resets(&r, true), vec![("6.dn".to_string(), 0.01)]);
 }
+
+/// 状態への置き換えの書き方: 基本の系にも書く・状態だけに書く・前の硝材が分からない状態があるとき
+#[test]
+fn plan_glass_writes_base_and_states() {
+    let s = |x: &str| x.to_string();
+    let users = |v: &[(&str, usize)]| v.iter().map(|(n, c)| (s(n), *c)).collect::<Vec<_>>();
+    let hits = |v: &[(&str, &str, &str)]| {
+        v.iter()
+            .map(|(n, a, b)| (s(n), s(a), s(b)))
+            .collect::<Vec<_>>()
+    };
+    // 面の材料に従う状態がどれも同じ硝材に: 面の材料だけ（上書きを持つ C はその上書き）
+    let p = plan_glass(
+        &users(&[("A", 1), ("B", 1)]),
+        &hits(&[("A", "X", "Y"), ("B", "X", "Y"), ("C", "Z", "W")]),
+        1,
+        false,
+    );
+    assert_eq!(p.base, Some((s("X"), s("Y"))));
+    assert_eq!(p.writes, vec![(s("C"), s("W"))]);
+    // 違う硝材に: 面は基本の構成の最初の状態 A の硝材、B は上書き
+    let u = users(&[("A", 1), ("B", 1)]);
+    let h = hits(&[("A", "X", "Y"), ("B", "X", "V")]);
+    let p = plan_glass(&u, &h, 1, false);
+    assert_eq!(p.base, Some((s("X"), s("Y"))));
+    assert_eq!(p.writes, vec![(s("B"), s("V"))]);
+    // 状態だけに書く
+    let p = plan_glass(&u, &h, 1, true);
+    assert_eq!(p.base, None);
+    assert_eq!(p.writes, vec![(s("A"), s("Y")), (s("B"), s("V"))]);
+    assert!(!p.base_kept);
+    // 置き換えなかった状態 D（同じ構成）は前の硝材で上書きして保つ
+    let p = plan_glass(
+        &users(&[("A", 1), ("D", 1)]),
+        &hits(&[("A", "X", "Y")]),
+        1,
+        false,
+    );
+    assert_eq!(p.base, Some((s("X"), s("Y"))));
+    assert_eq!(p.writes, vec![(s("D"), s("X"))]);
+    // 置き換えなかった状態 E が別の構成: 前の硝材が分からないので状態だけ
+    let p = plan_glass(
+        &users(&[("A", 1), ("B", 2), ("E", 3)]),
+        &hits(&[("A", "X", "Y"), ("B", "Z", "V")]),
+        1,
+        false,
+    );
+    assert_eq!(p.base, None);
+    assert!(p.base_kept);
+    assert_eq!(p.writes, vec![(s("A"), s("Y")), (s("B"), s("V"))]);
+    // 基本の構成の状態を置き換えなかった: 基本の系はそのまま
+    let p = plan_glass(
+        &users(&[("A", 1), ("B", 2)]),
+        &hits(&[("B", "Z", "V")]),
+        1,
+        false,
+    );
+    assert_eq!(p.base, None);
+    assert!(!p.base_kept);
+    assert_eq!(p.writes, vec![(s("B"), s("V"))]);
+}
