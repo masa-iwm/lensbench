@@ -4,6 +4,15 @@ use serde_json::Value;
 
 /// serve の `blocks`（load・layout の返事）: id のあるブロック・群と、その往路の面の範囲
 pub(crate) fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
+    runs_of(v, "forward")
+}
+
+/// serve の `blocks` の、鏡の `back`・光束の `turn` で戻る復路の面の範囲
+pub(crate) fn block_back_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
+    runs_of(v, "back")
+}
+
+fn runs_of(v: &Value, key: &str) -> Vec<(String, Vec<[usize; 2]>)> {
     let us = |x: &Value| x.as_u64().unwrap_or(0) as usize;
     v["blocks"]
         .as_array()
@@ -12,7 +21,7 @@ pub(crate) fn block_spans(v: &Value) -> Vec<(String, Vec<[usize; 2]>)> {
                 .map(|b| {
                     (
                         b["id"].as_str().unwrap_or_default().to_string(),
-                        b["forward"]
+                        b[key]
                             .as_array()
                             .map(|a| a.iter().map(|x| [us(&x[0]), us(&x[1])]).collect())
                             .unwrap_or_default(),

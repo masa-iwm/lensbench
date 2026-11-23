@@ -200,6 +200,15 @@ def test_result_typed_dicts_match_the_results(tmp_path):
     fit = lb.System.from_project(pj, base=str(p19.parent), glass_dirs=[str(ROOT / "tests" / "glass")]).mech_check(grid=5)
     assert fit["fit"]
     cases += [("_MechFit", f) for f in fit["fit"]]
+    # 光束の一覧・光束の表（P16 に光束を足したもの）
+    tg = json.loads((ROOT / "examples" / "projects" / "P16_twyman_green.json").read_text(encoding="utf-8"))
+    tg["beams"] = [{"name": "t", "path": "TR"}, {"name": "r", "path": "RT", "role": "reference"},
+                   {"name": "g", "path": "TR", "turn": {"block": "TEST", "surface": 0}, "off": True}]
+    (tmp_path / "tg.json").write_text(json.dumps(tg), encoding="utf-8")
+    bt = lb.System.beam_table(str(tmp_path / "tg.json"), grid=5, glass_dirs=[str(ROOT / "tests" / "glass")])
+    beams = lb.System.beams(str(tmp_path / "tg.json"))
+    cases += [("_Beam", b) for b in beams] + [("_BeamTable", bt)]
+    cases += [("_BeamRow", r) for r in bt["beams"]]
     for name, r in cases:
         req, opt = td[name]
         keys = set(r)

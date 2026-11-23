@@ -37,6 +37,55 @@ pub(crate) fn beam_paths_of(
     .map_err(err)
 }
 
+/// Read the systems of several configurations of a multi-configuration .zmx (`System.load_configs`)
+pub(crate) fn load_configs_of(
+    py: Python<'_>,
+    path: PathBuf,
+    configs: Option<Vec<usize>>,
+    glass_dirs: Option<Vec<PathBuf>>,
+    coatings: Option<Vec<PathBuf>>,
+    coating_file: Option<PathBuf>,
+) -> PyResult<Vec<crate::PySystem>> {
+    use crate::errors::value_err;
+    use crate::PySystem;
+    use lensbench_formats::zmx;
+    if path
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+    {
+        return Err(value_err(
+            "load_configs is only for .zmx (load project files per state with load(state=...))",
+        ));
+    }
+    let opt = zmx::LoadOptions {
+        catalog_dirs: glass_dirs.unwrap_or_default(),
+        ..Default::default()
+    };
+    // 空の list は全部（None）と取り違えやすいので断る
+    if configs.as_ref().is_some_and(|c| c.is_empty()) {
+        return Err(value_err(
+            "configs is empty (leave configs out for all configurations)",
+        ));
+    }
+    let cfgs = configs.unwrap_or_default();
+    let v = py
+        .detach(|| zmx::load_configs(&path, &opt, &cfgs))
+        .map_err(err)?;
+    let coat = coatings.unwrap_or_else(crate::env_coatings);
+    v.into_iter()
+        .map(|mut s| {
+            if coating_file.is_some() {
+                s.edit_raw(|r| {
+                    r.coating_file = coating_file.clone();
+                    Ok(())
+                })
+                .map_err(err)?;
+            }
+            Ok(PySystem::new(s, coat.clone(), Default::default()))
+        })
+        .collect()
+}
+
 /// 膜を使う計算（偏光の追跡・干渉・系を渡したプラグインなど）で、系の膜の注意（同じ名前の膜のどれを使ったかなど、
 /// [`lensbench_core::coating::Coatings::notes`]）を Python の警告にする。膜なし（None）なら何もしない
 pub(crate) fn warn_coat(

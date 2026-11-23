@@ -168,6 +168,86 @@ pub(super) fn face_of(
     Some((k, (a..j).filter(|&i| !rows[i].is_cb()).count()))
 }
 
+/// 往路の 2 回目以降・復路の行を、要素の往路の範囲の面の行へ写したもの（[`pass_row`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PassRow {
+    /// 同じ面の往路（要素の範囲）の行
+    pub(super) own: usize,
+    /// 復路の行の後ろの媒質・間隔を持つ往路の行（往路の 1 つ前の面。要素の最初の面なら None）
+    pub(super) prev: Option<usize>,
+    /// 復路の行
+    pub(super) back: bool,
+}
+
+impl PassRow {
+    /// 欄 field を書く往路の行（復路の行の媒質・間隔は 1 つ前の面）。書けなければ None
+    pub(super) fn row_for(&self, field: &str) -> Option<usize> {
+        if self.back && matches!(field, "t" | "material" | "dn" | "disp") {
+            self.prev
+        } else {
+            Some(self.own)
+        }
+    }
+}
+
+/// 面の表の行 j が、要素の往路の範囲（spans、要素の id は ids）の外で、同じ要素のブロックを往路でもう一度通る範囲
+/// （fwd）か復路の範囲（back、範囲の面を往路の逆の順に通る）にあれば、同じ面の往路の行。座標ブレークの行・範囲の中の
+/// 行・どの要素にも無い行は None
+pub(super) fn pass_row(
+    rows: &[lens_data::Row],
+    spans: &[Option<[usize; 2]>],
+    ids: &[String],
+    fwd: &[(String, Vec<[usize; 2]>)],
+    back: &[(String, Vec<[usize; 2]>)],
+    j: usize,
+) -> Option<PassRow> {
+    if !rows.get(j).is_some_and(|r| !r.is_cb())
+        || spans.iter().flatten().any(|s| s[0] <= j && j <= s[1])
+    {
+        return None;
+    }
+    let faces = |r: [usize; 2]| -> Vec<usize> {
+        (r[0]..=r[1].min(rows.len().saturating_sub(1)))
+            .filter(|&i| !rows[i].is_cb())
+            .collect()
+    };
+    let runs = |v: &[(String, Vec<[usize; 2]>)], id: &str| -> Vec<[usize; 2]> {
+        v.iter()
+            .filter(|(n, _)| n == id)
+            .flat_map(|(_, r)| r.iter().copied())
+            .filter(|r| r[0] <= j && j <= r[1])
+            .collect()
+    };
+    for (k, id) in ids.iter().enumerate() {
+        let Some(s) = spans.get(k).copied().flatten() else {
+            continue;
+        };
+        if id.is_empty() {
+            continue;
+        }
+        let own = faces(s);
+        if let Some(r) = runs(fwd, id).first() {
+            let i = faces(*r).iter().position(|&x| x == j)?;
+            return Some(PassRow {
+                own: *own.get(i)?,
+                prev: None,
+                back: false,
+            });
+        }
+        if let Some(r) = runs(back, id).first() {
+            let f = faces(*r);
+            let q = f.iter().position(|&x| x == j)?;
+            let i = f.len() - 1 - q;
+            return Some(PassRow {
+                own: *own.get(i)?,
+                prev: i.checked_sub(1).and_then(|p| own.get(p).copied()),
+                back: true,
+            });
+        }
+    }
+    None
+}
+
 /// 面 j の列 col に面の上書きがあるか（組合せの系）
 pub(super) fn overridden(
     rows: &[lens_data::Row],
@@ -220,6 +300,57 @@ mod tests {
         assert!(!overridden(&rows, &spans, &picks, 3, Col::R));
         assert!(!overridden(&rows, &spans, &picks, 1, Col::Semi));
         assert!(!overridden(&rows, &spans, &picks, 2, Col::Semi));
+    }
+
+    /// 復路の行は同じ面の往路の行へ、後ろの媒質・間隔は往路の 1 つ前の面の行へ。往路の 2 回目は同じ番号の面
+    #[test]
+    fn later_pass_rows_map_to_the_element_span() {
+        let row = |t: &str| Row {
+            typ: t.into(),
+            ..Default::default()
+        };
+        // 物体・玉 L（面 1〜3）・鏡 4・復路の L（5〜7）・像。L の往路の 2 回目に見立てた範囲 8〜10
+        let mut rows: Vec<Row> = (0..12).map(|_| row("STANDARD")).collect();
+        rows[9] = row("COORDBRK");
+        let spans = vec![Some([1, 3])];
+        let ids = vec!["L".to_string()];
+        let back = vec![("L".to_string(), vec![[5, 7]])];
+        let none: Vec<(String, Vec<[usize; 2]>)> = Vec::new();
+        let at = |j| pass_row(&rows, &spans, &ids, &none, &back, j);
+        assert_eq!(at(2), None, "範囲の中");
+        assert_eq!(at(4), None, "鏡");
+        assert_eq!(
+            at(5),
+            Some(PassRow {
+                own: 3,
+                prev: Some(2),
+                back: true
+            })
+        );
+        let first = at(7).unwrap();
+        assert_eq!(
+            first,
+            PassRow {
+                own: 1,
+                prev: None,
+                back: true
+            }
+        );
+        assert_eq!(first.row_for("r"), Some(1));
+        assert_eq!(first.row_for("t"), None);
+        assert_eq!(at(6).unwrap().row_for("material"), Some(1));
+        let fwd = vec![("L".to_string(), vec![[1, 3], [8, 10]])];
+        let at = |j| pass_row(&rows, &spans, &ids, &fwd, &none, j);
+        assert_eq!(at(9), None, "座標ブレーク");
+        assert_eq!(
+            at(10),
+            Some(PassRow {
+                own: 2,
+                prev: None,
+                back: false
+            })
+        );
+        assert_eq!(at(10).unwrap().row_for("t"), Some(2));
     }
 
     /// ソルブ・ピックアップで決まる値は変えない（A0 の面 7 の厚さ）

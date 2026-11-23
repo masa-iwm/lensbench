@@ -153,6 +153,16 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
     "_Solve": ("A solve (what is \"t\" thickness or \"c\" curvature, other the other surface)",
                {"surf": "int", "what": "str", "kind": "str", "value": "float", "param": "float", "other": "int | None"},
                {}),
+    "_Beam": ("A beam of a project file (System.beams; turn has block, surface and pass when not 0)",
+              {"name": "str", "path": "str | None", "state": "str | None", "role": "str | None",
+               "turn": "dict[str, Any] | None", "off": "bool"}, {}),
+    "_BeamRow": ("A row of the beam table (transmission is a dict with error when it can't be computed)",
+                 {"name": "str", "path": "str | None", "state": "str | None", "role": "str | None", "off": "bool",
+                  "surfaces": "int", "transmission": "float | dict[str, str]", "vignetted": "float",
+                  "chief_opl_mm": "float | None", "opl_difference_mm": "float | None"}, {}),
+    "_BeamTable": ("Result of System.beam_table",
+                   {"field": "int", "wavelength_um": "float", "reference": "str", "beams": "list[_BeamRow]",
+                    "notes": "list[str]"}, {}),
     "_Zoom": ("Result of zoom",
               {"quantity": "str", "names": "list[str]", "path": "list[_ZoomPoint]", "systems": "list[System]",
                "warnings": "list[str]"}, {}),
@@ -168,6 +178,7 @@ RESULT_OF = {
     "plugin_spec": "_PluginSpec", "run_settings": "_RunSettings", "zoom": "_Zoom",
     "System.units": "list[_Unit]", "System.pickups": "list[_Pickup]", "System.solves": "list[_Solve]",
     "trace_many": "list[_TraceResult]",
+    "System.beams": "list[_Beam]", "System.load_beams": "dict[str, System]", "System.beam_table": "_BeamTable",
 }
 for _k, _t in RESULT_OF.items():
     OVERRIDES.setdefault(_k, {})["return"] = _t

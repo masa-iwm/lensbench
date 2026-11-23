@@ -118,7 +118,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
     一緒に渡せない。状態の `project` で `beams` は変えられない。`info` が光束の一覧（`beams`）を出す。
     `layout --beams all` で光束を重ねて描き（`zmx --beams all` は光束ごとに 1 構成の .zmx）、解析 `beams`（光束の表）が光束ごとの
     瞳で平均した透過率（膜・フレネル・分岐比、偏光なし）・けられた光線の割合・主光線の像面までの光路長と参照の光束（`reference`、
-    省略は `role` が `reference` の最初の光束）との差を出す
+    省略は `role` が `reference` の最初の光束）との差を出す。GUI は組合せの道具の列の「光束」で一覧・編集、Python は `System.beams`・
+    `System.load_beams`・`System.beam_table`
   - 光束の `turn`: `{"name": "ghost", "path": "TT", "turn": {"block": "W", "surface": 0}}` のように、玉（`lens` ブロック）の面で
     部分反射して来た道を戻る経路（窓・試料の裏面の反射、迷光の経路）。`block`・`surface` は面の参照と同じ（往路の面、`pass` で何回目に
     通るときか）。反射は屈折面での反射（ゴーストと同じ、面の後ろの媒質を反対側にした境界の反射、コーティング込み）で、戻りはミラーの

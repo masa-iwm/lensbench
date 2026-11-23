@@ -773,6 +773,96 @@ fn round_trip_blocks_write_back_with_notes() {
     );
 }
 
+/// 復路・往路の 2 回目以降の面の値をブロックの面へ書き戻す: 復路の面の形の値は同じ面、面の後ろの間隔（符号が逆）・
+/// 媒質は往路の 1 つ前の面へ。復路の最初の面（ブロックの面 0）の後ろはブロックの前なので書かない
+#[test]
+fn later_pass_faces_write_back_to_blocks() {
+    use lensbench_project::edit_spec::EditOp;
+    let mut p = Project::from_json(
+        r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 4},
+        "blocks": [{"type": "stop"}, {"type": "air", "t": 5},
+          {"type": "lens", "id": "L", "source": {"surfaces": [{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 8},
+             {"radius": -40, "t": 2, "glass": "F2", "semi": 8}, {"radius": -90, "semi": 8}]}},
+          {"type": "air", "t": 20}, {"type": "mirror", "back": true}]}"#,
+    )
+    .unwrap();
+    let x = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    // L の面: 往路 0・1・2、復路 2・1・0
+    let l = |back: bool| -> Vec<usize> {
+        (0..x.map.len())
+            .filter(|&j| x.map[j].is_in("L") && x.map[j].back == back)
+            .filter(|&j| !x.system.surfaces[j].is_coord_break())
+            .collect()
+    };
+    let (f, b) = (l(false), l(true));
+    assert_eq!((f.len(), b.len()), (3, 3));
+    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
+        { "op": "set_surface", "surface": b[1], "fields": { "r": -30.0, "k": -1.0 } },
+        { "op": "set_surface", "surface": b[0], "fields": { "t": -3.0 } },
+        { "op": "set_material", "surface": b[0], "material": "N-BK7" },
+        { "op": "set_surface", "surface": b[2], "fields": { "t": -6.0 } },
+    ]))
+    .unwrap();
+    let faces: Vec<_> = x.map.iter().map(|o| o.face.clone()).collect();
+    let ed = lensbench_project::writeback::Edited {
+        system: &x.system,
+        faces: &faces,
+        before: &x.system,
+    };
+    let notes = lensbench_project::writeback::write_back(&mut p, ed, &ops, &|_| Ok(()));
+    assert_eq!(notes.len(), 4, "{notes:?}");
+    for k in 0..3 {
+        assert!(notes[k].contains("return path"), "{notes:?}");
+    }
+    assert!(
+        notes[3].contains("edit 4") && notes[3].contains("before the block"),
+        "{notes:?}"
+    );
+    let y = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let s = &y.system.surfaces;
+    assert_eq!(y.map.len(), x.map.len());
+    for j in [f[1], b[1]] {
+        assert!((s[j].c + 1.0 / 30.0).abs() < 1e-15, "{j}: {}", s[j].c);
+        assert_eq!(s[j].k, -1.0);
+    }
+    assert_eq!((s[f[1]].t, s[b[0]].t), (3.0, -3.0));
+    for j in [f[1], b[0]] {
+        assert_eq!(format!("{:?}", s[j].mat), r#"Glass("N-BK7")"#, "{j}");
+    }
+    // 面 0 は変わらない
+    assert_eq!(s[f[0]].t, 4.0);
+    assert!((s[b[2]].c - 1.0 / 60.0).abs() < 1e-15);
+
+    // 往路の 2 回目以降（同じ向きにブロックを 2 回通る）の面は 1 回目と同じ番号の面
+    let mut p2 = Project::from_json(&p.to_json()).unwrap();
+    let x2 = expand(&p2, &env(), &ExpandOpts::default()).unwrap();
+    let mut faces2: Vec<_> = x2.map.iter().map(|o| o.face.clone()).collect();
+    // 復路の範囲を往路の 2 回目に見立てる（並びは往路と同じ順）
+    for (k, &j) in b.iter().enumerate() {
+        let g = faces2[j].as_mut().unwrap();
+        (g.back, g.pass, g.index) = (false, 1, k);
+    }
+    let ed = lensbench_project::writeback::Edited {
+        system: &x2.system,
+        faces: &faces2,
+        before: &x2.system,
+    };
+    let ops: Vec<EditOp> = serde_json::from_value(serde_json::json!([
+        { "op": "set_surface", "surface": b[0], "fields": { "semi": 7.0 } },
+        { "op": "set_stop", "surface": b[0] },
+    ]))
+    .unwrap();
+    let notes = lensbench_project::writeback::write_back(&mut p2, ed, &ops, &|_| Ok(()));
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    assert!(notes[0].contains("other passes"), "{notes:?}");
+    assert!(
+        notes[1].contains("edit 2") && notes[1].contains("first forward pass"),
+        "{notes:?}"
+    );
+    let y = expand(&p2, &env(), &ExpandOpts::default()).unwrap();
+    assert_eq!(y.system.surfaces[f[0]].semi, 7.0);
+}
+
 /// プロジェクトファイルの形式の印と版: 書くときに付き、読み戻せる。新しい版・違う印は誤り、省略は今の版
 #[test]
 fn project_files_carry_format_and_version() {

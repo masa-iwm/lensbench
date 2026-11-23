@@ -1949,3 +1949,29 @@ Compensation: {}	補償のしかた: {}
 Inverse sensitivity: increment {} (criterion limit {}), {} tolerances tightened	逆感度: 増分 {}（評価の上限 {}）、締めた公差 {} 個
 Inverse sensitivity: limit {}, {} tolerances tightened	逆感度: 上限 {}、締めた公差 {} 個
 No tolerance reaches the criterion; the limits are unchanged	評価が上限に届く公差はなく、範囲は変わりません
+On the return pass, the medium and spacing after the first surface of an element are those in front of it (change them there)	復路では、要素の最初の面の後ろの媒質と間隔は要素の前のものです（そちらで変えてください）
+Change the spacing after an element on its first pass	要素の後ろの間隔は 1 回目の往路で変えてください
+The value also applies to the other passes through the element	値は要素を通るほかの回にも当たります
+Beam	光束
+Add a beam	光束を追加
+Beam {}: 0, ref and reference mean the reference sphere in interference	光束 {}: 0・ref・reference は干渉の参照球を表すので使えません
+Beam {}: a state has the same name	光束 {}: 同じ名前の状態があります
+Beam {}: choose the lens to turn back at	光束 {}: 折り返すレンズを選択してください
+Beam {}: no state {}	光束 {}: 状態 {} はありません
+Beam {}: the name is empty	光束 {}: 名前が空です
+Beams	光束
+Leave the beam out of the default set of the analyses	解析のデフォルトの組から外します
+Named beam splitter paths. Choose a beam by name like a state (analyses, interference, overlays in the layout). Turn back makes the beam return by the partial reflection at a lens surface	名前を付けたビームスプリッターの経路です。状態と同じように名前で選べます（解析・干渉・レイアウトの重ね描き）。折り返しはレンズの面の部分反射で光束を戻します
+Reference beam	参照光
+Remove the beam	光束を削除
+Role	役割
+Sample beam	試料光
+Stray light	迷光
+Surface of the lens from 0	レンズの面（0 から）
+T (transmit) and R (reflect) at each BS in the order passed. Empty uses the path of the state or the combination	BS を通る順の T（透過）・R（反射）です。空なら状態か組合せの経路を使います
+The beams of this project can't be edited here ({})	このプロジェクトの光束はここでは変えられません（{}）
+The lens whose surface partly reflects the beam back along its way (ghost paths, back reflections in interferometers)	面の部分反射で光束を来た道へ戻すレンズ（ゴーストの経路、干渉計の裏面反射など）
+Turn back at	折り返し
+Two or more beams are named {}	光束 {} が 2 つ以上あります
+Which forward pass through the lens (from 0)	レンズを往路で何回目に通るか（0 から）
+Pass	回

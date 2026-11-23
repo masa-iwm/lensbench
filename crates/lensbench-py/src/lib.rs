@@ -24,6 +24,7 @@ mod names;
 use crate::errors::{index_err, runtime_err, type_err, value_err};
 use names::warn_all;
 mod analyses;
+mod beams;
 mod optargs;
 use optargs::{opt_problem, VarArg};
 mod coatings;
@@ -52,7 +53,6 @@ use lensbench_core::system::{
 };
 use lensbench_core::{param::Param, RwLockExt, Waves};
 use lensbench_core::{with_threads, RecSel, System};
-use lensbench_formats::zmx;
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::prelude::*;
@@ -737,7 +737,7 @@ impl PySystem {
     ///
     /// - glass_dirs: folders to search for glass catalogs (AGF)
     /// - cfg: the multi-configuration number of a .zmx (from 1)
-    /// - state: the name of a state of a project file
+    /// - state: the name of a state or a beam of a project file (`System.beams(path)` lists the beams)
     /// - beam_path: the beam splitter path of a project file (T and R in the order the BSs are passed, e.g. "TR").
     ///   The possible paths are `System.beam_paths(path)`
     /// - lens_catalogs: lens catalogs (.zmx or folders) to search for the catalog lenses of a project file
@@ -919,6 +919,74 @@ impl PySystem {
         names::beam_paths_of(py, path, glass_dirs, state, lens_catalogs)
     }
 
+    /// The beams of a project file (.json): named beam splitter paths, as written in the file. Each is a dict with name, path
+    /// (T and R in the order the BSs are passed, None for the project's path), state (the state applied to the beam), role
+    /// ("sample", "reference", "stray" or None), turn (the lens surface where the beam is partly reflected back, a dict of block,
+    /// surface and pass, or None) and off (left out of the default set). Empty without beams. Read a beam with
+    /// `load(path, state=name)` or several with `load_beams`
+    #[staticmethod]
+    fn beams(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyAny>> {
+        beams::beams_of(py, path)
+    }
+
+    /// Read the systems of the beams of a project file (.json) at once. Returns a dict from the beam name to its System, each the
+    /// same as `load(path, state=name)` (the beam's path, state and turn applied), in the order of beams (the order of the file if
+    /// omitted). beams are names; the beams not marked off if omitted (all of them with all=True). Use it to trace the beams
+    /// together, e.g. `trace_many(list(d.values()), ...)`. glass_dirs, lens_catalogs, coatings and coating_file as in load
+    #[staticmethod]
+    #[pyo3(signature = (path, beams=None, all=false, glass_dirs=None, lens_catalogs=None, coatings=None, coating_file=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn load_beams<'py>(
+        py: Python<'py>,
+        path: PathBuf,
+        beams: Option<Vec<String>>,
+        all: bool,
+        glass_dirs: Option<Vec<PathBuf>>,
+        lens_catalogs: Option<Vec<PathBuf>>,
+        coatings: Option<Vec<PathBuf>>,
+        coating_file: Option<PathBuf>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let o = (glass_dirs, lens_catalogs, coatings, coating_file);
+        beams::load_beams(py, path, beams, all, o)
+    }
+
+    /// Beam table of a project file (.json), the same as the CLI `lensbench beams` and serve's analyze "beams": for each beam, the
+    /// pupil-averaged coating and Fresnel transmission (unpolarized, including the splitting ratio), the fraction of vignetted rays
+    /// of the pupil grid (side grid), the chief-ray optical path to the image surface [mm] and its difference from the reference
+    /// beam (reference: a beam name; the first beam with role "reference" if omitted, else the first beam). field and wave are
+    /// numbers from 1 (the primary wavelength if wave is omitted). Beams marked off are left out unless all. Returns a dict with
+    /// field, wavelength_um, reference, beams (a list of rows) and notes
+    #[staticmethod]
+    #[pyo3(signature = (path, field=1, wave=None, grid=21, reference=None, all=false, glass_dirs=None, lens_catalogs=None, threads=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn beam_table<'py>(
+        py: Python<'py>,
+        path: PathBuf,
+        field: usize,
+        wave: Option<usize>,
+        grid: usize,
+        reference: Option<String>,
+        all: bool,
+        glass_dirs: Option<Vec<PathBuf>>,
+        lens_catalogs: Option<Vec<PathBuf>>,
+        threads: Option<usize>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        beams::beam_table(
+            py,
+            path,
+            beams::TableArgs {
+                field,
+                wave,
+                grid,
+                reference,
+                all,
+                glass_dirs: glass_dirs.unwrap_or_default(),
+                lens_catalogs: lens_catalogs.unwrap_or_default(),
+                threads,
+            },
+        )
+    }
+
     /// Read the systems of several configurations of a multi-configuration .zmx at once. configs is a list of configuration numbers (from 1);
     /// all if omitted (an empty list is an error). Returns a list of System, each the same as `load(path, cfg=k)`.
     /// Use it to trace switches such as the sample and reference arms or the stop diameter (APMX, APER and so on) together with
@@ -933,41 +1001,7 @@ impl PySystem {
         coatings: Option<Vec<PathBuf>>,
         coating_file: Option<PathBuf>,
     ) -> PyResult<Vec<PySystem>> {
-        if path
-            .extension()
-            .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-        {
-            return Err(value_err(
-                "load_configs is only for .zmx (load project files per state with load(state=...))",
-            ));
-        }
-        let opt = zmx::LoadOptions {
-            catalog_dirs: glass_dirs.unwrap_or_default(),
-            ..Default::default()
-        };
-        // 空の list は全部（None）と取り違えやすいので断る
-        if configs.as_ref().is_some_and(|c| c.is_empty()) {
-            return Err(value_err(
-                "configs is empty (leave configs out for all configurations)",
-            ));
-        }
-        let cfgs = configs.unwrap_or_default();
-        let v = py
-            .detach(|| zmx::load_configs(&path, &opt, &cfgs))
-            .map_err(err)?;
-        let coat = coatings.unwrap_or_else(env_coatings);
-        v.into_iter()
-            .map(|mut s| {
-                if coating_file.is_some() {
-                    s.edit_raw(|r| {
-                        r.coating_file = coating_file.clone();
-                        Ok(())
-                    })
-                    .map_err(err)?;
-                }
-                Ok(PySystem::new(s, coat.clone(), Default::default()))
-            })
-            .collect()
+        names::load_configs_of(py, path, configs, glass_dirs, coatings, coating_file)
     }
 
     #[getter]
@@ -2703,7 +2737,7 @@ fn _system_from_state(
 
 /// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
 /// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
-pub const API_VERSION: (u32, u32) = (2, 9);
+pub const API_VERSION: (u32, u32) = (2, 10);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

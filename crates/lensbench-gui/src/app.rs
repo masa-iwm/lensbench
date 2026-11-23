@@ -1044,6 +1044,7 @@ impl Core {
         }
         self.loc.file = new_file;
         self.sys.elem_blocks = crate::combo::block_spans(&v);
+        self.sys.elem_back = crate::combo::block_back_spans(&v);
         self.sys.summary = Some(v);
         self.sys.info = None;
         self.refresh();
@@ -2260,10 +2261,10 @@ impl eframe::App for App {
         eframe::set_value(storage, SESSION_KEY, &ses);
     }
 }
-/// レイアウト図に重ねる構成（.zmx の多重構成・プロジェクトの状態・BS の経路）
+/// レイアウト図に重ねる構成（.zmx の多重構成・プロジェクトの状態・光束・BS の経路）
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Overlay {
-    /// 選べる構成（serve の layout の鍵 cfgs・states・paths と名前）と、重ねるか
+    /// 選べる構成（serve の layout の鍵 cfgs・states・beams・paths と名前）と、重ねるか
     pub items: Vec<(&'static str, String, bool)>,
     /// 構成 k を k 倍ずらす量 [dz, dy] mm
     pub offset: [f64; 2],
@@ -2284,7 +2285,7 @@ impl Overlay {
         if n > 1 {
             items.extend((1..=n).map(|k| ("cfgs", k.to_string())));
         }
-        for key in ["states", "paths"] {
+        for key in ["states", "beams", "paths"] {
             let names: Vec<String> = v[key]
                 .as_array()
                 .map(|a| {
@@ -2293,7 +2294,8 @@ impl Overlay {
                         .collect()
                 })
                 .unwrap_or_default();
-            if names.len() > 1 {
+            // 状態・経路は 2 つ以上で選べる（1 つなら今の系そのもの）。光束は 1 本でも今の系と違う
+            if names.len() > usize::from(key != "beams") {
                 items.extend(names.into_iter().map(|x| (key, x)));
             }
         }
@@ -2339,9 +2341,11 @@ impl Overlay {
             cfgs: on("cfgs"),
             states: on("states"),
             beam_paths: on("paths"),
+            beams: on("beams"),
             ..Default::default()
         };
-        let any = r.cfgs.is_some() || r.states.is_some() || r.beam_paths.is_some();
+        let any =
+            r.cfgs.is_some() || r.states.is_some() || r.beam_paths.is_some() || r.beams.is_some();
         if any && self.offset != [0.0; 2] {
             r.offset = vec![0.0, self.offset[1], self.offset[0]];
         }
@@ -2363,6 +2367,7 @@ impl Overlay {
                     ui.weak(match *key {
                         "cfgs" => tr("Config"),
                         "states" => tr("State"),
+                        "beams" => tr("Beam"),
                         _ => tr("BS path"),
                     });
                 }
@@ -2383,58 +2388,8 @@ impl Overlay {
     }
 }
 
-/// 重ねる構成: configs の結果から欄を作り、選んだものだけ layout の要求に。読み直しても選んだまま
-#[test]
-fn overlay_params() {
-    let mut o = Overlay::default();
-    o.update(&json!({ "cfgs": 1, "states": ["A"], "paths": ["TT", "RR"] }));
-    assert_eq!(o.items.len(), 2);
-    assert_eq!(o.req(), LayoutReq::default());
-    o.items[1].2 = true;
-    o.offset = [30.0, 0.0];
-    assert_eq!(
-        o.req(),
-        LayoutReq {
-            beam_paths: Some("RR".into()),
-            offset: vec![0.0, 0.0, 30.0],
-            ..Default::default()
-        }
-    );
-    o.update(&json!({ "cfgs": 1, "paths": ["RR", "TT", "TR"] }));
-    assert_eq!(o.items.iter().filter(|x| x.2).count(), 1);
-    assert_eq!(o.items[0].1, "RR");
-    o.update(&json!({ "cfgs": 3 }));
-    o.items[0].2 = true;
-    o.items[2].2 = true;
-    o.offset = [0.0; 2];
-    let cfgs = LayoutReq {
-        cfgs: Some("1,3".into()),
-        ..Default::default()
-    };
-    assert_eq!(o.req(), cfgs);
-    // xz 面: plane を足し、ずらす量の縦は x
-    o.offset = [10.0, 5.0];
-    use lensbench_engine::layout::View;
-    let r = o.req_in(ViewPlane::Xz);
-    assert_eq!(
-        (r.offset.as_slice(), r.plane),
-        (&[5.0, 0.0, 10.0][..], View::XZ)
-    );
-    assert_eq!(o.req_in(ViewPlane::Yz), o.req());
-    // 展開: yz のまま unfold、3D は plane
-    let r = o.req_in(ViewPlane::Unfold);
-    assert_eq!(
-        (r.offset.as_slice(), r.plane, r.unfold),
-        (&[0.0, 5.0, 10.0][..], View::YZ, true)
-    );
-    assert_eq!(o.req_in(ViewPlane::D3).plane, View::D3);
-    // 設定に保存する名前
-    assert_eq!(serde_json::to_value(ViewPlane::D3).unwrap(), json!("3d"));
-    assert_eq!(
-        serde_json::to_value(ViewPlane::Unfold).unwrap(),
-        json!("unfold")
-    );
-}
+#[cfg(test)]
+mod overlay_tests;
 
 /// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える
 const DOCS_URL: &str = match option_env!("LENSBENCH_DOCS_URL") {

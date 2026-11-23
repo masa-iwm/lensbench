@@ -441,6 +441,39 @@ class _Solve(TypedDict):
     other: int | None
 
 
+class _Beam(TypedDict):
+    """A beam of a project file (System.beams; turn has block, surface and pass when not 0)"""
+    name: str
+    path: str | None
+    state: str | None
+    role: str | None
+    turn: dict[str, Any] | None
+    off: bool
+
+
+class _BeamRow(TypedDict):
+    """A row of the beam table (transmission is a dict with error when it can't be computed)"""
+    name: str
+    path: str | None
+    state: str | None
+    role: str | None
+    off: bool
+    surfaces: int
+    transmission: float | dict[str, str]
+    vignetted: float
+    chief_opl_mm: float | None
+    opl_difference_mm: float | None
+
+
+class _BeamTable(TypedDict):
+    """Result of System.beam_table"""
+    field: int
+    wavelength_um: float
+    reference: str
+    beams: list[_BeamRow]
+    notes: list[str]
+
+
 class _Zoom(TypedDict):
     """Result of zoom"""
     quantity: str
@@ -575,6 +608,25 @@ class System:
     def beam_paths(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None) -> list[str]:
         """The beam splitter paths of a project file (.json) (strings of T and R in the order the BSs are passed).
         Empty without a BS. Read each with `load(path, beam_path=path)`
+        """
+
+    @staticmethod
+    def beam_table(path: _StrPath, field: int = 1, wave: int | None = None, grid: int = 21, reference: str | None = None, all: bool = False, glass_dirs: Sequence[_StrPath] | None = None, lens_catalogs: Sequence[_StrPath] | None = None, threads: int | None = None) -> _BeamTable:
+        """Beam table of a project file (.json), the same as the CLI `lensbench beams` and serve's analyze "beams": for each beam, the
+        pupil-averaged coating and Fresnel transmission (unpolarized, including the splitting ratio), the fraction of vignetted rays
+        of the pupil grid (side grid), the chief-ray optical path to the image surface [mm] and its difference from the reference
+        beam (reference: a beam name; the first beam with role "reference" if omitted, else the first beam). field and wave are
+        numbers from 1 (the primary wavelength if wave is omitted). Beams marked off are left out unless all. Returns a dict with
+        field, wavelength_um, reference, beams (a list of rows) and notes
+        """
+
+    @staticmethod
+    def beams(path: _StrPath) -> list[_Beam]:
+        """The beams of a project file (.json): named beam splitter paths, as written in the file. Each is a dict with name, path
+        (T and R in the order the BSs are passed, None for the project's path), state (the state applied to the beam), role
+        ("sample", "reference", "stray" or None), turn (the lens surface where the beam is partly reflected back, a dict of block,
+        surface and pass, or None) and off (left out of the default set). Empty without beams. Read a beam with
+        `load(path, state=name)` or several with `load_beams`
         """
 
     def cardinal(self, wave: int | None = None) -> _Cardinal:
@@ -730,13 +782,21 @@ class System:
 
         - glass_dirs: folders to search for glass catalogs (AGF)
         - cfg: the multi-configuration number of a .zmx (from 1)
-        - state: the name of a state of a project file
+        - state: the name of a state or a beam of a project file (`System.beams(path)` lists the beams)
         - beam_path: the beam splitter path of a project file (T and R in the order the BSs are passed, e.g. "TR").
           The possible paths are `System.beam_paths(path)`
         - lens_catalogs: lens catalogs (.zmx or folders) to search for the catalog lenses of a project file
         - coatings: files of coating tables (LBCT) and models (LBCM) used in polarization traces
         - coating_file: replaces the system's coating file (COATING.DAT format)
         - wavelengths: replaces the wavelengths [µm] (.zmx only; InvalidError for a system file or project file. Weights are 1, the primary wavelength number is kept)
+        """
+
+    @staticmethod
+    def load_beams(path: _StrPath, beams: Sequence[str] | None = None, all: bool = False, glass_dirs: Sequence[_StrPath] | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None) -> dict[str, System]:
+        """Read the systems of the beams of a project file (.json) at once. Returns a dict from the beam name to its System, each the
+        same as `load(path, state=name)` (the beam's path, state and turn applied), in the order of beams (the order of the file if
+        omitted). beams are names; the beams not marked off if omitted (all of them with all=True). Use it to trace the beams
+        together, e.g. `trace_many(list(d.values()), ...)`. glass_dirs, lens_catalogs, coatings and coating_file as in load
         """
 
     @staticmethod

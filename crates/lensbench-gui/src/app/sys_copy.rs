@@ -18,4 +18,6 @@ pub(super) struct SysCopy {
     pub(super) ld_blocks: Vec<lens_data::Block>,
     /// 組合せの要素のブロックの id と往路の面の範囲（load の `blocks`。要素の行の範囲）
     pub(super) elem_blocks: Vec<(String, Vec<[usize; 2]>)>,
+    /// 同じブロックの復路の面の範囲（load の `blocks` の back。復路の行の値を往路の面へ書く）
+    pub(super) elem_back: Vec<(String, Vec<[usize; 2]>)>,
 }

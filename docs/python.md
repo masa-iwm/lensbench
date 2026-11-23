@@ -24,6 +24,9 @@
 
 ### 変更履歴
 
+- **2.10**: プロジェクトの光束（`beams`）: `System.beams(path)`（光束の一覧の dict の list）・`System.load_beams(path, beams=None, all=False, ...)`
+  （光束の名前 → System の dict。それぞれ `load(path, state=名前)` と同じ）・`System.beam_table(path, field=1, wave=None, grid=21, reference=None, all=False, ...)`
+  （光束の表。CLI の `beams`・serve の解析 `beams` と同じ）
 - **2.9**: Python の関数を光源・膜・形として登録する口（試作用。Python のプロセスの中だけで、CLI・GUI からは使えない）: `register_source(name, func)`・
   `unregister_source(name)`（`func(config, wl) -> {"start", "direction", "weight"}`、波長ごとに 1 回）と、`register_coating_catalog` の `models={膜の名前: func}`
   （`func(wl, n1, n2, cos1, path, from_substrate) -> {"rs", "rp", "ts", "tp"}`。波長・屈折率・経路・向きの組ごとに cos1 の 2001 点の格子で 1 回呼び、cos1 で線形に補間する）、

@@ -2403,7 +2403,11 @@ edit {}: {} and the later edits are not written back (surfaces of blocks can't b
 edit {}: {} is not written back ({e})	変更 {}: {} はブロックへ書き戻しません（{e}）
 surface {j} is not a surface of a block	面 {j} はブロックの面ではありません
 surface {j} is a coordinate break of a block (use the block decenter and tilt)	面 {j} はブロックの座標ブレークです（ブロックの偏心・チルトで変えてください）
-surface {j} is on a later pass of a block (edit the surface on its first forward pass)	面 {j} はブロックの 2 回目以降・復路の面です（往路の 1 回目の面で変えてください）
+surface {j} is on a later pass of a block (choose the surface on its first forward pass)	面 {j} はブロックの 2 回目以降・復路の面です（往路の 1 回目の面を選んでください）
+edit {}: {} also changes the other passes through the block	変更 {}: {} はブロックを通るほかの回も変えます
+the medium and the spacing after this surface on the return pass are those before the block (change the block or air in front)	復路のこの面の後ろの媒質と間隔はブロックの前のものです（前のブロックか空気で変えてください）
+the thickness on the return pass must be a number	復路の厚みは数で指定してください
+beams is empty (leave beams out for the beams that are not off)	beams が空です（off でない光束にするには beams を省いてください）
 surface {j} on the return pass has no surface on the forward pass	復路の面 {j} に対応する往路の面がありません
 surface {} is in a block without an id (give the block an id to refer to it)	面 {} は id の無いブロックの面です（参照するにはブロックに id を付けてください）
 only surface edits can be written back to blocks	ブロックへ書き戻せるのは面の変更だけです

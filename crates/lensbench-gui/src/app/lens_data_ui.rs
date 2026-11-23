@@ -98,10 +98,31 @@ impl Core {
             }
         }
         let rows = &self.sys.ld_rows;
-        let read_only = |j: usize, col: Col| -> Option<String> {
-            ld_combo::read_only(rows, &spans, picks, lead, j, col)
+        // 往路の 2 回目以降・復路の行は、同じ面の往路の行で決める
+        let passes: HashMap<usize, ld_combo::PassRow> = (0..rows.len())
+            .filter_map(|j| Some((j, self.pass_row(&spans, j)?)))
+            .collect();
+        let pass_to = |j: usize, col: Col| -> Result<usize, ()> {
+            match passes.get(&j) {
+                None => Ok(j),
+                Some(p) => p.row_for(ld_combo::override_fields(col)[0]).ok_or(()),
+            }
         };
-        let overridden = |j: usize, col: Col| ld_combo::overridden(rows, &spans, picks, j, col);
+        let read_only = |j: usize, col: Col| -> Option<String> {
+            match pass_to(j, col) {
+                Ok(r) if col == Col::T
+                    && passes.get(&j).is_some_and(|p| !p.back)
+                    && spans.iter().flatten().any(|s| s[1] == r) =>
+                {
+                    Some(tr("Change the spacing after an element on its first pass").into())
+                }
+                Ok(r) => ld_combo::read_only(rows, &spans, picks, lead, r, col),
+                Err(()) => Some(tr("On the return pass, the medium and spacing after the first surface of an element are those in front of it (change them there)").into()),
+            }
+        };
+        let overridden = |j: usize, col: Col| {
+            pass_to(j, col).is_ok_and(|r| ld_combo::overridden(rows, &spans, picks, r, col))
+        };
         // 群（要素の名前と同じ名前は群にしない）と、解除で消える役割・移動
         let groups: Vec<(String, Option<String>)> = self
             .doc
@@ -261,20 +282,64 @@ impl Core {
         j: usize,
         fields: Map<String, Value>,
     ) {
-        let why = (self.sys.ld_rows.get(j))
-            .and_then(|r| fields.keys().find_map(|k| ld_combo::solved_reason(r, k)));
+        // 往路の 2 回目以降・復路の行は、同じ面の往路の行へ書く（ブロックのどの回にも当たる）
+        let mut to: Vec<(usize, String, Value)> = Vec::new();
+        match self.pass_row(spans, j) {
+            None => to.extend(fields.into_iter().map(|(k, v)| (j, k, v))),
+            Some(p) => {
+                for (key, value) in fields {
+                    let Some(row) = p.row_for(&key) else {
+                        self.fail(tr("On the return pass, the medium and spacing after the first surface of an element are those in front of it (change them there)"));
+                        return;
+                    };
+                    let last = spans.iter().flatten().any(|s| s[1] == row);
+                    if !p.back && key == "t" && last {
+                        self.fail(tr("Change the spacing after an element on its first pass"));
+                        return;
+                    }
+                    // 復路の間隔は往路と符号が逆
+                    let value = match (p.back, key.as_str(), value.as_f64()) {
+                        (true, "t", Some(t)) => Value::from(-t),
+                        _ => value,
+                    };
+                    to.push((row, key, value));
+                }
+                self.info(tr(
+                    "The value also applies to the other passes through the element",
+                ));
+            }
+        }
+        let why = to
+            .iter()
+            .find_map(|(row, k, _)| ld_combo::solved_reason(self.sys.ld_rows.get(*row)?, k));
         if let Some(why) = why {
             self.fail(why);
             return;
         }
-        for (key, value) in fields {
-            if !self.combo_surface_edit(spans, j, &key, value) {
+        for (row, key, value) in to {
+            if !self.combo_surface_edit(spans, row, &key, value) {
                 return;
             }
         }
         if !self.s.auto_build {
             self.build_combo(self.doc.combo.project());
         }
+    }
+
+    /// 組合せの系の面 j が往路の 2 回目以降・復路の行なら、同じ面の往路の行（[`ld_combo::pass_row`]）
+    pub(super) fn pass_row(
+        &self,
+        spans: &[Option<[usize; 2]>],
+        j: usize,
+    ) -> Option<ld_combo::PassRow> {
+        ld_combo::pass_row(
+            &self.sys.ld_rows,
+            spans,
+            &self.doc.combo.span_ids(),
+            &self.sys.elem_blocks,
+            &self.sys.elem_back,
+            j,
+        )
     }
 
     /// 組合せの系の面 j（系の面の番号）の要素と、要素の面の番号（座標ブレークを除く）

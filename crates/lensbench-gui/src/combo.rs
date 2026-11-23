@@ -18,10 +18,12 @@ use crate::sysset::{Aiming, ApertureKind, FieldKind, FieldPt, FieldSolve, WavePt
 use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
-pub(crate) use layout_json::block_spans;
 use layout_json::pts;
+pub(crate) use layout_json::{block_back_spans, block_spans};
+use paths::path_select;
 pub(crate) use solved_gap::SolvedGap;
 mod ap_shape;
+mod beams;
 mod bs;
 mod custom_lens;
 mod detector;
@@ -31,6 +33,7 @@ mod kind_data;
 mod layout_json;
 mod mech;
 mod mirror;
+mod paths;
 mod raw;
 mod solved_gap;
 mod states;
@@ -1744,6 +1747,10 @@ pub(crate) fn ui(
             view.set_sel(sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id)));
             view.dim = None;
         }
+        // 光束の組（名前を付けた経路・部分反射で戻る光束）
+        if !combo.is_empty() {
+            beams::menu(ui, combo);
+        }
         ui.checkbox(auto, tr("Rebuild on every change"));
         if (!*auto || (data.is_none() && !building)) && ui.button(tr("▶ Build system")).clicked()
         {
@@ -1928,80 +1935,6 @@ pub(crate) fn editor_height(combo: &Combo) -> f32 {
     }
     let base = if bs { 200.0 } else { 96.0 };
     base + 24.0 * rows.min(8) as f32
-}
-
-/// BS の経路（T・R の並び）を選ぶ欄（BS が無ければ出さない）。変えたら true
-fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
-    let any_bs = combo
-        .all()
-        .iter()
-        .any(|l| combo.get(l).is_some_and(|p| p.kind == ElemKind::Splitter));
-    if !any_bs {
-        return false;
-    }
-    let st = combo.active_state().map(str::to_string);
-    let base = combo.path.clone();
-    let mut path = match &st {
-        Some(n) => combo.state_path.get(n).cloned().unwrap_or(base.clone()),
-        None => base.clone(),
-    };
-    let was = path.clone();
-    ui.separator();
-    ui.label(RichText::new(tr("Path")).color(theme::weak_text(ui.visuals())))
-        .on_hover_text(tr("Transmit T / reflect R at each BS in the order passed (missing letters use each BS's default port). The figure and analyses use this path; other paths can be drawn with \"Overlay configurations\""));
-    let shown = if path.is_empty() {
-        tr("Default").to_string()
-    } else {
-        path.clone()
-    };
-    egui::ComboBox::from_id_salt("combo_path")
-        .selected_text(shown)
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut path, String::new(), tr("Default"));
-            for p in paths {
-                ui.selectable_value(&mut path, p.clone(), p.as_str());
-            }
-        });
-    ui.add(
-        egui::TextEdit::singleline(&mut path)
-            .desired_width(48.0)
-            .hint_text("TR…"),
-    );
-    path = path
-        .chars()
-        .map(|c| c.to_ascii_uppercase())
-        .filter(|c| matches!(c, 'T' | 'R'))
-        .collect();
-    if let Some(n) = &st {
-        let own = combo.state_path.contains_key(n);
-        if own {
-            if ui
-                .small_button(tr("Use the base path"))
-                .on_hover_text(trf("Drop the path changed in state {}", &[n]))
-                .clicked()
-            {
-                combo.state_path.remove(n);
-                return true;
-            }
-        } else {
-            ui.label(
-                RichText::new(tr("(same as base)"))
-                    .small()
-                    .color(theme::weak_text(ui.visuals())),
-            )
-            .on_hover_text(trf("Changing it makes a path for state {} only", &[n]));
-        }
-    }
-    if path == was {
-        return false;
-    }
-    match st {
-        Some(n) => {
-            combo.state_path.insert(n, path);
-        }
-        None => combo.path = path,
-    }
-    true
 }
 
 /// レイアウト図の AccessKit の名前（2D か 3D か）
