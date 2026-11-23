@@ -876,10 +876,10 @@ fn paint(
         painter.line_segment(c.diag, Stroke::new(1.5_f32, mirror_fill));
     }
     for b in &sc.bodies {
-        painter.add(egui::Shape::convex_polygon(
-            b.poly.clone(),
+        // 凹面のある玉（両凹・メニスカス）の断面は凸でないので、三角形に分けて塗る
+        painter.add(poly_fill::filled(
+            &b.poly,
             if b.mirror { mirror_fill } else { glass_fill },
-            Stroke::NONE,
         ));
         let mut closed = b.poly.clone();
         if let Some(f) = b.poly.first() {
@@ -1244,6 +1244,9 @@ pub(super) fn inside(poly: &[Pos2], p: Pos2) -> bool {
 #[cfg(test)]
 #[path = "figure_tests.rs"]
 mod tests;
+
+#[path = "poly_fill.rs"]
+mod poly_fill;
 
 /// 寸法を選んでいるときに数を打てば、その字から書き換えを始める（表のセルと同じ。後ろにカーソル）
 pub(super) fn type_to_edit(ui: &mut Ui, combo: &mut Combo, view: &mut View) {

@@ -561,3 +561,57 @@ fn folded_labels_follow_view() {
     let m = sh.sc.marks.iter().find(|m| m.k == 0).unwrap();
     assert!(!m.label.intersects(area), "{:?}", m.label);
 }
+
+/// 凹面のある玉（P17 の真ん中の両凹 G2）の塗り: 三角形がどれも断面の中で、面積の和が断面の面積（
+/// convex_polygon の扇では縁の角から凹面へ張った三角形が面の外を塗っていた）
+#[test]
+fn concave_body_fill_stays_inside() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let v = lensbench_engine::preview_layout(
+        &json!({
+            "file": root.join("examples/projects/P17_zoom_three_groups.json").display().to_string(),
+            "glass_dirs": [root.join("tests/glass").display().to_string()],
+        }),
+        &json!({}),
+    )
+    .unwrap();
+    let d = LayoutData::parse(&v);
+    let area = |p: &[Pos2]| {
+        let n = p.len();
+        (0..n)
+            .map(|i| p[i].x * p[(i + 1) % n].y - p[(i + 1) % n].x * p[i].y)
+            .sum::<f32>()
+            .abs()
+            / 2.0
+    };
+    let mut concave = 0;
+    for sd in &d.solids {
+        // mm を 10 倍して画面の点に見立てる
+        let poly: Vec<Pos2> = sd
+            .pts
+            .iter()
+            .map(|q| Pos2::new(10.0 * q[0] as f32, 10.0 * q[1] as f32))
+            .collect();
+        let tris = poly_fill::triangulate(&poly);
+        let mut sum = 0.0;
+        for t in &tris {
+            let tri = [poly[t[0]], poly[t[1]], poly[t[2]]];
+            let g = Pos2::new(
+                (tri[0].x + tri[1].x + tri[2].x) / 3.0,
+                (tri[0].y + tri[1].y + tri[2].y) / 3.0,
+            );
+            assert!(inside(&poly, g), "{:?} {t:?}", sd.surfaces);
+            sum += area(&tri);
+        }
+        let a = area(&poly);
+        assert!((sum - a).abs() < 1e-3 * a, "{:?} {sum} {a}", sd.surfaces);
+        // 扇（先頭の点から）で塗ると面積の和が断面より大きくなる玉を数える
+        let fan: f32 = (1..poly.len() - 1)
+            .map(|w| area(&[poly[0], poly[w], poly[w + 1]]))
+            .sum();
+        if fan > a * 1.001 {
+            concave += 1;
+        }
+    }
+    assert!(concave >= 1, "P17 に凹面のある玉が無い");
+}
