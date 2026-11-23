@@ -199,3 +199,66 @@ fn catalog_glass_rows_stay_short_in_a_narrow_panel() {
     let gap = y(&h, "S-BSL7") - y(&h, "N-BK7");
     assert!(gap > 0.0 && gap < 24.0, "{gap}");
 }
+
+/// 組合せの機構部品の欄: 品番と種類・寸法が出て、狭くしてもチェックの字が縦に並ばず、部品の行が 2 行分に収まる
+#[test]
+fn mech_rows_show_item_and_stay_short_when_narrow() {
+    let _g = serial();
+    let cat = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/lenses/LBP/parts.json")
+        .display()
+        .to_string();
+    let ms = vec![
+        crate::combo::MechPick {
+            name: "tube".into(),
+            catalog: cat.clone(),
+            item: "TUBE-25-30".into(),
+            at: "stop".into(),
+            holds: vec!["L1".into()],
+            ..Default::default()
+        },
+        crate::combo::MechPick {
+            name: "cage".into(),
+            catalog: cat.clone(),
+            item: "CP-30".into(),
+            at: "L1".into(),
+            face: 1,
+            ..Default::default()
+        },
+        crate::combo::MechPick {
+            name: "gone".into(),
+            catalog: cat,
+            item: "NO-SUCH".into(),
+            ..Default::default()
+        },
+    ];
+    let ids = vec!["stop".to_string(), "L1".to_string()];
+    for w in [900.0, 320.0] {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(w, 600.0))
+            .build_ui_state(
+                |ui, ms: &mut Vec<crate::combo::MechPick>| mech_rows::mech_ui(ui, ms, &ids),
+                ms.clone(),
+            );
+        h.run_steps(2);
+        h.get_by_label("TUBE-25-30");
+        h.get_by_label("CP-30");
+        h.get_by_label("⚠ NO-SUCH");
+        let tube_info = "Tube: length 30 mm, bore 23 mm, outer diameter 30.5 mm, thread M25";
+        h.get_by_label(tube_info);
+        h.get_by_label(
+            "Cage plate: length 8 mm, bore 22 mm, outer diameter 41 mm, cage rods 30 mm apart",
+        );
+        let rows: Vec<_> = h.query_all_by_label("Seat on element").collect();
+        assert_eq!(rows.len(), 3);
+        for r in &rows {
+            let b = r.bounding_box().unwrap();
+            assert!(b.y1 - b.y0 < 30.0, "w {w}: {b:?}");
+        }
+        // 品番の行から次の部品の品番の行まで（部品 1 つ分の高さ）
+        let y = |n: &str| h.get_by_label(n).bounding_box().unwrap().y0;
+        let step = y("CP-30") - y("TUBE-25-30");
+        let max = if w > 500.0 { 70.0 } else { 120.0 };
+        assert!(step > 0.0 && step < max, "w {w}: {step}");
+    }
+}

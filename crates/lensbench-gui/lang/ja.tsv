@@ -1975,3 +1975,13 @@ Turn back at	折り返し
 Two or more beams are named {}	光束 {} が 2 つ以上あります
 Which forward pass through the lens (from 0)	レンズを往路で何回目に通るか（0 から）
 Pass	回
+Mechanical part	機構部品
+{}: length {} mm	{}: 長さ {} mm
+, bore {} mm	、内径 {} mm
+, square side {} mm	、角 一辺 {} mm
+, outer diameter {} mm	、外径 {} mm
+, thread {}	、ねじ {}
+Cannot read the catalog {} ({})	カタログ {} を読めません（{}）
+Item {} is not in {}	{} は {} にありません
+Name of the part in the project	プロジェクトでの部品の名前
+Catalog {}	カタログ {}

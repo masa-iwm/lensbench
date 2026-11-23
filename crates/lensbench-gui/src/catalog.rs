@@ -11,9 +11,11 @@ use serde_json::{json, Value};
 mod detail;
 mod filter;
 mod map_view;
+mod mech_rows;
 use detail::row_detail;
 pub(crate) use filter::CATEGORIES;
 pub(crate) use map_view::MapView;
+use mech_rows::mech_ui;
 
 use std::sync::Arc;
 
@@ -748,128 +750,6 @@ pub(crate) fn preview_project(r: &LensRow) -> serde_json::Value {
 /// 機構部品の置く要素・保持する要素の id が今の要素に無いか（空は面 1・保持なしで、無いとは言わない）
 fn stale_id(id: &str, ids: &[String]) -> bool {
     !id.is_empty() && !ids.iter().any(|x| x == id)
-}
-
-/// 組合せの機構部品: 置く要素・面・ずれ・保持する要素。部品はカタログの機構部品の行から足す
-fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
-    ui.label(RichText::new(tr("Mechanical parts")).strong()).on_hover_text(tr(
-        "Tubes, cage plates and so on. Adding a mechanical part row from the catalog places it at the selected element. Check vignetting with the \"Mechanical vignetting\" analysis",
-    ));
-    let mut remove = None;
-    let names: Vec<String> = ms.iter().map(|m| m.name.clone()).collect();
-    egui::Grid::new("mechs")
-        .striped(true)
-        .num_columns(6)
-        .show(ui, |ui| {
-            for (k, m) in ms.iter_mut().enumerate() {
-                ui.add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
-                    .on_hover_text(&m.item);
-                let none = tr("(surface 1)").to_string();
-                // 消した・名前の変わった要素は ⚠ を付けて選び直してもらう
-                let show = |id: &str| {
-                    if stale_id(id, ids) {
-                        format!("⚠ {id}")
-                    } else {
-                        id.to_string()
-                    }
-                };
-                let gone = tr("The element is gone (removed or renamed). Choose it again");
-                // 置く所: 要素か、前の機構部品の後ろ（つなぐ）
-                let after_text = |n: &str| trf("Connect after {}", &[&n]);
-                let prev = &names[..k];
-                let stale_after = !m.after.is_empty() && !prev.contains(&m.after);
-                egui::ComboBox::from_id_salt(("mech-at", k))
-                    .selected_text(if !m.after.is_empty() {
-                        if stale_after {
-                            format!("⚠ {}", after_text(&m.after))
-                        } else {
-                            after_text(&m.after)
-                        }
-                    } else if m.at.is_empty() {
-                        none.clone()
-                    } else {
-                        show(&m.at)
-                    })
-                    .show_ui(ui, |ui| {
-                        let mut pick = |ui: &mut Ui, at: &str, after: &str, label: String| {
-                            let sel = m.at == at && m.after == after;
-                            if ui.selectable_label(sel, label).clicked() {
-                                m.at = at.to_string();
-                                m.after = after.to_string();
-                                if !after.is_empty() {
-                                    m.seat = false;
-                                }
-                            }
-                        };
-                        pick(ui, "", "", none.clone());
-                        for id in ids {
-                            pick(ui, id, "", id.clone());
-                        }
-                        for n in prev {
-                            pick(ui, "", n, after_text(n));
-                        }
-                    })
-                    .response
-                    .on_hover_text(if stale_id(&m.at, ids) || stale_after {
-                        gone
-                    } else if !m.after.is_empty() {
-                        tr("Connects to the back end of the earlier part. If both ends have threads, checks that they mate and overlaps by the male thread length")
-                    } else {
-                        tr("Element to place at")
-                    });
-                ui.horizontal(|ui| {
-                    ui.label(tr("Surface"));
-                    ui.add(crate::widgets::Num::new(&mut m.face).range(0..=99))
-                        .on_hover_text(tr("Which surface of the element to place at (0-based)"));
-                    ui.label("z");
-                    ui.add(
-                        crate::widgets::Num::new(&mut m.offset[2])
-                            .suffix(" mm"),
-                    )
-                    .on_hover_text(tr("Offset from the placement surface along the light direction"));
-                });
-                let held = m.holds.first().cloned().unwrap_or_default();
-                let mut sel = held.clone();
-                egui::ComboBox::from_id_salt(("mech-holds", k))
-                    .selected_text(if sel.is_empty() {
-                        tr("Holds nothing").to_string()
-                    } else {
-                        show(&sel)
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut sel, String::new(), tr("Holds nothing"));
-                        for id in ids {
-                            ui.selectable_value(&mut sel, id.clone(), id);
-                        }
-                    })
-                    .response
-                    .on_hover_text(if stale_id(&held, ids) {
-                        gone
-                    } else {
-                        tr("Elements the part holds (checks protrusion and hold diameter)")
-                    });
-                if sel != held {
-                    m.holds = if sel.is_empty() {
-                        Vec::new()
-                    } else {
-                        vec![sel]
-                    };
-                }
-                ui.vertical(|ui| {
-                    ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("Seat on element")))
-                        .on_hover_text(tr("Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)"));
-                    ui.checkbox(&mut m.reversed, tr("Reverse"))
-                        .on_hover_text(tr("Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)"));
-                });
-                if ui.button("✖").on_hover_text(tr("Remove")).clicked() {
-                    remove = Some(k);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(k) = remove {
-        ms.remove(k);
-    }
 }
 
 /// 一覧の 1 マス
