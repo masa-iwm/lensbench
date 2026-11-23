@@ -82,7 +82,7 @@ lensbench optimize lens.zmx --var 1.c=-0.08:0.08 --var 2.c=-0.08:0.08 ... --star
     （結果の `x` では 0）。
   - **実在の硝材を入れ替えて比べる**: 硝材の面は今の硝材も候補に入れ、評価関数が良くなるときだけ入れ替える。
 - 面を順に 1 つずつ置き換え（前の面の置き換えの結果から次を始める）、どの面も変わらなくなるまで `--glass-passes`（既定 2）周まで繰り返す。
-- 候補のカタログは `--glass-catalog SCHOTT`（複数可、serve・Python は `catalogs`）。カタログは `--glass-dir`（serve は読込の
+- 候補のカタログは `--glass-catalog SCHOTT`（複数可、`--glass-catalog SCHOTT,OHARA` のようにカンマでも並べられる。serve・Python は `catalogs`）。カタログは `--glass-dir`（serve は読込の
   `glass_dirs`）、`LENSBENCH_GLASSCAT`、同梱の SCHOTT・OHARA の順に探す。省けばシステムに読み込んだ硝材から選ぶ。
 - 候補の絞り込み（OpticStudio のガラス置換のテンプレートに当たる。serve・Python は同じ名前の鍵）:
   - `--glass-max-cost`（`max_cost`）: 相対価格の上限（AGF の OD の行の 1 番目）。
@@ -168,7 +168,7 @@ lensbench optimize lens.zmx --var 1.c=-0.08:0.08 --var 2.c=-0.08:0.08 ... --star
 - `--out` の .zmx には STRH を Samp 5、RELI・EFNO を Samp 100 で書く（それでも OpticStudio の EFNO は 1/Samp の誤りで 0.5% ほど違う）。
 - MTH* は OpticStudio の Samp 1〜3 の値が大きくずれる（像の格子が小さい）ので、lensbench の回折 MTF との差（8.6e-3）で確かめた。
 - DENC・DENF は OpticStudio が主光線に垂直な面で測り、lensbench は像面で測るので軸外で違う（視野 3 で 1.2%。主光線に垂直な面の PSF で計算すると 3e-3〜6.2e-3 で一致）。
-- 原点が基準の GENC・GENF（Refp 2）は OpticStudio の値が 0.6% 大きく、理由が分からない（読むと警告を出す）。OpticStudio 2026 R1.01 では、像の広がりが 11 µm の系で Frac を動かすと値が約 240 µm の幅で変わり、GENF が 1 を超える（最大 1.108）ので、OpticStudio 側の誤りと見て合わせない。
+- 原点が基準の GENC・GENF（Refp 2）は OpticStudio の値が 0.6% 大きいが、OpticStudio 2026 R1.01 では像の広がりが 11 µm の系で Frac を動かすと値が約 240 µm の幅で変わり、GENF が 1 を超える（最大 1.108）ので、OpticStudio 側の誤りと見て合わせない（読むと警告を出す）。
 - XENC・XENF・MECS などの MEC*・ERFP は読まない。
 - 行の流れを変える行も OpticStudio 26.1 の実測どおりに読む: ENDX の後の行は項にしない。
 - GOTO n は自分の行から行 n の手前までを飛ばす（n が自分の行以下なら何も飛ばさない）。

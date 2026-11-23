@@ -216,6 +216,24 @@ impl Core {
         gs: &[crate::optim_panel::GlassApply],
         states: &[String],
     ) -> Option<Vec<crate::optim_panel::GlassUndo>> {
+        let mut undo = Vec::new();
+        if self.apply_glass_into(gs, states, &mut undo).is_some() {
+            return Some(undo);
+        }
+        // 途中で当てられなくなったら、それまでに書いた状態の上書きを戻す（半端に替わった組合せを残さない）
+        if !undo.is_empty() {
+            self.undo_glass(&undo);
+        }
+        None
+    }
+
+    /// [`Self::apply_glass`] の本体。書いた分の元に戻す材料を undo に足していく
+    fn apply_glass_into(
+        &mut self,
+        gs: &[crate::optim_panel::GlassApply],
+        states: &[String],
+        undo: &mut Vec<crate::optim_panel::GlassUndo>,
+    ) -> Option<()> {
         use crate::optim_panel::GlassUndo;
         let c = &self.doc.combo;
         // 問題の構成の状態（状態の無い組合せ・基本を開いて構成を並べなかったときは面の材料だけ）
@@ -232,7 +250,6 @@ impl Core {
             c.lead_stop(),
             &self.sys.ld_rows,
         );
-        let mut undo = Vec::new();
         let mut base: Vec<(usize, String)> = Vec::new();
         let mut base_old: Vec<(usize, String)> = Vec::new();
         for g in gs {
@@ -309,7 +326,7 @@ impl Core {
         } else if !undo.is_empty() && !self.s.auto_build {
             self.build_combo(self.doc.combo.project());
         }
-        Some(undo)
+        Some(())
     }
 
     /// ガラスの置き換えを当てる前の材料に戻す（[`Self::apply_glass`] の逆）

@@ -48,7 +48,12 @@ fn root() -> PathBuf {
 /// .zmx を、ソルブの面の厚さを t に書き換えて読む（ソルブが解き直すことを確かめる）
 fn load(name: &str, t: f64) -> System {
     let txt = std::fs::read_to_string(root().join(format!("double_pass/{name}.zmx"))).unwrap();
-    let txt = txt.replace("DISZ 71.518210081618719", &format!("DISZ {t}"));
+    const DISZ: &str = "DISZ 71.518210081618719";
+    assert!(
+        txt.contains(DISZ),
+        "{name}.zmx: the thickness to replace ({DISZ}) is gone"
+    );
+    let txt = txt.replace(DISZ, &format!("DISZ {t}"));
     let tmp = std::env::temp_dir().join(format!("lb_dp_os_{}_{name}.zmx", std::process::id()));
     std::fs::write(&tmp, txt).unwrap();
     let opts = zmx::LoadOptions {

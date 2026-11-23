@@ -451,4 +451,84 @@ mod tests {
         let j = g2[0][0];
         assert!((x(&t, j) - x(&s, j) - 0.1).abs() < 1e-9);
     }
+
+    /// 内側の群が外側の群の途中にある形（G1 = L2〜L5 の中に G2 = L3〜L4）: G2 の後の間隔は G1 の中に残り、
+    /// `G2.shift` は G1 の中の 2 つの間隔だけを動かす（G1 の前後の間隔は変えない）。状態の移動も同じ
+    #[test]
+    fn nested_group_in_the_middle_moves_inside() {
+        let mut c = lenses(5);
+        for (i, p) in c.picks.iter_mut().enumerate() {
+            p.air = 5.0 + i as f64;
+        }
+        c.make_group(&locs(1..=4), "G1").unwrap();
+        c.make_group(&locs(2..=3), "G2").unwrap();
+        assert_eq!(paths(&c), ["", "G1", "G1/G2", "G1/G2", "G1"]);
+        c.states.push("tele".into());
+        c.groups
+            .iter_mut()
+            .find(|g| g.name == "G2")
+            .expect("G2 def")
+            .state_shift = [("tele".to_string(), 1.5)].into();
+        let v = c.project();
+        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let back = Combo::from_project(&v, &root).unwrap();
+        assert_eq!(paths(&back), paths(&c));
+        let pr = lensbench_project::Project::from_json(&v.to_string()).unwrap();
+        let env = lensbench_project::Env {
+            step_files: None,
+            base: root.clone(),
+            glass_dirs: vec![root.join("tests/glass")],
+            catalog: None,
+        };
+        let sys = |state: Option<&str>| {
+            lensbench_project::expand(
+                &pr,
+                &env,
+                &lensbench_project::ExpandOpts {
+                    state,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .system
+        };
+        let s = sys(None);
+        let span = |n: &str| {
+            let u = s.find_unit(n).unwrap_or_else(|| panic!("unit {n}"));
+            s.units[u].spans[0]
+        };
+        let (g1, g2) = (span("G1"), span("G2"));
+        assert!(g1[0] < g2[0] && g2[1] < g1[1], "{g1:?} {g2:?}");
+        let diff = |t: &lensbench_core::System| -> Vec<(usize, f64)> {
+            s.surfaces
+                .iter()
+                .zip(&t.surfaces)
+                .enumerate()
+                .map(|(j, (a, b))| (j, b.t - a.t))
+                .filter(|x| x.1.abs() > 1e-12)
+                .collect()
+        };
+        let by_name = |name: &str| {
+            let p = s.param(name).unwrap();
+            diff(&s.with_params(&[(p, 1.0)]).unwrap())
+        };
+        for (name, sp, d) in [("G1.shift", g1, 1.0), ("G2.shift", g2, 1.0)] {
+            let m = by_name(name);
+            assert_eq!(m.len(), 2, "{name} {m:?}");
+            assert_eq!((m[0].0, m[1].0), (sp[0] - 1, sp[1]), "{name} {m:?}");
+            assert!(
+                (m[0].1 - d).abs() < 1e-12 && (m[1].1 + d).abs() < 1e-12,
+                "{name} {m:?}"
+            );
+        }
+        // G2 の後の間隔（G2 の最後の面）は G1 の中
+        assert!(g2[1] < g1[1]);
+        let m = diff(&sys(Some("tele")));
+        assert_eq!(m.len(), 2, "{m:?}");
+        assert_eq!((m[0].0, m[1].0), (g2[0] - 1, g2[1]), "{m:?}");
+        assert!(
+            (m[0].1 - 1.5).abs() < 1e-12 && (m[1].1 + 1.5).abs() < 1e-12,
+            "{m:?}"
+        );
+    }
 }

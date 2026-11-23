@@ -568,6 +568,29 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
     }))
 }
 
+/// プロジェクト（`glass_catalogs`、書かなければ既定の SCHOTT）・系ファイル（`system.catalogs` の名前）のガラスのカタログ
+fn json_catalogs(file: &std::path::Path) -> Vec<String> {
+    let Ok(v) =
+        std::fs::read(file).map(|b| serde_json::from_slice::<Value>(&b).unwrap_or_default())
+    else {
+        return Vec::new();
+    };
+    let names = |a: &Value, key: Option<&str>| -> Vec<String> {
+        a.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|x| key.map_or(x, |k| &x[k]).as_str().map(str::to_string))
+            .collect()
+    };
+    if v["system"].is_object() {
+        names(&v["system"]["catalogs"], Some("name"))
+    } else if v["glass_catalogs"].is_array() {
+        names(&v["glass_catalogs"], None)
+    } else {
+        vec!["SCHOTT".to_string()]
+    }
+}
+
 /// 面の膜の一覧（coatings）。.zmx は多重構成ごと、プロジェクトの .json は状態ごと、系ファイルは 1 つ
 pub(crate) fn coatings(a: &CoatingsArgs) -> Result<Value, AppError> {
     let (file, glass_dir, lens_catalog, tables) =
@@ -617,7 +640,7 @@ pub(crate) fn coatings(a: &CoatingsArgs) -> Result<Value, AppError> {
             .and_then(|x| x.2.coating_file.as_ref())
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned());
-        (name, Vec::new())
+        (name, json_catalogs(file))
     };
     let mut cfgs = Vec::new();
     // 実測表が要る境界 → (コンフィグ, 波長)

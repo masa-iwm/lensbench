@@ -143,6 +143,7 @@ fn pick_adapter() -> Option<Adapter> {
         }) {
             return Some(a);
         }
+        // 同じ装置の DX12 のアダプタが見つからなければ Vulkan のまま返す（落ちたドライバの経路。まれ）
     }
     Some(adapter)
 }

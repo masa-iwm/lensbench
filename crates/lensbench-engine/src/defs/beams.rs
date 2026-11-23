@@ -140,6 +140,9 @@ impl Analysis for Beams {
             };
             r["opl_difference_mm"] = d;
         }
+        // 光束ごとに読むので、同じ注意（ガラスなど）が光束の数だけ出る。最初の 1 つだけ残す
+        let mut seen = std::collections::HashSet::new();
+        notes.retain(|n| seen.insert(n.clone()));
         Ok(json!({
             "field": a.field, "wavelength_um": wavelength, "reference": reference,
             "beams": rows, "notes": notes,

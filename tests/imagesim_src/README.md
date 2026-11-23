@@ -1,4 +1,4 @@
-# Image Simulation references (#937)
+# Image Simulation references
 
 Input test patterns for the OpticStudio Image Simulation references in
 `../refs/A0/imagesim_os/` and `../refs/D0/imagesim_os/`.

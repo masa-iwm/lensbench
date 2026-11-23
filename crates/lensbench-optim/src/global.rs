@@ -87,7 +87,7 @@ pub struct GlobalResult {
     pub ran: usize,
     /// 追跡できずに捨てた始点の数
     pub failed: usize,
-    /// 中断で始めなかった始点の数（ran・failed のどちらにも数えない）
+    /// 中断で始めなかった・途中で止めた始点の数（ran・failed のどちらにも数えない）
     pub skipped: usize,
     /// 中断で止めた
     pub cancelled: bool,
@@ -171,9 +171,10 @@ pub fn global_search(p: &Problem, o: &GlobalOpts) -> Result<GlobalResult> {
         }
         let xs = start_point(p, &x0, o, i);
         let r = start_problem(p, &xs).and_then(|q| dls_inner(&q, &o.local));
-        let n = done.fetch_add(1, Ordering::Relaxed) + 1;
         if reporting {
             let mut b = best_now.lock().unwrap_or_else(|e| e.into_inner());
+            // 数えるのもロックの中で（知らせる iter が始点の終わった順に 1 ずつ増える）
+            let n = done.fetch_add(1, Ordering::Relaxed) + 1;
             if let Ok(d) = &r {
                 if d.merit.is_finite() && b.as_ref().is_none_or(|(m, _)| d.merit < *m) {
                     *b = Some((d.merit, d.x.clone()));
@@ -191,13 +192,18 @@ pub fn global_search(p: &Problem, o: &GlobalOpts) -> Result<GlobalResult> {
         }
         Some((i, xs, r))
     });
-    let skipped = runs.iter().filter(|r| r.is_none()).count();
+    let mut skipped = runs.iter().filter(|r| r.is_none()).count();
     let cancelled = par::cancelled() || skipped > 0;
     let mut ran = 0;
     let mut failed = 0;
     let mut ok: Vec<(usize, Vec<f64>, DlsResult)> = Vec::new();
     let mut first_err = None;
     for (i, xs, r) in runs.into_iter().flatten() {
+        // 中断で止まった始点は失敗に数えない（走らなかった始点と同じ）
+        if matches!(r, Err(lensbench_core::Error::Cancelled)) {
+            skipped += 1;
+            continue;
+        }
         ran += 1;
         match r {
             Ok(d) if d.merit.is_finite() => ok.push((i, xs, d)),

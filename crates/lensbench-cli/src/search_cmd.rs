@@ -102,8 +102,8 @@ pub struct SearchArgs {
     /// Glass substitution: surfaces whose glass is chosen from catalog glasses after the optimization (comma-separated, e.g. "1,3,6"). Model glasses and surfaces with dn/disp are replaced by the nearest real glass; real glasses are swapped only when the merit improves
     #[arg(long = "glass-surfaces", value_delimiter = ',')]
     pub glass_surfaces: Vec<usize>,
-    /// Glass substitution: glass catalogs to choose from (e.g. SCHOTT; more than one allowed). Default: the glasses loaded for the system
-    #[arg(long = "glass-catalog")]
+    /// Glass substitution: glass catalogs to choose from (e.g. SCHOTT, or SCHOTT,OHARA; more than one allowed). Default: the glasses loaded for the system
+    #[arg(long = "glass-catalog", value_delimiter = ',')]
     pub glass_catalogs: Vec<String>,
     /// Glass substitution: candidates compared per surface (nearest in nd and vd to the current medium)
     #[arg(long = "glass-candidates", default_value_t = GLASS.candidates)]

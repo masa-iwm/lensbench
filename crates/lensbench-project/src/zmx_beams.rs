@@ -364,8 +364,9 @@ fn retraces(s: &System, t: &System) -> lensbench_core::Result<()> {
     const PX: [f64; 9] = [0.0, 0.7, -0.7, 0.0, 0.0, 0.5, -0.5, 0.5, -0.5];
     const PY: [f64; 9] = [0.0, 0.0, 0.0, 0.7, -0.7, 0.5, 0.5, -0.5, -0.5];
     let image = |x: &System| x.frames().surf.last().cloned().flatten();
+    // 像面の位置が無い（無視された像面）と照らせない。黙って通さず断る
     let (Some(fa), Some(fb)) = (image(s), image(t)) else {
-        return Ok(());
+        return Err("the image surface has no position (is it ignored?), so the beam read from it can't be checked against it".into());
     };
     let local = |f: &lensbench_core::system::Frame, v: [f64; 3]| -> [f64; 3] {
         let d = [v[0] - f.o[0], v[1] - f.o[1], v[2] - f.o[2]];
@@ -482,7 +483,15 @@ fn middle(s: &System, m: &[usize], glass: &Material) -> lensbench_core::Result<M
         (None, mi)
     };
     let n = m.len();
-    let (back, ..) = slant(n - 3)?;
+    // 戻りの面が往路と違う（曲率など）と、後ろの共通の面が短くなり、ここで見る面が分ける面からずれる
+    let (back, ..) = slant(n - 3).map_err(|e| {
+        e.map_message(|msg| {
+            format!(
+                "on the way back from the mirror (surface {}), {msg}; the surfaces after the mirror must retrace the arm with the same values",
+                m[mi]
+            )
+        })
+    })?;
     Ok(Middle {
         out,
         angle,

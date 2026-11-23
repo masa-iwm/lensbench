@@ -1256,6 +1256,8 @@ surfaces {}–{} are not a BS's splitting face (a coordinate break, a flat surfa
 surface {}: the splitting face neither reflects nor stays in the cube	面 {}: 分ける面が反射せず、キューブの中にも留まりません
 the coordinate breaks around the mirror (surfaces {} and {}) don't undo each other	ミラーの前後の座標ブレーク（面 {} と {}）が互いに戻しません
 the beam read from it traces differently (field {}, ray {}: {what}); the surfaces after the mirror must retrace the arm	読み替えた光束の光線が違います（視野 {}・光線 {}: {what}）。ミラーの後の面は往路を戻る必要があります
+the image surface has no position (is it ignored?), so the beam read from it can't be checked against it	像面の位置がありません（無視していませんか）。読み替えた光束を元の構成と照らせません
+on the way back from the mirror (surface {}), {msg}; the surfaces after the mirror must retrace the arm with the same values	ミラー（面 {}）からの戻りで、{msg}。ミラーの後の面は往路を同じ値で戻る必要があります
 stopped or vignetted in one only	片方だけで止まるかケラレる
 {dp:.3e} mm apart	{dp:.3e} mm 離れる
 optical path {dl:.3e} mm apart	光路長が {dl:.3e} mm 違う
@@ -2696,7 +2698,8 @@ surface {j}: the Zernike terms and their normalization radius and decenter are n
 surface {j}: the Zernike terms and the grid of the grid sag surface are not scaled	面 {j}: Grid Sag の Zernike の項とグリッドは伸び縮みさせません
 surface {j}: the normalization radius of the binary 2 phase is not scaled	面 {j}: Binary 2 の位相の正規化半径は伸び縮みさせません
 surface {j}: the parameters of the user-defined surface are not scaled	面 {j}: ユーザー定義の面のパラメータは伸び縮みさせません
-removed the solve of surface {j} {} (the value of the original system is kept)	面 {j} の {} のソルブを外しました（値は元のシステムのまま）
+removed the curvature solve of surface {j} (the value of the original system is kept)	面 {j} の曲率のソルブを外しました（値は元のシステムのまま）
+removed the thickness solve of surface {j} (the value of the original system is kept)	面 {j} の厚みのソルブを外しました（値は元のシステムのまま）
 starts must be 1 or more	starts は 1 以上
 keep must be 1 or more	keep は 1 以上
 spread must be a positive number ({})	spread は正の数に（{}）
@@ -2718,7 +2721,7 @@ Global search: random seed (the same seed gives the same start points)	グロー
 Global search: number of solutions to keep (best first; the same solution once)	グローバルサーチ: 残す解の数（良い順、同じ解は 1 つ）
 Global search: spread of variables without bounds, relative to max(|value|, typical size of the kind)	グローバルサーチ: 範囲のない変数を振る幅（max(|値|, 種類ごとの目安の大きさ) に対する比）
 Glass substitution: surfaces whose glass is chosen from catalog glasses after the optimization (comma-separated, e.g. "1,3,6"). Model glasses and surfaces with dn/disp are replaced by the nearest real glass; real glasses are swapped only when the merit improves	硝材置換: 最適化の後に硝材をカタログの硝材から選ぶ面（カンマ区切り、例 "1,3,6"）。モデルガラスと dn・disp のある面は近い実在の硝材に置き換え、実在の硝材はメリットファンクションが良くなるときだけ入れ替える
-Glass substitution: glass catalogs to choose from (e.g. SCHOTT; more than one allowed). Default: the glasses loaded for the system	硝材置換: 選ぶ硝材カタログ（例 SCHOTT、複数可）。省けばシステムに読み込んだ硝材
+Glass substitution: glass catalogs to choose from (e.g. SCHOTT, or SCHOTT,OHARA; more than one allowed). Default: the glasses loaded for the system	硝材置換: 選ぶ硝材カタログ（例 SCHOTT、SCHOTT,OHARA。複数可）。省けばシステムに読み込んだ硝材
 Glass substitution: candidates compared per surface (nearest in nd and vd to the current medium)	硝材置換: 面ごとに比べる候補の数（今の媒質に nd・vd の近い順）
 Glass substitution: maximum number of passes over the surfaces	硝材置換: 面を巡回する回数の上限
 --glass-catalog needs --glass-surfaces (the surfaces to substitute glass on)	--glass-catalog には --glass-surfaces（硝材を置き換える面）が必要です
@@ -2727,7 +2730,7 @@ Distance from surface 1 to the waist (positive if the waist is after surface 1)	
 M² factor of the beam (1 for a pure Gaussian)	ビームの M²（純粋なガウスビームは 1）
 Cross section to trace (y or x)	追う断面（y か x）
 Paraxial Gaussian beam: beam size, waist, waist position, wavefront radius, divergence and Rayleigh range after each surface	近軸ガウスビーム: 各面の後のビーム径・ウエスト・ウエストの位置・波面の曲率半径・広がり角・レイリー長
-Paraxial Gaussian beam (OpticStudio's Paraxial Gaussian Beam): the input beam given by the waist radius of its embedded Gaussian, the distance from surface 1 to the waist and M² is carried through the paraxial ABCD matrix of the system (from two paraxial rays), and for the space after each surface it reports the 1/e² beam radius at the vertex, the waist radius, the distance from the waist to the vertex (negative if the waist is downstream), the wavefront radius, the far-field half-angle divergence and the Rayleigh range in that medium, for the embedded Gaussian and for the mixed-mode beam (√M² times the radius, waist and divergence). The position and the radius are signed along the local z of the surface (reversed after an odd number of mirrors, as in OpticStudio). The beam radius along the axis is in profile	近軸ガウスビーム（OpticStudio の Paraxial Gaussian Beam）: 埋め込みのガウスビームのウエストの半径・面 1 からウエストまでの距離・M² で与えた入射のビームを、システムの近軸の ABCD 行列（近軸光線 2 本から）で運び、各面の後の空間について、頂点でのビーム半径（1/e²）・ウエストの半径・ウエストから頂点までの距離（ウエストが後ろなら負）・波面の曲率半径・遠方の広がり角の半角・その媒質の中のレイリー長を、埋め込みのガウスビームと混合モードのビーム（半径・ウエスト・広がり角が √M² 倍）について出す。位置と曲率半径の符号は面の局所 z の向き（奇数回の反射の後は逆。OpticStudio と同じ）。光軸に沿ったビーム半径は profile に
+Paraxial Gaussian beam (OpticStudio's Paraxial Gaussian Beam): the input beam given by the waist radius of its embedded Gaussian, the distance from surface 1 to the waist and M² is carried through the paraxial ABCD matrix of the system (from two paraxial rays), and for the space after each surface it reports the 1/e² beam radius at the vertex, the waist radius, the distance from the waist to the vertex (negative if the waist is downstream), the wavefront radius, the far-field half-angle divergence and the Rayleigh range in that medium, for the embedded Gaussian and for the mixed-mode beam (√M² times the radius and waist; divergence atan(√M² w₀ / z_R), √M² times at small angles). The position and the radius are signed along the local z of the surface (reversed after an odd number of mirrors, as in OpticStudio). The beam radius along the axis is in profile	近軸ガウスビーム（OpticStudio の Paraxial Gaussian Beam）: 埋め込みのガウスビームのウエストの半径・面 1 からウエストまでの距離・M² で与えた入射のビームを、システムの近軸の ABCD 行列（近軸光線 2 本から）で運び、各面の後の空間について、頂点でのビーム半径（1/e²）・ウエストの半径・ウエストから頂点までの距離（ウエストが後ろなら負）・波面の曲率半径・遠方の広がり角の半角・その媒質の中のレイリー長を、埋め込みのガウスビームと混合モードのビーム（半径・ウエストが √M² 倍。広がり角は atan(√M² w₀ / z_R) で、小さい角では √M² 倍）について出す。位置と曲率半径の符号は面の局所 z の向き（奇数回の反射の後は逆。OpticStudio と同じ）。光軸に沿ったビーム半径は profile に
 the x orientation of the Gaussian beam needs a rotationally symmetric system for now (use y)	ガウスビームの x の断面は、今は回転対称のシステムだけに対応しています（y を使ってください）
 the beam is carried through the GRIN media paraxially, but the profile is not drawn inside them	GRIN の媒質の中もビームは近軸で運びますが、輪郭はその中を描きません
 the waist radius must be positive ({})	ウエストの半径は正の値にしてください（{}）

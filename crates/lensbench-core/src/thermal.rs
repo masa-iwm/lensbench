@@ -265,10 +265,11 @@ pub fn make_thermal(s: &System, base: usize, spec: &ThermalSpec) -> Result<Therm
             .any(|q| q.surf == j && q.kind.param_kind() == k)
         {
             out.remove_solve(j, k)?;
-            warnings.push(format!(
-                "removed the solve of surface {j} {} (the value of the original system is kept)",
-                k.name()
-            ));
+            warnings.push(if k == Kind::Curv {
+                format!("removed the curvature solve of surface {j} (the value of the original system is kept)")
+            } else {
+                format!("removed the thickness solve of surface {j} (the value of the original system is kept)")
+            });
         }
     }
     out.set_config_count(n)?;
