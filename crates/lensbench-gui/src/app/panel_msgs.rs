@@ -212,6 +212,8 @@ impl Core {
             catalog::Action::SysSettings => self.msgs.push(Msg::FocusKind(Kind::SysSettings)),
             catalog::Action::New => self.msgs.push(Msg::New),
             catalog::Action::Build(p) => self.build_combo(p),
+            catalog::Action::Notice(t) => self.info(t),
+            catalog::Action::Fail(e) => self.fail(e),
         }
     }
 

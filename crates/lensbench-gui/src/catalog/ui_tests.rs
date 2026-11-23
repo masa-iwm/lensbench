@@ -49,6 +49,8 @@ fn name(a: &Action) -> &'static str {
         Action::Settings => "settings",
         Action::SysSettings => "sys_settings",
         Action::New => "new",
+        Action::Notice(_) => "notice",
+        Action::Fail(_) => "fail",
     }
 }
 
@@ -237,7 +239,9 @@ fn mech_rows_show_item_and_stay_short_when_narrow() {
         let mut h = Harness::builder()
             .with_size(egui::vec2(w, 600.0))
             .build_ui_state(
-                |ui, ms: &mut Vec<crate::combo::MechPick>| mech_rows::mech_ui(ui, ms, &ids),
+                |ui, ms: &mut Vec<crate::combo::MechPick>| {
+                    mech_rows::mech_ui(ui, ms, &ids, &[], &[])
+                },
                 ms.clone(),
             );
         h.run_steps(2);
@@ -261,4 +265,99 @@ fn mech_rows_show_item_and_stay_short_when_narrow() {
         let max = if w > 500.0 { 70.0 } else { 120.0 };
         assert!(step > 0.0 && step < max, "w {w}: {step}");
     }
+}
+
+/// 組合せの図で玉を選び（insert_after）、一覧でカタログの玉を選ぶと「⇄ Replace L1」が出て、押すと差し替えて
+/// 知らせを返す。機構部品は選んだ部品（図・欄の品番）を一覧の機構部品で差し替える
+#[test]
+fn replace_buttons_swap_the_selected_lens_and_part() {
+    let _g = serial();
+    let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let dir = ex.join("projects");
+    let v: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("P19_tube_cage.json")).unwrap())
+            .unwrap();
+    let combo = crate::combo::Combo::from_project(&v, &dir).unwrap();
+    let k = combo.ids().iter().position(|x| x == "L1").unwrap();
+    let cat = ex.join("lenses/LBP/parts.json").display().to_string();
+    let mut b = Browser::default();
+    let mut sl = lens("LB", "SL-254-50", 50.0);
+    sl.source = Some(cat.clone());
+    let cp = LensRow {
+        vendor: "LB".into(),
+        part: "CP-30".into(),
+        source: Some(cat.clone()),
+        kind: RowKind::Mech,
+        ..Default::default()
+    };
+    b.set_lenses(vec![sl, cp]);
+    b.lens_sel = Some(0);
+    let mut doc = ComboDoc::new(combo);
+    doc.insert_after = Some(k);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1100.0, 900.0))
+        .build_ui_state(
+            |ui, st: &mut St| {
+                st.doc.insert_after = Some(k);
+                if let Some(a) = st.b.ui(ui, &mut st.doc, st.dirs.0, st.dirs.1) {
+                    st.acts.push(name(&a));
+                }
+            },
+            St {
+                b,
+                doc,
+                dirs: (1, 1),
+                acts: Vec::new(),
+            },
+        );
+    h.run_steps(4);
+    h.get_by_label("⇄ Replace L1").click();
+    h.run_steps(2);
+    assert_eq!(h.state().acts, ["notice"]);
+    let p = h.state().doc.combo.el(k).unwrap().clone();
+    assert_eq!((p.part.as_str(), p.id.as_str()), ("SL-254-50", "L1"));
+    // 機構部品: 選ばなければボタンは出ない。tube を選ぶと出て、押すと品番だけ替わる
+    h.state_mut().b.lens_sel = Some(1);
+    h.run_steps(2);
+    assert!(h.query_by_label("⇄ Replace tube").is_none());
+    crate::combo::mech::select(&h.ctx, Some("tube"));
+    h.run_steps(2);
+    h.get_by_label("⇄ Replace tube").click();
+    h.run_steps(2);
+    let m = &h.state().doc.combo.mechanics[0];
+    assert_eq!((m.item.as_str(), m.at.as_str()), ("CP-30", "stop"));
+    assert_eq!(h.state().acts, ["notice", "notice"]);
+}
+
+/// 「品を変える…」の候補: 同じ種類の品だけ、保持する要素が入るものを先に
+#[test]
+fn change_item_candidates_are_same_kind() {
+    let cat = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/lenses/LBP/parts.json")
+        .display()
+        .to_string();
+    let m = crate::combo::MechPick {
+        name: "cage".into(),
+        catalog: cat.clone(),
+        item: "CP-30".into(),
+        ..Default::default()
+    };
+    // 同じファイルに他のケージ板は無い。一覧のケージ板の行は候補、チューブの行は候補でない
+    assert!(mech_rows::candidates(&m, &[], None).is_empty());
+    let row = |part: &str, cat_kind: &str, hold: f64| LensRow {
+        part: part.into(),
+        source: Some("/x/other.json".into()),
+        kind: RowKind::Mech,
+        category: cat_kind.into(),
+        raw: json!({ "mech": { "holds": { "diameter": hold } } }),
+        ..Default::default()
+    };
+    let rows = vec![
+        row("CP-B", "cage_plate", 12.7),
+        row("CP-A", "cage_plate", 25.4),
+        row("T-1", "tube", 25.4),
+    ];
+    let c = mech_rows::candidates(&m, &rows, Some(25.4));
+    let names: Vec<(&str, Option<bool>)> = c.iter().map(|x| (x.1.as_str(), x.3)).collect();
+    assert_eq!(names, [("CP-A", Some(true)), ("CP-B", Some(false))]);
 }

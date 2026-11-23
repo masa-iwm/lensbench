@@ -12,6 +12,7 @@ mod detail;
 mod filter;
 mod map_view;
 mod mech_rows;
+mod replace;
 use detail::row_detail;
 pub(crate) use filter::CATEGORIES;
 pub(crate) use map_view::MapView;
@@ -490,6 +491,9 @@ pub(crate) enum Action {
     SysSettings,
     /// 新規（組合せを空にする）
     New,
+    /// 状態の行に出す知らせ（差し替えた品など）と誤り
+    Notice(String),
+    Fail(String),
 }
 
 #[derive(Default)]
@@ -523,6 +527,8 @@ pub(crate) struct Browser {
     /// 何万件のカタログで毎フレーム作り直すと 1 フレームが遅くなり、egui がポインタの動きを
     /// 見落としてツールチップが出なくなる（クリックの後、動いた時刻が更新されない）
     pub cache: ListCache,
+    /// 一覧の側で起きた GUI への頼み（差し替えの知らせなど。[`Browser::lens_ui`] が返す）
+    pub pending: Option<Action>,
 }
 
 /// 一覧の版（入れ替えた回数、件数）
@@ -1067,7 +1073,7 @@ impl Browser {
         } else {
             builder.vertical(cells);
         }
-        act
+        act.or(self.pending.take())
     }
 
     fn lens_list(&mut self, ui: &mut Ui, doc: &mut ComboDoc) {
@@ -1211,6 +1217,9 @@ impl Browser {
                         }
                     } else if ui.button(tr("➕ Add to combination")).clicked() {
                         self.add_pick(doc, r);
+                    }
+                    if let Some(a) = replace::replace_ui(ui, doc, r) {
+                        self.pending = Some(a);
                     }
                     self.fit_ui(ui, doc, r);
                     let specs = r.specs();
@@ -1571,7 +1580,8 @@ impl Browser {
                     });
                 if !c.mechanics.is_empty() {
                     ui.separator();
-                    mech_ui(ui, &mut c.mechanics, &ids);
+                    let held = mech_rows::held_diameters(c, &ids, &self.lenses);
+                    mech_ui(ui, &mut c.mechanics, &ids, &self.lenses, &held);
                 }
             });
         match op {

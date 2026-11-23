@@ -2007,3 +2007,15 @@ At {} surface {}, z {} mm	{} の面 {}、z {} mm
 Bores {}	穴 {}
 Holding diameter {} mm, seat at z {} mm	保持径 {} mm、座は z {} mm
 Holds {}	保持: {}
+Change item…	品を変える…
+No mechanical part {}	機構部品 {} がありません
+No other part of the same kind in the catalogs	カタログに同じ種類のほかの品がありません
+Only a catalog lens can replace a lens	レンズはカタログのレンズでだけ差し替えられます
+Only a lens can be replaced with a catalog lens	カタログのレンズで差し替えられるのはレンズだけです
+Only a mechanical part can replace a mechanical part	機構部品は機構部品でだけ差し替えられます
+Replaced {} with {}	{} を {} に差し替えました
+Replaces the item of the mechanical part selected in the layout figure (or in the mechanical parts list) with this part. Placement, held elements, seat, connection and reversal are kept (undo with Ctrl+Z)	レイアウト図（か機構部品の欄）で選択している機構部品の品をこの部品に差し替えます。置く所・保持する要素・座・つなぎ・反転はそのままです（Ctrl+Z で元に戻せます）
+Replaces the item with another part of the same kind; placement, held elements, seat, connection and reversal are kept	同じ種類のほかの品に差し替えます。置く所・保持する要素・座・つなぎ・反転はそのままです
+Replaces the lens selected in the layout figure with this lens. Its id, the gaps before and after, its group and its place are kept (undo with Ctrl+Z)	レイアウト図で選択しているレンズをこのレンズに差し替えます。id・前後の間隔・群・置き方はそのままです（Ctrl+Z で元に戻せます）
+The held element does not fit the holding diameter	保持する要素が保持径に入りません
+⇄ Replace {}	⇄ {} を差し替え

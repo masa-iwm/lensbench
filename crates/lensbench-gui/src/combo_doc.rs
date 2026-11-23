@@ -3,6 +3,7 @@
 
 use crate::catalog::{pick_from, LensRow, RowKind};
 use crate::combo::Combo;
+use crate::i18n::{tr, trf};
 
 /// 組合せと、カタログから足すときの位置
 #[derive(Default)]
@@ -159,6 +160,48 @@ impl ComboDoc {
     }
 }
 
+impl ComboDoc {
+    /// 経路の k 番目の玉をカタログの玉の行 `r` に差し替える（id・前後の間隔・反転・群は残す）。返すのは状態の行に出す文
+    pub(crate) fn replace_row(&mut self, k: usize, r: &LensRow) -> Result<String, String> {
+        let old = self
+            .combo
+            .el(k)
+            .filter(|p| p.is_lens_like())
+            .ok_or_else(|| tr("Only a lens can be replaced with a catalog lens").to_string())?;
+        let new = pick_from(r);
+        if !new.is_lens_like() || r.kind != RowKind::Lens {
+            return Err(tr("Only a catalog lens can replace a lens").into());
+        }
+        let label = old.label();
+        let p = old.replaced_by(new);
+        let msg = trf("Replaced {} with {}", &[&label, &p.label()]);
+        if let Some(x) = self.combo.el_mut(k) {
+            *x = p;
+        }
+        Ok(msg)
+    }
+
+    /// 機構部品 `name` の品をカタログの行 `r`（機構部品）に差し替える（置く所・保持・座・つなぎ・反転は残す）
+    pub(crate) fn replace_mech(&mut self, name: &str, r: &LensRow) -> Result<String, String> {
+        if r.kind != RowKind::Mech {
+            return Err(tr("Only a mechanical part can replace a mechanical part").into());
+        }
+        let m = self
+            .combo
+            .mechanics
+            .iter_mut()
+            .find(|m| m.name == name)
+            .ok_or_else(|| trf("No mechanical part {}", &[&name]))?;
+        let msg = trf(
+            "Replaced {} with {}",
+            &[&format!("{name} ({})", m.item), &r.part],
+        );
+        m.catalog = r.source.clone().unwrap_or_default();
+        m.item = r.part.clone();
+        Ok(msg)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +226,98 @@ mod tests {
         assert!(d.refocus);
         assert_eq!(d.combo.picks.len(), 2);
         assert_eq!(d.combo.picks[0].air, 5.0);
+    }
+
+    /// P19 の L1（自作の玉）をカタログの玉に、tube を別の長さのチューブに差し替える。id・後の空気・保持・座・置く所は
+    /// 残り、組合せは手で書いたプロジェクト（L1 をカタログの品、tube の item を替えたもの）を読んだものと同じ
+    #[test]
+    fn replace_keeps_settings_and_matches_hand_written() {
+        let _g = crate::serve_lock();
+        crate::i18n::set(crate::i18n::Lang::En);
+        let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let dir = ex.join("projects");
+        let text = std::fs::read_to_string(dir.join("P19_tube_cage.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let mut d = ComboDoc::new(Combo::from_project(&v, &dir).unwrap());
+        // 長さ 50 のチューブを足したカタログ（試験ごとに別の名前）
+        let tmp = std::env::temp_dir().join(format!("lensbench-replace-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let mut cat: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(ex.join("lenses/LBP/parts.json")).unwrap(),
+        )
+        .unwrap();
+        let mut t50 = cat["items"]["TUBE-25-30"].clone();
+        t50["mech"]["length"] = 50.into();
+        t50["mech"]["bores"][0]["z1"] = 50.into();
+        cat["items"]["TUBE-25-50"] = t50;
+        let cat_path = tmp.join("parts.json");
+        std::fs::write(&cat_path, cat.to_string()).unwrap();
+        let cat_s = cat_path.display().to_string();
+
+        let ids = d.combo.ids();
+        let k = ids.iter().position(|x| x == "L1").unwrap();
+        let air = d.combo.el(k).unwrap().air;
+        let lens = LensRow {
+            vendor: "LB".into(),
+            part: "SL-254-50".into(),
+            source: Some(cat_s.clone()),
+            kind: RowKind::Lens,
+            efl: 50.0,
+            diameter: 25.4,
+            thickness: 5.0,
+            pieces: 1,
+            ..Default::default()
+        };
+        let msg = d.replace_row(k, &lens).unwrap();
+        assert!(
+            msg.starts_with("Replaced ") && msg.ends_with("LB SL-254-50"),
+            "{msg}"
+        );
+        let p = d.combo.el(k).unwrap();
+        assert_eq!(
+            (p.kind, p.id.as_str(), p.air, p.part.as_str()),
+            (crate::combo::ElemKind::Catalog, "L1", air, "SL-254-50")
+        );
+        let tube = LensRow {
+            part: "TUBE-25-50".into(),
+            source: Some(cat_s.clone()),
+            kind: RowKind::Mech,
+            ..Default::default()
+        };
+        d.replace_mech("tube", &tube).unwrap();
+        // 機構部品でない行・玉でない要素は差し替えない
+        assert!(d.replace_mech("tube", &lens).is_err());
+        assert!(d.replace_mech("nope", &tube).is_err());
+        let stop = ids.iter().position(|x| x == "stop").unwrap();
+        assert!(d.replace_row(stop, &lens).is_err());
+
+        let mut hand = v.clone();
+        let b = hand["blocks"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|b| b["id"] == "L1")
+            .unwrap();
+        *b = serde_json::json!({ "type": "user", "id": "L1", "catalog": cat_s, "item": "SL-254-50" });
+        hand["mechanics"][0]["catalog"] = cat_s.clone().into();
+        hand["mechanics"][0]["item"] = "TUBE-25-50".into();
+        let want = Combo::from_project(&hand, &dir).unwrap();
+        assert_eq!(d.combo.project(), want.project());
+        let m = &d.combo.mechanics[0];
+        assert_eq!(
+            (m.at.as_str(), m.holds.clone()),
+            ("stop", vec!["L1".to_string()])
+        );
+        // 差し替えた組合せで系ができる（保持する L1 はユーザーカタログの品になった）
+        let f = tmp.join("p.json");
+        std::fs::write(&f, d.combo.project().to_string()).unwrap();
+        let gd = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass");
+        let lay = lensbench_engine::preview_layout(
+            &serde_json::json!({ "file": f.display().to_string(), "glass_dirs": [gd.display().to_string()] }),
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        assert_eq!(lay["mechs"].as_array().map(Vec::len), Some(2), "{lay}");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

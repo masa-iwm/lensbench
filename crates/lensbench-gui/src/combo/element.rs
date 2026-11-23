@@ -37,6 +37,40 @@ impl Pick {
         }
     }
 
+    /// 玉（カタログの玉・自作の玉・.zmx の玉）か。カタログの玉に差し替えられる
+    pub(crate) fn is_lens_like(&self) -> bool {
+        matches!(
+            self.kind,
+            ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx
+        )
+    }
+
+    /// カタログの玉 `new`（[`crate::catalog::pick_from`] で作ったもの）に差し替えた要素。中身は新しい品のもの、
+    /// 置き方・後の空気・ON/OFF・状態ごとの値・群・id・前の絞りは元の要素のまま（[`Pick::retyped`] と同じものを持ち越す）。
+    /// 反転は新しい品が反転できるときだけ残す
+    pub(crate) fn replaced_by(&self, new: Pick) -> Pick {
+        let keep = self.retyped(new.kind);
+        let mut p = Pick {
+            air: keep.air,
+            decenter: keep.decenter,
+            tilt: keep.tilt,
+            lock_place: keep.lock_place,
+            on: keep.on,
+            off_air: keep.off_air,
+            state_on: keep.state_on,
+            state_air: keep.state_air,
+            state_place: keep.state_place,
+            group: keep.group,
+            id: keep.id,
+            air_id: keep.air_id,
+            air_medium: keep.air_medium,
+            stop_front: self.stop_front,
+            ..new
+        };
+        p.reversed = self.reversed && p.can_reverse();
+        p
+    }
+
     /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）。自作の玉は、係数の符号を変えるだけで
     /// 反転できる面だけのとき（Zernike・Grid Sag などの面があれば反転しない）。反転したものは戻せる
     pub(crate) fn can_reverse(&self) -> bool {

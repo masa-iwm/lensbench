@@ -4,7 +4,13 @@ use super::*;
 use crate::combo::MechPick;
 
 /// 組合せの機構部品: 置く要素・面・ずれ・保持する要素。部品はカタログの機構部品の行から足す
-pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
+pub(super) fn mech_ui(
+    ui: &mut Ui,
+    ms: &mut Vec<MechPick>,
+    ids: &[String],
+    lenses: &[LensRow],
+    held: &[Option<f64>],
+) {
     ui.label(RichText::new(tr("Mechanical parts")).strong()).on_hover_text(tr(
         "Tubes, cage plates and so on. Adding a mechanical part row from the catalog places it at the selected element. Check vignetting with the \"Mechanical vignetting\" analysis",
     ));
@@ -19,8 +25,14 @@ pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
         ui.push_id(("mech-row", k), |ui| {
             // 1 行目: 名前・品番・種類と寸法（収まらなければ切って、指すと全体）・✖
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
+                let was = m.name.clone();
+                let te = ui
+                    .add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
                     .on_hover_text(tr("Name of the part in the project"));
+                // 選んでいる部品の名前を書き換えたら、選択も新しい名前に付け替える（名前で覚えているので）
+                if te.changed() && sel.as_deref() == Some(was.as_str()) {
+                    crate::combo::mech::select(ui.ctx(), Some(&m.name));
+                }
                 let found = m
                     .lookup()
                     .map(|it| (crate::combo::mech::mech_info(&it), it.description.clone()));
@@ -69,6 +81,7 @@ pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
             ui.horizontal_wrapped(|ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 place_ui(ui, m, k, &names[..k], ids);
+                change_ui(ui, m, lenses, held.get(k).copied().flatten());
             });
         });
     }
@@ -174,4 +187,116 @@ fn place_ui(ui: &mut Ui, m: &mut MechPick, k: usize, prev: &[String], ids: &[Str
     .on_hover_text(tr("Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)"));
     ui.checkbox(&mut m.reversed, tr("Reverse"))
         .on_hover_text(tr("Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)"));
+}
+
+/// 部品ごとの、保持する要素（holds の最初）の径。自作の玉は面の半径の最大の 2 倍、カタログの玉は一覧の径
+pub(super) fn held_diameters(
+    c: &crate::combo::Combo,
+    ids: &[String],
+    lenses: &[LensRow],
+) -> Vec<Option<f64>> {
+    c.mechanics
+        .iter()
+        .map(|m| {
+            let id = m.holds.first()?;
+            let p = c.el(ids.iter().position(|x| x == id)?)?;
+            let d = match p.kind {
+                crate::combo::ElemKind::Lens => {
+                    2.0 * p.surfs.iter().map(|r| r.semi).fold(0.0, f64::max)
+                }
+                crate::combo::ElemKind::Catalog => {
+                    lenses
+                        .iter()
+                        .find(|l| {
+                            l.vendor == p.vendor && l.part == p.part && l.kind != RowKind::Mech
+                        })?
+                        .diameter
+                }
+                _ => 2.0 * p.semi,
+            };
+            (d.is_finite() && d > 0.0).then_some(d)
+        })
+        .collect()
+}
+
+/// 差し替えの候補: 部品と同じ種類の品（部品のカタログのファイルの品と、一覧の機構部品の行）。
+/// （カタログのファイル、品番、種類と寸法の 1 行、保持する要素が保持径に入るか（径が分からなければ None））
+pub(super) fn candidates(
+    m: &MechPick,
+    lenses: &[LensRow],
+    held: Option<f64>,
+) -> Vec<(String, String, String, Option<bool>)> {
+    let Ok(cur) = m.lookup() else {
+        return Vec::new();
+    };
+    let kind = cur.kind;
+    let mut out: Vec<(String, String, String, Option<bool>)> = Vec::new();
+    let fits = |raw: &Value| held.map(|d| lensbench_catalog::spec::fits_row(raw, d));
+    if let Ok(c) = lensbench_project::UserCatalog::load_shared(std::path::Path::new(&m.catalog)) {
+        for (name, it) in &c.items {
+            if name == &m.item || it.mech().is_none() || it.kind != kind {
+                continue;
+            }
+            let raw = serde_json::to_value(it).unwrap_or_default();
+            out.push((
+                m.catalog.clone(),
+                name.clone(),
+                crate::combo::mech::mech_info(it),
+                fits(&raw),
+            ));
+        }
+    }
+    for r in lenses
+        .iter()
+        .filter(|r| r.kind == RowKind::Mech && !r.is_incomplete())
+    {
+        let Some(src) = r.source.as_deref() else {
+            continue;
+        };
+        let same_kind = kind.is_none_or(|k| k.as_str() == r.category);
+        let dup = out.iter().any(|o| o.0 == src && o.1 == r.part);
+        if !same_kind || dup || (src == m.catalog && r.part == m.item) {
+            continue;
+        }
+        out.push((src.to_string(), r.part.clone(), row_detail(r), fits(&r.raw)));
+    }
+    // 入るものを先に、品番の順
+    out.sort_by(|a, b| {
+        (a.3 == Some(false))
+            .cmp(&(b.3 == Some(false)))
+            .then(a.1.cmp(&b.1))
+    });
+    out
+}
+
+/// 「品を変える…」: 置く所・保持・座・つなぎ・反転は残し、カタログのファイルと品番だけ替える（Ctrl+Z で戻る）
+fn change_ui(ui: &mut Ui, m: &mut MechPick, lenses: &[LensRow], held: Option<f64>) {
+    ui.menu_button(tr("Change item…"), |ui| {
+        let cands = candidates(m, lenses, held);
+        if cands.is_empty() {
+            ui.weak(tr("No other part of the same kind in the catalogs"));
+            return;
+        }
+        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+            for (cat, item, info, fit) in cands {
+                let label = if fit == Some(false) {
+                    format!("⚠ {item}  {info}")
+                } else {
+                    format!("{item}  {info}")
+                };
+                let hover = if fit == Some(false) {
+                    format!("{}\n{cat}", tr("The held element does not fit the holding diameter"))
+                } else {
+                    cat.clone()
+                };
+                if ui.button(label).on_hover_text(hover).clicked() {
+                    m.catalog = cat;
+                    m.item = item;
+                    ui.close_menu();
+                }
+            }
+        });
+    })
+    .response
+    .on_hover_text(tr("Replaces the item with another part of the same kind; placement, held elements, seat, connection and reversal are kept"));
 }
