@@ -330,7 +330,7 @@ pub fn model_from_coat(
     let dsum: f64 = l0.iter().map(|l| l.1).sum();
     let bmax = spec.beta_max.min(nmin - 1e-3).max(0.0);
     let p = spec.order;
-    // 初めの格子: 1/λ の間隔は群の光学的な厚さの 1/16、β² の間隔は位相の変わり方 k Σ d / q から
+    // 初めの格子: 1/λ の間隔は群の光学的な厚さ（屈折率の最大で見積もる）の約 1/14（1/(12·1.15)）、β² の間隔は位相の変わり方 k Σ d / q から
     let mut ds = 1.0 / (12.0 * opt.max(0.05) * 1.15);
     let qmin = (nmin * nmin - spec.beta_max.min(nmin * 0.999).powi(2))
         .max(1e-4)
@@ -373,8 +373,7 @@ pub fn model_from_coat(
         let trans_err = |wl: f64, bs: &[f64]| -> Result<f64> {
             let mut e: f64 = 0.0;
             for &(n1, n2) in &media {
-                let keys = [("X|A|G", false), ("X|A|G|R", true)];
-                for (key, _) in keys {
+                for key in ["X|A|G", "X|A|G|R"] {
                     let key = if n2 == 1.0 {
                         key.replace("|G", "|AIR")
                     } else {
@@ -459,11 +458,7 @@ pub fn model_from_coat(
                 .par_iter()
                 .map(crate::par::scoped(|wl: &f64| mir_err(*wl, &bs_all)))
                 .collect::<Result<_>>()?;
-            let mbs: Vec<f64> = mid_b(&g.betas)
-                .into_iter()
-                .map(|b| b * 1.0)
-                .filter(|&b| b < 1.52)
-                .collect();
+            let mbs: Vec<f64> = mid_b(&g.betas).into_iter().filter(|&b| b < 1.52).collect();
             let meb: Vec<f64> = g
                 .wavelengths
                 .par_iter()
