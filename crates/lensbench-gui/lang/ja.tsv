@@ -1985,3 +1985,12 @@ Cannot read the catalog {} ({})	カタログ {} を読めません（{}）
 Item {} is not in {}	{} は {} にありません
 Name of the part in the project	プロジェクトでの部品の名前
 Catalog {}	カタログ {}
+Connected after {}, z {} mm	{} の後ろにつなぐ、z {} mm
+Seated on {}, z {} mm	{} の座に合わせる、z {} mm
+At surface 1, z {} mm	面 1、z {} mm
+At {} surface {}, z {} mm	{} の面 {}、z {} mm
+, reversed	、反転
+⌀{} mm (z {}–{} mm)	⌀{} mm（z {}–{} mm）
+Bores {}	穴 {}
+Holding diameter {} mm, seat at z {} mm	保持径 {} mm、座は z {} mm
+Holds {}	保持: {}

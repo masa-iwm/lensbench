@@ -31,7 +31,7 @@ mod element;
 mod figure;
 mod kind_data;
 mod layout_json;
-mod mech;
+pub(crate) mod mech;
 mod mirror;
 mod paths;
 mod raw;

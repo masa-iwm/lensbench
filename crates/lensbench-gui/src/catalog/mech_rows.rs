@@ -2,58 +2,6 @@
 
 use super::*;
 use crate::combo::MechPick;
-use lensbench_project::{MechOutline, UserItem};
-
-/// 品の種類と主な寸法の 1 行（例「Tube: length 30 mm, bore 23 mm, outer diameter 30.5 mm, thread M25」）
-pub(super) fn mech_info(it: &UserItem) -> String {
-    let kind = it
-        .kind
-        .and_then(|k| {
-            filter::CATEGORIES
-                .iter()
-                .find(|(c, _)| *c == k.as_str())
-                .map(|(_, n)| tr(n))
-        })
-        .unwrap_or_else(|| tr("Mechanical part"));
-    let Some(m) = it.mech() else {
-        return kind.to_string();
-    };
-    let mut t = trf("{}: length {} mm", &[&kind, &fmt_num(m.length)]);
-    let bore = m
-        .bores
-        .iter()
-        .map(|b| b.diameter)
-        .fold(f64::INFINITY, f64::min);
-    if bore.is_finite() {
-        t.push_str(&trf(", bore {} mm", &[&fmt_num(bore)]));
-    }
-    if m.outer_diameter > 0.0 {
-        t.push_str(&if m.outline == MechOutline::Square {
-            trf(", square side {} mm", &[&fmt_num(m.outer_diameter)])
-        } else {
-            trf(", outer diameter {} mm", &[&fmt_num(m.outer_diameter)])
-        });
-    }
-    if m.rod_spacing > 0.0 {
-        t.push_str(&trf(", cage rods {} mm apart", &[&fmt_num(m.rod_spacing)]));
-    }
-    if !m.thread.is_empty() {
-        t.push_str(&trf(", thread {}", &[&m.thread]));
-    }
-    t
-}
-
-/// 部品の品をカタログから引く。Ok は（種類と寸法の 1 行、品の説明）、Err は見つからない理由
-fn lookup(m: &MechPick) -> Result<(String, String), String> {
-    let path = std::path::Path::new(&m.catalog);
-    let c = lensbench_project::UserCatalog::load_shared(path)
-        .map_err(|e| trf("Cannot read the catalog {} ({})", &[&m.catalog, &e]))?;
-    let it = c
-        .items
-        .get(&m.item)
-        .ok_or_else(|| trf("Item {} is not in {}", &[&m.item, &m.catalog]))?;
-    Ok((mech_info(it), it.description.clone()))
-}
 
 /// 組合せの機構部品: 置く要素・面・ずれ・保持する要素。部品はカタログの機構部品の行から足す
 pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
@@ -62,6 +10,8 @@ pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
     ));
     let mut remove = None;
     let names: Vec<String> = ms.iter().map(|m| m.name.clone()).collect();
+    let sel = crate::combo::mech::selected(ui.ctx());
+    let scroll = crate::combo::mech::scroll_id();
     for (k, m) in ms.iter_mut().enumerate() {
         if k > 0 {
             ui.separator();
@@ -71,22 +21,31 @@ pub(super) fn mech_ui(ui: &mut Ui, ms: &mut Vec<MechPick>, ids: &[String]) {
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
                     .on_hover_text(tr("Name of the part in the project"));
-                let found = lookup(m);
+                let found = m
+                    .lookup()
+                    .map(|it| (crate::combo::mech::mech_info(&it), it.description.clone()));
                 let src = trf("Catalog {}", &[&m.catalog]);
-                match &found {
-                    Ok((_, desc)) => {
-                        let hover = if desc.is_empty() {
-                            src.clone()
-                        } else {
-                            format!("{desc}\n{src}")
-                        };
-                        ui.label(RichText::new(&m.item).strong())
-                            .on_hover_text(hover);
-                    }
-                    Err(e) => {
-                        ui.colored_label(ui.visuals().warn_fg_color, format!("⚠ {}", m.item))
-                            .on_hover_text(e);
-                    }
+                // 品番を押すと部品を選ぶ（レイアウト図でもその壁が目立つ。図で選んでもここが目立つ）
+                let selected = sel.as_deref() == Some(m.name.as_str());
+                let (text, hover) = match &found {
+                    Ok((_, desc)) if desc.is_empty() => (RichText::new(&m.item).strong(), src),
+                    Ok((_, desc)) => (RichText::new(&m.item).strong(), format!("{desc}\n{src}")),
+                    Err(e) => (
+                        RichText::new(format!("⚠ {}", m.item)).color(ui.visuals().warn_fg_color),
+                        e.clone(),
+                    ),
+                };
+                let r = ui.selectable_label(selected, text).on_hover_text(hover);
+                if r.clicked() {
+                    let name = (!selected).then_some(m.name.as_str());
+                    crate::combo::mech::select(ui.ctx(), name);
+                }
+                if selected
+                    && ui
+                        .ctx()
+                        .data_mut(|d| d.remove_temp::<bool>(scroll).is_some())
+                {
+                    r.scroll_to_me(Some(egui::Align::Center));
                 }
                 let w = (ui.available_width() - 28.0).max(0.0);
                 if let Ok((info, _)) = &found {

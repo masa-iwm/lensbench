@@ -613,11 +613,19 @@ impl UserCatalog {
         type Stamp = (Option<std::time::SystemTime>, u64);
         type Cache = HashMap<PathBuf, (Stamp, Arc<UserCatalog>)>;
         static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
-        // `.gz` だけある場合など、更新時刻が取れなければ覚えずに読む
-        let Ok(stamp) = lensbench_core::vfs::stamp(path) else {
-            return UserCatalog::load(path).map(Arc::new);
+        // `x.json` が無く `x.json.gz` だけあるとき（[`read_text`] が読む方）は、その更新時刻で覚える。
+        // どちらも取れなければ覚えずに読む
+        let mut gz = path.as_os_str().to_owned();
+        gz.push(".gz");
+        let gz = PathBuf::from(gz);
+        let (file, stamp) = match lensbench_core::vfs::stamp(path) {
+            Ok(st) => (path, st),
+            Err(_) => match lensbench_core::vfs::stamp(&gz) {
+                Ok(st) => (gz.as_path(), st),
+                Err(_) => return UserCatalog::load(path).map(Arc::new),
+            },
         };
-        let key = lensbench_core::vfs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let key = lensbench_core::vfs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
         let cache = CACHE.get_or_init(Default::default);
         if let Some((st, c)) = cache.lock_ok().get(&key) {
             if *st == stamp {
@@ -744,6 +752,24 @@ pub fn catalog_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `x.json.gz` だけあるカタログも覚えて、変わらなければ同じものを返す（GUI の欄が毎フレーム引く）
+    #[test]
+    fn load_shared_remembers_gz_only_catalog() {
+        let dir = std::env::temp_dir().join(format!("lb-load-shared-gz-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let c = UserCatalog::from_json(
+            r#"{"items": {"A": {"mech": {"length": 10, "outer_diameter": 25}}}}"#,
+        )
+        .unwrap();
+        c.save(&dir.join("c.json.gz")).unwrap();
+        let p = dir.join("c.json");
+        let a = UserCatalog::load_shared(&p).unwrap();
+        let b = UserCatalog::load_shared(&p).unwrap();
+        assert!(a.items.contains_key("A"));
+        assert!(std::sync::Arc::ptr_eq(&a, &b));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     /// 品の欄の組み合わせ: 意味のあるものだけ通し、ほかは読むときに誤り
     #[test]

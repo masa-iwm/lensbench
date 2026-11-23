@@ -88,7 +88,21 @@ pub(super) fn figure(
     if h.surfs.is_some() {
         view.hover_surfs = h.surfs;
     }
-    paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak);
+    // 選んだ機構部品（組合せの図だけ。欄の品番でも選べる）と、指した部品の名前・品番
+    let mech_sel = combo
+        .is_some()
+        .then(|| super::mech::selected(ui.ctx()))
+        .flatten();
+    let pick = |n: &str| ro.mechanics.iter().find(|m| m.name == n);
+    let mech_hover = h.mech.as_deref().map(|n| match pick(n) {
+        Some(m) => format!("{n}  {}", m.item),
+        None => n.to_string(),
+    });
+    let ms = (mech_sel.as_deref(), mech_hover.as_deref());
+    paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak, ms);
+    if let Some(m) = mech_sel.as_deref().and_then(pick) {
+        mech_card(&painter, &vis, rect, &m.card(), accent);
+    }
     // 縮尺（レイアウトのパネルの図。OpticStudio と同じく左下）
     if view.nav {
         crate::widgets::scale_bar::draw(
@@ -109,7 +123,7 @@ pub(super) fn figure(
     if let Some(combo) = combo {
         dim_edit(ui, resp, combo, view, &sc.dims);
     }
-    if h.el.is_some() || h.dim.is_some() || (h.lead && editable) {
+    if h.el.is_some() || h.dim.is_some() || (h.lead && editable) || (h.mech.is_some() && editable) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 }
@@ -729,6 +743,8 @@ pub(super) struct Hits {
     pub(super) surfs: Option<[usize; 2]>,
     /// 指した機構部品の壁（[`Scene::mechs`] の番号と壁の番号）。名前を出す
     pub(super) mechs: Vec<(usize, usize)>,
+    /// 一番上の指した機構部品の名前（クリックで選ぶ）
+    pub(super) mech: Option<String>,
 }
 
 /// ポインタ q の下にあるものを、描く順に後のものを上として決める
@@ -762,10 +778,11 @@ pub(super) fn hits(sc: &Scene, q: Option<Pos2>) -> Hits {
             }
         }
     }
-    for (i, (_, polys)) in sc.mechs.iter().enumerate() {
+    for (i, polys) in sc.mechs.iter().map(|m| &m.1).enumerate() {
         for (j, poly) in polys.iter().enumerate() {
             if inside(poly, q) {
                 h.mechs.push((i, j));
+                h.mech = Some(sc.mechs[i].0.clone());
             }
         }
     }
@@ -813,6 +830,7 @@ fn paint(
     xf: Xform,
     accent: Color32,
     weak: Color32,
+    (mech_sel, mech_hover): (Option<&str>, Option<&str>),
 ) {
     // 光軸
     let axis_y = xf.to([0.0, 0.0]).y;
@@ -902,22 +920,23 @@ fn paint(
             hl,
         );
     }
-    // 機構部品: 壁の断面（選べない、名前は指したとき）
+    // 機構部品: 壁の断面。選んだ部品は輪郭を目立たせ、指した壁には名前と品番
     let mech_fill = theme::mech_fill(vis);
     let mech_line = theme::mech_line(vis);
     for (i, (name, polys)) in sc.mechs.iter().enumerate() {
+        let stroke = if mech_sel == Some(name.as_str()) {
+            Stroke::new(2.2_f32, accent)
+        } else {
+            Stroke::new(1.0_f32, mech_line)
+        };
         for (j, poly) in polys.iter().enumerate() {
-            painter.add(egui::Shape::convex_polygon(
-                poly.clone(),
-                mech_fill,
-                Stroke::new(1.0_f32, mech_line),
-            ));
-            if h.mechs.contains(&(i, j)) {
+            painter.add(egui::Shape::convex_polygon(poly.clone(), mech_fill, stroke));
+            if h.mechs.last() == Some(&(i, j)) {
                 if let Some(c) = poly.first() {
                     painter.text(
                         *c,
                         Align2::LEFT_BOTTOM,
-                        name,
+                        mech_hover.unwrap_or(name),
                         FontId::proportional(11.0),
                         mech_line,
                     );
@@ -1027,9 +1046,18 @@ fn interact(
             view.set_sel(None);
         } else if h.el.is_none() && h.lead && combo.is_some() {
             view.select_lead();
+        } else if let (None, Some(n), true) = (h.el, h.mech.as_deref(), combo.is_some()) {
+            // 要素の無い所の機構部品の壁: その部品を選ぶ（説明を図の右下に、欄のその行まで送る）
+            super::mech::select(ui.ctx(), Some(n));
+            ui.data_mut(|d| d.insert_temp(super::mech::scroll_id(), true));
+            view.set_sel(None);
+            view.dim = None;
         } else {
             view.set_sel(h.el);
             view.dim = None;
+        }
+        if h.mech.is_none() || h.el.is_some() {
+            super::mech::select(ui.ctx(), None);
         }
     }
     // 移動・囲んで拡大のドラッグは要素を選ぶ・動かす役をしない
@@ -1226,6 +1254,49 @@ pub(super) fn cube_of_prism(pts: &[[f64; 2]]) -> Option<[Vec<[f64; 2]>; 2]> {
     let (c, a, b) = (pts[i], pts[(i + 1) % 3], pts[(i + 2) % 3]);
     let o = [a[0] + b[0] - c[0], a[1] + b[1] - c[1]];
     Some([vec![a, c, b, o], vec![a, b]])
+}
+
+/// 選んだ機構部品の説明（図の右下の札。1 行目は名前と品番）
+fn mech_card(
+    painter: &Painter,
+    vis: &egui::Visuals,
+    rect: Rect,
+    lines: &[String],
+    accent: Color32,
+) {
+    let wrap = (rect.width() * 0.5).clamp(160.0, 420.0);
+    let galleys: Vec<Arc<Galley>> = lines
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let (font, col) = if i == 0 {
+                (FontId::proportional(13.0), vis.strong_text_color())
+            } else {
+                (FontId::proportional(11.5), vis.text_color())
+            };
+            painter.layout(t.clone(), font, col, wrap)
+        })
+        .collect();
+    let w = galleys.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    let h: f32 = galleys.iter().map(|g| g.size().y + 2.0).sum();
+    let pad = 8.0;
+    let r = Rect::from_min_size(
+        rect.right_bottom() - egui::vec2(w + 2.0 * pad + 10.0, h + 2.0 * pad + 10.0),
+        egui::vec2(w + 2.0 * pad, h + 2.0 * pad),
+    );
+    painter.rect(
+        r,
+        6.0,
+        vis.window_fill.gamma_multiply(0.95),
+        Stroke::new(1.0_f32, accent),
+        egui::StrokeKind::Inside,
+    );
+    let mut y = r.top() + pad;
+    for g in galleys {
+        let gh = g.size().y;
+        painter.galley(egui::pos2(r.left() + pad, y), g, vis.text_color());
+        y += gh + 2.0;
+    }
 }
 
 /// 点が多角形の中か

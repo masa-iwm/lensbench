@@ -562,6 +562,75 @@ fn folded_labels_follow_view() {
     assert!(!m.label.intersects(area), "{:?}", m.label);
 }
 
+/// 機構部品の壁をクリックすると部品を選び（要素の選択は外れる）、図の右下の説明に品番・種類と寸法・置いた所が出る。
+/// 要素・何も無い所をクリックすると外れる
+#[test]
+fn click_selects_mechanical_part() {
+    // 説明の文言を英語で比べる（言語はプロセスで 1 つ）
+    let _g = crate::serve_lock();
+    crate::i18n::set(crate::i18n::Lang::En);
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects");
+    let v: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("P19_tube_cage.json")).unwrap())
+            .unwrap();
+    let c = Combo::from_project(&v, &dir).unwrap();
+    let mut f = Fig::of(c);
+    let sh = f.frame(Vec::new());
+    let names: Vec<&str> = sh.sc.mechs.iter().map(|m| m.0.as_str()).collect();
+    assert_eq!(names, ["tube", "cage"]);
+    // 壁の真ん中（要素に重ならない所）
+    let wall = |name: &str| {
+        let polys = &sh.sc.mechs.iter().find(|m| m.0 == name).unwrap().1;
+        polys
+            .iter()
+            .map(|p| {
+                let n = p.len() as f32;
+                Pos2::new(
+                    p.iter().map(|q| q.x).sum::<f32>() / n,
+                    p.iter().map(|q| q.y).sum::<f32>() / n,
+                )
+            })
+            .find(|&q| {
+                let h = hits(&sh.sc, Some(q));
+                h.el.is_none() && h.mech.as_deref() == Some(name)
+            })
+            .unwrap()
+    };
+    let (tube, cage) = (wall("tube"), wall("cage"));
+    let m1 = f.mid(0);
+    f.click(m1);
+    assert_eq!(f.view.sel, Some(0));
+    f.click(tube);
+    assert_eq!(super::mech::selected(&f.ctx).as_deref(), Some("tube"));
+    assert_eq!(f.view.sel, None);
+    f.click(cage);
+    assert_eq!(super::mech::selected(&f.ctx).as_deref(), Some("cage"));
+    let card = f.combo.mechanics[1].card();
+    assert_eq!(card[0], "cage  CP-30");
+    assert!(
+        card.iter()
+            .any(|l| l.starts_with("Cage plate: length 8 mm")),
+        "{card:?}"
+    );
+    assert!(
+        card.iter().any(|l| l == "At L1 surface 1, z 25 mm"),
+        "{card:?}"
+    );
+    let tube_card = f.combo.mechanics[0].card();
+    assert!(tube_card.iter().any(|l| l == "Holds L1"), "{tube_card:?}");
+    assert!(
+        tube_card
+            .iter()
+            .any(|l| l == "Holding diameter 25.4 mm, seat at z 0 mm"),
+        "{tube_card:?}"
+    );
+    f.click(m1);
+    assert_eq!((super::mech::selected(&f.ctx), f.view.sel), (None, Some(0)));
+    f.click(cage);
+    f.click(Pos2::new(5.0, 5.0));
+    assert_eq!(super::mech::selected(&f.ctx), None);
+}
+
 /// 凹面のある玉（P17 の真ん中の両凹 G2）の塗り: 三角形がどれも断面の中で、面積の和が断面の面積（
 /// convex_polygon の扇では縁の角から凹面へ張った三角形が面の外を塗っていた）
 #[test]
