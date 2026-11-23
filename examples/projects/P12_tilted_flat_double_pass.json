@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.9/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
  "name": "P12 same as P11 with the flat mirror tilted (0.5, -0.3) deg",
  "glass_catalogs": [
   "SCHOTT"

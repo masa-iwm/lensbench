@@ -1,5 +1,5 @@
 {
-  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.9/project.schema.json",
+  "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
   "format": "lensbench-project",
   "format_version": 1,
   "name": "C3 絞りを挟む 3 枚（有限物体）",

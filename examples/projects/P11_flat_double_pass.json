@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.9/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json",
  "name": "P11 autocollimation: a catalog lens at its focal distance, double pass to a flat mirror",
  "glass_catalogs": [
   "SCHOTT"
