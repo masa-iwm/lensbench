@@ -165,7 +165,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
                             for s in &states {
                                 ui.selectable_value(&mut b.state, Some(s.clone()), s.as_str());
                             }
-                        });
+                        }).response.accessible_name(tr("State"));
                     egui::ComboBox::from_id_salt(("beam_role", i))
                         .selected_text(role_label(b.role))
                         .show_ui(ui, |ui| {
@@ -177,7 +177,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
                             ] {
                                 ui.selectable_value(&mut b.role, r, role_label(r));
                             }
-                        });
+                        }).response.accessible_name(tr("Role"));
                     turn_cell(ui, i, b, &lenses);
                     ui.checkbox(&mut b.off, "")
                         .on_hover_text(tr("Leave the beam out of the default set of the analyses"));
@@ -235,6 +235,7 @@ fn turn_cell(ui: &mut Ui, i: usize, b: &mut Beam, lenses: &[String]) {
                 }
             })
             .response
+            .accessible_name(tr("Turn back at"))
             .on_hover_text(tr(
                 "The lens whose surface partly reflects the beam back along its way (ghost paths, back reflections in interferometers)",
             ));

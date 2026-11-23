@@ -57,7 +57,11 @@ pub(super) fn ghost_ui(
 ) {
     if st.edit.as_ref().is_some_and(|e| e.row == n) {
         let full = sh.new_row(true).unwrap_or_else(|| cell.clone());
-        edit_ui(ui, st, &full, out);
+        let name = st
+            .edit
+            .as_ref()
+            .map_or(String::new(), |e| sh.header(e.col, None));
+        edit_ui(ui, st, &name, &full, out);
         return;
     }
     let rect = ui.max_rect();
@@ -110,12 +114,13 @@ pub(super) fn ghost_ui(
 }
 
 /// 書き換え中のセル（入力欄。候補のある欄は下に一覧）
-pub(super) fn edit_ui(ui: &mut Ui, st: &mut SheetState, cell: &Cell, out: &mut Out) {
+pub(super) fn edit_ui(ui: &mut Ui, st: &mut SheetState, name: &str, cell: &Cell, out: &mut Out) {
     let Some(e) = st.edit.as_mut() else { return };
     let (r, c) = (e.row, e.col);
     let first = !e.started;
     let (resp, keys) = crate::widgets::cell::input(
         ui,
+        name,
         &mut e.text,
         &mut e.started,
         e.select_all,

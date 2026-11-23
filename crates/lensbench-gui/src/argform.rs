@@ -578,7 +578,7 @@ pub(crate) fn form(
                                             changed = true;
                                         }
                                     }
-                                });
+                                }).response.accessible_name(s.title());
                         }
                         _ => {
                             let hint = match (s.default_text(), s.ty.as_str()) {
@@ -754,7 +754,9 @@ fn choice_group(
                     changed = true;
                 }
             }
-        });
+        })
+        .response
+        .accessible_name(specs[g[0]].title());
     if reset_button(ui, on.is_some()) {
         for &k in g {
             vals.remove(&specs[k].name);
@@ -853,9 +855,6 @@ mod tests {
         let mut h = egui_kittest::Harness::builder()
             // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
             .allow_missing_glyphs()
-            // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-            // 付けていない欄があるので切る（名前付けは別の Issue）
-            .with_accessibility_check(false)
             .with_size(egui::vec2(600.0, 300.0))
             .build_ui_state(
                 move |ui, vals: &mut BTreeMap<String, String>| {

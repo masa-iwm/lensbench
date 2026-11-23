@@ -44,22 +44,25 @@ pub(crate) fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
     ui.label(tr("Shared store for item STEP files"));
     let before = st.clone();
     egui::Grid::new("cad_store").num_columns(2).show(ui, |ui| {
-        ui.label(tr("URL"));
+        let lbl = ui.label(tr("URL"));
         ui.add(
             egui::TextEdit::singleline(&mut st.url)
                 .hint_text("https://….pages.dev/cad")
                 .desired_width(360.0),
-        );
+        )
+        .labelled_by(lbl.id);
         ui.end_row();
-        ui.label(tr("Client ID"));
-        ui.add(egui::TextEdit::singleline(&mut st.id).desired_width(360.0));
+        let lbl = ui.label(tr("Client ID"));
+        ui.add(egui::TextEdit::singleline(&mut st.id).desired_width(360.0))
+            .labelled_by(lbl.id);
         ui.end_row();
-        ui.label(tr("Client Secret"));
+        let lbl = ui.label(tr("Client Secret"));
         ui.add(
             egui::TextEdit::singleline(&mut st.secret)
                 .password(true)
                 .desired_width(360.0),
-        );
+        )
+        .labelled_by(lbl.id);
         ui.end_row();
     });
     ui.label(

@@ -641,14 +641,17 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, w: &WavefrontOut, st: &mut FigState
                 "Interference with the reference sphere (I = (1 + cos 2πΔ)/2, Δ = scale·W + tilt)",
             ));
         if f.on {
-            ui.label(RichText::new(tr("Scale")).small());
+            let lbl = ui.label(RichText::new(tr("Scale")).small());
             ui.add(crate::widgets::Num::new(&mut f.scale).range(0.0..=10.0))
-                .on_hover_text(tr("Factor applied to the OPD (2 for double pass)"));
-            ui.label(RichText::new(tr("Tilt x")).small());
+                .on_hover_text(tr("Factor applied to the OPD (2 for double pass)"))
+                .labelled_by(lbl.id);
+            let lbl = ui.label(RichText::new(tr("Tilt x")).small());
             ui.add(crate::widgets::Num::new(&mut f.xtilt).range(-200.0..=200.0))
-                .on_hover_text(tr("Fringes across the pupil diameter"));
-            ui.label(RichText::new(tr("Tilt y")).small());
-            ui.add(crate::widgets::Num::new(&mut f.ytilt).range(-200.0..=200.0));
+                .on_hover_text(tr("Fringes across the pupil diameter"))
+                .labelled_by(lbl.id);
+            let lbl = ui.label(RichText::new(tr("Tilt y")).small());
+            ui.add(crate::widgets::Num::new(&mut f.ytilt).range(-200.0..=200.0))
+                .labelled_by(lbl.id);
         }
         ui.label(weak(
             ui,

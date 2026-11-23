@@ -43,9 +43,6 @@ fn optim(p: op::OptPanel) -> Harness<'static, St<op::OptPanel, op::Action>> {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 1400.0))
         .build_ui_state(
             move |ui, st: &mut St<op::OptPanel, op::Action>| {
@@ -73,9 +70,6 @@ fn tol(p: tp::TolPanel) -> Harness<'static, St<tp::TolPanel, tp::Action>> {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 2000.0))
         .build_ui_state(
             move |ui, st: &mut St<tp::TolPanel, tp::Action>| {
@@ -227,9 +221,6 @@ fn swap_in(
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(900.0, 2000.0))
         .build_ui_state(
             move |ui, st: &mut St<sp::SwapPanel, sp::Action>| {

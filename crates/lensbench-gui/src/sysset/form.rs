@@ -105,8 +105,8 @@ impl SysForm {
 }
 
 /// 数の欄。ドラッグ中・入力中は busy に
-fn drag(ui: &mut Ui, dv: crate::widgets::Num, busy: &mut bool) {
-    let r = ui.add(dv);
+fn drag(ui: &mut Ui, name: egui::Id, dv: crate::widgets::Num, busy: &mut bool) {
+    let r = ui.add(dv).labelled_by(name);
     *busy |= r.dragged() || r.has_focus();
 }
 
@@ -121,7 +121,7 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            ui.label(tr("Aperture type"));
+            let lbl = ui.label(tr("Aperture type"));
             let before = f.aperture;
             egui::ComboBox::from_id_salt(id.with("apk"))
                 .selected_text(f.aperture.label())
@@ -129,15 +129,18 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                     for &k in ApertureKind::ALL {
                         ui.selectable_value(&mut f.aperture, k, k.label());
                     }
-                });
+                })
+                .response
+                .labelled_by(lbl.id);
             if f.aperture != before && f.aperture.has_value() {
                 f.ap_value = f.aperture.initial();
             }
             ui.end_row();
             if f.aperture.has_value() {
-                ui.label(f.aperture.label());
+                let lbl = ui.label(f.aperture.label());
                 drag(
                     ui,
+                    lbl.id,
                     crate::widgets::Num::new(&mut f.ap_value)
                         .range(1e-6..=1e6)
                         .max_decimals(6)
@@ -146,9 +149,10 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                 );
                 ui.end_row();
             } else if f.aperture == ApertureKind::Epd {
-                ui.label(tr("Entrance pupil diameter [mm]"));
+                let lbl = ui.label(tr("Entrance pupil diameter [mm]"));
                 drag(
                     ui,
+                    lbl.id,
                     crate::widgets::Num::new(&mut f.epd)
                         .range(1e-3..=1e4)
                         .max_decimals(4),
@@ -193,7 +197,9 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
                             for x in AFOCAL_UNITS {
                                 ui.selectable_value(u, x, x.label());
                             }
-                        });
+                        })
+                        .response
+                        .accessible_name(tr("Afocal unit"));
                 }
             });
             ui.end_row();
@@ -219,17 +225,19 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
     // 環境
     ui.label(RichText::new(tr("Environment")).strong());
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Temperature")).color(weak));
+        let lbl = ui.label(RichText::new(tr("Temperature")).color(weak));
         drag(
             ui,
+            lbl.id,
             crate::widgets::Num::new(&mut f.env.temperature_c)
                 .range(-273.15..=1e4)
                 .suffix(" °C"),
             &mut busy,
         );
-        ui.label(RichText::new(tr("Pressure")).color(weak));
+        let lbl = ui.label(RichText::new(tr("Pressure")).color(weak));
         drag(
             ui,
+            lbl.id,
             crate::widgets::Num::new(&mut f.env.pressure_atm)
                 .range(0.0..=1e3)
                 .suffix(" atm"),
@@ -247,14 +255,16 @@ pub(crate) fn ui(ui: &mut Ui, f: &mut SysForm, ex: &mut dyn Extra) -> bool {
 fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
     let weak = theme::weak_text(ui.visuals());
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Fields")).strong());
+        let lbl = ui.label(RichText::new(tr("Fields")).strong());
         egui::ComboBox::from_id_salt(id.with("fk"))
             .selected_text(f.field_kind.label())
             .show_ui(ui, |ui| {
                 for &k in FieldKind::ALL {
                     ui.selectable_value(&mut f.field_kind, k, k.label());
                 }
-            });
+            })
+            .response
+            .labelled_by(lbl.id);
         ui.label(RichText::new(tr("Normalization")).color(weak));
         ui.radio_value(&mut f.field_rect, false, tr("Radial"));
         ui.radio_value(&mut f.field_rect, true, tr("Rectangular"));
@@ -268,21 +278,25 @@ fn fields_ui(ui: &mut Ui, f: &mut SysForm, id: egui::Id, busy: &mut bool) {
                     for k in SolveCond::ALL {
                         ui.selectable_value(&mut s.cond, k, k.label());
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Condition"));
             let two = s.cond != SolveCond::Position;
-            ui.label(if two { tr("Surface 1") } else { tr("Surface") });
+            let lbl = ui.label(if two { tr("Surface 1") } else { tr("Surface") });
             ui.add(
                 egui::TextEdit::singleline(&mut s.s1)
                     .hint_text(tr("number or name"))
                     .desired_width(70.0),
-            );
+            )
+            .labelled_by(lbl.id);
             if two {
-                ui.label(tr("Surface 2"));
+                let lbl = ui.label(tr("Surface 2"));
                 ui.add(
                     egui::TextEdit::singleline(&mut s.s2)
                         .hint_text(tr("number or name"))
                         .desired_width(70.0),
-                );
+                )
+                .labelled_by(lbl.id);
             }
         });
         ui.label(

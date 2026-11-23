@@ -655,7 +655,7 @@ impl form::Extra for ComboExtra<'_> {
         let c = &*self.0;
         // 前に自動で置く絞りの径（EPD は入射瞳径の欄が兼ねる。絞りが要素なら要素の半径）
         if f.aperture != ApertureKind::Epd && c.lead_stop() {
-            ui.label(if f.aperture == ApertureKind::Float {
+            let lbl = ui.label(if f.aperture == ApertureKind::Float {
                 tr("Stop diameter [mm]")
             } else {
                 tr("Stop diameter (drawing only) [mm]")
@@ -665,7 +665,8 @@ impl form::Extra for ComboExtra<'_> {
                 crate::widgets::Num::new(&mut f.epd)
                     .range(1e-3..=1e4)
                     .max_decimals(4),
-            );
+            )
+            .labelled_by(lbl.id);
             ui.end_row();
         }
     }
@@ -683,12 +684,12 @@ impl form::Extra for ComboExtra<'_> {
                     match crate::combo::SolvedGap::current(ui.ctx(), crate::combo::STOP_GAP) {
                         Some(sv) => sv.show(ui, tr("Gap")),
                         None => {
-                            ui.label(tr("Gap"));
+                            let lbl = ui.label(tr("Gap"));
                             ui.add(
                                 crate::widgets::Num::new(&mut c.stop_gap)
                                     .range(0.0..=1e5)
                                     .suffix(" mm"),
-                            );
+                            ).labelled_by(lbl.id);
                         }
                     }
                     if ui

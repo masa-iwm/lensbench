@@ -130,7 +130,7 @@ impl CatSave {
                             for k in 0..n {
                                 ui.selectable_value(&mut self.from, k, label(k));
                             }
-                        });
+                        }).response.accessible_name(tr("From element"));
                     ui.label("〜");
                     egui::ComboBox::from_id_salt("catsave_to")
                         .selected_text(label(self.to.max(self.from)))
@@ -138,7 +138,7 @@ impl CatSave {
                             for k in self.from..n {
                                 ui.selectable_value(&mut self.to, k, label(k));
                             }
-                        });
+                        }).response.accessible_name(tr("To element"));
                 });
                 ui.end_row();
                 ui.label(RichText::new(tr("Catalog")).color(weak));
@@ -165,6 +165,7 @@ impl CatSave {
                                 }
                             })
                             .response
+                            .accessible_name(tr("Catalogs in the lens catalog folder"))
                             .on_hover_text(tr("User catalogs listed in the catalog browser"));
                     }
                     // Web 版: ユーザーカタログはブラウザに残すフォルダ（/user/catalogs）に置く
@@ -216,11 +217,12 @@ impl CatSave {
                 ui.label(RichText::new(tr("Description")).color(weak));
                 ui.text_edit_singleline(&mut self.description);
                 ui.end_row();
-                ui.label(RichText::new(tr("Vendor")).color(weak))
+                let lbl = ui
+                    .label(RichText::new(tr("Vendor")).color(weak))
                     .on_hover_text(tr(
                         "Vendor shown in the catalog browser (empty: the name of the folder of the file)",
                     ));
-                ui.text_edit_singleline(&mut self.vendor);
+                ui.text_edit_singleline(&mut self.vendor).labelled_by(lbl.id);
                 ui.end_row();
             });
         let cat = self.catalog.trim().to_string();

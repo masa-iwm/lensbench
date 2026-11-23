@@ -1661,6 +1661,7 @@ impl App {
         i18n::set(s.lang);
         crate::fonts::follow_lang(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, &s.look);
+        crate::widgets::a11y::install(&cc.egui_ctx);
         s.cad_store.apply();
         let (worker, preview) = make_workers(cc);
         let lay = ses
@@ -1930,8 +1931,10 @@ impl App {
             .open(&mut open)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.label(tr("Name (an existing name is overwritten)"));
-                let r = ui.text_edit_singleline(&mut self.c.layout_name);
+                let lbl = ui.label(tr("Name (an existing name is overwritten)"));
+                let r = ui
+                    .text_edit_singleline(&mut self.c.layout_name)
+                    .labelled_by(lbl.id);
                 r.request_focus();
                 let enter = ui.input(|i| i.key_pressed(Key::Enter));
                 if (ui.button(tr("Save")).clicked() || enter)
@@ -2075,14 +2078,14 @@ impl App {
     fn take_shot(&mut self, ctx: &egui::Context) {
         let app = self.c.shot.clone();
         let app = app.map(|(id, c, n)| (self.c.fig_rects.get(&id).copied(), c, n));
-        let Some((r, copy, cmd)) = crate::widgets::fig_nav::shot_or(ctx, app) else {
+        let Some((r, copy, cmd, fig)) = crate::widgets::fig_nav::shot_or(ctx, app) else {
             return;
         };
         let Some(img) = crate::image_util::take_screenshot(ctx) else {
             return;
         };
         self.c.shot = None;
-        crate::widgets::fig_nav::clear_shot(ctx);
+        crate::widgets::fig_nav::clear_shot(ctx, fig);
         let ppp = ctx.pixels_per_point();
         let Some(part) = r.and_then(|r| crate::image_util::crop_image(&img, r, ppp)) else {
             return;
@@ -2367,9 +2370,10 @@ impl Overlay {
                 ui.separator();
                 ui.label(tr("Offset by"));
                 for (i, l) in ["z", vert].into_iter().enumerate() {
-                    ui.weak(l);
+                    let lbl = ui.weak(l);
                     changed |= ui
                         .add(crate::widgets::Num::new(&mut self.offset[i]).suffix(" mm"))
+                        .labelled_by(lbl.id)
                         .changed();
                 }
             }

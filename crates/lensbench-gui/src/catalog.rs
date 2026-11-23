@@ -1104,7 +1104,9 @@ impl Browser {
                     for v in vendors.iter() {
                         ui.selectable_value(&mut q.vendor, v.clone(), v);
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Vendor"));
             let w = crate::widgets::combos_width(ui, 1, 40.0);
             crate::widgets::wrap_before(ui, w);
             ui.label(tr("Type"));
@@ -1474,9 +1476,10 @@ impl Browser {
         ui.heading(tr("Combination"));
         ui.label(tr("Double-click a row in the list (or \"Add to combination\") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch)."));
         ui.horizontal(|ui| {
-            ui.label(tr("Name"));
+            let lbl = ui.label(tr("Name"));
             // 欄はパネルの幅に合わせる（既定の幅だと狭いパネルで中身全体が広がる）
-            ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(ui.available_width()));
+            ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(ui.available_width()))
+                .labelled_by(lbl.id);
         });
         ui.horizontal_wrapped(|ui| {
             if ui
@@ -1545,7 +1548,7 @@ impl Browser {
                             }
                             ui.horizontal(|ui| {
                                 if air_gap {
-                                    ui.label(if k + 1 == n {
+                                    let lbl = ui.label(if k + 1 == n {
                                         tr("To image")
                                     } else {
                                         tr("Air after")
@@ -1557,7 +1560,8 @@ impl Browser {
                                         crate::widgets::Num::new(air)
                                             .range(0.0..=f64::INFINITY)
                                             .suffix(" mm"),
-                                    );
+                                    )
+                                    .labelled_by(lbl.id);
                                 }
                             });
                             ui.horizontal(|ui| {
@@ -1620,12 +1624,13 @@ impl Browser {
         let cats = self.glass_cats();
         let q = &mut self.glass_q;
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Search"));
+            let lbl = ui.label(tr("Search"));
             ui.add(
                 egui::TextEdit::singleline(&mut q.text)
                     .hint_text(tr("Glass name"))
                     .desired_width(140.0),
-            );
+            )
+            .labelled_by(lbl.id);
             egui::ComboBox::from_id_salt("glass_cat")
                 .selected_text(if q.catalog.is_empty() {
                     tr("All catalogs")
@@ -1637,7 +1642,9 @@ impl Browser {
                     for v in cats.iter() {
                         ui.selectable_value(&mut q.catalog, v.clone(), v);
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Glass catalog"));
         });
         ui.horizontal_wrapped(|ui| {
             range_ui(ui, "nd", &mut q.nd, (1.5, 1.8));

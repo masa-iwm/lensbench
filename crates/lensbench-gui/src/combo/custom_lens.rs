@@ -59,7 +59,7 @@ pub(super) fn semi_json(semi: f64, auto: bool) -> Value {
 pub(super) fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
     ui.add_enabled_ui(!*auto, |ui| {
         let weak = theme::weak_text(ui.visuals());
-        ui.label(RichText::new(tr("Semi-diameter")).color(weak));
+        let lbl = ui.label(RichText::new(tr("Semi-diameter")).color(weak));
         ui.add(
             crate::widgets::Num::new(semi)
                 .max_decimals(4)
@@ -68,7 +68,8 @@ pub(super) fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
         )
         .on_hover_text(tr(
             "0 leaves the semi-diameter unwritten (no aperture on the surfaces)",
-        ));
+        ))
+        .labelled_by(lbl.id);
     });
     ui.checkbox(auto, tr("Auto")).on_hover_text(tr(
         "Compute the semi-diameter from rays of all fields and wavelengths",

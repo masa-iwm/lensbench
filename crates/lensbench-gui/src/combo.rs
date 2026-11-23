@@ -40,6 +40,7 @@ mod states;
 mod sys_extra;
 mod write_face;
 mod zgroup;
+mod zmx_info;
 pub(crate) use ap_shape::{ApData, ApShape};
 pub(crate) use bs::{Bs, BsForm, BsSplit};
 pub(crate) use custom_lens::CustomLens;
@@ -54,6 +55,7 @@ pub(crate) use mirror::MirrorData;
 pub(crate) use states::{McComment, McPick};
 pub(crate) use sys_extra::SysExtra;
 pub(crate) use zgroup::{ZGroup, ZmxSrc};
+pub(crate) use zmx_info::zmx_stop_info;
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1904,13 +1906,13 @@ fn lead_stop_settings(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
         if let Some(sv) = SolvedGap::find(&view.solved, STOP_GAP) {
             sv.show(ui, tr("Gap"));
         } else {
-            ui.label(tr("Gap"));
+            let lbl = ui.label(tr("Gap"));
             ui.add(
                 crate::widgets::Num::new(&mut combo.stop_gap)
                     .range(0.0..=1e5)
                     .suffix(" mm")
                     .max_decimals(4),
-            );
+            ).labelled_by(lbl.id);
         }
         if ui
             .button(tr("Make the stop an element"))
@@ -2208,7 +2210,9 @@ fn role_combo(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, role: &mu
             for (k, name) in ROLES {
                 ui.selectable_value(role, k.to_string(), tr(name));
             }
-        });
+        })
+        .response
+        .accessible_name(tr("Role"));
 }
 
 /// .zmx の取り込みの玉モードの群（玉の境を手で直す）
@@ -2225,8 +2229,9 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
                 .range(1..=9999)
                 .prefix(tr("Surface ")),
         );
-        ui.label("〜");
-        ui.add(crate::widgets::Num::new(&mut g.to).range(1..=9999));
+        let lbl = ui.label("〜");
+        ui.add(crate::widgets::Num::new(&mut g.to).range(1..=9999))
+            .labelled_by(lbl.id);
         ui.add(
             egui::TextEdit::singleline(&mut g.name)
                 .hint_text(tr("Name"))
@@ -2318,7 +2323,7 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&[Strin
 /// 状態（多重構成に当たるプロジェクトの states）を選ぶ・足す・消す。状態を選ぶと、要素の ON/OFF と
 /// 後の空気（図の寸法・要素の設定）はその状態の値を変える
 fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
-    ui.label(RichText::new(tr("State")).small().color(weak));
+    let lbl = ui.label(RichText::new(tr("State")).small().color(weak));
     let cur = combo.active_state().map(str::to_string);
     egui::ComboBox::from_id_salt("combo_state")
         .selected_text(cur.clone().unwrap_or_else(|| tr("Base").into()))
@@ -2329,6 +2334,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
             }
         })
         .response
+        .labelled_by(lbl.id)
         .on_hover_text(tr(
             "Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected",
         ));
@@ -2421,7 +2427,9 @@ pub(crate) fn onoff_ui(
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut p.off_air, false, tr("OFF collapses"));
                     ui.selectable_value(&mut p.off_air, true, tr("OFF leaves air"));
-                });
+                })
+                .response
+                .accessible_name(tr("When OFF"));
         }
     }
     // 群
@@ -2499,13 +2507,14 @@ fn num(ui: &mut Ui, label: &str, v: &mut f64, unit: &str) {
 /// 下限のある数の欄（厚さ ≥ 0・半径 > 0 など。負や 0 を入れて系を作る段で誤りにしない）
 fn num_in(ui: &mut Ui, label: &str, v: &mut f64, unit: &str, min: f64) {
     let weak = theme::weak_text(ui.visuals());
-    ui.label(RichText::new(label).color(weak));
+    let lbl = ui.label(RichText::new(label).color(weak));
     ui.add(
         crate::widgets::Num::new(v)
             .max_decimals(4)
             .range(min..=f64::INFINITY)
             .suffix(unit),
-    );
+    )
+    .labelled_by(lbl.id);
 }
 
 /// 要素の種類ごとの欄（寸法・ガラス・膜など）
@@ -2562,12 +2571,14 @@ fn kind_fields(
             );
         }
         ElemKind::ZmxRange => {
-            ui.label(RichText::new(tr("Surface")).color(weak));
+            let lbl = ui.label(RichText::new(tr("Surface")).color(weak));
             ui.add(crate::widgets::Num::new(&mut p.zmx_mut().range[0]).range(0..=9999))
-                .on_hover_text(tr("First surface to import (0 is surface 1)"));
-            ui.label("〜");
+                .on_hover_text(tr("First surface to import (0 is surface 1)"))
+                .labelled_by(lbl.id);
+            let lbl = ui.label("〜");
             ui.add(crate::widgets::Num::new(&mut p.zmx_mut().range[1]).range(0..=9999))
-                .on_hover_text(tr("Last surface to import (0 is the one before the image)"));
+                .on_hover_text(tr("Last surface to import (0 is the one before the image)"))
+                .labelled_by(lbl.id);
             ui.label(RichText::new(tr("Config")).color(weak));
             let mut cfg = p.config_in(st);
             let hint = match st {
@@ -2627,7 +2638,9 @@ fn kind_fields(
                     ] {
                         ui.selectable_value(&mut p.ap_mut().shape, a, a.label());
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Aperture shape"));
             match p.ap_mut().shape {
                 ApShape::Circle | ApShape::Obscuration => {
                     num_in(ui, tr("Inner radius"), &mut p.ap_mut().min, " mm", 0.0);
@@ -2675,7 +2688,9 @@ fn kind_fields(
                     for f in [BsForm::Cube, BsForm::Plate, BsForm::Ideal] {
                         ui.selectable_value(&mut p.bs_mut().form, f, f.label());
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Beam splitter form"));
             if p.bs_mut().form != was {
                 // 形を変えたら寸法を形の初めの値に
                 match p.bs_mut().form {
@@ -2705,6 +2720,7 @@ fn kind_fields(
                     }
                 })
                 .response
+                .accessible_name(tr("Split"))
                 .on_hover_text(tr("Splitting face: polarization-independent ratio, coating, or ideal polarizing BS"));
             p.bs_mut().split = Some(mode);
             match mode {
@@ -2713,7 +2729,8 @@ fn kind_fields(
                         crate::widgets::Num::new(&mut p.bs_mut().ratio)
                             .range(0.0..=1.0)
                             .prefix("T "),
-                    );
+                    )
+                    .accessible_name(tr("Transmittance"));
                 }
                 BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, weak, coats),
                 BsSplit::Pbs => {
@@ -2721,12 +2738,14 @@ fn kind_fields(
                         crate::widgets::Num::new(&mut p.bs_mut().pbs[0])
                             .range(0.0..=1.0)
                             .prefix("Tp "),
-                    );
+                    )
+                    .accessible_name("Tp");
                     ui.add(
                         crate::widgets::Num::new(&mut p.bs_mut().pbs[1])
                             .range(0.0..=1.0)
                             .prefix("Ts "),
-                    );
+                    )
+                    .accessible_name("Ts");
                 }
             }
             ui.checkbox(&mut p.arm_r, tr("Follow reflected arm"))
@@ -2739,13 +2758,15 @@ fn kind_fields(
                 ));
         }
         ElemKind::Zmx => {
-            ui.label(RichText::new(tr("Element no.")).color(weak));
-            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().lens).range(1..=999));
-            ui.label(RichText::new(tr("Config")).color(weak));
+            let lbl = ui.label(RichText::new(tr("Element no.")).color(weak));
+            ui.add(crate::widgets::Num::new(&mut p.zmx_mut().lens).range(1..=999))
+                .labelled_by(lbl.id);
+            let lbl = ui.label(RichText::new(tr("Config")).color(weak));
             ui.add(crate::widgets::Num::new(&mut p.zmx_mut().config).range(1..=999))
                 .on_hover_text(tr(
                     "Which multi-configuration of the .zmx to take the lens from",
-                ));
+                ))
+                .labelled_by(lbl.id);
         }
         ElemKind::Catalog => {}
         ElemKind::Raw => raw::raw_fields(ui, p, k),
@@ -2802,13 +2823,14 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         let v = &mut x;
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr("Gap")).color(weak));
-            ui.label(RichText::new(name).strong());
+            let lbl = ui.label(RichText::new(name).strong());
             ui.add(
                 crate::widgets::Num::new(v)
                     .range(0.0..=1e5)
                     .suffix(" mm")
                     .max_decimals(4),
-            );
+            )
+            .labelled_by(lbl.id);
             let top = (*v * 2.0).max(10.0);
             ui.add(egui::Slider::new(v, 0.0..=top).show_value(false));
         });
@@ -2975,7 +2997,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
     for (port, name) in names.iter().enumerate() {
         let b = &mut p.ports[port];
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(*name).color(weak));
+            let lbl = ui.label(RichText::new(*name).color(weak));
             ui.add(
                 crate::widgets::Num::new(&mut b.air)
                     .range(0.0..=1e5)
@@ -2983,7 +3005,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
                     .prefix(format!("{} ", tr("air")))
                     .suffix(" mm"),
             )
-            .on_hover_text(tr("From the port to the first element (to the image plane if there is none)"));
+            .on_hover_text(tr("From the port to the first element (to the image plane if there is none)")).labelled_by(lbl.id);
             for (j, e) in b.picks.iter().enumerate() {
                 ui.label("→");
                 let mut l = e.label();
@@ -3030,49 +3052,6 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
     }
 }
 
-/// .zmx の絞りの面と像面の番号（読めなければ None）。ファイルの更新時刻ごとに覚えておく（図を描くたびに呼ぶので）。
-/// 更新時刻の読み出し（stat）も 1 秒に 1 回まで（1 フレームに何十回も呼ばれ、ネットワークの上では遅い）
-pub(crate) fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    /// 更新時刻、確かめた時刻、値
-    type Memo = HashMap<
-        String,
-        (
-            Option<std::time::SystemTime>,
-            web_time::Instant,
-            Option<(usize, usize)>,
-        ),
-    >;
-    static MEMO: OnceLock<Mutex<Memo>> = OnceLock::new();
-    if path.is_empty() {
-        return None;
-    }
-    let memo = MEMO.get_or_init(Default::default);
-    if let Some((_, at, v)) = memo.lock().ok()?.get(path) {
-        if at.elapsed() < std::time::Duration::from_secs(1) {
-            return *v;
-        }
-    }
-    let mtime = lensbench_core::vfs::stamp(path).ok().and_then(|s| s.0);
-    let now = web_time::Instant::now();
-    if let Some((t, at, v)) = memo.lock().ok()?.get_mut(path) {
-        if *t == mtime {
-            *at = now;
-            return *v;
-        }
-    }
-    let v = lensbench_core::glass::read_text(std::path::Path::new(path))
-        .ok()
-        .and_then(|t| lensbench_formats::zmx::parse_text(&t).ok())
-        .and_then(|raw| {
-            let stop = raw.surfs.iter().position(|x| x.stop)?;
-            Some((stop, raw.surfs.len().checked_sub(1)?))
-        });
-    memo.lock().ok()?.insert(path.to_string(), (mtime, now, v));
-    v
-}
-
 /// 面の並びの面の並びと種類。半径・コーニック・厚さ・ガラス・半直径はレンズデータの表で編集し、
 /// ここでは面の種類・足す・消すと、偏光子・波長板・Jones・座標ブレークの値（表の列に無いもの）だけを出す
 /// 面の並びの行の表。行を足す・消す・種類（座標ブレークとほかの面）を変えたら、この要素の上書き・操作の番号を
@@ -3087,8 +3066,9 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
     };
     let before = is_cb(p);
     let (mut del, mut add) = (None, None);
-    let drag = |ui: &mut Ui, v: &mut f64| {
-        ui.add(crate::widgets::Num::new(v).max_decimals(6));
+    let drag = |ui: &mut Ui, v: &mut f64, name: egui::Id| {
+        ui.add(crate::widgets::Num::new(v).max_decimals(6))
+            .labelled_by(name);
     };
     ui.label(
         RichText::new(tr(
@@ -3112,7 +3092,9 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                     ] {
                         ui.selectable_value(&mut r.kind, x, x.label());
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Surface type"));
             if r.kind == SurfKind::Standard && r.special().is_some() {
                 ui.label(
                     RichText::new(tr("Special surface (values in the Lens Data table)"))
@@ -3156,70 +3138,72 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                 .spacing([8.0, 2.0])
                 .show(ui, |ui| {
                     let label = |ui: &mut Ui, t: &str| {
-                        ui.label(RichText::new(t).small().color(weak));
+                        ui.label(RichText::new(t).small().color(weak)).id
                     };
                     match r.kind {
                         SurfKind::Standard => {}
                         SurfKind::Jones => {
                             for (j, l) in ["A", "B", "C", "D"].into_iter().enumerate() {
-                                label(ui, l);
+                                let lbl = label(ui, l);
                                 ui.horizontal(|ui| {
-                                    drag(ui, &mut r.jones[2 * j]);
-                                    ui.label("+");
+                                    drag(ui, &mut r.jones[2 * j], lbl);
+                                    let lbl = ui.label("+");
                                     ui.add(
                                         crate::widgets::Num::new(&mut r.jones[2 * j + 1])
                                             .max_decimals(6)
                                             .suffix("i"),
-                                    );
+                                    ).labelled_by(lbl.id);
                                 });
                                 ui.end_row();
                             }
                         }
                         SurfKind::Polarizer => {
-                            label(ui, tr("Transmission axis"));
-                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°"));
+                            let lbl = label(ui, tr("Transmission axis"));
+                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°")).labelled_by(lbl);
                             ui.end_row();
-                            label(ui, tr("Extinction"));
+                            let lbl = label(ui, tr("Extinction"));
                             ui.add(
                                 crate::widgets::Num::new(&mut r.extinction_ratio)
                                     .range(0.0..=f64::MAX),
                             )
-                            .on_hover_text(tr("0 means infinite (blocks the orthogonal direction)"));
+                            .on_hover_text(tr("0 means infinite (blocks the orthogonal direction)")).labelled_by(lbl);
                             ui.end_row();
-                            label(ui, tr("Transmittance"));
+                            let lbl = label(ui, tr("Transmittance"));
                             ui.add(
                                 crate::widgets::Num::new(&mut r.transmittance)
                                     .range(0.0..=1.0),
-                            );
+                            ).labelled_by(lbl);
                             ui.end_row();
                         }
                         SurfKind::Waveplate => {
-                            label(ui, tr("Retardance"));
-                            ui.add(crate::widgets::Num::new(&mut r.retardance).suffix(" λ"));
+                            let lbl = label(ui, tr("Retardance"));
+                            ui.add(crate::widgets::Num::new(&mut r.retardance).suffix(" λ")).labelled_by(lbl);
                             ui.end_row();
-                            label(ui, tr("Design wavelength"));
+                            let lbl = label(ui, tr("Design wavelength"));
                             ui.add(
                                 crate::widgets::Num::new(&mut r.wavelength_um)
                                     .range(0.01..=100.0)
                                     .suffix(" µm"),
-                            );
+                            ).labelled_by(lbl);
                             ui.end_row();
-                            label(ui, tr("Fast axis"));
-                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°"));
+                            let lbl = label(ui, tr("Fast axis"));
+                            ui.add(crate::widgets::Num::new(&mut r.axis_deg).suffix("°")).labelled_by(lbl);
                             ui.end_row();
-                            label(ui, tr("Order"));
-                            ui.add(crate::widgets::Num::new(&mut r.wp_order));
+                            let lbl = label(ui, tr("Order"));
+                            ui.add(crate::widgets::Num::new(&mut r.wp_order)).labelled_by(lbl);
                             ui.end_row();
                             ui.label(RichText::new(tr("Birefringent material")).small().color(weak))
                                 .on_hover_text(tr("Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes"));
                             let plate = |ui: &mut Ui, m: &mut String, t: &mut f64| {
                                 ui.horizontal(|ui| {
-                                    ui.add(egui::TextEdit::singleline(m).desired_width(80.0));
+                                    ui.add(egui::TextEdit::singleline(m).desired_width(80.0))
+                                        .accessible_name(tr("Birefringent material"));
                                     ui.add(
                                         crate::widgets::Num::new(t)
                                             .range(0.0..=100.0)
                                             .suffix(" mm"),
                                     )
+                                    .accessible_name(tr("Thickness"))
                                     .on_hover_text(tr("0 derives the thickness from the design retardance (single material)"));
                                 });
                             };
@@ -3231,12 +3215,12 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) -> Option<writ
                         }
                         SurfKind::Coordbrk => {
                             for (j, l) in ["dx", "dy", "tx", "ty", "tz"].into_iter().enumerate() {
-                                label(ui, l);
-                                drag(ui, &mut r.cb[j]);
+                                let lbl = label(ui, l);
+                                drag(ui, &mut r.cb[j], lbl);
                                 ui.end_row();
                             }
-                            label(ui, tr("Thickness"));
-                            drag(ui, &mut r.t);
+                            let lbl = label(ui, tr("Thickness"));
+                            drag(ui, &mut r.t, lbl);
                             ui.end_row();
                             let mut tf = r.order == 1;
                             label(ui, "");

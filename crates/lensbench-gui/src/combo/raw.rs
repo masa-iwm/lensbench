@@ -85,7 +85,7 @@ pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
         .resizable(true)
         .collapsible(false)
         .show(ui.ctx(), |ui| {
-            ui.label(RichText::new(tr("Edit the JSON of the block:")).weak());
+            let lbl = ui.label(RichText::new(tr("Edit the JSON of the block:")).weak());
             let r = egui::ScrollArea::vertical()
                 .show(ui, |ui| {
                     ui.add(
@@ -95,6 +95,7 @@ pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
                             .desired_rows(10)
                             .desired_width(f32::INFINITY),
                     )
+                    .labelled_by(lbl.id)
                 })
                 .inner;
             match block(&text) {

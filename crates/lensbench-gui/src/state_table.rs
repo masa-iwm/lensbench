@@ -1347,8 +1347,10 @@ fn rename_ui(ui: &mut Ui, c: &mut Combo, view: &mut View) -> bool {
         return false;
     };
     let mut changed = false;
-    ui.label(trf("Rename {}", &[&from.as_str()]));
-    let r = ui.add(egui::TextEdit::singleline(to).desired_width(100.0));
+    let lbl = ui.label(trf("Rename {}", &[&from.as_str()]));
+    let r = ui
+        .add(egui::TextEdit::singleline(to).desired_width(100.0))
+        .labelled_by(lbl.id);
     if !r.has_focus() && !r.lost_focus() {
         r.request_focus();
     }
@@ -1439,9 +1441,13 @@ fn pick_menu(
         let (mut k, mut o) = (m.scale, m.offset);
         ui.horizontal(|ui| {
             ui.label("×");
-            let a = ui.add(crate::widgets::Num::new(&mut k).max_decimals(6));
+            let a = ui
+                .add(crate::widgets::Num::new(&mut k).max_decimals(6))
+                .accessible_name(tr("Scale"));
             ui.label("+");
-            let b = ui.add(crate::widgets::Num::new(&mut o).max_decimals(6));
+            let b = ui
+                .add(crate::widgets::Num::new(&mut o).max_decimals(6))
+                .accessible_name(tr("Offset"));
             if a.changed() || b.changed() {
                 let src = picks::Src {
                     from: m.from.clone(),

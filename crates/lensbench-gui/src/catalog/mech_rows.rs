@@ -136,6 +136,7 @@ fn place_ui(ui: &mut Ui, m: &mut MechPick, k: usize, prev: &[String], ids: &[Str
             }
         })
         .response
+        .accessible_name(tr("Placement"))
         .on_hover_text(if stale_id(&m.at, ids) || stale_after {
             gone
         } else if !m.after.is_empty() {
@@ -144,14 +145,16 @@ fn place_ui(ui: &mut Ui, m: &mut MechPick, k: usize, prev: &[String], ids: &[Str
             tr("Element to place at")
         });
     ui.horizontal(|ui| {
-        ui.label(tr("Surface"));
+        let lbl = ui.label(tr("Surface"));
         ui.add(crate::widgets::Num::new(&mut m.face).range(0..=99))
-            .on_hover_text(tr("Which surface of the element to place at (0-based)"));
-        ui.label("z");
+            .on_hover_text(tr("Which surface of the element to place at (0-based)"))
+            .labelled_by(lbl.id);
+        let lbl = ui.label("z");
         ui.add(crate::widgets::Num::new(&mut m.offset[2]).suffix(" mm"))
             .on_hover_text(tr(
                 "Offset from the placement surface along the light direction",
-            ));
+            ))
+            .labelled_by(lbl.id);
     });
     let held = m.holds.first().cloned().unwrap_or_default();
     let mut sel = held.clone();
@@ -168,6 +171,7 @@ fn place_ui(ui: &mut Ui, m: &mut MechPick, k: usize, prev: &[String], ids: &[Str
             }
         })
         .response
+        .accessible_name(tr("Holds"))
         .on_hover_text(if stale_id(&held, ids) {
             gone
         } else {

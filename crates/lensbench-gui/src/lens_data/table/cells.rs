@@ -227,6 +227,7 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col
     // Tab で欄の外へフォーカスを移さない（Tab・↑↓ は決めて隣のセルへ。種類・硝材の ↑↓ は候補を選ぶ）
     let (resp, keys) = crate::widgets::cell::input(
         ui,
+        &col.header(None),
         &mut e.text,
         &mut e.focused,
         e.select_all,

@@ -120,18 +120,18 @@ impl RaySet {
             nums_ui(ui, &mut self.waves, n_waves, tr("Primary wavelength"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Ray pattern"));
-            combo(ui, "lr_fan", &mut self.fan, FANS);
-            ui.label(tr("Rays"));
-            zero_auto(ui, &mut self.rays, 1..=200);
+            let lbl = ui.label(tr("Ray pattern"));
+            combo(ui, "lr_fan", &mut self.fan, FANS).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Rays"));
+            zero_auto(ui, &mut self.rays, 1..=200, lbl.id);
             ui.separator();
-            ui.label(tr("Surfaces drawn"));
-            zero_auto(ui, &mut self.first, 0..=9999);
+            let lbl = ui.label(tr("Surfaces drawn"));
+            zero_auto(ui, &mut self.first, 0..=9999, lbl.id);
             ui.label("–");
-            zero_auto(ui, &mut self.last, 0..=9999);
+            zero_auto(ui, &mut self.last, 0..=9999, lbl.id);
             ui.separator();
-            ui.label(tr("Color by"));
-            combo(ui, "lr_color", &mut self.color, COLORS);
+            let lbl = ui.label(tr("Color by"));
+            combo(ui, "lr_color", &mut self.color, COLORS).labelled_by(lbl.id);
             ui.separator();
             #[cfg(not(target_arch = "wasm32"))]
             ui.checkbox(&mut self.mech_detail, tr("Detailed mech shapes"))
@@ -139,13 +139,13 @@ impl RaySet {
         });
         ui.horizontal_wrapped(|ui| {
             ui.weak(tr("Export"));
-            ui.label(tr("PNG width [px]"));
-            zero_auto(ui, &mut self.width, 100..=20000);
-            ui.label(tr("Segments (circumference, surface lines)"));
-            zero_auto(ui, &mut self.segments, 4..=1024);
-            ui.label(tr("Segments (3D radial)"));
-            zero_auto(ui, &mut self.rings, 1..=256);
-            ui.label(tr("Ray tube radius [mm]"));
+            let lbl = ui.label(tr("PNG width [px]"));
+            zero_auto(ui, &mut self.width, 100..=20000, lbl.id);
+            let lbl = ui.label(tr("Segments (circumference, surface lines)"));
+            zero_auto(ui, &mut self.segments, 4..=1024, lbl.id);
+            let lbl = ui.label(tr("Segments (3D radial)"));
+            zero_auto(ui, &mut self.rings, 1..=256, lbl.id);
+            let lbl = ui.label(tr("Ray tube radius [mm]"));
             ui.add(
                 crate::widgets::Num::new(&mut self.tube)
                     .range(0.0..=100.0)
@@ -156,7 +156,8 @@ impl RaySet {
                             format!("{x}")
                         }
                     }),
-            );
+            )
+            .labelled_by(lbl.id);
             if !self.is_default() && ui.small_button(tr("Reset to default")).clicked() {
                 *self = RaySet::default();
             }
@@ -196,19 +197,21 @@ fn nums_ui(ui: &mut Ui, sel: &mut Vec<usize>, n: usize, label: &str) {
 }
 
 /// 0 を「既定」と表示する整数の欄
-fn zero_auto(ui: &mut Ui, x: &mut usize, range: std::ops::RangeInclusive<usize>) {
+fn zero_auto(ui: &mut Ui, x: &mut usize, range: std::ops::RangeInclusive<usize>, name: egui::Id) {
     let (lo, hi) = (*range.start(), *range.end());
-    let mut r = ui.add(
-        crate::widgets::Num::new(x)
-            .range(0..=hi)
-            .custom_formatter(|v, _| {
-                if v < 0.5 {
-                    tr("Default").to_string()
-                } else {
-                    format!("{v:.0}")
-                }
-            }),
-    );
+    let mut r = ui
+        .add(
+            crate::widgets::Num::new(x)
+                .range(0..=hi)
+                .custom_formatter(|v, _| {
+                    if v < 0.5 {
+                        tr("Default").to_string()
+                    } else {
+                        format!("{v:.0}")
+                    }
+                }),
+        )
+        .labelled_by(name);
     // 下限より小さい値（0 は既定）は下限に
     if r.changed() && *x > 0 && *x < lo {
         *x = lo;
@@ -216,7 +219,7 @@ fn zero_auto(ui: &mut Ui, x: &mut usize, range: std::ops::RangeInclusive<usize>)
     }
 }
 
-fn combo(ui: &mut Ui, id: &str, v: &mut String, items: &[(&str, &'static str)]) {
+fn combo(ui: &mut Ui, id: &str, v: &mut String, items: &[(&str, &'static str)]) -> egui::Response {
     let cur = items
         .iter()
         .find(|x| x.0 == v.as_str())
@@ -229,7 +232,8 @@ fn combo(ui: &mut Ui, id: &str, v: &mut String, items: &[(&str, &'static str)]) 
             for (k, label) in items {
                 ui.selectable_value(v, k.to_string(), tr(label));
             }
-        });
+        })
+        .response
 }
 
 /// 光線の色の番号（パレットの番号）: color は layout の結果の `color`（field・wave・cfg、空なら by_cfg で決める）

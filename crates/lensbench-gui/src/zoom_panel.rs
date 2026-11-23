@@ -424,10 +424,12 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
 
 fn run_ui(ui: &mut Ui, p: &mut ZoomPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("Points between states"));
-        ui.add(crate::widgets::Num::new(&mut p.steps).range(0..=100));
-        ui.label(tr("Max iterations"));
-        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=1000));
+        let lbl = ui.label(tr("Points between states"));
+        ui.add(crate::widgets::Num::new(&mut p.steps).range(0..=100))
+            .labelled_by(lbl.id);
+        let lbl = ui.label(tr("Max iterations"));
+        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=1000))
+            .labelled_by(lbl.id);
     });
     ui.horizontal(|ui| {
         ui.label(tr("Image merit"));
@@ -438,17 +440,19 @@ fn run_ui(ui: &mut Ui, p: &mut ZoomPanel, weak: egui::Color32) {
         ui.selectable_value(&mut p.reference, "centroid".into(), tr("Centroid"));
         ui.selectable_value(&mut p.reference, "chief".into(), tr("Chief ray"));
         ui.separator();
-        ui.label(tr("Pupil rings"));
-        ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20));
+        let lbl = ui.label(tr("Pupil rings"));
+        ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20))
+            .labelled_by(lbl.id);
     });
     ui.horizontal(|ui| {
-        ui.label(tr("Target tolerance (relative)"));
+        let lbl = ui.label(tr("Target tolerance (relative)"));
         ui.add(
             crate::widgets::Num::new(&mut p.tol)
                 .range(1e-14..=1e-2)
                 .custom_formatter(|x, _| format!("{x:.0e}"))
                 .custom_parser(|s| s.trim().parse().ok()),
-        );
+        )
+        .labelled_by(lbl.id);
     });
     ui.label(
         RichText::new(tr(

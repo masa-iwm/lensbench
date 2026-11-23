@@ -44,12 +44,13 @@ pub(super) fn cell_menu(
         m.disp = crate::surf_edit::full(r.disp);
     }
     let field = |ui: &mut Ui, label: &str, s: &mut String, hint: &str, w: f32| {
-        ui.label(RichText::new(label).color(weak));
+        let lbl = ui.label(RichText::new(label).color(weak));
         ui.add(
             egui::TextEdit::singleline(s)
                 .hint_text(hint)
                 .desired_width(w),
         )
+        .labelled_by(lbl.id)
     };
     if let Some(w) = col.solve_what() {
         ui.label(RichText::new(tr("Solves")).strong());
@@ -187,8 +188,10 @@ pub(super) fn cell_menu(
                         ("dn", tr("Index offset dn"), r.dn, &mut m.dn),
                         ("disp", tr("Dispersion change disp"), r.disp, &mut m.disp),
                     ] {
-                        ui.label(RichText::new(name).color(weak));
-                        let resp = ui.add(egui::TextEdit::singleline(buf).desired_width(110.0));
+                        let lbl = ui.label(RichText::new(name).color(weak));
+                        let resp = ui
+                            .add(egui::TextEdit::singleline(buf).desired_width(110.0))
+                            .labelled_by(lbl.id);
                         if resp.lost_focus() {
                             match buf.trim().parse::<f64>().ok().filter(|v| v.is_finite()) {
                                 Some(v) if v != cur => {

@@ -63,9 +63,6 @@ fn harness_w(b: Browser, dirs: (usize, usize), w: f32) -> Harness<'static, St> {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(w, 900.0))
         .build_ui_state(
             |ui, st: &mut St| {
@@ -244,7 +241,6 @@ fn mech_rows_show_item_and_stay_short_when_narrow() {
     for w in [900.0, 320.0] {
         let mut h = Harness::builder()
             .allow_missing_glyphs()
-            .with_accessibility_check(false)
             .with_size(egui::vec2(w, 600.0))
             .build_ui_state(
                 |ui, ms: &mut Vec<crate::combo::MechPick>| {
@@ -310,7 +306,6 @@ fn replace_buttons_swap_the_selected_lens_and_part() {
     doc.insert_after = Some(k);
     let mut h = Harness::builder()
         .allow_missing_glyphs()
-        .with_accessibility_check(false)
         .with_size(egui::vec2(1100.0, 900.0))
         .build_ui_state(
             |ui, st: &mut St| {
@@ -404,7 +399,6 @@ fn replace_mech_from_list_warns_when_held_element_does_not_fit() {
     ] {
         let mut h = Harness::builder()
             .allow_missing_glyphs()
-            .with_accessibility_check(false)
             .with_size(egui::vec2(600.0, 200.0))
             .build_ui_state(
                 |ui, st: &mut (ComboDoc, LensRow, Option<Action>)| {

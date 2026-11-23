@@ -458,7 +458,6 @@ mod tests {
         crate::i18n::set(crate::i18n::Lang::En);
         let mut h = egui_kittest::Harness::builder()
             .allow_missing_glyphs()
-            .with_accessibility_check(false)
             .with_size(egui::vec2(600.0, 400.0))
             .build_ui_state(
                 |ui, st: &mut (Option<PlotBounds>, egui::Rect)| {

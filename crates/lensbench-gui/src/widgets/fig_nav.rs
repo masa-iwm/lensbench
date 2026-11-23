@@ -328,19 +328,64 @@ pub(crate) fn pending_shot(ctx: &egui::Context) -> Option<FigShot> {
     ctx.data(|d| d.get_temp::<FigShot>(shot_id()))
 }
 
-/// 写す図: パネルの頼み `app`（図の場所, 写すか, 保存の名前）が無ければ、画面の写しを頼み終えた図の右クリックの頼み
+/// 写す図: パネルの頼み `app`（図の場所, 写すか, 保存の名前）が無ければ、画面の写しを頼み終えた図の右クリックの頼み。
+/// 最後の値は図の右クリックの頼みを使ったか（[`clear_shot`] に渡す）
 pub(crate) fn shot_or(
     ctx: &egui::Context,
     app: Option<(Option<egui::Rect>, bool, String)>,
-) -> Option<(Option<egui::Rect>, bool, String)> {
-    app.or_else(|| {
-        pending_shot(ctx)
+) -> Option<(Option<egui::Rect>, bool, String, bool)> {
+    match app {
+        Some((r, copy, name)) => Some((r, copy, name, false)),
+        None => pending_shot(ctx)
             .filter(|s| s.requested)
-            .map(|s| (Some(s.rect), s.copy, "figure".to_owned()))
-    })
+            .map(|s| (Some(s.rect), s.copy, "figure".to_owned(), true)),
+    }
 }
 
-/// 図の写しの頼みを消す（写しが届いて切り出した後）
-pub(crate) fn clear_shot(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove::<FigShot>(shot_id()));
+/// 写しが届いて切り出した後に呼ぶ。図の右クリックの頼みを使ったなら消す。パネルの頼みが同じ写しを使ったなら、
+/// 図の頼みは残して次の写しを頼み直す（同じフレームに 2 つの頼みが重なっても片方が消えないように）
+pub(crate) fn clear_shot(ctx: &egui::Context, used_fig: bool) {
+    if used_fig {
+        ctx.data_mut(|d| d.remove::<FigShot>(shot_id()));
+    } else if let Some(mut s) = pending_shot(ctx).filter(|s| s.requested) {
+        s.requested = false;
+        s.wait = 0;
+        ctx.data_mut(|d| d.insert_temp(shot_id(), s));
+        ctx.request_repaint();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn requested(ctx: &egui::Context) {
+        let s = FigShot {
+            fig: egui::Id::unique("fig"),
+            rect: egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(100.0, 50.0)),
+            copy: true,
+            wait: 0,
+            requested: true,
+        };
+        ctx.data_mut(|d| d.insert_temp(shot_id(), s));
+    }
+
+    #[test]
+    fn panel_shot_first_keeps_the_figure_shot_for_the_next_screenshot() {
+        let ctx = egui::Context::default();
+        requested(&ctx);
+        // 同じ写しをパネルの頼みが使う: 図の頼みは残り、写しを頼み直す
+        let app = Some((None, false, "layout".to_owned()));
+        let got = shot_or(&ctx, app).unwrap();
+        assert_eq!((got.2.as_str(), got.3), ("layout", false));
+        clear_shot(&ctx, got.3);
+        let s = pending_shot(&ctx).expect("figure shot kept");
+        assert!(!s.requested);
+        // 次の写しが届いたら図の頼みを使って消す
+        requested(&ctx);
+        let got = shot_or(&ctx, None).unwrap();
+        assert_eq!((got.0, got.1, got.3), (Some(s.rect), true, true));
+        clear_shot(&ctx, got.3);
+        assert!(pending_shot(&ctx).is_none());
+    }
 }

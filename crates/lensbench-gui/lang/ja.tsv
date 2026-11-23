@@ -2036,6 +2036,25 @@ Enter numbers with min < max	最小 < 最大 の数を入れてください
 Glass only in the states	硝材は状態だけに
 Writes the substituted glass only as overrides of the states, leaving the base system (no state open) as it is. Unchecked, the base system takes the new glass of the state for the base configuration	置き換えた硝材を状態の上書きにだけ書き、基本のシステム（状態を開いていないシステム）はそのままにします。外すと、基本のシステムは基本の構成の状態の新しい硝材になります
 Surface {}: the glass was written only to the states (the earlier glass of a state that follows the base system is unknown)	面 {}: 硝材は状態にだけ書きました（基本のシステムに従う状態の前の硝材が分からないため）
+Resize panels	パネルの大きさを変える
+Afocal unit	アフォーカルの単位
+Aperture shape	開口の形
+Beam splitter form	ビームスプリッターの形
+Catalogs in the lens catalog folder	レンズカタログのフォルダのカタログ
+Comparison	比較
+Compensator	コンペンセータ
+Condition	条件
+From element	最初の要素
+Glass catalog	硝材カタログ
+Holds	保持
+Operand to add	追加するオペランド
+Placement	置く所
+Preset	プリセット
+Split	分割
+Surface type	面のタイプ
+To element	最後の要素
+Wavelength	波長
+When OFF	OFF のとき
 Mechanical vignetting: computing…	機構のケラレ: 計算中…
 Mechanical vignetting: {}	機構のケラレ: {}
 Field, wave: passes / this part first (all) [%]	視野, 波長: 通る / この部品が最初に切る（全部） [%]

@@ -28,9 +28,6 @@ fn harness(args: Args) -> Harness<'static, App> {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 820.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, args));
@@ -561,9 +558,6 @@ fn last_row_of_the_table_is_above_the_details_bar() {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 560.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, a0()));
@@ -602,9 +596,6 @@ fn nested_group_rows_keep_their_height() {
     let mut h = Harness::builder()
         // 試験の機械には日本語のフォント（▲ ↑ などを持つ）が無いことがある。egui 0.37 の kittest は既定で欠けた字に panic する
         .allow_missing_glyphs()
-        // kittest 0.37 の読み上げ名の検査（名前の無い入力欄で panic）は、egui_dock の仕切りなど直せないものと、まだ名前を
-        // 付けていない欄があるので切る（名前付けは別の Issue）
-        .with_accessibility_check(false)
         .with_size(egui::vec2(1280.0, 820.0))
         .with_max_steps(1000)
         .build_eframe(move |cc| App::new(cc, a0()));

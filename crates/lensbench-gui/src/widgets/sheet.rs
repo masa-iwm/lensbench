@@ -696,7 +696,7 @@ fn cell_ui(
 ) {
     let cell = sh.cell(r, c);
     if st.edit.as_ref().is_some_and(|e| e.row == r && e.col == c) {
-        edit_ui(ui, st, &cell, out);
+        edit_ui(ui, st, &sh.header(c, None), &cell, out);
         return;
     }
     let rect = ui.max_rect();

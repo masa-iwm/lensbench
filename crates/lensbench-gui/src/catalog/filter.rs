@@ -140,18 +140,20 @@ pub(crate) fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
 pub(super) fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64)) {
     ui.label(label);
     let mut on = r.min.is_some();
-    if ui.checkbox(&mut on, tr("Min")).changed() {
+    let c = ui.checkbox(&mut on, tr("Min"));
+    if c.changed() {
         r.min = on.then_some(default.0);
     }
     if let Some(m) = r.min.as_mut() {
-        ui.add(crate::widgets::Num::new(m));
+        ui.add(crate::widgets::Num::new(m)).labelled_by(c.id);
     }
     let mut on = r.max.is_some();
-    if ui.checkbox(&mut on, tr("Max")).changed() {
+    let c = ui.checkbox(&mut on, tr("Max"));
+    if c.changed() {
         r.max = on.then_some(default.1);
     }
     if let Some(m) = r.max.as_mut() {
-        ui.add(crate::widgets::Num::new(m));
+        ui.add(crate::widgets::Num::new(m)).labelled_by(c.id);
     }
 }
 
@@ -206,5 +208,7 @@ pub(super) fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
                     pick(ui, Some(k), None, format!("  {}", name(k)));
                 }
             }
-        });
+        })
+        .response
+        .accessible_name(tr("Type"));
 }

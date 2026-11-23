@@ -890,19 +890,23 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         }
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Rings"));
-        ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20));
-        ui.label(tr("Iterations per set"));
-        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=1000));
+        let lbl = ui.label(tr("Rings"));
+        ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20))
+            .labelled_by(lbl.id);
+        let lbl = ui.label(tr("Iterations per set"));
+        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=1000))
+            .labelled_by(lbl.id);
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Target focal length"));
-        small_edit(ui, &mut p.efl, 60.0, tr("Off"));
-        ui.label(tr("Max sets"));
-        ui.add(crate::widgets::Num::new(&mut p.max_count).range(1..=10_000_000));
-        ui.label(tr("Table rows"));
+        let lbl = ui.label(tr("Target focal length"));
+        small_edit(ui, &mut p.efl, 60.0, tr("Off")).labelled_by(lbl.id);
+        let lbl = ui.label(tr("Max sets"));
+        ui.add(crate::widgets::Num::new(&mut p.max_count).range(1..=10_000_000))
+            .labelled_by(lbl.id);
+        let lbl = ui.label(tr("Table rows"));
         ui.add(crate::widgets::Num::new(&mut p.top).range(0..=10_000))
-            .on_hover_text(tr("0 = all"));
+            .on_hover_text(tr("0 = all"))
+            .labelled_by(lbl.id);
     });
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut p.clear_aperture, tr("Clear aperture condition"))
@@ -925,10 +929,10 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
                 "Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)",
             ));
         ui.add_enabled_ui(p.pre, |ui| {
-            ui.label(tr("Rings"));
-            ui.add(crate::widgets::Num::new(&mut p.pre_rings).range(1..=20));
-            ui.label(tr("Keep"));
-            ui.add(crate::widgets::Num::new(&mut p.pre_keep).range(1..=10_000_000));
+            let lbl = ui.label(tr("Rings"));
+            ui.add(crate::widgets::Num::new(&mut p.pre_rings).range(1..=20)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Keep"));
+            ui.add(crate::widgets::Num::new(&mut p.pre_keep).range(1..=10_000_000)).labelled_by(lbl.id);
         });
     });
     // ビーム探索と粗いふるいは同時に使えない（片方を入れたらもう片方を外す）
@@ -944,10 +948,10 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
             p.pre = false;
         }
         ui.add_enabled_ui(p.beam, |ui| {
-            ui.label(tr("Keep"));
-            ui.add(crate::widgets::Num::new(&mut p.beam_width).range(1..=100_000));
-            ui.label(tr("Passes"));
-            ui.add(crate::widgets::Num::new(&mut p.beam_passes).range(1..=100));
+            let lbl = ui.label(tr("Keep"));
+            ui.add(crate::widgets::Num::new(&mut p.beam_width).range(1..=100_000)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Passes"));
+            ui.add(crate::widgets::Num::new(&mut p.beam_passes).range(1..=100)).labelled_by(lbl.id);
         });
     });
     if p.pre {
@@ -959,8 +963,8 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
                 "Drop sets that cannot reach the target focal length anywhere in the gap ranges, without tracing rays (needs a target focal length)",
             ));
         ui.add_enabled_ui(p.paraxial, |ui| {
-            ui.label(tr("Focal length tolerance"));
-            small_edit(ui, &mut p.efl_tol, 60.0, "1 %");
+            let lbl = ui.label(tr("Focal length tolerance"));
+            small_edit(ui, &mut p.efl_tol, 60.0, "1 %").labelled_by(lbl.id);
         });
     });
     ui.label(

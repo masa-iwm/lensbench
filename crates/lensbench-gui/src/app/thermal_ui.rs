@@ -82,14 +82,14 @@ impl Core {
                     .weak(),
                 );
                 egui::Grid::new("thermal-grid").num_columns(2).show(ui, |ui| {
-                    ui.label(tr("Temperatures [°C]"));
-                    ui.add(egui::TextEdit::singleline(&mut dlg.temps).hint_text("-20, 60"));
+                    let lbl = ui.label(tr("Temperatures [°C]"));
+                    ui.add(egui::TextEdit::singleline(&mut dlg.temps).hint_text("-20, 60")).labelled_by(lbl.id);
                     ui.end_row();
-                    ui.label(tr("Pressures [atm]"));
+                    let lbl = ui.label(tr("Pressures [atm]"));
                     ui.add(
                         egui::TextEdit::singleline(&mut dlg.pressures)
                             .hint_text(tr("(current pressure)")),
-                    );
+                    ).labelled_by(lbl.id);
                     ui.end_row();
                 });
                 if let Some(e) = &dlg.error {

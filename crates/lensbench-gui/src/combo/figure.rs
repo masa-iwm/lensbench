@@ -1204,14 +1204,16 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
             let r =
                 Rect::from_center_size(r.center(), egui::vec2(r.width().max(40.0) + 36.0, 20.0));
             let te_id = egui::Id::unique(("lensbench-dim-edit", *g));
-            let te = ui.put(
-                r,
-                egui::TextEdit::singleline(text)
-                    .id(te_id)
-                    .font(FontId::monospace(12.0))
-                    .align(egui::Align2::CENTER_TOP)
-                    .margin(egui::Margin::symmetric(4, 2)),
-            );
+            let te = ui
+                .put(
+                    r,
+                    egui::TextEdit::singleline(text)
+                        .id(te_id)
+                        .font(FontId::monospace(12.0))
+                        .align(egui::Align2::CENTER_TOP)
+                        .margin(egui::Margin::symmetric(4, 2)),
+                )
+                .accessible_name(tr("Dimension"));
             if !*focused || te.gained_focus() {
                 // 全選択（打てば今の数字が置き換わる。表のセルと同じ）。打ち込みで始めたら後ろにカーソル
                 let typed = ui.data_mut(|d| d.remove_temp::<bool>(te_id.with("typed")));

@@ -128,6 +128,7 @@ pub(crate) fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
                                 .max_decimals(6)
                                 .prefix(["x ", "y ", "z "][i]),
                         )
+                        .accessible_name(format!("{} {}", tr("Crystal axis"), ["x", "y", "z"][i]))
                         .changed();
                 }
             });
@@ -190,11 +191,14 @@ fn text_field(
     ui: &mut Ui,
     bufs: &mut HashMap<String, String>,
     key: &str,
+    name: &str,
     cur: String,
     width: f32,
 ) -> Option<String> {
     let buf = bufs.entry(key.to_string()).or_insert_with(|| cur.clone());
-    let r = ui.add(egui::TextEdit::singleline(buf).desired_width(width));
+    let r = ui
+        .add(egui::TextEdit::singleline(buf).desired_width(width))
+        .accessible_name(name);
     if r.lost_focus() && buf.trim() != cur.trim() {
         return Some(buf.clone());
     }
@@ -248,7 +252,7 @@ pub(crate) fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<St
             if !in_table && (asph_used || d["asph"].as_array().is_some_and(|a| !a.is_empty())) {
                 let name = tr("Asphere r², r⁴, …");
                 label(ui, name);
-                if let Some(t) = text_field(ui, bufs, "asph", nums_text(&d["asph"]), 260.0) {
+                if let Some(t) = text_field(ui, bufs, "asph", name, nums_text(&d["asph"]), 260.0) {
                     match parse_nums(&t) {
                         Ok(a) => {
                             fields.insert("asph".into(), json!(a));
@@ -274,7 +278,7 @@ pub(crate) fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<St
                 }
                 label(ui, tr(name));
                 let cur = serde_json::to_string(&d[*key]).unwrap_or_default();
-                if let Some(t) = text_field(ui, bufs, key, cur, 320.0) {
+                if let Some(t) = text_field(ui, bufs, key, tr(name), cur, 320.0) {
                     match serde_json::from_str::<Value>(&t) {
                         Ok(x) => {
                             data.insert(key.to_string(), x);
@@ -311,7 +315,8 @@ pub(crate) fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<St
                     .code_editor()
                     .desired_rows(8)
                     .desired_width(f32::INFINITY),
-            );
+            )
+            .accessible_name(tr("All fields (JSON)"));
             let (apply, reset) = ui
                 .horizontal(|ui| {
                     (

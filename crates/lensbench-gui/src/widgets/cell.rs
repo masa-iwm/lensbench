@@ -80,9 +80,10 @@ pub(crate) fn show_error(ui: &Ui, resp: &Response, why: &str) {
 }
 
 /// 表のセルの入力欄（セルの幅いっぱい、right なら右寄せ）。started は開いた後の最初のフレームを済ませたか、
-/// error は前に決められなかった理由。キーは欄を描く前に読む
+/// error は前に決められなかった理由。name は読み上げの名前（列の見出し）。キーは欄を描く前に読む
 pub(crate) fn input(
     ui: &mut Ui,
+    name: &str,
     text: &mut String,
     started: &mut bool,
     select_all: bool,
@@ -98,7 +99,7 @@ pub(crate) fn input(
     } else {
         te
     };
-    let resp = ui.add(te);
+    let resp = ui.add(te).accessible_name(name);
     if let Some(why) = error {
         show_error(ui, &resp, why);
     }
@@ -140,7 +141,7 @@ mod tests {
             for _ in 0..2 {
                 let _ = ctx.run_ui(Default::default(), |root| {
                     egui::CentralPanel::default().show(root, |ui| {
-                        let (r, _) = input(ui, &mut text, &mut started, all, true, None);
+                        let (r, _) = input(ui, "cell", &mut text, &mut started, all, true, None);
                         id = Some(r.id);
                     });
                 });

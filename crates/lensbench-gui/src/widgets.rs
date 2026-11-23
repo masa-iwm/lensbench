@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::i18n::trf;
 
+pub(crate) mod a11y;
 pub(crate) mod cell;
 pub(crate) mod choices;
 pub(crate) mod fig_nav;

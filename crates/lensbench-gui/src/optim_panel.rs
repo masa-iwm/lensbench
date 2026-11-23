@@ -1151,8 +1151,9 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, vals: bool, weak: egui::Co
     });
     if p.merit != "none" {
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Rings"));
-            ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20));
+            let lbl = ui.label(tr("Rings"));
+            ui.add(crate::widgets::Num::new(&mut p.rings).range(1..=20))
+                .labelled_by(lbl.id);
             ui.label(tr("Reference"));
             for (k, l) in [("centroid", tr("Centroid")), ("chief", tr("Chief ray"))] {
                 ui.selectable_value(&mut p.reference, k.to_string(), l);
@@ -1256,7 +1257,9 @@ pub(crate) fn terms_ui(
                     ui.selectable_value(new_term, ty.to_string(), *ty)
                         .on_hover_text(type_hint(ty));
                 }
-            });
+            })
+            .response
+            .accessible_name(tr("Operand to add"));
         if ui.button(tr("Add term")).clicked() {
             terms.push(TermRow::new(new_term));
         }
@@ -1278,8 +1281,9 @@ pub(crate) const SHEET_KEYS: &str = n_(
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Max iterations"));
-        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=10000));
+        let lbl = ui.label(tr("Max iterations"));
+        ui.add(crate::widgets::Num::new(&mut p.iters).range(1..=10000))
+            .labelled_by(lbl.id);
         ui.label(tr("Derivatives"));
         for (k, l) in [
             ("auto", tr("Analytic (where possible)")),
@@ -1298,17 +1302,17 @@ fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             .on_hover_text(tr("Drop stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation"));
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Gradient stop"))
+        let lbl = ui.label(tr("Gradient stop"))
             .on_hover_text(tr("Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)"));
         ui.add(
             crate::widgets::Num::new(&mut p.gtol)
                 .range(0.0..=1.0)
                 .max_decimals(8),
-        );
+        ).labelled_by(lbl.id);
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Config"));
-        small_edit(ui, &mut p.configs, 160.0, tr("Open system only"));
+        let lbl = ui.label(tr("Config"));
+        small_edit(ui, &mut p.configs, 160.0, tr("Open system only")).labelled_by(lbl.id);
     });
     ui.label(
         RichText::new(tr(

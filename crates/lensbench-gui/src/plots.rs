@@ -260,7 +260,7 @@ pub(crate) fn spot(
             .color(theme::weak_text(&vis)),
         );
         // 枠の幅（＝枠の下の縮尺の長さ、0 は自動）
-        ui.label(
+        let lbl = ui.label(
             RichText::new(tr("Box width"))
                 .small()
                 .color(theme::weak_text(&vis)),
@@ -286,7 +286,7 @@ pub(crate) fn spot(
                     )
                 }),
         )
-        .on_hover_text(tr("Width of each box and length of the scale bar below it (0: automatic), like Scale in OpticStudio"));
+        .on_hover_text(tr("Width of each box and length of the scale bar below it (0: automatic), like Scale in OpticStudio")).labelled_by(lbl.id);
         if let Some(a) = airy_um {
             ui.label(
                 RichText::new(trf("Dashed circle: Airy radius {} µm", &[&fmt_sig(a, 3)]))

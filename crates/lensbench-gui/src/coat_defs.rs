@@ -152,7 +152,9 @@ pub(crate) fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool
                     for (key, label) in KINDS {
                         ui.selectable_value(&mut k2, key, tr(label));
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Type"));
             if k2 != k {
                 *spec = with_kind(spec, k2);
             }
@@ -195,8 +197,9 @@ pub(crate) fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool
 }
 
 fn num(ui: &mut Ui, label: &str, v: &mut f64, range: std::ops::RangeInclusive<f64>) {
-    ui.label(label);
-    ui.add(crate::widgets::Num::new(v).range(range).max_decimals(6));
+    let lbl = ui.label(label);
+    ui.add(crate::widgets::Num::new(v).range(range).max_decimals(6))
+        .labelled_by(lbl.id);
 }
 
 fn ideal_fields(ui: &mut Ui, i: &mut Ideal) {
@@ -286,18 +289,20 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                     .collect::<Vec<_>>()
                     .join("\n")
             });
-            ui.label(
+            let lbl = ui.label(
                 RichText::new(tr(
                     "One row per line: [incidence angle deg, wavelength µm, Rs, Rp, Ts, Tp] (e.g. a vendor table)",
                 ))
                 .small(),
             );
-            let r = ui.add(
-                egui::TextEdit::multiline(&mut txt)
-                    .code_editor()
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY),
-            );
+            let r = ui
+                .add(
+                    egui::TextEdit::multiline(&mut txt)
+                        .code_editor()
+                        .desired_rows(4)
+                        .desired_width(f32::INFINITY),
+                )
+                .labelled_by(lbl.id);
             let parsed: Result<Vec<[f64; 6]>, String> = txt
                 .lines()
                 .filter(|l| !l.trim().is_empty())

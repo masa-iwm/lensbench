@@ -19,7 +19,7 @@ pub(super) fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> b
     };
     let was = path.clone();
     ui.separator();
-    ui.label(RichText::new(tr("Path")).color(theme::weak_text(ui.visuals())))
+    let lbl = ui.label(RichText::new(tr("Path")).color(theme::weak_text(ui.visuals())))
         .on_hover_text(tr("Transmit T / reflect R at each BS in the order passed (missing letters use each BS's default port). The figure and analyses use this path; other paths can be drawn with \"Overlay configurations\""));
     let shown = if path.is_empty() {
         tr("Default").to_string()
@@ -33,7 +33,9 @@ pub(super) fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> b
             for p in paths {
                 ui.selectable_value(&mut path, p.clone(), p.as_str());
             }
-        });
+        })
+        .response
+        .labelled_by(lbl.id);
     ui.add(
         egui::TextEdit::singleline(&mut path)
             .desired_width(48.0)

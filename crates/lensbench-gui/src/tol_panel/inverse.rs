@@ -11,7 +11,7 @@ use crate::optim_panel::small_edit;
 /// 補償のしかたと逆感度の欄
 pub(super) fn settings(ui: &mut Ui, p: &mut TolPanel) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Compensation"));
+        let lbl = ui.label(tr("Compensation"));
         let modes = [
             ("optimize", tr("Optimize (DLS)")),
             ("paraxial", tr("Paraxial focus")),
@@ -30,12 +30,13 @@ pub(super) fn settings(ui: &mut Ui, p: &mut TolPanel) {
                 }
             })
             .response
+            .labelled_by(lbl.id)
             .on_hover_text(tr(
                 "Paraxial focus keeps the paraxial image distance by the thickness before the image (the compensators are not used); None evaluates without compensation",
             ));
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Inverse sensitivity"));
+        let lbl = ui.label(tr("Inverse sensitivity"));
         let kinds = [
             ("none", tr("Off")),
             ("limit", tr("Limit (criterion value)")),
@@ -55,6 +56,7 @@ pub(super) fn settings(ui: &mut Ui, p: &mut TolPanel) {
                 }
             })
             .response
+            .labelled_by(lbl.id)
             .on_hover_text(tr(
                 "Tightens each tolerance limit (each side separately) until the criterion reaches the value; limits are never widened. Monte Carlo then uses the tightened limits",
             ));
@@ -64,8 +66,8 @@ pub(super) fn settings(ui: &mut Ui, p: &mut TolPanel) {
         }
         if p.inverse != "none" {
             small_edit(ui, &mut p.inverse_value, 90.0, "0.02");
-            ui.label(tr("Do not adjust"));
-            small_edit(ui, &mut p.inverse_skip, 160.0, "lens1 dx, 3.t");
+            let lbl = ui.label(tr("Do not adjust"));
+            small_edit(ui, &mut p.inverse_skip, 160.0, "lens1 dx, 3.t").labelled_by(lbl.id);
         }
     });
 }

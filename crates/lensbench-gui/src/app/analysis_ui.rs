@@ -169,10 +169,12 @@ impl Core {
         let mut remove = None;
         for (i, p) in self.ses.params.iter().enumerate() {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(p).monospace());
+                let lbl = ui.label(RichText::new(p).monospace());
                 match self.sys.param_vals.get(p).copied() {
                     Some(mut x) => {
-                        let r = ui.add(crate::widgets::Num::new(&mut x).max_decimals(8));
+                        let r = ui
+                            .add(crate::widgets::Num::new(&mut x).max_decimals(8))
+                            .labelled_by(lbl.id);
                         if r.changed() {
                             self.msgs.push(Msg::SetParam(p.clone(), x));
                         }
@@ -523,7 +525,7 @@ impl Core {
                     d.remove::<bool>(fkey.with("f"));
                 });
             }
-            r.response
+            r.response.accessible_name(tr("Analysis"))
         };
         if let Some(h) = layout::analysis_help(&cfg.cmd) {
             r.on_hover_text(tr(h));
@@ -561,7 +563,7 @@ impl Core {
                         for i in 1..=nf {
                             ui.selectable_value(&mut cfg.field, i, fname(i));
                         }
-                    });
+                    }).response.accessible_name(tr("Field"));
                 let wname = |i: usize| match waves.get(i - 1) {
                     Some(w) => trf("Wave {} {} µm", &[&i, &fmt_num(*w)]),
                     None => trf("Wave {}", &[&i]),
@@ -582,7 +584,7 @@ impl Core {
                                 RichText::new(wname(i)).color(theme::wave_color(w)),
                             );
                         }
-                    });
+                    }).response.accessible_name(tr("Wavelength"));
             });
             ui.checkbox(&mut cfg.live, tr("Auto"))
                 .on_hover_text(tr("Recompute when the system changes"));

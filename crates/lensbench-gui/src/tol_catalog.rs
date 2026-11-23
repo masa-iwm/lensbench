@@ -231,7 +231,9 @@ fn bound(
             for o in ops {
                 ui.selectable_value(&mut b.0, o.to_string(), sym(o));
             }
-        });
+        })
+        .response
+        .accessible_name(tr("Comparison"));
     cell(ui, &mut b.1);
 }
 
@@ -272,7 +274,9 @@ pub(crate) fn ui(
                     for (k, l) in presets.iter().filter(|p| !p.0.is_empty()) {
                         ui.selectable_value(&mut t.preset, k.to_string(), tr(l));
                     }
-                });
+                })
+                .response
+                .accessible_name(tr("Preset"));
             if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                 del = Some(i);
             }
@@ -336,7 +340,9 @@ pub(crate) fn ui(
                         ui.selectable_value(&mut r.cemented, None, tr("Any lens type"));
                         ui.selectable_value(&mut r.cemented, Some(true), tr("Cemented"));
                         ui.selectable_value(&mut r.cemented, Some(false), tr("Singlet"));
-                    });
+                    })
+                    .response
+                    .accessible_name(tr("Cemented"));
             });
         }
         if let Some(j) = rdel {

@@ -792,14 +792,17 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
 
 fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Trials"));
-        ui.add(crate::widgets::Num::new(&mut p.trials).range(0..=1_000_000));
-        ui.label(tr("Random seed"));
-        ui.add(crate::widgets::Num::new(&mut p.seed));
+        let lbl = ui.label(tr("Trials"));
+        ui.add(crate::widgets::Num::new(&mut p.trials).range(0..=1_000_000))
+            .labelled_by(lbl.id);
+        let lbl = ui.label(tr("Random seed"));
+        ui.add(crate::widgets::Num::new(&mut p.seed))
+            .labelled_by(lbl.id);
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Compensator iterations"));
-        ui.add(crate::widgets::Num::new(&mut p.comp_iters).range(1..=200));
+        let lbl = ui.label(tr("Compensator iterations"));
+        ui.add(crate::widgets::Num::new(&mut p.comp_iters).range(1..=200))
+            .labelled_by(lbl.id);
         ui.checkbox(
             &mut p.sensitivity,
             tr("Also compute sensitivities (each tolerance at its limits)"),
@@ -807,9 +810,9 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     });
     inverse::settings(ui, p);
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Percentiles"));
-        small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
-        ui.label(tr("Threads"));
+        let lbl = ui.label(tr("Percentiles"));
+        small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98").labelled_by(lbl.id);
+        let lbl = ui.label(tr("Threads"));
         ui.add(
             crate::widgets::Num::new(&mut p.threads)
                 .range(0..=256)
@@ -820,15 +823,16 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
                         format!("{v:.0}")
                     }
                 }),
-        );
+        )
+        .labelled_by(lbl.id);
     });
     ui.checkbox(
         &mut p.samples,
         tr("Include each trial's deltas and evaluation in the result (samples)"),
     );
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Config"));
-        small_edit(ui, &mut p.opt.configs, 160.0, tr("Open system only"));
+        let lbl = ui.label(tr("Config"));
+        small_edit(ui, &mut p.opt.configs, 160.0, tr("Open system only")).labelled_by(lbl.id);
     });
     ui.label(
         RichText::new(tr("The same seed gives the same result (regardless of thread count). With several configurations, the same deviations are applied to all of them."))
@@ -972,7 +976,9 @@ fn comps_ui(
                 for (i, d) in ds.iter().enumerate() {
                     ui.selectable_value(sel, i, d.name.as_str());
                 }
-            });
+            })
+            .response
+            .accessible_name(tr("Compensator"));
         ui.selectable_value(cdf, false, tr("Histogram"));
         ui.selectable_value(cdf, true, tr("Cumulative distribution"));
     });

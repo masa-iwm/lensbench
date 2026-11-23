@@ -127,46 +127,46 @@ pub(super) fn load_glass_filter(n: &mut OptPanel, g: &Value) {
 
 pub(super) fn search_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("Start points"))
+        let lbl = ui.label(tr("Start points"))
             .on_hover_text(tr("Global search: optimize from this many start points (the current values first) in parallel and keep the best solutions. Variables with both bounds are drawn in their range, others around their value. 0 or 1: local optimization only"));
-        ui.add(crate::widgets::Num::new(&mut p.starts).range(0..=10000));
+        ui.add(crate::widgets::Num::new(&mut p.starts).range(0..=10000)).labelled_by(lbl.id);
         ui.add_enabled_ui(p.starts >= 2, |ui| {
-            ui.label(tr("Random seed"));
-            ui.add(crate::widgets::Num::new(&mut p.seed));
-            ui.label(tr("Solutions to keep"))
+            let lbl = ui.label(tr("Random seed"));
+            ui.add(crate::widgets::Num::new(&mut p.seed)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Solutions to keep"))
                 .on_hover_text(tr("Number of distinct solutions to keep (best first)"));
-            ui.add(crate::widgets::Num::new(&mut p.keep).range(1..=100));
-            ui.label(tr("Spread of unbounded variables"))
+            ui.add(crate::widgets::Num::new(&mut p.keep).range(1..=100)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Spread of unbounded variables"))
                 .on_hover_text(tr("Spread of variables without bounds, relative to max(|value|, typical size of the kind)"));
             ui.add(
                 crate::widgets::Num::new(&mut p.spread)
                     .range(1e-6..=100.0)
                     .max_decimals(4),
-            );
+            ).labelled_by(lbl.id);
         });
     });
     ui.checkbox(&mut p.glass_on, tr("Substitute glasses after optimizing"))
         .on_hover_text(tr("Choose the glass of the listed surfaces from catalog glasses: for each surface, the candidates nearest in nd and vd to its current medium are tried with the variables re-optimized. Model glasses and surfaces with dn/disp are always replaced by a real glass; real glasses only when the merit improves"));
     ui.add_enabled_ui(p.glass_on, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Surfaces to substitute"));
-            small_edit(ui, &mut p.glass_surfaces, 120.0, "1, 3, 6");
-            ui.label(tr("Glass catalogs"));
-            small_edit(ui, &mut p.glass_catalogs, 160.0, tr("System glasses"));
+            let lbl = ui.label(tr("Surfaces to substitute"));
+            small_edit(ui, &mut p.glass_surfaces, 120.0, "1, 3, 6").labelled_by(lbl.id);
+            let lbl = ui.label(tr("Glass catalogs"));
+            small_edit(ui, &mut p.glass_catalogs, 160.0, tr("System glasses")).labelled_by(lbl.id);
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Candidates per surface"));
-            ui.add(crate::widgets::Num::new(&mut p.glass_candidates).range(1..=200));
-            ui.label(tr("Max passes"));
-            ui.add(crate::widgets::Num::new(&mut p.glass_passes).range(1..=20));
+            let lbl = ui.label(tr("Candidates per surface"));
+            ui.add(crate::widgets::Num::new(&mut p.glass_candidates).range(1..=200)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("Max passes"));
+            ui.add(crate::widgets::Num::new(&mut p.glass_passes).range(1..=20)).labelled_by(lbl.id);
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Max relative cost"))
+            let lbl = ui.label(tr("Max relative cost"))
                 .on_hover_text(tr("Candidates: upper limits from the catalog (relative cost and resistance classes). Empty: no limit. With no filter at all, the system's glass substitution template (GSTD of a .zmx) is used when it is on. Glasses without the value are kept unless excluded"));
-            small_edit(ui, &mut p.glass_max_cost, 50.0, "");
+            small_edit(ui, &mut p.glass_max_cost, 50.0, "").labelled_by(lbl.id);
             for (k, t) in RESIST_NAMES.iter().zip(p.glass_max_resist.iter_mut()) {
-                ui.label(k.to_ascii_uppercase());
-                small_edit(ui, t, 36.0, "");
+                let lbl = ui.label(k.to_ascii_uppercase());
+                small_edit(ui, t, 36.0, "").labelled_by(lbl.id);
             }
             ui.checkbox(&mut p.glass_exclude_incomplete, tr("Exclude glasses without the value"))
                 .on_hover_text(tr("Drop candidates that have no value for a property with a limit (a relative cost or class of 0 counts as no value, except FR)"));
@@ -180,19 +180,19 @@ pub(super) fn search_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("Excluded glasses"))
+            let lbl = ui.label(tr("Excluded glasses"))
                 .on_hover_text(tr("Glasses never used as candidates (comma-separated; NAME@CATALOG for one catalog's glass). A current glass that fails the filter is always replaced"));
-            small_edit(ui, &mut p.glass_exclude, 200.0, "N-LASF9, F2@OHARA");
+            small_edit(ui, &mut p.glass_exclude, 200.0, "N-LASF9, F2@OHARA").labelled_by(lbl.id);
         });
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Closeness steps"))
                 .on_hover_text(tr("Candidates are the nearest in (Δnd / nd step)² + (Δvd / vd step)² (+ (ΔPgF / ΔPgF step)² when given)"));
-            ui.label("nd");
-            ui.add(crate::widgets::Num::new(&mut p.glass_nd_step).range(1e-6..=1.0).max_decimals(5));
-            ui.label("vd");
-            ui.add(crate::widgets::Num::new(&mut p.glass_vd_step).range(1e-6..=1000.0).max_decimals(4));
-            ui.label(tr("ΔPgF step"));
-            small_edit(ui, &mut p.glass_dpgf_step, 60.0, tr("None"));
+            let lbl = ui.label("nd");
+            ui.add(crate::widgets::Num::new(&mut p.glass_nd_step).range(1e-6..=1.0).max_decimals(5)).labelled_by(lbl.id);
+            let lbl = ui.label("vd");
+            ui.add(crate::widgets::Num::new(&mut p.glass_vd_step).range(1e-6..=1000.0).max_decimals(4)).labelled_by(lbl.id);
+            let lbl = ui.label(tr("ΔPgF step"));
+            small_edit(ui, &mut p.glass_dpgf_step, 60.0, tr("None")).labelled_by(lbl.id);
         });
         ui.label(
             RichText::new(tr(
