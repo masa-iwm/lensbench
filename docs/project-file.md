@@ -263,7 +263,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   光線エイミングは部品を見ない。レイアウト図（2D・3D・書き出し）の光線は部品に切られる点で終わる。false なら追跡では切らず、
   けられは `mech-check` だけで見る。レイアウト図では光線を最後まで描き、部品に切られる点から後ろを薄く描く（serve の `layout` の光線の
   `faint` はその点の番号）。機構部品の無い系では何も変わらない。システムファイル・状態の `project`・serve の `set_system_data`・
-  Python の `System.mech_clip`・GUI のシステムの設定でも変えられる。
+  Python の `System.mech_clip`・GUI のシステムの設定でも変えられる。.zmx への書き出しでは穴の両端の円形開口のダミー面にする
+  （[.zmx の約束](zmx.md)）。
 - `lensbench mech-check` は設定によらず、瞳の格子の光線を面 1 から部品で切らずに追い、視野と波長ごとに、どこでも切れずに通った割合
   （`passed_pct`）、部品より先にシステムの開口で切れた割合（`optical_pct`）、追跡が止まった割合（`failed_pct`）、部品ごとに最初に切った割合
   （`first_pct`、光の通る順で最初）を出す。この 4 つの合計は 100 %。部品ごとの、穴の外に出た光線の割合（`clipped_pct`、ほかで先に

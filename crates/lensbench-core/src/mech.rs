@@ -735,6 +735,153 @@ impl System {
     }
 }
 
+/// 穴の端の面を置く所（[`as_apertures`]）
+struct EndPlane {
+    /// 前の面（この面の後ろの隙間に置く）
+    gap: usize,
+    /// 前の面の頂点から軸に沿った距離（前の面の厚さと同じ向き）
+    d: f64,
+    radius: f64,
+    /// 前の面の局所座標での偏心
+    dx: f64,
+    dy: f64,
+    label: String,
+}
+
+/// 機構部品の穴を、穴の両端（z0・z1）の平面に置いた円形開口（半径 = 穴の半径）のダミー面にした系と注意
+/// （OpticStudio には機構部品が無いので、.zmx に書くときに使う）。面は端の平面が通る隙間（前の面の軸に沿う隙間で、
+/// 部品の軸が隙間の軸と平行なもの）に入れて隙間の厚さを分ける。偏心は開口の偏心にする。返す系に機構部品は無い。
+///
+/// 面と面の間の直線の上の x² + y² の最大は z の範囲の端なので、穴の中に光学面が無い隙間では端の 2 面の判定は
+/// [`segment_clipped`] と同じ。穴の中に光学面があると（玉を保持する部品）、その面の交点での判定は落ちる。
+/// 置けない端（部品が隙間の軸に対して傾いている・どの隙間にも無い・2 つ以上の隙間にある・厚さがソルブか
+/// ピックアップで決まる隙間・多重構成の系）は書かずに注意を返す
+pub fn as_apertures(s: &System) -> Result<(System, Vec<String>)> {
+    let mut notes = Vec::new();
+    let mut out = s.clone();
+    if s.mechanics.is_empty() {
+        return Ok((out, notes));
+    }
+    if s.configs.is_some() {
+        notes.push(format!(
+            "{} mechanical parts were not written (a multi-configuration system)",
+            s.mechanics.len()
+        ));
+    } else {
+        let fr = s.frames();
+        // 前の面と次の面が共軸につながる隙間（物体面の後ろは見ない）: (前の面, 原点, 局所の x・y・z 軸, 厚さ)
+        let mut gaps: Vec<(usize, V3, [V3; 3], f64)> = Vec::new();
+        let idx: Vec<usize> = (1..=s.image())
+            .filter(|&j| !s.surfaces[j].ignore && fr.surf[j].is_some())
+            .collect();
+        for w in idx.windows(2) {
+            let (j, k) = (w[0], w[1]);
+            let (fj, fk) = (fr.surf[j].expect("frame"), fr.surf[k].expect("frame"));
+            let ax = [col(&fj.r, 0), col(&fj.r, 1), col(&fj.r, 2)];
+            let t = s.surfaces[j].t;
+            let end = add(fj.o, crate::math::scale(ax[2], t));
+            let fixed = !s
+                .pickups
+                .iter()
+                .any(|q| q.dst == j && q.what == crate::param::Kind::Thick)
+                && !s
+                    .solves
+                    .iter()
+                    .any(|q| q.surf == j && q.kind.param_kind() == crate::param::Kind::Thick);
+            if t.is_finite() && norm(sub(end, fk.o)) < 1e-9 * (1.0 + t.abs()) && fixed {
+                gaps.push((j, fj.o, ax, t));
+            }
+        }
+        let mut planes: Vec<EndPlane> = Vec::new();
+        for p in &s.mechanics {
+            let (o, m) = p.frame(s)?;
+            let n = col(&m, 2);
+            for b in &p.bores {
+                for (z, end) in [(b.z0, "z0"), (b.z1, "z1")] {
+                    let q = add(o, crate::math::scale(n, z));
+                    let label = format!("MECH {} {end}", p.name);
+                    // 部品の軸と平行で、平面が隙間の中にある隙間
+                    let hits: Vec<EndPlane> = gaps
+                        .iter()
+                        .filter(|g| dot(n, g.2[2]).abs() > 1.0 - 1e-9)
+                        .filter_map(|&(j, a, ax, t)| {
+                            let v = sub(q, a);
+                            let d = dot(v, ax[2]);
+                            let inside = if t >= 0.0 {
+                                (-1e-9..=t + 1e-9).contains(&d)
+                            } else {
+                                (t - 1e-9..=1e-9).contains(&d)
+                            };
+                            inside.then(|| EndPlane {
+                                gap: j,
+                                d: d.clamp(t.min(0.0), t.max(0.0)),
+                                radius: b.radius,
+                                dx: dot(v, ax[0]),
+                                dy: dot(v, ax[1]),
+                                label: label.clone(),
+                            })
+                        })
+                        .collect();
+                    match hits.len() {
+                        1 => planes.extend(hits),
+                        0 => notes.push(format!(
+                            "the bore end {} of mechanical part {} was not written (no surface gap along the part axis holds it)",
+                            z, p.name
+                        )),
+                        _ => notes.push(format!(
+                            "the bore end {} of mechanical part {} was not written (it lies in more than one surface gap)",
+                            z, p.name
+                        )),
+                    }
+                }
+            }
+        }
+        // 後ろの隙間から入れる（前の面の番号が変わらない）。隙間の中は前の面から近い順
+        planes.sort_by(|a, b| b.gap.cmp(&a.gap).then(a.d.abs().total_cmp(&b.d.abs())));
+        let mut i = 0;
+        while i < planes.len() {
+            let j = planes[i].gap;
+            let group: Vec<&EndPlane> = planes[i..].iter().take_while(|e| e.gap == j).collect();
+            i += group.len();
+            let t = s.surfaces[j].t;
+            // 隙間の媒質（鏡・座標ブレークは前の媒質のまま）
+            let mat = (1..=j)
+                .rev()
+                .map(|k| &s.surfaces[k])
+                .find(|d| !d.is_mirror() && !d.is_coord_break())
+                .map(|d| d.mat.clone())
+                .unwrap_or(crate::surface::Material::Air);
+            for (k, e) in group.iter().enumerate() {
+                let next = group.get(k + 1).map_or(t, |x| x.d);
+                let d = crate::surface::Surface {
+                    t: next - e.d,
+                    comment: e.label.clone(),
+                    mat: mat.clone(),
+                    semi: e.radius,
+                    ap: crate::surface::Aperture::Circular {
+                        min: 0.0,
+                        max: e.radius,
+                        dx: e.dx,
+                        dy: e.dy,
+                    },
+                    ..Default::default()
+                };
+                out.insert_surface(j + 1 + k, d)?;
+            }
+            let first = group[0].d;
+            out.edit(|r| {
+                r.surfaces[j].t = first;
+                Ok(())
+            })?;
+        }
+    }
+    out.edit(|r| {
+        r.mechanics.clear();
+        Ok(())
+    })?;
+    Ok((out, notes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

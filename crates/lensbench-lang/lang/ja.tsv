@@ -1749,7 +1749,7 @@ no row {n} in the merit function	メリットファンクションに行 {n} が
 the referenced row {} ({}) is {e}	参照する行 {}（{}）: {e}
 the referenced row {} ({}) has no single value	参照する行 {}（{}）は 1 つの値の項ではありません
 macro number {n} (0 to 99)	マクロの番号 {n}（0〜99）
-the merit function was not written to the .zmx (moving lenses or groups renumbers the surfaces)	メリットファンクションは .zmx に書きませんでした（レンズ・群を動かすと面の番号が変わります）
+the merit function was not written to the .zmx (moving lenses or groups or the apertures of mechanical parts renumber the surfaces)	メリットファンクションは .zmx に書きませんでした（レンズ・群の移動や機構部品の開口で面の番号が変わります）
 term {}: no configuration {c}; not written to the .zmx	項 {}: 構成 {c} がありません。.zmx には書きません
 term {}: {e}; not written to the .zmx	項 {}: {e}。.zmx には書きません
 OpticStudio's ZERN fits {os} terms, so its value differs from the term's	OpticStudio の ZERN は {os} 項でフィッティングするので、値が項と違います
@@ -1780,7 +1780,11 @@ the solve of kind {t} (a thermal pickup or another one) was read as its value	�
 multi-configuration row {op} {p1}: surface {k} has no solve or pickup it sets (OpticStudio does not use it either); not kept in the table	多重構成の行 {op} {p1}: 面 {k} には、この行が設定するソルブ・ピックアップがありません（OpticStudio も使いません）。表には入れません
 lens and group moves were written as coordinate breaks (the surface numbers change)	レンズ・群の動きは座標ブレークに展開して書きました（面の番号が変わります）
 the {what} pickup of surface {} (from surface {}) can't be written to .zmx, so only the value was written	面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書きました
-{} mechanical parts can't be written to .zmx	機構部品 {} 個は .zmx に書けません
+{} mechanical parts can't be written to .zmx (they don't clip rays: mech_clip is false)	機構部品 {} 個は .zmx に書けません（mech_clip が false で、機構部品でケラレとしない設定です）
+the bores of the mechanical parts were written as circular apertures on dummy surfaces at their ends (the surface numbers change)	機構部品の穴は、両端のダミー面の円形開口として書きました（面の番号が変わります）
+{} mechanical parts were not written (a multi-configuration system)	機構部品 {} 個は書きませんでした（多重構成のシステム）
+the bore end {} of mechanical part {} was not written (no surface gap along the part axis holds it)	穴の端 {}（機構部品 {}）は書きませんでした（部品の軸に沿う面の間隔に入りません）
+the bore end {} of mechanical part {} was not written (it lies in more than one surface gap)	穴の端 {}（機構部品 {}）は書きませんでした（2 つ以上の面の間隔に入ります）
 user-defined materials ({}) were written by name only; OpticStudio has no catalog for them	ユーザー定義の材料（{}）は名前だけ書きました。OpticStudio にはそのカタログがありません
 the setting that floating apertures don't clip (floating_clip: false) can't be written to .zmx (they clip when read back)	浮動開口でケラレない設定（floating_clip: false）は .zmx に書けません（再読み込みするとケラレます）
 write a system file (.json) to keep everything	欠けなく残すならシステムファイル（.json）に書いてください

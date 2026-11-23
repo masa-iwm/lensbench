@@ -622,3 +622,113 @@ fn p19_twenty_degrees_is_vignetted_by_the_parts() {
         }
     }
 }
+
+/// 穴を円形開口のダミー面にした系（.zmx に書く形）: 部品で切る系と同じ光線がけられ、通る光線は像面の同じ点に届く。
+/// .zmx に書いて読み直しても同じ
+#[test]
+fn bores_as_dummy_apertures_vignette_the_same_rays() {
+    let path = root().join("examples/projects/P19_tube_cage.json");
+    let p = Project::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let env = Env::for_file(&path, &[root().join("tests/glass")], None);
+    let s = expand(&p, &env, &ExpandOpts::default()).unwrap().system;
+    let (a, notes) = lensbench_core::mech::as_apertures(&s).unwrap();
+    assert!(notes.is_empty(), "{notes:?}");
+    assert!(a.mechanics.is_empty());
+    let nb: usize = s.mechanics.iter().map(|m| m.bores.len()).sum();
+    let dummies = a
+        .surfaces
+        .iter()
+        .filter(|d| d.comment.starts_with("MECH "))
+        .count();
+    assert_eq!(dummies, 2 * nb);
+    assert_eq!(a.surfaces.len(), s.surfaces.len() + 2 * nb);
+    // 像面までの長さは同じ
+    let len =
+        |x: &lensbench_core::System| x.surfaces[1..x.image()].iter().map(|d| d.t).sum::<f64>();
+    assert!((len(&a) - len(&s)).abs() < 1e-9);
+    let dir = std::env::temp_dir().join(format!("lb_mechzmx_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("p19.zmx");
+    let warn = lensbench_formats::zmx_write::save(&f, &s).unwrap();
+    assert!(
+        warn.iter().any(|w| w.contains("dummy surfaces")),
+        "{warn:?}"
+    );
+    let back = lensbench_formats::zmx::load_with(
+        &f,
+        &lensbench_formats::zmx::LoadOptions {
+            catalog_dirs: vec![root().join("tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    let (px, py) = pupil(21);
+    for f in 0..s.fields.len() {
+        let t0 = s
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
+        for (what, x) in [("dummy", &a), ("zmx", &back)] {
+            let t1 = x
+                .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+                .unwrap();
+            for i in 0..px.len() {
+                let (r0, r1) = (&t0.rays[i], &t1.rays[i]);
+                assert_eq!(r0.vig != 0, r1.vig != 0, "{what} 視野 {f} 光線 {i}");
+                if r0.vig == 0 {
+                    for c in 0..3 {
+                        assert!(
+                            (r0.xyz[c] - r1.xyz[c]).abs() < 1e-9,
+                            "{what} 視野 {f} 光線 {i}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ずらした部品は開口の偏心に、傾いた部品は書かずに注意。ずらした部品のダミー面も同じ光線をける
+#[test]
+fn shifted_parts_become_decentered_apertures_tilted_ones_are_noted() {
+    let (px, py) = pupil(21);
+    let s = system(
+        r#"{"name": "tube", "mech": {"bores": [{"z0": 5, "z1": 35, "diameter": 11}]}, "at": {"block": "stop"}, "offset": [0.8, -0.5, 0]}"#,
+        None,
+    );
+    let (a, notes) = lensbench_core::mech::as_apertures(&s).unwrap();
+    assert!(notes.is_empty(), "{notes:?}");
+    let d: Vec<_> = a
+        .surfaces
+        .iter()
+        .filter(|d| d.comment.starts_with("MECH "))
+        .collect();
+    assert_eq!(d.len(), 2);
+    assert_eq!(
+        d[0].ap,
+        lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 5.5,
+            dx: 0.8,
+            dy: -0.5
+        }
+    );
+    for f in [0, 1] {
+        let t0 = s
+            .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, false)
+            .unwrap();
+        let t1 = a
+            .try_trace(FieldSel::Index(f), &px, &py, Some(0), None, false)
+            .unwrap();
+        let v0: Vec<bool> = t0.rays.iter().map(|r| r.vig != 0).collect();
+        let v1: Vec<bool> = t1.rays.iter().map(|r| r.vig != 0).collect();
+        assert_eq!(v0, v1, "視野 {f}");
+    }
+    let tilted = system(
+        r#"{"name": "tube", "mech": {"bores": [{"z0": 5, "z1": 35, "diameter": 11}]}, "at": {"block": "stop"}, "tilt": [2, 0]}"#,
+        None,
+    );
+    let (b, notes) = lensbench_core::mech::as_apertures(&tilted).unwrap();
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    assert_eq!(b.surfaces.len(), tilted.surfaces.len());
+}

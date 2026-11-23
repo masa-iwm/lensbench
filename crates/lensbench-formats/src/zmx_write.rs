@@ -251,6 +251,10 @@ fn write_header(s: &System, coat_file: &str) -> Result<String> {
 }
 
 pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
+    if s.mech_clip && !s.mechanics.is_empty() {
+        // 機構部品の穴は円形開口のダミー面にして書く（面の番号が変わる）
+        return write_as(&lensbench_core::mech::as_apertures(s)?.0, coat_file);
+    }
     if s.units.iter().any(|u| u.moved()) {
         // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
         // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）
@@ -967,9 +971,9 @@ pub fn save_with_merit(
     let mut txt = write_as(s, &name)?;
     let mut notes = write_notes(s);
     if !rows.is_empty() {
-        if s.units.iter().any(|u| u.moved()) {
+        if s.units.iter().any(|u| u.moved()) || (s.mech_clip && !s.mechanics.is_empty()) {
             notes.push(
-                "the merit function was not written to the .zmx (moving lenses or groups renumbers the surfaces)"
+                "the merit function was not written to the .zmx (moving lenses or groups or the apertures of mechanical parts renumber the surfaces)"
                     .into(),
             );
         } else {
@@ -1038,9 +1042,17 @@ pub fn write_notes(s: &System) -> Vec<String> {
             q.dst, q.src
         ));
     }
-    if !s.mechanics.is_empty() {
+    if !s.mechanics.is_empty() && s.mech_clip {
+        out.push(
+            "the bores of the mechanical parts were written as circular apertures on dummy surfaces at their ends (the surface numbers change)"
+                .to_string(),
+        );
+        if let Ok((_, n)) = lensbench_core::mech::as_apertures(s) {
+            out.extend(n);
+        }
+    } else if !s.mechanics.is_empty() {
         out.push(format!(
-            "{} mechanical parts can't be written to .zmx",
+            "{} mechanical parts can't be written to .zmx (they don't clip rays: mech_clip is false)",
             s.mechanics.len()
         ));
     }
