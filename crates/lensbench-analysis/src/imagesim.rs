@@ -354,14 +354,33 @@ fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
     } else {
         1.0
     };
+    // 主光線が像面の点に届かない（全部けられる）視野の点は暗い（相対照度 0）。全部の点がそうなら誤り
+    let (mut dark, mut dark_err) = (0, None);
     for b in 0..m {
         for a in 0..m {
             let h = grid_field(a, b, m, m);
             pos[b * m + a] = chief(h)?;
             if o.relative_illumination {
-                ri[b * m + a] = exit_cone(s, FieldSel::Norm(h.0, h.1), s.primary, 64)? / a0;
+                ri[b * m + a] = match exit_cone(s, FieldSel::Norm(h.0, h.1), s.primary, 64) {
+                    Ok(v) => v / a0,
+                    Err(e) if crate::defs::field_vignetted(&e) => {
+                        dark += 1;
+                        dark_err.get_or_insert(e);
+                        0.0
+                    }
+                    Err(e) => return Err(e),
+                };
             }
         }
+    }
+    if let Some(e) = dark_err {
+        if dark == m * m {
+            return Err(e);
+        }
+        warnings.push(format!(
+            "image simulation: the chief ray doesn't reach the image at {dark} of {} points of the field map (vignetted); they are taken as dark",
+            m * m
+        ));
     }
     let center = chief((fcx / nx, fcy / ny))?;
     // 軸上の元の 1 画素の像の大きさ（軸上の差分。中心の視野が軸の外でも軸上で決める。OpticStudio も同じ）
@@ -425,49 +444,72 @@ fn sim(s: &System, src: &SimImage, o: &ImageSimOpts) -> Result<ImageSimOut> {
     let mut out = vec![vec![0.0; w1 * h1]; src.channels.len()];
     for (c, ws) in chans.iter().enumerate() {
         for &(w, kw) in ws {
-            // 格子点ごとの PSF（検出器の画素に積分した核、奇数の一辺、中心が主波長の主光線の像点）
-            let kernels: Vec<Option<(usize, Vec<f64>)>> = (0..gx * gy)
-                .map(|k| -> Result<Option<(usize, Vec<f64>)>> {
-                    if o.aberrations == Aberrations::None {
-                        return Ok(None);
+            // 格子点ごとの PSF（検出器の画素に積分した核、奇数の一辺、中心が主波長の主光線の像点）。
+            // 全部けられる格子点の核は 0（光が来ない）
+            let mut kernel = |k: usize| -> Result<Option<(usize, Vec<f64>)>> {
+                if o.aberrations == Aberrations::None {
+                    return Ok(None);
+                }
+                let h = grid_field(k % gx, k / gx, gx, gy);
+                if o.aberrations == Aberrations::Geometric {
+                    let n = o.pupil.unwrap_or(GEO_PUPIL);
+                    return geo_kernel(s, FieldSel::Norm(h.0, h.1), w, n, pixel).map(Some);
+                }
+                let p = if o.aberrations == Aberrations::Huygens {
+                    crate::huygens::huygens_psf(
+                        s,
+                        FieldSel::Norm(h.0, h.1),
+                        Waves::One(w),
+                        crate::huygens::HuygensOpts {
+                            pupil: o.pupil,
+                            image: o.psf_points,
+                            ..Default::default()
+                        },
+                    )?
+                } else {
+                    psf(
+                        s,
+                        FieldSel::Norm(h.0, h.1),
+                        Waves::One(w),
+                        PsfOpts {
+                            pupil: o.pupil,
+                            image: o.psf_points,
+                            pixel: None,
+                            plane: PsfPlane::Image,
+                        },
+                    )?
+                };
+                for wn in &p.warnings {
+                    if !warnings.contains(wn) {
+                        warnings.push(wn.clone());
                     }
-                    let h = grid_field(k % gx, k / gx, gx, gy);
-                    if o.aberrations == Aberrations::Geometric {
-                        let n = o.pupil.unwrap_or(GEO_PUPIL);
-                        return geo_kernel(s, FieldSel::Norm(h.0, h.1), w, n, pixel).map(Some);
+                }
+                Ok(Some(bin_kernel(&p, pixel)))
+            };
+            let (mut kernels, mut cut, mut cut_err) = (Vec::with_capacity(gx * gy), 0, None);
+            for k in 0..gx * gy {
+                kernels.push(match kernel(k) {
+                    Ok(x) => x,
+                    Err(e) if crate::defs::field_vignetted(&e) => {
+                        cut += 1;
+                        cut_err.get_or_insert(e);
+                        Some((1, vec![0.0]))
                     }
-                    let p = if o.aberrations == Aberrations::Huygens {
-                        crate::huygens::huygens_psf(
-                            s,
-                            FieldSel::Norm(h.0, h.1),
-                            Waves::One(w),
-                            crate::huygens::HuygensOpts {
-                                pupil: o.pupil,
-                                image: o.psf_points,
-                                ..Default::default()
-                            },
-                        )?
-                    } else {
-                        psf(
-                            s,
-                            FieldSel::Norm(h.0, h.1),
-                            Waves::One(w),
-                            PsfOpts {
-                                pupil: o.pupil,
-                                image: o.psf_points,
-                                pixel: None,
-                                plane: PsfPlane::Image,
-                            },
-                        )?
-                    };
-                    for wn in &p.warnings {
-                        if !warnings.contains(wn) {
-                            warnings.push(wn.clone());
-                        }
-                    }
-                    Ok(Some(bin_kernel(&p, pixel)))
-                })
-                .collect::<Result<_>>()?;
+                    Err(e) => return Err(e),
+                });
+            }
+            if let Some(e) = cut_err {
+                if cut == gx * gy {
+                    return Err(e);
+                }
+                let wn = format!(
+                    "image simulation: {cut} of {} PSF grid points are fully vignetted; no light is taken from them",
+                    gx * gy
+                );
+                if !warnings.contains(&wn) {
+                    warnings.push(wn);
+                }
+            }
             // 格子点ごとの重みつきの理想の像
             let mut ideal = vec![vec![0.0; w1 * h1]; gx * gy];
             let ch = &src.channels[c];
@@ -623,19 +665,19 @@ fn geo_kernel(
     }
     let c = s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?;
     if !c.traced(0) {
-        invalid!("image simulation: the chief ray doesn't reach the image (geometric PSF)");
+        invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "image simulation: the chief ray doesn't reach the image (geometric PSF)");
     }
     let c0 = (c.rays[0].xyz[0], c.rays[0].xyz[1]);
     let (px, py) = lensbench_core::opd::pupil_grid(n);
     let t = s.try_trace(field, &px, &py, Some(w), None, false)?;
     let wts = crate::analysis::apodized(s, field, &px, &py, &vec![1.0; px.len()])?;
     let pts: Vec<(f64, f64, f64)> = (0..px.len())
-        .filter(|&i| t.traced(i) && wts[i] > 0.0)
+        .filter(|&i| t.ok(i) && wts[i] > 0.0)
         .map(|i| (t.rays[i].xyz[0] - c0.0, t.rays[i].xyz[1] - c0.1, wts[i]))
         .filter(|p| p.0.is_finite() && p.1.is_finite())
         .collect();
     if pts.is_empty() {
-        invalid!("image simulation: no ray of the pupil reaches the image (geometric PSF)");
+        invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "image simulation: no ray of the pupil reaches the image (geometric PSF)");
     }
     let half = pts
         .iter()

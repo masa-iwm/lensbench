@@ -2830,3 +2830,5 @@ warning: {c}: the difference between the grid points is {worst:.1e}, above --tol
 Upper limit of the times the grid is made finer	グリッドを細かくし直す回数の上限
 Interpolation order of the model (0: the former, 4 neighboring wavelengths and a spline along β²; 4 to 12: polynomials through that many neighboring points along 1/λ and β², the ORDER line). 8 needs fewer points for the same accuracy	モデルの補間の点の数（0: 従来の、近い 4 波長と β² のスプライン。4〜12: 1/λ・β² とも近いその数の点の多項式で、ORDER 行）。8 なら同じ精度で点が少なくて済む
 coating fit: the interpolation order {} is not 0 or 4 to 12	コーティングのフィッティング: 補間の点の数 {} が 0 か 4〜12 ではありません
+image simulation: the chief ray doesn't reach the image at {dark} of {} points of the field map (vignetted); they are taken as dark	像の模擬: 写像のグリッドの {} 点のうち {dark} 点で主光線が像面に届きません（ケラレ）。その点は暗いものとします
+image simulation: {cut} of {} PSF grid points are fully vignetted; no light is taken from them	像の模擬: PSF のグリッドの {} 点のうち {cut} 点はすべてケラレます。その点からの光は取りません

@@ -77,3 +77,50 @@ fn analyses_skip_a_fully_vignetted_field() {
         assert!(!ok && err.contains("vignetted"), "{cmd}: {err}");
     }
 }
+
+/// image-sim: 全部けられる視野の点（相対照度・PSF の格子点）は暗くして像を作り、注意を付ける
+#[test]
+fn image_sim_darkens_fully_vignetted_points() {
+    let dir = std::env::temp_dir().join(format!("lb-vigfield-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("im.json");
+    for ab in ["diffraction", "geometric"] {
+        let (ok, stdout, err) = run(&[
+            "image-sim",
+            P19,
+            "--glass-dir",
+            "tests/glass",
+            "--json",
+            "--psf-x",
+            "3",
+            "--psf-y",
+            "3",
+            "--psf-points",
+            "32",
+            "--aberrations",
+            ab,
+            "--save",
+            out.to_str().unwrap(),
+        ]);
+        assert!(ok, "{ab}: {err}");
+        let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        let w = v["warnings"].as_array().unwrap();
+        assert!(
+            w.iter()
+                .any(|x| x.as_str().unwrap().contains("taken as dark")),
+            "{ab}: {w:?}"
+        );
+        let im: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        let c = im["image"][0].as_array().unwrap();
+        let (w, h) = (
+            im["width"].as_u64().unwrap() as usize,
+            im["height"].as_u64().unwrap() as usize,
+        );
+        let at = |x: usize, y: usize| c[y * w + x].as_f64().unwrap();
+        // 隅（約 28°）は全部けられて暗く、中心は明るい
+        assert!(at(0, 0).abs() < 1e-9, "{ab}: corner {}", at(0, 0));
+        assert!(at(w / 2, h / 2) > 0.05, "{ab}: center {}", at(w / 2, h / 2));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

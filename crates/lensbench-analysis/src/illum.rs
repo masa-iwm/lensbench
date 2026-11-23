@@ -211,7 +211,7 @@ pub fn exit_cone(s: &System, field: FieldSel, w: usize, n: usize) -> Result<f64>
     let h0 = s.field_sel_norm(field, w)?;
     let mut v0 = None;
     let Some(c) = ray(s, h0, (0.0, 0.0), w, &mut v0)? else {
-        invalid!("the chief ray doesn't reach the image");
+        invalid!(code = lensbench_core::error::code::PUPIL_VIGNETTED; "the chief ray doesn't reach the image");
     };
     let v0 = v0.expect("届いた光線の入射瞳の座標");
     let x0 = (c.0, c.1);
