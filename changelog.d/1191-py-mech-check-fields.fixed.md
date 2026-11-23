@@ -1,0 +1,1 @@
+- **Python の `System.mech_check`**: CLI の `mech-check --json` と同じく、各行の `failed_pct` と最上位の `mech_clip` を返す

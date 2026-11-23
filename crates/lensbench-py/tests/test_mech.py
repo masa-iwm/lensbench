@@ -30,14 +30,15 @@ def test_p19_matches_cli():
     assert r["pupil_rays"] > 300
     assert [p["name"] for p in r["parts"]] == ["tube", "cage"]
     assert len(r["results"]) == 3
-    # 軸上は切れない。各行で、最初に切った部品 + 開口 + 通過 = 100 %
+    # 軸上は切れない。各行で、最初に切った部品 + 開口 + 止まった + 通過 = 100 %
     assert r["results"][0]["passed_pct"] == 100.0
     for row in r["results"]:
         first = sum(p["first_pct"] for p in row["parts"])
-        assert abs(first + row["optical_pct"] + row["passed_pct"] - 100.0) < 1e-9
+        assert abs(first + row["optical_pct"] + row["failed_pct"] + row["passed_pct"] - 100.0) < 1e-9
     assert r["results"][2]["parts"][0]["first_pct"] > 0.0
     # 配置の確認: チューブはレンズを保持径に収める
     assert r["fit"] == []
+    assert r["mech_clip"] is True
     # 視野・波長・格子の指定
     one = s.mech_check(fields=[3], waves=[1], grid=11)
     assert len(one["results"]) == 1 and one["results"][0]["field"] == 3

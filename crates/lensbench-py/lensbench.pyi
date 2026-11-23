@@ -292,6 +292,7 @@ class _MechResult(TypedDict):
     wave: int
     rays: int
     failed: int
+    failed_pct: float
     optical_pct: float
     passed_pct: float
     parts: list[_MechResultPart]
@@ -311,6 +312,7 @@ class _MechFit(TypedDict):
 class _MechCheck(TypedDict):
     """Result of System.mech_check"""
     pupil_rays: int
+    mech_clip: bool
     parts: list[_MechPart]
     results: list[_MechResult]
     fit: list[_MechFit]
@@ -822,8 +824,8 @@ class System:
 
         Traces the rays inside the unit circle of a square pupil grid (grid rays on a side) for each field in fields and wavelength in waves (both from 1; all if omitted)
         and counts the fraction [%] that leaves the bores of the parts. Returns a dict:
-        `pupil_rays` (rays per field and wavelength), `parts` (name, surface, clipped_max_pct,
-        first_max_pct and bores of each part), `results` (field, wave, rays, failed, optical_pct, passed_pct and
+        `pupil_rays` (rays per field and wavelength), `mech_clip` (whether the other analyses also vignette at the parts), `parts` (name, surface, clipped_max_pct,
+        first_max_pct and bores of each part), `results` (field, wave, rays, failed, failed_pct, optical_pct, passed_pct and
         parts=[{name, clipped_pct, first_pct}] per field and wavelength). clipped counts the rays that leave a part's bore (also those cut earlier),
         first the rays first cut by that part in the order the light passes, optical the rays cut by an aperture of the system before the parts.
         `fit` checks the placement: a list of dicts of kind (collision, protrude, loose, overlap, rod, rod_mismatch), error,
