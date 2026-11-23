@@ -1155,9 +1155,10 @@ impl PySystem {
     ///
     /// Traces the rays inside the unit circle of a square pupil grid (grid rays on a side) for each field in fields and wavelength in waves (both from 1; all if omitted)
     /// and counts the fraction [%] that leaves the bores of the parts. Returns a dict:
-    /// `pupil_rays` (rays per field and wavelength), `mech_clip` (whether the other analyses also vignette at the parts), `parts` (name, surface, clipped_max_pct,
-    /// first_max_pct and bores of each part), `results` (field, wave, rays, failed, failed_pct, optical_pct, passed_pct and
-    /// parts=[{name, clipped_pct, first_pct}] per field and wavelength). clipped counts the rays that leave a part's bore (also those cut earlier),
+    /// `pupil_rays` (rays per field and wavelength), `mech_clip` (whether the other analyses also vignette at the parts), `pupil` (px, py: the pupil
+    /// points), `parts` (name, surface, clipped_max_pct, first_max_pct and bores of each part), `results` (field, wave, rays, failed, failed_pct,
+    /// optical_pct, passed_pct, state and parts=[{name, clipped_pct, first_pct}] per field and wavelength; state gives per pupil point 0 passes,
+    /// -1 aperture, -2 stopped, k >= 1 first cut by part k). clipped counts the rays that leave a part's bore (also those cut earlier),
     /// first the rays first cut by that part in the order the light passes, optical the rays cut by an aperture of the system before the parts.
     /// `fit` checks the placement: a list of dicts of kind (collision, protrude, loose, overlap, rod, rod_mismatch), error,
     /// part, other, surface, value [mm] and message.

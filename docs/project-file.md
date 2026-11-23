@@ -268,8 +268,10 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - `lensbench mech-check` は設定によらず、瞳の格子の光線を面 1 から部品で切らずに追い、視野と波長ごとに、どこでも切れずに通った割合
   （`passed_pct`）、部品より先にシステムの開口で切れた割合（`optical_pct`）、追跡が止まった割合（`failed_pct`）、部品ごとに最初に切った割合
   （`first_pct`、光の通る順で最初）を出す。この 4 つの合計は 100 %。部品ごとの、穴の外に出た光線の割合（`clipped_pct`、ほかで先に
-  切れた光線も数える）も出す。`mech_clip` は設定の値。例は `examples/projects/P19_tube_cage.json`（20° の光線はチューブとケージ板で
-  全部切れる）。Python は `System.mech_check()`（`failed_pct`・`mech_clip` の無い dict）。GUI の「機構のケラレ」は行が視野・波長の 1 枚の表。
+  切れた光線も数える）も出す。瞳の点ごとの結果も出す（`pupil.px`・`pupil.py` が正規化した瞳の点、各行の `state` が点ごとに 0 = 通る、
+  -1 = 開口、-2 = 止まる、k ≥ 1 = `parts` の k 番目が最初に切った）。`mech_clip` は設定の値。例は `examples/projects/P19_tube_cage.json`（20° の光線はチューブとケージ板で
+  全部切れる）。Python は `System.mech_check()`（`failed_pct`・`mech_clip` の無い dict）。GUI の「機構のケラレ」は行が視野・波長の 1 枚の表と、
+  視野・波長ごとの瞳の点を通る・どこで切れたかで色分けした図。
 - 枠付きの品: ユーザーカタログの品に `frame`（`mech` と同じ形。z は枠の端から光の進む向き、`holds.seat_z` はガラスの前面の位置）を
   書くと、`blocks`（ガラスだけ）をプロジェクトに `user` のブロックで置いたとき、枠がガラスの最初の面に機構部品（名前は「ブロック id の枠」、
   保持する素子はその品の面）として付き、`mech-check` のケラレ・当たりと描画に入る。品ページの STEP を測ると（GUI の補う窓）、

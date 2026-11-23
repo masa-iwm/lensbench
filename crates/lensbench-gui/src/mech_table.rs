@@ -1,6 +1,6 @@
 //! 機構のケラレ（`mech-check`）の表: 行が視野・波長、列が「通る」「開口で切れる」「部品ごとに最初に切った」割合
 //! （行の合計は 100 %）。通る割合が 100 % 未満の行は色を付ける。部品に当たった光線の数（ほかで先に切れたものも
-//! 数える）は部品の欄のツールチップに出す。
+//! 数える）は部品の欄のツールチップに出す。表の下に瞳の点の色分けの図（[`crate::mech_pupil`]）。
 
 use egui::{RichText, Ui};
 use serde_json::Value;
@@ -92,6 +92,8 @@ pub(crate) fn show(ui: &mut Ui, id: u64, v: &Value) -> bool {
                     }
                 });
         });
+    // 瞳の上でどこがどの部品で切れるか
+    crate::mech_pupil::show(ui, v, &parts);
     // 部品の収まり（はみ出し・保持径・ロッド）
     if let Some(fit) = v["fit"].as_array().filter(|f| !f.is_empty()) {
         ui.add_space(6.0);

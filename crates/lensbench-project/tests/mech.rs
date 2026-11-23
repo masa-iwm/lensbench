@@ -786,3 +786,27 @@ fn bore_ends_on_a_vertex_go_to_one_gap() {
         }
     }
 }
+
+/// 瞳の点ごとの結果（state）は数と合い、20° の P19 ではどの点も部品で切れる
+#[test]
+fn pupil_state_matches_the_counts() {
+    use lensbench_core::mech::{STATE_FAILED, STATE_OPTICAL, STATE_PASSED};
+    let path = root().join("examples/projects/P19_tube_cage.json");
+    let p = Project::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let env = Env::for_file(&path, &[root().join("tests/glass")], None);
+    let s = expand(&p, &env, &ExpandOpts::default()).unwrap().system;
+    let (px, py) = lensbench_core::mech::pupil_grid(21);
+    let v = vignetting(&s, &s.mechanics, &[0, 1, 2], &[0], &px, &py).unwrap();
+    for r in &v {
+        assert_eq!(r.state.len(), px.len());
+        let n = |x: i32| r.state.iter().filter(|&&q| q == x).count();
+        assert_eq!(n(STATE_PASSED), r.passed);
+        assert_eq!(n(STATE_OPTICAL), r.optical);
+        assert_eq!(n(STATE_FAILED), r.failed);
+        for k in 0..s.mechanics.len() {
+            assert_eq!(n(k as i32 + 1), r.first[k], "部品 {k}");
+        }
+    }
+    assert!(v[2].state.iter().all(|&q| q >= 1));
+    assert!(v[0].state.iter().all(|&q| q == STATE_PASSED));
+}

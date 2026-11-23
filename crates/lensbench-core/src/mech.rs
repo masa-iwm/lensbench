@@ -480,7 +480,16 @@ pub struct MechVig {
     pub first: Vec<usize>,
     /// どこでも切れずに像面まで届いた光線
     pub passed: usize,
+    /// 瞳の点ごとの結果（[`STATE_PASSED`]・[`STATE_OPTICAL`]・[`STATE_FAILED`]、1 以上は最初に切った部品の番号 + 1）
+    pub state: Vec<i32>,
 }
+
+/// [`MechVig::state`]: どこでも切れずに像面まで届いた
+pub const STATE_PASSED: i32 = 0;
+/// [`MechVig::state`]: 系の開口で切れた（どの部品より先に）
+pub const STATE_OPTICAL: i32 = -1;
+/// [`MechVig::state`]: 追跡が止まった（全反射・当たらない）
+pub const STATE_FAILED: i32 = -2;
 
 /// 部品 `parts` のケラレを、視野 `fields`・波長 `waves` の瞳の点 (px, py) の光線で数える
 pub fn vignetting(
@@ -519,10 +528,12 @@ pub fn vignetting(
                 clipped: vec![0; parts.len()],
                 first: vec![0; parts.len()],
                 passed: 0,
+                state: Vec::with_capacity(px.len()),
             };
             for (i, r) in t.rays.iter().enumerate() {
                 if r.status.surf().is_some() {
                     v.failed += 1;
+                    v.state.push(STATE_FAILED);
                     continue;
                 }
                 let last = if r.vig != 0 { r.vig } else { img };
@@ -551,9 +562,18 @@ pub fn vignetting(
                 let first = first_clip(&pts, parts, &frames, &hit);
                 // 区間は開口で切れた面までなので、部品で切れたなら開口より先
                 match (first, r.vig != 0) {
-                    (Some((k, _)), _) => v.first[k] += 1,
-                    (None, true) => v.optical += 1,
-                    (None, false) => v.passed += 1,
+                    (Some((k, _)), _) => {
+                        v.first[k] += 1;
+                        v.state.push(k as i32 + 1);
+                    }
+                    (None, true) => {
+                        v.optical += 1;
+                        v.state.push(STATE_OPTICAL);
+                    }
+                    (None, false) => {
+                        v.passed += 1;
+                        v.state.push(STATE_PASSED);
+                    }
                 }
             }
             out.push(v);

@@ -58,6 +58,10 @@ pub(crate) fn mech_check<'py>(
     let d = PyDict::new(py);
     d.set_item("pupil_rays", px.len())?;
     d.set_item("mech_clip", s.mech_clip)?;
+    let pupil = PyDict::new(py);
+    pupil.set_item("px", &px)?;
+    pupil.set_item("py", &py_)?;
+    d.set_item("pupil", pupil)?;
     let parts = pyo3::types::PyList::empty(py);
     for (k, p) in s.mechanics.iter().enumerate() {
         let e = PyDict::new(py);
@@ -97,6 +101,7 @@ pub(crate) fn mech_check<'py>(
         e.set_item("failed_pct", pct(r.failed, r.launched))?;
         e.set_item("optical_pct", pct(r.optical, r.launched))?;
         e.set_item("passed_pct", pct(r.passed, r.launched))?;
+        e.set_item("state", &r.state)?;
         let ps = pyo3::types::PyList::empty(py);
         for (k, p) in s.mechanics.iter().enumerate() {
             let x = PyDict::new(py);

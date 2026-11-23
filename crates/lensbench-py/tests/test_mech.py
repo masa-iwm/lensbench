@@ -36,6 +36,15 @@ def test_p19_matches_cli():
         first = sum(p["first_pct"] for p in row["parts"])
         assert abs(first + row["optical_pct"] + row["failed_pct"] + row["passed_pct"] - 100.0) < 1e-9
     assert r["results"][2]["parts"][0]["first_pct"] > 0.0
+    # 瞳の点ごとの結果: 0 = 通る、-1 = 開口、-2 = 止まる、k = 部品 k が最初に切った
+    assert len(r["pupil"]["px"]) == len(r["pupil"]["py"]) == r["pupil_rays"]
+    for row in r["results"]:
+        st = row["state"]
+        assert len(st) == r["pupil_rays"]
+        assert abs(100.0 * st.count(0) / len(st) - row["passed_pct"]) < 1e-9
+        for k, p in enumerate(row["parts"]):
+            assert abs(100.0 * st.count(k + 1) / len(st) - p["first_pct"]) < 1e-9
+    assert all(q >= 1 for q in r["results"][2]["state"])
     # 配置の確認: チューブはレンズを保持径に収める
     assert r["fit"] == []
     assert r["mech_clip"] is True

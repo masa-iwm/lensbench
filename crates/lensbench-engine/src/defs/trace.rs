@@ -477,7 +477,7 @@ impl Analysis for MechCheck {
         Meta {
             name: "mech-check",
             about: "Mechanical part vignetting: fraction of rays outside the part bores",
-            help: "Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength. Per field and wavelength, passed + optical + failed + the first clip of each part add up to 100 %",
+            help: "Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength. Per field and wavelength, passed + optical + failed + the first clip of each part add up to 100 %. Each row's state gives the result per pupil point (pupil.px, pupil.py): 0 passes, -1 aperture, -2 stopped, k >= 1 first clipped by part k",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &MechCheckParams) -> Result<Value> {
@@ -526,6 +526,7 @@ impl Analysis for MechCheck {
                     "failed_pct": pct(r.failed, r.launched),
                     "optical_pct": pct(r.optical, r.launched),
                     "passed_pct": pct(r.passed, r.launched),
+                    "state": r.state,
                     "parts": s.mechanics.iter().enumerate().map(|(k, m)| json!({
                         "name": m.name,
                         "clipped_pct": pct(r.clipped[k], r.launched),
@@ -546,9 +547,11 @@ impl Analysis for MechCheck {
             })
             .collect();
         // mech_clip: ほかの解析でも部品で光線をけるか（系の設定）。各行の passed・optical・failed と部品ごとの first の
-        // 割合を足すと 100 %
+        // 割合を足すと 100 %。pupil は瞳の点（正規化）、各行の state はその点ごとの結果（0 = 通る、-1 = 開口、
+        // -2 = 止まる、k ≥ 1 = parts の k 番目が最初に切った）
         Ok(json!({
             "pupil_rays": px.len(), "mech_clip": s.mech_clip,
+            "pupil": {"px": px, "py": py},
             "parts": parts, "results": rows, "fit": fit,
         }))
     }

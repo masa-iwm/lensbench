@@ -37,6 +37,7 @@ mod json_view;
 mod layout;
 mod layout_rays;
 mod lens_data;
+mod mech_pupil;
 mod mech_table;
 mod missing_glass;
 mod optim_panel;
