@@ -18,6 +18,7 @@ mod serve_optimize;
 mod serve_swap;
 mod serve_tolerance;
 mod user_catalog;
+mod vignetted_field;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）
 #[test]

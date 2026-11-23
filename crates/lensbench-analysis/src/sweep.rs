@@ -300,7 +300,7 @@ fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
         let idx: Vec<usize> = (0..o.len()).filter(|&i| o.mask[i]).collect();
         let sw: f64 = idx.iter().map(|&i| wt[i]).sum();
         if idx.is_empty() || !(sw > 0.0) {
-            invalid!("no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "no valid rays (all vignetted)");
         }
         rows.push(
             idx.iter()

@@ -387,6 +387,9 @@ pub fn zernike(
             v.push(o);
         }
     }
+    if v.is_empty() {
+        invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "no valid rays (all vignetted)");
+    }
     if v.len() < nm.len().max(3) {
         invalid!("{} valid rays are fewer than {} terms", v.len(), nm.len());
     }

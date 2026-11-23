@@ -72,6 +72,36 @@ pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
     }
 }
 
+/// 視野全体がけられた誤り（像面に届く光線が無い・主光線が届かず瞳を決められない）か
+pub fn field_vignetted(e: &Error) -> bool {
+    use lensbench_core::error::code;
+    matches!(e.code(), code::ALL_VIGNETTED | code::PUPIL_VIGNETTED)
+}
+
+/// 視野ごとの結果を集める。視野全体がけられた視野（[`field_vignetted`]）は飛ばして注意「field N: …」を `warn` に足し、
+/// ほかの視野の結果を返す（spot が全部けられた視野を空にするのと同じく、1 つの視野で解析全体を止めない）。
+/// どの視野も残らないときと、ほかの誤りはそのまま誤り
+pub(super) fn skip_vignetted<T>(
+    rows: Vec<(usize, Result<T>)>,
+    warn: &mut Vec<String>,
+) -> Result<Vec<T>> {
+    let (mut out, mut first) = (Vec::new(), None);
+    for (i, r) in rows {
+        match r {
+            Ok(x) => out.push(x),
+            Err(e) if field_vignetted(&e) => {
+                warn.push(format!("field {}: {e}", i + 1));
+                first.get_or_insert(e);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    match first {
+        Some(e) if out.is_empty() => Err(e),
+        _ => Ok(out),
+    }
+}
+
 /// 波長の番号（1 始まり、None で多色）を 0 始まりにする
 /// 設定 polarization の膜・偏光の振幅（系の入射偏光 `input_pol`、系の膜。[`crate::pupil_amp::PolAmp`]）。off なら None
 fn pol_amp(

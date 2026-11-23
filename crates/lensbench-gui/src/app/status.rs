@@ -225,6 +225,9 @@ pub(super) fn error_hint(e: &crate::worker::CallErr) -> Option<String> {
         code::PUPIL_VIGNETTED => {
             "Rays in the pupil don't reach the image: check the aperture, fields and surface semi-diameters"
         }
+        code::ALL_VIGNETTED => {
+            "All rays of the field are vignetted: check the apertures, the mechanical parts (system setting) and the fields"
+        }
         "not_implemented" => {
             "Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)"
         }

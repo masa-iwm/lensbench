@@ -391,7 +391,7 @@ fn wave_otf(
             .map(|i| w0[i] * amp.map_or(1.0, |a| a.at(u0[i], t0[i]).powi(2)))
             .sum();
         if !(e0 > 0.0) {
-            invalid!("MTF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "MTF: no valid rays (all vignetted)");
         }
         // 瞳が開口・遮蔽で切れている（けられた面積がある）なら縁に合わせた求積にする。けられた点があっても
         // 面積が小さければ（[`Tuning::clip_area`]）ふつうの求積でけられた点を除く
@@ -468,7 +468,7 @@ fn wave_otf(
             e0
         };
         if !(s0 > 0.0 && t0 > 0.0) {
-            invalid!("MTF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "MTF: no valid rays (all vignetted)");
         }
         (s0, t0)
     };

@@ -430,7 +430,7 @@ fn psf_once(
             }
         }
         if !(s2 > 0.0) {
-            invalid!("PSF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "PSF: no valid rays (all vignetted)");
         }
         step = step.max(phase_step(np, &w_ok));
         // 行列の DFT: U[y][x] = Σ_iy e^{−2πi b py y} Σ_ix e^{−2πi a px x} P[iy][ix]。
@@ -654,7 +654,7 @@ pub fn geometric_mtf_axes(
             .collect();
         let e: f64 = pts.iter().map(|p| p.2).sum();
         if pts.is_empty() || !(e > 0.0) {
-            invalid!("geometric MTF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "geometric MTF: no valid rays (all vignetted)");
         }
         let cut = if diff_limit {
             mtf_cutoff_axes(s, field, wi, axes)?

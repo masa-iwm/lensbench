@@ -615,7 +615,7 @@ fn huygens_once(
             s2 += f * op.amp[i];
         }
         if !(s2 > 0.0) {
-            invalid!("Huygens PSF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "Huygens PSF: no valid rays (all vignetted)");
         }
         step = step.max(crate::psf::phase_step(np, &w_ok));
         // 光源を成分ごとの配列に（像の 1 点の内側のループをベクトル化し、位相因子をまとめて求める）

@@ -9,7 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    coat_notes, fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfDirs, MtfRow, WaveMtf,
+    coat_notes, fields, freq_unit, freqs_for, pol_amp, skip_vignetted, wave, Axis, MtfDirs, MtfRow,
+    WaveMtf,
 };
 use crate::registry::{Analysis, Cx, Meta};
 use lensbench_core::pupil::PupilAmp;
@@ -117,7 +118,7 @@ impl Analysis for Mtf {
         };
         // 視野ごとに独立なので並列に（視野の中も波長・周波数ごとに並列。値はスレッド数によらず同じ）
         let fl = fields(s, p.field)?;
-        let v = lensbench_core::par::try_map(&fl, |&i| -> Result<MtfRow> {
+        let mtf_row = |i: usize| -> Result<MtfRow> {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
             let f = FieldSel::Index(i);
             let pa = pol_amp(s, i, w, p.polarization)?;
@@ -154,12 +155,17 @@ impl Analysis for Mtf {
                 )
             };
             Ok(row)
+        };
+        let rows = lensbench_core::par::try_map(&fl, |&i| -> Result<(usize, Result<MtfRow>)> {
+            Ok((i, mtf_row(i)))
         })?;
+        let mut warnings = coat_notes(s, p.polarization)?;
+        let v = skip_vignetted(rows, &mut warnings)?;
         Ok(MtfOut {
             unit: freq_unit(s),
             method: None,
             mtf: v,
-            warnings: coat_notes(s, p.polarization)?,
+            warnings,
             device: None,
         })
     }
@@ -428,6 +434,9 @@ impl Default for GeoMtfParams {
 pub struct GeoMtfOut {
     pub unit: String,
     pub geometric_mtf: Vec<MtfRow>,
+    /// 注意（全部けられて飛ばした視野など）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 pub(super) struct GeoMtf;
@@ -445,23 +454,27 @@ impl Analysis for GeoMtf {
     fn run(&self, cx: &Cx<'_>, p: &GeoMtfParams) -> Result<GeoMtfOut> {
         let s = cx.system;
         let w = wave(s, p.wave)?;
-        let mut v = Vec::new();
+        let mut rows = Vec::new();
         for i in fields(s, p.field)? {
-            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
-            let m = psf::geometric_mtf_axes(
-                s,
-                FieldSel::Index(i),
-                Waves::all_or(w),
-                p.n,
-                &fs,
-                p.diff_limit,
-                p.axes.core(),
-            )?;
-            v.push(MtfRow::of(i, m));
+            let r = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes).and_then(|fs| {
+                psf::geometric_mtf_axes(
+                    s,
+                    FieldSel::Index(i),
+                    Waves::all_or(w),
+                    p.n,
+                    &fs,
+                    p.diff_limit,
+                    p.axes.core(),
+                )
+            });
+            rows.push((i, r.map(|m| MtfRow::of(i, m))));
         }
+        let mut warnings = Vec::new();
+        let v = skip_vignetted(rows, &mut warnings)?;
         Ok(GeoMtfOut {
             unit: freq_unit(s),
             geometric_mtf: v,
+            warnings,
         })
     }
 }
@@ -541,22 +554,27 @@ impl Analysis for HuygensMtf {
             exact: p.exact,
             device: p.device,
         };
-        let (mut v, mut dev) = (Vec::new(), Vec::new());
+        let (mut rows, mut dev) = (Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
-            let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
-            let pa = pol_amp(s, i, w, p.polarization)?;
-            let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
-            let f = FieldSel::Index(i);
-            let (m, d) =
-                huygens::huygens_mtf_device(s, f, Waves::all_or(w), o, &fs, pa, p.axes.core())?;
-            huygens::push_device(&mut dev, Some(&d));
-            v.push(MtfRow::of(i, m));
+            let r = (|| {
+                let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps, p.axes)?;
+                let pa = pol_amp(s, i, w, p.polarization)?;
+                let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
+                let f = FieldSel::Index(i);
+                let (m, d) =
+                    huygens::huygens_mtf_device(s, f, Waves::all_or(w), o, &fs, pa, p.axes.core())?;
+                huygens::push_device(&mut dev, Some(&d));
+                Ok(MtfRow::of(i, m))
+            })();
+            rows.push((i, r));
         }
+        let mut warnings = coat_notes(s, p.polarization)?;
+        let v = skip_vignetted(rows, &mut warnings)?;
         Ok(MtfOut {
             unit: freq_unit(s),
             method: Some("huygens".into()),
             mtf: v,
-            warnings: coat_notes(s, p.polarization)?,
+            warnings,
             device: Some(dev.join(", ")),
         })
     }

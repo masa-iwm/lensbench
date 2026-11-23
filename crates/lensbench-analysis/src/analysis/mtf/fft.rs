@@ -252,7 +252,7 @@ pub(super) fn wave_otf_fft(
         Some(_) => (0..ns * ns).filter(|&i| ok(i)).map(|i| am(i).powi(2)).sum(),
     };
     if !(e0 > 0.0) {
-        invalid!("MTF: no valid rays (all vignetted)");
+        invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "MTF: no valid rays (all vignetted)");
     }
     // 瞳の標本の位相因子は行（列）ごとに作る（ns = 4096 で複素数の全面は 268 MB になるので持たない）
     let at = |i: usize| match (ok(i), amp) {

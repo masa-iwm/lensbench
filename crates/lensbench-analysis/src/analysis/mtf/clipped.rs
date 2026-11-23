@@ -331,7 +331,7 @@ pub(super) fn clipped_otf(
             }
         };
         if !(e0[dir] > 0.0) {
-            invalid!("MTF: no valid rays (all vignetted)");
+            invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "MTF: no valid rays (all vignetted)");
         }
     }
     if sym {

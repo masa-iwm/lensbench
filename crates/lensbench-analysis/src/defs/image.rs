@@ -9,7 +9,7 @@ use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{coat_notes, fields, pol_amp, spot_unit, wave, Axis};
+use super::{coat_notes, fields, pol_amp, skip_vignetted, spot_unit, wave, Axis};
 use crate::registry::{Analysis, Cx, Meta};
 
 // ----------------------------------------------------------------------------------------- rms
@@ -381,6 +381,7 @@ impl Analysis for Psf {
         if p.device != HuygensDevice::Auto && !p.huygens {
             lensbench_core::invalid!("setting device is for the Huygens PSF (give huygens too)");
         }
+        let mut rows = Vec::new();
         for i in fields(s, p.field)? {
             let pa = pol_amp(s, i, w, p.polarization)?;
             let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
@@ -404,7 +405,10 @@ impl Analysis for Psf {
                     },
                 };
                 psf::psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
-            }?;
+            };
+            rows.push((i, r.map(|r| (i, r))));
+        }
+        for (i, r) in skip_vignetted(rows, &mut warn)? {
             crate::huygens::push_device(&mut dev, r.device.as_deref());
             axes.push(PsfAxes {
                 field: i + 1,

@@ -33,9 +33,11 @@ pub mod code {
     pub const BAD_ARGUMENT: &str = "argument.invalid";
     /// 瞳の光線が像面に届かず（けられ・止まり）、瞳の大きさを決められない系の状態（MTF など。種類 invalid）
     pub const PUPIL_VIGNETTED: &str = "system.pupil_vignetted";
+    /// 視野の光線が全部けられ（止まり）、像面に届く光線が無い（MTF・PSF・波面など。種類 invalid）
+    pub const ALL_VIGNETTED: &str = "system.all_vignetted";
 
     /// 符号の一覧（docs・試験で使う）
-    pub const ALL: [&str; 8] = [
+    pub const ALL: [&str; 9] = [
         FILE_NOT_FOUND,
         IS_FOLDER,
         GLASS_NOT_FOUND,
@@ -44,6 +46,7 @@ pub mod code {
         LENS_NOT_FOUND,
         BAD_ARGUMENT,
         PUPIL_VIGNETTED,
+        ALL_VIGNETTED,
     ];
 }
 

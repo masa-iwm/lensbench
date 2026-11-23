@@ -2065,3 +2065,4 @@ Vignetted by an aperture	開口で切れる
 Trace stopped	追跡が止まる
 Field {} · wave {}	視野 {}・波長 {}
 Passes {} %, aperture {} %	通る {} %、開口 {} %
+All rays of the field are vignetted: check the apertures, the mechanical parts (system setting) and the fields	視野の光線はすべてケラレます: 開口・機構部品（システムの設定）・視野を確かめてください

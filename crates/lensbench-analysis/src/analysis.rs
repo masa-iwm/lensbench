@@ -49,7 +49,7 @@ pub fn wavefront(
     let ww = r.map();
     let v: Vec<f64> = (0..r.len()).filter_map(|q| r.get(q)).collect();
     if v.is_empty() {
-        invalid!("no valid rays (all vignetted)");
+        invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "no valid rays (all vignetted)");
     }
     let mean = v.iter().sum::<f64>() / v.len() as f64;
     let rms = (v.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / v.len() as f64).sqrt();

@@ -9,7 +9,7 @@ use lensbench_core::{FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, spot_unit, wave};
+use super::{fields, skip_vignetted, spot_unit, wave};
 use crate::registry::{Analysis, Cx, Meta};
 
 // ---------------------------------------------------------------------------------------- spot
@@ -182,6 +182,9 @@ pub struct WavefrontRow {
 pub struct WavefrontOut {
     pub unit: String,
     pub wavefront: Vec<WavefrontRow>,
+    /// 注意（全部けられて飛ばした視野など）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 pub(super) struct Wavefront;
@@ -199,21 +202,25 @@ impl Analysis for Wavefront {
     fn run(&self, cx: &Cx<'_>, p: &WavefrontParams) -> Result<WavefrontOut> {
         let s = cx.system;
         let w = wave(s, p.wave)?;
-        let mut v = Vec::new();
+        let mut rows = Vec::new();
         for i in fields(s, p.field)? {
             // 基準はその波長の主光線（OpticStudio と同じ）
-            let wf = analysis::wavefront(s, FieldSel::Index(i), w, p.n, false)?;
-            v.push(WavefrontRow {
-                field: i + 1,
-                pv: wf.pv,
-                rms: wf.rms,
-                p: p.map.then(|| wf.w.x().to_vec()),
-                map: p.map.then(|| wf.w.to_rows()),
-            });
+            let r =
+                analysis::wavefront(s, FieldSel::Index(i), w, p.n, false).map(|wf| WavefrontRow {
+                    field: i + 1,
+                    pv: wf.pv,
+                    rms: wf.rms,
+                    p: p.map.then(|| wf.w.x().to_vec()),
+                    map: p.map.then(|| wf.w.to_rows()),
+                });
+            rows.push((i, r));
         }
+        let mut warnings = Vec::new();
+        let v = skip_vignetted(rows, &mut warnings)?;
         Ok(WavefrontOut {
             unit: "waves".into(),
             wavefront: v,
+            warnings,
         })
     }
 }
@@ -286,6 +293,9 @@ pub struct ZernikeOut {
     pub unit: String,
     pub kind: ZKind,
     pub zernike: Vec<ZernikeRow>,
+    /// 注意（全部けられて飛ばした視野など）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 pub(super) struct Zernike;
@@ -312,23 +322,28 @@ impl Analysis for Zernike {
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;
-        let mut v = Vec::new();
+        let mut rows = Vec::new();
         for i in fields(s, p.field)? {
-            let z = analysis::zernike(s, FieldSel::Index(i), w, k, p.terms, p.n, false)?;
-            v.push(ZernikeRow {
-                field: i + 1,
-                coef: z.coef,
-                pv: z.pv,
-                rms_chief: z.rms_chief,
-                rms_centroid: z.rms_centroid,
-                rms_fit: z.rms_fit,
-                strehl: z.strehl,
+            let r = analysis::zernike(s, FieldSel::Index(i), w, k, p.terms, p.n, false).map(|z| {
+                ZernikeRow {
+                    field: i + 1,
+                    coef: z.coef,
+                    pv: z.pv,
+                    rms_chief: z.rms_chief,
+                    rms_centroid: z.rms_centroid,
+                    rms_fit: z.rms_fit,
+                    strehl: z.strehl,
+                }
             });
+            rows.push((i, r));
         }
+        let mut warnings = Vec::new();
+        let v = skip_vignetted(rows, &mut warnings)?;
         Ok(ZernikeOut {
             unit: "waves".into(),
             kind: p.kind,
             zernike: v,
+            warnings,
         })
     }
 }

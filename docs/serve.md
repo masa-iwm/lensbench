@@ -58,7 +58,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 計算のエラーには `data.kind`（`invalid` 値・構成が不正、`not_implemented` 対応していない機能、`io` 読込、`cancelled` 中断した）が付く（Python のクライアントは `RpcError.kind`）。
 機械で見分けるときは `data.code` を使う（文は表示の言語で変わる）。今ある符号: `file.not_found`（ファイルが無い）・`file.is_folder`（フォルダを渡した）・`glass.not_found`（ガラス・ガラスカタログが無い）・
 `project.state_not_found`（無い状態の名前）・`project.block_not_found`（無いブロックの id）・`catalog.lens_not_found`（カタログに無い品）・
-`argument.invalid`（構成・状態・経路の指定のエラー）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）。符号の無いエラーの `code` は種類と同じ。
+`argument.invalid`（構成・状態・経路の指定のエラー）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）・`system.all_vignetted`（視野の光線が全部けられ、像面に届く光線が無い。全視野の解析ではその視野を注意 `field N: …` にして飛ばす）。符号の無いエラーの `code` は種類と同じ。
 
 ### method
 
