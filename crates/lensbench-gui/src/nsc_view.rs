@@ -58,7 +58,11 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
     ));
     for w in v["warnings"].as_array().into_iter().flatten() {
         if let Some(t) = w.as_str() {
-            ui.label(RichText::new(t).small().color(theme::warn(ui.visuals())));
+            ui.label(
+                RichText::new(lensbench_core::i18n::tr(t))
+                    .small()
+                    .color(theme::warn(ui.visuals())),
+            );
         }
     }
     let grids = memo(ui, ("nsc-grid", id), gen, || {

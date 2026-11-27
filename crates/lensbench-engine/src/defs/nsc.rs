@@ -248,9 +248,10 @@ impl Analysis for Nsc {
         notes.retain(|n| seen.insert(n.clone()));
         notes.extend(co.notes.iter().cloned());
         if a.split == SplitKind::MonteCarlo {
-            notes.push(lensbench_core::i18n::translate(
-                "monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0",
-            ));
+            notes.push(
+                "monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0"
+                    .to_string(),
+            );
         }
         Ok(json!({
             "wavelength_um": r.wavelength,
