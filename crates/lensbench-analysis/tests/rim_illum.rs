@@ -1,6 +1,6 @@
 //! 相対照度の縁の光線の解き方: 像面が焦点から大きく外れた二回通過の系（tests/double_pass/P4、けられ無し）で、縁の
 //! 光線を像点に着けるには視野を何倍も動かす必要がある。前は中心から 1 歩で解けなかった半径をけられの境目として、
-//! 曲線が所々 0.2〜3 % 落ちた。けられが無いので、相対照度は視野によらずほぼ 1 で、なめらかに変わる
+//! 曲線が所々 0.2〜3 % 落ちた。けられが無いので、相対照度は視野によらずほぼ 1 で、なめらかに変わる。けられのある系は総当たりの照度と比べる
 
 use lensbench_analysis::illum::{relative_illumination, RIM_POINTS};
 use lensbench_core::system::FieldSel;
@@ -36,5 +36,27 @@ fn double_pass_relative_illumination_is_smooth() {
                 ri[i - 1]
             );
         }
+    }
+}
+
+#[test]
+fn vignetted_beam_splitter_relative_illumination() {
+    // tests/splitter/mich_RT は面の四角い開口で軸上からけられ、像面は焦点から外れている。前は縁の光線が一度で解けない
+    // 向きをけられとして、視野 1 で 0.972 と出ていた。一様な物体面から光線を総当たりで追って像点の周りの箱に入る光の量で
+    // 数えた照度の比は 1.0788（視野 0.9）・1.0848（視野 1）
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let s = zmx::load_with(
+        &root.join("tests/splitter/mich_RT.zmx"),
+        &LoadOptions {
+            cfg: 1,
+            catalog_dirs: vec![root.join("tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let w = s.primary;
+    for (h, brute) in [(0.9, 1.0788), (1.0, 1.0848)] {
+        let r = relative_illumination(&s, FieldSel::Norm(0.0, h), w, RIM_POINTS).unwrap();
+        assert!((r - brute).abs() < 3e-3, "h {h}: {r} vs {brute}");
     }
 }
