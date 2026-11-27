@@ -23,7 +23,7 @@ pub(crate) use layout_json::{block_back_spans, block_spans, spans_in};
 use paths::path_select;
 pub(crate) use solved_gap::SolvedGap;
 mod ap_shape;
-mod beams;
+pub(crate) mod beams;
 mod bs;
 mod custom_lens;
 mod detector;

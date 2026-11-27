@@ -230,6 +230,7 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut NscFig) -
         ui,
         tr("Click a row to see the irradiance of that path only"),
     ));
+    let seq = rows.iter().any(|r| !r["sequential"].is_null());
     egui::ScrollArea::horizontal()
         .id_salt(("nsc-paths", id))
         .show(ui, |ui| {
@@ -243,6 +244,9 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut NscFig) -
                     ui.strong(tr("Power [W]"));
                     ui.strong(tr("Fraction"));
                     ui.strong(tr("Rays"));
+                    if seq {
+                        ui.strong(tr("Sequential"));
+                    }
                     ui.strong(tr("Events"));
                     ui.end_row();
                     for (i, r) in rows.iter().enumerate() {
@@ -260,12 +264,102 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut NscFig) -
                         ui.label(n(&r["power_w"]));
                         ui.label(n(&r["fraction"]));
                         ui.label(r["rays"].to_string());
+                        if seq {
+                            if let Some(a) = sequential_cell(ui, &r["sequential"]) {
+                                request(ui.ctx(), a);
+                            }
+                        }
                         ui.label(r["events"].as_str().unwrap_or_default());
                         ui.end_row();
                     }
                 });
         });
     true
+}
+
+/// 経路の表の行から頼む操作（画面の一時データに置き、[`take_request`] でアプリが受ける）
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum NscAct {
+    /// 組合せに迷光の光束を足す（BS の経路・玉の面で折り返す面）
+    AddBeam {
+        path: Option<String>,
+        turn: lensbench_project::edit_ops::BlockFace,
+    },
+    /// ゴーストの順次の系（書き出した .zmx）を開く
+    Open(std::path::PathBuf),
+}
+
+/// ゴーストの系を書く一時フォルダ（Web 版は無し）
+pub(crate) fn ghost_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_arch = "wasm32")]
+    return None;
+    #[cfg(not(target_arch = "wasm32"))]
+    Some(std::env::temp_dir().join("lensbench").join("nsc-ghosts"))
+}
+
+fn request_id() -> egui::Id {
+    egui::Id::unique("lensbench-nsc-request")
+}
+
+fn request(ctx: &egui::Context, a: NscAct) {
+    ctx.data_mut(|d| d.insert_temp(request_id(), Some(a)));
+}
+
+/// 経路の表の行から頼まれた操作（1 回だけ返す）
+pub(crate) fn take_request(ctx: &egui::Context) -> Option<NscAct> {
+    ctx.data_mut(|d| d.remove_temp::<Option<NscAct>>(request_id()))
+        .flatten()
+}
+
+/// 経路の表の行の順次の系（結果の `sequential`）から頼む操作
+pub(crate) fn sequential_act(q: &Value) -> Option<NscAct> {
+    match q["kind"].as_str()? {
+        "beam" => Some(NscAct::AddBeam {
+            path: q["path"].as_str().map(str::to_string),
+            turn: serde_json::from_value(q["turn"].clone()).ok()?,
+        }),
+        "ghost" => Some(NscAct::Open(q["file"].as_str()?.into())),
+        _ => None,
+    }
+}
+
+/// 経路の表の「順次」の欄: 場面の系そのものは名前、ゴーストは系を開くボタン、光束に書ける経路は足すボタン、
+/// 戻せない経路は「—」（理由はホバー）
+fn sequential_cell(ui: &mut Ui, q: &Value) -> Option<NscAct> {
+    let act = sequential_act(q);
+    match q["kind"].as_str() {
+        Some("system") => {
+            ui.label(q["name"].as_str().unwrap_or_default())
+                .on_hover_text(tr("The path of this system of the scene"));
+        }
+        Some("ghost") => {
+            let text = trf("Ghost {}–{}", &[&q["a"], &q["b"]]);
+            let clicked = ui
+                .add_enabled(act.is_some(), egui::Button::new(text).small())
+                .on_hover_text(tr(
+                    "Open the ghost system (sequential, unfolded at the two reflecting surfaces) to see its spots and MTF",
+                ))
+                .clicked();
+            return act.filter(|_| clicked);
+        }
+        Some("beam") => {
+            let clicked = ui
+                .small_button(trf("+ {}", &[&tr("Beam")]))
+                .on_hover_text(tr(
+                    "Add this path to the beams of the combination (stray light role, turned back at the lens surface)",
+                ))
+                .clicked();
+            return act.filter(|_| clicked);
+        }
+        Some(_) => {
+            let why = q["reason"].as_str().unwrap_or_default();
+            ui.label("—").on_hover_text(lensbench_core::i18n::tr(why));
+        }
+        None => {
+            ui.label("");
+        }
+    }
+    None
 }
 
 /// 経路の表の順位 k（1 始まり、0 は表に無い経路）の色
@@ -418,5 +512,35 @@ mod tests {
         assert_eq!(one.lines.len(), 1);
         assert_eq!(one.lines[0].1[1], [0.0, 0.0, 10.0]);
         assert!(StrayLines::from_result(&json!({}), &st).lines.is_empty());
+    }
+
+    /// 経路の表の「順次」の欄: 光束に書ける行は足す、ゴーストは書いた系を開く、ほかは何もしない
+    #[test]
+    fn sequential_rows_ask_for_actions() {
+        let beam = json!({"kind": "beam", "path": "TT", "turn": {"block": "L1", "surface": 1}});
+        let Some(NscAct::AddBeam { path, turn }) = sequential_act(&beam) else {
+            panic!("{beam}");
+        };
+        assert_eq!(path.as_deref(), Some("TT"));
+        assert_eq!((turn.block.as_str(), turn.surface, turn.pass), ("L1", 1, 0));
+        let g = json!({"kind": "ghost", "system": "system", "a": 5, "b": 3, "file": "/tmp/ghost_5_3.zmx"});
+        assert_eq!(
+            sequential_act(&g),
+            Some(NscAct::Open("/tmp/ghost_5_3.zmx".into()))
+        );
+        // 書いていない（Web 版）ゴースト・系そのもの・戻せない行は頼まない
+        assert_eq!(
+            sequential_act(&json!({"kind": "ghost", "a": 5, "b": 3})),
+            None
+        );
+        assert_eq!(
+            sequential_act(&json!({"kind": "system", "name": "system"})),
+            None
+        );
+        assert_eq!(
+            sequential_act(&json!({"kind": "none", "reason": "x"})),
+            None
+        );
+        assert_eq!(sequential_act(&Value::Null), None);
     }
 }

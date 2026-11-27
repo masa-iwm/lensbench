@@ -2093,3 +2093,12 @@ Show this path only (click again for all)	この経路だけを表示（もう�
 Power [W]	パワー [W]
 Fraction	割合
 Events	イベント
+Sequential systems of the paths	経路の順次のシステム
+Ghost system folder	ゴーストのシステムのフォルダ
+Sequential	順次
+The path of this system of the scene	場面のこのシステムの経路
+Ghost {}–{}	ゴースト {}–{}
+Open the ghost system (sequential, unfolded at the two reflecting surfaces) to see its spots and MTF	ゴーストのシステム（2 つの反射面で展開した順次のシステム）を開きます。スポットや MTF を見られます
+Add this path to the beams of the combination (stray light role, turned back at the lens surface)	この経路を組合せの光束に足します（役割は迷光、レンズの面で折り返す）
+Added the beam {}	光束 {} を足しました
+The beam {} already has this path	光束 {} がすでにこの経路です

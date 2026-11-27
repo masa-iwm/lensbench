@@ -65,6 +65,11 @@ pub(crate) fn figure_params(
         // レイアウト図に重ねる枝
         "nsc" if figure => {
             m.entry("layout_rays").or_insert(json!(NSC_LAYOUT_RAYS));
+            // 経路の表の行ごとの順次の系（ゴーストの系は一時フォルダに書いて開く）
+            m.entry("sequential").or_insert(json!(true));
+            if let Some(d) = crate::nsc_view::ghost_dir() {
+                m.entry("out").or_insert(json!(d.display().to_string()));
+            }
         }
         // 周波数が要る解析は遮断周波数の 1/10・1/4・1/2（無ければ 10・20・40）
         "mtf-field" | "mtf-focus" => {

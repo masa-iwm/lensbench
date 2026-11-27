@@ -26,6 +26,8 @@ pub(super) struct AnaRes {
     pub(super) error: Option<String>,
     /// 結果の世代（届くたびに変わる。図の格子を作り直す目安）
     pub(super) gen: u64,
+    /// 結果が届いたときの系の世代（[`Core::sys_gen`]。レイアウト図に重ねる枝は今の系の結果だけ）
+    pub(super) sys_gen: u64,
     /// 返事を待っている要求の数と、待ち始めた時刻
     pub(super) inflight: u32,
     pub(super) since: Option<web_time::Instant>,

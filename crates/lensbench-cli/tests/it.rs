@@ -10,6 +10,7 @@ mod cli;
 mod config_table;
 mod extend;
 mod load_notes;
+mod nsc_seq;
 mod run;
 mod search;
 mod serve;

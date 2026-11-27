@@ -116,6 +116,14 @@ pub(crate) fn load_source_faces(
     Ok((o.system, o.warnings, o.faces))
 }
 
+/// [`load_source_faces`] で、面ごとの玉の面の書き方（光束の `turn`。[`lensbench_project::turn_points`]）も返す
+pub(crate) fn load_source_turns(
+    src: &Source,
+    c: &SysSpec,
+) -> Result<lensbench_project::open::Opened, lensbench_core::Error> {
+    open_source(src, c)
+}
+
 /// [`load_source_notes`] で、プロジェクトの id のあるブロックの面の範囲（[`lensbench_project::block_spans`]。最適化の
 /// 変数 `ブロック:面.種類`）も返す。プロジェクトでなければ範囲は空
 pub fn load_source_spans(

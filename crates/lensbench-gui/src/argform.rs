@@ -265,6 +265,8 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         ("nsc", "reflections") => "Reflections counted",
         ("nsc", "paths") => "Path table rows",
         ("nsc", "layout_rays") => "Rays on the layout",
+        ("nsc", "sequential") => "Sequential systems of the paths",
+        ("nsc", "out") => "Ghost system folder",
         ("image-sim", "input") => "Source image",
         ("image-sim", "field_height") => "Field height",
         ("image-sim", "psf_x") => "PSF grid x",

@@ -135,6 +135,8 @@ pub struct Opened {
     /// プロジェクトの展開した系の面ごとの名前（[`crate::SurfOrigin::face`]。別の状態・経路へ編集を当て直す
     /// [`crate::retarget::Retarget`]）。プロジェクトでなければ空
     pub faces: Vec<Option<crate::FaceId>>,
+    /// 面ごとの、光束の `turn` で指せる玉の面（[`crate::turn_points`]）。プロジェクトでなければ空
+    pub turns: Vec<Option<crate::edit_spec::BlockFace>>,
 }
 
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む（[`Source::read`] と [`Source::open`]）。
@@ -265,6 +267,21 @@ impl Source {
         }
     }
 
+    /// 読んだプロジェクトを p に置き換えた写し（パス・展開の使い回しは同じ。プロジェクトファイルでなければ None）
+    pub fn with_project(&self, p: crate::Project) -> Option<Source> {
+        match self {
+            Source::Project {
+                path, text, cache, ..
+            } => Some(Source::Project {
+                path: path.clone(),
+                text: text.clone(),
+                project: Box::new(p),
+                cache: cache.clone(),
+            }),
+            _ => None,
+        }
+    }
+
     /// プロジェクトファイルの中身（状態は当てない。プロジェクトファイルでなければ None）
     pub fn project_text(&self) -> Option<&str> {
         match self {
@@ -357,6 +374,7 @@ impl Source {
                     coatings: m.coatings,
                     blocks: Vec::new(),
                     faces: Vec::new(),
+                    turns: Vec::new(),
                 })
             }
             Source::Project {
@@ -404,6 +422,7 @@ impl Source {
                 )
                 .map_err(|e| at(e.into()))?;
                 let blocks = x.block_spans();
+                let turns = crate::turn_points(&p, &x.map);
                 let faces = x.map.into_iter().map(|o| o.face).collect();
                 Ok(Opened {
                     system: x.system,
@@ -411,6 +430,7 @@ impl Source {
                     coatings: Vec::new(),
                     blocks,
                     faces,
+                    turns,
                 })
             }
             Source::Zmx { path, text } => {
@@ -436,6 +456,7 @@ impl Source {
                     coatings: Vec::new(),
                     blocks: Vec::new(),
                     faces: Vec::new(),
+                    turns: Vec::new(),
                 })
             }
         }

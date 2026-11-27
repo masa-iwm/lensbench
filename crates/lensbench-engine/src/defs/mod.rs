@@ -5,6 +5,7 @@ mod beams;
 mod imagesim;
 mod interference;
 mod nsc;
+mod nsc_seq;
 mod trace;
 
 /// 登録簿に足す

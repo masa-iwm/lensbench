@@ -163,3 +163,49 @@ pub fn face_surfaces(
     }
     Ok(out)
 }
+
+/// 展開した系の面ごとの、光束の `turn` で指せる玉（`lens` ブロック）の面（id のあるブロック、往路の面だけ。BS の腕の
+/// 中の玉も）。map は展開の面の出どころ（[`crate::Expansion::map`]）
+pub fn turn_points(
+    p: &Project,
+    map: &[crate::SurfOrigin],
+) -> Vec<Option<crate::edit_spec::BlockFace>> {
+    fn find<'x>(blocks: &'x [crate::Block], id: &str) -> Option<&'x crate::Block> {
+        for b in blocks {
+            if crate::block_id(b) == id {
+                return Some(b);
+            }
+            let kids: Vec<&Vec<crate::Block>> = match b {
+                crate::Block::Group { blocks, .. } => vec![blocks],
+                crate::Block::Splitter { spec, .. } => vec![&spec.t, &spec.r, &spec.d],
+                _ => Vec::new(),
+            };
+            if let Some(x) = kids.into_iter().find_map(|k| find(k, id)) {
+                return Some(x);
+            }
+        }
+        None
+    }
+    map.iter()
+        .enumerate()
+        .map(|(j, o)| {
+            if o.back || o.placed {
+                return None;
+            }
+            let id = o.blocks.first()?;
+            if !matches!(find(&p.blocks, id), Some(crate::Block::Lens { .. })) {
+                return None;
+            }
+            let runs = crate::block_runs(map, id, Some(false));
+            let pass = runs.iter().position(|r| r[0] <= j && j <= r[1])?;
+            let surface = (runs[pass][0]..j).filter(|&i| !map[i].placed).count();
+            Some(crate::edit_spec::BlockFace {
+                block: id.clone(),
+                surface,
+                coordbrk: false,
+                back: false,
+                pass,
+            })
+        })
+        .collect()
+}

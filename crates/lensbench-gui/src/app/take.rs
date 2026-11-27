@@ -218,6 +218,7 @@ impl Core {
                 r.ms = ms;
                 r.error = None;
                 r.gen = gen;
+                r.sys_gen = self.sys_gen;
             }
             Tag::Rays(id) => {
                 let rays = d

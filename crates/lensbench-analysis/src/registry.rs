@@ -91,6 +91,20 @@ pub trait Source {
             notes,
         )
     }
+    /// 別の読み方 v の系の面ごとの、プロジェクトの玉（`lens` ブロック）の面の書き方（光束の `turn` の JSON、復路の面は
+    /// 往路の面と同じ書き方。玉でない・id の無いブロックの面・物体面・像面は None）。.zmx・系ファイルなら None
+    fn lens_faces(&self, _v: &Variant) -> Result<Option<Vec<Option<serde_json::Value>>>> {
+        Ok(None)
+    }
+    /// プロジェクトに光束 beam（`beams` の 1 行の JSON。名前は重ならないもの）を足し、その光束で読んだ系と
+    /// [`Source::lens_faces`] の面の書き方。serve では読み込んだ後の変更も当てる。プロジェクトでなければ None
+    fn load_extra_beam(
+        &self,
+        _beam: &serde_json::Value,
+        _notes: &mut Vec<String>,
+    ) -> Result<Option<(System, Vec<Option<serde_json::Value>>)>> {
+        Ok(None)
+    }
     /// プロジェクトファイルの JSON の文字列（状態は当てない。.zmx・系ファイルなら None）
     fn project_text(&self) -> Result<Option<String>>;
     /// 系の hash（系ファイルの形の。結果・書き出しの provenance に刻む）

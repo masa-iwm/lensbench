@@ -2879,6 +2879,11 @@ Pixels on a side of the detector	検出器の一辺の画素の数
 Count in the detector image only the paths with this number of reflections (one value, or the least and the most)	検出器の像にこの反射の回数の経路だけを数える（1 つか、最小と最大）
 Rows of the path table (largest power first)	経路の表の行数（パワーの大きい順）
 Source rays traced again to draw their detected branches on the layout (0 for none)	レイアウト図に検出された枝を描くために追い直す光源の光線の数（0 で描かない）
+Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and one turn at a lens surface)	経路の表の行ごとの順次のシステムを探す: 場面のシステム（光束・ビームスプリッターの経路）、ゴースト（面 a と b で反射）、プロジェクトに足す光束（ビームスプリッターの経路とレンズの面での 1 回の折り返し）
+Folder to write the ghost systems of the rows to (ghost_a_b.zmx; with sequential)	行のゴーストのシステムを書くフォルダ（ghost_a_b.zmx。sequential と一緒に）
+the path scatters	散乱する経路です
+three or more reflections at lens surfaces (a beam has one turn and a ghost two reflections)	レンズの面での反射が 3 回以上です（光束の折り返しは 1 回、ゴーストは 2 回の反射）
+no sequential system (beam, beam splitter path or ghost) has this path	この経路を持つ順次のシステム（光束・ビームスプリッターの経路・ゴースト）はありません
 half takes 1 or 2 values ({n} given)	half は 1 つか 2 つ（{n} 個）
 reflections takes 1 or 2 values ({n} given)	reflections は 1 つか 2 つ（{n} 個）
 monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0	monte-carlo: エネルギーの収支は平均でだけ閉じる（ロシアンルーレット）ので residual_w は 0 になりません

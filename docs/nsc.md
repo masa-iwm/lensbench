@@ -34,14 +34,19 @@
 | `pixels` | 64 | 検出器の一辺の画素の数 |
 | `reflections` | すべて | 検出器の像に数える経路の反射の回数（1 つか、最小と最大）。経路の表と収支は全部 |
 | `paths` | 20 | 経路の表の行数（パワーの大きい順） |
-| `layout_rays` | 0 | レイアウト図に描くために追い直す光源の光線の数（等しい間隔で選ぶ。0 で描かない） |
+| `layout_rays` | 0 | レイアウト図に描くために追い直す光源の光線の数（等しい間隔で選ぶ。0 で描かない。5,000 本まで） |
+| `sequential` | false | 経路の表の行ごとに、その経路を持つ順次のシステムを探す（下の `sequential`） |
+| `out` | | 行のゴーストのシステムを .zmx で書くフォルダ（`sequential` と一緒に。`ghost_a_b.zmx`、場面のシステムが複数なら `ghost_k_a_b.zmx`） |
 | `coatings` | | 測ったコーティングの表（LBCT）・モデル（LBCM） |
 
 結果: `budget`（`source_w`・`detected_w`・`absorbed_w`・`escaped_w`・`discarded_w`・`truncated_w`・`residual_w`）、`detectors`
 （`label`・`half_mm`・`nx`・`ny`・`pixel_mm2`・`power_w`・`peak_w_mm2`・画素の中心 `x`・`y`・`irradiance` [W/mm²]（番号 j·nx + i、j は +y の向き）・
 `hits`）、`paths`（`rank`・`detector`・`reflections`・`power_w`・`fraction`・`rays`・`events`。`events` は「面の名前 種類」を ` > ` でつないだもの。
 種類は T 透過・R 反射（ミラーも）・TIR 全反射・D 検出。`pixels` はその経路だけの照度の [画素の番号, W/mm²] の並びで、0 の画素は省く。
-反射の回数の絞り込みに依らない）、`path_count`、`rays`（`layout_rays` 本の光源の光線の検出された枝: `path` 経路の表の順位（表に無ければ 0）・
+反射の回数の絞り込みに依らない。`sequential` はその経路の順次のシステム（設定 `sequential` のときだけ）: `kind` が `system`（場面のシステム `name` の
+主の経路）・`ghost`（システム `system` の面 `a`・`b`（b < a）で反射する[ゴースト](ghost.md)。`file` は書いた .zmx）・`beam`（プロジェクトに足すと
+この経路になる光束: BS の経路 `path`（null は既定の経路）とレンズの面で折り返す `turn`）・`none`（`reason`。散乱する経路、レンズの面での反射が
+3 回以上の経路など））、`path_count`、`rays`（`layout_rays` 本の光源の光線の検出された枝: `path` 経路の表の順位（表に無ければ 0）・
 `reflections`・`power_w`・`pts` 光源の始点と出来事の点 [x, y, z] mm（大域、レイアウト図と同じ座標）。上限 5,000 本）、`warnings`
 
 ## 約束

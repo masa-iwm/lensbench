@@ -189,6 +189,64 @@ impl lensbench_analysis::Source for FileSource<'_> {
             }
         }
     }
+    fn lens_faces(
+        &self,
+        v: &lensbench_analysis::Variant,
+    ) -> Result<Option<Vec<Option<serde_json::Value>>>> {
+        let Some(p) = self.src()?.project() else {
+            return Ok(None);
+        };
+        let state = v.beam.clone().or_else(|| self.c.state.clone());
+        let own_path = state
+            .as_deref()
+            .is_some_and(|n| p.beam(n).is_some_and(|b| b.path.is_some()));
+        let c = SysSpec {
+            cfg: 1,
+            path: if own_path {
+                None
+            } else {
+                v.path.clone().or_else(|| self.c.path.clone())
+            },
+            state,
+            ..self.c.clone()
+        };
+        let o = crate::load::load_source_turns(self.src()?, &c)?;
+        Ok(Some(turn_keys(&o.turns)))
+    }
+    fn load_extra_beam(
+        &self,
+        beam: &serde_json::Value,
+        notes: &mut Vec<String>,
+    ) -> Result<Option<(System, Vec<Option<serde_json::Value>>)>> {
+        let src = self.src()?;
+        let Some(p) = src.project() else {
+            return Ok(None);
+        };
+        let b: lensbench_project::Beam = serde_json::from_value(beam.clone())
+            .map_err(|e| Error::Invalid(format!("beam: {e}")))?;
+        let name = b.name.clone();
+        let mut p = p.clone();
+        p.beams.push(b);
+        p.check_beams()?;
+        let Some(src) = src.with_project(p.clone()) else {
+            return Ok(None);
+        };
+        let c = SysSpec {
+            cfg: 1,
+            state: Some(name.clone()),
+            path: None,
+            ..self.c.clone()
+        };
+        let o = crate::load::load_source_turns(&src, &c)?;
+        let (s, faces) = (o.system, o.faces);
+        notes.extend(o.warnings);
+        let keys = turn_keys(&o.turns);
+        let s = match self.replay {
+            None => s,
+            Some(r) => r(s, &faces, &format!("beam {name}"), notes)?,
+        };
+        Ok(Some((s, keys)))
+    }
     fn project_text(&self) -> Result<Option<String>> {
         if !self.is_project() {
             return Ok(None);
@@ -198,4 +256,14 @@ impl lensbench_analysis::Source for FileSource<'_> {
     fn system_hash(&self, s: &System) -> Result<String> {
         lensbench_project::sysfile::system_hash(s)
     }
+}
+
+/// 面ごとの、玉の面の書き方（[`lensbench_analysis::Source::lens_faces`]）
+fn turn_keys(
+    turns: &[Option<lensbench_project::edit_spec::BlockFace>],
+) -> Vec<Option<serde_json::Value>> {
+    turns
+        .iter()
+        .map(|t| t.as_ref().and_then(|b| serde_json::to_value(b).ok()))
+        .collect()
 }

@@ -75,6 +75,11 @@ pub(super) struct NscParams {
     pub paths: usize,
     /// Source rays traced again to draw their detected branches on the layout (0 for none)
     pub layout_rays: usize,
+    /// Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and one turn at a lens surface)
+    pub sequential: bool,
+    /// Folder to write the ghost systems of the rows to (ghost_a_b.zmx; with sequential)
+    #[schemars(extend("x-kind" = "path", "x-write" = true))]
+    pub out: Option<PathBuf>,
     /// Measured coating tables (LBCT) and models (LBCM) (more than one allowed)
     #[schemars(extend("x-kind" = "path"))]
     pub coatings: Vec<PathBuf>,
@@ -97,6 +102,8 @@ impl Default for NscParams {
             reflections: None,
             paths: 20,
             layout_rays: 0,
+            sequential: false,
+            out: None,
             coatings: Vec::new(),
         }
     }
@@ -107,9 +114,11 @@ pub(super) struct Nsc;
 /// 図に描く枝の数の上限
 const MAX_LINES: usize = 5000;
 
-/// 場面を作る系: プロジェクトは光束ごと（光束が無ければ BS の経路ごと）、ほかは読み込んだ系
-fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<(String, System)>> {
-    let one = || vec![("system".to_string(), cx.system.clone())];
+/// 場面を作る系: プロジェクトは光束ごと（光束が無ければ BS の経路ごと）、ほかは読み込んだ系。名前・系・読み方
+pub(super) type SceneSystem = (String, System, Variant);
+
+fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<SceneSystem>> {
+    let one = || vec![("system".to_string(), cx.system.clone(), Variant::default())];
     let Some(src) = cx.source else {
         return Ok(one());
     };
@@ -120,7 +129,13 @@ fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<(String, Sy
     if !beams.is_empty() {
         return beams
             .into_iter()
-            .map(|b| Ok((format!("beam {b}"), src.variant(&b, notes)?)))
+            .map(|b| {
+                let v = Variant {
+                    beam: Some(b.clone()),
+                    ..Default::default()
+                };
+                Ok((format!("beam {b}"), src.load(&v, notes)?, v))
+            })
             .collect();
     }
     let paths = src.paths()?;
@@ -130,14 +145,11 @@ fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<(String, Sy
     paths
         .into_iter()
         .map(|q| {
-            let s = src.load(
-                &Variant {
-                    path: Some(q.clone()),
-                    ..Default::default()
-                },
-                notes,
-            )?;
-            Ok((format!("path {q}"), s))
+            let v = Variant {
+                path: Some(q.clone()),
+                ..Default::default()
+            };
+            Ok((format!("path {q}"), src.load(&v, notes)?, v))
         })
         .collect()
 }
@@ -181,7 +193,7 @@ impl Analysis for Nsc {
         let mut notes = Vec::new();
         let systems = scene_systems(cx, &mut notes)?;
         let mut sc = Scene::new();
-        for (label, s) in &systems {
+        for (label, s, _) in &systems {
             sc.add_system(label, s, None)?;
         }
         sc.finish()?;
@@ -232,6 +244,32 @@ impl Analysis for Nsc {
                 })
             })
             .collect();
+        // 行ごとの順次の系（プロジェクトは場面の系ごとの玉の面の書き方で、足す光束の折り返しを決める）
+        let mut seqs: Vec<Option<Value>> = vec![None; r.paths.len().min(a.paths)];
+        if a.sequential {
+            let keys: Vec<Vec<Option<Value>>> = match cx.source {
+                Some(s) if s.is_project() => systems
+                    .iter()
+                    .map(|(_, sy, v)| {
+                        Ok(s.lens_faces(v)?
+                            .filter(|k| k.len() == sy.surfaces.len())
+                            .unwrap_or_default())
+                    })
+                    .collect::<Result<_>>()?,
+                _ => Vec::new(),
+            };
+            for (q, p) in seqs.iter_mut().zip(&r.paths) {
+                *q = Some(super::nsc_seq::sequential(
+                    cx,
+                    &sc,
+                    &systems,
+                    &keys,
+                    &p.events,
+                    a.out.as_deref(),
+                    &mut notes,
+                )?);
+            }
+        }
         let rows: Vec<Value> = r
             .paths
             .iter()
@@ -254,6 +292,7 @@ impl Analysis for Nsc {
                     "reflections": p.reflections(), "power_w": p.power,
                     "fraction": p.power / b.source, "rays": p.rays, "events": ev.join(" > "),
                     "pixels": px,
+                    "sequential": seqs[i],
                 })
             })
             .collect();
@@ -268,7 +307,8 @@ impl Analysis for Nsc {
             .enumerate()
             .map(|(i, p)| (&p.events[..], i + 1))
             .collect();
-        let ids = spread(src.len(), a.layout_rays);
+        // 追い直すのは描ける本数まで（出力の上限と同じ）
+        let ids = spread(src.len(), a.layout_rays.min(MAX_LINES));
         let lines: Vec<Value> = tr
             .polylines(&src, &ids)
             .into_iter()

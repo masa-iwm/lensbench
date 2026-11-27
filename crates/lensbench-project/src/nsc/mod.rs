@@ -27,6 +27,7 @@
 mod bvh;
 mod geom;
 mod lines;
+pub mod seq;
 
 pub use lines::{spread, Polyline};
 

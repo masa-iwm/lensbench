@@ -163,9 +163,30 @@ impl App {
         }
         self.c.auto_build();
         self.sync_stray(ctx);
+        self.nsc_request(ctx);
     }
 
-    /// レイアウト図に重ねる非順次の枝: 「レイアウト図に重ねる」を入れた最初の nsc の解析のパネルの結果から
+    /// 非順次の経路の表から頼まれた操作: 組合せに迷光の光束を足す（元に戻せる書き換え）・ゴーストの系を開く
+    fn nsc_request(&mut self, ctx: &egui::Context) {
+        match crate::nsc_view::take_request(ctx) {
+            Some(crate::nsc_view::NscAct::AddBeam { path, turn }) => {
+                let r = edit::stage(&mut self.c.doc.combo, &mut self.c.msgs, |c| {
+                    combo::beams::add_stray(c, path, turn)
+                });
+                match r {
+                    Ok((name, true)) => self.c.info(trf("Added the beam {}", &[&name])),
+                    Ok((name, false)) => self
+                        .c
+                        .info(trf("The beam {} already has this path", &[&name])),
+                    Err(e) => self.c.fail(e),
+                }
+            }
+            Some(crate::nsc_view::NscAct::Open(p)) => self.c.open_doc_unlisted(&p),
+            None => {}
+        }
+    }
+
+    /// レイアウト図に重ねる非順次の枝: 「レイアウト図に重ねる」を入れた最初の nsc の解析のパネルの、今の系の結果から
     fn sync_stray(&mut self, ctx: &egui::Context) {
         let found = self
             .dock
@@ -176,6 +197,8 @@ impl App {
                 Kind::Analysis(a) if a.cmd == "nsc" && a.fig.nsc.layout => {
                     let r = self.c.results.get(&p.id)?;
                     r.value.as_ref()?;
+                    // 前の系の結果の枝は今のレイアウト図とずれるので重ねない
+                    (r.sys_gen == self.c.sys_gen).then_some(())?;
                     Some((p.id, r.gen, a.fig.nsc.clone()))
                 }
                 _ => None,

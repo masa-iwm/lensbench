@@ -89,6 +89,36 @@ fn new_name(c: &Combo, v: &[Beam]) -> String {
         .unwrap_or_default()
 }
 
+/// 迷光の光束（BS の経路 path・折り返す面 turn）を足す（非順次の経路の表から）。同じ光束があれば足さない。
+/// 足した（か同じだった）光束の名前と、足したか
+pub(crate) fn add_stray(
+    c: &mut Combo,
+    path: Option<String>,
+    turn: BlockFace,
+) -> Result<(String, bool), String> {
+    let mut v = beams_of(c)?;
+    if let Some(b) = v
+        .iter()
+        .find(|b| b.path == path && b.turn.as_ref() == Some(&turn) && b.state.is_none())
+    {
+        return Ok((b.name.clone(), false));
+    }
+    let name = (1..)
+        .map(|k| format!("stray{k}"))
+        .find(|n| !v.iter().any(|b| b.name == *n) && !c.states.contains(n))
+        .unwrap_or_default();
+    v.push(Beam {
+        name: name.clone(),
+        path,
+        state: None,
+        role: Some(BeamRole::Stray),
+        turn: Some(turn),
+        off: false,
+    });
+    set_beams(c, &v);
+    Ok((name, true))
+}
+
 /// 道具の列の「光束」のメニュー: 光束の一覧と、足す・消す・変える欄。変えたら true
 pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
     let mut v = match beams_of(c) {
@@ -319,5 +349,31 @@ mod tests {
         set_beams(&mut c, &[]);
         assert!(c.extra.beams.is_none() && c.project().get("beams").is_none());
         assert_eq!(new_name(&c, &v), "beam1");
+    }
+
+    /// 非順次の表から足す迷光の光束: 名前は stray1…、同じ光束は二度足さない
+    #[test]
+    fn add_stray_appends_once() {
+        let mut c = Combo::default();
+        let t = BlockFace {
+            block: "L1".into(),
+            surface: 1,
+            coordbrk: false,
+            back: false,
+            pass: 0,
+        };
+        assert_eq!(
+            add_stray(&mut c, Some("TT".into()), t.clone()),
+            Ok(("stray1".into(), true))
+        );
+        assert_eq!(
+            add_stray(&mut c, Some("TT".into()), t.clone()),
+            Ok(("stray1".into(), false))
+        );
+        assert_eq!(add_stray(&mut c, None, t), Ok(("stray2".into(), true)));
+        let v = beams_of(&c).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0].role, Some(BeamRole::Stray));
+        assert!(problems(&c, &v).is_empty(), "{:?}", problems(&c, &v));
     }
 }
