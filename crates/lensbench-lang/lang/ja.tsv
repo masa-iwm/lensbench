@@ -802,6 +802,18 @@ ghost path: surface {k} is ignored or a coordinate break	ゴーストの経路: 
 scene: a system can't be added after the scene is finished	場面: 作り終えた場面にシステムは足せません
 scene: {label} surface {j} has the media {a} | {b} but the same face has {c} | {e}	場面: {label} の面 {j} の媒質は {a} | {b} ですが、同じ面は {c} | {e} です
 scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)	場面: {name} の面 {a} と {b} の間の縁は作りません（軸がそろわないか、円の開口でない）
+nsc: {} systems for a scene made of {}	非順次: {} 個の場面に {} 個のシステムが渡されました
+nsc: threshold {} (0 to below 1)	非順次: 閾値 {}（0 以上 1 未満）
+nsc: max_events must be 1 or more	非順次: 出来事の数の上限 max_events は 1 以上にしてください
+nsc: detector pixels {px} × {py}	非順次: 検出器の画素の数 {px} × {py}
+nsc: {lab} is a {what} surface, which the non-sequential trace doesn't handle	非順次: {lab} は {what} の面で、非順次の追跡では扱いません
+nsc: no index of {m} at {wl} µm ({lab})	非順次: {m} の {wl} µm の屈折率がありません（{lab}）
+nsc: detector half widths {hx} × {hy} mm ({lab})	非順次: 検出器の半幅 {hx} × {hy} mm（{lab}）
+nsc: {lab} is an ideal lens or a Jones surface, which the non-sequential trace doesn't handle	非順次: {lab} は理想レンズか Jones 面で、非順次の追跡では扱いません
+nsc: the coating coefficients can't be evaluated for some rays (the power isn't finite)	非順次: 一部の光線でコーティングの係数を求められません（パワーが有限でない）
+nsc: source power {power} W (must be positive)	非順次: 光源のパワー {power} W（正の数にしてください）
+nsc: pupil grid {grid} (1 or more)	非順次: 瞳のグリッド {grid}（1 以上）
+nsc: no source ray can be aimed	非順次: 光源の光線を 1 本もエイミングできません
 the source gave no rays at {wl} µm	光源が {wl} µm で光線を返しません
 the source gave different rays for the same setting at {wl} µm	光源が {wl} µm で同じ設定に違う光線を返しました
 Python shape {} gave a value that is not finite on its grid	Python の形 {} がグリッドの上で有限でない値を返しました

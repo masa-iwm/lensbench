@@ -10,6 +10,7 @@
   - [.zmx の読込の約束](zmx.md)
   - [解析（MTF・PSF・RMS）](analysis.md)
   - [ゴースト（2 回反射）](ghost.md)
+  - [非順次の追跡](nsc.md)
   - [簡易 POP（回折の伝搬）](pop.md)
   - [書き出し](export.md)
   - [最適化](optimize.md)

@@ -790,8 +790,8 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
     (keys, before)
 }
 
-/// 媒質の内部透過率（厚さ 1 mm あたりの強度。IT データがない・波長が範囲外なら None）
-pub(crate) fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
+/// 媒質の内部透過率（厚さ 1 mm あたりの強度。IT データがない・波長が範囲外なら None）。偏光追跡と非順次の追跡の吸収
+pub fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
     if g.it.is_empty() {
         return None;
     }

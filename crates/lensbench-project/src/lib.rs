@@ -27,6 +27,7 @@ pub mod edit_ops;
 pub mod edit_spec;
 pub mod filter;
 pub mod lenient;
+pub mod nsc;
 pub mod open;
 pub mod raypath;
 pub mod retarget;
