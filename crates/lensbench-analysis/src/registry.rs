@@ -59,6 +59,8 @@ pub struct Variant {
     pub beam: Option<String>,
     /// 追跡する波長 [µm] に置き換えて読む（主波長は先頭。.zmx だけ）
     pub wavelengths: Option<Vec<f64>>,
+    /// ビームスプリッターの経路（プロジェクトだけ。None で読み込んだ系と同じ経路、光束が自分の経路を持てばそれ）
+    pub path: Option<String>,
 }
 
 /// 系の読み方（CLI はコマンドラインの引数、serve は load で選んだもの）。干渉の 2 つの光束・系の一覧の解析が使う

@@ -116,7 +116,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
                 (k, None)
             }
         };
-        if v.wavelengths.is_none() {
+        if v.wavelengths.is_none() && v.path.is_none() {
             // 光束を選ばなければ読み込んだ系そのもの
             if let (None, Some(cur)) = (&v.beam, self.cur) {
                 return Ok(cur.clone());
@@ -134,9 +134,14 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     .and_then(|p| p.beam(n))
                     .is_some_and(|b| b.path.is_some())
             });
+        // 経路を選んだときは、読み込んだ系そのもの・同じ状態の系の写しは使わない
         let c = SysSpec {
             cfg,
-            path: if own_path { None } else { self.c.path.clone() },
+            path: if own_path {
+                None
+            } else {
+                v.path.clone().or_else(|| self.c.path.clone())
+            },
             state,
             ..self.c.clone()
         };

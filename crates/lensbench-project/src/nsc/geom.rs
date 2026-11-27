@@ -23,8 +23,8 @@ pub(super) struct LocalHit {
 pub(super) enum Bound {
     /// 形の及ぶ半径まで（開口があれば開口の中だけ）
     Extent,
-    /// 形が続く所まで全部（空気中の絞り: 開口の外も遮る板）
-    Unbounded,
+    /// 半径 r の円板の中（開口の外も含む。空気中の絞り: 開口の外を遮る有限の板）
+    Disc { r: f64 },
     /// 局所の矩形 |x| ≤ hx、|y| ≤ hy（検出器）
     Rect { hx: f64, hy: f64 },
 }
@@ -142,7 +142,7 @@ fn optical(
                     && (matches!(d.ap, Aperture::None | Aperture::Floating { .. })
                         || !lensbench_core::trace::aperture_out(d.ap, q))
             }
-            Bound::Unbounded => true,
+            Bound::Disc { r: rd } => r <= rd * (1.0 + 1e-12) + 1e-12,
             Bound::Rect { hx, hy } => q[0].abs() <= hx && q[1].abs() <= hy,
         };
         if !inside {
@@ -190,14 +190,14 @@ fn refine(
     None
 }
 
-/// 面の境界の箱（大域、[min, max]）。範囲の無い面は None
+/// 面の境界の箱（大域、[min, max]）
 pub(super) fn bbox(f: &Face, bound: Bound) -> Option<[V3; 2]> {
     let local: [V3; 2] = match (&f.shape, bound) {
-        (_, Bound::Unbounded) => return None,
         (Shape::Optical { surface, extent }, b) => {
-            let (hx, hy) = match b {
-                Bound::Rect { hx, hy } => (hx, hy),
-                _ => (*extent, *extent),
+            let (hx, hy, round) = match b {
+                Bound::Rect { hx, hy } => (hx, hy, None),
+                Bound::Disc { r } => (r, r, Some(r)),
+                Bound::Extent => (*extent, *extent, Some(*extent)),
             };
             let sh = surface.shape();
             let (mut z0, mut z1) = (0.0f64, 0.0f64);
@@ -206,7 +206,7 @@ pub(super) fn bbox(f: &Face, bound: Bound) -> Option<[V3; 2]> {
                 for j in 0..=n {
                     let x = hx * (2.0 * i as f64 / n as f64 - 1.0);
                     let y = hy * (2.0 * j as f64 / n as f64 - 1.0);
-                    if matches!(b, Bound::Extent) && x.hypot(y) > *extent {
+                    if round.is_some_and(|r| x.hypot(y) > r) {
                         continue;
                     }
                     let z = sh.sag(x, y).0;

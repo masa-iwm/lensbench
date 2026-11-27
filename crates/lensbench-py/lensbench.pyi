@@ -615,6 +615,15 @@ class System:
         """
 
     @staticmethod
+    def analyze_file(path: _StrPath, name: str, glass_dirs: Sequence[_StrPath] | None = None, lens_catalogs: Sequence[_StrPath] | None = None, threads: int | None = None, **settings: Any) -> Any:
+        """Run an analysis of the registry by name on a system file (.zmx, .json project, ...), with the same settings and results as
+        the CLI subcommand of that name. Unlike `System.analyze`, the analysis can read the rest of the file: for a project, nsc
+        builds its scene from all beams or beam splitter paths, and interference reads the other configurations. The settings are
+        keyword arguments with the keys of the settings (lensbench.defaults(name)). threads is the number of threads. Returns the
+        result as a dict (lists, not NumPy arrays)
+        """
+
+    @staticmethod
     def beam_paths(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None) -> list[str]:
         """The beam splitter paths of a project file (.json) (strings of T and R in the order the BSs are passed).
         Empty without a BS. Read each with `load(path, beam_path=path)`

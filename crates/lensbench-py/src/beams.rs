@@ -87,32 +87,55 @@ pub(crate) fn beam_table(
     path: PathBuf,
     a: TableArgs,
 ) -> PyResult<Bound<'_, PyAny>> {
-    let reg = lensbench_engine::analyses();
-    let an = reg
-        .get("beams")
-        .cloned()
-        .ok_or_else(|| crate::errors::value_err("the beams analysis is not registered"))?;
     let params = json!({
         "field": a.field, "wave": a.wave, "grid": a.grid, "reference": a.reference, "all": a.all,
     });
+    run_file(
+        py,
+        "beams",
+        path,
+        &params,
+        a.glass_dirs,
+        a.lens_catalogs,
+        a.threads,
+    )
+}
+
+/// 登録簿の解析をファイルの系で走らせる（`System.beam_table`・`System.analyze_file`、CLI のサブコマンドと同じ）:
+/// プロジェクトはほかの光束・経路・構成も読める
+pub(crate) fn run_file<'py>(
+    py: Python<'py>,
+    name: &str,
+    path: PathBuf,
+    params: &Value,
+    glass_dirs: Vec<PathBuf>,
+    lens_catalogs: Vec<PathBuf>,
+    threads: Option<usize>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let reg = lensbench_engine::analyses();
+    let an = reg.get(name).cloned().ok_or_else(|| {
+        crate::errors::value_err(format!(
+            "no analysis {name} (lensbench.analyses() lists the names)"
+        ))
+    })?;
     let spec = lensbench_engine::SysSpec {
         file: path,
-        glass_dir: a.glass_dirs,
-        lens_catalog: a.lens_catalogs,
+        glass_dir: glass_dirs,
+        lens_catalog: lens_catalogs,
         cfg: 1,
         names: lensbench_project::open::ArgNames::PYTHON,
         ..Default::default()
     };
     let v = py
         .detach(|| {
-            lensbench_core::with_threads(a.threads, || -> lensbench_core::Result<Value> {
+            lensbench_core::with_threads(threads, || -> lensbench_core::Result<Value> {
                 let s = lensbench_engine::load::load_file(&spec)?;
                 let src = lensbench_engine::source::FileSource::new(&spec, None);
                 let cx = lensbench_analysis::Cx {
                     system: &s,
                     source: Some(&src),
                 };
-                an.run_json(&cx, &params)
+                an.run_json(&cx, params)
             })
         })
         .map_err(err)?;

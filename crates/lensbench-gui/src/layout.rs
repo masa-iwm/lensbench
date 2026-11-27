@@ -30,6 +30,7 @@ pub(crate) const ANALYSES: &[(&str, &str, bool)] = &[
     ("info", n_("System data"), false),
     ("elements", n_("Element mode"), false),
     ("ghost", n_("Ghosts"), false),
+    ("nsc", n_("Non-sequential trace"), false),
     ("mech-check", n_("Mechanical vignetting"), false),
     ("ray-fan", n_("Ray fan"), true),
     ("opd-fan", n_("OPD fan"), true),
@@ -78,6 +79,7 @@ pub(crate) fn analysis_help(cmd: &str) -> Option<&'static str> {
         "info" => "System data: focal length, F-number, pupils, image height, etc.",
         "elements" => "Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps",
         "ghost" => "Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces",
+        "nsc" => "Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts) with the energy budget",
         "mech-check" => "Mechanical vignetting: share of rays outside the mechanical apertures",
         "ray-fan" => "Ray fan: transverse ray error versus pupil coordinate (tangential and sagittal) per field and wavelength",
         "opd-fan" => "OPD fan: optical path difference [waves] versus pupil coordinate (tangential and sagittal)",
@@ -119,7 +121,7 @@ pub(crate) fn analysis_group(cmd: &str) -> &'static str {
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" | "image-sim" => {
             "MTF / PSF"
         }
-        "interference" | "pop" | "gaussian-beam" => "Interference / propagation",
+        "interference" | "pop" | "gaussian-beam" | "nsc" => "Interference / propagation",
         "ray-fan" | "opd-fan" | "pupil-fan" | "field-curvature" | "longitudinal"
         | "lateral-color" | "focal-shift" | "grid-distortion" | "seidel" => "Aberrations",
         "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "Tables / system",

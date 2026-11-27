@@ -53,7 +53,8 @@ pub enum Split {
 /// 検出器の矩形と画素
 #[derive(Debug, Clone, PartialEq)]
 pub struct DetectorSpec {
-    /// 半幅 (x, y) [mm]（像面の局所座標。None なら像面の半直径の正方形）
+    /// 半幅 (x, y) [mm]（像面の局所座標。None なら像面の半直径の正方形。像面の半直径が 0 ならその系の面の半直径の
+    /// 最大）
     pub half: Option<[f64; 2]>,
     /// 画素の数 (x, y)
     pub pixels: [usize; 2],
@@ -491,7 +492,15 @@ impl<'a> Tracer<'a> {
             });
             let (role, bound) = match obj.kind {
                 ObjectKind::Detector => {
-                    let semi = surf.map_or(0.0, |d| d.semi);
+                    // 像面の半直径（決まっていなければ、その系の面の半直径の最大）
+                    let sy = f
+                        .refs
+                        .first()
+                        .map_or(s0, |r| systems.get(r.system).copied().unwrap_or(s0));
+                    let semi = surf
+                        .map(|d| d.semi)
+                        .filter(|&v| v > 0.0)
+                        .unwrap_or_else(|| sy.surfaces.iter().map(|d| d.semi).fold(0.0, f64::max));
                     let [hx, hy] = opts.detector.half.unwrap_or([semi, semi]);
                     if !(hx > 0.0 && hy > 0.0 && hx.is_finite() && hy.is_finite()) {
                         invalid!("nsc: detector half widths {hx} × {hy} mm ({lab})");
@@ -508,7 +517,23 @@ impl<'a> Tracer<'a> {
                     });
                     (Role::Detector(detectors.len() - 1, front), Bound::Rect { hx, hy })
                 }
-                ObjectKind::Stop => (Role::Stop, Bound::Unbounded),
+                ObjectKind::Stop => {
+                    // 遮る板の外径: 絞りの面の固定した機械半径、無ければ来た系の面の半直径・機械半径の最大
+                    // （板はシステムで最も大きい玉ほど。その外を通る光（BS のほかの腕など）は遮らない）
+                    let sy = f
+                        .refs
+                        .first()
+                        .map_or(s0, |r| systems.get(r.system).copied().unwrap_or(s0));
+                    let big = sy
+                        .surfaces
+                        .iter()
+                        .filter(|d| !d.ignore)
+                        .map(|d| d.semi.max(d.mech_semi.unwrap_or(0.0)))
+                        .fold(0.0, f64::max);
+                    let semi = surf.map_or(0.0, |d| d.semi);
+                    let r = surf.and_then(|d| d.mech_semi).unwrap_or(big).max(semi);
+                    (Role::Stop, Bound::Disc { r })
+                }
                 ObjectKind::Mech => (Role::Absorber, Bound::Extent),
                 ObjectKind::Plane => invalid!(
                     "nsc: {lab} is an ideal lens or a Jones surface, which the non-sequential trace doesn't handle"
@@ -780,9 +805,34 @@ impl<'a> Tracer<'a> {
                         }
                         _ => (s.e, None),
                     };
-                    let pt = power_of(&et);
+                    let mut pt = power_of(&et);
                     let pr = er.as_ref().map_or(0.0, |x| power_of(&x.0));
                     bud.absorbed += pw - pt - pr;
+                    let mut et = et;
+                    let mut er = er;
+                    // モンテカルロ: 境界と同じく反射か検出かをパワーの比で選び、選んだ方に両方のパワーを持たせる
+                    if let (Some(rg), Some((e_r, k_r))) = (&rng, er.take()) {
+                        let sum = pr + pt;
+                        if sum.is_nan() || sum <= 0.0 {
+                            s.e = et;
+                            finish(s, End::Discarded, 0.0, sink, bud);
+                            continue;
+                        }
+                        let u = rg.uniform(id, s.hits.len() as u32, 0);
+                        if u * sum < pr {
+                            s.e = e_r.map(|z| z * (sum / pr).sqrt());
+                            s.k = k_r;
+                            let p2 = power_of(&s.e);
+                            bud.absorbed += sum - p2;
+                            s.hits.push(ev(EventKind::Reflect, p2));
+                            stack.push(s);
+                            continue;
+                        }
+                        et = et.map(|z| z * (sum / pt).sqrt());
+                        let p2 = power_of(&et);
+                        bud.absorbed += sum - p2;
+                        pt = p2;
+                    }
                     if let Some((er, kr)) = er {
                         let b = Live {
                             p: q,

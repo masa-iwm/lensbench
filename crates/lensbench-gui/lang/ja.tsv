@@ -2066,3 +2066,22 @@ Trace stopped	追跡が止まる
 Field {} · wave {}	視野 {}・波長 {}
 Passes {} %, aperture {} %	通る {} %、開口 {} %
 All rays of the field are vignetted: check the apertures, the mechanical parts (system setting) and the fields	視野の光線はすべてケラレます: 開口・機構部品（システムの設定）・視野を確かめてください
+Non-sequential trace	非順次の追跡
+Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts) with the energy budget	非順次の追跡: 検出器の放射照度と光線の経路ごとのパワー（反射・ゴースト）、エネルギーの収支
+Source field	光源の視野
+Source power	光源のパワー
+Source polarization	光源の偏光
+Ray splitting	光線の分け方
+Power threshold	パワーのしきい値
+Max events	最大のイベント数
+Detector half width	検出器の半幅
+Detector pixels	検出器の画素数
+Reflections counted	数える反射の回数
+Path table rows	経路の表の行数
+{} µm · {} source rays · source {} W · detected {} W · absorbed {} W · escaped {} W · dropped {} W	{} µm · 光源の光線 {} 本 · 光源 {} W · 検出 {} W · 吸収 {} W · 外へ {} W · 捨てた {} W
+Detector {}: {} W, peak {} W/mm²	検出器 {}: {} W、ピーク {} W/mm²
+Ray paths by detected power ({} of {})	検出したパワーの順の光線の経路（上位 {} 本、全 {} 本）
+Reflections	反射の回数
+Power [W]	パワー [W]
+Fraction	割合
+Events	イベント

@@ -40,6 +40,7 @@ mod lens_data;
 mod mech_pupil;
 mod mech_table;
 mod missing_glass;
+mod nsc_view;
 mod optim_panel;
 mod palette;
 #[cfg(test)]

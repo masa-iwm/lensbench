@@ -39,6 +39,7 @@ pub(crate) fn has_figure(cmd: &str) -> bool {
             | "interference"
             | "pop"
             | "image-sim"
+            | "nsc"
     )
 }
 
@@ -192,6 +193,7 @@ pub(crate) fn show(
         "interference" => interference(ui, id, v),
         "pop" => pop(ui, id, gen, v),
         "image-sim" => image_sim(ui, id, gen, v),
+        "nsc" => crate::nsc_view::show(ui, id, gen, v),
         _ => false,
     }
 }

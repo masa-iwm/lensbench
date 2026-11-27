@@ -407,3 +407,54 @@ fn monte_carlo_agrees_with_the_deterministic_split() {
     }
     assert!(checked > 4);
 }
+
+/// 空気中の絞りは開口の外を遮る有限の板: 最初に当たるのが板の中（開口の外）なら吸収、開口の中と板の外径（システムの面の
+/// 半直径の最大）の外は素通り
+#[test]
+fn the_stop_is_a_finite_plate() {
+    let s = load("A0");
+    let coat = Coatings::for_system(&s).unwrap();
+    let sc = scene_of(&s);
+    let tr = Tracer::new(&sc, &[&s], &coat, &wide()).unwrap();
+    let fi = sc
+        .faces
+        .iter()
+        .position(|f| sc.objects[f.object].kind == ObjectKind::Stop)
+        .expect("a stop");
+    let f = &sc.faces[fi];
+    let semi = f.refs[0].surf;
+    let semi = s.surfaces[semi].semi;
+    let big = s
+        .surfaces
+        .iter()
+        .filter(|d| !d.ignore)
+        .map(|d| d.semi.max(d.mech_semi.unwrap_or(0.0)))
+        .fold(0.0, f64::max);
+    let col = |c: usize| -> V3 { [f.frame.r[0][c], f.frame.r[1][c], f.frame.r[2][c]] };
+    let (ex, ez) = (col(0), col(2));
+    let start = |rad: f64| -> V3 { [0, 1, 2].map(|a| f.frame.o[a] + ex[a] * rad - ez[a] * 1e-3) };
+    let hit_stop = |rad: f64| {
+        let st = StartRay::polarized(
+            start(rad),
+            ez,
+            [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],
+            &f.frame.r,
+            1.0,
+        );
+        let mut out = Vec::new();
+        tr.trace(&st, 0, true, &mut out);
+        // 光源の光線が最初に当たる所（反射して戻った枝は見ない）
+        out.iter().any(|b| {
+            b.hits
+                .first()
+                .is_some_and(|h| h.face == fi && h.kind == EventKind::Absorb)
+        })
+    };
+    assert!(big > semi * 1.01, "A0: plate {big} vs aperture {semi}");
+    assert!(
+        hit_stop(0.5 * (semi + big)),
+        "inside the plate, outside the aperture"
+    );
+    assert!(!hit_stop(0.5 * semi), "inside the aperture");
+    assert!(!hit_stop(big * 1.5), "outside the plate");
+}
