@@ -19,8 +19,17 @@ python3 scripts/docs_examples.py "$cli"
 rm -rf docs/gen/gui
 if command -v xvfb-run >/dev/null; then
   cargo build --profile "$profile" -p lensbench-gui
-  xvfb-run -a -s "-screen 0 1920x1200x24" "target/$profile/lensbench-gui" --tour target/docs-gui-tour \
+  # 通し確認は利用者の設定・データのフォルダに何も書かない（空のフォルダを利用者の場所にして、終わりに確かめる）
+  home=$(mktemp -d)
+  XDG_DATA_HOME="$home/data" XDG_CONFIG_HOME="$home/config" XDG_CACHE_HOME="$home/cache" \
+    xvfb-run -a -s "-screen 0 1920x1200x24" "target/$profile/lensbench-gui" --tour target/docs-gui-tour \
     --glass-dir tests/glass --lens-catalog examples/lenses/LB examples/projects/P8_catalog_two.json
+  if [ -n "$(find "$home" -path '*lensbench*')" ]; then
+    echo "--tour wrote to the user's folders:" >&2
+    find "$home" -path '*lensbench*' >&2
+    exit 1
+  fi
+  rm -rf "$home"
   mkdir -p docs/gen/gui
   cp target/docs-gui-tour/*.png docs/gen/gui/
 else

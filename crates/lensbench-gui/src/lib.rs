@@ -131,26 +131,33 @@ pub fn main() -> std::process::ExitCode {
     let store = portable::choose(args.settings.clone(), portable::exe_dir().as_deref());
     portable::set(&store);
     args.notice = store.notice.clone();
+    // 通し確認は利用者の設定・データのフォルダ（窓の大きさ・配置・残した状態、カタログの一覧の控え、補ったカタログ品、
+    // 取った CAD、見本）を読まず、書き換えもしない。一時フォルダを作ってそこへ向け、終わったら消す（eframe は
+    // persistence_path が None だと OS の場所の設定を使うので、None にはできない。前は設定だけを一時ファイルに
+    // していて、カタログの一覧の控え lens-list-cache.json は利用者のフォルダに書いていた）
+    let tour_dir = args
+        .tour
+        .is_some()
+        .then(|| tour::scratch_dir(std::process::id()));
+    if let Some(d) = &tour_dir {
+        let _ = std::fs::remove_dir_all(d);
+        let _ = std::fs::create_dir_all(d);
+    }
+    let tour_store = tour_dir.as_ref().map(|d| d.join("app.ron"));
     // カタログの一覧を設定の隣に覚えておく（次の起動で読み直さない）。補ったカタログ品も設定の隣に
-    let settings_dir: Option<std::path::PathBuf> = store
-        .file
-        .clone()
-        .or_else(portable::os_file)
-        .and_then(|f| f.parent().map(Into::into));
+    let settings_dir: Option<std::path::PathBuf> = tour_dir.clone().or_else(|| {
+        store
+            .file
+            .clone()
+            .or_else(portable::os_file)
+            .and_then(|f| f.parent().map(Into::into))
+    });
     crash::install(settings_dir.clone());
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
     samples::install(settings_dir.clone());
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);
-    // 通し確認は利用者の設定（窓の大きさ・配置・残した状態）を読まず、書き換えもしない。空の一時ファイルを設定にして、
-    // 終わったら消す（eframe は persistence_path が None だと OS の場所の設定を使うので、None にはできない。前は
-    // None にしていて、利用者の窓の大きさで撮り、終わりにその設定を書き換えていた）
-    let tour_store = args.tour.is_some().then(|| {
-        let f = std::env::temp_dir().join(format!("lensbench-tour-{}.ron", std::process::id()));
-        let _ = std::fs::remove_file(&f);
-        f
-    });
     let options = eframe::NativeOptions {
         persistence_path: tour_store.clone().or_else(|| store.file.clone()),
         viewport: egui::ViewportBuilder::default()
@@ -173,14 +180,20 @@ pub fn main() -> std::process::ExitCode {
             Ok(Box::new(app::App::new(cc, args)))
         }),
     );
-    if let Some(f) = tour_store {
-        let _ = std::fs::remove_file(f);
+    let failed = tour::FAILED.load(std::sync::atomic::Ordering::SeqCst);
+    if let Some(d) = tour_dir {
+        // 失敗したときは落ちた記録（crash.log）を見られるように残す
+        if failed || r.is_err() {
+            eprintln!("lensbench-gui: tour scratch folder kept: {}", d.display());
+        } else {
+            let _ = std::fs::remove_dir_all(d);
+        }
     }
     if let Err(e) = r {
         eprintln!("lensbench-gui: {e}");
         return std::process::ExitCode::FAILURE;
     }
-    if tour::FAILED.load(std::sync::atomic::Ordering::SeqCst) {
+    if failed {
         return std::process::ExitCode::FAILURE;
     }
     std::process::ExitCode::SUCCESS

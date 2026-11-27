@@ -532,20 +532,22 @@ fn scene(
         );
         // 要素が少しでも見えていれば、光軸に垂直な向きに図の中へ寄せる（要素がはみ出ても名前は見える。
         // 光軸の向きは寄せない）。要素が全部図の外なら寄せない
-        let mut label = align.anchor_size(label_pos, galley.size());
-        // 前の要素の名前と重なれば、光軸から離す向きに 1 行ずつずらす（近い 2 枚の札の字が重なっていた）
-        let away = if across_y && n.y >= 0.0 { 1.0 } else { -1.0 };
-        for _ in 0..4 {
-            if !marks.iter().any(|m: &Mark| m.label.intersects(label)) {
-                break;
-            }
-            label = label.translate(Vec2::new(0.0, away * (galley.size().y + 2.0)));
-        }
-        let label = if Rect::from_center_size(pos, Vec2::splat(2.0 * r)).intersects(rect) {
+        let label = align.anchor_size(label_pos, galley.size());
+        let keep = Rect::from_center_size(pos, Vec2::splat(2.0 * r)).intersects(rect);
+        let label = if keep {
             keep_in(label, view_area, if across_y { 1 } else { 0 })
         } else {
             label
         };
+        // 前の要素の名前と重なれば 1 行ずつずらす（近い 2 枚の札の字が重なっていた）。図の中へ寄せた後で比べる
+        // （前は寄せる前に比べていて、2 枚とも図の端へ寄せると同じ行に重なった）
+        let away = if across_y && n.y >= 0.0 { 1.0 } else { -1.0 };
+        let label = unstack(
+            label,
+            marks.iter().map(|m: &Mark| m.label),
+            away * (galley.size().y + 2.0),
+            keep.then_some(view_area),
+        );
         marks.push(Mark {
             k,
             kind: p.kind,
@@ -691,6 +693,30 @@ fn scene(
         axes,
         mids,
     }
+}
+
+/// 名前の枠 r が前の名前 placed のどれかと重なれば、縦に step ずつ（光軸から離す向きを先に、だめなら反対へ）
+/// 4 行までずらして、重ならない所にする。area があれば、その中に収まる所だけを選ぶ。どこも重なれば元のまま
+pub(super) fn unstack(
+    r: Rect,
+    placed: impl Iterator<Item = Rect> + Clone,
+    step: f32,
+    area: Option<Rect>,
+) -> Rect {
+    let free = |c: Rect| !placed.clone().any(|p| p.intersects(c));
+    if free(r) {
+        return r;
+    }
+    let fits = |c: Rect| area.is_none_or(|a| c.top() >= a.top() && c.bottom() <= a.bottom());
+    for i in 1..=4 {
+        for sgn in [1.0, -1.0] {
+            let c = r.translate(Vec2::new(0.0, sgn * step * i as f32));
+            if fits(c) && free(c) {
+                return c;
+            }
+        }
+    }
+    r
 }
 
 /// 矩形 r を、軸 axis（0 = 横、1 = 縦）の向きだけ area の中へずらす（area より大きければ area の始まりにそろえる）

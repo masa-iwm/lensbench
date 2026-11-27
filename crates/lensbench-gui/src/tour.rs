@@ -15,6 +15,12 @@ use web_time::Instant;
 /// 通し確認が失敗したか（main が終了コードにする）
 pub(crate) static FAILED: AtomicBool = AtomicBool::new(false);
 
+/// 通し確認の間だけ設定・データのフォルダの代わりに使う一時フォルダ（プロセスごと。終われば main が消す）
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn scratch_dir(pid: u32) -> PathBuf {
+    std::env::temp_dir().join(format!("lensbench-tour-{pid}"))
+}
+
 /// 全体の時間の上限の既定（`--tour-timeout` で変えられる。ソフト描画では足りないことがある）
 const TIMEOUT: Duration = Duration::from_secs(240);
 /// 計算が終わってから撮るまでに待つフレーム数（配置が落ち着くまで）

@@ -687,3 +687,27 @@ fn concave_body_fill_stays_inside() {
     }
     assert!(concave >= 1, "P17 に凹面のある玉が無い");
 }
+
+/// 近い 2 枚の名前: 図の端へ寄せて同じ行に来ても、もう一方の行へずらす（図の外へは出さない）
+#[test]
+fn close_labels_do_not_stack() {
+    let area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(200.0, 100.0));
+    let a = Rect::from_min_size(Pos2::new(40.0, 0.0), egui::vec2(60.0, 12.0));
+    // 上の端に寄せた 2 枚目（光軸から離す向き＝上は図の外なので、下へ 1 行）
+    let b = Rect::from_min_size(Pos2::new(70.0, 0.0), egui::vec2(60.0, 12.0));
+    let c = unstack(b, [a].into_iter(), -14.0, Some(area));
+    assert_eq!((c.min.x, c.min.y), (70.0, 14.0));
+    assert!(!c.intersects(a));
+    // 図の中なら光軸から離す向きを先に
+    let a2 = a.translate(egui::vec2(0.0, 50.0));
+    let c = unstack(
+        b.translate(egui::vec2(0.0, 50.0)),
+        [a2].into_iter(),
+        -14.0,
+        Some(area),
+    );
+    assert_eq!(c.min.y, 36.0);
+    // 重ならなければそのまま
+    let far = b.translate(egui::vec2(100.0, 0.0));
+    assert_eq!(unstack(far, [a].into_iter(), -14.0, Some(area)), far);
+}
