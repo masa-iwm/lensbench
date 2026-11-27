@@ -3,7 +3,7 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.10.0 の後）
+## v0.10.0 の後・v0.11.0 まで
 
 ### 結果の形
 - 解析の結果の `warnings` のうち、視野・波長ごとの計算の失敗の注意（`field 3: …` など）を、表示の言語によらず英語の文にした

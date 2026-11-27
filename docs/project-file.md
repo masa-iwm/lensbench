@@ -6,10 +6,10 @@
 
 JSON スキーマは `docs/schema/` にある: `project`（プロジェクトファイル）・`system`（システムファイル）・`user-catalog`（ユーザーカタログ）・
 `swap`（差し替え探索の `--spec`）・`terms`（評価関数の項）・`tolerance`（公差の `--spec`）の `.schema.json`。スキーマはドキュメントの
-サイトにも版ごとに置く（`https://masa-iwm.github.io/lensbench/schema/v0.10/project.schema.json` のように lensbench の版の小数第 1 位まで。
+サイトにも版ごとに置く（`https://masa-iwm.github.io/lensbench/schema/v0.11/project.schema.json` のように lensbench の版の小数第 1 位まで。
 リリースの後は書き換えないので、古い版で書いたファイルもその版のスキーマで検査できる）。lensbench（CLI・GUI・Python）が書く
 プロジェクト・システム・ユーザーカタログ・公差と差し替えの設定のファイルは、先頭にその版の `"$schema"` を付ける。手で書くファイルも先頭に
-`"$schema": "…/schema/v0.10/project.schema.json"` のように書くと、エディタ（VS Code など）で項目の補完・説明・検査が効く
+`"$schema": "…/schema/v0.11/project.schema.json"` のように書くと、エディタ（VS Code など）で項目の補完・説明・検査が効く
 （lensbench は読むときに `$schema` を無視する）。スキーマは serde の型
 （`lensbench_project::schema`）から作り、テストで型とずれていないか・例題が合うかを確かめる。型を変えたら
 `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema::` で作り直す。

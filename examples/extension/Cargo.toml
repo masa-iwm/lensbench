@@ -2,8 +2,8 @@
 # 公開のリポジトリの中では lensbench-sdk を path で参照し、公開 CI が組む（SDK を壊す変更を止める）。
 # 写したら下の lensbench-sdk（3 か所）と末尾の [patch.crates-io] の 2 行を、同じ git のタグ（または rev）に替え、
 # 公開リポジトリの同じタグの rust-toolchain.toml を写す（README の「リポジトリの外へ写す」）:
-#   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.10.0", features = [...] }
-#   winit = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.10.0" }
+#   lensbench-sdk = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.11.0", features = [...] }
+#   winit = { git = "https://github.com/masa-iwm/lensbench", tag = "v0.11.0" }
 [package]
 name = "lensbench-extension-example"
 version = "0.1.0"
