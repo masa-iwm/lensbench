@@ -553,7 +553,18 @@ mod tests {
                 };
                 let direct = open(&path, &o).unwrap().system;
                 let s = src.open(&o).unwrap().system;
-                assert_eq!(format!("{s:?}"), format!("{direct:?}"), "{f} {st:?}");
+                // ガラスの表は HashMap で並びが毎回変わるので、鍵で並べて別に比べる
+                let text = |x: &lensbench_core::System| {
+                    let mut rx = x.clone().into_prescription();
+                    let g: std::collections::BTreeMap<String, String> = rx
+                        .glasses
+                        .iter()
+                        .map(|(k, v)| (k.clone(), format!("{v:?}")))
+                        .collect();
+                    rx.glasses = Default::default();
+                    format!("{rx:?} {g:?}")
+                };
+                assert_eq!(text(&s), text(&direct), "{f} {st:?}");
                 src.paths(&o).unwrap();
             }
         }

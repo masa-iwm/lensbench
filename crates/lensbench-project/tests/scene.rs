@@ -10,7 +10,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// 場面の面と展開した系の面の頂点・軸が 1e-12 mm（軸は 1e-12）で一致し、系の光学面は全部どこかの面に入る
+/// 場面の面と展開した系の面の頂点・軸が 1e-12 mm（軸は 1e-12）で一致する（物にならない空気中のダミー面は除く）
 fn check_frames(name: &str, sc: &Scene, xs: &[(String, Expansion)]) {
     for (i, (label, x)) in xs.iter().enumerate() {
         let s = &x.system;
@@ -274,4 +274,43 @@ fn mechanics_become_walls() {
         .faces
         .iter()
         .any(|&k| matches!(sc.faces[k].shape, Shape::Cylinder { .. }))));
+}
+
+/// 像面がガラスの中: 検出器は玉にまとめず、種類が残る
+#[test]
+fn a_detector_in_glass_stays_a_detector() {
+    let p = project(
+        &format!(
+            r#"[{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}}, {LENS}, {{"type": "air", "t": 20}}]"#
+        ),
+        "",
+    );
+    // 玉の後面から像面までをガラスに
+    let mut rx = expansions(&p, &env()).unwrap()[0]
+        .1
+        .system
+        .clone()
+        .into_prescription();
+    let j = rx.surfaces.len() - 2;
+    rx.surfaces[j].mat = rx.surfaces[j - 1].mat.clone();
+    let s = rx.build().unwrap();
+    let mut sc = Scene::default();
+    sc.add_system("glass", &s, None).unwrap();
+    sc.finish().unwrap();
+    let k = sc.face_of(0, s.image()).unwrap();
+    let f = &sc.faces[k];
+    assert!(
+        f.minus.name() == "N-BK7" || f.plus.name() == "N-BK7",
+        "{:?} {:?}",
+        f.minus,
+        f.plus
+    );
+    assert_eq!(sc.objects[f.object].kind, ObjectKind::Detector);
+    assert_eq!(
+        sc.objects
+            .iter()
+            .filter(|o| o.kind == ObjectKind::Lens)
+            .count(),
+        1
+    );
 }

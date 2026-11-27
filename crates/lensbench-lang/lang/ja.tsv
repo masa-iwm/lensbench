@@ -800,6 +800,8 @@ the surface origins ({}) don't match the system ({} surfaces)	面の出どころ
 ghost path: surfaces a = {a}, b = {b} (need 1 ≤ b < a ≤ {img})	ゴーストの経路: 面 a = {a}、b = {b} です（1 ≤ b < a ≤ {img} にします）
 ghost path: surface {k} is ignored or a coordinate break	ゴーストの経路: 面 {k} は無視する面か座標ブレークです
 scene: a system can't be added after the scene is finished	場面: 作り終えた場面にシステムは足せません
+scene: {label} surface {j} has the media {a} | {b} but the same face has {c} | {e}	場面: {label} の面 {j} の媒質は {a} | {b} ですが、同じ面は {c} | {e} です
+scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)	場面: {name} の面 {a} と {b} の間の縁は作りません（軸がそろわないか、円の開口でない）
 the source gave no rays at {wl} µm	光源が {wl} µm で光線を返しません
 the source gave different rays for the same setting at {wl} µm	光源が {wl} µm で同じ設定に違う光線を返しました
 Python shape {} gave a value that is not finite on its grid	Python の形 {} がグリッドの上で有限でない値を返しました

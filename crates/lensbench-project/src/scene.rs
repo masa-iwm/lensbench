@@ -309,12 +309,10 @@ impl Scene {
                     };
                     let g = &self.faces[k];
                     if !same_mat(&g.minus, m2) || !same_mat(&g.plus, p2) {
+                        let (a, b) = (m2.name(), p2.name());
+                        let (c, e) = (g.minus.name(), g.plus.name());
                         self.notes.push(format!(
-                            "scene: {label} surface {j} has the media {} | {} but the same face has {} | {}",
-                            m2.name(),
-                            p2.name(),
-                            g.minus.name(),
-                            g.plus.name()
+                            "scene: {label} surface {j} has the media {a} | {b} but the same face has {c} | {e}"
                         ));
                     }
                     self.faces[k].refs.push(SurfRef {
@@ -383,7 +381,13 @@ impl Scene {
             if !dup {
                 self.regions.push(Region { a, b, material: m });
             }
-            self.join(self.faces[a].object, self.faces[b].object);
+            // 検出器（像面）はガラスに接していても玉にまとめない（種類が消えないように）
+            let (oa, ob) = (self.faces[a].object, self.faces[b].object);
+            if self.objects[oa].kind != ObjectKind::Detector
+                && self.objects[ob].kind != ObjectKind::Detector
+            {
+                self.join(oa, ob);
+            }
         }
         // 機構部品
         for part in &s.mechanics {
@@ -530,11 +534,14 @@ impl Scene {
         if !circ(fa) || !circ(fb) || 1.0 - c.abs() > SAME_TOL || off > SAME_TOL * scale {
             self.objects[o].closed = false;
             let name = self.objects[o].name.clone();
+            let name = if name.is_empty() {
+                "a lens".to_string()
+            } else {
+                name
+            };
+            let (a, b) = (r.a, r.b);
             self.notes.push(format!(
-                "scene: the edge of {} between faces {} and {} isn't made (not coaxial or not a round aperture)",
-                if name.is_empty() { "a lens" } else { name.as_str() },
-                r.a,
-                r.b
+                "scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)"
             ));
             return;
         }
@@ -609,7 +616,8 @@ impl Scene {
     fn add_mech(&mut self, name: &str, frame: Frame, rings: &[[f64; 4]], square: bool) {
         let q = |v: f64| (v * 1e6).round() as i64;
         let mut key: Vec<i64> = frame.o.iter().map(|&v| q(v)).collect();
-        key.extend(col(&frame.r, 2).iter().map(|&v| q(v)));
+        // 軸まわりの回転も見る（角の部品）
+        key.extend(frame.r.iter().flatten().map(|&v| q(v)));
         key.extend(rings.iter().flatten().map(|&v| q(v)));
         key.push(square as i64);
         if rings.is_empty() || self.mech_keys.contains(&key) {
