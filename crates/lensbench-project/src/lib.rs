@@ -30,6 +30,7 @@ pub mod lenient;
 pub mod open;
 pub mod raypath;
 pub mod retarget;
+pub mod scene;
 pub mod schema;
 mod splitter;
 pub mod surface_ops;

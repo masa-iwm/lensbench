@@ -118,6 +118,12 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   `lensbench_core::rng::CounterRng` は種・光線の番号・出来事の回数・何個目かだけで決まる乱数（光線をどの順・スレッドで追っても同じ数）。
   `lensbench_project::raypath` は出来事（面の名前 `FaceId`・透過・反射・全反射・散乱・吸収・検出）と経路（出来事の列）の型で、
   `RayPath::sequential`（光束の path・turn を当てて展開した系の面の列）と `RayPath::ghost`（ゴーストの面 a・b）で順次の系の経路を作る
+- 物の場面（非順次の追跡の段 1）: `lensbench_project::scene::Scene::from_project(プロジェクト, 環境)` は、光束ごと（無ければ BS の経路ごと）の
+  展開を全部足して、物（玉・鏡・絞り・面・検出器・機構部品）を大域の座標に 1 回だけ置いた場面を作る（`scene::expansions` が使う展開）。
+  往復・別の経路で同じ所・同じ形の面は 1 つの面にまとめ（`SAME_TOL` = 1e-9 mm）、どの系の何番の面・どの `FaceId` から来たかを `Face::refs` に持つ。
+  玉はガラスの区間（`Region`）でつながった面の集まりで、縁は OpticStudio の玉の形（形はクリア半径＋チップゾーンまで、その外は玉の半径まで
+  平らな輪、側面は玉の半径の円柱）。軸のそろわない区間・円でない開口の面（BS のキューブ）の縁は作らない（`Object::closed` が false、
+  `Scene::notes`）。面の両側の媒質は局所の −z 側 `minus`・+z 側 `plus`（円柱は内側が `minus`）。順次の系だけから作るときは `add_system` と `finish`
 - `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
   （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
   `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の

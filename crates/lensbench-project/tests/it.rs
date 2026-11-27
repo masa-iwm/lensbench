@@ -17,6 +17,7 @@ mod os_p0;
 mod pickups;
 mod raypath;
 mod retarder;
+mod scene;
 mod schema;
 mod solve;
 mod splitter;
