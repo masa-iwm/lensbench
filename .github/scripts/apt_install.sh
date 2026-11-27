@@ -40,7 +40,13 @@ if compgen -G "$cache/*.deb" >/dev/null; then
     exit 0
   fi
   echo "::warning::apt: 保存した deb では入らなかった（像の更新で版が合わない等）。取りに行く"
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-download -f -o DPkg::Lock::Timeout=120 || true
+  # dpkg で入れかけた包み（像の libgbm1 より古い libegl-mesa0 が未設定のまま残る等）を外して、入れる前の状態に戻す。
+  # 残すと apt は「Unmet dependencies」で止まり、包みを名指しした install は -f を付けても直さない
+  if [ ${#debs[@]} -gt 0 ]; then
+    pkgs=()
+    for d in "${debs[@]}"; do pkgs+=("$(dpkg-deb -f "$d" Package)"); done
+    sudo DEBIAN_FRONTEND=noninteractive dpkg --remove --force-depends --force-remove-reinstreq "${pkgs[@]}" || true
+  fi
 fi
 
 # 2. 取りに行く。落とした deb は保存用に別の場所へ残す
@@ -68,10 +74,8 @@ for attempt in 1 2; do
     use_direct_mirrors
   fi
   # update は一部の取得の失敗（W:）でも 0 を返すので続け、落とす段を timeout で区切る（DNS の障害中は deb ごとに
-  # 再試行を重ねて数十分止まるため）。落とし終えてから入れる（dpkg の途中で切らない）。
-  # -f: 1 の dpkg で古い deb が未設定のまま残ると（像の libgbm1 が新しく、保存した libegl-mesa0 が古い等）、-f なしの
-  # install は「Unmet dependencies」で何も入れない。ネットのあるこの段で、壊れた依存を新しい版に直しながら入れる
-  inst=(sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -f -y -q --no-install-recommends
+  # 再試行を重ねて数十分止まるため）。落とし終えてから入れる（dpkg の途中で切らない）
+  inst=(sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -y -q --no-install-recommends
         -o Dir::Cache::archives="$arch" -o APT::Keep-Downloaded-Packages=true)
   timeout 240 sudo apt-get "${opts[@]}" update -q
   if timeout 300 "${inst[@]}" --download-only "${missing[@]}" && "${inst[@]}" --no-download "${missing[@]}"; then
