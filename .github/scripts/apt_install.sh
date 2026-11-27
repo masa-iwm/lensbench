@@ -68,8 +68,10 @@ for attempt in 1 2; do
     use_direct_mirrors
   fi
   # update は一部の取得の失敗（W:）でも 0 を返すので続け、落とす段を timeout で区切る（DNS の障害中は deb ごとに
-  # 再試行を重ねて数十分止まるため）。落とし終えてから入れる（dpkg の途中で切らない）
-  inst=(sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -y -q --no-install-recommends
+  # 再試行を重ねて数十分止まるため）。落とし終えてから入れる（dpkg の途中で切らない）。
+  # -f: 1 の dpkg で古い deb が未設定のまま残ると（像の libgbm1 が新しく、保存した libegl-mesa0 が古い等）、-f なしの
+  # install は「Unmet dependencies」で何も入れない。ネットのあるこの段で、壊れた依存を新しい版に直しながら入れる
+  inst=(sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -f -y -q --no-install-recommends
         -o Dir::Cache::archives="$arch" -o APT::Keep-Downloaded-Packages=true)
   timeout 240 sudo apt-get "${opts[@]}" update -q
   if timeout 300 "${inst[@]}" --download-only "${missing[@]}" && "${inst[@]}" --no-download "${missing[@]}"; then
