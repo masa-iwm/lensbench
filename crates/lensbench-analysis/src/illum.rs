@@ -161,31 +161,49 @@ fn ray_to(
 }
 
 /// 像点 x0 に届く光束の、瞳の向き a の縁の光線の向き（けられたら瞳の半径を縮めて境目を探す）
+///
+/// 縁（半径 1）で解けなければ、中心（主光線）から半径を少しずつ広げて解き続け（継続法: 1 つ前に解けた半径の視野と
+/// 光線から始める。解ければ刻みを 2 倍、解けなければ半分）、刻みが [`RIM_STEP_MIN`] より小さくなった所を境目として、
+/// その先の 1 刻みの中を二分法で詰める。像面が焦点から大きく外れた系（二回通過で像面が瞳の近くにある系など）では、
+/// 縁の光線を像点に着けるには視野を何倍も動かす必要があり、中心から 1 歩で跳ぶとニュートン法が収束しないことがある。
+/// 前は解けなかった最初の半径を境目と決めていたので、けられの無い系でも縁を内側に取り、相対照度が所々 0.2〜3 % 落ちた
 fn rim_dir(s: &System, x0: (f64, f64), h0: (f64, f64), c0: Near, a: f64, w: usize) -> Result<V3> {
     let (c, sn) = (a.cos(), a.sin());
     let mut h = h0;
-    // 近くの届いた光線（[`ray`]）。初めは主光線、二分法では届いた半径の下端の光線から
+    // 近くの届いた光線（[`ray`]）。初めは主光線、継続法・二分法では届いた半径の下端の光線から
     let mut near = Some(c0);
     if let Some(k) = ray_to(s, x0, &mut h, (c, sn), w, &mut near)? {
         return Ok(k);
     }
-    // 半径の二分法（中心は届く）
-    let (mut lo, mut hi) = (0.0, 1.0);
     let mut best = None;
-    let mut hl = h0;
-    let mut near_lo = c0;
-    for _ in 0..40 {
-        let m = 0.5 * (lo + hi);
+    let (mut lo, mut hl, mut near_lo) = (0.0, h0, c0);
+    // 解けた半径の下端 lo から、刻み step 先を解く
+    let try_at = |m: f64, hl: (f64, f64), near_lo: Near| -> Result<Option<Solved>> {
         let mut hm = hl;
         let mut near = Some(near_lo);
-        match ray_to(s, x0, &mut hm, (m * c, m * sn), w, &mut near)? {
-            Some(k) => {
-                lo = m;
-                hl = hm;
-                best = Some(k);
-                near_lo = near.expect("届いた光線");
+        Ok(ray_to(s, x0, &mut hm, (m * c, m * sn), w, &mut near)?
+            .map(|k| (k, hm, near.expect("届いた光線"))))
+    };
+    let mut step: f64 = 0.25;
+    while lo < 1.0 && step >= RIM_STEP_MIN {
+        let m = (lo + step).min(1.0);
+        match try_at(m, hl, near_lo)? {
+            Some((k, hm, nm)) => {
+                (lo, hl, near_lo, best) = (m, hm, nm, Some(k));
+                step *= 2.0;
             }
-            None => hi = m,
+            None => step *= 0.5,
+        }
+    }
+    if lo < 1.0 {
+        // 境目は lo と lo + 2·step（最後に解けなかった刻み）の間。二分法で詰める
+        let mut hi = (lo + 2.0 * step).min(1.0);
+        for _ in 0..30 {
+            let m = 0.5 * (lo + hi);
+            match try_at(m, hl, near_lo)? {
+                Some((k, hm, nm)) => (lo, hl, near_lo, best) = (m, hm, nm, Some(k)),
+                None => hi = m,
+            }
         }
     }
     match best {
@@ -195,6 +213,12 @@ fn rim_dir(s: &System, x0: (f64, f64), h0: (f64, f64), c0: Near, a: f64, w: usiz
         ),
     }
 }
+
+/// [`rim_dir`] で解けた縁の光線: 像空間の向き、そのときの視野、届いた光線
+type Solved = (V3, (f64, f64), Near);
+
+/// [`rim_dir`] の継続法の半径の刻みの下限（これより小さい刻みでも解けなければ、そこをけられの境目とする）
+const RIM_STEP_MIN: f64 = 1.0 / 1024.0;
 
 /// 視野 field の波長 w の主光線が像面に当たる点に届く光束の射影立体角 Ωp に、像空間の屈折率の 2 乗をかけたもの
 /// （光学的な方向余弦 n′L・n′M の面積）。n は縁の点の数（偶数、8 以上）

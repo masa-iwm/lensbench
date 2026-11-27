@@ -390,7 +390,7 @@ impl System {
     fn chief_scale(&self) -> Result<f64> {
         let (_, ny) = self.field_norm_values();
         Ok(match self.field_type {
-            crate::system::FieldType::Angle => crate::quantity::Angle::from_deg(ny).tan(),
+            crate::system::FieldType::Angle => self.angle_chief_scale(ny),
             crate::system::FieldType::ObjH => ny,
             crate::system::FieldType::ParH => ny / self.paraxial().chief_parimage_per_unit,
             t => notimpl!("chief ray solve with field type {t:?}"),

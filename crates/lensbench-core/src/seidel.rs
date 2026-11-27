@@ -48,7 +48,7 @@ impl Seidel {
 pub fn chief_scale(s: &System) -> f64 {
     let hmax = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
     match s.field_type {
-        FieldType::Angle => hmax.to_radians().tan(),
+        FieldType::Angle => s.angle_chief_scale(hmax),
         FieldType::ObjH => hmax,
         // 像高の視野は近軸像高から
         _ => {
@@ -315,11 +315,13 @@ pub fn distortion_ref(s: &System, w: usize, reference: Option<(f64, f64)>) -> Re
             let p = s.paraxial();
             let k = chief_scale(s);
             let (yc, uc) = s.ptrace(p.chief.0[1] * k, p.chief.1[0] * k, w, None);
-            // t の大きさで最大の半径の視野（角度の視野は k が tan、ほかは視野の座標の最大の半径）
+            // t の大きさで最大の半径の視野（角度の視野は tan、ほかは視野の座標の最大の半径）。有限の物体の角度の視野では
+            // k に物体距離も掛かっているので、k ではなく tan で割る
+            let rmax = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
             let tm = if s.field_type == FieldType::Angle {
-                k
+                rmax.to_radians().tan()
             } else {
-                s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max)
+                rmax
             };
             // アフォーカル像空間では像空間の近軸主光線の傾き（向きの tan の倍率）
             let m = if s.afocal { uc[img - 1] } else { yc[img] } / tm;

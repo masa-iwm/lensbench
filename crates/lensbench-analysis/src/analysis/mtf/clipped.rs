@@ -29,9 +29,7 @@ pub(super) fn pupil_segments(
     let valid = |pts: &[(f64, f64)]| -> Result<Vec<bool>> {
         let (px, py): (Vec<f64>, Vec<f64>) = pts.iter().copied().unzip();
         let o = frame_opd(s, field, wi, fr, &px, &py)?;
-        Ok((0..pts.len())
-            .map(|k| o.ok(k) && o.opd[k].is_finite())
-            .collect())
+        Ok((0..pts.len()).map(|k| o[k].is_finite()).collect())
     };
     let m: Vec<usize> = fine
         .iter()
@@ -108,7 +106,7 @@ pub(super) fn pupil_segments(
     Ok(segs)
 }
 
-/// ずらさない瞳の [`lens_quad`]（d = 0、点数は gl）で、けられた点（o0 が有限でない点）が覆うけられの面積（正規化瞳の
+/// ずらさない瞳の [`lens_quad`]（d = 0、点数は gl）で、けられた点（o0 が false の点）が覆うけられの面積（正規化瞳の
 /// 単位、単位円で π）。点の行（t が一定）ごとに、けられた点の続きの両側の縁を隣の点（行の端なら弦の端）との間の
 /// 二分法で詰め、縁の間の長さに行の重みを掛けて足す。点の当たり外れではなく縁の位置で測るので、求積点より細い
 /// けられ（面の定義域の縁で光線が落ちる帯など）は点に当たってもその幅ほどの面積にしかならない。点が当たらない
@@ -119,14 +117,14 @@ pub(super) fn clipped_area(
     wi: usize,
     fr: &MtfFrame,
     gl: &LensGl,
-    o0: &[f64],
+    o0: &[bool],
 ) -> Result<f64> {
     let nu = gl.gu.len();
     // 縁 (行の t, けられた側の u, 通る側の u)、けられの続き (行の重み, 左の縁, 右の縁)
     let mut edges: Vec<(f64, f64, f64)> = Vec::new();
     let mut runs: Vec<(f64, usize, usize)> = Vec::new();
     for (r, row) in o0.chunks(nu).enumerate() {
-        if row.iter().all(|v| v.is_finite()) {
+        if row.iter().all(|&v| v) {
             continue;
         }
         // [`lens_quad`] の d = 0 の行 r
@@ -139,12 +137,12 @@ pub(super) fn clipped_area(
         let end = x * (1.0 - 1e-12);
         let mut i = 0;
         while i < nu {
-            if row[i].is_finite() {
+            if row[i] {
                 i += 1;
                 continue;
             }
             let mut j = i;
-            while j + 1 < nu && !row[j + 1].is_finite() {
+            while j + 1 < nu && !row[j + 1] {
                 j += 1;
             }
             let left = if i > 0 { x * gl.gu[i - 1] } else { -end };
@@ -163,7 +161,7 @@ pub(super) fn clipped_area(
         let o = frame_opd(s, field, wi, fr, &px, &py)?;
         for (k, e) in edges.iter_mut().enumerate() {
             let c = 0.5 * (e.1 + e.2);
-            if o.ok(k) && o.opd[k].is_finite() {
+            if o[k].is_finite() {
                 e.2 = c;
             } else {
                 e.1 = c;
@@ -201,7 +199,7 @@ pub(super) fn line_nodes(
             }
         }
         let o = frame_opd(s, field, wi, fr, &px, &py)?;
-        let ok = |k: usize| o.ok(k) && o.opd[k].is_finite();
+        let ok = |k: usize| o[k].is_finite();
         Ok((0..th.len())
             .map(|i| {
                 (0..T.count_scan)

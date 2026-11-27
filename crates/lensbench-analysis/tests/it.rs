@@ -16,6 +16,7 @@ mod imagesim;
 mod obsc_mtf;
 mod plugin_system;
 mod plugins;
+mod rim_illum;
 mod thermal;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）

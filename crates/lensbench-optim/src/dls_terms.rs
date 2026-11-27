@@ -856,7 +856,7 @@ impl ParaxQ {
                 let (ym, _) = s.ptrace(y0, u0, w, None);
                 let (_, uc) = chief();
                 let st = s.stop();
-                s.n(st)[w] * uc[st] * ym[st] * chief_scale(s)
+                s.n(st)[w] * uc[st] * ym[st] * lensbench_core::seidel::chief_scale(s)
             }
             ParaxQ::Petc | ParaxQ::Petz => {
                 let mut sum = 0.0;
@@ -1251,14 +1251,4 @@ pub(super) fn mirror_in(s: &System, a: usize, b: usize) -> bool {
         .unwrap_or(&[])
         .iter()
         .any(|f| !f.ignore && f.is_mirror())
-}
-
-/// 近軸主光線（[`lensbench_core::system::Paraxial::chief`]、物体空間の傾き 1 か物体の高さ 1）を最大の視野に合わせる倍率
-fn chief_scale(s: &System) -> f64 {
-    use lensbench_core::system::FieldType;
-    let hmax = s.fields.iter().map(|f| f.x.hypot(f.y)).fold(0.0, f64::max);
-    match s.field_type {
-        FieldType::Angle => hmax.to_radians().tan(),
-        _ => hmax,
-    }
 }

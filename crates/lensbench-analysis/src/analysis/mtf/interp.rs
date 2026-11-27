@@ -106,15 +106,17 @@ pub(super) fn interp_errors(
     let o = frame_opd(s, field, wi, &ip.fr, &px, &py)?;
     let mut out = Vec::new();
     for k in 0..px.len() {
-        if let (Some(v), true) = (ip.eval(px[k], py[k]), o.ok(k) && o.opd[k].is_finite()) {
-            out.push((id[k].0, id[k].1, (v - o.opd[k]).abs()));
+        if let (Some(v), true) = (ip.eval(px[k], py[k]), o[k].is_finite()) {
+            out.push((id[k].0, id[k].1, (v - o[k]).abs()));
         }
     }
     Ok(out)
 }
 
-/// 組 fr の座標 (u, v)（u は球欠 s、v は子午 t の向き。[`MtfFrame::pupil_xy`]）の点の OPD。正規化瞳の座標に
-/// 直して追跡する（恒等なら直さない）
+/// 組 fr の座標 (u, v)（u は球欠 s、v は子午 t の向き。[`MtfFrame::pupil_xy`]）の点の OPD [波]（けられ・止まった点と
+/// 有限でない点は NaN）。正規化瞳の座標に直して追跡する（恒等なら直さない）。光線の列（位置・方向など）は 1 本あたり
+/// 100 バイトほどあるので、点が多い（補間の格子が一辺 4096 区間で約 1300 万点）ときに全部を一度に追うと数 GB になる。
+/// [`OPD_CHUNK`] 点ずつ追って OPD だけを残す（値は一度に追うのと同じ）
 pub(super) fn frame_opd(
     s: &System,
     field: FieldSel,
@@ -122,13 +124,29 @@ pub(super) fn frame_opd(
     fr: &MtfFrame,
     u: &[f64],
     v: &[f64],
-) -> Result<crate::analysis::Opd> {
-    if fr.is_identity() {
-        return opd(s, field, u, v, Some(w), true);
+) -> Result<Vec<f64>> {
+    let mut out = Vec::with_capacity(u.len());
+    for (cu, cv) in u.chunks(OPD_CHUNK).zip(v.chunks(OPD_CHUNK)) {
+        let o = if fr.is_identity() {
+            opd(s, field, cu, cv, Some(w), true)?
+        } else {
+            let (px, py): (Vec<f64>, Vec<f64>) =
+                cu.iter().zip(cv).map(|(&a, &b)| fr.pupil_xy(a, b)).unzip();
+            opd(s, field, &px, &py, Some(w), true)?
+        };
+        out.extend((0..cu.len()).map(|k| {
+            if o.ok(k) && o.opd[k].is_finite() {
+                o.opd[k]
+            } else {
+                f64::NAN
+            }
+        }));
     }
-    let (px, py): (Vec<f64>, Vec<f64>) = u.iter().zip(v).map(|(&a, &b)| fr.pupil_xy(a, b)).unzip();
-    opd(s, field, &px, &py, Some(w), true)
+    Ok(out)
 }
+
+/// [`frame_opd`] が一度に追う点の数の上限（光線の列を数十 MB に抑える）
+const OPD_CHUNK: usize = 1 << 18;
 
 /// 組 fr の座標 (u, v) の正方格子で追跡した OPD の補間（各軸 6 点の Lagrange、5 次）。格子が子午・球欠の向きに
 /// 沿うので、どちらかの向きにずらした点の列は格子の線に乗る（[`PupilInterp::eval_lines`]）
@@ -167,8 +185,8 @@ impl PupilInterp {
         let py: Vec<f64> = idx.iter().map(|&i| ip.node(i).1).collect();
         let o = frame_opd(s, field, w, fr, &px, &py)?;
         for (k, &i) in idx.iter().enumerate() {
-            if o.ok(k) && o.opd[k].is_finite() {
-                ip.w[i] = o.opd[k];
+            if o[k].is_finite() {
+                ip.w[i] = o[k];
             }
         }
         Ok(ip)
@@ -310,8 +328,8 @@ pub(super) fn opd_at(
         let my: Vec<f64> = miss.iter().map(|&i| y[i]).collect();
         let o = frame_opd(s, field, w, fr, &mx, &my)?;
         for (k, &i) in miss.iter().enumerate() {
-            if o.ok(k) && o.opd[k].is_finite() {
-                out[i] = o.opd[k];
+            if o[k].is_finite() {
+                out[i] = o[k];
             }
         }
     }
@@ -445,8 +463,8 @@ pub(super) fn fill_direct(
         let my: Vec<f64> = miss.iter().map(|&i| y[i]).collect();
         let o = frame_opd(s, field, w, fr, &mx, &my)?;
         for (k, &i) in miss.iter().enumerate() {
-            if o.ok(k) && o.opd[k].is_finite() {
-                out[i] = o.opd[k];
+            if o[k].is_finite() {
+                out[i] = o[k];
             }
         }
     }

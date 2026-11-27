@@ -159,6 +159,34 @@ pub(crate) fn lens_quad(d: f64, gl: &LensGl) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     (t, u, w)
 }
 
+/// [`lens_quad`] の d = 0（単位円）の行 rows だけの点（行 r は Gauss-Legendre の t の節点 r / 2 の、r が偶数なら
+/// +t、奇数なら −t の側。[`lens_quad`] の点の並びの続きの一部）
+fn lens_rows(gl: &LensGl, rows: std::ops::Range<usize>) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let m = rows.len() * gl.gu.len();
+    let (mut t, mut u, mut w) = (
+        Vec::with_capacity(m),
+        Vec::with_capacity(m),
+        Vec::with_capacity(m),
+    );
+    for r in rows {
+        let (z, wz) = (gl.gt[r / 2], gl.wt[r / 2]);
+        let tau = 0.5 * (z + 1.0);
+        let y = 1.0 - tau * tau;
+        let dy = 2.0 * tau * 0.5 * wz;
+        let x = (1.0 - y * y).max(0.0).sqrt();
+        let sgn = if r.is_multiple_of(2) { 1.0 } else { -1.0 };
+        for (&g, &wg) in gl.gu.iter().zip(&gl.wu) {
+            t.push(sgn * y);
+            u.push(x * g);
+            w.push(dy * x * wg);
+        }
+    }
+    (t, u, w)
+}
+
+/// ずらさない瞳の求積の点を一度に並べる数の上限（[`lens_rows`] の行の塊）
+const QUAD_CHUNK: usize = 1 << 18;
+
 /// [`lens_quad`] の d = 0（単位円）の重みの和（点を並べずに求める。単位円の面積 π の近似）
 /// 瞳の振幅 amp の 2 乗の、ずらさない瞳の [`lens_quad`] の求積（振幅つきの瞳の光量。一様なら [`lens_area`] の値に当たる）
 fn amp_area(gl: &LensGl, amp: &FrameAmp) -> f64 {
@@ -217,6 +245,25 @@ pub(crate) fn pupil_shift(j: &[[f64; 2]; 2], lam: f64, dir: usize) -> (f64, f64)
         (lam / j[0][0], 0.0)
     } else {
         (0.0, lam / j[1][1])
+    }
+}
+
+/// 視野 field の回折 MTF の求積の点数（n、None なら波長 w（None は全波長）ごとの自動の値の最大）が
+/// `Tuning::auto_fft_n` を超えるか。超える点は求積・補間の格子で 1 点あたり数百 MB〜1.5 GB ほど使うので、掃引
+/// （[`crate::sweep`]）は点を並列にせず 1 点ずつ求める（1 点の中は並列）。傾きを見積もれない点は超えないとする
+pub(crate) fn heavy_points(
+    s: &System,
+    field: FieldSel,
+    w: Option<usize>,
+    n: Option<usize>,
+) -> bool {
+    match n {
+        Some(n) => n > T.auto_fft_n,
+        None => {
+            let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
+            ws.into_iter()
+                .any(|wi| opd_slope_max(s, field, wi).is_ok_and(|g| mtf_points(g) > T.auto_fft_n))
+        }
     }
 }
 
@@ -382,21 +429,32 @@ fn wave_otf(
         let e0 = amp.map_or(std::f64::consts::PI, |a| amp_area(&LensGl::new(n), a));
         (gls, nks, e0)
     } else {
-        // ずらさない瞳の光量（けられを含む）
+        // ずらさない瞳の光量（けられを含む）。点は n² 個（n = 4096 で約 1700 万）あるので、座標・重み・OPD を全部
+        // 並べずに行の塊ごとに求め、点が通るか（OPD が有限か）だけを残す（和の順は全部並べたときと同じ）
         let gl = LensGl::new(n);
-        let (t0, u0, w0) = lens_quad(0.0, &gl);
-        let o0 = opd_at(s, field, wi, fr, ip.as_ref(), &u0, &t0)?;
-        let e0: f64 = (0..t0.len())
-            .filter(|&i| o0[i].is_finite())
-            .map(|i| w0[i] * amp.map_or(1.0, |a| a.at(u0[i], t0[i]).powi(2)))
-            .sum();
+        let nu = gl.gu.len();
+        let nr = gl.gt.len() * 2;
+        let rows_per = (QUAD_CHUNK / nu).max(1);
+        let mut ok0 = Vec::with_capacity(nr * nu);
+        let mut e0 = 0.0;
+        for r0 in (0..nr).step_by(rows_per) {
+            let (t0, u0, w0) = lens_rows(&gl, r0..(r0 + rows_per).min(nr));
+            let o0 = opd_at(s, field, wi, fr, ip.as_ref(), &u0, &t0)?;
+            for i in 0..t0.len() {
+                let ok = o0[i].is_finite();
+                if ok {
+                    e0 += w0[i] * amp.map_or(1.0, |a| a.at(u0[i], t0[i]).powi(2));
+                }
+                ok0.push(ok);
+            }
+        }
         if !(e0 > 0.0) {
             invalid!(code = lensbench_core::error::code::ALL_VIGNETTED; "MTF: no valid rays (all vignetted)");
         }
         // 瞳が開口・遮蔽で切れている（けられた面積がある）なら縁に合わせた求積にする。けられた点があっても
         // 面積が小さければ（[`Tuning::clip_area`]）ふつうの求積でけられた点を除く
-        if o0.iter().any(|v| !v.is_finite())
-            && clipped_area(s, field, wi, fr, &gl, &o0)? > T.clip_area * std::f64::consts::PI
+        if ok0.iter().any(|&v| !v)
+            && clipped_area(s, field, wi, fr, &gl, &ok0)? > T.clip_area * std::f64::consts::PI
         {
             return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym, amp, fr);
         }

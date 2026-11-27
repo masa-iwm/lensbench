@@ -116,6 +116,7 @@ fn mtf_sweep(
     x: &[f64],
     freqs: &[f64],
     label: impl Fn(f64) -> String,
+    heavy: impl Fn(f64) -> bool + Sync + Send,
     one: impl Fn(f64) -> Result<analysis::Mtf> + Sync + Send,
 ) -> MtfSweep {
     let nf = freqs.len();
@@ -124,8 +125,18 @@ fn mtf_sweep(
     };
     let (mut tan, mut sag) = (grid(), grid());
     let mut warnings = Vec::new();
-    // 点ごとに独立（周波数が少ないと 1 点の中の並列（周波数×向き）だけではコアが余るので、点でも並列にする。値は同じ）
-    let ms = lensbench_core::par::map(x, |&xi| one(xi));
+    // 点ごとに独立（周波数が少ないと 1 点の中の並列（周波数×向き）だけではコアが余るので、点でも並列にする。値は同じ）。
+    // ただし求積の点数が大きい点（収差の大きい系・大きくずらした像面）は 1 点で数百 MB〜1.5 GB ほど使い、点を並列にすると
+    // コアの数だけ掛かる（4 コアで 13 GB を超えて落ちた）。そういう点が 1 つでもあれば 1 点ずつ求める（1 点の中は並列）
+    let serial = x.len() > 1
+        && lensbench_core::par::map(x, |&xi| heavy(xi))
+            .into_iter()
+            .any(|h| h);
+    let ms: Vec<Result<analysis::Mtf>> = if serial {
+        x.iter().map(|&xi| one(xi)).collect()
+    } else {
+        lensbench_core::par::map(x, |&xi| one(xi))
+    };
     for ((i, &xi), m) in x.iter().enumerate().zip(ms) {
         match m {
             Ok(m) => {
@@ -157,6 +168,9 @@ pub fn through_focus_mtf(
         dz,
         freqs,
         |z| format!("shift {z}"),
+        |z| {
+            defocus_shared(s, z, fb.as_ref()).is_ok_and(|d| analysis::heavy_points(&d, field, w, n))
+        },
         |z| {
             let d = defocus_shared(s, z, fb.as_ref())?;
             mtf_axes(&d, field, Waves::all_or(w), n, freqs, axes)
@@ -210,6 +224,7 @@ pub fn field_mtf(
         h,
         freqs,
         |h| format!("field {h}"),
+        |h| analysis::heavy_points(&s, axis.sel(h), w, n),
         |h| mtf_axes(&s, axis.sel(h), Waves::all_or(w), n, freqs, axes),
     );
     r.warnings.splice(0..0, warn);
@@ -549,6 +564,41 @@ pub fn wavelength_steps(s: &System, n: usize) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn load_zmx(rel: &str) -> System {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        lensbench_formats::zmx::load_with(
+            &root.join(rel),
+            &lensbench_formats::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn heavy_points_picks_strongly_aberrated_systems() {
+        // O5 は MTF が 1e-5 台まで落ちる収差の大きい系で、自動の求積の点数が上限 4096 になる（掃引の点を並列に
+        // すると 1 点 1.5 GB ほどがコアの数だけ掛かった）。A0 はふつうの系
+        let o5 = load_zmx("tests/surftypes_os/O5/system.zmx");
+        assert!(analysis::heavy_points(
+            &o5,
+            FieldSel::Index(0),
+            Some(o5.primary),
+            None
+        ));
+        assert!(analysis::heavy_points(&o5, FieldSel::Index(0), None, None));
+        assert!(!analysis::heavy_points(
+            &o5,
+            FieldSel::Index(0),
+            None,
+            Some(200)
+        ));
+        let a0 = load_zmx("tests/refs/A0/system.zmx");
+        assert!(!analysis::heavy_points(&a0, FieldSel::Index(0), None, None));
+    }
 
     #[test]
     fn solve_singular_returns_weighted_mean() {

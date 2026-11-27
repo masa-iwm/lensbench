@@ -149,6 +149,17 @@ impl System {
         self.fields.iter().all(|f| f.x == 0.0 && f.y == 0.0)
     }
 
+    /// 角度 deg [°] の視野へ近軸主光線（無限遠の物体は物体空間の傾き 1、有限の物体は物体の高さ 1）を合わせる倍率。
+    /// 有限の物体では入射瞳の中心へ向かう傾き tan の主光線の物体の高さ −(t₀ + 入射瞳の位置) tan（[`Self::object_spec_abs`] と同じ）
+    pub fn angle_chief_scale(&self, deg: f64) -> f64 {
+        let t = Angle::from_deg(deg).tan();
+        if self.infinite() {
+            t
+        } else {
+            -(self.surfaces[0].t + self.paraxial().enpp) * t
+        }
+    }
+
     /// 視野の値 (x, y)（視野の種類の単位、正規化しない）の物体の指定
     pub(super) fn object_spec_abs(&self, x: f64, y: f64) -> Result<ObjSpec> {
         let par = self.paraxial();
