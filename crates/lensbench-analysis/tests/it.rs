@@ -13,6 +13,7 @@ mod huygens;
 mod huygens_gpu;
 mod huygens_refs;
 mod imagesim;
+mod irradiance;
 mod obsc_mtf;
 mod plugin_system;
 mod plugins;

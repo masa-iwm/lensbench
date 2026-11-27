@@ -53,6 +53,7 @@ pub mod plugin;
 pub mod pupil;
 pub mod quantity;
 pub mod report;
+pub mod rng;
 pub mod seidel;
 pub mod semi;
 pub mod shape;

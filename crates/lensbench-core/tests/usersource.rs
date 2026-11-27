@@ -135,3 +135,50 @@ fn a_source_model_is_registered_by_name() {
     let msg = f.source_model("test_fixed").err().unwrap().to_string();
     assert!(msg.contains("test_fixed"), "{msg}");
 }
+
+/// trace_source は光源の重みを追跡の結果に持たせ、光線は Launch::Rays の追跡とビットまで同じ。重みの無い追跡は None
+#[test]
+fn trace_source_carries_the_weights() {
+    let s = load("A0");
+    let w = s.primary;
+    let src = Fixed(SourceRays {
+        p: vec![[0.0, 0.0, 0.0], [0.0, 0.5, 0.0], [0.3, -0.2, 0.0]],
+        k: vec![[0.0, 0.0, 1.0], [0.0, 0.01, 1.0], [0.005, -0.003, 1.0]],
+        w: vec![0.5, 2.0, 1.25],
+    });
+    let t = s.trace_source(&src, w, None, false).unwrap();
+    assert_eq!(t.w.as_deref(), Some(&[0.5, 2.0, 1.25][..]));
+    let r = s.source_rays(&src, w).unwrap();
+    let u = s.trace_launch(&Launch::Rays { p: &r.p, k: &r.k }, w, None, false);
+    assert!(u.w.is_none());
+    assert_eq!(u.weight(1), 1.0);
+    for (a, b) in t.rays.iter().zip(&u.rays) {
+        assert_eq!(a.status, b.status);
+        assert_eq!(a.xyz.map(f64::to_bits), b.xyz.map(f64::to_bits));
+        assert_eq!(a.opl.to_bits(), b.opl.to_bits());
+    }
+    let arrived: f64 = (0..3).filter(|&i| t.ok(i)).map(|i| t.weight(i)).sum();
+    assert_eq!(t.arrived_weight(), arrived);
+    // 重みの長さ・値の誤り
+    assert!(u.clone().with_weights(vec![1.0; 2]).is_err());
+    assert!(u.with_weights(vec![1.0, -1.0, 1.0]).is_err());
+}
+
+/// 光線のパワーは全パワー × w / Σw（和が全パワー）
+#[test]
+fn powers_split_the_total_power_by_weight() {
+    let r = SourceRays {
+        p: vec![[0.0; 3]; 3],
+        k: vec![[0.0, 0.0, 1.0]; 3],
+        w: vec![1.0, 3.0, 0.0],
+    };
+    assert_eq!(r.powers(2.0).unwrap(), vec![0.5, 1.5, 0.0]);
+    let sum: f64 = r.powers(1.0).unwrap().iter().sum();
+    assert!((sum - 1.0).abs() < 1e-15);
+    let zero = SourceRays {
+        w: vec![0.0; 3],
+        ..r.clone()
+    };
+    assert!(zero.powers(1.0).is_err());
+    assert!(r.powers(-1.0).is_err());
+}

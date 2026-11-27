@@ -28,6 +28,7 @@ pub mod edit_spec;
 pub mod filter;
 pub mod lenient;
 pub mod open;
+pub mod raypath;
 pub mod retarget;
 pub mod schema;
 mod splitter;

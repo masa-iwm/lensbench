@@ -157,6 +157,7 @@ impl FocusShift {
             rec: Vec::new(),
             last: j,
             hx_hy: hxy,
+            w: base.w.clone(),
         };
         for (i, r) in t.rays.iter_mut().enumerate() {
             if r.status.is_ok() {

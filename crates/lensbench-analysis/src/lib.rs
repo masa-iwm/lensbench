@@ -27,6 +27,7 @@ pub mod huygens;
 pub mod illum;
 pub mod imagesim;
 pub mod interference;
+pub mod irradiance;
 mod nan;
 pub mod plugins;
 pub mod polgrid;

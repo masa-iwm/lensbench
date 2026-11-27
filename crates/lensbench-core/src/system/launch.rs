@@ -417,6 +417,7 @@ impl System {
             rec: d.rec,
             last: d.last,
             hx_hy: d.hx_hy,
+            w: None,
         };
         (t, es, err)
     }

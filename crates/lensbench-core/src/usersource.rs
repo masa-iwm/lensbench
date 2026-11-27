@@ -13,6 +13,7 @@
 use crate::error::Result;
 use crate::math::V3;
 use crate::plugin::{Config, ParamSpec};
+use crate::system::{Launch, RecSel, Trace};
 use crate::{invalid, System};
 use std::sync::Arc;
 
@@ -62,6 +63,18 @@ impl SourceRays {
 
     pub fn is_empty(&self) -> bool {
         self.p.is_empty()
+    }
+
+    /// 光線のパワー [W]: 全パワー total を重みの割合で分けたもの（total × w / Σw）。Σw が 0 なら誤り
+    pub fn powers(&self, total: f64) -> Result<Vec<f64>> {
+        if !(total.is_finite() && total >= 0.0) {
+            invalid!("the source power {total} W must be finite and not negative");
+        }
+        let sum: f64 = self.w.iter().sum();
+        if !(sum > 0.0 && sum.is_finite()) {
+            invalid!("the source weights add up to {sum} (must be positive)");
+        }
+        Ok(self.w.iter().map(|w| total * w / sum).collect())
     }
 
     /// 約束（長さがそろう・有限・方向が 0 でない・重みが 0 以上）を確かめる
@@ -129,5 +142,18 @@ impl System {
             *q = mv(*q);
         }
         Ok(r)
+    }
+
+    /// 光源 src の波長番号 w の光線を追跡する（面 last まで、rec は記録する面）。結果の重み [`Trace::w`] に光源の重みを持つ
+    pub fn trace_source<'r>(
+        &self,
+        src: &dyn SourceInstance,
+        w: usize,
+        last: Option<usize>,
+        rec: impl Into<RecSel<'r>>,
+    ) -> Result<Trace> {
+        let r = self.source_rays(src, w)?;
+        self.trace_launch(&Launch::Rays { p: &r.p, k: &r.k }, w, last, rec)
+            .with_weights(r.w)
     }
 }

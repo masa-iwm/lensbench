@@ -109,6 +109,15 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   大域に直し（`Launch::Rays` にそのまま渡せる）、約束を守らない光線は誤り。約束は、同じ設定・波長なら同じ光線（乱数は種を設定に持つ）、
   状態を持たずどのスレッドから呼んでもよい。`check_source(モデル, 設定)` で約束（F・d・C 線で 1 本以上、有限、重みが 0 以上、2 回で同じ）を
   確かめられる（`lensbench_sdk::check` は `example_config` で呼ぶ）。Python からは `lensbench.source_models()`・`lensbench.source_rays(系, 名前, 設定)`
+- 光線の重み（非順次の追跡の段 0）: `System::trace_source(光源, 波長の番号, 止める面, 記録)` は光源の光線を追い、追跡の結果
+  `Trace::w` に光源の重みを持たせる（`Trace::weight(i)`、重みの無い追跡は `w` が None で 1。光線の値は `Launch::Rays` の追跡と同じビット）。
+  順次の追跡は膜・吸収の透過率を重みに掛けない（透過率は偏光追跡の結果にあり、掛けるのは解析の側）。非順次の追跡では境界で分かれる
+  たびに重みに掛ける。`SourceRays::powers(全パワー W)` は光線のパワー P × w / Σw（重みは相対的な強さのままで、絶対の値は全パワーで決める）。
+  `lensbench_analysis::irradiance::detect(追跡, 設定)` は光線を最後の面の局所座標で画素に数える検出器（インコヒーレント、重みの和・照度 W/mm²・
+  本数。画素の和は検出面に届いた重みの和、画素の座標は干渉の検出器と同じ中心の約束）、`spot_moments` は重み付きの重心と RMS 半径。
+  `lensbench_core::rng::CounterRng` は種・光線の番号・出来事の回数・何個目かだけで決まる乱数（光線をどの順・スレッドで追っても同じ数）。
+  `lensbench_project::raypath` は出来事（面の名前 `FaceId`・透過・反射・全反射・散乱・吸収・検出）と経路（出来事の列）の型で、
+  `RayPath::sequential`（光束の path・turn を当てて展開した系の面の列）と `RayPath::ghost`（ゴーストの面 a・b）で順次の系の経路を作る
 - `lensbench_core::usermaterial`（SDK では `lensbench_sdk::material`）: 利用者が定義する材料の口。`MaterialModel`
   （名前・`index(波長 µm, 温度 °C, 気圧 atm)`、任意で `tref`・`range`・`transmittance`）を、名前つきのカタログの単位で
   `Extensions::material_catalog(名前, モデルの並び)` か拡張の表の `add_material_catalog` で足す。カタログは AGF の

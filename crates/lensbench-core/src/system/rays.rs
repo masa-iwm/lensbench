@@ -60,6 +60,9 @@ pub struct Trace {
     pub rec: Vec<RecSurf>,
     pub last: usize,
     pub hx_hy: (f64, f64),
+    /// 光線ごとの重み（相対的な強さ。重みのある光源（[`System::trace_source`]）のときだけ。None は全部 1）。
+    /// 順次の追跡は膜・吸収の透過率を重みに掛けない（偏光追跡の結果にあり、掛けるのは解析の側）
+    pub w: Option<Vec<f64>>,
 }
 
 /// 偏光追跡の結果
@@ -171,6 +174,32 @@ impl Trace {
     /// （OpticStudio と同じく、基準の光線は開口・遮蔽を無視する。中心遮蔽の系など）
     pub fn traced(&self, i: usize) -> bool {
         self.rays[i].status.is_ok()
+    }
+    /// 光線 i の重み（重みの無い追跡では 1）
+    pub fn weight(&self, i: usize) -> f64 {
+        self.w.as_ref().map_or(1.0, |w| w[i])
+    }
+    /// 像面（last）まで届いた（[`Self::ok`]）光線の重みの和
+    pub fn arrived_weight(&self) -> f64 {
+        (0..self.rays.len())
+            .filter(|&i| self.ok(i))
+            .map(|i| self.weight(i))
+            .sum()
+    }
+    /// 重みを付ける（長さは光線の数、0 以上の有限の数）
+    pub fn with_weights(mut self, w: Vec<f64>) -> Result<Self> {
+        if w.len() != self.rays.len() {
+            invalid!("{} weights for {} rays", w.len(), self.rays.len());
+        }
+        if let Some((i, x)) = w
+            .iter()
+            .enumerate()
+            .find(|(_, x)| !(x.is_finite() && **x >= 0.0))
+        {
+            invalid!("ray {i} has the weight {x} (must be finite and not negative)");
+        }
+        self.w = Some(w);
+        Ok(self)
     }
     /// 面 j の記録（無視する面と、record でない追跡では None）
     pub fn rec_at(&self, j: usize) -> Option<&RecSurf> {

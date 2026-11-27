@@ -788,6 +788,17 @@ no user-defined source model {name} (registered: {})	ユーザー定義の光源
 the source gave different numbers of starts, directions and weights ({n}, {} and {})	光源の始点・方向・ウェイトの数が違います（{n}・{}・{}）
 ray {i} of the source has a start {p:?} or direction {k:?} that is not finite or is zero	光源の光線 {i} の始点 {p:?} か方向 {k:?} が有限でないか 0 です
 ray {i} of the source has the weight {w} (must be finite and not negative)	光源の光線 {i} のウェイトが {w} です（有限で負でない数にします）
+the source power {total} W must be finite and not negative	光源のパワー {total} W は有限で負でない数にします
+the source weights add up to {sum} (must be positive)	光源のウェイトの和が {sum} です（正の数にします）
+{} weights for {} rays	ウェイトが {} 個（光線 {} 本）
+ray {i} has the weight {x} (must be finite and not negative)	光線 {i} のウェイトが {x} です（有限で負でない数にします）
+{} scale factors for {m} rays	掛ける数が {} 個（光線 {m} 本）
+ray {i} has the scale factor {x} (must be finite and not negative)	光線 {i} に掛ける数が {x} です（有限で負でない数にします）
+no ray reaches the detector	検出器に届く光線がありません
+detector width {width} mm or center {c:?}	検出器の幅 {width} mm か中心 {c:?} が不正です
+the surface origins ({}) don't match the system ({} surfaces)	面の出どころ（{}）がシステム（面 {}）と合いません
+ghost path: surfaces a = {a}, b = {b} (need 1 ≤ b < a ≤ {img})	ゴーストの経路: 面 a = {a}、b = {b} です（1 ≤ b < a ≤ {img} にします）
+ghost path: surface {k} is ignored or a coordinate break	ゴーストの経路: 面 {k} は無視する面か座標ブレークです
 the source gave no rays at {wl} µm	光源が {wl} µm で光線を返しません
 the source gave different rays for the same setting at {wl} µm	光源が {wl} µm で同じ設定に違う光線を返しました
 Python shape {} gave a value that is not finite on its grid	Python の形 {} がグリッドの上で有限でない値を返しました
