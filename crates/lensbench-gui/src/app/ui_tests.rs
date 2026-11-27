@@ -37,7 +37,8 @@ fn harness(args: Args) -> Harness<'static, App> {
     h
 }
 
-/// 計算と下書きの要求が片付くまでフレームを回す（10 秒で諦める）
+/// 計算と下書きの要求が片付くまでフレームを回す（30 秒で諦める。Windows の CI の機械は遅く、初回の MTF・波面の計算で
+/// 10 秒を越えることがあった）
 fn settle(h: &mut Harness<'static, App>) {
     let t0 = Instant::now();
     loop {
@@ -49,7 +50,7 @@ fn settle(h: &mut Harness<'static, App>) {
             }
         }
         assert!(
-            t0.elapsed() < Duration::from_secs(10),
+            t0.elapsed() < Duration::from_secs(30),
             "still busy: {}",
             h.state().test_state()
         );
