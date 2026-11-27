@@ -729,6 +729,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.splitter_back(id)?;
             }
             Block::Detector(_) => return Err("a detector must be the last block".into()),
+            Block::Join { splitter, .. } => {
+                return Err(format!("join to {splitter}: the way back can't pass a join").into())
+            }
             Block::Zmx { .. } => {
                 return Err(
                     "importing a .zmx on the return path is not supported (use a lens block)"
@@ -1430,6 +1433,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
             Block::Splitter { id, spec, place } => {
                 self.splitter_forward(id, spec, place, siblings, idx)?;
             }
+            Block::Join { splitter, port, .. } => {
+                if idx + 1 != siblings.len() {
+                    return Err(format!(
+                        "join to {splitter}: a join must be the last block of its list"
+                    )
+                    .into());
+                }
+                self.join_forward(splitter, port.index())?;
+            }
             Block::Detector(_) => {
                 return Err(
                     "a detector must be the last block (not inside a group or user catalog)".into(),
@@ -1463,22 +1475,6 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
         }
         Ok(())
-    }
-}
-
-/// ブロックの id
-pub(crate) fn block_id(b: &Block) -> &str {
-    match b {
-        Block::Lens { id, .. }
-        | Block::Air { id, .. }
-        | Block::Stop { id, .. }
-        | Block::Mirror { id, .. }
-        | Block::Surfaces { id, .. }
-        | Block::Zmx { id, .. }
-        | Block::User { id, .. }
-        | Block::Detector(DetectorBlock { id, .. })
-        | Block::Splitter { id, .. }
-        | Block::Group { id, .. } => id,
     }
 }
 

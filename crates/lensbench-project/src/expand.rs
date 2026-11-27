@@ -550,14 +550,11 @@ pub(crate) fn expand_inner(
     cache: Option<&SourceCache>,
     within: &[Loading],
 ) -> Result<Walk, ExpandError> {
-    let mut failed = None;
-    expand_body(p, env, path, search, cache, within, &mut failed).map_err(|error| ExpandError {
-        error,
-        block: failed.map(|n| BlockAt::new(&p.blocks, n)),
-    })
+    splitter::expand_mode(p, env, path, search, cache, within, splitter::Mode::Normal)
 }
 
-fn expand_body(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn expand_body(
     p: &Project,
     env: &Env,
     path: Option<&str>,
@@ -565,6 +562,7 @@ fn expand_body(
     cache: Option<&SourceCache>,
     within: &[Loading],
     failed: &mut Option<NodePath>,
+    mode: splitter::Mode,
 ) -> lensbench_core::Result<Walk> {
     {
         let mut ids = Vec::new();
@@ -629,11 +627,7 @@ fn expand_body(
         coats: HashMap::new(),
         nstop: 0,
         gaps: Vec::new(),
-        split: SplitState {
-            path: splitter::parse_path(path.unwrap_or(""))?,
-            strict: search,
-            ..Default::default()
-        },
+        split: mode.split_state(p, env, cache, within, path, search)?,
         turn: TurnState::new(p),
         media: HashMap::new(),
         frames: Vec::new(),

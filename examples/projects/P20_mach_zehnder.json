@@ -1,0 +1,33 @@
+{
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.12/project.schema.json",
+ "name": "P20 Mach-Zehnder: BS2 placed in global coordinates, the reflected arm joins it at port D",
+ "glass_catalogs": ["SCHOTT"],
+ "wavelengths": [{"um": 0.6328}],
+ "aperture": {"type": "epd", "value": 4},
+ "blocks": [
+  {"type": "stop", "semi": 2},
+  {"type": "air", "t": 20},
+  {"type": "splitter", "id": "BS1", "form": "cube", "size": 10, "glass": "N-BK7", "ratio": 0.5,
+   "t": [
+    {"type": "air", "t": 50},
+    {"type": "mirror", "id": "M1", "tilt": [45, 0], "semi": 15},
+    {"type": "air", "t": 50},
+    {"type": "splitter", "id": "BS2", "form": "cube", "size": 10, "glass": "N-BK7", "ratio": 0.5,
+     "at": {"o": [0, 50, 80], "tilt": [-90, 0, 180]},
+     "t": [{"type": "air", "t": 30}],
+     "r": [{"type": "air", "t": 30}],
+     "d": [{"type": "air", "t": 20}]}
+   ],
+   "r": [
+    {"type": "air", "t": 50},
+    {"type": "mirror", "id": "M2", "tilt": [-45, 0], "semi": 15},
+    {"type": "air", "t": 50},
+    {"type": "join", "splitter": "BS2", "port": "d"}
+   ],
+   "d": [{"type": "air", "t": 20}]}
+ ],
+ "beams": [
+  {"name": "arm T", "path": "TT", "role": "sample"},
+  {"name": "arm R", "path": "RR", "role": "reference"}
+ ]
+}

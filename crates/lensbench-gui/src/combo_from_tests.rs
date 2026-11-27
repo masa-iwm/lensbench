@@ -199,7 +199,7 @@ fn examples_build_the_same() {
         }
         n += 1;
     }
-    assert_eq!(n, 18);
+    assert_eq!(n, 19);
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -386,7 +386,7 @@ fn blocks_are_the_saved_form() {
             n += 1;
         }
     }
-    assert_eq!(n, 21);
+    assert_eq!(n, 22);
 }
 
 /// 多重構成の .zmx は、構成ごとの状態「Config k」を持つ組合せになる（書ければ構成 1 で要素に分け、構成の違いを状態の

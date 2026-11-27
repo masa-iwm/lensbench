@@ -16,7 +16,7 @@
 use std::rc::Rc;
 
 use lensbench_core::math::{
-    add, col, mm, mtv, mv, rot, scale, sub, transpose, xyz_angles, I3, M3, V3,
+    add, col, dot, mm, mtv, mv, rot, scale, sub, transpose, xyz_angles, I3, M3, V3,
 };
 use lensbench_core::surface::{Aperture, Material, Reflect, Surface, Tilt};
 use lensbench_core::system::{apply_cb, step_frame};
@@ -67,6 +67,32 @@ pub struct PbsSpec {
 
 fn one_f() -> f64 {
     1.0
+}
+
+/// 大域の座標での置き方（[`SplitterSpec::at`]）。大域の座標は最初のブロックの頂点が原点で、z が最初の光軸の向き
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct At {
+    /// 口 A の軸の原点 [mm]
+    pub o: [f64; 3],
+    /// 口 A の軸（入る光の向きが z）の傾き x・y・z [deg]（大域の軸から x → y → z の順に回す）
+    #[serde(default)]
+    pub tilt: [f64; 3],
+}
+
+impl At {
+    /// 口 A の軸の座標（大域）
+    fn frame(&self) -> (V3, M3) {
+        let [tx, ty, tz] = self.tilt;
+        apply_cb(
+            self.o,
+            I3,
+            &Tilt {
+                d: [0.0, 0.0, tx, ty, tz],
+                order: 0,
+            },
+        )
+    }
 }
 
 pub(crate) fn default_angle() -> [f64; 2] {
@@ -126,6 +152,10 @@ pub struct SplitterSpec {
     /// 口 D（B から戻る光の反射）の先のブロック
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub d: Vec<Block>,
+    /// 大域の座標に置く（省くと、ブロックの並びで前のブロックの後に置く）。前のブロックから BS の口 A までは
+    /// 座標ブレークで移す（前の air の長さは位置に効かない）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<At>,
 }
 
 pub(crate) const A: usize = 0;
@@ -492,6 +522,11 @@ pub(crate) struct SplitState {
     pub need: bool,
     /// 復路が分岐の無い BS で A 以外の口へ出た（光束の `turn` では戻った先を置けない）
     pub loose: bool,
+    /// 合流（[`Block::Join`]）の先の BS の置き方（ほかの経路でたどったもの、鍵ごと）
+    pub(crate) places: Rc<std::collections::HashMap<String, SplitInfo>>,
+    /// BS の置き方を集める（合流で経路を終える。[`splitter_places`]）
+    pub(crate) collect:
+        Option<Rc<std::cell::RefCell<std::collections::HashMap<String, SplitInfo>>>>,
 }
 
 /// 経路の文字列（T・R、大小どちらも）
@@ -676,18 +711,25 @@ impl<'a, 'b> Ctx<'a, 'b> {
         if self.sf.is_empty() {
             self.put(crate::cb([0.0; 5], 0, 0.0));
         }
-        let (o, r) = self.current_frame();
-        let r = if self.parity < 0.0 { mm(&r, &Y180) } else { r };
-        let [dx, dy] = place.decenter;
-        let [tx, ty, tz] = place.tilt;
-        let s = apply_cb(
-            o,
-            r,
-            &Tilt {
-                d: [dx, dy, tx, ty, tz],
-                order: 0,
-            },
-        );
+        let s = if let Some(at) = &spec.at {
+            if place.moved() {
+                return Err(format!("BS {id}: at can't be used with decenter or tilt").into());
+            }
+            at.frame()
+        } else {
+            let (o, r) = self.current_frame();
+            let r = if self.parity < 0.0 { mm(&r, &Y180) } else { r };
+            let [dx, dy] = place.decenter;
+            let [tx, ty, tz] = place.tilt;
+            apply_cb(
+                o,
+                r,
+                &Tilt {
+                    d: [dx, dy, tx, ty, tz],
+                    order: 0,
+                },
+            )
+        };
         self.split.info.insert(
             key.clone(),
             SplitInfo {
@@ -702,6 +744,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             },
         );
         if !place.on {
+            self.collect_place(&key);
             if place.off == OffMode::Air {
                 self.gap(spec.length());
             }
@@ -710,18 +753,95 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
             return Ok(());
         }
+        if spec.at.is_some() {
+            self.head_into(id, &key, A)?;
+        }
         let t = self.letter(spec.arm)?;
         let start = self.sf.len();
         let out = self.split_pass(&key, A, t)?;
         self.tag_split(id, start);
-        if spec.has_branches() {
-            self.traverse_branch(&key, out)?;
-        } else {
+        if !spec.has_branches() {
             self.split
                 .info
                 .get_mut(&key)
                 .expect("entry inserted above")
                 .fwd = out;
+        }
+        self.collect_place(&key);
+        if spec.has_branches() {
+            self.traverse_branch(&key, out)?;
+        }
+        Ok(())
+    }
+
+    /// BS の置き方を集める（[`splitter_places`] の間だけ。最初にたどった置き方）
+    fn collect_place(&mut self, key: &str) {
+        if let Some(c) = &self.split.collect {
+            c.borrow_mut()
+                .entry(key.to_string())
+                .or_insert_with(|| self.split.info[key].clone());
+        }
+    }
+
+    /// 合流: BS id へ口 port から入る（[`Block::Join`]）。BS をまだ通っていなければ、ほかの経路でたどった置き方を使う
+    pub(crate) fn join_forward(&mut self, id: &str, port: usize) -> lensbench_core::Result<()> {
+        let key = self.split_key(id);
+        if self.split.collect.is_some() {
+            // 置き方を集める間は、合流で経路を終える
+            self.split.done = true;
+            return Ok(());
+        }
+        if !self.split.info.contains_key(&key) {
+            let Some(info) = self.split.places.get(&key).cloned() else {
+                return Err(format!(
+                    "join to {id}: no BS {id} is placed on a path that doesn't go through a join"
+                )
+                .into());
+            };
+            self.split.info.insert(key.clone(), info);
+        }
+        let info = self.split.info[&key].clone();
+        if info.off {
+            return Err(format!("join to {id}: BS {id} is OFF").into());
+        }
+        self.head_into(id, &key, port)?;
+        let t = self.letter(info.spec.arm)?;
+        let start = self.sf.len();
+        let out = self.split_pass(&key, port, t)?;
+        self.tag_split(id, start);
+        if !info.spec.branch(out).is_empty() {
+            self.traverse_branch(&key, out)?;
+        } else if !info.spec.has_branches() && out == info.fwd {
+            // 分岐の無い BS: 1 回目に出た口なら BS の後のブロックへ続く
+            let parent = info.parent.clone();
+            self.split.levels.push(info.plevel.clone());
+            let mut r = Ok(());
+            for (i, x) in parent.iter().enumerate().skip(info.pidx + 1) {
+                if self.split.done {
+                    break;
+                }
+                r = self.block(x, &parent, i);
+                if r.is_err() {
+                    break;
+                }
+            }
+            self.split.levels.pop();
+            r?;
+        }
+        self.split.done = true;
+        Ok(())
+    }
+
+    /// 大域に置いた BS・合流の口へ入る光束は、口の外から口へ向かう（口の座標の z は外向き。鏡の後の向きは parity で逆）
+    fn head_into(&self, id: &str, key: &str, port: usize) -> lensbench_core::Result<()> {
+        let info = &self.split.info[key];
+        let (_, r) = self.current_frame();
+        let (_, pr) = info.spec.port(port);
+        let out_dir = mv(&mm(&info.s.1, &pr), [0.0, 0.0, 1.0]);
+        let dir = scale(mv(&r, [0.0, 0.0, 1.0]), self.parity);
+        if dot(dir, out_dir) >= 0.0 {
+            let name = ["A", "B", "C", "D"][port];
+            return Err(format!("BS {id}: the beam doesn't head into port {name}").into());
         }
         Ok(())
     }
@@ -801,6 +921,100 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
         self.return_at(info.plevel.clone())
     }
+}
+
+/// 展開のしかた（合流の先の BS の置き方）
+#[derive(Clone)]
+pub(crate) enum Mode {
+    /// ふつう（合流があれば、先に BS の置き方を集める）
+    Normal,
+    /// BS の置き方を集める（合流で経路を終える）
+    Collect(Rc<std::cell::RefCell<std::collections::HashMap<String, SplitInfo>>>),
+}
+
+impl Mode {
+    /// 展開の始めの BS の状態
+    pub(crate) fn split_state(
+        &self,
+        p: &crate::Project,
+        env: &crate::Env,
+        cache: Option<&crate::SourceCache>,
+        within: &[crate::Loading],
+        path: Option<&str>,
+        strict: bool,
+    ) -> lensbench_core::Result<SplitState> {
+        Ok(SplitState {
+            path: parse_path(path.unwrap_or(""))?,
+            strict,
+            places: match self {
+                Mode::Normal if has_join(&p.blocks) => {
+                    Rc::new(splitter_places(p, env, cache, within)?)
+                }
+                _ => Default::default(),
+            },
+            collect: match self {
+                Mode::Collect(c) => Some(c.clone()),
+                Mode::Normal => None,
+            },
+            ..Default::default()
+        })
+    }
+}
+
+/// 展開（[`crate::expand::expand_body`]）を mode で
+pub(crate) fn expand_mode(
+    p: &crate::Project,
+    env: &crate::Env,
+    path: Option<&str>,
+    search: bool,
+    cache: Option<&crate::SourceCache>,
+    within: &[crate::Loading],
+    mode: Mode,
+) -> Result<crate::expand::Walk, crate::ExpandError> {
+    let mut failed = None;
+    crate::expand::expand_body(p, env, path, search, cache, within, &mut failed, mode).map_err(
+        |error| crate::ExpandError {
+            error,
+            block: failed.map(|n| crate::BlockAt::new(&p.blocks, n)),
+        },
+    )
+}
+
+/// 合流（[`Block::Join`]）の先の BS の置き方: 合流で経路を終えて経路を全部たどり、BS ごとに最初に置いた置き方を集める
+pub(crate) fn splitter_places(
+    p: &crate::Project,
+    env: &crate::Env,
+    cache: Option<&crate::SourceCache>,
+    within: &[crate::Loading],
+) -> lensbench_core::Result<std::collections::HashMap<String, SplitInfo>> {
+    let col = Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
+    let mut todo = vec![String::new()];
+    let mut n = 0;
+    while let Some(q) = todo.pop() {
+        n += 1;
+        if n > 1024 {
+            return Err("more than 1024 paths".into());
+        }
+        let mode = Mode::Collect(col.clone());
+        if let Ok(crate::expand::Walk::Need) =
+            expand_mode(p, env, Some(&q), true, cache, within, mode)
+        {
+            todo.push(format!("{q}R"));
+            todo.push(format!("{q}T"));
+        }
+    }
+    let out = col.borrow().clone();
+    Ok(out)
+}
+
+/// ブロックの木に合流があるか
+pub(crate) fn has_join(blocks: &[Block]) -> bool {
+    blocks.iter().any(|b| match b {
+        Block::Join { .. } => true,
+        Block::Group { blocks, .. } => has_join(blocks),
+        Block::Splitter { spec, .. } => [&spec.t, &spec.r, &spec.d].iter().any(|l| has_join(l)),
+        _ => false,
+    })
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。

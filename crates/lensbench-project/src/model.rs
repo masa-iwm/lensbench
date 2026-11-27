@@ -659,6 +659,18 @@ pub enum Block {
         #[serde(flatten)]
         faces: FaceMods,
     },
+    /// 合流: 別の所（BS の別の腕など）に置いた BS `splitter` へ、口 `port` から入る（マッハツェンダー・リング）。
+    /// BS の位置はその BS を書いた所で決まり、ここから BS までの間は置いた位置へ座標ブレークで移す（距離は書かない）。
+    /// 並びの最後に置く。BS を通った後は、出た口の分岐へ進む（分岐の無い BS で、1 回目に出た口へ出れば BS の後の
+    /// ブロックへ続く。ほかの口へ出ればシステムはそこで終わる）
+    Join {
+        #[serde(default)]
+        id: String,
+        /// 入る BS の id
+        splitter: String,
+        /// 入る口（a・b・c・d）
+        port: JoinPort,
+    },
     /// 検出器（登録した種類、[`DetectorBlock`]）。`"type"` は種類の名前（このクレートの組み込みの名前でないもの）。
     /// 読み書きは下の Deserialize・Serialize の実装で、スキーマは [`crate::schema`] が足す
     #[serde(skip)]
@@ -666,9 +678,48 @@ pub enum Block {
 }
 
 /// 組み込みのブロックの `"type"`（[`Block`] の検出器以外の種類）。これ以外の名前は検出器（[`detectors`]）
-pub const BUILTIN_BLOCKS: [&str; 9] = [
-    "lens", "air", "stop", "mirror", "surfaces", "zmx", "user", "splitter", "group",
+pub const BUILTIN_BLOCKS: [&str; 10] = [
+    "lens", "air", "stop", "mirror", "surfaces", "zmx", "user", "splitter", "group", "join",
 ];
+
+/// ブロックの id
+pub(crate) fn block_id(b: &Block) -> &str {
+    match b {
+        Block::Lens { id, .. }
+        | Block::Air { id, .. }
+        | Block::Stop { id, .. }
+        | Block::Mirror { id, .. }
+        | Block::Surfaces { id, .. }
+        | Block::Zmx { id, .. }
+        | Block::User { id, .. }
+        | Block::Detector(DetectorBlock { id, .. })
+        | Block::Splitter { id, .. }
+        | Block::Join { id, .. }
+        | Block::Group { id, .. } => id,
+    }
+}
+
+/// 合流の口（BS の口 A・B・C・D、[`Block::Join`]）
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinPort {
+    A,
+    B,
+    C,
+    D,
+}
+
+impl JoinPort {
+    /// 口の番号（A 0・B 1・C 2・D 3）
+    pub fn index(self) -> usize {
+        match self {
+            JoinPort::A => 0,
+            JoinPort::B => 1,
+            JoinPort::C => 2,
+            JoinPort::D => 3,
+        }
+    }
+}
 
 /// 検出器のブロック（[`Block::Detector`]）。`"type"` は登録した種類（[`detectors`]）、ほかの項目は種類ごと
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -1228,7 +1279,7 @@ fn count_id(blocks: &[Block], id: &str) -> usize {
     }
     let mut n = 0;
     for b in blocks {
-        n += usize::from(crate::blocks::block_id(b) == id);
+        n += usize::from(block_id(b) == id);
         if let Block::Zmx { groups, .. } = b {
             n += groups.iter().filter(|g| g.id == id).count();
         }
@@ -1243,7 +1294,7 @@ fn find_node_mut<'x>(blocks: &'x mut [Block], id: &str) -> Option<NodeMut<'x>> {
         return None;
     }
     for b in blocks {
-        if crate::blocks::block_id(b) == id {
+        if block_id(b) == id {
             return Some(NodeMut::Block(b));
         }
         match b {
@@ -1286,7 +1337,7 @@ pub fn find_block_mut<'x>(blocks: &'x mut [Block], id: &str) -> Option<&'x mut B
         return None;
     }
     for b in blocks {
-        if crate::blocks::block_id(b) == id {
+        if block_id(b) == id {
             return Some(b);
         }
         let kids: Vec<&mut Vec<Block>> = match b {

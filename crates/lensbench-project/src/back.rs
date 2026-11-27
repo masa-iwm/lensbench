@@ -74,6 +74,7 @@ pub fn block_item(
                 | Block::User { id, .. }
                 | Block::Detector(DetectorBlock { id, .. })
                 | Block::Splitter { id, .. }
+                | Block::Join { id, .. }
                 | Block::Group { id, .. } => id,
             };
             if !id.is_empty() && bid == id {

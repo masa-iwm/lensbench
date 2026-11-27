@@ -11,6 +11,7 @@ mod edit_ops;
 mod expand;
 mod field_solve;
 mod filter;
+mod join;
 mod mech;
 mod os_a3;
 mod os_p0;

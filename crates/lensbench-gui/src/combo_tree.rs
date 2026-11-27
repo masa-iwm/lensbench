@@ -134,6 +134,16 @@ fn walk(
             };
         }
         let back = p.kind == ElemKind::Mirror && p.mirror().back;
+        if p.is_join() {
+            // 合流の先（別の腕に置いた BS）は組合せの経路ではたどらない
+            out.push(Step {
+                loc,
+                port: None,
+                before: None,
+                after: None,
+            });
+            return Flow::On;
+        }
         out.push(Step {
             loc: loc.clone(),
             port: None,
@@ -699,6 +709,11 @@ fn go(
                 b[key] = Value::Array(v);
             }
             // 分岐のある BS は並びの最後
+            parts.push((Vec::new(), b, None));
+            break;
+        }
+        // 合流は並びの最後（後の空気は置かない）
+        if p.is_join() {
             parts.push((Vec::new(), b, None));
             break;
         }

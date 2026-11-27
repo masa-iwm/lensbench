@@ -30,6 +30,11 @@ impl Pick {
         b
     }
 
+    /// そのまま持つ合流のブロック（並びの最後に置き、後に空気を置かない）
+    pub(crate) fn is_join(&self) -> bool {
+        self.kind == ElemKind::Raw && self.extra["type"] == "join"
+    }
+
     /// そのまま持つブロックが絞りか（絞りのブロック・前面を絞りにした玉・絞りを残す取り込み）
     pub(super) fn raw_is_stop(&self) -> bool {
         let b = &self.extra;

@@ -627,6 +627,41 @@
       ],
       "type": "string"
     },
+    "At": {
+      "additionalProperties": false,
+      "description": "大域の座標での置き方（[`SplitterSpec::at`]）。大域の座標は最初のブロックの頂点が原点で、z が最初の光軸の向き",
+      "properties": {
+        "o": {
+          "description": "口 A の軸の原点 [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "tilt": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "口 A の軸（入る光の向きが z）の傾き x・y・z [deg]（大域の軸から x → y → z の順に回す）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "o"
+      ],
+      "type": "object"
+    },
     "Auto": {
       "enum": [
         "auto"
@@ -1336,6 +1371,17 @@
               "default": "t",
               "description": "経路の文字がないときに選ぶ口"
             },
+            "at": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/At"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "大域の座標に置く（省くと、ブロックの並びで前のブロックの後に置く）。前のブロックから BS の口 A までは\n座標ブレークで移す（前の air の長さは位置に効かない）"
+            },
             "coat": {
               "description": "分ける面の膜（膜ファイル・LBCM の名前）",
               "type": "string"
@@ -1581,6 +1627,33 @@
           "type": "object"
         },
         {
+          "description": "合流: 別の所（BS の別の腕など）に置いた BS `splitter` へ、口 `port` から入る（マッハツェンダー・リング）。\nBS の位置はその BS を書いた所で決まり、ここから BS までの間は置いた位置へ座標ブレークで移す（距離は書かない）。\n並びの最後に置く。BS を通った後は、出た口の分岐へ進む（分岐の無い BS で、1 回目に出た口へ出れば BS の後の\nブロックへ続く。ほかの口へ出ればシステムはそこで終わる）",
+          "properties": {
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "port": {
+              "$ref": "#/$defs/JoinPort",
+              "description": "入る口（a・b・c・d）"
+            },
+            "splitter": {
+              "description": "入る BS の id",
+              "type": "string"
+            },
+            "type": {
+              "const": "join",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "splitter",
+            "port"
+          ],
+          "type": "object"
+        },
+        {
           "description": "検出器（登録した種類。最後のブロックだけに置け、面は足さない）。項目は種類ごと",
           "properties": {
             "id": {
@@ -1598,7 +1671,8 @@
                   "zmx",
                   "user",
                   "splitter",
-                  "group"
+                  "group",
+                  "join"
                 ]
               },
               "type": "string"
@@ -2558,6 +2632,16 @@
         }
       },
       "type": "object"
+    },
+    "JoinPort": {
+      "description": "合流の口（BS の口 A・B・C・D、[`Block::Join`]）",
+      "enum": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "type": "string"
     },
     "LensSource": {
       "anyOf": [

@@ -519,12 +519,16 @@ fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> 
     let n = items.len();
     let mut out = Vec::new();
     for (k, (mut p, air)) in items.into_iter().enumerate() {
-        // 空気を持たない要素: 分岐のある BS（並びの最後）と、口の先の往路を戻る鏡
-        let bare = p.branched || (branch && p.kind == ElemKind::Mirror && p.mirror().back);
+        // 空気を持たない要素: 分岐のある BS（並びの最後）、合流（並びの最後）と、口の先の往路を戻る鏡
+        let bare =
+            p.branched || p.is_join() || (branch && p.kind == ElemKind::Mirror && p.mirror().back);
         match (bare, air) {
             (true, None) => {
                 if p.branched && k + 1 != n {
                     return Err("blocks after a branched splitter".into());
+                }
+                if p.is_join() && k + 1 != n {
+                    return Err("blocks after a join".into());
                 }
             }
             (false, Some((t, id, m))) => {

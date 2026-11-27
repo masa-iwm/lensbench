@@ -1184,6 +1184,12 @@ path {s}: letters must be T or R	経路 {s}: 文字は T か R
 the BS is passed more than {MAX_PASSES} times (the path keeps coming back)	BS を {MAX_PASSES} 回より多く通ります（経路が戻り続けます）
 BS {id}: no block can go after a BS with branches (t, r, d); write it in the branch	BS {id}: 分岐（t・r・d）のある BS の後ろにはブロックを置けません（分岐の中に書いてください）
 BS {id}: not passed on the way out	BS {id}: 往路で通っていません
+join to {splitter}: the way back can't pass a join	{splitter} への合流: 復路は合流を通れません
+join to {splitter}: a join must be the last block of its list	{splitter} への合流: 合流はブロックの並びの最後に置きます
+join to {id}: no BS {id} is placed on a path that doesn't go through a join	{id} への合流: 合流を通らない経路に BS {id} が置かれていません
+join to {id}: BS {id} is OFF	{id} への合流: BS {id} は OFF です
+BS {id}: the beam doesn't head into port {name}	BS {id}: 光束が口 {name} へ向かっていません
+BS {id}: at can't be used with decenter or tilt	BS {id}: at は偏心・チルトと一緒に使えません
 no DATA section in the STEP	STEP の DATA 部がありません
 no thickness along the circle axis in the STEP	STEP の円の軸の向きに厚みがありません
 the mount or mechanical part coordinates can't be found from the STEP (no solid with a bore)	STEP からマウント・機構部品の座標が決まりません（穴のある立体がありません）
