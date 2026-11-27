@@ -162,6 +162,27 @@ impl App {
             self.c.request_focus();
         }
         self.c.auto_build();
+        self.sync_stray(ctx);
+    }
+
+    /// レイアウト図に重ねる非順次の枝: 「レイアウト図に重ねる」を入れた最初の nsc の解析のパネルの結果から
+    fn sync_stray(&mut self, ctx: &egui::Context) {
+        let found = self
+            .dock
+            .iter_all_tabs()
+            .map(|(_, p)| p)
+            .chain(self.windows.iter().map(|w| &w.pane))
+            .find_map(|p| match &p.kind {
+                Kind::Analysis(a) if a.cmd == "nsc" && a.fig.nsc.layout => {
+                    let r = self.c.results.get(&p.id)?;
+                    r.value.as_ref()?;
+                    Some((p.id, r.gen, a.fig.nsc.clone()))
+                }
+                _ => None,
+            });
+        crate::nsc_view::set_stray(ctx, found, |id| {
+            self.c.results.get(&id).and_then(|r| r.value.as_ref())
+        });
     }
 
     /// Web 版: 元のタブが裏に回っている間（ブラウザが画面を止める）に、別の窓の入力・計算の結果を合図に

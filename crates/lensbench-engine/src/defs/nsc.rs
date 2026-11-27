@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::{Error, Result, System};
 use lensbench_project::nsc::{
-    system_source, DetectorSpec, NscOpts, PathFilter, Split, StartRay, Tracer,
+    spread, system_source, DetectorSpec, NscOpts, PathFilter, Split, StartRay, Tracer,
 };
 use lensbench_project::scene::Scene;
 use schemars::JsonSchema;
@@ -73,6 +73,8 @@ pub(super) struct NscParams {
     pub reflections: Option<Vec<usize>>,
     /// Rows of the path table (largest power first)
     pub paths: usize,
+    /// Source rays traced again to draw their detected branches on the layout (0 for none)
+    pub layout_rays: usize,
     /// Measured coating tables (LBCT) and models (LBCM) (more than one allowed)
     #[schemars(extend("x-kind" = "path"))]
     pub coatings: Vec<PathBuf>,
@@ -94,12 +96,16 @@ impl Default for NscParams {
             pixels: 64,
             reflections: None,
             paths: 20,
+            layout_rays: 0,
             coatings: Vec::new(),
         }
     }
 }
 
 pub(super) struct Nsc;
+
+/// 図に描く枝の数の上限
+const MAX_LINES: usize = 5000;
 
 /// 場面を作る系: プロジェクトは光束ごと（光束が無ければ BS の経路ごと）、ほかは読み込んだ系
 fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<(String, System)>> {
@@ -143,7 +149,7 @@ impl Analysis for Nsc {
         Meta {
             name: "nsc",
             about: "Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts)",
-            help: "Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power and the energy budget",
+            help: "Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout",
         }
     }
     fn run(&self, cx: &Cx<'_>, a: &NscParams) -> Result<Value> {
@@ -232,6 +238,12 @@ impl Analysis for Nsc {
             .take(a.paths)
             .enumerate()
             .map(|(i, p)| {
+                let area = r.detectors[p.detector].pixel_area();
+                let px: Vec<Value> = p
+                    .pixels
+                    .iter()
+                    .map(|&(q, w)| json!([q, w / area]))
+                    .collect();
                 let ev: Vec<String> = p
                     .events
                     .iter()
@@ -241,6 +253,32 @@ impl Analysis for Nsc {
                     "rank": i + 1, "detector": r.detectors[p.detector].label,
                     "reflections": p.reflections(), "power_w": p.power,
                     "fraction": p.power / b.source, "rays": p.rays, "events": ev.join(" > "),
+                    "pixels": px,
+                })
+            })
+            .collect();
+        // 図に描く枝: 経路の表の順位（表に無い経路は 0）
+        let rank: std::collections::HashMap<
+            &[(usize, lensbench_project::raypath::EventKind)],
+            usize,
+        > = r
+            .paths
+            .iter()
+            .take(a.paths)
+            .enumerate()
+            .map(|(i, p)| (&p.events[..], i + 1))
+            .collect();
+        let ids = spread(src.len(), a.layout_rays);
+        let lines: Vec<Value> = tr
+            .polylines(&src, &ids)
+            .into_iter()
+            .take(MAX_LINES)
+            .map(|l| {
+                json!({
+                    "path": rank.get(&l.events[..]).copied().unwrap_or(0),
+                    "reflections": l.events.iter().filter(|e| e.1.reflects()).count(),
+                    "power_w": l.power,
+                    "pts": l.pts,
                 })
             })
             .collect();
@@ -266,6 +304,7 @@ impl Analysis for Nsc {
             "detectors": detectors,
             "paths": rows,
             "path_count": r.paths.len(),
+            "rays": lines,
             "warnings": notes,
         }))
     }

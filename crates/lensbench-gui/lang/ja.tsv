@@ -2078,10 +2078,18 @@ Detector half width	検出器の半幅
 Detector pixels	検出器の画素数
 Reflections counted	数える反射の回数
 Path table rows	経路の表の行数
+Rays on the layout	レイアウト図の光線の数
 {} µm · {} source rays · source {} W · detected {} W · absorbed {} W · escaped {} W · dropped {} W	{} µm · 光源の光線 {} 本 · 光源 {} W · 検出 {} W · 吸収 {} W · 外へ {} W · 捨てた {} W
 Detector {}: {} W, peak {} W/mm²	検出器 {}: {} W、ピーク {} W/mm²
 Ray paths by detected power ({} of {})	検出したパワーの順の光線の経路（上位 {} 本、全 {} 本）
 Reflections	反射の回数
+log10 irradiance [W/mm²]	放射照度の log10 [W/mm²]
+Show on the layout	レイアウト図に重ねる
+Draw the detected branches of some source rays on the layout, colored by their row in the path table (gray: not in the table). Choose a row to draw only that path	一部の光源の光線の検出された枝をレイアウト図に描きます。色は経路の表の行ごと（灰色は表に無い経路）。行を選ぶとその経路だけを描きます
+All paths	すべての経路
+Path {} on {}: {} W ({} of the source)	経路 {}（{}）: {} W（光源の {}）
+Click a row to see the irradiance of that path only	行をクリックするとその経路だけの放射照度を表示します
+Show this path only (click again for all)	この経路だけを表示（もう一度クリックですべて）
 Power [W]	パワー [W]
 Fraction	割合
 Events	イベント

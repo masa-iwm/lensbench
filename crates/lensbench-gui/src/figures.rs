@@ -62,6 +62,10 @@ pub(crate) fn figure_params(
         "interference" | "pop" | "image-sim" if figure => {
             m.entry("grid").or_insert(json!(true));
         }
+        // レイアウト図に重ねる枝
+        "nsc" if figure => {
+            m.entry("layout_rays").or_insert(json!(NSC_LAYOUT_RAYS));
+        }
         // 周波数が要る解析は遮断周波数の 1/10・1/4・1/2（無ければ 10・20・40）
         "mtf-field" | "mtf-focus" => {
             m.entry("freqs")
@@ -70,6 +74,9 @@ pub(crate) fn figure_params(
         _ => {}
     }
 }
+
+/// 非順次の図で、レイアウト図に枝を描くために追い直す光源の光線の数
+const NSC_LAYOUT_RAYS: usize = 100;
 
 /// 周波数を頼まれていないときの既定（有効数字 2 桁）
 pub(crate) fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
@@ -193,7 +200,7 @@ pub(crate) fn show(
         "interference" => interference(ui, id, v),
         "pop" => pop(ui, id, gen, v),
         "image-sim" => image_sim(ui, id, gen, v),
-        "nsc" => crate::nsc_view::show(ui, id, gen, v),
+        "nsc" => crate::nsc_view::show(ui, id, gen, v, &mut st.nsc),
         _ => false,
     }
 }
@@ -486,6 +493,8 @@ pub(crate) struct FigState {
     pub spot_pan: [f32; 2],
     /// スポット図の縮尺の長さ [µm]（0 は自動: 枠に合わせたきりのよい長さ）
     pub spot_bar: f64,
+    /// 非順次の図の見せ方
+    pub nsc: crate::nsc_view::NscFig,
 }
 
 impl Default for FigState {
@@ -500,6 +509,7 @@ impl Default for FigState {
             spot_zoom: 1.0,
             spot_pan: [0.0; 2],
             spot_bar: 0.0,
+            nsc: Default::default(),
         }
     }
 }

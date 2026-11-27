@@ -118,6 +118,21 @@ impl App {
             }
             Step::Settings => self.tour_settings(ctx),
             Step::Interferometer => self.tour_interferometer(ctx),
+            Step::Nsc => {
+                // 非順次の追跡のパネルを足して計算する。枝はレイアウト図にも重なる（見せ方の既定）
+                let mut cfg = AnaCfg::new("nsc");
+                cfg.args.insert("grid".into(), "11".into());
+                let id = self.add_pane(Kind::Analysis(cfg.clone()));
+                self.focus(id);
+                self.c.run(id, &cfg);
+            }
+            Step::NscLayout => {
+                // 重ねた構成と光線の設定の欄を閉じ、非順次の枝だけを重ねて見せる
+                self.c.overlay.items.clear();
+                self.c.rays_open = false;
+                self.c.request_layout();
+                self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
+            }
             Step::FreeEdit => self.tour_free_edit(ctx),
         }
     }

@@ -2865,7 +2865,7 @@ coating fit: the interpolation order {} is not 0 or 4 to 12	コーティング�
 image simulation: the chief ray doesn't reach the image at {dark} of {} points of the field map (vignetted); they are taken as dark	像の模擬: 写像のグリッドの {} 点のうち {dark} 点で主光線が像面に届きません（ケラレ）。その点は暗いものとします
 image simulation: {cut} of {} PSF grid points are fully vignetted; no light is taken from them	像の模擬: PSF のグリッドの {} 点のうち {cut} 点はすべてケラレます。その点からの光は取りません
 Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts)	非順次の追跡: 検出器の放射照度と光線の経路ごとのパワー（反射・ゴースト）
-Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power and the energy budget	システムの物の場面（縁で閉じたレンズ・ミラー・絞り・機構部品と、検出器としての像面。プロジェクトはすべての光束か BS の経路の物）での非順次の光線追跡: 次の面は最も近い面で、光線は境界ごとに反射と透過に分かれる（コーティング込みの Fresnel、偏光、硝材の吸収）。光源は視野ごとの瞳の光線のグリッドで、全体のパワーを等しく分ける。検出器の放射照度 [W/mm²]、検出したパワーの順の光線の経路（イベントの並び）の表とエネルギーの収支を返す
+Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout	システムの物の場面（縁で閉じたレンズ・ミラー・絞り・機構部品と、検出器としての像面。プロジェクトはすべての光束か BS の経路の物）での非順次の光線追跡: 次の面は最も近い面で、光線は境界ごとに反射と透過に分かれる（コーティング込みの Fresnel、偏光、硝材の吸収）。光源は視野ごとの瞳の光線のグリッドで、全体のパワーを等しく分ける。検出器の放射照度 [W/mm²]、検出したパワーの順の光線の経路（イベントの並び）の表と経路ごとの放射照度、エネルギーの収支、レイアウト図に描く一部の光源の光線の検出された枝を返す
 Field number of the source (from 1; all fields if omitted)	光源の視野の番号（1 始まり、省略で全視野）
 Side of the pupil ray grid of the source for each field	視野ごとの光源の瞳の光線のグリッドの一辺
 Total source power [W] (shared equally by the source rays)	光源の全体のパワー [W]（光源の光線で等しく分ける）
@@ -2878,6 +2878,7 @@ Half widths of the detector rectangle [mm] (x, y; one value for a square; the im
 Pixels on a side of the detector	検出器の一辺の画素の数
 Count in the detector image only the paths with this number of reflections (one value, or the least and the most)	検出器の像にこの反射の回数の経路だけを数える（1 つか、最小と最大）
 Rows of the path table (largest power first)	経路の表の行数（パワーの大きい順）
+Source rays traced again to draw their detected branches on the layout (0 for none)	レイアウト図に検出された枝を描くために追い直す光源の光線の数（0 で描かない）
 half takes 1 or 2 values ({n} given)	half は 1 つか 2 つ（{n} 個）
 reflections takes 1 or 2 values ({n} given)	reflections は 1 つか 2 つ（{n} 個）
 monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0	monte-carlo: エネルギーの収支は平均でだけ閉じる（ロシアンルーレット）ので residual_w は 0 になりません

@@ -264,6 +264,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         ("nsc", "pixels") => "Detector pixels",
         ("nsc", "reflections") => "Reflections counted",
         ("nsc", "paths") => "Path table rows",
+        ("nsc", "layout_rays") => "Rays on the layout",
         ("image-sim", "input") => "Source image",
         ("image-sim", "field_height") => "Field height",
         ("image-sim", "psf_x") => "PSF grid x",

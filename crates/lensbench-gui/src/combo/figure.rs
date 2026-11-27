@@ -95,6 +95,7 @@ pub(super) fn figure(
             ms,
             combo.is_some(),
             accent,
+            crate::nsc_view::stray(ui.ctx()).as_deref(),
         ) {
             Some(Click3::Mech(n)) if combo.is_some() => {
                 let again = ms == Some(n.as_str());
@@ -154,6 +155,16 @@ pub(super) fn figure(
     });
     let ms = (mech_sel.as_deref(), mech_hover.as_deref());
     paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak, ms);
+    // 非順次の枝（解析の結果から。展開した図は位置が合わないので描かない）
+    if let Some(st) = crate::nsc_view::stray(ui.ctx()).filter(|_| !d.unfold) {
+        for (c, pts) in &st.lines {
+            let line: Vec<Pos2> = pts
+                .iter()
+                .map(|q| xf.to(if d.xz { [q[2], q[0]] } else { [q[2], q[1]] }))
+                .collect();
+            painter.add(egui::Shape::line(line, Stroke::new(1.0_f32, *c)));
+        }
+    }
     if let Some(m) = mech_sel.as_deref().and_then(pick) {
         mech_card(&painter, &vis, rect, &card_lines(ui.ctx(), m), accent);
     }

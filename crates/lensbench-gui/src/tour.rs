@@ -142,11 +142,15 @@ pub(crate) enum Step {
     Settings,
     FreeEdit,
     Interferometer,
+    /// 干渉計の非順次の追跡（検出器の図・経路の表と、レイアウト図に重ねた枝）
+    Nsc,
+    /// 非順次の枝を重ねたレイアウト図
+    NscLayout,
     Done,
 }
 
 impl Step {
-    const ORDER: [Step; 30] = [
+    const ORDER: [Step; 32] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -170,6 +174,8 @@ impl Step {
         Step::Settings,
         Step::FreeEdit,
         Step::Interferometer,
+        Step::Nsc,
+        Step::NscLayout,
         Step::Pop,
         Step::States,
         Step::Coatings,
@@ -203,6 +209,8 @@ impl Step {
             Step::English => "12_english_light",
             Step::Settings => "13_settings",
             Step::Interferometer => "14_interferometer",
+            Step::Nsc => "14b_nsc",
+            Step::NscLayout => "14c_nsc_layout",
             Step::FreeEdit => "13b_free_edit",
             Step::Pop => "15_pop",
             Step::States => "16_states",
@@ -374,6 +382,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 29);
+        assert_eq!(n, 31);
     }
 }

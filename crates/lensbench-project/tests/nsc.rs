@@ -458,3 +458,41 @@ fn the_stop_is_a_finite_plate() {
     assert!(!hit_stop(0.5 * semi), "inside the aperture");
     assert!(!hit_stop(big * 1.5), "outside the plate");
 }
+
+/// 経路ごとの画素の和は検出器の画素の和に一致し、図に描く枝は経路の表と同じ出来事の列で光源の始点から始まる
+#[test]
+fn path_pixels_and_polylines_agree_with_the_table() {
+    let s = load("A0");
+    let coat = Coatings::for_system(&s).unwrap();
+    let sc = scene_of(&s);
+    let tr = Tracer::new(&sc, &[&s], &coat, &NscOpts::default()).unwrap();
+    let src = system_source(&s, &[0, s.fields.len() - 1], 9, s.primary, 1.0, None).unwrap();
+    let r = tr.run(&src).unwrap();
+    let d = &r.detectors[0];
+    let mut sum = vec![0.0; d.power.len()];
+    for p in &r.paths {
+        let inside: f64 = p.pixels.iter().map(|x| x.1).sum();
+        assert!(inside <= p.power * (1.0 + 1e-12));
+        assert!(p.pixels.windows(2).all(|w| w[0].0 < w[1].0));
+        for &(q, w) in &p.pixels {
+            sum[q] += w;
+        }
+    }
+    for (a, b) in sum.iter().zip(&d.power) {
+        assert!((a - b).abs() <= 1e-12 * b.abs().max(1e-12), "{a} vs {b}");
+    }
+    let ids = lensbench_project::nsc::spread(src.len(), 20);
+    assert!(!ids.is_empty() && ids.len() <= 20);
+    let lines = tr.polylines(&src, &ids);
+    assert!(!lines.is_empty());
+    for l in &lines {
+        assert!(r.paths.iter().any(|p| p.events == l.events));
+        assert_eq!(l.pts.len(), l.events.len() + 1);
+        assert!(ids.iter().any(|&i| src[i].p == l.pts[0]));
+        assert_eq!(l.events.last().unwrap().1, EventKind::Detect);
+    }
+    // 番号の同じ光線は run と同じ枝（2 回反射の枝も出る）
+    assert!(lines
+        .iter()
+        .any(|l| l.events.iter().filter(|e| e.1.reflects()).count() == 2));
+}

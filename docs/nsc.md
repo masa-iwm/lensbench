@@ -10,7 +10,10 @@
 
 - CLI: `lensbench nsc system.zmx`（`--json`・`--save` で結果を書く）。プロジェクト（.json）は光束（`beams`）ごと、光束が無ければ BS の
   経路ごとのシステムの物を 1 つの場面に置く
-- GUI: 解析の一覧の「干渉・伝搬」の「非順次の追跡」。収支の行、検出器ごとの照度の図、経路の表を出す
+- GUI: 解析の一覧の「干渉・伝搬」の「非順次の追跡」。収支の行、検出器ごとの照度の図（既定は対数。ピークから 6 桁）、経路の表を出す。
+  表の行をクリックするとその経路だけの照度を出す。「レイアウト図に重ねる」で、光源の光線の一部（`layout_rays`、図では既定 100 本）の
+  検出された枝をレイアウト図（2D・3D）に重ねる。色は経路の表の行ごと（灰色は表に無い経路）、薄いほどパワーが小さい。反射の回数で
+  絞るか、表の行を選んでその経路だけを描く（展開した図には描かない）
 - Python: `System.analyze_file(path, "nsc", glass_dirs=..., grid=31)`（読み込んだ 1 つのシステムなら `s.analyze("nsc")`）
 - serve: `analyze` の `nsc`
 
@@ -31,12 +34,15 @@
 | `pixels` | 64 | 検出器の一辺の画素の数 |
 | `reflections` | すべて | 検出器の像に数える経路の反射の回数（1 つか、最小と最大）。経路の表と収支は全部 |
 | `paths` | 20 | 経路の表の行数（パワーの大きい順） |
+| `layout_rays` | 0 | レイアウト図に描くために追い直す光源の光線の数（等しい間隔で選ぶ。0 で描かない） |
 | `coatings` | | 測ったコーティングの表（LBCT）・モデル（LBCM） |
 
 結果: `budget`（`source_w`・`detected_w`・`absorbed_w`・`escaped_w`・`discarded_w`・`truncated_w`・`residual_w`）、`detectors`
 （`label`・`half_mm`・`nx`・`ny`・`pixel_mm2`・`power_w`・`peak_w_mm2`・画素の中心 `x`・`y`・`irradiance` [W/mm²]（番号 j·nx + i、j は +y の向き）・
 `hits`）、`paths`（`rank`・`detector`・`reflections`・`power_w`・`fraction`・`rays`・`events`。`events` は「面の名前 種類」を ` > ` でつないだもの。
-種類は T 透過・R 反射（ミラーも）・TIR 全反射・D 検出）、`path_count`、`warnings`
+種類は T 透過・R 反射（ミラーも）・TIR 全反射・D 検出。`pixels` はその経路だけの照度の [画素の番号, W/mm²] の並びで、0 の画素は省く。
+反射の回数の絞り込みに依らない）、`path_count`、`rays`（`layout_rays` 本の光源の光線の検出された枝: `path` 経路の表の順位（表に無ければ 0）・
+`reflections`・`power_w`・`pts` 光源の始点と出来事の点 [x, y, z] mm（大域、レイアウト図と同じ座標）。上限 5,000 本）、`warnings`
 
 ## 約束
 

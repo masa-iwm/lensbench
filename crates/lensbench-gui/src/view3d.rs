@@ -242,6 +242,7 @@ pub(crate) fn show(
     mech_sel: Option<&str>,
     pick_mech: bool,
     accent: Color32,
+    stray: Option<&crate::nsc_view::StrayLines>,
 ) -> Option<Click3> {
     let rect = resp.rect;
     let vis = ui.visuals().clone();
@@ -390,10 +391,21 @@ pub(crate) fn show(
     }
     // 光線は玉と前後が入れ替わるよう、短く切って並べる
     let piece = sc.radius / 40.0;
-    for (f, pts) in &sc.rays {
-        let (f, faint) = crate::layout_rays::class_of(*f);
-        let col =
-            theme::series(f.saturating_sub(1)).gamma_multiply(if faint { 0.25 } else { 0.85 });
+    let ray_col = |f: usize| {
+        let (f, faint) = crate::layout_rays::class_of(f);
+        theme::series(f.saturating_sub(1)).gamma_multiply(if faint { 0.25 } else { 0.85 })
+    };
+    let stray: Vec<(Color32, Vec<[f32; 3]>)> = stray
+        .into_iter()
+        .flat_map(|s| s.lines.iter())
+        .map(|(c, p)| (*c, p.iter().map(|q| q.map(|x| x as f32)).collect()))
+        .collect();
+    let lines = sc
+        .rays
+        .iter()
+        .map(|(f, p)| (ray_col(*f), p))
+        .chain(stray.iter().map(|(c, p)| (*c, p)));
+    for (col, pts) in lines {
         for w in pts.windows(2) {
             let (a, b) = (to_view(w[0]), to_view(w[1]));
             let len =
@@ -664,6 +676,7 @@ mod tests {
                         Some("tube"),
                         pick_mech,
                         Color32::RED,
+                        None,
                     );
                 });
             });

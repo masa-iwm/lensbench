@@ -26,6 +26,9 @@
 
 mod bvh;
 mod geom;
+mod lines;
+
+pub use lines::{spread, Polyline};
 
 use crate::raypath::EventKind;
 use crate::scene::{ObjectKind, Scene, Shape};
@@ -288,6 +291,9 @@ pub struct PathRow {
     pub events: Vec<(usize, EventKind)>,
     pub power: f64,
     pub rays: u64,
+    /// この経路だけの検出器の画素ごとのパワー [W]（画素の番号は [`DetectorImage::power`] と同じ、番号の順、0 は省く）。
+    /// 反射の回数の絞り込み（[`NscOpts::filter`]）に依らない
+    pub pixels: Vec<(usize, f64)>,
 }
 
 impl PathRow {
@@ -1074,8 +1080,17 @@ fn coef(f: &Iface, e: CV3, kin: V3, kout: V3, nv: V3, cosi: f64, mirror: bool) -
 struct Acc {
     power: Vec<Vec<f64>>,
     hits: Vec<Vec<u64>>,
-    paths: HashMap<Vec<(usize, EventKind)>, (usize, f64, u64)>,
+    paths: HashMap<Vec<(usize, EventKind)>, PathAcc>,
     budget: Budget,
+}
+
+/// 経路ごとの集計: 検出器・パワー・本数・画素ごとのパワー
+#[derive(Default)]
+struct PathAcc {
+    detector: usize,
+    power: f64,
+    rays: u64,
+    pixels: HashMap<usize, f64>,
 }
 
 /// 1 つの組の光線の数（スレッド数に依らない足し方の単位）
@@ -1121,9 +1136,16 @@ impl Tracer<'_> {
                 };
                 let key: Vec<(usize, EventKind)> =
                     br.hits.iter().map(|h| (h.face, h.kind)).collect();
-                let e = a.paths.entry(key).or_insert((detector, 0.0, 0));
-                e.1 += br.power;
-                e.2 += 1;
+                let q = self.pixel(detector, x, y);
+                let e = a.paths.entry(key).or_insert_with(|| PathAcc {
+                    detector,
+                    ..Default::default()
+                });
+                e.power += br.power;
+                e.rays += 1;
+                if let Some(q) = q {
+                    *e.pixels.entry(q).or_insert(0.0) += br.power;
+                }
                 if self
                     .opts
                     .filter
@@ -1132,7 +1154,7 @@ impl Tracer<'_> {
                 {
                     continue;
                 }
-                if let Some(q) = self.pixel(detector, x, y) {
+                if let Some(q) = q {
                     a.power[detector][q] += br.power;
                     a.hits[detector][q] += 1;
                 }
@@ -1161,9 +1183,15 @@ impl Tracer<'_> {
                 }
                 tot.budget.add(&a.budget);
                 for (k, v) in a.paths {
-                    let e = tot.paths.entry(k).or_insert((v.0, 0.0, 0));
-                    e.1 += v.1;
-                    e.2 += v.2;
+                    let e = tot.paths.entry(k).or_insert_with(|| PathAcc {
+                        detector: v.detector,
+                        ..Default::default()
+                    });
+                    e.power += v.power;
+                    e.rays += v.rays;
+                    for (q, p) in v.pixels {
+                        *e.pixels.entry(q).or_insert(0.0) += p;
+                    }
                 }
             }
             lensbench_core::par::check_cancel()?;
@@ -1185,11 +1213,17 @@ impl Tracer<'_> {
         let mut paths: Vec<PathRow> = tot
             .paths
             .into_iter()
-            .map(|(events, (detector, power, rays))| PathRow {
-                detector,
-                events,
-                power,
-                rays,
+            .map(|(events, a)| {
+                let mut pixels: Vec<(usize, f64)> =
+                    a.pixels.into_iter().filter(|x| x.1 != 0.0).collect();
+                pixels.sort_by_key(|x| x.0);
+                PathRow {
+                    detector: a.detector,
+                    events,
+                    power: a.power,
+                    rays: a.rays,
+                    pixels,
+                }
             })
             .collect();
         paths.sort_by(|a, b| {

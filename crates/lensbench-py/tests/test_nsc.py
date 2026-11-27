@@ -26,6 +26,21 @@ def test_budget_closes_and_paths_are_sorted():
     assert r["paths"][0]["reflections"] == 0
 
 
+def test_path_pixels_and_layout_rays():
+    r = lb.System.analyze_file(A0, "nsc", glass_dirs=GLASS, grid=7, pixels=16, paths=5)
+    assert r["rays"] == []
+    d = r["detectors"][0]
+    for p in r["paths"]:
+        w = sum(x[1] for x in p["pixels"]) * d["pixel_mm2"]
+        assert w <= p["power_w"] * (1 + 1e-12)
+    r = lb.System.analyze_file(
+        A0, "nsc", glass_dirs=GLASS, grid=7, pixels=16, paths=5, layout_rays=10
+    )
+    assert r["rays"]
+    for x in r["rays"]:
+        assert 0 <= x["path"] <= 5 and len(x["pts"]) >= 2 and len(x["pts"][0]) == 3
+
+
 def test_analyze_on_a_loaded_system_matches_the_file():
     s = lb.System.load(A0, glass_dirs=GLASS)
     a = s.analyze("nsc", grid=5, pixels=8)
