@@ -15,7 +15,7 @@ mod help;
 mod history;
 mod ld_combo;
 use history::{ComboHist, DocHist};
-mod frame;
+pub(crate) mod frame;
 mod menus;
 mod msg;
 mod panel_msgs;
@@ -1098,17 +1098,8 @@ impl Core {
             });
             changed |= self.overlay.ui(ui, self.ses.view_plane.vert());
             let (nf, nw) = (self.n_fields(), self.waves_um().len());
-            let head = if self.s.rays.is_default() {
-                tr("Rays and export settings").to_string()
-            } else {
-                format!("{} ●", tr("Rays and export settings"))
-            };
-            egui::CollapsingHeader::new(head)
-                .id_salt("layout_rays")
-                .open(std::mem::take(&mut self.rays_open).then_some(true))
-                .show(ui, |ui| {
-                    changed |= self.s.rays.ui(ui, nf, nw);
-                });
+            let open = std::mem::take(&mut self.rays_open);
+            changed |= self.s.rays.header_ui(ui, open, nf, nw);
             if changed {
                 self.request_layout();
             }

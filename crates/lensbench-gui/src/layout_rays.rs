@@ -109,6 +109,37 @@ impl RaySet {
         *self == RaySet::default()
     }
 
+    /// レイアウトのパネルの「光線・エクスポートの設定」（開くと中身を出す。open で開く）。変えたら true。
+    /// 中身は高さを限って巻き取る（狭い窓で開いたままだと、下のレイアウト図が細い帯になっていた）
+    pub(crate) fn header_ui(
+        &mut self,
+        ui: &mut Ui,
+        open: bool,
+        n_fields: usize,
+        n_waves: usize,
+    ) -> bool {
+        let head = if self.is_default() {
+            tr("Rays and export settings").to_string()
+        } else {
+            format!("{} ●", tr("Rays and export settings"))
+        };
+        // 下の組合せの操作の行・状態の行・図・間隔の行に残す高さ（図が見える大きさ）
+        const BELOW: f32 = 360.0;
+        let max_h = (ui.available_height() - BELOW).max(60.0);
+        let mut changed = false;
+        egui::CollapsingHeader::new(head)
+            .id_salt("layout_rays")
+            .open(open.then_some(true))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("layout_rays_scroll")
+                    .max_height(max_h)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| changed = self.ui(ui, n_fields, n_waves));
+            });
+        changed
+    }
+
     /// 設定の欄。変えたら true（図を作り直す）。書き出しだけの項目を変えても false
     pub(crate) fn ui(&mut self, ui: &mut Ui, n_fields: usize, n_waves: usize) -> bool {
         let before = self.clone();

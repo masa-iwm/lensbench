@@ -78,6 +78,36 @@ fn analyses_skip_a_fully_vignetted_field() {
     }
 }
 
+/// 日本語の表示でも結果の warnings は英語の文だけ（けられた視野の注意と格子の注意が日英で混ざらない）。
+/// 標準エラーの注意は訳す
+#[test]
+fn warnings_stay_english_in_japanese_display() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+        .current_dir(root)
+        .args(["psf", P19, "--glass-dir", "tests/glass", "--json"])
+        .env_remove("LENSBENCH_GLASSCAT")
+        .env("LENSBENCH_LANG", "ja")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(o.status.success(), "{err}");
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    let w: Vec<&str> = v["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_str().unwrap())
+        .collect();
+    assert!(w.iter().any(|x| x.starts_with("field 3: ")), "{w:?}");
+    // 日本語の字（かな・漢字・全角の記号は U+3000 以上）が無い
+    assert!(
+        w.iter().all(|x| x.chars().all(|c| (c as u32) < 0x3000)),
+        "{w:?}"
+    );
+    assert!(err.contains("視野 3"), "{err}");
+}
+
 /// image-sim: 全部けられる視野の点（相対照度・PSF の格子点）は暗くして像を作り、注意を付ける
 #[test]
 fn image_sim_darkens_fully_vignetted_points() {

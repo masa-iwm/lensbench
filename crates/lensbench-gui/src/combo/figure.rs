@@ -85,7 +85,16 @@ pub(super) fn figure(
         let ms = mech_sel.as_deref();
         use crate::view3d::Click3;
         match crate::view3d::show(
-            ui, resp, view.nav, sc, &d.configs, &owner, view.sel, ms, accent,
+            ui,
+            resp,
+            view.nav,
+            sc,
+            &d.configs,
+            &owner,
+            view.sel,
+            ms,
+            combo.is_some(),
+            accent,
         ) {
             Some(Click3::Mech(n)) if combo.is_some() => {
                 let again = ms == Some(n.as_str());
@@ -523,7 +532,15 @@ fn scene(
         );
         // 要素が少しでも見えていれば、光軸に垂直な向きに図の中へ寄せる（要素がはみ出ても名前は見える。
         // 光軸の向きは寄せない）。要素が全部図の外なら寄せない
-        let label = align.anchor_size(label_pos, galley.size());
+        let mut label = align.anchor_size(label_pos, galley.size());
+        // 前の要素の名前と重なれば、光軸から離す向きに 1 行ずつずらす（近い 2 枚の札の字が重なっていた）
+        let away = if across_y && n.y >= 0.0 { 1.0 } else { -1.0 };
+        for _ in 0..4 {
+            if !marks.iter().any(|m: &Mark| m.label.intersects(label)) {
+                break;
+            }
+            label = label.translate(Vec2::new(0.0, away * (galley.size().y + 2.0)));
+        }
         let label = if Rect::from_center_size(pos, Vec2::splat(2.0 * r)).intersects(rect) {
             keep_in(label, view_area, if across_y { 1 } else { 0 })
         } else {

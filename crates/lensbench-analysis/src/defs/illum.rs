@@ -153,7 +153,12 @@ impl Analysis for Footprint {
                             clipped: f.clipped as f64 / n,
                         });
                     }
-                    Err(e) => warnings.push(format!("field {}, wavelength {}: {e}", i + 1, w + 1)),
+                    Err(e) => warnings.push(format!(
+                        "field {}, wavelength {}: {e}",
+                        i + 1,
+                        w + 1,
+                        e = e.warning_text()
+                    )),
                 }
             }
         }
@@ -342,14 +347,14 @@ impl Analysis for RelIllum {
                     fno.push(1.0 / (2.0 * (a / std::f64::consts::PI).sqrt()));
                 }
                 Err(e) => {
-                    warnings.push(format!("field {}: {e}", f3(hh)));
+                    warnings.push(format!("field {}: {e}", f3(hh), e = e.warning_text()));
                     rel.push(f64::NAN);
                     fno.push(f64::NAN);
                 }
             }
             if let Some(t0) = t0 {
                 let t = mean_transmission(s, f, w).unwrap_or_else(|e| {
-                    warnings.push(format!("field {}: {e}", f3(hh)));
+                    warnings.push(format!("field {}: {e}", f3(hh), e = e.warning_text()));
                     f64::NAN
                 });
                 trans.push(t);
@@ -473,7 +478,7 @@ impl Analysis for Vignetting {
             .map(|&hh| {
                 footprint::unvignetted(s, ax.sel(hh), w, p.rays, !p.no_vignetting_factors)
                     .unwrap_or_else(|e| {
-                        warnings.push(format!("field {}: {e}", f3(hh)));
+                        warnings.push(format!("field {}: {e}", f3(hh), e = e.warning_text()));
                         f64::NAN
                     })
             })

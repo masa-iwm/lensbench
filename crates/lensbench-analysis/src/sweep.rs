@@ -145,7 +145,7 @@ fn mtf_sweep(
                     sag[k][i] = m.sag[k];
                 }
             }
-            Err(e) => warnings.push(format!("{}: {e}", label(xi))),
+            Err(e) => warnings.push(format!("{}: {e}", label(xi), e = e.warning_text())),
         }
     }
     MtfSweep { tan, sag, warnings }
@@ -473,7 +473,7 @@ fn rms_sweep(
         .zip(x)
         .map(|(r, &v)| {
             r.unwrap_or_else(|e| {
-                warnings.push(format!("{}: {e}", label(v)));
+                warnings.push(format!("{}: {e}", label(v), e = e.warning_text()));
                 Rms::NAN
             })
         })

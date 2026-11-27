@@ -175,7 +175,7 @@ fn fans(ui: &mut Ui, id: u64, cmd: &str, v: &FanOut) -> bool {
         trf("Ray error [{}]", &[&unit])
     };
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let mut wl: Vec<usize> = v.fans.iter().map(|f| f.wave).collect();
     wl.sort();
@@ -232,7 +232,7 @@ fn field_curv(ui: &mut Ui, id: u64, v: &FieldCurvOut) -> bool {
         ),
     ));
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let wl: Vec<usize> = v.waves.iter().map(|w| w.wave).collect();
     wave_legend(
@@ -285,7 +285,7 @@ fn field_curv(ui: &mut Ui, id: u64, v: &FieldCurvOut) -> bool {
 fn longitudinal(ui: &mut Ui, id: u64, v: &LongOut) -> bool {
     let ws = Waves::of(ui);
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let wl: Vec<usize> = v.waves.iter().map(|w| w.wave).collect();
     wave_legend(ui, &ws, &wl, None);
@@ -323,7 +323,7 @@ fn lateral(ui: &mut Ui, id: u64, v: &LatOut) -> bool {
         ));
     }
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let wl: Vec<usize> = v.waves.iter().map(|w| w.wave).collect();
     wave_legend(ui, &ws, &wl, None);
@@ -373,7 +373,7 @@ fn focal_shift(ui: &mut Ui, id: u64, v: &ShiftOut) -> bool {
         ),
     ));
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let h = row_height(ui, 1, 200.0);
     let col = theme::series(0);
@@ -412,7 +412,7 @@ fn grid(ui: &mut Ui, id: u64, v: &GridOut) -> bool {
         ),
     ));
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let h = row_height(ui, 1, 240.0);
     let (col, _) = Waves::of(ui).style(v.wave);
@@ -626,7 +626,7 @@ fn footprint(ui: &mut Ui, id: u64, v: &FootprintOut) -> bool {
     ui.label(weak(ui, tr("Per field (hover)")))
         .on_hover_text(detail.join("\n"));
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let h = row_height(ui, 1, 240.0);
     let ap_col = theme::weak_text(ui.visuals());
@@ -665,7 +665,7 @@ fn footprint(ui: &mut Ui, id: u64, v: &FootprintOut) -> bool {
 /// 相対照度（と実効 F 値をカーソルの値に）
 fn rel_illum(ui: &mut Ui, id: u64, v: &RelIllumOut) -> bool {
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     if v.transmission.is_some() {
         ui.label(weak(
@@ -695,7 +695,7 @@ fn rel_illum(ui: &mut Ui, id: u64, v: &RelIllumOut) -> bool {
 /// けられずに通る光線の割合
 fn vignetting(ui: &mut Ui, id: u64, v: &VignettingOut) -> bool {
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let h = row_height(ui, 1, 200.0);
     let col = theme::series(1);
@@ -738,7 +738,7 @@ fn gauss(ui: &mut Ui, id: u64, v: &GaussOut) -> bool {
         ));
     }
     if !v.warnings.is_empty() {
-        ui.label(weak(ui, v.warnings.join("\n")));
+        ui.label(weak(ui, warn_text(&v.warnings)));
     }
     let h = row_height(ui, 1, 200.0);
     let col = theme::series(0);
@@ -781,6 +781,14 @@ fn gauss(ui: &mut Ui, id: u64, v: &GaussOut) -> bool {
         draw(p, down, col, false, "");
     });
     true
+}
+
+/// 解析の結果の注意（英語の文）を今の言語で 1 行ずつ
+fn warn_text(w: &[String]) -> String {
+    w.iter()
+        .map(|w| lensbench_core::i18n::tr(w))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]

@@ -30,7 +30,7 @@ python3 scripts/check_public.py --history
 | `LENSBENCH_UPDATE_SAMPLES` | `lensbench-gui` の `sample_combos` の試験 | `examples/combos` の見本の組合せを作り直す |
 | `LB_UPDATE_API` | `lensbench-sdk` の `tests/api.rs` | SDK の約束の型の一覧 `crates/lensbench-sdk/API.txt` を書き直す（変えたら [壊れる変更](changes.md) に書く） |
 | `LB_PEEK_ROOT`・`LB_PEEK_GLASS`・`LB_PEEK_DUMP`・`LB_PEEK_UNREAD` | `lensbench-gui` の `readable_files_open_as_combos` | 組合せで開けるかを見るフォルダ・足すガラスのフォルダ・開けないファイルの組合せを書くフォルダ・読めない理由を出す |
-| `LENSBENCH_TOUR_SIZE` | `lensbench-gui --tour` | 通し確認の窓の大きさ（`1024x700` など） |
+| `LENSBENCH_TOUR_SIZE` | `lensbench-gui --tour` | 通し確認の窓の大きさ（`1024x700` など。無ければ 1600×1000、画面より大きければ画面の大きさ） |
 
 ## 第三者のライセンス
 

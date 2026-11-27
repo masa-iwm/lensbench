@@ -90,7 +90,7 @@ pub(super) fn skip_vignetted<T>(
         match r {
             Ok(x) => out.push(x),
             Err(e) if field_vignetted(&e) => {
-                warn.push(format!("field {}: {e}", i + 1));
+                warn.push(format!("field {}: {e}", i + 1, e = e.warning_text()));
                 first.get_or_insert(e);
             }
             Err(e) => return Err(e),

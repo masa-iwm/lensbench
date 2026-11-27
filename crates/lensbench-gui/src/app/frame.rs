@@ -55,6 +55,18 @@ impl App {
             if self.decorations != Some(os) {
                 self.decorations = Some(os);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(os));
+                // 枠を付け外しすると、Windows は窓の外形を保って中身の大きさを変える。起動のたびに枠を外すと、終わりに
+                // 保存する中身の大きさが枠の分（幅 16 px など）ずつ大きくなっていた。中身の大きさを保つ（最大化・全画面は
+                // 大きさを送ると元に戻るので、元に戻した最初のフレームで保存の大きさを送る。下の restore_normal_size）
+                if let Some(r) = ctx
+                    .input(|i| i.viewport().inner_rect)
+                    .filter(|_| !maximized(ctx))
+                {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(r.size()));
+                    ctx.data_mut(|d| d.remove_temp::<egui::Vec2>(normal_size_id()));
+                }
+            } else {
+                restore_normal_size(ctx);
             }
             if !os {
                 crate::chrome::resize_edges(ctx);
@@ -251,4 +263,66 @@ fn late_input_msg(ctx: &egui::Context) -> Option<Msg> {
         )
     });
     (back || fwd).then_some(Msg::CycleConfig(back))
+}
+
+/// 最大化か全画面か
+#[cfg(not(target_arch = "wasm32"))]
+fn maximized(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.viewport().maximized == Some(true) || i.viewport().fullscreen == Some(true))
+}
+
+/// 前の終わりに保存した、最大化していないときの中身の大きさ（egui のメモリ。最大化で始まったときだけ使う）
+#[cfg(not(target_arch = "wasm32"))]
+fn normal_size_id() -> egui::Id {
+    egui::Id::unique("lensbench-normal-size")
+}
+
+/// 保存の大きさ（eframe の "window"）を覚える。起動で App を作る前に呼ぶ
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn remember_normal_size(cc: &eframe::CreationContext<'_>) {
+    let v = cc.storage.and_then(|st| st.get_string("window"));
+    if let Some(v) = v.as_deref().and_then(normal_size) {
+        cc.egui_ctx.data_mut(|d| d.insert_temp(normal_size_id(), v));
+    }
+}
+
+/// eframe の "window"（egui-winit の WindowSettings の RON）の、最大化していないときの中身の大きさ
+#[cfg(not(target_arch = "wasm32"))]
+fn normal_size(ron_text: &str) -> Option<egui::Vec2> {
+    #[derive(serde::Deserialize)]
+    struct Geometry {
+        inner_size_points: egui::Vec2,
+    }
+    #[derive(serde::Deserialize)]
+    struct Window {
+        normal_geometry: Geometry,
+    }
+    let w: Window = ron::from_str(ron_text).ok()?;
+    Some(w.normal_geometry.inner_size_points)
+}
+
+/// 最大化（全画面）で始まり枠を外したとき、Windows が持つ「元に戻したときの大きさ」は枠の分ずれている。
+/// 元に戻した最初のフレームで保存の大きさを送る（最大化の往復のたびに広がっていた）
+#[cfg(not(target_arch = "wasm32"))]
+fn restore_normal_size(ctx: &egui::Context) {
+    if maximized(ctx) {
+        return;
+    }
+    if let Some(v) = ctx.data_mut(|d| d.remove_temp::<egui::Vec2>(normal_size_id())) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(v));
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    /// eframe 0.37 が保存する形から、最大化していないときの大きさを読む（読めない形は None）
+    #[test]
+    fn reads_normal_size_from_saved_window() {
+        let s = "(normal_geometry:(outer_position_pixels:Some((x:0.0,y:0.0)),scale_factor:1.0,inner_size_points:(x:1280.0,y:820.0)),fullscreen:false,maximized:true)";
+        assert_eq!(super::normal_size(s), Some(egui::vec2(1280.0, 820.0)));
+        assert_eq!(
+            super::normal_size("(inner_size_points:(x:1.0,y:2.0))"),
+            None
+        );
+    }
 }

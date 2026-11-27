@@ -142,17 +142,24 @@ pub fn main() -> std::process::ExitCode {
     samples::install(settings_dir.clone());
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);
+    // 通し確認は利用者の設定（窓の大きさ・配置・残した状態）を読まず、書き換えもしない。空の一時ファイルを設定にして、
+    // 終わったら消す（eframe は persistence_path が None だと OS の場所の設定を使うので、None にはできない。前は
+    // None にしていて、利用者の窓の大きさで撮り、終わりにその設定を書き換えていた）
+    let tour_store = args.tour.is_some().then(|| {
+        let f = std::env::temp_dir().join(format!("lensbench-tour-{}.ron", std::process::id()));
+        let _ = std::fs::remove_file(&f);
+        f
+    });
     let options = eframe::NativeOptions {
-        // 通し確認は利用者の設定（窓の配置・残した状態）を読まず、書き換えもしない
-        persistence_path: if args.tour.is_some() {
-            None
-        } else {
-            store.file.clone()
-        },
+        persistence_path: tour_store.clone().or_else(|| store.file.clone()),
         viewport: egui::ViewportBuilder::default()
             .with_title("lensbench")
             .with_icon(app::icon())
-            .with_inner_size([1280.0, 820.0])
+            .with_inner_size(if args.tour.is_some() {
+                tour::window_size()
+            } else {
+                [1280.0, 820.0]
+            })
             .with_min_inner_size([640.0, 400.0])
             .with_drag_and_drop(true),
         ..Default::default()
@@ -160,8 +167,14 @@ pub fn main() -> std::process::ExitCode {
     let r = eframe::run_native(
         "lensbench",
         options,
-        Box::new(move |cc| Ok(Box::new(app::App::new(cc, args)))),
+        Box::new(move |cc| {
+            app::frame::remember_normal_size(cc);
+            Ok(Box::new(app::App::new(cc, args)))
+        }),
     );
+    if let Some(f) = tour_store {
+        let _ = std::fs::remove_file(f);
+    }
     if let Err(e) = r {
         eprintln!("lensbench-gui: {e}");
         return std::process::ExitCode::FAILURE;

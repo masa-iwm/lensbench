@@ -131,6 +131,23 @@ impl Error {
         }
     }
 
+    /// 英語の文（表示の言語によらない。種類の前置きは英語）
+    pub fn english(&self) -> String {
+        match self {
+            Error::NotImplemented(s) => format!("{}{s}", PREFIXES[0].0),
+            Error::Invalid(s) => format!("{}{s}", PREFIXES[1].0),
+            Error::Io(s) => format!("{}{s}", PREFIXES[2].0),
+            Error::Cancelled => "cancelled".to_string(),
+            Error::Coded(_, e) => e.english(),
+        }
+    }
+
+    /// 解析の結果の `warnings` に入れる英語の文（[`Error::english`] から「invalid: 」を外したもの）。結果の文は英語で持ち、
+    /// 出すときに訳す（言語の設定で [`Display`](std::fmt::Display) を入れると、日本語の表示では訳した文と英語の文が混ざる）
+    pub fn warning_text(&self) -> String {
+        strip_invalid(&self.english()).to_string()
+    }
+
     /// 符号のない文の誤り（[`Error::Invalid`]・[`Error::Io`]・[`Error::NotImplemented`]）の文（中断は None）
     pub fn message(&self) -> Option<&str> {
         match self.base() {
@@ -244,6 +261,16 @@ mod tests {
         assert_eq!(strip_invalid("不正: a"), "a");
         assert_eq!(strip_invalid("invalid: a"), "a");
         assert_eq!(parse_display("a"), None);
+    }
+
+    /// 注意に入れる文は表示の言語によらず英語（「invalid: 」は外す。ほかの種類の前置きは残す）
+    #[test]
+    fn warning_text_is_english() {
+        let e = Error::Invalid("x".into()).with_code(code::ALL_VIGNETTED);
+        assert_eq!(e.english(), "invalid: x");
+        assert_eq!(e.warning_text(), "x");
+        assert_eq!(Error::Io("y".into()).warning_text(), "I/O: y");
+        assert_eq!(Error::Cancelled.warning_text(), "cancelled");
     }
 
     #[test]

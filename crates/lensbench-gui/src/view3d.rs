@@ -228,6 +228,7 @@ pub(crate) enum Click3 {
 }
 
 /// 図の中の 3D 表示。クリックしたもの（要素か機構部品か何も無い所）を返す。mech_sel は選んでいる機構部品の名前。
+/// `pick_mech` が false（組合せでない図）なら機構部品は選べず、その網は面の範囲を持つ要素のものにする
 /// `full` はパネルいっぱいの図（素のホイールで拡大縮小。[`crate::widgets::NavOpts::full`]）
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn show(
@@ -239,6 +240,7 @@ pub(crate) fn show(
     owner: &dyn Fn([usize; 2]) -> Option<usize>,
     sel: Option<usize>,
     mech_sel: Option<&str>,
+    pick_mech: bool,
     accent: Color32,
 ) -> Option<Click3> {
     let rect = resp.rect;
@@ -346,8 +348,8 @@ pub(crate) fn show(
         let selected = k.is_some() && k == sel;
         let mech_selected = m.kind == Kind::Mech && mech_sel == Some(m.name.as_str());
         let who = match (&m.kind, k) {
-            (Kind::Mech, _) if !m.name.is_empty() => Owner3::Mech(mi),
-            (Kind::Mech, _) => Owner3::None,
+            (Kind::Mech, _) if pick_mech && !m.name.is_empty() => Owner3::Mech(mi),
+            (Kind::Mech, _) if pick_mech => Owner3::None,
             (_, Some(k)) => Owner3::El(k),
             _ => Owner3::None,
         };
@@ -639,7 +641,7 @@ mod tests {
         );
         let ctx = egui::Context::default();
         let size = egui::vec2(400.0, 300.0);
-        let run = |events: Vec<egui::Event>| {
+        let run_with = |events: Vec<egui::Event>, pick_mech: bool| {
             let mut out = None;
             let raw = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, size)),
@@ -657,15 +659,17 @@ mod tests {
                         true,
                         &sc,
                         &[],
-                        &|_| None,
+                        &|_| Some(0),
                         None,
                         Some("tube"),
+                        pick_mech,
                         Color32::RED,
                     );
                 });
             });
             out
         };
+        let run = |events: Vec<egui::Event>| run_with(events, true);
         let press = |at: Pos2, button: egui::PointerButton| {
             let ev = |pressed| egui::Event::PointerButton {
                 pos: at,
@@ -683,5 +687,8 @@ mod tests {
         assert_eq!(run(press(mid, egui::PointerButton::Secondary)), None);
         run(vec![egui::Event::PointerMoved(Pos2::new(20.0, 20.0))]);
         assert_eq!(run(click(Pos2::new(20.0, 20.0))), Some(Click3::Empty));
+        // 組合せでない図: 部品は選べず、網は面の範囲を持つ要素のもの（要素の選択が外れない）
+        run_with(vec![egui::Event::PointerMoved(mid)], false);
+        assert_eq!(run_with(click(mid), false), Some(Click3::El(0)));
     }
 }

@@ -227,8 +227,20 @@ pub(crate) struct Tour {
     pub shots: Vec<String>,
 }
 
+/// 通し確認の窓の大きさ [点]（LENSBENCH_TOUR_SIZE が無いとき）。利用者の窓の既定（1280×820）より広くして、
+/// 設定の欄を開いたままのレイアウト図なども見えるようにする（画面より大きければ画面の大きさになる）
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) const WINDOW: [f32; 2] = [1600.0, 1000.0];
+
+/// 通し確認の窓の大きさ: 環境変数 LENSBENCH_TOUR_SIZE（"幅x高さ"。狭い窓での崩れを撮る）か [`WINDOW`]
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn window_size() -> [f32; 2] {
+    size_from_env().unwrap_or(WINDOW)
+}
+
 /// 環境変数 LENSBENCH_TOUR_SIZE（"幅x高さ"）の窓の大きさ
-pub(crate) fn size_from_env() -> Option<[f32; 2]> {
+#[cfg(not(target_arch = "wasm32"))]
+fn size_from_env() -> Option<[f32; 2]> {
     let v = std::env::var("LENSBENCH_TOUR_SIZE").ok()?;
     let (w, h) = v.split_once('x')?;
     Some([w.trim().parse().ok()?, h.trim().parse().ok()?])

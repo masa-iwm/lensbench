@@ -108,7 +108,12 @@ fn fans(
                     tangential: v.tan,
                     sagittal: v.sag,
                 }),
-                Err(e) => warnings.push(format!("field {}, wavelength {}: {e}", i + 1, w + 1)),
+                Err(e) => warnings.push(format!(
+                    "field {}, wavelength {}: {e}",
+                    i + 1,
+                    w + 1,
+                    e = e.warning_text()
+                )),
             }
         }
     }
@@ -287,7 +292,11 @@ impl Analysis for FieldCurv {
             let r = match seidel::distortion_ref(s, w, None) {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warnings.push(format!("wavelength {}: distortion: {e}", w + 1));
+                    warnings.push(format!(
+                        "wavelength {}: distortion: {e}",
+                        w + 1,
+                        e = e.warning_text()
+                    ));
                     None
                 }
             };
@@ -301,7 +310,12 @@ impl Analysis for FieldCurv {
                 let mut get = |t: bool| match focus(s, f, w, s.image(), t) {
                     Ok(z) => z,
                     Err(e) => {
-                        warnings.push(format!("wavelength {}, field {}: {e}", w + 1, f3(hh)));
+                        warnings.push(format!(
+                            "wavelength {}, field {}: {e}",
+                            w + 1,
+                            f3(hh),
+                            e = e.warning_text()
+                        ));
                         f64::NAN
                     }
                 };
@@ -313,7 +327,12 @@ impl Analysis for FieldCurv {
                     Some(r) => distortion_pct(s, w, ax.sel(hh), r, k, p.distortion),
                 };
                 dist.push(d.unwrap_or_else(|e| {
-                    warnings.push(format!("wavelength {}, field {}: {e}", w + 1, f3(hh)));
+                    warnings.push(format!(
+                        "wavelength {}, field {}: {e}",
+                        w + 1,
+                        f3(hh),
+                        e = e.warning_text()
+                    ));
                     f64::NAN
                 }));
             }
@@ -430,7 +449,7 @@ impl Analysis for Longitudinal {
                 .iter()
                 .map(|&z| {
                     seidel::longitudinal(s, w, z).unwrap_or_else(|e| {
-                        warnings.push(format!("wavelength {}: {e}", w + 1));
+                        warnings.push(format!("wavelength {}: {e}", w + 1, e = e.warning_text()));
                         f64::NAN
                     })
                 })
@@ -529,7 +548,12 @@ impl Analysis for LateralColor {
                         }
                     }
                     Err(e) => {
-                        warnings.push(format!("wavelength {}, field {}: {e}", w + 1, f3(hh)));
+                        warnings.push(format!(
+                            "wavelength {}, field {}: {e}",
+                            w + 1,
+                            f3(hh),
+                            e = e.warning_text()
+                        ));
                         f64::NAN
                     }
                 })
@@ -633,7 +657,7 @@ impl Analysis for FocalShift {
                     aber::focal_shift
                 };
                 f(s, l).unwrap_or_else(|e| {
-                    warnings.push(format!("{l} µm: {e}"));
+                    warnings.push(format!("{l} µm: {e}", e = e.warning_text()));
                     f64::NAN
                 })
             })
@@ -763,7 +787,12 @@ impl Analysis for GridDistortion {
                             distortion: d,
                         });
                     }
-                    Err(e) => warnings.push(format!("field ({}, {}): {e}", f3(hx), f3(hy))),
+                    Err(e) => warnings.push(format!(
+                        "field ({}, {}): {e}",
+                        f3(hx),
+                        f3(hy),
+                        e = e.warning_text()
+                    )),
                 }
             }
         }

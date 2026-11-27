@@ -19,7 +19,7 @@ python3 scripts/docs_examples.py "$cli"
 rm -rf docs/gen/gui
 if command -v xvfb-run >/dev/null; then
   cargo build --profile "$profile" -p lensbench-gui
-  xvfb-run -a -s "-screen 0 1400x900x24" "target/$profile/lensbench-gui" --tour target/docs-gui-tour \
+  xvfb-run -a -s "-screen 0 1920x1200x24" "target/$profile/lensbench-gui" --tour target/docs-gui-tour \
     --glass-dir tests/glass --lens-catalog examples/lenses/LB examples/projects/P8_catalog_two.json
   mkdir -p docs/gen/gui
   cp target/docs-gui-tour/*.png docs/gen/gui/
