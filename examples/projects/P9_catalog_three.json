@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.11/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.12/project.schema.json",
  "name": "P9 three catalog lenses with the stop inside, finite object",
  "glass_catalogs": [
   "SCHOTT"
