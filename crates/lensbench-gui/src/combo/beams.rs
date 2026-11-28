@@ -213,7 +213,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
                     ui.checkbox(&mut b.off, "")
                         .on_hover_text(tr("Leave the beam out of the default set of the analyses"));
                     if ui
-                        .small_button("✕")
+                        .small_button("✖")
                         .on_hover_text(tr("Remove the beam"))
                         .clicked()
                     {
@@ -258,11 +258,14 @@ pub(super) fn tool_window(
 ) {
     let id = ui.make_persistent_id(key);
     let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-    if ui.selectable_label(open, title).clicked() {
+    let b = ui.selectable_label(open, title);
+    if b.clicked() {
         open = !open;
     }
+    // 初めはボタンの下に出す（左上だとメニューの列にかぶる）
     egui::Window::new(title)
         .id(id.with("win"))
+        .default_pos(b.rect.left_bottom() + egui::vec2(0.0, 4.0))
         .open(&mut open)
         .default_width(width)
         .resizable(true)

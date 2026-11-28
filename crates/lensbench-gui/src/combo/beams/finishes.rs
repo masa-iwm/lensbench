@@ -161,7 +161,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
                 for (i, f) in v.iter_mut().enumerate() {
                     row(ui, i, f, &ch);
                     if ui
-                        .small_button("✕")
+                        .small_button("✖")
                         .on_hover_text(tr("Remove the finish"))
                         .clicked()
                     {
@@ -459,17 +459,27 @@ mod tests {
         crate::i18n::set(crate::i18n::Lang::En);
         let mut h = egui_kittest::Harness::builder()
             .allow_missing_glyphs()
-            .with_size(egui::vec2(900.0, 500.0))
+            .with_size(egui::vec2(900.0, 900.0))
             .build_ui_state(
                 |ui, c: &mut Combo| {
+                    // ボタンを下げておく（窓が左上に出るとボタンより上にかぶる）
+                    ui.add_space(200.0);
                     menu(ui, c);
                 },
                 Combo::default(),
             );
         h.run_steps(1);
+        let button = h.get_by_label("Finishes").rect();
         h.get_by_label("Finishes").click();
         h.run_steps(2);
-        h.get_by_label("+ Add a finish").click();
+        // 窓はボタンの下に出る
+        let add = h.get_by_label("+ Add a finish");
+        assert!(
+            add.rect().top() > button.bottom(),
+            "{:?} {button:?}",
+            add.rect()
+        );
+        add.click();
         h.run_steps(2);
         assert_eq!(finishes_of(h.state()).unwrap().len(), 1);
         h.get(
