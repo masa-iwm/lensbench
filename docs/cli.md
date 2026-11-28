@@ -47,6 +47,7 @@ lensbench rays     system.zmx --fan grid --rays 7 --save rays.npz
 lensbench zernike  system.zmx --save zernike.csv
 lensbench ghost    system.zmx --coatings coat_models.lbcm --out ghosts
 lensbench nsc      system.zmx --grid 31 --pixels 128 --reflections 2  # 非順次の追跡（検出器の照度・経路ごとのパワー・収支）
+lensbench pst      project.json --angles 0,10,30 --grid 201             # 迷光の PST（角度ごとの点光源透過率と効く経路）
 lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 ```
 

@@ -2260,6 +2260,61 @@
       ],
       "type": "object"
     },
+    "FinishSpec": {
+      "additionalProperties": false,
+      "description": "面の仕上げ 1 つ。対象は `face`（ブロックの面）・`edge`（その面を持つ玉の縁）・`mech`（機構部品の名前）のどれか 1 つ",
+      "properties": {
+        "edge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockFace"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "このブロックの面を持つ玉の縁（縁の輪と円柱）"
+        },
+        "face": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockFace"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ブロックの面（光学面。空気中の絞り・遮光板のブロックなら開口の外の板）"
+        },
+        "mech": {
+          "description": "機構部品の名前（壁）",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reflect": {
+          "description": "光を通さない面の反射率（0〜1、残りは吸収）。機構部品・絞りの板は省略で 0（黒）。玉の縁に書くと縁は光を\n通さない（塗った縁）。光学面には書けない（反射は膜込みの Fresnel）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "scatter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Scatter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "散乱（光学面・透明な縁では反射と透過の光、光を通さない面では反射した光）"
+        }
+      },
+      "type": "object"
+    },
     "GlassTemplate": {
       "description": "ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補の\n絞り込みに使う（lensbench-design の `glass_sub`）。並びは GSTD と同じで、OpticStudio 2026 R1.01 で 1 欄ずつ確かめた",
       "properties": {
@@ -3343,6 +3398,86 @@
         }
       },
       "type": "object"
+    },
+    "Scatter": {
+      "additionalProperties": false,
+      "description": "面の散乱",
+      "properties": {
+        "a": {
+          "description": "ABg の A・B・g（BSDF = A / (B + |β − β0|^g) [1/sr]）",
+          "format": "double",
+          "type": "number"
+        },
+        "b": {
+          "format": "double",
+          "type": "number"
+        },
+        "fraction": {
+          "description": "散乱する割合（Lambert・Gauss。0〜1、省略で 1）。ABg は使わない（BSDF の積分で決まる）",
+          "format": "double",
+          "type": "number"
+        },
+        "g": {
+          "format": "double",
+          "type": "number"
+        },
+        "model": {
+          "$ref": "#/$defs/ScatterModel"
+        },
+        "on": {
+          "$ref": "#/$defs/ScatterSide",
+          "description": "散乱する側（省略で反射と透過の両方）"
+        },
+        "sigma": {
+          "description": "Gauss の幅 σ（方向余弦の空間）",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "ScatterModel": {
+      "description": "散乱のモデル",
+      "oneOf": [
+        {
+          "const": "lambert",
+          "description": "放射輝度が一様（強度は cosθ に比例）",
+          "type": "string"
+        },
+        {
+          "const": "gauss",
+          "description": "鏡面の方向のまわりの Gauss（`sigma`）",
+          "type": "string"
+        },
+        {
+          "const": "abg",
+          "description": "ABg（`a`・`b`・`g`）",
+          "type": "string"
+        }
+      ]
+    },
+    "ScatterSide": {
+      "description": "散乱する側",
+      "oneOf": [
+        {
+          "const": "both",
+          "description": "反射と透過の両方",
+          "type": "string"
+        },
+        {
+          "const": "reflect",
+          "description": "反射した光だけ",
+          "type": "string"
+        },
+        {
+          "const": "transmit",
+          "description": "透過した光だけ",
+          "type": "string"
+        }
+      ]
     },
     "Semi": {
       "anyOf": [
@@ -4925,6 +5060,13 @@
         "type": "angle",
         "weights": []
       }
+    },
+    "finishes": {
+      "description": "面の仕上げ（散乱・光を通さない物の反射率）。ブロックの面・玉の縁・機構部品に付ける。非順次の追跡だけが使う",
+      "items": {
+        "$ref": "#/$defs/FinishSpec"
+      },
+      "type": "array"
     },
     "floating_clip": {
       "description": "浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）",

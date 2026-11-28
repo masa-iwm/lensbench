@@ -26,6 +26,7 @@ pub mod detectors;
 pub mod edit_ops;
 pub mod edit_spec;
 pub mod filter;
+pub mod finish;
 pub mod lenient;
 pub mod nsc;
 pub mod open;

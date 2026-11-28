@@ -152,6 +152,9 @@ pub struct Prescription {
     /// 描画だけに使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<crate::mech::MechPart>,
+    /// 面・玉の縁・機構部品の仕上げ（散乱・光を通さない面の反射率。非順次の追跡だけが使う）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub finishes: Vec<crate::scatter::Finish>,
     /// 多重構成の表（[`crate::edit`]）。None なら構成は 1 つ
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configs: Option<crate::configs::Configs>,
@@ -495,6 +498,7 @@ impl System {
             import_notes: Vec::new(),
             units: Vec::new(),
             mechanics: Vec::new(),
+            finishes: Vec::new(),
             configs: None,
         }
         .build_raw()?;

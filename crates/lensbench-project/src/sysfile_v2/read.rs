@@ -114,6 +114,10 @@ pub(crate) fn system(
     s.macro_parms = p.macro_parms;
     s.units = p.units;
     s.mechanics = p.mechanics;
+    for f in &p.finishes {
+        f.check()?;
+    }
+    s.finishes = p.finishes;
     s.configs = p.configs;
     // 範囲の外を指すもので refresh が panic しないよう先に確かめる
     crate::sysfile::check_refs(&s)?;

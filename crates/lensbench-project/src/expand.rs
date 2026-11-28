@@ -1018,6 +1018,13 @@ pub(crate) fn expand_body(
         rx.mechanics = mech;
         Ok(())
     })?;
+    if !p.finishes.is_empty() {
+        let fin = crate::finish::resolve(&s, &p.finishes, &map)?;
+        s.edit_raw(|rx| {
+            rx.finishes = fin;
+            Ok(())
+        })?;
+    }
     warn.extend(crate::expand_error::in_medium_notes(&s, &map));
     s.validate()?;
     Ok(Walk::Done(Box::new(Expansion {

@@ -41,6 +41,46 @@ impl CounterRng {
     pub fn uniform(&self, ray: u64, event: u32, k: u32) -> f64 {
         (self.bits(ray, event, k) >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
     }
+
+    /// 光線 ray の枝 branch（分かれた枝ごとの印）の event 回目の出来事の k 個目の 64 ビットの数
+    pub const fn bits_in(&self, ray: u64, branch: u64, event: u32, k: u32) -> u64 {
+        mix(self.bits(ray, event, k) ^ mix(branch.wrapping_add(GAMMA)))
+    }
+
+    /// [`Self::bits_in`] の [0, 1) の一様な数（53 ビット）
+    pub fn uniform_in(&self, ray: u64, branch: u64, event: u32, k: u32) -> f64 {
+        (self.bits_in(ray, branch, event, k) >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+    }
+
+    /// 光線 ray の枝 branch の event 回目の出来事で使う数の列（SplitMix64 の列。散乱の方向のように一度にいくつも要る数）
+    pub const fn stream(&self, ray: u64, branch: u64, event: u32) -> Stream {
+        Stream {
+            state: self.bits_in(ray, branch, event, u32::MAX),
+        }
+    }
+
+    /// 枝 branch の k 番目の子の枝の印
+    pub const fn child(branch: u64, k: u64) -> u64 {
+        mix(branch ^ GAMMA.wrapping_mul(k.wrapping_add(1)))
+    }
+}
+
+/// 数の列（[`CounterRng::stream`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stream {
+    state: u64,
+}
+
+impl Stream {
+    /// 次の 64 ビットの数
+    pub fn next_bits(&mut self) -> u64 {
+        self.state = self.state.wrapping_add(GAMMA);
+        mix(self.state)
+    }
+    /// 次の [0, 1) の一様な数（53 ビット）
+    pub fn next_uniform(&mut self) -> f64 {
+        (self.next_bits() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+    }
 }
 
 #[cfg(test)]

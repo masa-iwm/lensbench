@@ -2865,13 +2865,13 @@ coating fit: the interpolation order {} is not 0 or 4 to 12	コーティング�
 image simulation: the chief ray doesn't reach the image at {dark} of {} points of the field map (vignetted); they are taken as dark	像の模擬: 写像のグリッドの {} 点のうち {dark} 点で主光線が像面に届きません（ケラレ）。その点は暗いものとします
 image simulation: {cut} of {} PSF grid points are fully vignetted; no light is taken from them	像の模擬: PSF のグリッドの {} 点のうち {cut} 点はすべてケラレます。その点からの光は取りません
 Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts)	非順次の追跡: 検出器の放射照度と光線の経路ごとのパワー（反射・ゴースト）
-Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout	システムの物の場面（縁で閉じたレンズ・ミラー・絞り・機構部品と、検出器としての像面。プロジェクトはすべての光束か BS の経路の物）での非順次の光線追跡: 次の面は最も近い面で、光線は境界ごとに反射と透過に分かれる（コーティング込みの Fresnel、偏光、硝材の吸収）。光源は視野ごとの瞳の光線のグリッドで、全体のパワーを等しく分ける。検出器の放射照度 [W/mm²]、検出したパワーの順の光線の経路（イベントの並び）の表と経路ごとの放射照度、エネルギーの収支、レイアウト図に描く一部の光源の光線の検出された枝を返す
+Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). Surfaces, lens edges and mechanical parts can scatter (Lambert, Gauss, ABg) and opaque ones can reflect, by the finishes of the project or of the finishes file. The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout	システムの物の場面（縁で閉じたレンズ・ミラー・絞り・機構部品と、検出器としての像面。プロジェクトはすべての光束か BS の経路の物）での非順次の光線追跡: 次の面は最も近い面で、光線は境界ごとに反射と透過に分かれる（コーティング込みの Fresnel、偏光、硝材の吸収）。面・レンズの縁・機構部品は、プロジェクトか仕上げのファイルの仕上げで散乱（Lambert・Gauss・ABg）させ、光を通さない物は反射させられる。光源は視野ごとの瞳の光線のグリッドで、全体のパワーを等しく分ける。検出器の放射照度 [W/mm²]、検出したパワーの順の光線の経路（イベントの並び）の表と経路ごとの放射照度、エネルギーの収支、レイアウト図に描く一部の光源の光線の検出された枝を返す
 Field number of the source (from 1; all fields if omitted)	光源の視野の番号（1 始まり、省略で全視野）
 Side of the pupil ray grid of the source for each field	視野ごとの光源の瞳の光線のグリッドの一辺
 Total source power [W] (shared equally by the source rays)	光源の全体のパワー [W]（光源の光線で等しく分ける）
 Source polarization	光源の偏光
 Ray splitting at boundaries: deterministic (follow both the reflected and the transmitted rays) or monte-carlo (choose one by the power ratio)	境界での光線の分け方: deterministic（反射と透過の両方を追う）か monte-carlo（パワーの比で一方を選ぶ）
-Random seed (monte-carlo)	乱数シード（monte-carlo）
+Random seed (monte-carlo, and scatter directions)	乱数シード（monte-carlo と散乱の方向）
 Branches weaker than this fraction of their source ray are dropped (deterministic) or go to Russian roulette (monte-carlo)	元の光線に対してこの割合より弱い枝は捨てる（deterministic）かロシアンルーレットにかける（monte-carlo）
 Maximum number of events of a ray	1 本の光線のイベントの数の上限
 Half widths of the detector rectangle [mm] (x, y; one value for a square; the image semi-diameter if omitted)	検出器の矩形の半幅 [mm]（x、y。1 つなら正方形、省略で像面の半径）
@@ -2887,3 +2887,40 @@ no sequential system (beam, beam splitter path or ghost) has this path	この経
 half takes 1 or 2 values ({n} given)	half は 1 つか 2 つ（{n} 個）
 reflections takes 1 or 2 values ({n} given)	reflections は 1 つか 2 つ（{n} 個）
 monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0	monte-carlo: エネルギーの収支は平均でだけ閉じる（ロシアンルーレット）ので residual_w は 0 になりません
+scatter: fraction {f} (0 to 1)	散乱: 割合 fraction {f}（0〜1）
+scatter: gauss sigma {s} (must be positive)	散乱: gauss の幅 sigma {s}（正の数にしてください）
+scatter: abg A {a} (0 or more)	散乱: abg の A {a}（0 以上）
+scatter: abg B {b} (must be positive)	散乱: abg の B {b}（正の数にしてください）
+scatter: abg g {g} (0 to 10)	散乱: abg の g {g}（0〜10）
+scatter: abg A {a} B {b} g {g} scatters {worst:.4} of the light (more than all of it)	散乱: abg の A {a} B {b} g {g} は光の {worst:.4} を散乱します（全部より多い）
+finish: give one of surface, edge and mech ({n} given)	仕上げ: surface・edge・mech のどれか 1 つを書いてください（{n} 個）
+finish: reflect {r} (0 to 1)	仕上げ: 反射率 reflect {r}（0〜1）
+finish: give reflect or scatter	仕上げ: reflect か scatter を書いてください
+finish: surface {j} of {label} isn't an object of the non-sequential scene (a dummy surface, a coordinate break or out of range)	仕上げ: {label} の面 {j} は非順次の場面の物ではありません（ダミー面・座標ブレークか範囲の外）
+finish: edge of surface {j} of {label}: the surface isn't an object of the non-sequential scene	仕上げ: {label} の面 {j} の縁: その面は非順次の場面の物ではありません
+finish: surface {j} of {label} isn't on a lens with an edge	仕上げ: {label} の面 {j} は縁のあるレンズの面ではありません
+finish: no mechanical part {m} in {label}	仕上げ: {label} に機構部品 {m} がありません
+finish: two different finishes on the same face ({label})	仕上げ: 同じ面に違う仕上げが 2 つあります（{label}）
+finishes: give one of face, edge and mech ({n} given)	finishes: face・edge・mech のどれか 1 つを書いてください（{n} 個）
+finishes: block {} is a coordinate break	finishes: ブロック {} は座標ブレークです
+finishes: no block {}	finishes: ブロック {} がありません
+finishes: give reflect or scatter	finishes: reflect か scatter を書いてください
+nsc: {lab}: reflect is only for a mechanical part, a stop plate or a painted lens edge (an optical surface reflects by Fresnel with its coating)	非順次: {lab}: reflect は機構部品・絞りの板・塗ったレンズの縁だけに書けます（光学面の反射はコーティング込みの Fresnel）
+nsc: {lab}: a detector or a surface without an action can't scatter	非順次: {lab}: 検出器と働きの無い面は散乱させられません
+nsc: source radius {radius} mm (must be positive)	非順次: 光源の半径 {radius} mm（正の数にしてください）
+nsc: source grid {grid} (1 or more)	非順次: 光源のグリッド {grid}（1 以上）
+pst: give one or more angles	pst: 角度を 1 つ以上書いてください
+pst: angle {t}° (must be below 90°)	pst: 角度 {t}°（90° 未満にしてください）
+pst: the scene has no detector	pst: 場面に検出器がありません
+{}: finishes: {e}	{}: 仕上げ: {e}
+monte-carlo: PST is a statistical estimate (more rays: a larger grid)	monte-carlo: PST は統計の推定値です（光線を増やすには grid を大きく）
+Scattered rays made at each scattering event (deterministic split; monte-carlo scatters one ray)	散乱 1 回ごとに作る散乱の光線の数（deterministic。monte-carlo は 1 本を散乱させる）
+Surface finishes file (JSON list of scatter and reflectance of surfaces, lens edges and mechanical parts by system surface number; added to those of the project)	面の仕上げのファイル（面・レンズの縁・機構部品の散乱と反射率をシステムの面の番号で書いた JSON の並び。プロジェクトの仕上げに足す）
+Stray light: point source transmittance (PST) by source angle, with the paths that bring the light	迷光: 光源の角度ごとの点光源透過率（PST）と、光を運ぶ経路
+Stray light analysis with the non-sequential trace (see nsc): for each source angle, a collimated source disc covering the entrance of the system shines on the scene of the objects (lenses with their edges, mirrors, stops, mechanical parts; scatter and reflectance by the finishes), and the power reaching the detector (the image surface) is counted. PST is the mean detector irradiance divided by the source irradiance (normal to the beam). Returns the PST, the detected power and its fraction of the source, and the strongest ray paths for each angle	非順次の追跡（nsc）による迷光の解析: 光源の角度ごとに、システムの入口を覆う平行光の円板の光源で物の場面（縁つきのレンズ・ミラー・絞り・機構部品。散乱と反射率は仕上げで）を照らし、検出器（像面）に届くパワーを数える。PST は検出器の平均の放射照度を光源の放射照度（光線に垂直）で割った値。角度ごとの PST、検出したパワーと光源に対する割合、強い順の光線の経路を返す
+Source angles from the optical axis [deg] (below 90)	光源の光軸からの角度 [deg]（90 未満）
+Azimuth of the source direction [deg] (0: the source is tilted toward +y like a y field, 90: toward +x)	光源の向きの方位角 [deg]（0: y の視野のように +y へ傾ける、90: +x へ）
+Radius of the collimated source disc [mm] (covers the entrance of the system; 1.1 times the largest semi-diameter, mechanical radius and mechanical part if omitted)	平行光の光源の円板の半径 [mm]（システムの入口を覆う。省略でクリア半径・機械半径・機構部品の最大の 1.1 倍）
+Rays on a side of the source disc grid	光源の円板のグリッドの一辺の光線の数
+Ray splitting at boundaries: monte-carlo (choose one by the power ratio) or deterministic (follow both)	境界での光線の分け方: monte-carlo（パワーの比で一方を選ぶ）か deterministic（両方を追う）
+Rows of the path table for each angle (largest power first)	角度ごとの経路の表の行数（パワーの大きい順）

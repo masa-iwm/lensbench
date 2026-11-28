@@ -37,7 +37,10 @@ pub(super) fn sequential(
         .map(|e| e.0)
         .collect();
     let on_lens = |f: &usize| sc.objects[sc.faces[*f].object].kind == ObjectKind::Lens;
-    if events.iter().any(|e| e.1 == EventKind::Scatter) {
+    if events
+        .iter()
+        .any(|e| matches!(e.1, EventKind::Scatter | EventKind::ScatterReflect))
+    {
         return Ok(none("the path scatters"));
     }
     for (k, (label, s, _)) in systems.iter().enumerate() {

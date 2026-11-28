@@ -26,6 +26,12 @@
 
 mod bvh;
 mod geom;
+mod scatter;
+mod source;
+
+use scatter::{basis, branch_key, ScatterCx};
+pub use scatter::{face_finishes, FaceFinish};
+pub use source::{back_off, disc_source, system_source};
 mod lines;
 pub mod seq;
 
@@ -37,6 +43,7 @@ use geom::{Bound, LocalHit};
 use lensbench_core::coating::{Coatings, Iface, C64};
 use lensbench_core::math::{cross, dot, norm, normalize, scale, V3};
 use lensbench_core::rng::CounterRng;
+use lensbench_core::scatter::{Bsdf, FinishAt, Scatter, ScatterSide};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, ObjSpec};
 use lensbench_core::{invalid, Result, System};
@@ -110,6 +117,11 @@ pub struct NscOpts {
     pub detector: DetectorSpec,
     /// 検出器の図に数える経路の条件（経路の表・収支には効かない）
     pub filter: Option<PathFilter>,
+    /// 決まった分岐で、散乱する面 1 回あたりに作る散乱の光線の数（散乱の割合のパワーを等しく分ける）。
+    /// モンテカルロでは使わない（散乱か鏡面かを確率で選ぶ）
+    pub scatter_rays: usize,
+    /// 決まった分岐の散乱の方向の乱数の種（モンテカルロは [`Split::MonteCarlo`] の種）
+    pub seed: u64,
 }
 
 impl Default for NscOpts {
@@ -121,6 +133,8 @@ impl Default for NscOpts {
             max_events: 256,
             detector: DetectorSpec::default(),
             filter: None,
+            scatter_rays: 1,
+            seed: 1,
         }
     }
 }
@@ -328,8 +342,8 @@ enum Role {
     Stop,
     /// 検出器（[`Tracer::detectors`] の番号と、数える側: 0 = −z 側から、1 = +z 側から）
     Detector(usize, usize),
-    /// 遮る（吸収）
-    Absorber,
+    /// 光を通さない面（機構部品の壁・塗った縁）。反射率 [`FaceData::wall`] の分を反射し、残りは吸収
+    Wall,
     /// 働きの無い面（素通り）
     Pass,
 }
@@ -346,6 +360,10 @@ struct FaceData {
     /// 側（0 = −z 側から、1 = +z 側から）ごとの透過・反射の係数
     t_if: [Option<Iface>; 2],
     r_if: [Option<Iface>; 2],
+    /// 光を通さない所（壁・絞りの板）の反射率
+    wall: f64,
+    /// 散乱
+    scatter: Option<(Bsdf, ScatterSide)>,
 }
 
 /// 用意した追跡（場面・波長ごと）
@@ -362,7 +380,7 @@ pub struct Tracer<'a> {
     wl: f64,
 }
 
-/// 面の名前（物の名前か種類と番号、面は系の面の番号か縁）
+/// 面の名前（物の名前か種類と番号、面は系の面の番号か縁・壁の番号）
 pub fn face_labels(sc: &Scene) -> Vec<String> {
     let mut seen: HashMap<usize, usize> = HashMap::new();
     sc.faces
@@ -391,7 +409,12 @@ pub fn face_labels(sc: &Scene) -> Vec<String> {
                 _ => {
                     let n = seen.entry(f.object).or_insert(0);
                     *n += 1;
-                    format!("edge{n}")
+                    // 機構部品は壁、玉は縁
+                    if o.kind == ObjectKind::Mech {
+                        format!("wall{n}")
+                    } else {
+                        format!("edge{n}")
+                    }
                 }
             };
             format!("{obj}.{part}")
@@ -461,6 +484,7 @@ impl<'a> Tracer<'a> {
         let mut nmap = HashMap::new();
         indices(systems, w, &mut nmap);
         let labels = face_labels(sc);
+        let finishes = face_finishes(sc, systems)?;
         let mut faces = Vec::with_capacity(sc.faces.len());
         let mut detectors = Vec::new();
         for (i, f) in sc.faces.iter().enumerate() {
@@ -541,10 +565,13 @@ impl<'a> Tracer<'a> {
                     let r = surf.and_then(|d| d.mech_semi).unwrap_or(big).max(semi);
                     (Role::Stop, Bound::Disc { r })
                 }
-                ObjectKind::Mech => (Role::Absorber, Bound::Extent),
+                ObjectKind::Mech => (Role::Wall, Bound::Extent),
                 ObjectKind::Plane => invalid!(
                     "nsc: {lab} is an ideal lens or a Jones surface, which the non-sequential trace doesn't handle"
                 ),
+                _ if finishes[i].as_ref().is_some_and(|f| f.edge && f.reflect.is_some()) => {
+                    (Role::Wall, Bound::Extent)
+                }
                 _ if mirror => (Role::Mirror, Bound::Extent),
                 _ if mlab[0] == mlab[1] && f.coat.is_empty() => (Role::Pass, Bound::Extent),
                 _ => (Role::Boundary, Bound::Extent),
@@ -575,6 +602,18 @@ impl<'a> Tracer<'a> {
                     r_if[s] = Some(prep(format!("{c}|{}|MIRROR", mlab[s]), n[s], n[s])?);
                 }
             }
+            let fin = finishes[i].clone().unwrap_or_default();
+            let opaque = matches!(role, Role::Wall | Role::Stop);
+            if fin.reflect.is_some() && !opaque {
+                invalid!("nsc: {lab}: reflect is only for a mechanical part, a stop plate or a painted lens edge (an optical surface reflects by Fresnel with its coating)");
+            }
+            if fin.scatter.is_some() && matches!(role, Role::Detector(..) | Role::Pass) {
+                invalid!("nsc: {lab}: a detector or a surface without an action can't scatter");
+            }
+            let scatter = match &fin.scatter {
+                Some(sc) => Some((sc.prepare().map_err(|e| e.at(lab.clone()))?, sc.on)),
+                None => None,
+            };
             faces.push(FaceData {
                 role,
                 bound,
@@ -582,6 +621,8 @@ impl<'a> Tracer<'a> {
                 la,
                 t_if,
                 r_if,
+                wall: fin.reflect.unwrap_or(0.0),
+                scatter,
             });
         }
         let mut boxes = Vec::new();
@@ -689,6 +730,15 @@ impl<'a> Tracer<'a> {
             Split::MonteCarlo { seed } => Some(CounterRng::new(seed)),
             Split::Deterministic => None,
         };
+        let srng = match self.opts.split {
+            Split::MonteCarlo { seed } => CounterRng::new(seed),
+            Split::Deterministic => CounterRng::new(self.opts.seed),
+        };
+        let mut sx = ScatterCx {
+            rng: srng,
+            id,
+            keep,
+        };
         let mut stack = vec![Live {
             p: start.p,
             k: normalize(start.k),
@@ -696,6 +746,7 @@ impl<'a> Tracer<'a> {
             hits: Vec::new(),
             skip: Vec::new(),
             passes: 0,
+            key: 0,
         }];
         while let Some(mut s) = stack.pop() {
             let mut pw = power_of(&s.e);
@@ -771,13 +822,11 @@ impl<'a> Tracer<'a> {
                     if passing {
                         stack.push(s);
                     } else {
-                        s.hits.push(ev(EventKind::Absorb, 0.0));
-                        finish(s, End::Absorbed, pw, sink, bud);
+                        self.wall(s, fi, ng, pw, &mut sx, &mut stack, sink, bud);
                     }
                 }
-                Role::Absorber => {
-                    s.hits.push(ev(EventKind::Absorb, 0.0));
-                    finish(s, End::Absorbed, pw, sink, bud);
+                Role::Wall => {
+                    self.wall(s, fi, ng, pw, &mut sx, &mut stack, sink, bud);
                 }
                 Role::Mirror => {
                     let r = fd.r_if[side].as_ref().expect("mirror coefficients");
@@ -787,11 +836,12 @@ impl<'a> Tracer<'a> {
                     bud.absorbed += pw - pr;
                     s.e = er;
                     s.k = kr;
-                    self.go_on(
+                    self.go_scatter(
                         s,
                         ev(EventKind::Reflect, pr),
-                        pr,
-                        keep,
+                        true,
+                        ng,
+                        &mut sx,
                         &mut stack,
                         sink,
                         bud,
@@ -848,6 +898,7 @@ impl<'a> Tracer<'a> {
                             hits: s.hits.clone(),
                             skip: vec![fi],
                             passes: s.passes,
+                            key: branch_key(s.key, 1),
                         };
                         self.go_on(
                             b,
@@ -891,7 +942,16 @@ impl<'a> Tracer<'a> {
                             bud.absorbed += pw - pr;
                             s.e = er;
                             s.k = kr;
-                            self.go_on(s, ev(EventKind::Tir, pr), pr, keep, &mut stack, sink, bud);
+                            self.go_scatter(
+                                s,
+                                ev(EventKind::Tir, pr),
+                                true,
+                                ng,
+                                &mut sx,
+                                &mut stack,
+                                sink,
+                                bud,
+                            );
                         }
                         Some(kt) => {
                             let t = fd.t_if[side].as_ref().expect("boundary coefficients");
@@ -908,24 +968,27 @@ impl<'a> Tracer<'a> {
                                         hits: s.hits.clone(),
                                         skip: vec![fi],
                                         passes: s.passes,
+                                        key: branch_key(s.key, 1),
                                     };
                                     s.k = kt;
                                     s.e = et;
                                     // 透過を先に積むと反射の枝から先に追う（どちらでも結果は同じ）
-                                    self.go_on(
+                                    self.go_scatter(
                                         s,
                                         ev(EventKind::Transmit, pt),
-                                        pt,
-                                        keep,
+                                        false,
+                                        ng,
+                                        &mut sx,
                                         &mut stack,
                                         sink,
                                         bud,
                                     );
-                                    self.go_on(
+                                    self.go_scatter(
                                         b,
                                         ev(EventKind::Reflect, pr),
-                                        pr,
-                                        keep,
+                                        true,
+                                        ng,
+                                        &mut sx,
                                         &mut stack,
                                         sink,
                                         bud,
@@ -951,8 +1014,21 @@ impl<'a> Tracer<'a> {
                                     let p2 = power_of(&s.e);
                                     // 丸めの差は吸収に入れる（収支を閉じる）
                                     bud.absorbed += sum - p2;
-                                    s.hits.push(ev(kind, p2));
-                                    stack.push(s);
+                                    if fd.scatter.is_some() {
+                                        self.go_scatter(
+                                            s,
+                                            ev(kind, p2),
+                                            kind == EventKind::Reflect,
+                                            ng,
+                                            &mut sx,
+                                            &mut stack,
+                                            sink,
+                                            bud,
+                                        );
+                                    } else {
+                                        s.hits.push(ev(kind, p2));
+                                        stack.push(s);
+                                    }
                                 }
                             }
                         }
@@ -1006,6 +1082,8 @@ struct Live {
     skip: Vec<usize>,
     /// 素通りした面の数（重なった面の間の行き来を止める）
     passes: usize,
+    /// 枝の印（決まった分岐で分かれた枝ごとに違う散乱の乱数を引く）
+    key: u64,
 }
 
 fn finish(
@@ -1259,71 +1337,4 @@ impl Tracer<'_> {
             wavelength: self.wl,
         })
     }
-}
-
-/// 無限遠物体の光線の始点（面 1 の頂点を通る、方向に垂直な面の上）を、面 1 より前へ下げる（面 1 の形が始点より
-/// 前に出ていても当たるように）。有限物体の始点（物点）はそのまま
-pub fn back_off(s: &System, spec: ObjSpec, p: V3, k: V3) -> V3 {
-    if !matches!(spec, ObjSpec::Dir(_)) {
-        return p;
-    }
-    let j1 = (1..s.surfaces.len())
-        .find(|&j| !s.surfaces[j].ignore && !s.surfaces[j].is_coord_break())
-        .unwrap_or(1);
-    let semi = s.surfaces.get(j1).map_or(0.0, |d| d.semi);
-    let k = normalize(k);
-    let ax = lensbench_core::math::col(&s.object_frame().r, 2);
-    let c = dot(k, ax).abs().max(0.1);
-    let l = 2.0 * (semi + 1.0) / c;
-    [p[0] - k[0] * l, p[1] - k[1] * l, p[2] - k[2] * l]
-}
-
-/// 系 s の視野ごとに、瞳の格子（一辺 grid 本、円の中）の光線を光源にする。全パワー power [W] を光線に等しく分け、
-/// polarization が None なら偏光なし（1 本を直交する 2 本に）、あれば物体の座標系の (Ex, Ey)。エイミングで解けない
-/// 光線は除く
-pub fn system_source(
-    s: &System,
-    fields: &[usize],
-    grid: usize,
-    w: usize,
-    power: f64,
-    polarization: Option<[C64; 2]>,
-) -> Result<Vec<StartRay>> {
-    if !(power.is_finite() && power > 0.0) {
-        invalid!("nsc: source power {power} W (must be positive)");
-    }
-    if grid < 1 {
-        invalid!("nsc: pupil grid {grid} (1 or more)");
-    }
-    let (px, py) = if grid == 1 {
-        (vec![0.0], vec![0.0])
-    } else {
-        lensbench_core::opd::pupil_grid(grid)
-    };
-    let mut rays: Vec<(V3, V3)> = Vec::new();
-    for &f in fields {
-        if f >= s.fields.len() {
-            invalid!("no field {} (1 to {})", f + 1, s.fields.len());
-        }
-        let (hx, hy) = s.field_sel_norm(FieldSel::Index(f), w)?;
-        let spec: ObjSpec = s.object_spec(hx, hy)?;
-        for (x, y) in px.iter().zip(&py) {
-            if let Some(v) = s.aim_pupil(spec, [*x, *y], w) {
-                let (p, k) = s.pupil_ray(spec, v);
-                rays.push((back_off(s, spec, p, k), k));
-            }
-        }
-    }
-    if rays.is_empty() {
-        invalid!("nsc: no source ray can be aimed");
-    }
-    let r = s.object_frame().r;
-    let each = power / rays.len() as f64;
-    Ok(rays
-        .into_iter()
-        .flat_map(|(p, k)| match polarization {
-            Some(j) => vec![StartRay::polarized(p, k, j, &r, each)],
-            None => StartRay::unpolarized(p, k, &r, each).to_vec(),
-        })
-        .collect())
 }

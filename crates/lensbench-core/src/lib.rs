@@ -54,6 +54,7 @@ pub mod pupil;
 pub mod quantity;
 pub mod report;
 pub mod rng;
+pub mod scatter;
 pub mod seidel;
 pub mod semi;
 pub mod shape;

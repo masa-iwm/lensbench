@@ -59,3 +59,29 @@ def test_bad_settings_are_errors():
         lb.System.analyze_file(A0, "nsc", glass_dirs=GLASS, half=[1, 2, 3])
     with pytest.raises(ValueError):
         lb.System.analyze_file(A0, "no-such-analysis")
+
+
+P19 = str(ROOT / "examples" / "projects" / "P19_tube_cage.json")
+
+
+def test_finishes_file_adds_scatter_paths(tmp_path):
+    f = tmp_path / "finishes.json"
+    f.write_text('[{"surface": 2, "scatter": {"model": "abg", "a": 1e-3, "b": 1e-3, "g": 2}}]')
+    plain = lb.System.analyze_file(A0, "nsc", glass_dirs=GLASS, grid=7, pixels=8, paths=200)
+    r = lb.System.analyze_file(
+        A0, "nsc", glass_dirs=GLASS, grid=7, pixels=8, paths=200, finishes=str(f)
+    )
+    assert abs(r["budget"]["residual_w"]) < 1e-12
+    assert any(" S " in p["events"] + " " or " SR " in p["events"] + " " for p in r["paths"])
+    assert r["budget"]["detected_w"] < plain["budget"]["detected_w"]
+
+
+def test_pst_by_angle():
+    r = lb.System.analyze_file(P19, "pst", glass_dirs=GLASS, angles=[0, 30], grid=41)
+    a = r["angles"]
+    assert [x["angle_deg"] for x in a] == [0, 30]
+    # 軸上は像を結ぶ光が届き、30° は鏡筒で遮られて小さい
+    assert a[0]["pst"] > 0.01
+    assert a[1]["pst"] < a[0]["pst"] * 1e-2
+    with pytest.raises(ValueError):
+        lb.System.analyze_file(P19, "pst", glass_dirs=GLASS, angles=[95])

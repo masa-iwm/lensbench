@@ -6,6 +6,7 @@ mod imagesim;
 mod interference;
 mod nsc;
 mod nsc_seq;
+mod pst;
 mod trace;
 
 /// 登録簿に足す
@@ -19,6 +20,7 @@ pub fn register(a: &mut lensbench_analysis::Analyses) {
     a.add(imagesim::ImageSim);
     a.add(beams::Beams);
     a.add(nsc::Nsc);
+    a.add(pst::Pst);
 }
 
 #[cfg(test)]

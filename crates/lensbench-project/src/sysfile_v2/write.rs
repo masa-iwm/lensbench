@@ -60,6 +60,7 @@ pub(crate) fn prescription(s: &System) -> lensbench_core::Result<Prescription> {
         macro_parms: s.macro_parms.clone(),
         units: s.units.clone(),
         mechanics: s.mechanics.clone(),
+        finishes: s.finishes.clone(),
         configs: s.configs.clone(),
         catalogs: catalogs::refs(s)?,
     })

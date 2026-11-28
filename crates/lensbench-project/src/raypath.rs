@@ -21,8 +21,10 @@ pub enum EventKind {
     Reflect,
     /// 全反射
     Tir,
-    /// 散乱
+    /// 散乱（透過した側へ）
     Scatter,
+    /// 散乱（反射した側へ。鏡・光を通さない面の散乱も）
+    ScatterReflect,
     /// 吸収（光線が終わる）
     Absorb,
     /// 検出（検出器・像面に届いて終わる）
@@ -30,20 +32,24 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    /// 短い記号（T・R・TIR・S・A・D）
+    /// 短い記号（T・R・TIR・S・SR・A・D）
     pub fn code(self) -> &'static str {
         match self {
             EventKind::Transmit => "T",
             EventKind::Reflect => "R",
             EventKind::Tir => "TIR",
             EventKind::Scatter => "S",
+            EventKind::ScatterReflect => "SR",
             EventKind::Absorb => "A",
             EventKind::Detect => "D",
         }
     }
-    /// 向きを変える出来事（反射・全反射）
+    /// 向きを変える出来事（反射・全反射・反射した側への散乱）
     pub fn reflects(self) -> bool {
-        matches!(self, EventKind::Reflect | EventKind::Tir)
+        matches!(
+            self,
+            EventKind::Reflect | EventKind::Tir | EventKind::ScatterReflect
+        )
     }
     /// 光線が終わる出来事（吸収・検出）
     pub fn ends(self) -> bool {

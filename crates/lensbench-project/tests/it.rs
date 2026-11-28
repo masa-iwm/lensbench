@@ -14,6 +14,7 @@ mod filter;
 mod join;
 mod mech;
 mod nsc;
+mod nsc_scatter;
 mod os_a3;
 mod os_p0;
 mod pickups;

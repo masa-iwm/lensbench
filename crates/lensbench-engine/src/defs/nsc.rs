@@ -57,7 +57,7 @@ pub(super) struct NscParams {
     pub polarization: Polarization,
     /// Ray splitting at boundaries: deterministic (follow both the reflected and the transmitted rays) or monte-carlo (choose one by the power ratio)
     pub split: SplitKind,
-    /// Random seed (monte-carlo)
+    /// Random seed (monte-carlo, and scatter directions)
     pub seed: u64,
     /// Branches weaker than this fraction of their source ray are dropped (deterministic) or go to Russian roulette (monte-carlo)
     pub threshold: f64,
@@ -73,6 +73,9 @@ pub(super) struct NscParams {
     pub reflections: Option<Vec<usize>>,
     /// Rows of the path table (largest power first)
     pub paths: usize,
+    /// Scattered rays made at each scattering event (deterministic split; monte-carlo scatters one ray)
+    #[schemars(extend("x-min" = 1))]
+    pub scatter_rays: usize,
     /// Source rays traced again to draw their detected branches on the layout (0 for none)
     pub layout_rays: usize,
     /// Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and one turn at a lens surface)
@@ -83,6 +86,9 @@ pub(super) struct NscParams {
     /// Measured coating tables (LBCT) and models (LBCM) (more than one allowed)
     #[schemars(extend("x-kind" = "path"))]
     pub coatings: Vec<PathBuf>,
+    /// Surface finishes file (JSON list of scatter and reflectance of surfaces, lens edges and mechanical parts by system surface number; added to those of the project)
+    #[schemars(extend("x-kind" = "path"))]
+    pub finishes: Option<PathBuf>,
 }
 
 impl Default for NscParams {
@@ -101,10 +107,12 @@ impl Default for NscParams {
             pixels: 64,
             reflections: None,
             paths: 20,
+            scatter_rays: 1,
             layout_rays: 0,
             sequential: false,
             out: None,
             coatings: Vec::new(),
+            finishes: None,
         }
     }
 }
@@ -154,6 +162,71 @@ fn scene_systems(cx: &Cx<'_>, notes: &mut Vec<String>) -> Result<Vec<SceneSystem
         .collect()
 }
 
+/// 仕上げのファイル（[`lensbench_core::scatter::Finish`] の JSON の並び）を読む
+pub(super) fn read_finishes(
+    path: &std::path::Path,
+) -> Result<Vec<lensbench_core::scatter::Finish>> {
+    let txt = lensbench_core::vfs::read_to_string(path).map_err(Error::io_at(path.display()))?;
+    let v: Vec<lensbench_core::scatter::Finish> = serde_json::from_str(&txt)
+        .map_err(|e| Error::Invalid(format!("{}: finishes: {e}", path.display())))?;
+    for f in &v {
+        f.check().map_err(|e| e.at(path.display()))?;
+    }
+    Ok(v)
+}
+
+/// 場面とその系・膜: 場面の系（[`scene_systems`]）に仕上げのファイルを最初の系へ足し、膜の表を読む
+pub(super) struct Prepared {
+    pub systems: Vec<SceneSystem>,
+    pub scene: Scene,
+    pub coat: Coatings,
+    pub notes: Vec<String>,
+}
+
+pub(super) fn prepare(
+    cx: &Cx<'_>,
+    coatings: &[PathBuf],
+    finishes: Option<&std::path::Path>,
+) -> Result<Prepared> {
+    let mut notes = Vec::new();
+    let mut systems = scene_systems(cx, &mut notes)?;
+    if let Some(f) = finishes {
+        let add = read_finishes(f)?;
+        let s = &mut systems[0].1;
+        s.edit_raw(|rx| {
+            rx.finishes.extend(add);
+            Ok(())
+        })?;
+    }
+    let mut sc = Scene::new();
+    for (label, s, _) in &systems {
+        sc.add_system(label, s, None)?;
+    }
+    sc.finish()?;
+    notes.extend(sc.notes.iter().cloned());
+    let mut co = Coatings::for_system(&systems[0].1)?;
+    for f in coatings {
+        co.load_file(f)?;
+    }
+    Ok(Prepared {
+        systems,
+        scene: sc,
+        coat: co,
+        notes,
+    })
+}
+
+/// 経路の出来事の列を「面の名前 種類」の ` > ` でつないだ文字列に
+pub(super) fn events_text(
+    labels: &[String],
+    ev: &[(usize, lensbench_project::raypath::EventKind)],
+) -> String {
+    ev.iter()
+        .map(|(f, k)| format!("{} {}", labels[*f], k.code()))
+        .collect::<Vec<_>>()
+        .join(" > ")
+}
+
 impl Analysis for Nsc {
     type Params = NscParams;
     type Output = Value;
@@ -161,7 +234,7 @@ impl Analysis for Nsc {
         Meta {
             name: "nsc",
             about: "Non-sequential trace: detector irradiance and power by ray path (reflections, ghosts)",
-            help: "Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout",
+            help: "Non-sequential ray trace in the scene of the objects of the system (lenses closed by their edges, mirrors, stops, mechanical parts and the image surface as a detector; for a project, the objects of all beams or beam splitter paths): the next surface is the nearest one, and the rays split into reflected and transmitted rays at each boundary (Fresnel with coatings, polarization, glass absorption). Surfaces, lens edges and mechanical parts can scatter (Lambert, Gauss, ABg) and opaque ones can reflect, by the finishes of the project or of the finishes file. The source is the pupil ray grid of each field with the total power shared equally. Returns the detector irradiance [W/mm²], the table of ray paths (events in order) by detected power with the irradiance of each path, the energy budget and the detected branches of some source rays to draw on the layout",
         }
     }
     fn run(&self, cx: &Cx<'_>, a: &NscParams) -> Result<Value> {
@@ -190,18 +263,12 @@ impl Analysis for Nsc {
                 )));
             }
         };
-        let mut notes = Vec::new();
-        let systems = scene_systems(cx, &mut notes)?;
-        let mut sc = Scene::new();
-        for (label, s, _) in &systems {
-            sc.add_system(label, s, None)?;
-        }
-        sc.finish()?;
-        notes.extend(sc.notes.iter().cloned());
-        let mut co = Coatings::for_system(&systems[0].1)?;
-        for f in &a.coatings {
-            co.load_file(f)?;
-        }
+        let Prepared {
+            systems,
+            scene: sc,
+            coat: co,
+            mut notes,
+        } = prepare(cx, &a.coatings, a.finishes.as_deref())?;
         let opts = NscOpts {
             wave: Some(w),
             split: match a.split {
@@ -218,6 +285,8 @@ impl Analysis for Nsc {
                 reflections: Some(r),
                 via: Vec::new(),
             }),
+            scatter_rays: a.scatter_rays,
+            seed: a.seed,
         };
         let refs: Vec<&System> = systems.iter().map(|x| &x.1).collect();
         let tr = Tracer::new(&sc, &refs, &co, &opts)?;
@@ -282,15 +351,10 @@ impl Analysis for Nsc {
                     .iter()
                     .map(|&(q, w)| json!([q, w / area]))
                     .collect();
-                let ev: Vec<String> = p
-                    .events
-                    .iter()
-                    .map(|(f, k)| format!("{} {}", labels[*f], k.code()))
-                    .collect();
                 json!({
                     "rank": i + 1, "detector": r.detectors[p.detector].label,
                     "reflections": p.reflections(), "power_w": p.power,
-                    "fraction": p.power / b.source, "rays": p.rays, "events": ev.join(" > "),
+                    "fraction": p.power / b.source, "rays": p.rays, "events": events_text(labels, &p.events),
                     "pixels": px,
                     "sequential": seqs[i],
                 })

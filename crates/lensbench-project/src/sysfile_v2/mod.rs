@@ -175,6 +175,9 @@ pub struct Prescription {
     /// 機構部品
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPart>,
+    /// 面・玉の縁・機構部品の仕上げ（散乱・光を通さない面の反射率。非順次の追跡）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub finishes: Vec<lensbench_core::scatter::Finish>,
     /// 多重構成の表
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configs: Option<Configs>,

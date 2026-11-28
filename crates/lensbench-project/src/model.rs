@@ -928,6 +928,9 @@ pub struct Project {
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
+    /// 面の仕上げ（散乱・光を通さない物の反射率）。ブロックの面・玉の縁・機構部品に付ける。非順次の追跡だけが使う
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub finishes: Vec<crate::finish::FinishSpec>,
     /// 大域座標の基準の面（.zmx の GLRS。書き出し・3D の座標の原点）。ブロックの面 `{"block": id, "surface": i}` か、
     /// 展開した系の面の番号か名前。省略で面 1
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1095,6 +1098,9 @@ impl Project {
             .into());
         }
         check_detectors(&p.blocks)?;
+        for f in &p.finishes {
+            f.check(&p.blocks)?;
+        }
         p.check_beams()?;
         Ok(p)
     }

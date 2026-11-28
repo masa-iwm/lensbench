@@ -1328,6 +1328,64 @@
       ],
       "type": "object"
     },
+    "Finish": {
+      "additionalProperties": false,
+      "description": "面などの仕上げ: 散乱と、光を通さない物の反射率。対象は系の面（`surface`）、その面を持つ玉の縁（`edge`）、機構部品\n（`mech`、名前）のどれか 1 つ",
+      "properties": {
+        "edge": {
+          "description": "この番号の面を持つ玉の縁（縁の輪と円柱）",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mech": {
+          "description": "機構部品の名前（壁）",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reflect": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "光を通さない面の反射率（0〜1。残りは吸収）。機構部品・絞りの板は省略で 0（黒）。玉の縁に書くと縁は光を\n通さない（塗った縁）。光学面には書けない（反射は膜込みの Fresnel）"
+        },
+        "scatter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Scatter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "散乱（光学面・透明な縁では反射と透過の光、光を通さない面では反射した光）"
+        },
+        "surface": {
+          "description": "系の面の番号（光学面。空気中の絞りの面なら開口の外の板）",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "GlassTemplate": {
       "description": "ガラス置換のテンプレート（OpticStudio の Glass Substitution Template、.zmx の GSTD）。最適化のガラスの置き換えの候補の\n絞り込みに使う（lensbench-design の `glass_sub`）。並びは GSTD と同じで、OpticStudio 2026 R1.01 で 1 欄ずつ確かめた",
       "properties": {
@@ -2807,6 +2865,13 @@
         "fields": {
           "$ref": "#/$defs/Fields"
         },
+        "finishes": {
+          "description": "面・玉の縁・機構部品の仕上げ（散乱・光を通さない面の反射率。非順次の追跡）",
+          "items": {
+            "$ref": "#/$defs/Finish"
+          },
+          "type": "array"
+        },
         "floating_clip": {
           "description": "浮動開口（半直径を固定した面）の外の光線をけるか",
           "type": "boolean"
@@ -3242,6 +3307,121 @@
         }
       },
       "type": "object"
+    },
+    "Scatter": {
+      "additionalProperties": false,
+      "description": "面の散乱",
+      "properties": {
+        "a": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "ABg の A・B・g（BSDF = A / (B + |β − β0|^g) [1/sr]）"
+        },
+        "b": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ]
+        },
+        "fraction": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "散乱する割合（Lambert・Gauss。0〜1、省略で 1）。ABg は使わない（BSDF の積分で決まる）"
+        },
+        "g": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/ScatterModel"
+        },
+        "on": {
+          "$ref": "#/$defs/ScatterSide",
+          "description": "散乱する側（省略で反射と透過の両方）"
+        },
+        "sigma": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "description": "Gauss の幅 σ（方向余弦の空間）"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "ScatterModel": {
+      "description": "散乱のモデル",
+      "oneOf": [
+        {
+          "const": "lambert",
+          "description": "放射輝度が一様（強度は cosθ に比例）",
+          "type": "string"
+        },
+        {
+          "const": "gauss",
+          "description": "鏡面の方向のまわりの Gauss（`sigma`）",
+          "type": "string"
+        },
+        {
+          "const": "abg",
+          "description": "ABg（`a`・`b`・`g`）",
+          "type": "string"
+        }
+      ]
+    },
+    "ScatterSide": {
+      "description": "散乱する側",
+      "oneOf": [
+        {
+          "const": "both",
+          "description": "反射と透過の両方",
+          "type": "string"
+        },
+        {
+          "const": "reflect",
+          "description": "反射した光だけ",
+          "type": "string"
+        },
+        {
+          "const": "transmit",
+          "description": "透過した光だけ",
+          "type": "string"
+        }
+      ]
     },
     "Semi": {
       "anyOf": [

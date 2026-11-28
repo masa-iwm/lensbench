@@ -2078,6 +2078,15 @@ Detector half width	検出器の半幅
 Detector pixels	検出器の画素数
 Reflections counted	数える反射の回数
 Path table rows	経路の表の行数
+Scatter rays	散乱の光線の数
+Finishes file	面の仕上げのファイル
+Stray light PST	迷光の PST
+Stray light: point source transmittance (PST) by source angle, with the paths that bring the light	迷光: 光源の角度ごとの点光源透過率（PST）と、光を運ぶ経路
+Source angles	光源の角度
+Source azimuth	光源の方位角
+Source radius	光源の半径
+Source ray grid	光源の光線のグリッド
+Paths per angle	角度ごとの経路の数
 Rays on the layout	レイアウト図の光線の数
 {} µm · {} source rays · source {} W · detected {} W · absorbed {} W · escaped {} W · dropped {} W	{} µm · 光源の光線 {} 本 · 光源 {} W · 検出 {} W · 吸収 {} W · 外へ {} W · 捨てた {} W
 Detector {}: {} W, peak {} W/mm²	検出器 {}: {} W、ピーク {} W/mm²
