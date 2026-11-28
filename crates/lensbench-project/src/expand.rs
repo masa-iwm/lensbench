@@ -300,6 +300,9 @@ pub struct SurfOrigin {
     /// ブロックの偏心・傾き（置き方）の入口・戻りの座標ブレーク（ブロックの面ではない。surface_edits の coordbrk の
     /// 番号に数えない）
     pub(crate) placed: bool,
+    /// 光束の `turn` で折り返しながらたどった玉の面なら、玉の面の番号（座標ブレークを除いて 0 から）と玉の面の数。
+    /// 範囲が玉の途中から始まる・終わるので、ブロックの面はこの番号で引く
+    pub(crate) part: Option<(usize, usize)>,
 }
 
 /// プロジェクトのブロックの木の中の位置（上から順の段）
@@ -418,6 +421,9 @@ pub struct BlockSpans {
     /// 鏡の `back` で復路にたどった範囲
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub back: Vec<[usize; 2]>,
+    /// 光束の `turn` で折り返しながらたどった玉の面: (系の面, 玉の面の番号)（[`SurfOrigin::part`]）
+    #[serde(skip)]
+    pub(crate) parts: Vec<(usize, usize)>,
 }
 
 /// id のあるブロック・群（BS・開口・絞り・群も。面を足さない空気は出ない）ごとの系の面の範囲。並びは最初の面の順
@@ -436,6 +442,7 @@ pub fn block_spans(map: &[SurfOrigin]) -> Vec<BlockSpans> {
             id: id.to_string(),
             forward: block_runs(map, id, Some(false)),
             back: block_runs(map, id, Some(true)),
+            parts: crate::turn::parts(map, id),
         })
         .collect()
 }
@@ -661,12 +668,8 @@ pub(crate) fn expand_body(
             return Err(e);
         }
     }
-    if let Some(t) = c.turn.at.as_ref().filter(|_| c.turn.turned.is_empty()) {
-        return Err(format!(
-            "turn: block {} (pass {}) is not on the path",
-            t.block, t.pass
-        )
-        .into());
+    if let Some(e) = c.turn.left_over() {
+        return Err(e.into());
     }
     if c.split.pos < c.split.path.len() {
         return Err(format!(

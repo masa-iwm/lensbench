@@ -23,9 +23,15 @@ pub(crate) fn beams_of(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyAn
         .beams
         .iter()
         .map(|b| {
+            // ファイルと同じ形: 折り返しなしは None、1 つは dict、2 つ以上は list
+            let turn = match &b.turn[..] {
+                [] => Value::Null,
+                [t] => json!(t),
+                v => json!(v),
+            };
             json!({
                 "name": b.name, "path": b.path, "state": b.state, "role": b.role,
-                "turn": b.turn, "off": b.off,
+                "turn": turn, "off": b.off,
             })
         })
         .collect();

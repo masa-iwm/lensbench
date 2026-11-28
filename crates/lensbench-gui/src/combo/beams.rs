@@ -52,10 +52,8 @@ pub(crate) fn problems(c: &Combo, v: &[Beam]) -> Vec<String> {
                 out.push(trf("Beam {}: no state {}", &[&n, st]));
             }
         }
-        if let Some(t) = &b.turn {
-            if t.block.trim().is_empty() {
-                out.push(trf("Beam {}: choose the lens to turn back at", &[&n]));
-            }
+        if b.turn.iter().any(|t| t.block.trim().is_empty()) {
+            out.push(trf("Beam {}: choose the lens to turn back at", &[&n]));
         }
     }
     out
@@ -91,17 +89,17 @@ fn new_name(c: &Combo, v: &[Beam]) -> String {
         .unwrap_or_default()
 }
 
-/// 迷光の光束（BS の経路 path・折り返す面 turn）を足す（非順次の経路の表から）。同じ光束があれば足さない。
+/// 迷光の光束（BS の経路 path・折り返す面の並び turn）を足す（非順次の経路の表から）。同じ光束があれば足さない。
 /// 足した（か同じだった）光束の名前と、足したか
 pub(crate) fn add_stray(
     c: &mut Combo,
     path: Option<String>,
-    turn: BlockFace,
+    turn: Vec<BlockFace>,
 ) -> Result<(String, bool), String> {
     let mut v = beams_of(c)?;
     if let Some(b) = v
         .iter()
-        .find(|b| b.path == path && b.turn.as_ref() == Some(&turn) && b.state.is_none())
+        .find(|b| b.path == path && b.turn == turn && b.state.is_none())
     {
         return Ok((b.name.clone(), false));
     }
@@ -114,7 +112,7 @@ pub(crate) fn add_stray(
         path,
         state: None,
         role: Some(BeamRole::Stray),
-        turn: Some(turn),
+        turn,
         off: false,
     });
     set_beams(c, &v);
@@ -232,7 +230,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
                 path: None,
                 state: None,
                 role: None,
-                turn: None,
+                turn: Vec::new(),
                 off: false,
             });
         }
@@ -274,54 +272,78 @@ pub(super) fn tool_window(
     ui.data_mut(|d| d.insert_temp(id, open));
 }
 
-/// 折り返す面の欄: 玉の id・面の番号（座標ブレークを除いて 0 から）・往路の何回目か
+/// 折り返す面の欄: 折り返しごとに玉の id・面の番号（座標ブレークを除いて往路の番号で 0 から）・前の折り返しから
+/// 何回目か。向きは折り返すごとに往・復・往…と入れ替わる。「＋」で次の折り返しを足す
 fn turn_cell(ui: &mut Ui, i: usize, b: &mut Beam, lenses: &[String]) {
-    ui.horizontal(|ui| {
-        let shown = b
-            .turn
-            .as_ref()
-            .map(|t| t.block.clone())
-            .unwrap_or_else(|| tr("(none)").to_string());
-        let mut block = b.turn.as_ref().map(|t| t.block.clone());
-        egui::ComboBox::from_id_salt(("beam_turn", i))
-            .selected_text(shown)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut block, None, tr("(none)"));
-                for id in lenses {
-                    ui.selectable_value(&mut block, Some(id.clone()), id.as_str());
+    let face = |block: String| BlockFace {
+        block,
+        surface: 0,
+        coordbrk: false,
+        back: false,
+        pass: 0,
+    };
+    ui.vertical(|ui| {
+        let mut drop = None;
+        let n = b.turn.len();
+        for k in 0..n.max(1) {
+            ui.horizontal(|ui| {
+                let now = b.turn.get(k).map(|t| t.block.clone());
+                let mut block = now.clone();
+                egui::ComboBox::from_id_salt(("beam_turn", i, k))
+                    .selected_text(now.clone().unwrap_or_else(|| tr("(none)").to_string()))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut block, None, tr("(none)"));
+                        for id in lenses {
+                            ui.selectable_value(&mut block, Some(id.clone()), id.as_str());
+                        }
+                    })
+                    .response
+                    .accessible_name(if k == 0 {
+                        tr("Turn back at").to_string()
+                    } else {
+                        trf("Turn {} at", &[&(k + 1).to_string()])
+                    })
+                    .on_hover_text(tr(
+                        "The lens whose surface partly reflects the beam back along its way (ghost paths, back reflections in interferometers)",
+                    ));
+                if block != now {
+                    match (block, b.turn.get_mut(k)) {
+                        (None, _) => drop = Some(k),
+                        (Some(id), Some(t)) => t.block = id,
+                        (Some(id), None) => b.turn.push(face(id)),
+                    }
                 }
-            })
-            .response
-            .accessible_name(tr("Turn back at"))
-            .on_hover_text(tr(
-                "The lens whose surface partly reflects the beam back along its way (ghost paths, back reflections in interferometers)",
-            ));
-        match (block, &mut b.turn) {
-            (None, t) => *t = None,
-            (Some(id), Some(t)) => t.block = id,
-            (Some(id), t) => {
-                *t = Some(BlockFace {
-                    block: id,
-                    surface: 0,
-                    coordbrk: false,
-                    back: false,
-                    pass: 0,
-                })
-            }
+                if let Some(t) = b.turn.get_mut(k) {
+                    ui.add(
+                        egui::DragValue::new(&mut t.surface)
+                            .range(0..=99)
+                            .prefix(format!("{} ", tr("Surface"))),
+                    )
+                    .on_hover_text(tr("Surface of the lens from 0"));
+                    ui.add(
+                        egui::DragValue::new(&mut t.pass)
+                            .range(0..=9)
+                            .prefix(format!("{} ", tr("Pass"))),
+                    )
+                    .on_hover_text(tr(
+                        "Which pass through the lens since the last turn (from 0)",
+                    ));
+                }
+            });
         }
-        if let Some(t) = &mut b.turn {
-            ui.add(
-                egui::DragValue::new(&mut t.surface)
-                    .range(0..=99)
-                    .prefix(format!("{} ", tr("Surface"))),
-            )
-            .on_hover_text(tr("Surface of the lens from 0"));
-            ui.add(
-                egui::DragValue::new(&mut t.pass)
-                    .range(0..=9)
-                    .prefix(format!("{} ", tr("Pass"))),
-            )
-            .on_hover_text(tr("Which forward pass through the lens (from 0)"));
+        if let Some(k) = drop {
+            b.turn.remove(k);
+        }
+        if let Some(last) = b.turn.last().cloned() {
+            if ui
+                .small_button("+")
+                .on_hover_text(tr(
+                    "Turn back again at another surface (the direction alternates: out, back, out…)",
+                ))
+                .clicked()
+            {
+                b.turn.push(face(last.block));
+            }
         }
     });
 }
@@ -341,7 +363,7 @@ mod tests {
                 path: Some("TR".into()),
                 state: None,
                 role: Some(BeamRole::Sample),
-                turn: None,
+                turn: Vec::new(),
                 off: false,
             },
             Beam {
@@ -349,13 +371,13 @@ mod tests {
                 path: None,
                 state: None,
                 role: Some(BeamRole::Stray),
-                turn: Some(BlockFace {
+                turn: vec![BlockFace {
                     block: "L1".into(),
                     surface: 1,
                     coordbrk: false,
                     back: false,
                     pass: 0,
-                }),
+                }],
                 off: true,
             },
         ];
@@ -390,16 +412,36 @@ mod tests {
             pass: 0,
         };
         assert_eq!(
-            add_stray(&mut c, Some("TT".into()), t.clone()),
+            add_stray(&mut c, Some("TT".into()), vec![t.clone()]),
             Ok(("stray1".into(), true))
         );
         assert_eq!(
-            add_stray(&mut c, Some("TT".into()), t.clone()),
+            add_stray(&mut c, Some("TT".into()), vec![t.clone()]),
             Ok(("stray1".into(), false))
         );
-        assert_eq!(add_stray(&mut c, None, t), Ok(("stray2".into(), true)));
+        assert_eq!(
+            add_stray(&mut c, None, vec![t.clone()]),
+            Ok(("stray2".into(), true))
+        );
+        // 2 回の折り返しは別の光束で、プロジェクトには並びで書く
+        let two = vec![
+            t.clone(),
+            BlockFace {
+                surface: 0,
+                ..t.clone()
+            },
+        ];
+        assert_eq!(
+            add_stray(&mut c, None, two.clone()),
+            Ok(("stray3".into(), true))
+        );
+        assert_eq!(add_stray(&mut c, None, two), Ok(("stray3".into(), false)));
+        assert_eq!(
+            c.project()["beams"][2]["turn"],
+            serde_json::json!([{"block": "L1", "surface": 1}, {"block": "L1", "surface": 0}])
+        );
         let v = beams_of(&c).unwrap();
-        assert_eq!(v.len(), 2);
+        assert_eq!(v.len(), 3);
         assert_eq!(v[0].role, Some(BeamRole::Stray));
         assert!(problems(&c, &v).is_empty(), "{:?}", problems(&c, &v));
     }

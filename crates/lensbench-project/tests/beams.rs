@@ -153,7 +153,7 @@ fn beam_names_are_checked() {
         (r#"{"beams": [{"name": "a", "path": "TX"}]}"#, "beam a:"),
         (
             r#"{"beams": [{"name": "a", "turn": {"block": "L", "surface": 0, "back": true}}]}"#,
-            "beam a: turn takes a surface on the way out",
+            "beam a: turn takes a lens surface as numbered on the way out",
         ),
     ] {
         let e = with(extra);
@@ -290,6 +290,33 @@ fn turned(turn: &str, other: &str) -> Result<System, String> {
 /// 垂直入射の境界の反射率
 fn fresnel(n: f64) -> f64 {
     ((n - 1.0) / (n + 1.0)).powi(2)
+}
+
+/// 並べた turn がたどれなければ何番目の折り返しかを言う（面 1 で戻った後の復路に面 1 は無い・面 0 で進んだ後の往路に面 0 は無い）
+#[test]
+fn unreached_turns_are_named() {
+    let e = turned(
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 1}]"#,
+        "",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("turn 2: block L surface 1 (pass 0) is not on the way back"),
+        "{e}"
+    );
+    let e = turned(
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}, {"block": "L", "surface": 0}]"#,
+        "",
+    )
+    .unwrap_err();
+    assert!(e.contains("turn 3:") && e.contains("on the way out"), "{e}");
+    // 2 回で往路に戻れば元の像面まで進む
+    let s = turned(
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}]"#,
+        "",
+    )
+    .unwrap();
+    assert_eq!(s.surfaces.iter().filter(|d| d.is_mirror()).count(), 2);
 }
 
 /// turn で玉の面 0 で折り返すと、同じ形の鏡で戻る系と光線の道は同じで、強さは境界の反射率

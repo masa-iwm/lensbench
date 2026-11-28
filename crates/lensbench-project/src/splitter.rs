@@ -498,6 +498,8 @@ pub(crate) struct SplitInfo {
     parent: Arc<Vec<Block>>,
     pidx: usize,
     plevel: Level,
+    /// BS を置いたときの段の全部（外から。戻る道で親の並びを往路でたどり直すときに使う）
+    plevels: Vec<Level>,
     spec: Arc<SplitterSpec>,
     id: String,
 }
@@ -749,6 +751,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 parent: Arc::new(siblings.to_vec()),
                 pidx: idx,
                 plevel: level,
+                plevels: self.split.levels.clone(),
                 spec: Arc::new(spec.clone()),
                 id: id.to_string(),
             },
@@ -932,11 +935,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 return Ok(());
             }
         }
-        for x in info.parent[..info.pidx].iter().rev() {
-            self.back_block(x)?;
-            if self.split.stopped {
-                return Ok(());
-            }
+        self.back_seq(&info.parent, info.pidx, Some(&info.plevels))?;
+        if self.split.stopped {
+            return Ok(());
         }
         self.return_at(info.plevel.clone())
     }
@@ -1012,9 +1013,9 @@ pub(crate) fn splitter_places_cached(
     // BS の置き方はブロックの木で決まる（光束の `turn` で戻る経路では BS を通らないことがある）ので、turn を外して
     // 集める。経路は集めるときに 1 本ずつ渡すので、プロジェクトの経路も外す（光束ごとの展開で置き方を使い回せる）
     let plain;
-    let p = if p.turn.is_some() || p.path.is_some() {
+    let p = if !p.turn.is_empty() || p.path.is_some() {
         plain = crate::Project {
-            turn: None,
+            turn: Vec::new(),
             path: None,
             ..p.clone()
         };

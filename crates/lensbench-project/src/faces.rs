@@ -87,6 +87,26 @@ fn faces_in(s: &System, r: [usize; 2]) -> Vec<usize> {
         .collect()
 }
 
+/// 範囲 r のブロックの面（座標ブレークを除く）を、ブロックの面の番号の順に（その面を通らなければ None）。光束の
+/// `turn` で折り返しながらたどった範囲（[`SurfOrigin::part`]）は玉の面の番号で、ほかは往路なら通った順、復路なら逆の順
+fn faces_by_index(s: &System, map: &[SurfOrigin], r: [usize; 2], back: bool) -> Vec<Option<usize>> {
+    let f = faces_in(s, r);
+    if let Some((_, n)) = f.iter().find_map(|&j| map.get(j).and_then(|o| o.part)) {
+        let mut v = vec![None; n];
+        for &j in &f {
+            if let Some((i, _)) = map[j].part {
+                v[i] = Some(j);
+            }
+        }
+        return v;
+    }
+    let mut v: Vec<_> = f.into_iter().map(Some).collect();
+    if back {
+        v.reverse();
+    }
+    v
+}
+
 /// id のブロック・群の往路の面 i（座標ブレークを除いて数える）。ブロックが系に無ければ None
 pub(crate) fn block_face(
     s: &System,
@@ -147,14 +167,9 @@ pub(crate) fn block_face_of(
             .into(),
         );
     }
-    let faces = faces_in(s, x);
     // 復路は往路の逆の順に通る（往路の最後の面が鏡なら、復路はその前の面から始まる）
-    let k = if f.back {
-        faces.len().checked_sub(f.surface + 1)
-    } else {
-        Some(f.surface)
-    };
-    k.and_then(|k| faces.get(k)).copied().map(Some).ok_or(
+    let faces = faces_by_index(s, map, x, f.back);
+    faces.get(f.surface).copied().flatten().map(Some).ok_or(
         format!(
             "block {} surface {} ({} surfaces in the pass)",
             f.block,
@@ -301,14 +316,16 @@ pub(crate) fn apply_surface_edits(
         }
         let here = |o: &SurfOrigin| o.mods.contains(&site);
         // 往路（と、同じ向きに通るほかの範囲）・復路
-        let fwd: Vec<Vec<usize>> = runs_where(map, here, Some(false))
+        let fwd: Vec<Vec<Option<usize>>> = runs_where(map, here, Some(false))
             .into_iter()
-            .map(|r| faces_in(s, r))
+            .map(|r| faces_by_index(s, map, r, false))
             .collect();
-        let back: Vec<Vec<usize>> = runs_where(map, here, Some(true))
+        let back: Vec<Vec<Option<usize>>> = runs_where(map, here, Some(true))
             .into_iter()
-            .map(|r| faces_in(s, r))
+            .map(|r| faces_by_index(s, map, r, true))
             .collect();
+        // 光束の turn で折り返しながらたどった玉（[`SurfOrigin::part`]）
+        let turned = map.iter().any(|o| here(o) && o.part.is_some());
         let cbs: Vec<Vec<usize>> = runs_where(map, here, Some(false))
             .into_iter()
             .map(|r| cbs_in(s, map, r))
@@ -319,7 +336,7 @@ pub(crate) fn apply_surface_edits(
             if e.coordbrk {
                 apply_cb_edit(s, label, e, &cbs, has_back)?;
             } else if n > 0 {
-                apply_surface_edit(s, label, e, n, &fwd, &back)?;
+                apply_surface_edit(s, label, e, n, &fwd, &back, turned)?;
             }
         }
     }
@@ -392,8 +409,9 @@ fn apply_surface_edit(
     label: &str,
     e: &SurfaceEdit,
     n: usize,
-    fwd: &[Vec<usize>],
-    back: &[Vec<usize>],
+    fwd: &[Vec<Option<usize>>],
+    back: &[Vec<Option<usize>>],
+    turned: bool,
 ) -> lensbench_core::Result<()> {
     let err = |why: lensbench_core::Error| {
         why.map_message(|why| {
@@ -419,12 +437,28 @@ fn apply_surface_edit(
             .into_iter()
             .partition(|(k, _)| lensbench_core::edit::SURF_FIELDS.contains(&k.as_str()));
         let has_data = !data.is_empty();
+        // 折り返した面の厚さ・媒質は往路の面とは別の面（鏡の後ろの厚さ・反射の向こう側の媒質）に入るので、
+        // 光束の turn で折り返す玉の厚さ・材料は変えない（形・膜などは通った面に当てる）
+        let gap_keys = ["t", "material", "mat", "dn", "disp"];
+        if turned && (e.fields.keys().any(|k| gap_keys.contains(&k.as_str()))) {
+            return Err(err(
+                "the thickness and material of a lens turned in by a beam turn can't be changed (change the lens itself)".into(),
+            ));
+        }
         let f = edit_ops::surf_fields(&Value::Object(named))
             .map_err(|x| format!("surface_edits: {x}"))?;
         for v in fwd {
-            let j = *v.get(i).ok_or_else(|| {
-                err("the ranges in the same direction have different numbers of surfaces".into())
-            })?;
+            let j = match v.get(i) {
+                Some(Some(j)) => *j,
+                // 光束の turn で折り返した玉の、この範囲で通らない面
+                Some(None) => continue,
+                None => {
+                    return Err(err(
+                        "the ranges in the same direction have different numbers of surfaces"
+                            .into(),
+                    ))
+                }
+            };
             if !f.is_empty() {
                 s.set_surface_fields(j, &f).map_err(err)?;
             }
@@ -449,8 +483,8 @@ fn apply_surface_edit(
                 ));
             }
             for v in back {
-                if v.len() == n {
-                    edit_ops::set_surface_data(s, v[n - 1 - i], &data).map_err(err)?;
+                if let (true, Some(Some(j))) = (v.len() == n, v.get(i)) {
+                    edit_ops::set_surface_data(s, *j, &data).map_err(err)?;
                 }
             }
         }
@@ -469,8 +503,8 @@ fn apply_surface_edit(
                 .iter()
                 .cloned()
                 .partition(|(k, _)| !matches!(k.as_str(), "t" | "material" | "dn" | "disp"));
-            if !face.is_empty() {
-                s.set_surface_fields(v[n - 1 - i], &face).map_err(err)?;
+            if let (false, Some(j)) = (face.is_empty(), v[i]) {
+                s.set_surface_fields(j, &face).map_err(err)?;
             }
             if !gap.is_empty() {
                 if i + 1 == n {
@@ -488,7 +522,9 @@ fn apply_surface_edit(
                         (_, x) => (k, x),
                     })
                     .collect();
-                s.set_surface_fields(v[n - 2 - i], &gap).map_err(err)?;
+                if let Some(j) = v[i + 1] {
+                    s.set_surface_fields(j, &gap).map_err(err)?;
+                }
             }
         }
     }

@@ -1,5 +1,5 @@
 //! 非順次の経路の表の行を順次の系に戻す（[`lensbench_project::nsc::seq`]）: 場面の系の主の経路、ゴーストの展開
-//! （面 a・b）、プロジェクトに足す光束（BS の経路と玉の面での 1 回の折り返し `turn`）
+//! （面 a・b）、プロジェクトに足す光束（BS の経路と玉の面での折り返し `turn` の並び）
 
 use std::path::Path;
 
@@ -16,7 +16,7 @@ use super::nsc::SceneSystem;
 const PROBE: &str = "nsc-path";
 
 /// 行の出来事の列 events を順次の系に戻せるか。`kind` は system（場面の系そのもの）・ghost（系の面 a・b のゴースト）・
-/// beam（足す光束の path・turn）・none（戻せない。`reason`）。out があればゴーストの系を .zmx に書く（`file`）
+/// beam（足す光束の path・turn。turn は 1 つならオブジェクト、2 つ以上は並び）・none（戻せない。`reason`）。out があればゴーストの系を .zmx に書く（`file`）
 pub(super) fn sequential(
     cx: &Cx<'_>,
     sc: &Scene,
@@ -62,36 +62,61 @@ pub(super) fn sequential(
             return Ok(v);
         }
     }
-    // 折り返しの光束: 玉の面（書き方のある面）での反射がちょうど 1 つ
-    let turns: Vec<Value> = refl
+    // 折り返しの光束: 玉の面（書き方のある面）での反射を順に turn に並べる
+    let lens_refl: Vec<usize> = refl.iter().copied().filter(on_lens).collect();
+    let keyed: Vec<Value> = lens_refl
         .iter()
-        .filter(|f| on_lens(f))
         .filter_map(|&f| seq::face_key(sc, keys, f))
+        .map(|mut k| {
+            // turn の面は往路の番号で書く（向きは折り返すごとに入れ替わる）
+            if let Some(o) = k.as_object_mut() {
+                o.remove("back");
+            }
+            k
+        })
         .collect();
-    if let (Some(src), [turn]) = (cx.source, &turns[..]) {
+    if let (Some(src), false) = (cx.source, keyed.is_empty() || keyed.len() < lens_refl.len()) {
+        // pass は前の折り返しからの回数なので、場面の系の書き方の pass で合わなければ外して試す
+        let bare: Vec<Value> = keyed
+            .iter()
+            .map(|k| {
+                let mut k = k.clone();
+                if let Some(o) = k.as_object_mut() {
+                    o.remove("pass");
+                }
+                k
+            })
+            .collect();
+        let mut tries = vec![keyed.clone()];
+        if bare != keyed {
+            tries.push(bare);
+        }
         let mut paths: Vec<Option<String>> = vec![None];
         paths.extend(src.paths()?.into_iter().map(Some));
-        for path in paths {
-            let mut beam = json!({"name": PROBE, "turn": turn, "role": "stray"});
-            if let Some(p) = &path {
-                beam["path"] = json!(p);
-            }
-            let mut n = Vec::new();
-            let r = src.load_extra_beam(&beam, &mut n);
-            let Ok(Some((s, _))) = r else {
-                continue;
+        for turns in tries {
+            let turn = match &turns[..] {
+                [t] => t.clone(),
+                _ => json!(turns),
             };
-            if seq::is_placed_path(sc, &s, events)? {
-                return Ok(json!({"kind": "beam", "path": path, "turn": turn}));
+            for path in &paths {
+                let mut beam = json!({"name": PROBE, "turn": turn, "role": "stray"});
+                if let Some(p) = path {
+                    beam["path"] = json!(p);
+                }
+                let mut n = Vec::new();
+                let r = src.load_extra_beam(&beam, &mut n);
+                let Ok(Some((s, _))) = r else {
+                    continue;
+                };
+                if seq::is_placed_path(sc, &s, events)? {
+                    return Ok(json!({"kind": "beam", "path": path, "turn": turn}));
+                }
             }
         }
     }
-    let lens_refl = refl.iter().filter(|f| on_lens(f)).count();
-    Ok(none(if lens_refl > 2 {
-        "three or more reflections at lens surfaces (a beam has one turn and a ghost two reflections)"
-    } else {
-        "no sequential system (beam, beam splitter path or ghost) has this path"
-    }))
+    Ok(none(
+        "no sequential system (beam, beam splitter path or ghost) has this path",
+    ))
 }
 
 fn none(reason: &str) -> Value {

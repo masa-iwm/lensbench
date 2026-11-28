@@ -55,11 +55,15 @@ fn ghost_rows_write_their_systems() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// トワイマン・グリーン: BS の経路は系そのもの、玉の面で 1 回折り返す経路は光束（BS の腕の中の玉も）
+/// トワイマン・グリーン: BS の経路は系そのもの、玉の面で折り返す経路は光束（BS の腕の中の玉も）。2 回以上の
+/// 折り返しは turn の並び
 #[test]
 fn turn_rows_are_beams() {
     let mut a = vec!["nsc", "examples/projects/P16_twyman_green.json"];
     a.extend(OPTS);
+    // 玉の中で 2 回折り返す経路まで
+    let k = a.iter().position(|x| *x == "--paths").unwrap();
+    a[k + 1] = "30";
     let v = run(&a);
     let rows = v["paths"].as_array().unwrap();
     assert!(rows
@@ -72,7 +76,17 @@ fn turn_rows_are_beams() {
         .collect();
     assert!(beams.len() >= 2, "{rows:?}");
     for q in &beams {
-        assert_eq!(q["turn"]["block"], "TEST", "{q}");
+        let turns = match q["turn"].as_array() {
+            Some(v) => v.clone(),
+            None => vec![q["turn"].clone()],
+        };
+        assert!(turns.iter().all(|t| t["block"] == "TEST"), "{q}");
     }
     assert!(beams.iter().any(|q| q["path"] == "TT"), "{beams:?}");
+    assert!(
+        beams
+            .iter()
+            .any(|q| q["turn"].as_array().is_some_and(|v| v.len() == 2)),
+        "{beams:?}"
+    );
 }

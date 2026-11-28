@@ -34,11 +34,18 @@ pub struct Beam {
     /// 役割（`sample`・`reference`・`stray`）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<BeamRole>,
-    /// 玉の面での部分反射で来た道を戻る（ゴーストの経路、干渉計の裏面反射など）。面の反射は境界（膜込み）の反射で、
-    /// 戻りは鏡の `back` と同じく前のブロックをたどり、BS では経路の文字で口を選ぶ。戻った先で系は終わる（像面）。
-    /// 玉（`lens` ブロック）の面だけ、1 か所
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub turn: Option<crate::edit_spec::BlockFace>,
+    /// 玉の面での部分反射で折り返す（ゴーストの経路、干渉計の裏面反射など）。面の反射は境界（膜込み）の反射。
+    /// 1 つ（オブジェクト）か並び: 1 つ目は往路で、2 つ目は戻る道で、3 つ目はまた往路で…と向きを替えながら順に
+    /// 折り返す。戻りは鏡の `back` と同じく前のブロックをたどり、BS では経路の文字で口を選ぶ。戻ったまま終われば
+    /// 戻った先で、往路で終われば並びの終わりで系は終わる（像面）。玉（`lens` ブロック）の面だけ。`pass` は前の
+    /// 折り返しからその向きで何回目にそのブロックを通るか（折り返した玉の中を続けて通るのは 0）
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        with = "crate::beams::one_or_many"
+    )]
+    #[schemars(with = "crate::beams::TurnsSchema")]
+    pub turn: Vec<crate::edit_spec::BlockFace>,
     /// 解析の既定の組から外す
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub off: bool,
@@ -73,10 +80,10 @@ impl Project {
             if let Some(path) = &b.path {
                 crate::splitter::parse_path(path).map_err(|e| format!("beam {name}: {e}"))?;
             }
-            if let Some(t) = &b.turn {
+            for t in &b.turn {
                 if t.back || t.coordbrk {
                     return Err(format!(
-                        "beam {name}: turn takes a surface on the way out (not back or coordbrk)"
+                        "beam {name}: turn takes a lens surface as numbered on the way out (not back or coordbrk)"
                     )
                     .into());
                 }
@@ -146,8 +153,21 @@ pub fn face_surfaces(
             .filter(|&j| !s.surfaces[j].is_coord_break())
             .collect()
     };
+    // 光束の turn で折り返しながらたどった範囲は、玉の面の番号で引く（範囲は玉の途中から始まる・途中で終わる）
+    let parted = |r: &[usize; 2]| b.parts.iter().any(|&(j, _)| r[0] <= j && j <= r[1]);
+    let part = |r: &[usize; 2]| {
+        b.parts
+            .iter()
+            .filter(|&&(j, i)| r[0] <= j && j <= r[1] && i == surface)
+            .map(|&(j, _)| j)
+            .collect::<Vec<_>>()
+    };
     let mut out = Vec::new();
     for r in &b.forward {
+        if parted(r) {
+            out.extend(part(r));
+            continue;
+        }
         let f = faces(r);
         let Some(&j) = f.get(surface) else {
             return Err(format!("block {block} surface {surface} ({} surfaces)", f.len()).into());
@@ -155,12 +175,17 @@ pub fn face_surfaces(
         out.push(j);
     }
     for r in &b.back {
+        if parted(r) {
+            out.extend(part(r));
+            continue;
+        }
         let f = faces(r);
-        // 光束の turn で折り返した面より先の面は復路に無い
         if let Some(k) = f.len().checked_sub(surface + 1) {
             out.push(f[k]);
         }
     }
+    out.sort_unstable();
+    out.dedup();
     Ok(out)
 }
 
@@ -208,4 +233,41 @@ pub fn turn_points(
             })
         })
         .collect()
+}
+
+/// 光束の `turn`: 1 つならオブジェクト、2 つ以上なら並びで書く（1 つの折り返しの前のファイルと同じ形）
+pub(crate) mod one_or_many {
+    use crate::edit_spec::BlockFace;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(BlockFace),
+        Many(Vec<BlockFace>),
+    }
+
+    pub(crate) fn serialize<S: Serializer>(v: &[BlockFace], s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            [one] => one.serialize(s),
+            _ => v.serialize(s),
+        }
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<BlockFace>, D::Error> {
+        Ok(match Option::<OneOrMany>::deserialize(d)? {
+            None => Vec::new(),
+            Some(OneOrMany::One(x)) => vec![x],
+            Some(OneOrMany::Many(v)) => v,
+        })
+    }
+}
+
+/// [`Beam::turn`] のスキーマ（ブロックの面 1 つか、その並び）
+#[derive(schemars::JsonSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+pub(crate) enum TurnsSchema {
+    One(crate::edit_spec::BlockFace),
+    Many(Vec<crate::edit_spec::BlockFace>),
 }

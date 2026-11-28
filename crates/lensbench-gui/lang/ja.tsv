@@ -1985,7 +1985,9 @@ The beams of this project can't be edited here ({})	このプロジェクトの�
 The lens whose surface partly reflects the beam back along its way (ghost paths, back reflections in interferometers)	面の部分反射で光束を来た道へ戻すレンズ（ゴーストの経路、干渉計の裏面反射など）
 Turn back at	折り返し
 Two or more beams are named {}	光束 {} が 2 つ以上あります
-Which forward pass through the lens (from 0)	レンズを往路で何回目に通るか（0 から）
+Which pass through the lens since the last turn (from 0)	前の折り返しからレンズを何回目に通るか（0 から）
+Turn {} at	{} 回目の折り返し
+Turn back again at another surface (the direction alternates: out, back, out…)	もう一度、別の面で折り返します（向きは往路・復路・往路…と入れ替わります）
 Pass	回
 The other analyses also vignette rays at the mechanical parts (system setting).	ほかの解析でも機構部品で光線をケラレとしています（システムの設定）。
 The other analyses do not vignette rays at the mechanical parts (system setting). The layout draws the clipped rays faint.	ほかの解析では機構部品で光線をケラレとしていません（システムの設定）。レイアウト図では切られる光線を薄く描きます。

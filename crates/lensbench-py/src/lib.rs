@@ -670,8 +670,8 @@ impl PySystem {
 
     /// The beams of a project file (.json): named beam splitter paths, as written in the file. Each is a dict with name, path
     /// (T and R in the order the BSs are passed, None for the project's path), state (the state applied to the beam), role
-    /// ("sample", "reference", "stray" or None), turn (the lens surface where the beam is partly reflected back, a dict of block,
-    /// surface and pass, or None) and off (left out of the default set). Empty without beams. Read a beam with
+    /// ("sample", "reference", "stray" or None), turn (the lens surfaces where the beam is partly reflected back: a dict of block,
+    /// surface and pass, a list of them in order for two or more turns, or None) and off (left out of the default set). Empty without beams. Read a beam with
     /// `load(path, state=name)` or several with `load_beams`
     #[staticmethod]
     fn beams(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyAny>> {

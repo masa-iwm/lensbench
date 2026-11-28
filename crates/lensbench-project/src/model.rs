@@ -921,10 +921,10 @@ pub struct Project {
     /// 光束の組（名前つきの経路）。光束の名前は状態の名前の代わりに使え、光束の状態を当てて経路を選んだ系になる
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beams: Vec<Beam>,
-    /// 当てた光束の `turn`（[`Beam::turn`]）。[`Project::with_state`] で光束から写す（ファイルには書かない）
+    /// 当てた光束の `turn`（[`Beam::turn`]、折り返す順）。[`Project::with_state`] で光束から写す（ファイルには書かない）
     #[serde(skip)]
     #[schemars(skip)]
-    pub turn: Option<crate::edit_spec::BlockFace>,
+    pub turn: Vec<crate::edit_spec::BlockFace>,
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,

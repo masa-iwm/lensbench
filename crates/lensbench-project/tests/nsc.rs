@@ -11,7 +11,7 @@ use lensbench_project::nsc::{
 };
 use lensbench_project::raypath::{EventKind, RayPath};
 use lensbench_project::scene::{expansions, ObjectKind, Scene};
-use lensbench_project::{Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -284,6 +284,47 @@ fn single_reflections_match_the_turned_beams() {
         );
         let p = Project::from_json(&txt).unwrap();
         project_paths(&format!("turn {surf}"), &p, &env(), None);
+    }
+}
+
+/// 反射 2 回以上の枝が、turn を並べた光束（玉の中の 2 回反射・玉をまたぐゴースト・4 回）と一致する
+#[test]
+fn multiple_reflections_match_the_turn_lists() {
+    for turns in [
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}]"#,
+        r#"[{"block": "M", "surface": 0}, {"block": "L", "surface": 1}]"#,
+        r#"[{"block": "M", "surface": 1}, {"block": "L", "surface": 0}]"#,
+        r#"[{"block": "M", "surface": 0}, {"block": "L", "surface": 1},
+            {"block": "M", "surface": 1}, {"block": "M", "surface": 0}]"#,
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}, {"block": "M", "surface": 0}]"#,
+    ] {
+        let txt = format!(
+            r#"{{"wavelengths": [{{"um": 0.5875618}}], "glass_catalogs": ["SCHOTT"],
+              "aperture": {{"type": "epd", "value": 4}}, "object_distance": 100,
+              "fields": {{"type": "angle", "points": [[0, 0], [0, 2]]}},
+              "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
+              {{"type": "lens", "id": "L", "source": {{"surfaces": [
+                 {{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}}, {{"radius": -60, "semi": 8}}]}}}},
+              {{"type": "air", "t": 8}},
+              {{"type": "lens", "id": "M", "source": {{"surfaces": [
+                 {{"radius": 30, "t": 3, "glass": "N-BK7", "semi": 8}}, {{"radius": 80, "semi": 8}}]}}}},
+              {{"type": "air", "t": 20}}],
+              "beams": [{{"name": "g", "turn": {turns}}}]}}"#
+        );
+        let p = Project::from_json(&txt).unwrap();
+        // 並べた turn の数だけ鏡で折り返す
+        let x = expand(
+            &p,
+            &env(),
+            &ExpandOpts {
+                state: Some("g"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mirrors = x.system.surfaces.iter().filter(|d| d.is_mirror()).count();
+        assert_eq!(mirrors, p.beams[0].turn.len(), "{turns}");
+        assert!(project_paths(turns, &p, &env(), None) > 0, "{turns}");
     }
 }
 

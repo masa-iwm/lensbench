@@ -78,7 +78,7 @@ pub(super) struct NscParams {
     pub scatter_rays: usize,
     /// Source rays traced again to draw their detected branches on the layout (0 for none)
     pub layout_rays: usize,
-    /// Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and one turn at a lens surface)
+    /// Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and turns at lens surfaces)
     pub sequential: bool,
     /// Folder to write the ghost systems of the rows to (ghost_a_b.zmx; with sequential)
     #[schemars(extend("x-kind" = "path", "x-write" = true))]

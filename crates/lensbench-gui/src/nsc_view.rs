@@ -283,10 +283,10 @@ pub(crate) fn show(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut NscFig) -
 /// 経路の表の行から頼む操作（画面の一時データに置き、[`take_request`] でアプリが受ける）
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NscAct {
-    /// 組合せに迷光の光束を足す（BS の経路・玉の面で折り返す面）
+    /// 組合せに迷光の光束を足す（BS の経路・玉の面で折り返す面の並び）
     AddBeam {
         path: Option<String>,
-        turn: lensbench_project::edit_ops::BlockFace,
+        turn: Vec<lensbench_project::edit_ops::BlockFace>,
     },
     /// ゴーストの順次の系（書き出した .zmx）を開く
     Open(std::path::PathBuf),
@@ -323,7 +323,11 @@ pub(crate) fn sequential_act(q: &Value) -> Option<NscAct> {
     match q["kind"].as_str()? {
         "beam" => Some(NscAct::AddBeam {
             path: q["path"].as_str().map(str::to_string),
-            turn: serde_json::from_value(q["turn"].clone()).ok()?,
+            // turn は 1 つならオブジェクト、2 つ以上は並び
+            turn: match &q["turn"] {
+                Value::Array(_) => serde_json::from_value(q["turn"].clone()).ok()?,
+                t => vec![serde_json::from_value(t.clone()).ok()?],
+            },
         }),
         "ghost" => Some(NscAct::Open(q["file"].as_str()?.into())),
         _ => None,
@@ -529,7 +533,19 @@ mod tests {
             panic!("{beam}");
         };
         assert_eq!(path.as_deref(), Some("TT"));
-        assert_eq!((turn.block.as_str(), turn.surface, turn.pass), ("L1", 1, 0));
+        assert_eq!(turn.len(), 1);
+        assert_eq!(
+            (turn[0].block.as_str(), turn[0].surface, turn[0].pass),
+            ("L1", 1, 0)
+        );
+        // 2 回以上の折り返しは並び
+        let two = json!({"kind": "beam", "path": null,
+            "turn": [{"block": "L1", "surface": 1}, {"block": "L1", "surface": 0}]});
+        let Some(NscAct::AddBeam { path, turn }) = sequential_act(&two) else {
+            panic!("{two}");
+        };
+        assert_eq!(path, None);
+        assert_eq!(turn.iter().map(|t| t.surface).collect::<Vec<_>>(), [1, 0]);
         let g = json!({"kind": "ghost", "system": "system", "a": 5, "b": 3, "file": "/tmp/ghost_5_3.zmx"});
         assert_eq!(
             sequential_act(&g),

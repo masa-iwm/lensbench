@@ -1129,7 +1129,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     if !place.on {
                         return Err("turn: the block is OFF".into());
                     }
-                    return self.turn_lens(&e, place, k);
+                    // 戻る道で玉の前へ出たら、玉のブロックを覚えてから前のブロックを戻る（[`Ctx::block`]）
+                    if !self.turn_walk(block_id(b), &e, place, true, k)? {
+                        self.turn.pending = true;
+                    }
+                    return Ok(());
                 }
                 let rev = *reversed;
                 self.placed(place, &mut |c: &mut Self| {

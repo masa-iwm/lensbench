@@ -1177,7 +1177,7 @@ no state or beam {name} (states: {}; beams: {})	状態・光束 {name} はあり
 beam {name} has its own path, so another path can't be given	光束 {name} は経路を持つので別の経路は渡せません
 block {}: a coordinate break of the return path can't be chosen	ブロック {}: 復路の座標ブレークは選べません
 block {b} pass {k} ({n} return passes)	ブロック {b} の {k} 回目（復路は {n} 回）
-beam {name}: turn takes a surface on the way out (not back or coordbrk)	光束 {name}: turn は往路の面を指します（back・coordbrk は使えません）
+beam {name}: turn takes a lens surface as numbered on the way out (not back or coordbrk)	光束 {name}: turn はレンズの面を往路の番号で指します（back・coordbrk は使えません）
 beam {name}: 0, ref and reference mean the reference sphere in interference (use another name)	光束 {name}: 0・ref・reference は干渉で参照球を表します（別の名前にしてください）
 beam {name}: turn needs a block id	光束 {name}: turn にはブロックの id が要ります
 turn: surface {k} ({n} surfaces in the block)	turn: 面 {k}（ブロックの面は {n} 面）
@@ -1186,6 +1186,8 @@ turn: a lens in a group can't be turned in (put the turn on a lens outside group
 turn: the return path leaves a BS without branches (write the arms as the BS branches t, r and d)	turn: 戻りの道が分岐の無い BS から出ます（腕を BS の分岐 t・r・d に書いてください）
 turn: the block is OFF	turn: ブロックが OFF です
 turn: block {} (pass {}) is not on the path	turn: ブロック {}（{} 回目）は経路にありません
+turn {}: block {} surface {} (pass {}) is not on the way back	turn {}: ブロック {} の面 {}（{} 回目）は復路にありません
+turn {}: block {} surface {} (pass {}) is not on the way out	turn {}: ブロック {} の面 {}（{} 回目）は往路にありません
 block {b} pass {k} ({n} forward passes)	ブロック {b} の {k} 回目（往路は {n} 回）
 block {} surface {} ({} surfaces in the pass)	ブロック {} の面 {}（その回の面は {} 枚）
 state {name}: no block {id}	状態 {name}: ブロック {id} はありません
@@ -2881,10 +2883,9 @@ Pixels on a side of the detector	検出器の一辺の画素の数
 Count in the detector image only the paths with this number of reflections (one value, or the least and the most)	検出器の像にこの反射の回数の経路だけを数える（1 つか、最小と最大）
 Rows of the path table (largest power first)	経路の表の行数（パワーの大きい順）
 Source rays traced again to draw their detected branches on the layout (0 for none)	レイアウト図に検出された枝を描くために追い直す光源の光線の数（0 で描かない）
-Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and one turn at a lens surface)	経路の表の行ごとの順次のシステムを探す: 場面のシステム（光束・ビームスプリッターの経路）、ゴースト（面 a と b で反射）、プロジェクトに足す光束（ビームスプリッターの経路とレンズの面での 1 回の折り返し）
+Find the sequential system of each row of the path table: a system of the scene (beam, beam splitter path), a ghost (reflected at surfaces a and b) or a beam to add to the project (beam splitter path and turns at lens surfaces)	経路の表の行ごとの順次のシステムを探す: 場面のシステム（光束・ビームスプリッターの経路）、ゴースト（面 a と b で反射）、プロジェクトに足す光束（ビームスプリッターの経路とレンズの面での折り返し）
 Folder to write the ghost systems of the rows to (ghost_a_b.zmx; with sequential)	行のゴーストのシステムを書くフォルダ（ghost_a_b.zmx。sequential と一緒に）
 the path scatters	散乱する経路です
-three or more reflections at lens surfaces (a beam has one turn and a ghost two reflections)	レンズの面での反射が 3 回以上です（光束の折り返しは 1 回、ゴーストは 2 回の反射）
 no sequential system (beam, beam splitter path or ghost) has this path	この経路を持つ順次のシステム（光束・ビームスプリッターの経路・ゴースト）はありません
 half takes 1 or 2 values ({n} given)	half は 1 つか 2 つ（{n} 個）
 reflections takes 1 or 2 values ({n} given)	reflections は 1 つか 2 つ（{n} 個）
