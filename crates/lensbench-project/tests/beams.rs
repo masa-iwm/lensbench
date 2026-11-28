@@ -310,6 +310,16 @@ fn unreached_turns_are_named() {
     )
     .unwrap_err();
     assert!(e.contains("turn 3:") && e.contains("on the way out"), "{e}");
+    // 玉の中の往路の続きの折り返しの面が玉の外（面 2 枚の玉の面 2）: 1 つ目と同じ誤り（落ちない）
+    let e = turned(
+        r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}, {"block": "L", "surface": 2}]"#,
+        "",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("turn: surface 2 (2 surfaces in the block)"),
+        "{e}"
+    );
     // 2 回で往路に戻れば元の像面まで進む
     let s = turned(
         r#"[{"block": "L", "surface": 1}, {"block": "L", "surface": 0}]"#,

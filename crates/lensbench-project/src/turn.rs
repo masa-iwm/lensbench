@@ -370,6 +370,10 @@ impl Ctx<'_, '_> {
                 fwd = true;
                 from = t as i64 + 1;
                 target = self.turn_in_lens(id, false, from);
+                // 往路の続きの折り返しも玉の面の中（1 つ目と同じ誤り）
+                if let Some(k) = target.filter(|&k| k >= n) {
+                    return Err(format!("turn: surface {k} ({n} surfaces in the block)").into());
+                }
             }
         }
     }
