@@ -71,3 +71,65 @@ pub(super) fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -
     });
     out
 }
+
+/// Web 版のレイアウトの書き出しの形式（メニューの名前・拡張子）。2D は断面、3D は立体
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) const LAYOUT_EXPORT_FORMATS: [(&str, &str); 8] = [
+    ("SVG (2D)", "svg"),
+    ("PNG (2D)", "png"),
+    ("DXF (2D)", "dxf"),
+    ("STEP (3D)", "step"),
+    ("GLB (3D)", "glb"),
+    ("glTF (3D)", "gltf"),
+    ("OBJ (3D)", "obj"),
+    ("STL (3D)", "stl"),
+];
+
+/// レイアウトの「エクスポート…」。押したら Some(拡張子)（None は保存の窓で選ぶ）。
+/// アプリ版はボタン（形式は保存の窓のフィルタ・拡張子で選ぶ）。Web 版は保存の窓のフィルタが効かない
+/// （そのままダウンロードになる）ので、形式を選ぶメニューにする
+pub(super) fn layout_export_menu(ui: &mut Ui) -> Option<Option<&'static str>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        ui.button(tr("Export…"))
+            .on_hover_text(tr(
+                "Export with the current view and overlaid configurations. The format follows the extension: svg, png, dxf for 2D; step, glb, gltf, obj, stl for 3D",
+            ))
+            .clicked()
+            .then_some(None)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut pick = None;
+        ui.menu_button(tr("Export…"), |ui| {
+            for (name, ext) in LAYOUT_EXPORT_FORMATS {
+                if ui.button(name).clicked() {
+                    pick = Some(Some(ext));
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .on_hover_text(tr(
+            "Export with the current view and overlaid configurations. 2D formats draw the section, 3D formats the solids",
+        ));
+        pick
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LAYOUT_EXPORT_FORMATS;
+    use lensbench_export::LayoutFormat;
+    use std::path::Path;
+
+    /// Web 版のメニューの形式は全部書き出せて、名前の 2D・3D が書き出しの側と合う
+    #[test]
+    fn layout_export_formats_are_writable() {
+        for (name, ext) in LAYOUT_EXPORT_FORMATS {
+            let f = LayoutFormat::from_path(Path::new(&format!("a.{ext}")))
+                .unwrap_or_else(|| panic!("{ext} を書き出せない"));
+            assert_eq!(f.is_2d(), name.ends_with("(2D)"), "{name}");
+        }
+    }
+}

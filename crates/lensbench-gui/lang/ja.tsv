@@ -753,6 +753,7 @@ Exported the layout to {}	レイアウトを {} にエクスポートした
 3D solids	3D の立体
 Export…	エクスポート…
 Export with the current view and overlaid configurations. The format follows the extension: svg, png, dxf for 2D; step, glb, gltf, obj, stl for 3D	今の表示面・重ねた構成でエクスポート。形式は拡張子で: 2D は svg・png・dxf、3D は step・glb・gltf・obj・stl
+Export with the current view and overlaid configurations. 2D formats draw the section, 3D formats the solids	今の表示面・重ねた構成でエクスポート。2D の形式は断面、3D の形式は立体を描く
 seed is not an integer	seed が整数ではありません
 trials is not an integer	trials が整数ではありません
 {} has no ±	{} の ± がありません

@@ -5,7 +5,7 @@
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
 mod ask;
-use export_menu::{copy_menu, result_export_menu, ResOut};
+use export_menu::{copy_menu, layout_export_menu, result_export_menu, ResOut};
 mod doc_file;
 mod doc_loc;
 mod edit;
@@ -942,8 +942,8 @@ impl Core {
         self.save_to(path);
     }
 
-    /// レイアウトを書き出す（形式は拡張子）。今の見る面・重ねた構成で。2D は断面、3D は立体
-    fn export_layout(&mut self) {
+    /// レイアウトを書き出す（形式は拡張子 `ext`。None なら見る面から）。今の見る面・重ねた構成で。2D は断面、3D は立体
+    fn export_layout(&mut self, ext: Option<&str>) {
         let base = self
             .loc
             .file
@@ -951,11 +951,11 @@ impl Core {
             .and_then(|f| f.file_stem())
             .map(|x| x.to_string_lossy().into_owned())
             .unwrap_or_else(|| "layout".into());
-        let ext = if self.ses.view_plane == ViewPlane::D3 {
+        let ext = ext.unwrap_or(if self.ses.view_plane == ViewPlane::D3 {
             "step"
         } else {
             "svg"
-        };
+        });
         let d = crate::files::FileDialog::new()
             .add_filter(tr("2D drawing"), &["svg", "png", "dxf"])
             .add_filter(
@@ -1079,14 +1079,8 @@ impl Core {
                     changed |= r.changed();
                 }
                 ui.separator();
-                if ui
-                    .button(tr("Export…"))
-                    .on_hover_text(tr(
-                        "Export with the current view and overlaid configurations. The format follows the extension: svg, png, dxf for 2D; step, glb, gltf, obj, stl for 3D",
-                    ))
-                    .clicked()
-                {
-                    self.export_layout();
+                if let Some(ext) = layout_export_menu(ui) {
+                    self.export_layout(ext);
                 }
                 // 解析のグラフと同じコピーメニュー（図の画像と、図の元の数値）
                 if let Some(d) = &self.layout_data {

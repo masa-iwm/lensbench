@@ -3137,6 +3137,7 @@ dependencies = [
  "lensbench-core",
  "lensbench-design",
  "lensbench-engine",
+ "lensbench-export",
  "lensbench-formats",
  "lensbench-lang",
  "lensbench-project",

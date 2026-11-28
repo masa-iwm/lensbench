@@ -99,3 +99,5 @@ winresource = "0.1"
 [dev-dependencies]
 # 画面の振る舞いのテスト。窓も GPU も使わず、AccessKit の木でボタンを探して押す
 egui_kittest = { version = "0.37", features = ["eframe"] }
+# Web 版の書き出しのメニューの形式を書き出しの側と突き合わせる
+lensbench-export = { path = "../lensbench-export" }
