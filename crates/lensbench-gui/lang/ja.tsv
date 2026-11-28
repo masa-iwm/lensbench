@@ -2111,3 +2111,34 @@ Open the ghost system (sequential, unfolded at the two reflecting surfaces) to s
 Add this path to the beams of the combination (stray light role, turned back at the lens surface)	この経路を組合せの光束に足します（役割は迷光、レンズの面で折り返す）
 Added the beam {}	光束 {} を足しました
 The beam {} already has this path	光束 {} がすでにこの経路です
+Lens edge	レンズの縁
+Lambertian	ランバート
+Gaussian	ガウス
+Reflect and transmit	反射と透過
+Reflect only	反射だけ
+Transmit only	透過だけ
+Finish {}: choose the target	仕上げ {}: 対象を選択してください
+Finish {}: {}	仕上げ {}: {}
+Finishes	仕上げ
+The finishes of this project can't be edited here ({})	このプロジェクトの仕上げはここでは編集できません（{}）
+Scatter and reflectance of surfaces, lens edges and mechanical parts. Only the non-sequential trace and the stray light PST use them	面・レンズの縁・機構部品の散乱と反射率。非順次の追跡と迷光の PST だけが使います
+Reflectance	反射率
+Scatter	散乱
+Remove the finish	仕上げを削除
+Add a finish	仕上げを追加
+Element	要素
+Surface of the element from 0 (a stop or an aperture: the plate outside the opening)	要素の面（0 から。絞り・開口は開口の外の板）
+A surface of the lens from 0 (the edge of that lens)	レンズの面（0 から。そのレンズの縁）
+Reflectance of the opaque surface (the rest is absorbed). On a lens edge it makes the edge opaque (a painted edge)	光を通さない面の反射率（残りは吸収）。レンズの縁に付けると縁は光を通さなくなります（塗った縁）
+The reflection of an optical surface comes from the Fresnel equations with its coating	光学面の反射はコーティング込みの Fresnel の式で決まります
+Fraction of the light that scatters (0 to 1)	散乱する光の割合（0〜1）
+Width of the Gaussian in direction cosine space	方向余弦の空間での Gauss の幅
+BSDF = A / (B + |β − β0|^g) [1/sr]; the scattered fraction follows from the BSDF	BSDF = A / (B + |β − β0|^g) [1/sr]。散乱する割合は BSDF から決まります
+Scatter side	散乱する側
+{} µm · azimuth {}° · source radius {} mm · detector {} ({} mm²)	{} µm · 方位 {}° · 光源の半径 {} mm · 検出器 {}（{} mm²）
+Source angle [deg]	光源の角度 [deg]
+PST (log10)	PST（log10）
+Angles where no light reaches the detector are left out	検出器に光が届かない角度は除いています
+Paths at	経路の角度
+Source angle	光源の角度
+PST {} · detected {} W ({} of the source) · {} source rays	PST {} · 検出 {} W（光源の {}）· 光源の光線 {} 本

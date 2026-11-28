@@ -40,6 +40,7 @@ pub(crate) fn has_figure(cmd: &str) -> bool {
             | "pop"
             | "image-sim"
             | "nsc"
+            | "pst"
     )
 }
 
@@ -206,6 +207,7 @@ pub(crate) fn show(
         "pop" => pop(ui, id, gen, v),
         "image-sim" => image_sim(ui, id, gen, v),
         "nsc" => crate::nsc_view::show(ui, id, gen, v, &mut st.nsc),
+        "pst" => crate::pst_view::show(ui, id, v, &mut st.nsc.pst_angle),
         _ => false,
     }
 }

@@ -39,6 +39,9 @@ pub(crate) struct SysExtra {
     /// 光束の組（プロジェクトの beams をそのまま）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub beams: Option<Value>,
+    /// 面の仕上げ（プロジェクトの finishes をそのまま。非順次の追跡の散乱・反射率）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finishes: Option<Value>,
     /// 定義した視野以外の点のケラレ係数の求め方（プロジェクトの vig_interp。既定の連続は書かない）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<VigInterp>,
@@ -87,6 +90,10 @@ impl SysExtra {
                 .get("beams")
                 .filter(|g| !g.is_null() && **g != json!([]))
                 .cloned(),
+            finishes: v
+                .get("finishes")
+                .filter(|g| !g.is_null() && **g != json!([]))
+                .cloned(),
             vig_interp,
         })
     }
@@ -122,6 +129,9 @@ impl SysExtra {
         }
         if let Some(g) = &self.beams {
             v["beams"] = g.clone();
+        }
+        if let Some(g) = &self.finishes {
+            v["finishes"] = g.clone();
         }
         if let Some(g) = self.vig_interp {
             v["vig_interp"] = json!(g);

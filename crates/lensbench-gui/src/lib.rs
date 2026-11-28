@@ -49,6 +49,7 @@ mod param_pick;
 mod plot_tools;
 mod plots;
 mod portable;
+mod pst_view;
 #[cfg(any(target_arch = "wasm32", test))]
 mod remote_frame;
 #[cfg(not(target_arch = "wasm32"))]

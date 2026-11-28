@@ -1755,9 +1755,9 @@ pub(crate) fn ui(
             view.set_sel(sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id)));
             view.dim = None;
         }
-        // 光束の組（名前を付けた経路・部分反射で戻る光束）
+        // 光束の組（名前を付けた経路・部分反射で戻る光束）と面の仕上げ（散乱・反射率）
         if !combo.is_empty() {
-            beams::menu(ui, combo);
+            let _ = beams::menu(ui, combo) | beams::finishes::menu(ui, combo);
         }
         ui.checkbox(auto, tr("Rebuild on every change"));
         if (!*auto || (data.is_none() && !building)) && ui.button(tr("▶ Build system")).clicked()

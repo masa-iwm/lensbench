@@ -7,6 +7,8 @@ use lensbench_project::{Beam, BeamRole};
 use serde_json::Value;
 
 use super::{Combo, ElemKind};
+
+pub(crate) mod finishes;
 use crate::i18n::{tr, trf};
 use crate::theme;
 

@@ -200,8 +200,9 @@ impl lensbench_analysis::Source for FileSource<'_> {
         let own_path = state
             .as_deref()
             .is_some_and(|n| p.beam(n).is_some_and(|b| b.path.is_some()));
+        // 構成は load と同じ（光束を選べば 1、選ばなければ読み込んだ系の構成）
         let c = SysSpec {
-            cfg: 1,
+            cfg: if v.beam.is_some() { 1 } else { self.c.cfg },
             path: if own_path {
                 None
             } else {
@@ -231,8 +232,9 @@ impl lensbench_analysis::Source for FileSource<'_> {
         let Some(src) = src.with_project(p.clone()) else {
             return Ok(None);
         };
+        // 場面の系（経路ごとの系は読み込んだ系の構成）と同じ構成で展開する
         let c = SysSpec {
-            cfg: 1,
+            cfg: self.c.cfg,
             state: Some(name.clone()),
             path: None,
             ..self.c.clone()

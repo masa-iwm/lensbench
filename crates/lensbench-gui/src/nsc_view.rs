@@ -26,6 +26,8 @@ pub(crate) struct NscFig {
     pub layout: bool,
     /// レイアウト図に重ねる枝の反射の回数（最小・最大。経路を選んでいる間は使わない）
     pub refl: [usize; 2],
+    /// 迷光の PST の図で経路の表を出す角度の番号（0 始まり）
+    pub pst_angle: usize,
 }
 
 impl Default for NscFig {
@@ -35,6 +37,7 @@ impl Default for NscFig {
             path: 0,
             layout: true,
             refl: [0, 99],
+            pst_angle: 0,
         }
     }
 }
@@ -289,12 +292,16 @@ pub(crate) enum NscAct {
     Open(std::path::PathBuf),
 }
 
-/// ゴーストの系を書く一時フォルダ（Web 版は無し）
+/// ゴーストの系を書く一時フォルダ（プロセスごと。いくつも開いた GUI で上書きし合わない。Web 版は無し）
 pub(crate) fn ghost_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_arch = "wasm32")]
     return None;
     #[cfg(not(target_arch = "wasm32"))]
-    Some(std::env::temp_dir().join("lensbench").join("nsc-ghosts"))
+    Some(
+        std::env::temp_dir()
+            .join("lensbench")
+            .join(format!("nsc-ghosts-{}", std::process::id())),
+    )
 }
 
 fn request_id() -> egui::Id {
