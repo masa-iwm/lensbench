@@ -3335,6 +3335,13 @@
             }
           ]
         },
+        "depolarize": {
+          "description": "散乱した光線が偏光を失うか（true: 向きが一様な直線偏光、false: 鏡面の方向の電場を散乱した方向に垂直な面へ\n射影して保つ）。省略で Lambert は失い、Gauss・ABg は保つ",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "fraction": {
           "anyOf": [
             {

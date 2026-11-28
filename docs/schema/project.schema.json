@@ -3412,6 +3412,13 @@
           "format": "double",
           "type": "number"
         },
+        "depolarize": {
+          "description": "散乱した光線が偏光を失うか（true: 向きが一様な直線偏光、false: 鏡面の方向の電場を散乱した方向に垂直な面へ\n射影して保つ）。省略で Lambert は失い、Gauss・ABg は保つ",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "fraction": {
           "description": "散乱する割合（Lambert・Gauss。0〜1、省略で 1）。ABg は使わない（BSDF の積分で決まる）",
           "format": "double",

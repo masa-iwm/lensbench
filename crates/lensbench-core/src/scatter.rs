@@ -81,6 +81,10 @@ pub struct Scatter {
     /// 散乱する側（省略で反射と透過の両方）
     #[serde(default, skip_serializing_if = "ScatterSide::is_both")]
     pub on: ScatterSide,
+    /// 散乱した光線が偏光を失うか（true: 向きが一様な直線偏光、false: 鏡面の方向の電場を散乱した方向に垂直な面へ
+    /// 射影して保つ）。省略で Lambert は失い、Gauss・ABg は保つ
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depolarize: Option<bool>,
 }
 
 impl Default for Scatter {
@@ -93,6 +97,7 @@ impl Default for Scatter {
             b: 0.0,
             g: 0.0,
             on: ScatterSide::Both,
+            depolarize: None,
         }
     }
 }
@@ -123,6 +128,12 @@ impl Scatter {
             g,
             ..Default::default()
         }
+    }
+
+    /// 散乱した光線が偏光を失うか（[`Scatter::depolarize`]、省略で Lambert だけ）
+    pub fn depolarizes(&self) -> bool {
+        self.depolarize
+            .unwrap_or(self.model == ScatterModel::Lambert)
     }
 
     /// 反射（reflect）・透過した光に効くか

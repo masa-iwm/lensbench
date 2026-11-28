@@ -142,8 +142,8 @@ impl Tracer<'_> {
 
     /// 鏡面の枝 s（方向・電場は鏡面の方向のもの、出来事 h はまだ足していない）を、面の散乱で分けて積む。reflect は反射
     /// した側の枝か。決まった分岐では鏡面の枝に (1 − TIS)、散乱の光線 [`NscOpts::scatter_rays`] 本に TIS を等しく分け、
-    /// モンテカルロでは TIS の確率で散乱させる（パワーはそのまま）。散乱した光線の偏光は方向に垂直な面の中で
-    /// 向きが一様な直線偏光（散乱で偏光を失う）
+    /// モンテカルロでは TIS の確率で散乱させる（パワーはそのまま）。散乱した光線の偏光は、偏光を失う仕上げでは方向に
+    /// 垂直な面の中で向きが一様な直線偏光、保つ仕上げでは鏡面の方向の電場を散乱した方向に垂直な面へ射影して大きさを直したもの
     #[allow(clippy::too_many_arguments)]
     pub(super) fn go_scatter(
         &self,
@@ -157,8 +157,8 @@ impl Tracer<'_> {
         bud: &mut Budget,
     ) {
         let keep = sx.keep;
-        let bsdf = match &self.faces[h.face].scatter {
-            Some((b, on)) if scatter_side(*on, reflect) && h.power > 0.0 => b,
+        let (bsdf, depol) = match &self.faces[h.face].scatter {
+            Some((b, on, dp)) if scatter_side(*on, reflect) && h.power > 0.0 => (b, *dp),
             _ => return self.go_on(s, h, h.power, keep, stack, sink, bud),
         };
         // 出ていく側の法線と、接平面の基底
@@ -191,12 +191,8 @@ impl Tracer<'_> {
                 }
                 None => s.k,
             };
-            let (p1, p2) = basis(d);
             let a = std::f64::consts::TAU * uni();
-            let (sa, ca) = a.sin_cos();
-            let amp = power.sqrt();
-            let e = [0, 1, 2].map(|i| C64::new((ca * p1[i] + sa * p2[i]) * amp, 0.0));
-            (d, e)
+            (d, scattered_field(&s.e, d, power, a, depol))
         };
         match self.opts.split {
             Split::MonteCarlo { .. } => {
@@ -257,10 +253,77 @@ impl Tracer<'_> {
     }
 }
 
+/// 方向 d へ散乱した光線の電場（パワー power）。偏光を保つとき（depol が false）は鏡面の方向の電場 e から d の成分を除いて
+/// 大きさを直す（OpticStudio と同じ）。偏光を失うとき、または e が d とほぼ平行のときは、d に垂直な面の中の角度 a の直線偏光
+pub(super) fn scattered_field(e: &CV3, d: V3, power: f64, a: f64, depol: bool) -> CV3 {
+    let amp = power.sqrt();
+    if !depol {
+        let ed = e[0] * d[0] + e[1] * d[1] + e[2] * d[2];
+        let q: CV3 = [0, 1, 2].map(|i| e[i] - ed * d[i]);
+        let nq = power_of(&q).sqrt();
+        if nq > 1e-9 * power_of(e).sqrt() {
+            return q.map(|z| z * (amp / nq));
+        }
+    }
+    let (p1, p2) = basis(d);
+    let (sa, ca) = a.sin_cos();
+    [0, 1, 2].map(|i| C64::new((ca * p1[i] + sa * p2[i]) * amp, 0.0))
+}
+
 fn scatter_side(on: ScatterSide, reflect: bool) -> bool {
     match on {
         ScatterSide::Both => true,
         ScatterSide::Reflect => reflect,
         ScatterSide::Transmit => !reflect,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dotc(e: &CV3, d: V3) -> C64 {
+        e[0] * d[0] + e[1] * d[1] + e[2] * d[2]
+    }
+
+    #[test]
+    fn kept_polarization_follows_the_specular_field() {
+        // 鏡面の方向 +z、電場は x の直線偏光と、x・y の円偏光
+        let lin: CV3 = [C64::new(1.0, 0.0), C64::new(0.0, 0.0), C64::new(0.0, 0.0)];
+        let h = std::f64::consts::FRAC_1_SQRT_2;
+        let circ: CV3 = [C64::new(h, 0.0), C64::new(0.0, h), C64::new(0.0, 0.0)];
+        let d = normalize([0.3, -0.2, 1.0]);
+        for e in [lin, circ] {
+            let q = scattered_field(&e, d, 0.25, 1.0, false);
+            assert!((power_of(&q) - 0.25).abs() < 1e-15);
+            assert!(dotc(&q, d).norm() < 1e-15);
+            // 散乱した方向に垂直な面への射影と平行（偏光の形を保つ）
+            let ed = dotc(&e, d);
+            let p: CV3 = [0, 1, 2].map(|i| e[i] - ed * d[i]);
+            let k = 0.5 / power_of(&p).sqrt();
+            for i in 0..3 {
+                assert!((q[i] - p[i] * k).norm() < 1e-15, "{q:?} {p:?}");
+            }
+        }
+        // 散乱しない向き（d = +z）では電場はそのまま
+        let q = scattered_field(&lin, [0.0, 0.0, 1.0], 1.0, 2.0, false);
+        assert!((q[0] - lin[0]).norm() < 1e-15 && q[1].norm() < 1e-15);
+        // 電場と平行な向きへの散乱は、向きが角度 a の直線偏光に
+        let q = scattered_field(&lin, [1.0, 0.0, 0.0], 1.0, 0.0, false);
+        assert!(q[0].norm() < 1e-15 && (power_of(&q) - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn lost_polarization_is_linear_at_the_angle() {
+        let lin: CV3 = [C64::new(1.0, 0.0), C64::new(0.0, 0.0), C64::new(0.0, 0.0)];
+        let d = normalize([0.3, -0.2, 1.0]);
+        let (p1, p2) = basis(d);
+        let a = 0.7f64;
+        let q = scattered_field(&lin, d, 2.0, a, true);
+        assert!((power_of(&q) - 2.0).abs() < 1e-14);
+        for i in 0..3 {
+            let want = (a.cos() * p1[i] + a.sin() * p2[i]) * 2f64.sqrt();
+            assert!((q[i] - C64::new(want, 0.0)).norm() < 1e-14);
+        }
     }
 }

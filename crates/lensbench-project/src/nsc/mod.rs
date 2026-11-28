@@ -363,7 +363,8 @@ struct FaceData {
     /// 光を通さない所（壁・絞りの板）の反射率
     wall: f64,
     /// 散乱
-    scatter: Option<(Bsdf, ScatterSide)>,
+    /// 散乱の分布・散乱する側・偏光を失うか
+    scatter: Option<(Bsdf, ScatterSide, bool)>,
 }
 
 /// 用意した追跡（場面・波長ごと）
@@ -611,7 +612,11 @@ impl<'a> Tracer<'a> {
                 invalid!("nsc: {lab}: a detector or a surface without an action can't scatter");
             }
             let scatter = match &fin.scatter {
-                Some(sc) => Some((sc.prepare().map_err(|e| e.at(lab.clone()))?, sc.on)),
+                Some(sc) => Some((
+                    sc.prepare().map_err(|e| e.at(lab.clone()))?,
+                    sc.on,
+                    sc.depolarizes(),
+                )),
                 None => None,
             };
             faces.push(FaceData {
