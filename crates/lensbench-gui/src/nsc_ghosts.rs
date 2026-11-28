@@ -108,12 +108,12 @@ fn stale(p: &Path, pid: u32) -> bool {
     }
 }
 
-#[cfg(test)]
+// 試験は Linux だけ（プロセスが居るかを /proc で見る）。ほかの OS では mod ごと外す（use が使われないと clippy が誤る）
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 
     /// 居ないプロセスのフォルダは消え、自分のフォルダと名前の違うフォルダは残る。終わると自分のフォルダも消える
-    #[cfg(target_os = "linux")]
     #[test]
     fn sweep_removes_folders_of_gone_processes() {
         let root =
