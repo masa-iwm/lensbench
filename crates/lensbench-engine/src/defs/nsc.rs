@@ -389,6 +389,12 @@ impl Analysis for Nsc {
         let mut seen = std::collections::HashSet::new();
         notes.retain(|n| seen.insert(n.clone()));
         notes.extend(co.notes.iter().cloned());
+        if b.truncated > 1e-3 * b.source {
+            let pct = format!("{:.2}", 100.0 * b.truncated / b.source);
+            notes.push(format!(
+                "nsc: {pct} % of the source power stopped at the event limit (max_events) without reaching an end; the result may miss light"
+            ));
+        }
         if r.budget.scatter_fallback > 0 {
             notes.push(format!(
                 "scatter: {} scattered rays found no direction inside the unit circle after the redraw limit and went on in the specular direction",

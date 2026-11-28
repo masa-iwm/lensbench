@@ -2926,3 +2926,6 @@ Radius of the collimated source disc [mm] (covers the entrance of the system; 1.
 Rays on a side of the source disc grid	光源の円板のグリッドの一辺の光線の数
 Ray splitting at boundaries: monte-carlo (choose one by the power ratio) or deterministic (follow both)	境界での光線の分け方: monte-carlo（パワーの比で一方を選ぶ）か deterministic（両方を追う）
 Rows of the path table for each angle (largest power first)	角度ごとの経路の表の行数（パワーの大きい順）
+nsc: the image surface has no semi-diameter, so give the detector half widths (half) ({lab})	非順次: 像面にクリア半径が無いので、検出器の半幅（half）を指定してください（{lab}）
+nsc: {lab} borders a birefringent material, which the non-sequential trace doesn't handle	非順次: {lab} は複屈折材の面で、非順次の追跡では扱いません
+nsc: {pct} % of the source power stopped at the event limit (max_events) without reaching an end; the result may miss light	非順次: 光源のパワーの {pct} % が出来事の数の上限（max_events）で止まり、行き先が決まりませんでした。結果に入らない光があります

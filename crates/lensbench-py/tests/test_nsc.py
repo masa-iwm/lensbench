@@ -85,3 +85,11 @@ def test_pst_by_angle():
     assert a[1]["pst"] < a[0]["pst"] * 1e-2
     with pytest.raises(ValueError):
         lb.System.analyze_file(P19, "pst", glass_dirs=GLASS, angles=[95])
+
+
+def test_a_large_truncated_power_is_warned():
+    r = lb.System.analyze_file(A0, "nsc", glass_dirs=GLASS, grid=5, pixels=8, max_events=2)
+    assert r["budget"]["truncated_w"] > 1e-3
+    assert any("max_events" in w for w in r["warnings"])
+    ok = lb.System.analyze_file(A0, "nsc", glass_dirs=GLASS, grid=5, pixels=8)
+    assert not any("max_events" in w for w in ok["warnings"])

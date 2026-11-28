@@ -496,3 +496,56 @@ fn path_pixels_and_polylines_agree_with_the_table() {
         .iter()
         .any(|l| l.events.iter().filter(|e| e.1.reflects()).count() == 2));
 }
+
+fn load_path(rel: &str) -> System {
+    let opt = lensbench_formats::zmx::LoadOptions {
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    lensbench_formats::zmx::load_with(&root().join(rel), &opt).unwrap()
+}
+
+/// 自動の半直径の系（端の視野の瞳の縁の光線が面の開口の円にちょうど当たる）: 面と縁の継ぎ目で閉じ込められず、
+/// 像面の半直径ちょうどの既定の検出器にも届く（反射の無い光は大きな検出器と同じ値）
+#[test]
+fn rays_at_the_edge_of_a_face_are_not_trapped() {
+    for rel in [
+        "tests/surftypes_os/O3/system.zmx",
+        "tests/surftypes_os/I7/system.zmx",
+        "tests/surftypes_os/I4/system.zmx",
+        "tests/refs/Z1/system.zmx",
+    ] {
+        let s = load_path(rel);
+        let coat = Coatings::for_system(&s).unwrap();
+        let sc = scene_of(&s);
+        let last = s.fields.len() - 1;
+        let src = system_source(&s, &[last], 5, s.primary, 1.0, None).unwrap();
+        let t0 = std::time::Instant::now();
+        let r = Tracer::new(&sc, &[&s], &coat, &NscOpts::default())
+            .unwrap()
+            .run(&src)
+            .unwrap();
+        let dt = t0.elapsed().as_secs_f64();
+        check_budget(rel, &r.budget, 1e-12);
+        assert_eq!(r.budget.truncated, 0.0, "{rel}");
+        let w = Tracer::new(&sc, &[&s], &coat, &wide())
+            .unwrap()
+            .run(&src)
+            .unwrap();
+        // 反射の無い経路（順次の光）は、像面の半直径ちょうどの既定の検出器でも全部数える。反射した枝は像面の外にも落ちる
+        let direct = |r: &lensbench_project::nsc::NscResult| -> f64 {
+            r.paths
+                .iter()
+                .filter(|p| p.reflections() == 0)
+                .map(|p| p.power)
+                .sum()
+        };
+        assert!(
+            (direct(&r) - direct(&w)).abs() < 1e-12,
+            "{rel}: direct light {} with the default detector, {} with a wide one",
+            direct(&r),
+            direct(&w)
+        );
+        eprintln!("{rel}: {dt:.3} s, detected {:.6}", r.budget.detected);
+    }
+}

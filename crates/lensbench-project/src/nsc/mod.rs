@@ -502,6 +502,9 @@ impl<'a> Tracer<'a> {
                 use lensbench_core::action::Action;
                 match d.action() {
                     Action::Refract | Action::Reflect { .. } => {}
+                    Action::Birefringent(_) => {
+                        invalid!("nsc: {lab} borders a birefringent material, which the non-sequential trace doesn't handle")
+                    }
                     _ => {
                         let what = format!("{:?}", d.typ());
                         invalid!("nsc: {lab} is a {what} surface, which the non-sequential trace doesn't handle")
@@ -538,6 +541,9 @@ impl<'a> Tracer<'a> {
                         .unwrap_or_else(|| sy.surfaces.iter().map(|d| d.semi).fold(0.0, f64::max));
                     let [hx, hy] = opts.detector.half.unwrap_or([semi, semi]);
                     if !(hx > 0.0 && hy > 0.0 && hx.is_finite() && hy.is_finite()) {
+                        if opts.detector.half.is_none() {
+                            invalid!("nsc: the image surface has no semi-diameter, so give the detector half widths (half) ({lab})");
+                        }
                         invalid!("nsc: detector half widths {hx} × {hy} mm ({lab})");
                     }
                     detectors.push(i);
@@ -671,15 +677,29 @@ impl<'a> Tracer<'a> {
     /// 最も近い交点: (面, 交点)。skip の面は距離 [`geom::SELF_EPS`] 以下を除く
     fn nearest(&self, p: V3, k: V3, skip: &[usize]) -> Option<(usize, LocalHit)> {
         let mut best: Option<(usize, LocalHit)> = None;
+        let faces = &self.scene.faces;
         let mut test = |i: usize| -> f64 {
-            let tmin = if skip.contains(&i) {
+            // 直前の面と、同じ物の面（面と縁の継ぎ目）は今の点では当たらない: 継ぎ目に当たった光線が面と縁の
+            // 出来事を同じ点で重ね続けないように
+            let tmin = if skip
+                .iter()
+                .any(|&j| j == i || faces[j].object == faces[i].object)
+            {
                 geom::SELF_EPS
             } else {
                 geom::MIN_T
             };
-            if let Some(h) = geom::intersect(&self.scene.faces[i], self.faces[i].bound, p, k, tmin)
-            {
-                if best.is_none_or(|b| h.t < b.1.t) {
+            if let Some(h) = geom::intersect(&faces[i], self.faces[i].bound, p, k, tmin) {
+                let better = best.is_none_or(|(bi, b)| {
+                    if (h.t - b.t).abs() <= geom::SELF_EPS && faces[bi].object == faces[i].object {
+                        // 同じ物の継ぎ目に同時に当たるときは順次の面を先に（縁の面は後）。同じ種類なら番号の小さい方
+                        let rank = |f: usize| (!matches!(faces[f].shape, Shape::Optical { .. }), f);
+                        rank(i) < rank(bi)
+                    } else {
+                        h.t < b.t
+                    }
+                });
+                if better {
                     best = Some((i, h));
                 }
             }
@@ -756,9 +776,13 @@ impl<'a> Tracer<'a> {
             passes: 0,
             key: 0,
         }];
+        let mut steps = 0usize;
         while let Some(mut s) = stack.pop() {
             let mut pw = power_of(&s.e);
-            if s.hits.len() >= self.opts.max_events {
+            steps += 1;
+            // 1 本の光源の光線から出る出来事の数の上限（閉じ込められた光線で時間が延び続けないように）。超えた分は
+            // 出来事の数の上限で止めた分に
+            if s.hits.len() >= self.opts.max_events || steps > MAX_STEPS {
                 finish(s, End::Truncated, pw, sink, bud);
                 continue;
             }
@@ -1180,6 +1204,9 @@ struct PathAcc {
     pixels: HashMap<usize, f64>,
 }
 
+/// 1 本の光源の光線を追う出来事の数の上限（全部の枝の和）
+const MAX_STEPS: usize = 200_000;
+
 /// 1 つの組の光線の数（スレッド数に依らない足し方の単位）
 const BLOCK: usize = 64;
 /// 一度に並列に数える組の数
@@ -1204,10 +1231,11 @@ impl Tracer<'_> {
         let [nx, ny] = self.opts.detector.pixels;
         let u = (x + hx) / (2.0 * hx) * nx as f64;
         let v = (y + hy) / (2.0 * hy) * ny as f64;
-        // 上の端（|x| = hx ちょうど）は最後の画素に入れる
+        // 端（|x| = hx ちょうどと、交点の丸めの分の外）は端の画素に入れる
         let i = (u.max(0.0) as usize).min(nx - 1);
         let j = (v.max(0.0) as usize).min(ny - 1);
-        (u >= 0.0 && v >= 0.0).then_some(j * nx + i)
+        let tol = 1e-9 * (nx.max(ny) as f64) + 1e-9;
+        (u >= -tol && v >= -tol).then_some(j * nx + i)
     }
 
     fn block(&self, starts: &[StartRay], first: usize) -> Acc {

@@ -143,7 +143,10 @@ fn optical(
                         || !lensbench_core::trace::aperture_out(d.ap, q))
             }
             Bound::Disc { r: rd } => r <= rd * (1.0 + 1e-12) + 1e-12,
-            Bound::Rect { hx, hy } => q[0].abs() <= hx && q[1].abs() <= hy,
+            // 縁ちょうど（半幅が像面の半直径＝いちばん外の光線の高さ）は丸めの分だけ広げて中に数える
+            Bound::Rect { hx, hy } => {
+                q[0].abs() <= hx * (1.0 + 1e-9) + 1e-12 && q[1].abs() <= hy * (1.0 + 1e-9) + 1e-12
+            }
         };
         if !inside {
             continue;
