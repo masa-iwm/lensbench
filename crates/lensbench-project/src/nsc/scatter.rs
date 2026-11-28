@@ -180,6 +180,8 @@ impl Tracer<'_> {
         };
         let depth = s.hits.len() as u32;
         let (rng, id) = (sx.rng, sx.id);
+        // 引き直しの上限まで単位円の外だった回数（鏡面の方向へ進める。収支の後で注意に）
+        let fallback = std::cell::Cell::new(0u64);
         // 散乱の方向と電場（パワー power）
         let draw = |key: u64, power: f64| -> (V3, CV3) {
             let mut st = rng.stream(id, key, depth);
@@ -189,7 +191,10 @@ impl Tracer<'_> {
                     let z = (1.0 - b[0] * b[0] - b[1] * b[1]).max(0.0).sqrt();
                     normalize([0, 1, 2].map(|i| b[0] * u[i] + b[1] * v[i] + z * m[i]))
                 }
-                None => s.k,
+                None => {
+                    fallback.set(fallback.get() + 1);
+                    s.k
+                }
             };
             let a = std::f64::consts::TAU * uni();
             (d, scattered_field(&s.e, d, power, a, depol))
@@ -250,6 +255,7 @@ impl Tracer<'_> {
                 }
             }
         }
+        bud.scatter_fallback += fallback.get();
     }
 }
 

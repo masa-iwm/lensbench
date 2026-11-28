@@ -33,4 +33,15 @@ mod tests {
         register();
         assert_eq!(lensbench_core::i18n::translate("cancelled"), "中断しました");
     }
+
+    /// A lens without a name gets its own line, so no English is left in the Japanese one
+    #[test]
+    fn unnamed_lens_edge_note_is_all_japanese() {
+        register();
+        let tail = "between faces 1 and 2 isn't made (not coaxial or not a round aperture)";
+        let ja = lensbench_core::i18n::translate(&format!("scene: the edge of a lens {tail}"));
+        assert!(ja.starts_with("場面: レンズの面 1 と 2"), "{ja}");
+        let ja = lensbench_core::i18n::translate(&format!("scene: the edge of L1 {tail}"));
+        assert!(ja.starts_with("場面: L1 の面 1 と 2"), "{ja}");
+    }
 }

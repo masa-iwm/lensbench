@@ -238,6 +238,8 @@ pub struct Budget {
     pub escaped: f64,
     pub discarded: f64,
     pub truncated: f64,
+    /// 散乱の方向を引き直しの上限まで引いても決まらず、鏡面の方向へ進めた枝の数（パワーではない。0 でなければ注意）
+    pub scatter_fallback: u64,
 }
 
 impl Budget {
@@ -248,6 +250,7 @@ impl Budget {
         self.escaped += o.escaped;
         self.discarded += o.discarded;
         self.truncated += o.truncated;
+        self.scatter_fallback += o.scatter_fallback;
     }
     /// 光源 − 行き先の和
     pub fn residual(&self) -> f64 {

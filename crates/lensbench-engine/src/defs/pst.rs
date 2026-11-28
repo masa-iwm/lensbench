@@ -171,6 +171,7 @@ impl Analysis for Pst {
         let area_in = std::f64::consts::PI * radius * radius;
         let mut rows = Vec::new();
         let mut det_info = Value::Null;
+        let mut fallback = 0u64;
         for &t in &a.angles {
             let (st, ct) = t.to_radians().sin_cos();
             let (sp, cp) = a.azimuth.to_radians().sin_cos();
@@ -183,6 +184,7 @@ impl Analysis for Pst {
                 .ok_or_else(|| Error::Invalid("pst: the scene has no detector".into()))?;
             let area_det = 4.0 * d.half[0] * d.half[1];
             let p_det = d.total();
+            fallback += r.budget.scatter_fallback;
             let e_in = r.budget.source / area_in;
             let pst = p_det / area_det / e_in;
             if det_info.is_null() {
@@ -210,6 +212,12 @@ impl Analysis for Pst {
         let mut seen = std::collections::HashSet::new();
         notes.retain(|n| seen.insert(n.clone()));
         notes.extend(co.notes.iter().cloned());
+        if fallback > 0 {
+            notes.push(format!(
+                "scatter: {} scattered rays found no direction inside the unit circle after the redraw limit and went on in the specular direction",
+                fallback
+            ));
+        }
         if a.split == SplitKind::MonteCarlo {
             notes.push(
                 "monte-carlo: PST is a statistical estimate (more rays: a larger grid)".to_string(),

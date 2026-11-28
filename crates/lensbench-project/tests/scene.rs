@@ -1,7 +1,9 @@
 //! 物の場面（Scene）: 展開した系の面が場面の面と 1e-12 mm で重なる、往復・BS の経路の同じ面は 1 つ、玉の縁の形
 
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
+use lensbench_core::material::Material;
 use lensbench_core::math::{dot, norm, sub};
+use lensbench_core::surface::Aperture;
 use lensbench_project::scene::{expansions, ObjectKind, Scene, Shape};
 use lensbench_project::{Env, Expansion, Project};
 use std::path::{Path, PathBuf};
@@ -10,17 +12,42 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// 場面の面と展開した系の面の頂点・軸が 1e-12 mm（軸は 1e-12）で一致する（物にならない空気中のダミー面は除く）
+/// 場面の面と展開した系の面の頂点・軸が 1e-12 mm（軸は 1e-12）で一致する。場面に入らない面は空気中のダミー面だけ
 fn check_frames(name: &str, sc: &Scene, xs: &[(String, Expansion)]) {
     for (i, (label, x)) in xs.iter().enumerate() {
         let s = &x.system;
         let fr = s.frames();
+        // 面 j の前後の媒質（順次の進む向き。ミラー・継ぐ面は前の媒質のまま）
+        let mut md = Vec::new();
+        let mut before = Material::Air;
+        for d in &s.surfaces {
+            let after = match &d.mat {
+                Material::Mirror | Material::Inherit => before.clone(),
+                m => m.clone(),
+            };
+            md.push((before.clone(), after.clone()));
+            before = after;
+        }
         for j in 1..=s.image() {
             let d = &s.surfaces[j];
             if d.ignore || d.is_coord_break() {
                 continue;
             }
             let Some(k) = sc.face_of(i, j) else {
+                // 場面に入らない面は空気中のダミー面だけ（両側が空気で、絞り・開口・ミラーでない）
+                let air = |m: &Material| matches!(m, Material::Air);
+                assert!(
+                    air(&md[j].0) && air(&md[j].1),
+                    "{name} {label} surface {j}: not in the scene but next to {:?} | {:?}",
+                    md[j].0,
+                    md[j].1
+                );
+                assert!(
+                    j != s.stop()
+                        && !d.is_mirror()
+                        && matches!(d.ap, Aperture::None | Aperture::Floating { .. }),
+                    "{name} {label} surface {j}: a stop, an aperture or a mirror is not in the scene"
+                );
                 continue;
             };
             let f = fr.surf[j].unwrap();

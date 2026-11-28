@@ -534,15 +534,17 @@ impl Scene {
         if !circ(fa) || !circ(fb) || 1.0 - c.abs() > SAME_TOL || off > SAME_TOL * scale {
             self.objects[o].closed = false;
             let name = self.objects[o].name.clone();
-            let name = if name.is_empty() {
-                "a lens".to_string()
-            } else {
-                name
-            };
             let (a, b) = (r.a, r.b);
-            self.notes.push(format!(
-                "scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)"
-            ));
+            // 名前の無いレンズは別の文にする（訳の中に英語の「a lens」が残らない）
+            self.notes.push(if name.is_empty() {
+                format!(
+                    "scene: the edge of a lens between faces {a} and {b} isn't made (not coaxial or not a round aperture)"
+                )
+            } else {
+                format!(
+                    "scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)"
+                )
+            });
             return;
         }
         let rim = ra.max(rb);

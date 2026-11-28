@@ -802,6 +802,8 @@ ghost path: surface {k} is ignored or a coordinate break	ゴーストの経路: 
 scene: a system can't be added after the scene is finished	場面: 作り終えた場面にシステムは足せません
 scene: {label} surface {j} has the media {a} | {b} but the same face has {c} | {e}	場面: {label} の面 {j} の媒質は {a} | {b} ですが、同じ面は {c} | {e} です
 scene: the edge of {name} between faces {a} and {b} isn't made (not coaxial or not a round aperture)	場面: {name} の面 {a} と {b} の間の縁は作りません（軸がそろわないか、円の開口でない）
+scene: the edge of a lens between faces {a} and {b} isn't made (not coaxial or not a round aperture)	場面: レンズの面 {a} と {b} の間の縁は作りません（軸がそろわないか、円の開口でない）
+scatter: {} scattered rays found no direction inside the unit circle after the redraw limit and went on in the specular direction	散乱: {} 本の散乱した光線は、引き直しの上限まで引いても単位円の中の方向が決まらず、正反射の方向へ進めました
 nsc: {} systems for a scene made of {}	非順次: {} 個の場面に {} 個のシステムが渡されました
 nsc: threshold {} (0 to below 1)	非順次: 閾値 {}（0 以上 1 未満）
 nsc: max_events must be 1 or more	非順次: 出来事の数の上限 max_events は 1 以上にしてください

@@ -389,6 +389,12 @@ impl Analysis for Nsc {
         let mut seen = std::collections::HashSet::new();
         notes.retain(|n| seen.insert(n.clone()));
         notes.extend(co.notes.iter().cloned());
+        if r.budget.scatter_fallback > 0 {
+            notes.push(format!(
+                "scatter: {} scattered rays found no direction inside the unit circle after the redraw limit and went on in the specular direction",
+                r.budget.scatter_fallback
+            ));
+        }
         if a.split == SplitKind::MonteCarlo {
             notes.push(
                 "monte-carlo: the energy budget closes only on average (Russian roulette), so residual_w is not 0"
