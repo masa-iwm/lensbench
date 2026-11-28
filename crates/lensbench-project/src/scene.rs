@@ -260,8 +260,11 @@ impl Scene {
         let fr = s.frames();
         let md = media(s);
         let img = s.image();
-        // 進む向き（面の局所の +z へ進むか）: 反射の面を通るたびに逆になる
-        let mut fwd = true;
+        // 軸の光線の大域の向き: 物体の空間の軸から始め、反射の面（頂点の法線＝面の局所の z）で折り返す。面の局所の
+        // +z へ進むか（fwd）はこの向きと面の z の内積で決める。鏡の回数の偶奇では決めない: BS を大域の座標に置く
+        // （`at`）・合流で入る BS は、座標ブレークで局所の z を光の進む向きにそろえるので、偶奇と合わない
+        let zcol = |r: &lensbench_core::math::M3| [r[0][2], r[1][2], r[2][2]];
+        let mut dir = zcol(&fr.obj.r);
         // 系の面 j → 場面の面
         let mut at: Vec<Option<usize>> = vec![None; s.surfaces.len()];
         for j in 1..=img {
@@ -270,6 +273,12 @@ impl Scene {
             }
             let d = &s.surfaces[j];
             let Some(f) = fr.surf[j] else { continue };
+            let n = zcol(&f.r);
+            let along = dir[0] * n[0] + dir[1] * n[1] + dir[2] * n[2];
+            let fwd = along >= 0.0;
+            if d.is_mirror() {
+                dir = [0, 1, 2].map(|i| dir[i] - 2.0 * along * n[i]);
+            }
             let (before, mut after) = md[j].clone();
             // 境界での部分反射（光束の turn・BS の反射）: 向こうの媒質は反射の欄に書いてある
             let partial = d.is_mirror() && d.reflect.is_some();
@@ -294,9 +303,6 @@ impl Scene {
                 ObjectKind::Plane
             } else {
                 // 空気中のダミー面（空気どうしの部分反射も）: 物ではない
-                if reflects {
-                    fwd = !fwd;
-                }
                 continue;
             };
             let lens = kind == ObjectKind::Lens;
@@ -369,9 +375,6 @@ impl Scene {
                 }
             };
             at[j] = Some(k);
-            if reflects {
-                fwd = !fwd;
-            }
         }
         // ガラスの区間: 媒質がガラスの、続く 2 つの光学面
         let js: Vec<usize> = (1..=img).filter(|&j| at[j].is_some()).collect();

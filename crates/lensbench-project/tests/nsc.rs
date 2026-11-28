@@ -287,6 +287,36 @@ fn single_reflections_match_the_turned_beams() {
     }
 }
 
+/// 視野を斜めにした（光線が BS の面に斜めに入る）p
+fn oblique(p: &Project) -> Project {
+    let mut v: serde_json::Value = serde_json::from_str(&p.to_json()).unwrap();
+    v["fields"] = serde_json::json!({"type": "angle", "points": [[0, 0], [0.2, 0.3], [-0.5, 0.1]]});
+    Project::from_json(&v.to_string()).unwrap()
+}
+
+/// 大域の座標に置いた BS（`at`）・合流で入る BS の面でも、斜めの光線の屈折が順次の系と同じ（面の両側の媒質を
+/// 光の進む向きで決める。鏡の回数の偶奇では合わない）。媒質の食い違いの注意も出ない
+#[test]
+fn placed_and_joined_bs_refract_oblique_rays() {
+    let f = root().join("examples/projects/P20_mach_zehnder.json");
+    let env = Env::for_file(&f, &[root().join("tests/glass")], None);
+    let mut cases = vec![("P20".to_string(), Project::load(&f).unwrap(), env)];
+    for (s, port, r_loop) in [(1.0, "c", true), (-1.0, "d", false)] {
+        cases.push((
+            format!("ring {port}"),
+            crate::join::ring(s, port, r_loop),
+            self::env(),
+        ));
+    }
+    for (label, p, env) in cases {
+        let p = oblique(&p);
+        let sc = Scene::from_project(&p, &env).unwrap();
+        let media: Vec<&String> = sc.notes.iter().filter(|n| n.contains("media")).collect();
+        assert!(media.is_empty(), "{label}: {media:?}");
+        assert!(project_paths(&label, &p, &env, None) > 0, "{label}");
+    }
+}
+
 /// 反射 2 回以上の枝が、turn を並べた光束（玉の中の 2 回反射・玉をまたぐゴースト・4 回）と一致する
 #[test]
 fn multiple_reflections_match_the_turn_lists() {
