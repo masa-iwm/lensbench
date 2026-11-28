@@ -146,11 +146,17 @@ pub(crate) enum Step {
     Nsc,
     /// 非順次の枝を重ねたレイアウト図
     NscLayout,
+    /// 迷光の PST のパネル
+    Pst,
+    /// 組合せの道具の列の「光束」の窓（行のある表）
+    ComboBeams,
+    /// 組合せの道具の列の「仕上げ」の窓（行のある表）
+    ComboFinishes,
     Done,
 }
 
 impl Step {
-    const ORDER: [Step; 32] = [
+    const ORDER: [Step; 35] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -176,6 +182,9 @@ impl Step {
         Step::Interferometer,
         Step::Nsc,
         Step::NscLayout,
+        Step::Pst,
+        Step::ComboBeams,
+        Step::ComboFinishes,
         Step::Pop,
         Step::States,
         Step::Coatings,
@@ -211,6 +220,9 @@ impl Step {
             Step::Interferometer => "14_interferometer",
             Step::Nsc => "14b_nsc",
             Step::NscLayout => "14c_nsc_layout",
+            Step::Pst => "14d_pst",
+            Step::ComboBeams => "14e_combo_beams",
+            Step::ComboFinishes => "14f_combo_finishes",
             Step::FreeEdit => "13b_free_edit",
             Step::Pop => "15_pop",
             Step::States => "16_states",
@@ -382,6 +394,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 31);
+        assert_eq!(n, 34);
     }
 }

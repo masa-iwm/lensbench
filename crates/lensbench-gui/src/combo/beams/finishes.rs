@@ -195,6 +195,33 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
     true
 }
 
+/// tour の見本: 最初の玉の縁を黒く塗り（反射率 4 %）、最初の要素の面に Lambert の散乱（1 %）を置く
+pub(crate) fn tour_sample(c: &mut Combo) {
+    let lenses = super::lens_ids(c);
+    let blocks: Vec<String> = c
+        .ids_all()
+        .into_iter()
+        .map(|x| x.1)
+        .filter(|id| !id.is_empty())
+        .collect();
+    let mut v = Vec::new();
+    if let Some(l) = lenses.first() {
+        v.push(FinishSpec {
+            edge: Some(face(l.clone())),
+            reflect: Some(0.04),
+            ..Default::default()
+        });
+    }
+    if let Some(b) = blocks.first() {
+        v.push(FinishSpec {
+            face: Some(face(b.clone())),
+            scatter: Some(Scatter::lambert(0.01)),
+            ..Default::default()
+        });
+    }
+    set_finishes(c, &v);
+}
+
 fn face(block: String) -> BlockFace {
     BlockFace {
         block,

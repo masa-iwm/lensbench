@@ -245,6 +245,35 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
     true
 }
 
+/// tour の見本: 試験の腕（TR）と参照の腕（RR）の光束
+pub(crate) fn tour_sample(c: &mut Combo) {
+    let beam = |name: &str, path: &str, role| Beam {
+        name: name.into(),
+        path: Some(path.into()),
+        state: None,
+        role: Some(role),
+        turn: Vec::new(),
+        off: false,
+    };
+    set_beams(
+        c,
+        &[
+            beam("test_arm", "TR", BeamRole::Sample),
+            beam("ref_arm", "RR", BeamRole::Reference),
+        ],
+    );
+}
+
+/// 道具の窓（[`tool_window`]）の開いているかを覚える id（レイアウトのパネルは 1 枚だけなので、パネルによらない）
+fn tool_window_id(key: &str) -> egui::Id {
+    egui::Id::unique(("combo-tool-window", key))
+}
+
+/// 道具の窓（"combo-beams"・"combo-finishes"）を開く・閉じる（tour が窓を撮るとき）
+pub(crate) fn set_tool_window(ctx: &egui::Context, key: &str, open: bool) {
+    ctx.data_mut(|d| d.insert_temp(tool_window_id(key), open));
+}
+
 /// 表を開く窓: ボタンで開く・閉じる。中のクリック（入れ子の一覧を含む）では閉じない。メニューは中のクリックで
 /// 閉じるので、欄を直す表には使わない
 pub(super) fn tool_window(
@@ -254,21 +283,43 @@ pub(super) fn tool_window(
     width: f32,
     add: impl FnOnce(&mut Ui),
 ) {
-    let id = ui.make_persistent_id(key);
+    let id = tool_window_id(key);
     let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
     let b = ui.selectable_label(open, title);
     if b.clicked() {
         open = !open;
     }
-    // 初めはボタンの下に出す（左上だとメニューの列にかぶる）
-    egui::Window::new(title)
-        .id(id.with("win"))
-        .default_pos(b.rect.left_bottom() + egui::vec2(0.0, 4.0))
+    // ボタンのすぐ下に出す（左上だとメニューの列にかぶる）。動かすまではボタンについて行く: 光束を足すと
+    // レイアウトの上に光束を選ぶ行が出て道具の列が下がり、置いたままの窓がボタンにかぶって閉じられなくなる
+    let below = b.rect.left_bottom() + egui::vec2(0.0, 4.0);
+    let placed_id = id.with("placed");
+    let placed = open && ui.data(|d| d.get_temp::<bool>(placed_id)).unwrap_or(false);
+    let win_id = id.with("win");
+    // egui 0.37 の窓は題の帯でつかむ形のとき current_pos を前の位置で上書きするので、覚えている位置を直に替える
+    if !placed {
+        if let Some(mut st) = egui::AreaState::load(ui.ctx(), win_id) {
+            if st.pivot_pos != Some(below) {
+                st.pivot_pos = Some(below);
+                ui.ctx().memory_mut(|m| {
+                    m.areas_mut()
+                        .set_state(egui::LayerId::new(egui::Order::Middle, win_id), st)
+                });
+            }
+        }
+    }
+    let w = egui::Window::new(title)
+        .id(win_id)
+        .default_pos(below)
         .open(&mut open)
         .default_width(width)
         .resizable(true)
-        .collapsible(false)
-        .show(ui.ctx(), add);
+        .collapsible(false);
+    // 持って動かした・左か上の縁で大きさを変えたら（ドラッグの間に窓の角が動いたら）、その後は置いた所に
+    let dragging = ui.input(|i| i.pointer.is_decidedly_dragging());
+    let moved = w
+        .show(ui.ctx(), add)
+        .is_some_and(|r| dragging && r.response.rect.min.distance(below) > 2.0);
+    ui.data_mut(|d| d.insert_temp(placed_id, placed || moved));
     ui.data_mut(|d| d.insert_temp(id, open));
 }
 

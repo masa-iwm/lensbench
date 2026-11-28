@@ -285,6 +285,17 @@ mod native {
             return;
         }
         let id = id.to_string();
+        // 試験: 答えが置いてあれば窓を出さずにそれを返す（[`super::answer_next`]）
+        #[cfg(test)]
+        if let Some(p) = super::ANSWER.lock_ok().take() {
+            DONE.lock_ok()
+                .get_or_insert_with(HashMap::new)
+                .insert(id.clone(), p);
+            if let Some(o) = OPEN.lock_ok().as_mut() {
+                o.remove(&id);
+            }
+            return;
+        }
         std::thread::spawn(move || {
             let p = f(&d);
             DONE.lock_ok()
@@ -303,6 +314,17 @@ mod native {
     pub(super) fn take(id: &str) -> Option<Option<PathBuf>> {
         DONE.lock_ok().as_mut().and_then(|d| d.remove(id))
     }
+}
+
+/// 試験: 次に出すファイルの窓の答え（選んだパス、None はやめた）
+#[cfg(all(test, not(target_arch = "wasm32")))]
+static ANSWER: std::sync::Mutex<Option<Option<PathBuf>>> = std::sync::Mutex::new(None);
+
+/// 試験: 次に出すファイルの窓（開く・保存・フォルダ）を出さずに、答え p を返させる
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) fn answer_next(p: Option<PathBuf>) {
+    use lensbench_core::LockExt;
+    *ANSWER.lock_ok() = Some(p);
 }
 
 /// ファイルを選ぶ窓が出せなかった（やめたのとは別）。[`take_failed`] で読んで戻す

@@ -2339,20 +2339,20 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
         .on_hover_text(tr(
             "Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected",
         ));
-    let r = ui.add(
-        egui::TextEdit::singleline(&mut view.new_state)
-            .hint_text(tr("State name"))
-            .desired_width(90.0),
-    );
+    let r = ui
+        .add(
+            egui::TextEdit::singleline(&mut view.new_state)
+                .hint_text(tr("State name"))
+                .desired_width(90.0),
+        )
+        .accessible_name(tr("State name"));
     let name = view.new_state.trim().to_string();
     let ok = !name.is_empty() && !combo.states.contains(&name);
     let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-    if (ui
+    let add = ui
         .add_enabled(ok, egui::Button::new(tr("+ State")))
-        .clicked()
-        || (enter && ok))
-        && ok
-    {
+        .clicked();
+    if ok && (add || enter) {
         combo.states.push(name.clone());
         combo.state = Some(name);
         view.new_state.clear();

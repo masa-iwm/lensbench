@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 // ガラスの置き換えの反映（多重構成の材料の行）
 mod glass;
 mod mech_card;
+// 操作の通し確認（ポインタとキーだけで押す筋書き）
+mod flows;
 
 /// リポジトリの根（public/）
 fn root() -> PathBuf {

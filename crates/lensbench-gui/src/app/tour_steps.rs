@@ -60,7 +60,29 @@ impl App {
             Step::Zoom => self.tour_zoom(ctx, dir),
             // ズームの例の状態（wide・mid・tele）を多重構成の表で見せる
             Step::MultiConfig => self.dispatch(ctx, Msg::FocusKind(Kind::MultiConfig)),
+            Step::Pst => {
+                // 迷光の PST のパネルを足して計算する（干渉計の系、光源の角度は既定）
+                let cfg = AnaCfg::new("pst");
+                let id = self.add_pane(Kind::Analysis(cfg.clone()));
+                self.focus(id);
+                self.c.run(id, &cfg);
+            }
+            Step::ComboBeams => {
+                // 光束（試験・参照の腕）と仕上げ（縁・面）の行を入れ、道具の列の「光束」の窓を開く
+                combo::beams::tour_sample(&mut self.c.doc.combo);
+                combo::beams::finishes::tour_sample(&mut self.c.doc.combo);
+                combo::beams::set_tool_window(ctx, "combo-beams", true);
+                self.c.overlay.items.clear();
+                self.dispatch(ctx, Msg::FocusKind(Kind::Layout));
+            }
+            Step::ComboFinishes => {
+                // 「光束」を閉じて「仕上げ」の窓を開く（2 つはボタンの下の同じ所に出る）
+                combo::beams::set_tool_window(ctx, "combo-beams", false);
+                combo::beams::set_tool_window(ctx, "combo-finishes", true);
+            }
             Step::Pop => {
+                // 道具の窓を閉じる（後の段の画像にかぶる）
+                combo::beams::set_tool_window(ctx, "combo-finishes", false);
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
                 let cfg = AnaCfg::new("pop");
                 let id = self.add_pane(Kind::Analysis(cfg.clone()));

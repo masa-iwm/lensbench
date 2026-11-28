@@ -567,7 +567,7 @@ pub(crate) fn form(
                                 Ok(Some(v)) => v == json!(true),
                                 _ => def,
                             };
-                            if ui.checkbox(&mut b, "").changed() {
+                            if ui.checkbox(&mut b, "").accessible_name(s.title()).changed() {
                                 *t = if b == def {
                                     String::new()
                                 } else {
@@ -660,7 +660,9 @@ pub(crate) fn form(
                                 ))
                             } else {
                                 r
-                            };
+                            }
+                            // 読み上げ・操作の通し確認で欄を名前で探せるように（見出しは左の列の別の部品）
+                            .accessible_name(s.title());
                             let bad = s.value(t).is_err();
                             if bad {
                                 ui.colored_label(ui.visuals().error_fg_color, "⚠")

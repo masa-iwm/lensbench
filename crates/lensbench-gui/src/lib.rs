@@ -40,6 +40,8 @@ mod lens_data;
 mod mech_pupil;
 mod mech_table;
 mod missing_glass;
+#[cfg(not(target_arch = "wasm32"))]
+mod nsc_ghosts;
 mod nsc_view;
 mod optim_panel;
 mod palette;
@@ -173,6 +175,8 @@ pub fn main() -> std::process::ExitCode {
             .with_drag_and_drop(true),
         ..Default::default()
     };
+    // 非順次の追跡がゴーストの系を書く一時フォルダ（落ちて残った前のものを消す。終わったら自分のものも消す）
+    nsc_ghosts::start();
     let r = eframe::run_native(
         "lensbench",
         options,
@@ -190,6 +194,8 @@ pub fn main() -> std::process::ExitCode {
             let _ = std::fs::remove_dir_all(d);
         }
     }
+    // tour の一時フォルダを消した後に（同じ親のフォルダが空になれば親も消す）
+    nsc_ghosts::finish();
     if let Err(e) = r {
         eprintln!("lensbench-gui: {e}");
         return std::process::ExitCode::FAILURE;
