@@ -2135,6 +2135,9 @@ Fraction of the light that scatters (0 to 1)	散乱する光の割合（0〜1）
 Width of the Gaussian in direction cosine space	方向余弦の空間での Gauss の幅
 BSDF = A / (B + |β − β0|^g) [1/sr]; the scattered fraction follows from the BSDF	BSDF = A / (B + |β − β0|^g) [1/sr]。散乱する割合は BSDF から決まります
 Scatter side	散乱する側
+Applies to	対象
+Depolarize	偏光を失う
+The scattered rays lose the polarization (linear polarization in a random direction). Off keeps it, projected onto the plane across the scattered direction. Default: Lambertian loses it, Gaussian and ABg keep it	散乱した光線が偏光を失います（向きが一様な直線偏光）。外すと散乱した方向に垂直な面へ射影して保ちます。デフォルトはランバートで失い、ガウス・ABg で保ちます
 {} µm · azimuth {}° · source radius {} mm · detector {} ({} mm²)	{} µm · 方位 {}° · 光源の半径 {} mm · 検出器 {}（{} mm²）
 Source angle [deg]	光源の角度 [deg]
 PST (log10)	PST（log10）

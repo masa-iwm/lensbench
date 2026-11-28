@@ -23,6 +23,15 @@ pub(crate) fn pst_points(v: &Value) -> Vec<[f64; 2]> {
         .collect()
 }
 
+/// 縦軸（log10）の目盛の文字: 整数の目盛は 1eN、桁の間の目盛（範囲が 1 桁より狭いとき）は値そのもの
+fn log_tick(v: f64) -> String {
+    if (v - v.round()).abs() < 1e-9 {
+        format!("1e{}", v.round())
+    } else {
+        fmt_sig(10f64.powf(v), 3)
+    }
+}
+
 /// PST の図。sel は経路の表を出す角度の番号（0 始まり）
 pub(crate) fn show(ui: &mut Ui, id: u64, v: &Value, sel: &mut usize) -> bool {
     let Some(angles) = v["angles"].as_array() else {
@@ -65,7 +74,7 @@ pub(crate) fn show(ui: &mut Ui, id: u64, v: &Value, sel: &mut usize) -> bool {
         .height(h)
         .x_axis_label(tr("Source angle [deg]"))
         .y_axis_label(tr("PST (log10)"))
-        .y_axis_formatter(|m, _| format!("1e{}", m.value.round()));
+        .y_axis_formatter(|m, _| log_tick(m.value));
     let accent = theme::series(0);
     crate::plot_tools::show(ui, plot, "°", |p, reg| {
         reg.push(crate::plot_tools::Series::new(
@@ -167,5 +176,7 @@ mod tests {
         ]});
         assert_eq!(pst_points(&v), vec![[0.0, 0.0], [5.0, -3.0]]);
         assert!(pst_points(&json!({})).is_empty());
+        assert_eq!(log_tick(-3.0), "1e-3");
+        assert_ne!(log_tick(-2.5), log_tick(-2.4));
     }
 }

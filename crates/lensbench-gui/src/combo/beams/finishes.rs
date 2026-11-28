@@ -148,12 +148,12 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
             .striped(true)
             .num_columns(6)
             .show(ui, |ui| {
-                for h in [tr("Target"), "", tr("Reflectance"), tr("Scatter"), "", ""] {
+                for h in [tr("Applies to"), "", tr("Reflectance"), tr("Scatter"), "", ""] {
                     ui.label(RichText::new(h).small().strong());
                 }
                 ui.end_row();
                 for (i, f) in v.iter_mut().enumerate() {
-                    ui.push_id(("finish", i), |ui| row(ui, f, &ch));
+                    row(ui, i, f, &ch);
                     if ui
                         .small_button("✕")
                         .on_hover_text(tr("Remove the finish"))
@@ -196,12 +196,12 @@ fn face(block: String) -> BlockFace {
     }
 }
 
-/// 1 行の欄: 対象の種類・対象・反射率・散乱のモデルと値
-fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
+/// 1 行の欄: 対象の種類・対象・反射率・散乱のモデルと値（Grid の升ごとに描くので、id は行の番号 i つき）
+fn row(ui: &mut Ui, i: usize, f: &mut FinishSpec, ch: &Choices) {
     // 対象の種類と対象
     let mut t = Target::of(f);
     let was = t;
-    egui::ComboBox::from_id_salt("target")
+    egui::ComboBox::from_id_salt(("finish-target", i))
         .selected_text(t.label())
         .show_ui(ui, |ui| {
             for x in [Target::Face, Target::Edge, Target::Mech] {
@@ -209,7 +209,7 @@ fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
             }
         })
         .response
-        .accessible_name(tr("Target"));
+        .accessible_name(tr("Applies to"));
     if t != was {
         let block = f
             .face
@@ -241,7 +241,7 @@ fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
             let b = if t == Target::Face { &mut f.face } else { &mut f.edge };
             let b = b.get_or_insert_with(|| face(String::new()));
             let shown = if b.block.is_empty() { tr("(none)").to_string() } else { b.block.clone() };
-            egui::ComboBox::from_id_salt("block")
+            egui::ComboBox::from_id_salt(("finish-block", i))
                 .selected_text(shown)
                 .show_ui(ui, |ui| {
                     for id in ids {
@@ -264,7 +264,7 @@ fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
         Target::Mech => {
             let m = f.mech.get_or_insert_with(String::new);
             let shown = if m.is_empty() { tr("(none)").to_string() } else { m.clone() };
-            egui::ComboBox::from_id_salt("mech")
+            egui::ComboBox::from_id_salt(("finish-mech", i))
                 .selected_text(shown)
                 .show_ui(ui, |ui| {
                     for n in &ch.mechs {
@@ -299,7 +299,7 @@ fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
     });
     // 散乱のモデルと値
     let mut model = f.scatter.as_ref().map(|s| s.model);
-    egui::ComboBox::from_id_salt("model")
+    egui::ComboBox::from_id_salt(("finish-model", i))
         .selected_text(model_label(model))
         .show_ui(ui, |ui| {
             for m in [
@@ -364,7 +364,23 @@ fn row(ui: &mut Ui, f: &mut FinishSpec, ch: &Choices) {
                 num(ui, &mut s.g, "g", h);
             }
         }
-        egui::ComboBox::from_id_salt("side")
+        let mut depol = s.depolarizes();
+        if ui
+            .checkbox(&mut depol, tr("Depolarize"))
+            .on_hover_text(tr(
+                "The scattered rays lose the polarization (linear polarization in a random direction). Off keeps it, projected onto the plane across the scattered direction. Default: Lambertian loses it, Gaussian and ABg keep it",
+            ))
+            .changed()
+        {
+            // 既定と同じなら書かない
+            let def = Scatter {
+                depolarize: None,
+                ..s.clone()
+            }
+            .depolarizes();
+            s.depolarize = (depol != def).then_some(depol);
+        }
+        egui::ComboBox::from_id_salt(("finish-side", i))
             .selected_text(side_label(s.on))
             .show_ui(ui, |ui| {
                 for x in [ScatterSide::Both, ScatterSide::Reflect, ScatterSide::Transmit] {
@@ -417,6 +433,11 @@ mod tests {
             ..Default::default()
         }];
         assert_eq!(problems(&none).len(), 1);
+        // 偏光を失うかは既定と違うときだけ書く
+        let mut d = v.clone();
+        d[0].scatter.as_mut().unwrap().depolarize = Some(false);
+        set_finishes(&mut c, &d);
+        assert_eq!(c.project()["finishes"][0]["scatter"]["depolarize"], false);
         set_finishes(&mut c, &[]);
         assert!(c.extra.finishes.is_none() && c.project().get("finishes").is_none());
     }
