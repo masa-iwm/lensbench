@@ -162,6 +162,31 @@ fn join_errors() {
     .unwrap_err()
     .to_string();
     assert!(e.contains("BS2: the beam doesn't head into port D"), "{e}");
+    // 見本 P20 の合流の口を A にすると、反射の腕は口 A の軸に真横から来る（内積は丸めで −1e-17 ほど）。入らない
+    let f = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("examples/projects/P20_mach_zehnder.json");
+    let txt = std::fs::read_to_string(&f)
+        .unwrap()
+        .replace(r#""port": "d""#, r#""port": "a""#);
+    let p = Project::from_json(&txt).unwrap();
+    let env = Env::for_file(
+        &f,
+        &[PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass")],
+        None,
+    );
+    let e = expand(
+        &p,
+        &env,
+        &ExpandOpts {
+            path: Some("RR"),
+            ..Default::default()
+        },
+    )
+    .map(|_| ())
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("BS2: the beam doesn't head into port A"), "{e}");
 }
 
 /// BS2 の大域の置き方（透過の腕の並びで置いたときと同じ所・同じ向き。キューブは BS1 の長さだけ先）

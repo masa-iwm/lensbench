@@ -172,6 +172,9 @@ const MAX_PASSES: usize = 64;
 /// これより多く回ってもよい（BS を通る回数の上限 MAX_PASSES まで）
 pub const RING_TRIPS: usize = 3;
 
+/// 口へ入る光束の向きと口の内向きの軸の内積（余弦）の下限。これより口の面に沿う光束は口へ入らないとする
+const HEAD_INTO_MIN: f64 = 1e-6;
+
 /// 面での作用
 enum Act {
     /// 透過して媒質へ（"AIR" か硝材）
@@ -854,14 +857,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
         Ok(())
     }
 
-    /// 大域に置いた BS・合流の口へ入る光束は、口の外から口へ向かう（口の座標の z は外向き。鏡の後の向きは parity で逆）
+    /// 大域に置いた BS・合流の口へ入る光束は、口の外から口へ向かう（口の座標の z は外向き。鏡の後の向きは parity で逆）。
+    /// 口の面に沿って来る（直角の配置で口を選び間違えた）光束は、内積が丸めで負になっても入らないので誤り
     fn head_into(&self, id: &str, key: &str, port: usize) -> lensbench_core::Result<()> {
         let info = &self.split.info[key];
         let (_, r) = self.current_frame();
         let (_, pr) = info.spec.port(port);
         let out_dir = mv(&mm(&info.s.1, &pr), [0.0, 0.0, 1.0]);
         let dir = scale(mv(&r, [0.0, 0.0, 1.0]), self.parity);
-        if dot(dir, out_dir) >= 0.0 {
+        if dot(dir, out_dir) > -HEAD_INTO_MIN {
             let name = ["A", "B", "C", "D"][port];
             return Err(format!("BS {id}: the beam doesn't head into port {name}").into());
         }
