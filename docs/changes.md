@@ -3,11 +3,13 @@
 版を上げるときに読むための、使い方が変わる変更の一覧（新しい順）。細かい経緯は各 PR。版ごとのまとめは
 [CHANGELOG](https://github.com/masa-iwm/lensbench/blob/main/CHANGELOG.md)、版の付け方は [版の付け方](versioning.md)。
 
-## 次の版（v0.11.0 の後）
+## v0.11.0 の後・v0.12.0 まで
 
 ### Rust の API
 - 追跡の結果 `Trace` に光線ごとの重みの欄 `w: Option<Vec<f64>>` を足した（`System::trace_source` の結果だけ Some）。`Trace { … }` を
   自分で組み立てるコードは `w: None` を足す。追跡の値は変わらない
+- 別に読む系の選び方 `lensbench_analysis::Variant` にビームスプリッターの経路の欄 `path: Option<String>` を足した。`Variant { … }` を
+  自分で組み立てるコードは `..Default::default()` を足す
 
 ## v0.10.0 の後・v0.11.0 まで
 
