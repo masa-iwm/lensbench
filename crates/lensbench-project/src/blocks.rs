@@ -5,55 +5,6 @@ use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
 pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> lensbench_core::Result<String>;
 
-/// 展開でファイル・カタログから読んだものの使い回し（[`ExpandOpts::cache`]）。
-/// - カタログの玉: (メーカー, 型番) → (玉, 玉の .zmx のガラス)
-/// - `.zmx`・系ファイルのブロック: (正規化したパス, 構成番号) → 系。ファイルの更新時刻と大きさが変われば読み直す
-///
-/// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。状態・経路・差し替えの組・GUI の編集ごとの展開が、
-/// 同じファイルを読んで解析し直さないため（入れ子のプロジェクトは中の葉だけ覚える）
-#[derive(Default)]
-pub struct SourceCache {
-    lenses: std::sync::Mutex<HashMap<(String, String), CachedLens>>,
-    files: std::sync::Mutex<HashMap<(PathBuf, usize), (lensbench_core::vfs::Stamp, System)>>,
-    scope: std::sync::Mutex<String>,
-}
-
-type CachedLens = std::sync::Arc<(Element, std::sync::Arc<HashMap<String, Glass>>)>;
-
-impl std::fmt::Debug for SourceCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SourceCache")
-            .field("lenses", &self.lenses.lock_ok().len())
-            .field("files", &self.files.lock_ok().len())
-            .finish()
-    }
-}
-
-impl SourceCache {
-    /// 覚えているファイルの数（試験用）
-    pub fn file_count(&self) -> usize {
-        self.files.lock_ok().len()
-    }
-
-    /// 環境（ガラスのフォルダ・レンズカタログなど）を表す文字列 key が前と違えば、覚えたものを捨てる。
-    /// 環境を変えうる呼び手（[`crate::open::Source`]）が展開の前に呼ぶ
-    pub fn scope(&self, key: &str) {
-        let mut s = self.scope.lock_ok();
-        if *s != key {
-            self.lenses.lock_ok().clear();
-            self.files.lock_ok().clear();
-            *s = key.to_string();
-        }
-    }
-
-    fn file(&self, k: &(PathBuf, usize), st: &lensbench_core::vfs::Stamp) -> Option<System> {
-        match self.files.lock_ok().get(k) {
-            Some((s, sys)) if s == st => Some(sys.clone()),
-            _ => None,
-        }
-    }
-}
-
 /// 機構部品の詳しい形の STEP のファイルを引く関数: (品の名前, STEP の公式の URL) → 手元のファイル
 /// （lensbench-cad の `cached_step` は取った STEP のキャッシュから引く）
 pub type StepLookup<'a> = &'a (dyn Fn(&str, &str) -> Option<PathBuf> + Sync);
@@ -815,6 +766,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let stamp = self.cache.and_then(|_| lensbench_core::vfs::stamp(&p).ok());
         if let (Some(c), Some(st), false) = (self.cache, &stamp, picked) {
             if let Some(s) = c.file(&key, st) {
+                // 読まずに使い回しても、読んだファイルとして記録する（BS の置き方を覚えるときの読み直しの判定）
+                lensbench_core::vfs::record(std::slice::from_ref(&p));
                 let mut s = s;
                 self.merge_glasses(&mut s, path)?;
                 return Ok(s);

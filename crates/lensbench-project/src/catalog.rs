@@ -629,6 +629,8 @@ impl UserCatalog {
         let cache = CACHE.get_or_init(Default::default);
         if let Some((st, c)) = cache.lock_ok().get(&key) {
             if *st == stamp {
+                // 読まずに使い回しても、読んだファイルとして記録する（読み直しの判定）
+                lensbench_core::vfs::record(&[file.to_path_buf()]);
                 return Ok(c.clone());
             }
         }

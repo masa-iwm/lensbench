@@ -218,3 +218,82 @@ fn a_placed_bs_stays_when_a_mirror_tilts() {
     .to_string();
     assert!(e.contains("at can't be used"), "{e}");
 }
+
+/// 合流の先の BS の置き方は展開の間で使い回す（[`lensbench_project::SourceCache`]）が、置き方を決めたファイルが
+/// 変われば集め直す: BS2 の前の空気を .zmx から取り込み、その厚さを書き換えると合流の経路も新しい置き方になる
+/// （覚えた置き方と覚えずに集めた置き方で同じ）
+#[test]
+fn join_places_follow_a_changed_file() {
+    let dir = std::env::temp_dir().join(format!("lb_join_places_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let zmx = dir.join("gap.zmx");
+    let write = |t: &str| {
+        let txt = format!(
+            "MODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 4\nWAVM 1 0.6328 1\nSURF 0\n  TYPE STANDARD\n  DISZ INFINITY\nSURF 1\n  TYPE STANDARD\n  DISZ {t}\nSURF 2\n  TYPE STANDARD\n  DISZ 0\n"
+        );
+        std::fs::write(&zmx, txt).unwrap();
+    };
+    let mut p = mz(-45.0, "cube");
+    let gap: lensbench_project::Block = serde_json::from_str(&format!(
+        r#"{{"type": "zmx", "path": {:?}, "stop": false}}"#,
+        zmx.to_string_lossy()
+    ))
+    .unwrap();
+    match &mut p.blocks[2] {
+        lensbench_project::Block::Splitter { spec, .. } => spec.t.insert(3, gap),
+        _ => panic!("BS1 is the third block"),
+    }
+    let cache = lensbench_project::SourceCache::default();
+    let at = |q: &str, cache: Option<&lensbench_project::SourceCache>| {
+        let s = expand(
+            &p,
+            &env(),
+            &ExpandOpts {
+                path: Some(q),
+                cache,
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("{q}: {e}"))
+        .system;
+        chief(&s)
+    };
+    let mut rr = Vec::new();
+    for t in ["10", "25.5"] {
+        write(t);
+        for q in ["TT", "RR", "RT"] {
+            let (a, b) = (at(q, Some(&cache)), at(q, None));
+            assert!(
+                close(a.0, b.0, 1e-12) && close(a.1, b.1, 1e-12),
+                "{t} {q}: {a:?} {b:?}"
+            );
+        }
+        rr.push(at("RR", Some(&cache)));
+    }
+    // 合流の経路は BS2 の新しい置き方で出る（前の置き方のままではない）
+    assert!(!close(rr[0].0, rr[1].0, 1.0), "{rr:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 光束の `turn` で BS2 の手前で戻る光束があっても、合流の腕の光束は BS2 の置き方を引ける（置き方は turn を外して
+/// 集める。光束ごとの展開は置き方を使い回す）
+#[test]
+fn a_turned_beam_does_not_hide_the_join_target() {
+    let mut p = mz(-45.0, "cube");
+    let lens: lensbench_project::Block = serde_json::from_str(
+        r#"{"type": "lens", "id": "L", "source": {"surfaces": [
+             {"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}}"#,
+    )
+    .unwrap();
+    match &mut p.blocks[2] {
+        lensbench_project::Block::Splitter { spec, .. } => spec.t.insert(1, lens),
+        _ => panic!("BS1 is the third block"),
+    }
+    p.beams = serde_json::from_str(
+        r#"[{"name": "g", "path": "T", "turn": {"block": "L", "surface": 1}},
+            {"name": "r", "path": "RR"}]"#,
+    )
+    .unwrap();
+    let xs = expansions(&p, &env()).unwrap();
+    assert_eq!(xs.len(), 2);
+}

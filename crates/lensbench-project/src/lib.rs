@@ -71,6 +71,7 @@ mod catalog;
 mod expand;
 mod expand_error;
 mod faces;
+mod source_cache;
 mod turn;
 use turn::*;
 mod lens_edge;
@@ -86,6 +87,7 @@ pub use expand::*;
 pub use expand_error::{BlockAt, ExpandError, Note, NoteKind};
 use faces::*;
 pub use model::*;
+pub use source_cache::*;
 pub use zmx_beams::{zmx_beams, BS_ID};
 pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};
 

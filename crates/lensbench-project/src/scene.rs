@@ -13,7 +13,7 @@
 //! 面の名前は、展開の面の出どころ（[`SurfOrigin::face`]）の [`FaceId`]。まとめた面はどの名前・どの系の面から来たかを
 //! 全部持つ（[`Face::refs`]）。面の両側の媒質は、面の局所座標の −z 側（[`Face::minus`]）と +z 側（[`Face::plus`]）。
 
-use crate::{expand, paths, Env, ExpandOpts, Expansion, FaceId, Project, SurfOrigin};
+use crate::{expand, Env, ExpandOpts, Expansion, FaceId, Project, SurfOrigin};
 use lensbench_core::material::Material;
 use lensbench_core::math::{add, col, dot, mtv, mv, norm, sub, V3};
 use lensbench_core::surface::{Aperture, Surface};
@@ -171,10 +171,21 @@ fn counts(s: &System, j: usize) -> bool {
 }
 
 /// 場面を作るプロジェクトの展開と名前: 光束があれば光束ごと（`beam 名前`）、無ければ BS の経路ごと（`path TR`、BS が
-/// 無ければ `system` の 1 つ）
+/// 無ければ `system` の 1 つ）。展開の間はファイル・合流の先の BS の置き方を使い回す
 pub fn expansions(p: &Project, env: &Env) -> Result<Vec<(String, Expansion)>> {
     let names = p.beam_names();
-    let one = |o: ExpandOpts| expand(p, env, &o).map_err(|e| e.into_error());
+    let cache = crate::SourceCache::default();
+    let one = |o: ExpandOpts| {
+        expand(
+            p,
+            env,
+            &ExpandOpts {
+                cache: Some(&cache),
+                ..o
+            },
+        )
+        .map_err(|e| e.into_error())
+    };
     if !names.is_empty() {
         return names
             .into_iter()
@@ -189,7 +200,7 @@ pub fn expansions(p: &Project, env: &Env) -> Result<Vec<(String, Expansion)>> {
             })
             .collect();
     }
-    let mut qs = paths(p, env)?;
+    let mut qs = crate::paths_cached(p, env, &cache)?;
     if qs.is_empty() {
         qs.push(String::new());
     }

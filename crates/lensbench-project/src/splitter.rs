@@ -14,6 +14,7 @@
 //!   C・D は分ける面の頂点、理想面は面の上。向きは A の軸（B）と、分ける面で反射した向き（C）・その逆（D）。
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use lensbench_core::math::{
     add, col, dot, mm, mtv, mv, rot, scale, sub, transpose, xyz_angles, I3, M3, V3,
@@ -489,10 +490,10 @@ pub(crate) struct SplitInfo {
     fwd: usize,
     off: bool,
     /// BS を置いた並びとその中の位置、その並びの段
-    parent: Rc<Vec<Block>>,
+    parent: Arc<Vec<Block>>,
     pidx: usize,
     plevel: Level,
-    spec: Rc<SplitterSpec>,
+    spec: Arc<SplitterSpec>,
     id: String,
 }
 
@@ -523,7 +524,7 @@ pub(crate) struct SplitState {
     /// 復路が分岐の無い BS で A 以外の口へ出た（光束の `turn` では戻った先を置けない）
     pub loose: bool,
     /// 合流（[`Block::Join`]）の先の BS の置き方（ほかの経路でたどったもの、鍵ごと）
-    pub(crate) places: Rc<std::collections::HashMap<String, SplitInfo>>,
+    pub(crate) places: Arc<std::collections::HashMap<String, SplitInfo>>,
     /// BS の置き方を集める（合流で経路を終える。[`splitter_places`]）
     pub(crate) collect:
         Option<Rc<std::cell::RefCell<std::collections::HashMap<String, SplitInfo>>>>,
@@ -736,10 +737,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 s,
                 fwd: B,
                 off: !place.on,
-                parent: Rc::new(siblings.to_vec()),
+                parent: Arc::new(siblings.to_vec()),
                 pidx: idx,
                 plevel: level,
-                spec: Rc::new(spec.clone()),
+                spec: Arc::new(spec.clone()),
                 id: id.to_string(),
             },
         );
@@ -948,7 +949,7 @@ impl Mode {
             strict,
             places: match self {
                 Mode::Normal if has_join(&p.blocks) => {
-                    Rc::new(splitter_places(p, env, cache, within)?)
+                    splitter_places_cached(p, env, cache, within)?
                 }
                 _ => Default::default(),
             },
@@ -980,13 +981,63 @@ pub(crate) fn expand_mode(
     )
 }
 
-/// 合流（[`Block::Join`]）の先の BS の置き方: 合流で経路を終えて経路を全部たどり、BS ごとに最初に置いた置き方を集める
+/// BS の置き方（[`splitter_places`]）を cache に覚えて使い回す（合流のある系は展開のたびに置き方が要るので、
+/// 経路を全部展開する呼び手（[`paths`]・場面の展開）では経路の数の 2 乗の展開になっていた）。覚える鍵は
+/// プロジェクトの中身・環境（基準のフォルダ・ガラスのフォルダ）・外側の展開。集める間に読んだファイルの更新の印が
+/// 変わっていれば集め直す。cache が無ければ毎回集める。当てた光束の `turn`（ファイルに書かない）・経路は外して集める
+pub(crate) fn splitter_places_cached(
+    p: &crate::Project,
+    env: &crate::Env,
+    cache: Option<&crate::SourceCache>,
+    within: &[crate::Loading],
+) -> lensbench_core::Result<Arc<std::collections::HashMap<String, SplitInfo>>> {
+    // BS の置き方はブロックの木で決まる（光束の `turn` で戻る経路では BS を通らないことがある）ので、turn を外して
+    // 集める。経路は集めるときに 1 本ずつ渡すので、プロジェクトの経路も外す（光束ごとの展開で置き方を使い回せる）
+    let plain;
+    let p = if p.turn.is_some() || p.path.is_some() {
+        plain = crate::Project {
+            turn: None,
+            path: None,
+            ..p.clone()
+        };
+        &plain
+    } else {
+        p
+    };
+    let Some(c) = cache else {
+        return Ok(Arc::new(splitter_places(p, env, None, within)?));
+    };
+    let key = places_key(p, env, within);
+    if let Some(got) = c.places_get(&key) {
+        return Ok(got);
+    }
+    let (got, read) = lensbench_core::vfs::recording(|| splitter_places(p, env, Some(c), within));
+    let got = Arc::new(got?);
+    c.places_put(key, &read, got.clone());
+    Ok(got)
+}
+
+/// [`splitter_places_cached`] の鍵
+fn places_key(p: &crate::Project, env: &crate::Env, within: &[crate::Loading]) -> String {
+    let mut k = serde_json::to_string(p).unwrap_or_default();
+    k.push_str(&format!("\n{:?}\n{:?}\n", env.base, env.glass_dirs));
+    for l in within {
+        k.push_str(&format!("{l}\n"));
+    }
+    k
+}
+
+/// 合流（[`Block::Join`]）の先の BS の置き方: 合流で経路を終えて経路を全部たどり、BS ごとに最初に置いた置き方を集める。
+/// 合流の先の BS（木の中の合流の `splitter`）が全部集まれば、残りの経路はたどらない（深さ優先の順は同じなので、
+/// 集まる置き方は全部たどったときと同じ。合流の先でない BS の置き方は使わない）
 pub(crate) fn splitter_places(
     p: &crate::Project,
     env: &crate::Env,
     cache: Option<&crate::SourceCache>,
     within: &[crate::Loading],
 ) -> lensbench_core::Result<std::collections::HashMap<String, SplitInfo>> {
+    let mut want = Vec::new();
+    join_targets(&p.blocks, &mut want);
     let col = Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
     let mut todo = vec![String::new()];
     let mut n = 0;
@@ -1002,9 +1053,32 @@ pub(crate) fn splitter_places(
             todo.push(format!("{q}R"));
             todo.push(format!("{q}T"));
         }
+        if !want.is_empty() && want.iter().all(|w| col.borrow().contains_key(w)) {
+            break;
+        }
     }
     let out = col.borrow().clone();
     Ok(out)
+}
+
+/// ブロックの木の合流の先の BS の id（並びの中の順、重なりなし）
+fn join_targets(blocks: &[Block], out: &mut Vec<String>) {
+    for b in blocks {
+        match b {
+            Block::Join { splitter, .. } => {
+                if !out.contains(splitter) {
+                    out.push(splitter.clone());
+                }
+            }
+            Block::Group { blocks, .. } => join_targets(blocks, out),
+            Block::Splitter { spec, .. } => {
+                for l in [&spec.t, &spec.r, &spec.d] {
+                    join_targets(l, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// ブロックの木に合流があるか
