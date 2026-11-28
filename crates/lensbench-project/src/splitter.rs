@@ -167,6 +167,11 @@ const RPAIR: [usize; 4] = [2, 3, 0, 1];
 const Y180: M3 = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
 const MAX_PASSES: usize = 64;
 
+/// 経路の一覧（[`paths`]）に入れる輪の周回の数。同じ経路で一度通った BS へ合流で戻る（リング: サニャック・リング
+/// 共振器）たびに 1 周と数え、これを超える経路は一覧に入れない（周回は限りなく続きうるので）。光束に書く経路は
+/// これより多く回ってもよい（BS を通る回数の上限 MAX_PASSES まで）
+pub const RING_TRIPS: usize = 3;
+
 /// 面での作用
 enum Act {
     /// 透過して媒質へ（"AIR" か硝材）
@@ -523,6 +528,10 @@ pub(crate) struct SplitState {
     pub need: bool,
     /// 復路が分岐の無い BS で A 以外の口へ出た（光束の `turn` では戻った先を置けない）
     pub loose: bool,
+    /// 同じ経路で一度通った BS へ合流で戻った回数（輪の周回）
+    pub rings: usize,
+    /// strict で輪の周回が [`RING_TRIPS`] を超えた（[`paths`] の一覧に入れない）
+    pub over: bool,
     /// 合流（[`Block::Join`]）の先の BS の置き方（ほかの経路でたどったもの、鍵ごと）
     pub(crate) places: Arc<std::collections::HashMap<String, SplitInfo>>,
     /// BS の置き方を集める（合流で経路を終える。[`splitter_places`]）
@@ -792,7 +801,16 @@ impl<'a, 'b> Ctx<'a, 'b> {
             self.split.done = true;
             return Ok(());
         }
-        if !self.split.info.contains_key(&key) {
+        if self.split.info.contains_key(&key) {
+            // 同じ経路で通った BS へ戻る（輪を 1 周した）
+            self.split.rings += 1;
+            if self.split.strict && self.split.rings > RING_TRIPS {
+                self.split.over = true;
+                return Err(
+                    format!("join to {id}: more than {RING_TRIPS} trips around the ring").into(),
+                );
+            }
+        } else {
             let Some(info) = self.split.places.get(&key).cloned() else {
                 return Err(format!(
                     "join to {id}: no BS {id} is placed on a path that doesn't go through a join"
@@ -1005,13 +1023,14 @@ pub(crate) fn splitter_places_cached(
         p
     };
     let Some(c) = cache else {
-        return Ok(Arc::new(splitter_places(p, env, None, within)?));
+        return Ok(Arc::new(splitter_places(p, env, None, within, false)?));
     };
     let key = places_key(p, env, within);
     if let Some(got) = c.places_get(&key) {
         return Ok(got);
     }
-    let (got, read) = lensbench_core::vfs::recording(|| splitter_places(p, env, Some(c), within));
+    let (got, read) =
+        lensbench_core::vfs::recording(|| splitter_places(p, env, Some(c), within, false));
     let got = Arc::new(got?);
     c.places_put(key, &read, got.clone());
     Ok(got)
@@ -1029,15 +1048,18 @@ fn places_key(p: &crate::Project, env: &crate::Env, within: &[crate::Loading]) -
 
 /// 合流（[`Block::Join`]）の先の BS の置き方: 合流で経路を終えて経路を全部たどり、BS ごとに最初に置いた置き方を集める。
 /// 合流の先の BS（木の中の合流の `splitter`）が全部集まれば、残りの経路はたどらない（深さ優先の順は同じなので、
-/// 集まる置き方は全部たどったときと同じ。合流の先でない BS の置き方は使わない）
+/// 集まる置き方は全部たどったときと同じ。合流の先でない BS の置き方は使わない）。all なら全部の経路をたどる
 pub(crate) fn splitter_places(
     p: &crate::Project,
     env: &crate::Env,
     cache: Option<&crate::SourceCache>,
     within: &[crate::Loading],
+    all: bool,
 ) -> lensbench_core::Result<std::collections::HashMap<String, SplitInfo>> {
     let mut want = Vec::new();
-    join_targets(&p.blocks, &mut want);
+    if !all {
+        join_targets(&p.blocks, &mut want);
+    }
     let col = Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
     let mut todo = vec![String::new()];
     let mut n = 0;
@@ -1059,6 +1081,26 @@ pub(crate) fn splitter_places(
     }
     let out = col.borrow().clone();
     Ok(out)
+}
+
+/// プロジェクトの木の BS ごとの大域の置き方（[`At`]、BS の id → 置き方）。BS を大域に置く（`at`）ときに、今の
+/// 置き方から始めるため（この値を `at` に書き、BS の偏心・傾きを外すと、BS は同じ所に置かれる）。どの経路でも
+/// 通らない BS は無い
+pub fn splitter_frames(
+    p: &crate::Project,
+    env: &crate::Env,
+    cache: Option<&crate::SourceCache>,
+) -> lensbench_core::Result<std::collections::BTreeMap<String, At>> {
+    let got = splitter_places(p, env, cache, &[], true)?;
+    Ok(got
+        .into_iter()
+        .map(|(k, v)| {
+            let tilt =
+                lensbench_core::math::xyz_angles(&v.s.1)
+                    .map(|a| if a.abs() < 1e-12 { 0.0 } else { a });
+            (k, At { o: v.s.0, tilt })
+        })
+        .collect())
 }
 
 /// ブロックの木の合流の先の BS の id（並びの中の順、重なりなし）
@@ -1092,6 +1134,7 @@ pub(crate) fn has_join(blocks: &[Block]) -> bool {
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
+/// 合流で同じ BS へ戻る輪は [`RING_TRIPS`] 周までの経路。
 /// 経路は BS ごとに透過・反射を選んで、BS を通らなくなるまで（像面まで）たどったもの。経路ごとにブロックを
 /// たどって面を並べる（BS の復路でどの口へ出るかは面の位置で決まるので、面は作る）が、系を組んで確かめる・
 /// 自動の半直径を光線で求める・機構部品を置く段はしない（その段の誤りは、その経路を展開したときに出る）
@@ -1112,6 +1155,8 @@ pub fn paths_cached(
             .map_err(crate::ExpandError::into_error)
         {
             Ok(crate::expand::Walk::Done(_) | crate::expand::Walk::Walked) => out.push(q),
+            // 輪を回りすぎる経路は一覧に入れない
+            Ok(crate::expand::Walk::Over) => {}
             Ok(crate::expand::Walk::Need) => {
                 if out.len() + todo.len() > 1024 {
                     return Err("more than 1024 paths".into());

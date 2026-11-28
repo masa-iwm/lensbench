@@ -164,6 +164,41 @@ impl App {
         self.c.auto_build();
         self.sync_stray(ctx);
         self.nsc_request(ctx);
+        self.bs_at_request(ctx);
+    }
+
+    /// BS の欄で「大域の座標に置く」を入れた: 組合せを展開して BS の今の置き方を求め、`at` に書く（元に戻せる書き換え）
+    fn bs_at_request(&mut self, ctx: &egui::Context) {
+        let Some(loc) = combo::join::take_at_request(ctx) else {
+            return;
+        };
+        let paths = |v: &[String]| v.iter().map(std::path::PathBuf::from).collect::<Vec<_>>();
+        let glass = paths(&self.c.s.glass_dirs);
+        let cat =
+            lensbench_core::catalog::LensCatalog::load_registered(&paths(&self.c.s.lens_dirs));
+        let base = (self.c.loc.combo_path.as_ref())
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(doc_loc::work_dir);
+        let project = self.c.doc.combo.project().to_string();
+        let frames = crate::work_fs::with(|| {
+            let cat = cat.map_err(|e| e.to_string())?;
+            let look = |v: &str, q: &str| cat.zmx(v, q);
+            let env = lensbench_project::Env {
+                catalog: Some(&look),
+                ..lensbench_project::Env::in_dir(&base, &glass, None)
+            };
+            let p = lensbench_project::Project::from_json(&project).map_err(|e| e.to_string())?;
+            lensbench_project::splitter_frames(&p, &env, None).map_err(|e| e.to_string())
+        });
+        let r = frames.and_then(|f| {
+            edit::stage(&mut self.c.doc.combo, &mut self.c.msgs, |c| {
+                combo::join::place_at(c, &loc, &f)
+            })
+        });
+        if let Err(e) = r {
+            self.c.fail(e);
+        }
     }
 
     /// 非順次の経路の表から頼まれた操作: 組合せに迷光の光束を足す（元に戻せる書き換え）・ゴーストの系を開く

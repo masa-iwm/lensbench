@@ -297,3 +297,133 @@ fn a_turned_beam_does_not_hide_the_join_target() {
     let xs = expansions(&p, &env()).unwrap();
     assert_eq!(xs.len(), 2);
 }
+
+/// BS1 から出て鏡 3 枚の輪を回り BS1 へ戻る系。t の腕は口 B から出て口 port_t へ、r の腕（あれば）は口 C から出て
+/// 口 B へ戻る。s は鏡の傾きの符号（+1 で輪は +y の側、−1 で −y の側）。輪の辺は BS の中心の高さで閉じる長さ
+pub(crate) fn ring(s: f64, port_t: &str, with_r_loop: bool) -> Project {
+    let m = |id: &str, a: f64| {
+        format!(r#"{{"type": "mirror", "id": "{id}", "tilt": [{a}, 0], "semi": 15}}"#)
+    };
+    let air = |t: f64| format!(r#"{{"type": "air", "t": {t}}}"#);
+    let t = [
+        air(45.0),
+        m("M1", 45.0 * s),
+        air(50.0),
+        m("M2", 45.0 * s),
+        air(50.0),
+        m("M3", 45.0 * s),
+        air(45.0),
+        format!(r#"{{"type": "join", "splitter": "BS1", "port": "{port_t}"}}"#),
+    ]
+    .join(", ");
+    let r = if with_r_loop {
+        [
+            air(45.0),
+            m("N1", -45.0 * s),
+            air(50.0),
+            m("N2", -45.0 * s),
+            air(50.0),
+            m("N3", -45.0 * s),
+            air(45.0),
+            r#"{"type": "join", "splitter": "BS1", "port": "b"}"#.to_string(),
+        ]
+        .join(", ")
+    } else {
+        air(20.0)
+    };
+    let txt = format!(
+        r#"{{"wavelengths": [{{"um": 0.6328}}], "glass_catalogs": ["SCHOTT"], "aperture": {{"type": "epd", "value": 4}},
+          "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 20}},
+            {{"type": "splitter", "id": "BS1", "form": "cube", "size": 10, "thickness": 3, "glass": "N-BK7", "semi": 12,
+              "t": [{t}], "r": [{r}], "d": [{}]}}]}}"#,
+        air(20.0)
+    );
+    Project::from_json(&txt).unwrap()
+}
+
+/// 主光線の像面の点・向きと光路長
+fn chief_opl(s: &System) -> (V3, V3, f64) {
+    let t = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, false)
+        .unwrap();
+    assert!(t.traced(0), "{:?}", t.rays[0].status);
+    (t.rays[0].p, t.rays[0].k, t.rays[0].opl)
+}
+
+/// サニャック（輪を右回り・左回りの 2 光束）: 同じ BS へ合流で戻る輪。右回り TT と左回り RR は同じ口 D から同じ所・
+/// 同じ向きに、同じ光路長で出る（相反）。TR・RT も同じく口 A へ戻る
+#[test]
+fn sagnac_ring_is_reciprocal() {
+    let p = ring(1.0, "c", true);
+    let mut got = lensbench_project::paths(&p, &env()).unwrap();
+    got.sort();
+    assert_eq!(got, ["RR", "RT", "TR", "TT"]);
+    for (a, b) in [("TT", "RR"), ("TR", "RT")] {
+        let (x, y) = (chief_opl(&sys(&p, a)), chief_opl(&sys(&p, b)));
+        assert!(
+            close(x.0, y.0, 1e-9) && close(x.1, y.1, 1e-12),
+            "{a} {b}: {x:?} {y:?}"
+        );
+        assert!((x.2 - y.2).abs() < 1e-9, "{a} {b}: {} {}", x.2, y.2);
+    }
+    // 輪の長さ（空気 45+50+50+45、両腕で同じ）の分だけ BS を素通りする場合より長い
+    let tt = chief_opl(&sys(&p, "TT"));
+    assert!(tt.2 > 190.0, "{tt:?}");
+}
+
+/// リング共振器: 口 D へ戻る輪は、反射で輪へ戻り透過で口 C へ出る。経路の一覧は輪を RING_TRIPS 周まで、それより多く
+/// 回る経路も光束には書ける。輪を回るごとに同じ所・同じ向きに出て、光路長は 1 周の長さずつ増える
+#[test]
+fn ring_resonator_trips() {
+    let p = ring(-1.0, "d", false);
+    let got = lensbench_project::paths(&p, &env()).unwrap();
+    let mut want = vec!["R".to_string()];
+    for n in 0..lensbench_project::RING_TRIPS {
+        want.push(format!("T{}T", "R".repeat(n)));
+    }
+    let mut g = got.clone();
+    g.sort();
+    want.sort();
+    assert_eq!(g, want, "{got:?}");
+    let trips: Vec<_> = (0..=lensbench_project::RING_TRIPS + 1)
+        .map(|n| chief_opl(&sys(&p, &format!("T{}T", "R".repeat(n)))))
+        .collect();
+    let d0 = trips[1].2 - trips[0].2;
+    for w in trips.windows(2) {
+        assert!(
+            close(w[0].0, w[1].0, 1e-9) && close(w[0].1, w[1].1, 1e-12),
+            "{trips:?}"
+        );
+        assert!((w[1].2 - w[0].2 - d0).abs() < 1e-9, "{trips:?}");
+    }
+    assert!(d0 > 190.0, "{d0}");
+}
+
+/// 今の BS の置き方（[`lensbench_project::splitter_frames`]）を `at` に書くと、BS は同じ所に置かれる（GUI で
+/// 「大域に置く」を入れても系が動かない）。鏡 M1 を傾けて、置き方が軸に沿わない値になる場合も
+#[test]
+fn splitter_frames_place_the_bs_where_it_is() {
+    for (m1, form) in [(45.0, "cube"), (45.3, "cube"), (44.2, "ideal")] {
+        let p0 = mz_at(m1, -45.0, form, "");
+        let fr = lensbench_project::splitter_frames(&p0, &env(), None).unwrap();
+        assert_eq!(fr.keys().collect::<Vec<_>>(), ["BS1", "BS2"]);
+        if m1 == 45.0 && form == "cube" {
+            let a = fr["BS2"];
+            let want = [0.0, 50.0, 80.0];
+            assert!(close(a.o, want, 1e-9), "{a:?}");
+        }
+        let f = fr["BS2"];
+        let txt = format!(
+            r#", "at": {{"o": [{}, {}, {}], "tilt": [{}, {}, {}]}}"#,
+            f.o[0], f.o[1], f.o[2], f.tilt[0], f.tilt[1], f.tilt[2]
+        );
+        let p1 = mz_at(m1, -45.0, form, &txt);
+        for q in ["TT", "TR"] {
+            let (a, b) = (chief(&sys(&p0, q)), chief(&sys(&p1, q)));
+            assert!(
+                close(a.0, b.0, 1e-9) && close(a.1, b.1, 1e-12),
+                "{m1} {form} {q}: {a:?} {b:?}"
+            );
+        }
+    }
+}

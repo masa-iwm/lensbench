@@ -210,7 +210,14 @@ pub(super) fn element_settings(
         return;
     };
     if p.kind == ElemKind::Splitter {
-        ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
+        ui.add_enabled_ui(!locked, |ui| {
+            super::join::at_fields(ui, combo, &step.loc, weak);
+            bs_fields(ui, combo, &step.loc, weak)
+        });
+    } else if p.is_join() {
+        ui.add_enabled_ui(!locked, |ui| {
+            super::join::join_fields(ui, combo, &step.loc, weak)
+        });
     }
     // 要素の群の役割・移動（レイアウトのパネルの「群」と同じ）
     let g = combo

@@ -41,7 +41,10 @@ pub mod sysfile_v2;
 pub mod writeback;
 pub use edit_spec::SurfaceOp;
 use edit_spec::{BlockRef, EditOp, Ref};
-pub use splitter::{paths, paths_cached, Arm, At, PbsSpec, SplitFace, SplitForm, SplitterSpec};
+pub use splitter::{
+    paths, paths_cached, splitter_frames, Arm, At, PbsSpec, SplitFace, SplitForm, SplitterSpec,
+    RING_TRIPS,
+};
 use splitter::{Level, SplitState};
 
 use std::collections::{BTreeMap, HashMap};

@@ -29,6 +29,7 @@ mod custom_lens;
 mod detector;
 mod element;
 mod figure;
+pub(crate) mod join;
 mod kind_data;
 mod layout_json;
 pub(crate) mod mech;
@@ -2982,6 +2983,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
             combo.set_branched(loc, branched);
         }
     });
+    let bs_ids = join::splitter_ids(combo);
     let Some(p) = combo.get_mut(loc) else {
         return;
     };
@@ -3020,27 +3022,7 @@ pub(crate) fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Col
                     del = Some((port, j));
                 }
             }
-            ui.menu_button("＋", |ui| {
-                for kind in [
-                    ElemKind::Lens,
-                    ElemKind::Plate,
-                    ElemKind::Mirror,
-                    ElemKind::Stop,
-                    ElemKind::Aperture,
-                    ElemKind::Splitter,
-                ] {
-                    if ui.button(kind.label()).clicked() {
-                        let mut e = Pick::new(kind);
-                        if kind == ElemKind::Mirror {
-                            // 腕の端の鏡: 光軸に垂直で往路を戻る
-                            e.tilt = [0.0; 3];
-                            e.mirror_mut().back = true;
-                        }
-                        b.picks.push(e);
-                        ui.close();
-                    }
-                }
-            })
+            ui.menu_button("＋", |ui| join::add_menu(ui, &mut b.picks, &bs_ids))
             .response
             .on_hover_text(tr(
                 "Add an element at the end of this port's row (to select and edit it in the figure, set the path through this port)",

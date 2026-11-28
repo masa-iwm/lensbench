@@ -2154,3 +2154,18 @@ Angles where no light reaches the detector are left out	検出器に光が届か
 Paths at	経路の角度
 Source angle	光源の角度
 PST {} · detected {} W ({} of the source) · {} source rays	PST {} · 検出 {} W（光源の {}）· 光源の光線 {} 本
+Join BS	合流する BS
+Port	ポート
+The beam splitter this arm enters (placed on another arm, or the same BS for a ring)	この腕が入るビームスプリッター（別の腕に置いたもの。リングなら同じ BS）
+Port of the BS the beam enters (it must head into the port)	光束が入る BS のポート（光束はポートへ向かっていること）
+Join a BS	BS に合流
+End this arm by entering a port of a beam splitter (Mach-Zehnder, Sagnac or ring)	この腕をビームスプリッターのポートへ入れて終えます（マッハツェンダー・サニャック・リング）
+Place in global coordinates	グローバル座標に置く
+Fix the BS in the global coordinates (port A axis), so it stays when the elements before it move. Starts from the current place	BS をグローバル座標（ポート A の軸）に固定し、前の要素が動いても動かないようにします。今の位置から始めます
+Origin x	原点 x
+Origin y	原点 y
+Origin z	原点 z
+(port A axis)	（ポート A の軸）
+The beam splitter is no longer there	そのビームスプリッターはもうありません
+not on any path	どの経路にもありません
+Join {} port {}	合流 {} ポート {}

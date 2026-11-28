@@ -535,6 +535,8 @@ pub(crate) fn splitter_ids<'x>(v: &'x [Block], out: &mut Vec<&'x str>) {
 pub(crate) enum Walk {
     /// 経路の文字が足りない（経路を探すときだけ）
     Need,
+    /// 経路を探すとき: 輪の周回が多すぎる（[`crate::splitter::RING_TRIPS`]、一覧に入れない）
+    Over,
     /// 経路を探すとき: ブロックを終わりまでたどれた（系は組まない）
     Walked,
     Done(Box<Expansion>),
@@ -648,6 +650,7 @@ pub(crate) fn expand_body(
         match c.block(b, &p.blocks, i) {
             // 経路の文字が足りない（経路を探すとき。paths が次の文字を試す）
             Err(_) if c.split.need => return Ok(Walk::Need),
+            Err(_) if c.split.over => return Ok(Walk::Over),
             Err(e) => {
                 *failed = c.failed.take();
                 return Err(e);

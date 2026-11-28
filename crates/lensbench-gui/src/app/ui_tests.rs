@@ -1332,3 +1332,101 @@ fn pickup_on_a_return_face_of_a_double_pass() {
         h.state().c.sys.ld_rows[back0]
     );
 }
+
+/// BS の欄の「グローバル座標に置く」を入れると、BS は今の置き方の `at` になり（偏心・傾きは外す）、系は動かない。
+/// 合流の要素は入る BS と口を名前に出す。元に戻すと `at` は無くなる
+#[test]
+fn bs_place_in_global_coordinates_keeps_the_system() {
+    let _g = serial();
+    let r = root();
+    // 見本 P20 の BS2 を、透過の腕の並びで置いた形（`at` なし）にする
+    let mut v: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(r.join("examples/projects/P20_mach_zehnder.json")).unwrap(),
+    )
+    .unwrap();
+    v["blocks"][2]["t"][3].as_object_mut().unwrap().remove("at");
+    let dir = std::env::temp_dir().join(format!("lb_bs_at_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("mz.json");
+    std::fs::write(&file, v.to_string()).unwrap();
+    let mut h = harness(Args {
+        open: Some(file.clone()),
+        glass_dirs: vec![r.join("tests/glass").to_string_lossy().into_owned()],
+        ..Args::default()
+    });
+    let chief = |p: &serde_json::Value, q: &str| {
+        let pr = lensbench_project::Project::from_json(&p.to_string()).unwrap();
+        let s = lensbench_project::expand(
+            &pr,
+            &lensbench_project::Env::in_dir(&dir, &[r.join("tests/glass")], None),
+            &lensbench_project::ExpandOpts {
+                path: Some(q),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .system;
+        let t = s
+            .try_trace(
+                lensbench_core::system::FieldSel::Index(0),
+                &[0.0],
+                &[0.0],
+                None,
+                None,
+                false,
+            )
+            .unwrap();
+        (t.rays[0].p, t.rays[0].k)
+    };
+    let before = h.state().c.doc.combo.project();
+    let ids = h.state().c.doc.combo.ids();
+    let k = ids
+        .iter()
+        .position(|x| x == "BS2")
+        .expect("BS2 on the path");
+    h.state_mut().c.p.combo_view.select(k);
+    settle(&mut h);
+    h.get_by_label("Place in global coordinates")
+        .click_accesskit();
+    settle(&mut h);
+    let after = h.state().c.doc.combo.project();
+    let bs2 = &after["blocks"][2]["t"];
+    let bs2 = bs2
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["id"] == "BS2")
+        .expect("BS2 block");
+    let o: Vec<f64> = bs2["at"]["o"]
+        .as_array()
+        .expect("at written")
+        .iter()
+        .map(|x| x.as_f64().unwrap())
+        .collect();
+    assert!(
+        (o[0]).abs() < 1e-9 && (o[1] - 50.0).abs() < 1e-9 && (o[2] - 80.0).abs() < 1e-9,
+        "{bs2}"
+    );
+    for q in ["TT", "TR", "RT", "RR"] {
+        let (a, b) = (chief(&before, q), chief(&after, q));
+        let d = (0..3)
+            .map(|i| (a.0[i] - b.0[i]).abs() + (a.1[i] - b.1[i]).abs())
+            .sum::<f64>();
+        assert!(d < 1e-8, "{q}: {a:?} {b:?}");
+    }
+    // 合流の要素の名前
+    let names: Vec<String> = {
+        let c = &h.state().c.doc.combo;
+        c.ids_all()
+            .into_iter()
+            .filter_map(|(l, _)| c.get(&l).map(|p| p.label()))
+            .collect()
+    };
+    assert!(names.iter().any(|n| n == "Join BS2 port D"), "{names:?}");
+    // 元に戻す
+    h.state_mut().update(Msg::Undo(true, 1));
+    settle(&mut h);
+    let back = h.state().c.doc.combo.project();
+    assert_eq!(back, before);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -48,6 +48,11 @@ impl Pick {
 
     /// 一覧・図の名前（ブロックの種類）
     pub(super) fn raw_label(&self) -> String {
+        if self.is_join() {
+            let bs = self.extra["splitter"].as_str().unwrap_or("?");
+            let port = self.extra["port"].as_str().unwrap_or("?").to_uppercase();
+            return trf("Join {} port {}", &[&bs, &port]);
+        }
         trf("Block ({})", &[&self.extra["type"].as_str().unwrap_or("?")])
     }
 }

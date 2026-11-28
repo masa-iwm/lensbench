@@ -549,3 +549,12 @@ fn rays_at_the_edge_of_a_face_are_not_trapped() {
         eprintln!("{rel}: {dt:.3} s, detected {:.6}", r.budget.detected);
     }
 }
+
+/// 合流で同じ BS へ戻る輪（サニャック・リング共振器）の枝が、輪の経路ごとの展開と一致する
+#[test]
+fn ring_branches_match_the_ring_paths() {
+    for (s, port, r_loop) in [(1.0, "c", true), (-1.0, "d", false)] {
+        let p = crate::join::ring(s, port, r_loop);
+        project_paths(&format!("ring {port}"), &p, &env(), None);
+    }
+}
