@@ -134,8 +134,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
         lenses: super::lens_ids(c),
         mechs: c.mechanics.iter().map(|m| m.name.clone()).collect(),
     };
-    ui.menu_button(title, |ui| {
-        ui.set_min_width(640.0);
+    super::tool_window(ui, &title, "combo-finishes", 640.0, |ui| {
         ui.label(
             RichText::new(tr(
                 "Scatter and reflectance of surfaces, lens edges and mechanical parts. Only the non-sequential trace and the stray light PST use them",
@@ -148,7 +147,14 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
             .striped(true)
             .num_columns(6)
             .show(ui, |ui| {
-                for h in [tr("Applies to"), "", tr("Reflectance"), tr("Scatter"), "", ""] {
+                for h in [
+                    tr("Applies to"),
+                    "",
+                    tr("Reflectance"),
+                    tr("Scatter"),
+                    "",
+                    "",
+                ] {
                     ui.label(RichText::new(h).small().strong());
                 }
                 ui.end_row();
@@ -170,7 +176,10 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
         if ui.button(trf("+ {}", &[&tr("Add a finish")])).clicked() {
             v.push(FinishSpec {
                 mech: ch.mechs.first().cloned(),
-                face: ch.mechs.is_empty().then(|| face(ch.blocks.first().cloned().unwrap_or_default())),
+                face: ch
+                    .mechs
+                    .is_empty()
+                    .then(|| face(ch.blocks.first().cloned().unwrap_or_default())),
                 scatter: Some(Scatter::lambert(0.01)),
                 ..Default::default()
             });
@@ -440,5 +449,42 @@ mod tests {
         assert_eq!(c.project()["finishes"][0]["scatter"]["depolarize"], false);
         set_finishes(&mut c, &[]);
         assert!(c.extra.finishes.is_none() && c.project().get("finishes").is_none());
+    }
+
+    /// 仕上げの窓は中のクリック（足す・入れ子の一覧で選ぶ）で閉じない。メニューだった頃は押すたびに閉じていた
+    #[test]
+    fn finishes_window_stays_open_while_editing() {
+        use egui_kittest::kittest::{by, Queryable};
+        let _g = crate::serve_lock();
+        crate::i18n::set(crate::i18n::Lang::En);
+        let mut h = egui_kittest::Harness::builder()
+            .allow_missing_glyphs()
+            .with_size(egui::vec2(900.0, 500.0))
+            .build_ui_state(
+                |ui, c: &mut Combo| {
+                    menu(ui, c);
+                },
+                Combo::default(),
+            );
+        h.run_steps(1);
+        h.get_by_label("Finishes").click();
+        h.run_steps(2);
+        h.get_by_label("+ Add a finish").click();
+        h.run_steps(2);
+        assert_eq!(finishes_of(h.state()).unwrap().len(), 1);
+        h.get(
+            by().label("Applies to")
+                .role(egui::accesskit::Role::ComboBox),
+        )
+        .click();
+        h.run_steps(2);
+        h.get_by_label("Lens edge").click();
+        h.run_steps(2);
+        let v = finishes_of(h.state()).unwrap();
+        assert!(v[0].edge.is_some(), "{v:?}");
+        // 窓はまだ開いていて、もう 1 つ足せる
+        h.get_by_label("+ Add a finish").click();
+        h.run_steps(2);
+        assert_eq!(finishes_of(h.state()).unwrap().len(), 2);
     }
 }

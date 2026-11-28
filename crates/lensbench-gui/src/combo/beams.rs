@@ -142,8 +142,7 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
     let before = v.clone();
     let lenses = lens_ids(c);
     let states = c.states.clone();
-    let r = ui.menu_button(title, |ui| {
-        ui.set_min_width(560.0);
+    tool_window(ui, &title, "combo-beams", 560.0, |ui| {
         ui.label(
             RichText::new(tr(
                 "Named beam splitter paths. Choose a beam by name like a state (analyses, interference, overlays in the layout). Turn back makes the beam return by the partial reflection at a lens surface",
@@ -241,12 +240,35 @@ pub(crate) fn menu(ui: &mut Ui, c: &mut Combo) -> bool {
             ui.colored_label(theme::error(ui.visuals()), p);
         }
     });
-    let _ = r;
     if v == before {
         return false;
     }
     set_beams(c, &v);
     true
+}
+
+/// 表を開く窓: ボタンで開く・閉じる。中のクリック（入れ子の一覧を含む）では閉じない。メニューは中のクリックで
+/// 閉じるので、欄を直す表には使わない
+pub(super) fn tool_window(
+    ui: &mut Ui,
+    title: &str,
+    key: &str,
+    width: f32,
+    add: impl FnOnce(&mut Ui),
+) {
+    let id = ui.make_persistent_id(key);
+    let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    if ui.selectable_label(open, title).clicked() {
+        open = !open;
+    }
+    egui::Window::new(title)
+        .id(id.with("win"))
+        .open(&mut open)
+        .default_width(width)
+        .resizable(true)
+        .collapsible(false)
+        .show(ui.ctx(), add);
+    ui.data_mut(|d| d.insert_temp(id, open));
 }
 
 /// 折り返す面の欄: 玉の id・面の番号（座標ブレークを除いて 0 から）・往路の何回目か
