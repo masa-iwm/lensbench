@@ -686,3 +686,28 @@ fn state_stop_round_trip() {
     assert_eq!(stop("B"), 1);
     assert_eq!(stop("A"), 3);
 }
+
+/// 硝材置換のテンプレート（glass_template）とマクロの文は組合せを通しても残る（GUI の欄で編めるので落とさない）
+#[test]
+fn keeps_glass_template_and_macros() {
+    let dir = root().join("examples/projects");
+    let mut v: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("P8_catalog_two.json")).unwrap())
+            .unwrap();
+    let g = json!({ "enabled": true, "max": [2.0, 3.0, 100.0, 100.0, 100.0, 100.0],
+        "exclude_incomplete": true, "status": [true, false, false, false],
+        "check": [true, true, false, false, false, false] });
+    v["glass_template"] = g.clone();
+    v["macros"] = json!([{ "name": "M1", "source": "SOLVETYPE = 1\n" }]);
+    let c = Combo::from_project(&v, &dir).unwrap();
+    assert!(c.extra.glass_template.is_some_and(|t| t.enabled));
+    let p = c.project();
+    assert_eq!(p["glass_template"], g);
+    assert_eq!(p["macros"][0]["source"], "SOLVETYPE = 1\n");
+    // 既定のテンプレートは書かない
+    v["glass_template"] =
+        serde_json::to_value(lensbench_core::system::GlassTemplate::default()).unwrap();
+    let c = Combo::from_project(&v, &dir).unwrap();
+    assert!(c.extra.glass_template.is_none());
+    assert!(c.project().get("glass_template").is_none());
+}

@@ -422,6 +422,15 @@ impl Program {
         Program::parse_inner(src, true)
     }
 
+    /// 解釈できなかった最初の行の誤り。[`Program::parse`] はそういう行も受け、走らせてそこへ来たときのエラーにする
+    /// （OpticStudio と同じ）ので、画面で先に見せるときに使う
+    pub fn first_problem(&self) -> Option<String> {
+        self.ops.iter().find_map(|o| match o {
+            Op::Fail(e) => Some(e.to_string()),
+            _ => None,
+        })
+    }
+
     /// `resolve` が偽なら GOTO・GOSUB の行き先を確かめない（1 行の IF の THEN の後）
     fn parse_inner(src: &str, resolve: bool) -> Result<Program> {
         let mut p = Program {
@@ -1055,6 +1064,24 @@ fn builtin(name: &str, a: &[Value], line: usize) -> Result<Option<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_problem_names_the_line_that_does_not_parse() {
+        let p = Program::parse("x = 1\nSOLVERETURN (x +\nSOLVERETURN x").unwrap();
+        let e = p.first_problem().unwrap();
+        assert!(e.contains('2'), "{e}");
+        assert_eq!(
+            Program::parse("x = 1\nSOLVERETURN x")
+                .unwrap()
+                .first_problem(),
+            None
+        );
+        // 飛び先の無い GOTO も
+        assert!(Program::parse("GOTO nowhere")
+            .unwrap()
+            .first_problem()
+            .is_some());
+    }
 
     fn run(src: &str) -> Result<Option<f64>> {
         Program::parse(src)?.run(&mut NoHost, &mut Vars::default())

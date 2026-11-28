@@ -1890,6 +1890,14 @@ Obsolete	廃止
 Special	特殊
 Melt	溶解
 Excluded glasses	除く硝材
+Glass substitution template	硝材置換テンプレート
+Glass substitution template (on)	硝材置換テンプレート（使用中）
+Use the template	テンプレートを使う
+Used by the glass substitution of the optimization when it sets no candidate filter of its own (GSTD of a .zmx)	最適化の硝材の置き換えで、候補の絞り込みを何も指定しないときに使います（.zmx の GSTD）
+Relative cost	相対価格
+An upper limit of 0 or less is not checked. Melt glasses are always excluded	上限が 0 以下の性質は確かめません。溶解の硝材はいつも除きます
+ZPL macros	ZPL マクロ
+The macros called by the macro solves. Solves refer to them by position and name, so only the text is edited here	マクロのソルブが呼ぶマクロです。ソルブは並びの番号と名前で指すので、ここでは文だけを変えます
 Glasses never used as candidates (comma-separated; NAME@CATALOG for one catalog's glass). A current glass that fails the filter is always replaced	候補にしない硝材（カンマ区切り。名前@カタログ でそのカタログのものだけ）。絞り込みに合わない今の硝材は必ず置き換えます
 Closeness steps	近さの刻み
 Candidates are the nearest in (Δnd / nd step)² + (Δvd / vd step)² (+ (ΔPgF / ΔPgF step)² when given)	候補は (Δnd / nd の刻み)² + (Δvd / vd の刻み)²（ΔPgF の刻みを入れれば + (ΔPgF / ΔPgF の刻み)²）の近い順

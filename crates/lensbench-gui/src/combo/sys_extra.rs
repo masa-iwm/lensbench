@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use lensbench_core::system::VigInterp;
+use lensbench_core::system::{GlassTemplate, VigInterp};
 use lensbench_project::Environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -45,6 +45,9 @@ pub(crate) struct SysExtra {
     /// 定義した視野以外の点のケラレ係数の求め方（プロジェクトの vig_interp。既定の連続は書かない）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vig_interp: Option<VigInterp>,
+    /// 硝材置換のテンプレート（プロジェクトの glass_template、.zmx の GSTD。既定は書かない）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glass_template: Option<GlassTemplate>,
 }
 
 impl SysExtra {
@@ -64,6 +67,13 @@ impl SysExtra {
             None => None,
         }
         .filter(|x| *x != VigInterp::Continuous);
+        let glass_template = match v.get("glass_template").filter(|g| !g.is_null()) {
+            Some(x) => Some(
+                serde_json::from_value::<GlassTemplate>(x.clone()).map_err(|e| e.to_string())?,
+            ),
+            None => None,
+        }
+        .filter(|g| !g.is_default());
         Ok(SysExtra {
             field_rect: v.pointer("/fields/norm").and_then(Value::as_str) == Some("rect"),
             glrs: v.get("glrs").filter(|g| !g.is_null()).cloned(),
@@ -95,6 +105,7 @@ impl SysExtra {
                 .filter(|g| !g.is_null() && **g != json!([]))
                 .cloned(),
             vig_interp,
+            glass_template,
         })
     }
 
@@ -135,6 +146,9 @@ impl SysExtra {
         }
         if let Some(g) = self.vig_interp {
             v["vig_interp"] = json!(g);
+        }
+        if let Some(g) = self.glass_template.filter(|g| !g.is_default()) {
+            v["glass_template"] = json!(g);
         }
     }
 }

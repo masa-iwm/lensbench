@@ -15,6 +15,8 @@ use crate::theme;
 
 mod diff;
 pub(crate) mod form;
+mod glass_tpl;
+mod macros;
 mod pts;
 pub(crate) use diff::SysDiff;
 pub(crate) use pts::{FieldPt, WavePt};
@@ -806,6 +808,26 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         });
     if focus {
         r.header_response.scroll_to_me(Some(egui::Align::Min));
+    }
+    // 硝材置換のテンプレート（プロジェクトの glass_template、.zmx の GSTD）
+    let head = match c.extra.glass_template {
+        Some(g) if g.enabled => tr("Glass substitution template (on)").to_string(),
+        _ => tr("Glass substitution template").to_string(),
+    };
+    egui::CollapsingHeader::new(RichText::new(head).strong())
+        .id_salt(id.with("glass_tpl"))
+        .show(ui, |ui| {
+            glass_tpl::ui(ui, &mut c.extra.glass_template, weak);
+        });
+    // ZPL マクロ（マクロのソルブがあるときだけ）
+    if !c.macros.is_empty() {
+        egui::CollapsingHeader::new(
+            RichText::new(format!("{} ({})", tr("ZPL macros"), c.macros.len())).strong(),
+        )
+        .id_salt(id.with("macros"))
+        .show(ui, |ui| {
+            macros::ui(ui, &mut c.macros, weak);
+        });
     }
     detector_ui(ui, c, id);
 }
