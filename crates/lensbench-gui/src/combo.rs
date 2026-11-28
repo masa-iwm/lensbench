@@ -1548,6 +1548,12 @@ pub(crate) struct View {
 pub(crate) struct DropPick(pub Pick);
 
 impl View {
+    /// 要素 k の図の上の真ん中（試験の筋書きがポインタで押す）
+    #[cfg(test)]
+    pub(crate) fn mid(&self, k: usize) -> Option<Pos2> {
+        self.mids.get(k).copied().flatten()
+    }
+
     /// 2D の図を画面の点 c を中心に f 倍する（c の下の図の点は動かない）。fit_center は全体表示の中心
     fn zoom_about(&mut self, fit_center: Pos2, c: Pos2, f: f32) {
         let old = self.zoom_log;

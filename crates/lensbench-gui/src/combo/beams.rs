@@ -60,7 +60,7 @@ pub(crate) fn problems(c: &Combo, v: &[Beam]) -> Vec<String> {
 }
 
 /// 折り返せる要素（玉・自作の玉）の id
-fn lens_ids(c: &Combo) -> Vec<String> {
+pub(crate) fn lens_ids(c: &Combo) -> Vec<String> {
     c.ids_all()
         .into_iter()
         .filter(|(l, id)| {

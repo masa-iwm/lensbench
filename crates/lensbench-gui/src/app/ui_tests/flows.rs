@@ -13,6 +13,7 @@ use egui_kittest::kittest::by;
 
 mod combo_tools;
 mod file_menu;
+mod new_fields;
 mod panels;
 mod tables;
 
@@ -232,7 +233,23 @@ impl Drive {
             |v| (nth < v.len()).then_some(nth),
         );
         self.click_at(r.center());
-        self.press(item);
+        // 同じ文言の部品がほかにもあるとき（図の経路の札など）は、一覧のすぐ下に開いた項目
+        let it = self.target(
+            &format!("item {item:?} of {combo:?}"),
+            named(item, None),
+            |v| {
+                (0..v.len()).min_by(|&x, &y| {
+                    let d = |i: usize| {
+                        let c = v[i].center();
+                        (c.x - r.center().x).abs()
+                            + (c.y - r.bottom()).abs()
+                            + if c.y < r.top() { 1e4 } else { 0.0 }
+                    };
+                    d(x).total_cmp(&d(y))
+                })
+            },
+        );
+        self.click_at(it.center());
     }
 
     /// 文言の欄（字の欄・数の欄）の n 番目を押して中身を text に替え、Enter で決める
