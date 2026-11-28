@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.12/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.13/project.schema.json",
  "name": "P13 a spherical mirror tilted 8 deg folds the beam into a catalog lens",
  "glass_catalogs": [
   "SCHOTT"

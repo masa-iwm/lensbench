@@ -1,5 +1,5 @@
 {
- "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.12/project.schema.json",
+ "$schema": "https://masa-iwm.github.io/lensbench/schema/v0.13/project.schema.json",
  "name": "P7 lens mode groups in an imported .zmx",
  "glass_catalogs": [
   "SCHOTT"
